@@ -50,9 +50,9 @@
 
 /* Begin PBXFileReference section */
 		DB40A2182EE1B1ED00293509 /* Timestretch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Timestretch.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		DB40A2362EE1B21B00293509 /* SDL3.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL3.xcframework; path = ../SDL3.xcframework; sourceTree = "<group>"; };
-		DB40A23A2EE1B27200293509 /* librubberband.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librubberband.a; path = "../vcpkg/installed/arm64-ios/lib/librubberband.a"; sourceTree = "<group>"; };
-		DB40A23B2EE1B27200293509 /* libsndfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsndfile.a; path = "../vcpkg/installed/arm64-ios/lib/libsndfile.a"; sourceTree = "<group>"; };
+		DB40A2362EE1B21B00293509 /* SDL3.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL3.xcframework; path = ../SDL3.xcframework; sourceTree = SOURCE_ROOT; };
+		DB40A23A2EE1B27200293509 /* librubberband.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librubberband.a; path = "../vcpkg/installed/arm64-ios/lib/librubberband.a"; sourceTree = SOURCE_ROOT; };
+		DB40A23B2EE1B27200293509 /* libsndfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsndfile.a; path = "../vcpkg/installed/arm64-ios/lib/libsndfile.a"; sourceTree = SOURCE_ROOT; };
 		DBAA518C2EE1C7D200792D51 /* O */ = {isa = PBXFileReference; lastKnownFileType = folder; path = O; sourceTree = "<group>"; };
 		DBAA518D2EE1C7D200792D51 /* M */ = {isa = PBXFileReference; lastKnownFileType = folder; path = M; sourceTree = "<group>"; };
 		DBAA518E2EE1C7D200792D51 /* A */ = {isa = PBXFileReference; lastKnownFileType = folder; path = A; sourceTree = "<group>"; };
@@ -60,21 +60,21 @@
 		DBAA51902EE1C7D200792D51 /* K */ = {isa = PBXFileReference; lastKnownFileType = folder; path = K; sourceTree = "<group>"; };
 		DBAA51912EE1C7D200792D51 /* L */ = {isa = PBXFileReference; lastKnownFileType = folder; path = L; sourceTree = "<group>"; };
 		DBAA51922EE1C7D200792D51 /* I */ = {isa = PBXFileReference; lastKnownFileType = folder; path = I; sourceTree = "<group>"; };
-		DBE71D472EE1B9FC00E50D0D /* libFLAC++.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libFLAC++.a"; path = "../vcpkg/installed/arm64-ios/lib/libFLAC++.a"; sourceTree = "<group>"; };
-		DBE71D482EE1B9FC00E50D0D /* libfftw3.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3.a"; sourceTree = "<group>"; };
-		DBE71D492EE1B9FC00E50D0D /* libmpg123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmpg123.a; path = "../vcpkg/installed/arm64-ios/lib/libmpg123.a"; sourceTree = "<group>"; };
-		DBE71D4A2EE1B9FC00E50D0D /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbisfile.a"; sourceTree = "<group>"; };
-		DBE71D4B2EE1B9FC00E50D0D /* libmp3lame.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmp3lame.a; path = "../vcpkg/installed/arm64-ios/lib/libmp3lame.a"; sourceTree = "<group>"; };
-		DBE71D4C2EE1B9FC00E50D0D /* libsyn123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsyn123.a; path = "../vcpkg/installed/arm64-ios/lib/libsyn123.a"; sourceTree = "<group>"; };
-		DBE71D4D2EE1B9FC00E50D0D /* libout123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libout123.a; path = "../vcpkg/installed/arm64-ios/lib/libout123.a"; sourceTree = "<group>"; };
-		DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3f.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3f.a"; sourceTree = "<group>"; };
-		DBE71D4F2EE1B9FC00E50D0D /* libopus.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libopus.a; path = "../vcpkg/installed/arm64-ios/lib/libopus.a"; sourceTree = "<group>"; };
-		DBE71D502EE1B9FC00E50D0D /* libsamplerate.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsamplerate.a; path = "../vcpkg/installed/arm64-ios/lib/libsamplerate.a"; sourceTree = "<group>"; };
-		DBE71D512EE1B9FC00E50D0D /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = "../vcpkg/installed/arm64-ios/lib/libogg.a"; sourceTree = "<group>"; };
-		DBE71D522EE1B9FC00E50D0D /* libFLAC.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libFLAC.a; path = "../vcpkg/installed/arm64-ios/lib/libFLAC.a"; sourceTree = "<group>"; };
-		DBE71D532EE1B9FC00E50D0D /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbis.a"; sourceTree = "<group>"; };
-		DBE71D542EE1B9FC00E50D0D /* libfftw3l.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3l.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3l.a"; sourceTree = "<group>"; };
-		DBE71D552EE1B9FC00E50D0D /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbisenc.a"; sourceTree = "<group>"; };
+		DBE71D472EE1B9FC00E50D0D /* libFLAC++.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libFLAC++.a"; path = "../vcpkg/installed/arm64-ios/lib/libFLAC++.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D482EE1B9FC00E50D0D /* libfftw3.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D492EE1B9FC00E50D0D /* libmpg123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmpg123.a; path = "../vcpkg/installed/arm64-ios/lib/libmpg123.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4A2EE1B9FC00E50D0D /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbisfile.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4B2EE1B9FC00E50D0D /* libmp3lame.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmp3lame.a; path = "../vcpkg/installed/arm64-ios/lib/libmp3lame.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4C2EE1B9FC00E50D0D /* libsyn123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsyn123.a; path = "../vcpkg/installed/arm64-ios/lib/libsyn123.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4D2EE1B9FC00E50D0D /* libout123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libout123.a; path = "../vcpkg/installed/arm64-ios/lib/libout123.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3f.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3f.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4F2EE1B9FC00E50D0D /* libopus.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libopus.a; path = "../vcpkg/installed/arm64-ios/lib/libopus.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D502EE1B9FC00E50D0D /* libsamplerate.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsamplerate.a; path = "../vcpkg/installed/arm64-ios/lib/libsamplerate.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D512EE1B9FC00E50D0D /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = "../vcpkg/installed/arm64-ios/lib/libogg.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D522EE1B9FC00E50D0D /* libFLAC.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libFLAC.a; path = "../vcpkg/installed/arm64-ios/lib/libFLAC.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D532EE1B9FC00E50D0D /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbis.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D542EE1B9FC00E50D0D /* libfftw3l.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3l.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3l.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D552EE1B9FC00E50D0D /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbisenc.a"; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */

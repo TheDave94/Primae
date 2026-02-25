@@ -106,6 +106,9 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           ONLY_ACTIVE_ARCH=NO \
+          LIBRARY_SEARCH_PATHS="\"${{ env.VCPKG_LIB }}\"" \
+          FRAMEWORK_SEARCH_PATHS="\"${{ github.workspace }}/ios-build\"" \
+          HEADER_SEARCH_PATHS="\"${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios/include\"" \
           build 2>&1 | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
         | xcpretty --color --report junit \
             --output "${{ github.workspace }}/test-results/build.xml" || \
