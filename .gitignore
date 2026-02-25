@@ -1,0 +1,26 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+build/
+*.ipa
+
+# vcpkg — only the pre-built arm64-ios libs are committed
+vcpkg/buildtrees/
+vcpkg/downloads/
+vcpkg/packages/
+vcpkg/toolsrc/
+vcpkg/docs/
+vcpkg/ports/
+vcpkg/scripts/
+vcpkg/versions/
+vcpkg/vcpkg
+vcpkg/*.log
+
+# macOS
+.DS_Store
+*.swp
