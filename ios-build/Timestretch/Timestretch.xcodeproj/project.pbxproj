@@ -16,6 +16,7 @@
 		DBAA51972EE1C7D200792D51 /* K in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51902EE1C7D200792D51 /* K */; };
 		DBAA51982EE1C7D200792D51 /* L in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51912EE1C7D200792D51 /* L */; };
 		DBAA51992EE1C7D200792D51 /* I in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51922EE1C7D200792D51 /* I */; };
+		DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
 		DBE71D452EE1B9FC00E50D0D /* librubberband.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23A2EE1B27200293509 /* librubberband.a */; };
 		DBE71D562EE1BA1200E50D0D /* libfftw3.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D482EE1B9FC00E50D0D /* libfftw3.a */; };
 		DBE71D572EE1BA1200E50D0D /* libfftw3f.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */; };
