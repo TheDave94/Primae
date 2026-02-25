@@ -88,7 +88,20 @@ jobs:
     - name: Install xcpretty
       run: gem install xcpretty --no-document
 
-    # ── 6. Build ─────────────────────────────────────────────────────────────
+    # ── 6. Patch library symlinks for clean absolute paths ───────────────────
+    # Xcode's <group>-relative path resolution can be fragile in CI.
+    # Symlink the vcpkg libs and SDL3 framework into a known location that
+    # matches the $(SRCROOT)/../ relative paths used in the pbxproj.
+    - name: Verify resolved library paths
+      run: |
+        SRCROOT="${{ env.XCODE_PROJECT }}/Timestretch"
+        echo "SRCROOT equivalent: $SRCROOT"
+        echo "Resolved vcpkg lib path: $(cd "$SRCROOT/.." 2>/dev/null && pwd)/vcpkg/installed/arm64-ios/lib"
+        ls "${{ env.VCPKG_LIB }}/libsndfile.a" && echo "✅ libsndfile.a reachable"
+        ls "${{ env.VCPKG_LIB }}/librubberband.a" && echo "✅ librubberband.a reachable"
+        ls "${{ env.SDL_FRAMEWORK }}" && echo "✅ SDL3.xcframework reachable"
+
+    # ── 7. Build ─────────────────────────────────────────────────────────────
     - name: Build for iOS Device
       working-directory: ${{ env.XCODE_PROJECT }}
       run: |
@@ -106,9 +119,9 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           ONLY_ACTIVE_ARCH=NO \
-          LIBRARY_SEARCH_PATHS="\"${{ env.VCPKG_LIB }}\"" \
-          FRAMEWORK_SEARCH_PATHS="\"${{ github.workspace }}/ios-build\"" \
-          HEADER_SEARCH_PATHS="\"${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios/include\"" \
+          LIBRARY_SEARCH_PATHS="$(inherited) ${{ env.VCPKG_LIB }}" \
+          FRAMEWORK_SEARCH_PATHS="$(inherited) ${{ github.workspace }}/ios-build" \
+          HEADER_SEARCH_PATHS="$(inherited) ${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios/include" \
           build 2>&1 | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
         | xcpretty --color --report junit \
             --output "${{ github.workspace }}/test-results/build.xml" || \
