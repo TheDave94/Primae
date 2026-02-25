@@ -17,34 +17,80 @@ jobs:
     runs-on: macos-15
 
     env:
-      SCHEME:          Timestretch
-      PROJECT:         Timestretch.xcodeproj
-      DESTINATION:     "generic/platform=iOS"
-      DERIVED_DATA:    ${{ github.workspace }}/DerivedData
-      VCPKG_LIB:       ${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios/lib
-      SDL_FRAMEWORK:   ${{ github.workspace }}/ios-build/SDL3.xcframework
-      XCODE_PROJECT:   ${{ github.workspace }}/ios-build/Timestretch
+      SCHEME:        Timestretch
+      PROJECT:       Timestretch.xcodeproj
+      DESTINATION:   "generic/platform=iOS"
+      DERIVED_DATA:  ${{ github.workspace }}/DerivedData
+      SDL_FRAMEWORK: ${{ github.workspace }}/ios-build/SDL3.xcframework
+      XCODE_PROJECT: ${{ github.workspace }}/ios-build/Timestretch
+      VCPKG_ROOT:    ${{ github.workspace }}/vcpkg-tool
+      VCPKG_INSTALL: ${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios
 
     steps:
 
-    # ── 1. Checkout ──────────────────────────────────────────────────────────
+    # ── 1. Checkout ───────────────────────────────────────────────────────────
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    # ── 2. Environment info ──────────────────────────────────────────────────
+    # ── 2. Environment info ───────────────────────────────────────────────────
     - name: Show Xcode + SDK versions
       run: |
         xcodebuild -version
         xcodebuild -showsdks | grep -i ios
+        xcrun --sdk iphoneos --show-sdk-version
 
-    # ── 3. Verify all required libraries are present ─────────────────────────
-    # The pre-built arm64-ios static libs and SDL3.xcframework are committed
-    # directly in the repo — no vcpkg build step needed.
+    # ── 3. Cache rebuilt vcpkg libraries ─────────────────────────────────────
+    # Key includes vcpkg.json content + SDK version so cache busts when either changes.
+    - name: Get iOS SDK version for cache key
+      id: sdk
+      run: echo "version=$(xcrun --sdk iphoneos --show-sdk-version)" >> $GITHUB_OUTPUT
+
+    - name: Cache vcpkg installed libraries
+      id: vcpkg-cache
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.VCPKG_INSTALL }}
+        key: vcpkg-arm64-ios-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('ios-build/Timestretch/vcpkg.json') }}
+        restore-keys: |
+          vcpkg-arm64-ios-sdk${{ steps.sdk.outputs.version }}-
+
+    # ── 4. Build vcpkg dependencies (only on cache miss) ─────────────────────
+    - name: Setup vcpkg tool
+      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+      run: |
+        git clone https://github.com/microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}" --depth 1
+        "${{ env.VCPKG_ROOT }}/bootstrap-vcpkg.sh" -disableMetrics
+
+    - name: Copy custom arm64-ios triplet
+      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+      run: |
+        cp "${{ github.workspace }}/ios-build/vcpkg/triplets/arm64-ios.cmake" \
+           "${{ env.VCPKG_ROOT }}/triplets/community/arm64-ios.cmake"
+        cat "${{ env.VCPKG_ROOT }}/triplets/community/arm64-ios.cmake"
+
+    - name: Install vcpkg dependencies for arm64-ios
+      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+      run: |
+        SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
+        echo "Building against iOS SDK $SDK_VERSION"
+
+        # Remove old prebuilt libs so we get a clean install
+        rm -rf "${{ env.VCPKG_INSTALL }}"
+        mkdir -p "${{ env.VCPKG_INSTALL }}"
+
+        "${{ env.VCPKG_ROOT }}/vcpkg" install \
+          --triplet arm64-ios \
+          --x-manifest-root="${{ env.XCODE_PROJECT }}" \
+          --x-install-root="${{ github.workspace }}/ios-build/vcpkg/installed" \
+          --overlay-triplets="${{ github.workspace }}/ios-build/vcpkg/triplets" \
+          --no-print-usage
+
+    # ── 5. Verify all required dependencies ───────────────────────────────────
     - name: Verify dependencies
       run: |
-        LIBDIR="${{ env.VCPKG_LIB }}"
+        LIBDIR="${{ env.VCPKG_INSTALL }}/lib"
         REQUIRED=(
           librubberband.a libsndfile.a
           libfftw3.a libfftw3f.a libfftw3l.a
@@ -69,13 +115,9 @@ jobs:
           echo "❌  MISSING: SDL3.xcframework"
           missing=$((missing+1))
         fi
-        if [ $missing -gt 0 ]; then
-          echo ""
-          echo "ERROR: $missing required dependencies are missing from the repo."
-          exit 1
-        fi
+        [ $missing -eq 0 ] || { echo "ERROR: $missing dependencies missing"; exit 1; }
 
-    # ── 4. Cache DerivedData ─────────────────────────────────────────────────
+    # ── 6. Cache DerivedData ──────────────────────────────────────────────────
     - name: Cache DerivedData
       uses: actions/cache@v4
       with:
@@ -84,31 +126,16 @@ jobs:
         restore-keys: |
           deriveddata-${{ runner.os }}-
 
-    # ── 5. Install xcpretty ──────────────────────────────────────────────────
+    # ── 7. Install xcpretty ───────────────────────────────────────────────────
     - name: Install xcpretty
       run: gem install xcpretty --no-document
 
-    # ── 6. Patch library symlinks for clean absolute paths ───────────────────
-    # Xcode's <group>-relative path resolution can be fragile in CI.
-    # Symlink the vcpkg libs and SDL3 framework into a known location that
-    # matches the $(SRCROOT)/../ relative paths used in the pbxproj.
-    - name: Verify resolved library paths
-      run: |
-        SRCROOT="${{ env.XCODE_PROJECT }}/Timestretch"
-        echo "SRCROOT equivalent: $SRCROOT"
-        echo "Resolved vcpkg lib path: $(cd "$SRCROOT/.." 2>/dev/null && pwd)/vcpkg/installed/arm64-ios/lib"
-        ls "${{ env.VCPKG_LIB }}/libsndfile.a" && echo "✅ libsndfile.a reachable"
-        ls "${{ env.VCPKG_LIB }}/librubberband.a" && echo "✅ librubberband.a reachable"
-        ls "${{ env.SDL_FRAMEWORK }}" && echo "✅ SDL3.xcframework reachable"
-
-    # ── 7. Build ─────────────────────────────────────────────────────────────
+    # ── 8. Build ──────────────────────────────────────────────────────────────
     - name: Build for iOS Device
       working-directory: ${{ env.XCODE_PROJECT }}
       run: |
         set -o pipefail
         mkdir -p "${{ github.workspace }}/test-results"
-        # Tee raw output to a file so we capture full clang diagnostics,
-        # then also pretty-print for the Actions log.
         xcodebuild \
           -project         "${{ env.PROJECT }}" \
           -scheme          "${{ env.SCHEME }}" \
@@ -119,17 +146,22 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           ONLY_ACTIVE_ARCH=NO \
-          LIBRARY_SEARCH_PATHS="$(inherited) ${{ env.VCPKG_LIB }}" \
+          LIBRARY_SEARCH_PATHS="$(inherited) ${{ env.VCPKG_INSTALL }}/lib" \
           FRAMEWORK_SEARCH_PATHS="$(inherited) ${{ github.workspace }}/ios-build" \
-          HEADER_SEARCH_PATHS="$(inherited) ${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios/include" \
-          build 2>&1 | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
-        | xcpretty --color --report junit \
-            --output "${{ github.workspace }}/test-results/build.xml" || \
-        { echo ""; echo "=== RAW COMPILER ERRORS ==="; \
-          grep -E "error:|warning:|note:" "${{ github.workspace }}/test-results/xcodebuild-raw.log" | head -50; \
-          exit 1; }
+          HEADER_SEARCH_PATHS="$(inherited) ${{ env.VCPKG_INSTALL }}/include" \
+          build 2>&1 \
+          | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
+          | xcpretty --color --report junit \
+              --output "${{ github.workspace }}/test-results/build.xml" \
+          || {
+            echo ""
+            echo "=== RAW COMPILER/LINKER ERRORS ==="
+            grep -E "error:|Undefined symbols|Symbol:|Referenced from:|ld:" \
+              "${{ github.workspace }}/test-results/xcodebuild-raw.log" | head -60
+            exit 1
+          }
 
-    # ── 7. Upload build logs ─────────────────────────────────────────────────
+    # ── 9. Upload build logs (always) ─────────────────────────────────────────
     - name: Upload build logs
       if: always()
       uses: actions/upload-artifact@v4
@@ -140,7 +172,7 @@ jobs:
           ${{ env.DERIVED_DATA }}/Logs/
         retention-days: 14
 
-    # ── 8. Package .app ──────────────────────────────────────────────────────
+    # ── 10. Package and upload .app ───────────────────────────────────────────
     - name: Package .app artifact
       if: success()
       run: |
@@ -153,7 +185,7 @@ jobs:
           echo "⚠️  .app not found — skipping"
         fi
 
-    - name: Upload simulator .app
+    - name: Upload .app artifact
       if: success() && env.APP_PATH != ''
       uses: actions/upload-artifact@v4
       with:
@@ -161,7 +193,7 @@ jobs:
         path: Timestretch-iOS.zip
         retention-days: 14
 
-    # ── 9. Summary ───────────────────────────────────────────────────────────
+    # ── 11. Summary ───────────────────────────────────────────────────────────
     - name: Build summary
       if: always()
       run: |
@@ -169,6 +201,7 @@ jobs:
         echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
         echo "|---|---|" >> $GITHUB_STEP_SUMMARY
         echo "| Scheme | ${{ env.SCHEME }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Destination | ${{ env.DESTINATION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| SDK | iOS ${{ steps.sdk.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| vcpkg cache | ${{ steps.vcpkg-cache.outputs.cache-hit == 'true' && 'hit ✅' || 'miss — rebuilt 🔨' }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Run | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
         echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
