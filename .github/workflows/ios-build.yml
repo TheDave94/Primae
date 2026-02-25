@@ -60,7 +60,8 @@ jobs:
     - name: Setup vcpkg tool
       if: steps.vcpkg-cache.outputs.cache-hit != 'true'
       run: |
-        git clone https://github.com/microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}" --depth 1
+        # Full clone required — shallow clone can't resolve builtin-baseline commits
+        git clone https://github.com/microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}"
         "${{ env.VCPKG_ROOT }}/bootstrap-vcpkg.sh" -disableMetrics
 
     - name: Copy custom arm64-ios triplet
