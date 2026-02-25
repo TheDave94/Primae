@@ -341,7 +341,7 @@ public:
         ay /= (float)history.size();
         if (std::hypot(ax, ay) < 0.5f) return Dir::None;
 
-        float angle = std::atan2(ay, ax) * 180.f / M_PIf;
+        float angle = std::atan2(ay, ax) * 180.f / (float)M_PI;
         if (angle < 0) angle += 360.f;
         int sector = static_cast<int>((angle + 22.5f) / 45.f) % 8;
         switch (sector) {
@@ -901,7 +901,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
                         // --- Todo #6: Stereo panning from horizontal direction ---
                         float hBias = dirTracker.horizontalBias(); // [-1, +1]
-                        float angle = (hBias * Config::kPanSpread + 1.f) * M_PIf / 4.f;
+                        float angle = (hBias * Config::kPanSpread + 1.f) * (float)M_PI / 4.f;
                         g_state.panLeft  = std::cos(angle);
                         g_state.panRight = std::sin(angle);
 
