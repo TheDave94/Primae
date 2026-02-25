@@ -66,8 +66,9 @@ jobs:
     - name: Copy custom arm64-ios triplet
       if: steps.vcpkg-cache.outputs.cache-hit != 'true'
       run: |
-        cp "${{ github.workspace }}/ios-build/vcpkg/triplets/arm64-ios.cmake" \
+        cp "${{ github.workspace }}/ios-build/vcpkg/triplets/community/arm64-ios.cmake" \
            "${{ env.VCPKG_ROOT }}/triplets/community/arm64-ios.cmake"
+        echo "Triplet contents:"
         cat "${{ env.VCPKG_ROOT }}/triplets/community/arm64-ios.cmake"
 
     - name: Install vcpkg dependencies for arm64-ios
