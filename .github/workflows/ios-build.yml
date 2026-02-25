@@ -19,7 +19,7 @@ jobs:
     env:
       SCHEME:          Timestretch
       PROJECT:         Timestretch.xcodeproj
-      DESTINATION:     "platform=iOS Simulator,name=iPad Pro 13-inch (M4),OS=latest"
+      DESTINATION:     "generic/platform=iOS"
       DERIVED_DATA:    ${{ github.workspace }}/DerivedData
       VCPKG_LIB:       ${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios/lib
       SDL_FRAMEWORK:   ${{ github.workspace }}/ios-build/SDL3.xcframework
