@@ -95,7 +95,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: ${{ env.SDL_FRAMEWORK }}
-        key: sdl3-xcframework-${{ hashFiles('ios-build/SDL3.xcframework/**/Info.plist') }}
+        key: sdl3-xcframework-${{ hashFiles('ios-build/SDL3.xcframework/Info.plist') }}
 
     # If the SDL3 framework is missing from both the repo and cache,
     # download a prebuilt release from GitHub.
