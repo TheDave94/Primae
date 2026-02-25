@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build (iOS Simulator — arm64)
+    name: Build (iOS Device — arm64)
     runs-on: macos-15
 
     env:
@@ -89,7 +89,7 @@ jobs:
       run: gem install xcpretty --no-document
 
     # ── 6. Build ─────────────────────────────────────────────────────────────
-    - name: Build for iOS Simulator
+    - name: Build for iOS Device
       working-directory: ${{ env.XCODE_PROJECT }}
       run: |
         set -o pipefail
@@ -105,7 +105,7 @@ jobs:
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
-          ONLY_ACTIVE_ARCH=YES \
+          ONLY_ACTIVE_ARCH=NO \
           build 2>&1 | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
         | xcpretty --color --report junit \
             --output "${{ github.workspace }}/test-results/build.xml" || \
@@ -125,13 +125,13 @@ jobs:
         retention-days: 14
 
     # ── 8. Package .app ──────────────────────────────────────────────────────
-    - name: Package simulator .app
+    - name: Package .app artifact
       if: success()
       run: |
         APP=$(find "${{ env.DERIVED_DATA }}" -name "Timestretch.app" -type d | head -1)
         if [ -n "$APP" ]; then
           echo "APP_PATH=$APP" >> $GITHUB_ENV
-          zip -r "${{ github.workspace }}/Timestretch-Simulator.zip" "$APP"
+          zip -r "${{ github.workspace }}/Timestretch-iOS.zip" "$APP"
           echo "✅  Packaged: $APP"
         else
           echo "⚠️  .app not found — skipping"
@@ -141,8 +141,8 @@ jobs:
       if: success() && env.APP_PATH != ''
       uses: actions/upload-artifact@v4
       with:
-        name: Timestretch-Simulator-${{ github.run_number }}
-        path: Timestretch-Simulator.zip
+        name: Timestretch-iOS-${{ github.run_number }}
+        path: Timestretch-iOS.zip
         retention-days: 14
 
     # ── 9. Summary ───────────────────────────────────────────────────────────

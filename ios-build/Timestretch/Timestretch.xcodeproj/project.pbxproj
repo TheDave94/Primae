@@ -9,8 +9,6 @@
 /* Begin PBXBuildFile section */
 		DB40A2372EE1B21B00293509 /* SDL3.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A2362EE1B21B00293509 /* SDL3.xcframework */; };
 		DB40A2382EE1B21B00293509 /* SDL3.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A2362EE1B21B00293509 /* SDL3.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		DB40A23E2EE1B2BD00293509 /* librubberband.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23A2EE1B27200293509 /* librubberband.a */; };
-		DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
 		DBAA51932EE1C7D200792D51 /* O in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518C2EE1C7D200792D51 /* O */; };
 		DBAA51942EE1C7D200792D51 /* M in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518D2EE1C7D200792D51 /* M */; };
 		DBAA51952EE1C7D200792D51 /* A in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518E2EE1C7D200792D51 /* A */; };
@@ -19,7 +17,6 @@
 		DBAA51982EE1C7D200792D51 /* L in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51912EE1C7D200792D51 /* L */; };
 		DBAA51992EE1C7D200792D51 /* I in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51922EE1C7D200792D51 /* I */; };
 		DBE71D452EE1B9FC00E50D0D /* librubberband.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23A2EE1B27200293509 /* librubberband.a */; };
-		DBE71D462EE1B9FC00E50D0D /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
 		DBE71D562EE1BA1200E50D0D /* libfftw3.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D482EE1B9FC00E50D0D /* libfftw3.a */; };
 		DBE71D572EE1BA1200E50D0D /* libfftw3f.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */; };
 		DBE71D582EE1BA1200E50D0D /* libfftw3l.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D542EE1B9FC00E50D0D /* libfftw3l.a */; };
@@ -30,9 +27,7 @@
 		DBE71D5D2EE1BA1200E50D0D /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D512EE1B9FC00E50D0D /* libogg.a */; };
 		DBE71D5E2EE1BA1200E50D0D /* libopus.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4F2EE1B9FC00E50D0D /* libopus.a */; };
 		DBE71D5F2EE1BA1200E50D0D /* libout123.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4D2EE1B9FC00E50D0D /* libout123.a */; };
-		DBE71D602EE1BA1300E50D0D /* librubberband.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23A2EE1B27200293509 /* librubberband.a */; };
 		DBE71D612EE1BA1300E50D0D /* libsamplerate.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D502EE1B9FC00E50D0D /* libsamplerate.a */; };
-		DBE71D622EE1BA1300E50D0D /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
 		DBE71D632EE1BA1300E50D0D /* libsyn123.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4C2EE1B9FC00E50D0D /* libsyn123.a */; };
 		DBE71D642EE1BA1300E50D0D /* libvorbis.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D532EE1B9FC00E50D0D /* libvorbis.a */; };
 		DBE71D652EE1BA1300E50D0D /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D552EE1B9FC00E50D0D /* libvorbisenc.a */; };
@@ -119,14 +114,10 @@
 				DBE71D642EE1BA1300E50D0D /* libvorbis.a in Frameworks */,
 				DBE71D662EE1BA1300E50D0D /* libvorbisfile.a in Frameworks */,
 				DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */,
-				DB40A23E2EE1B2BD00293509 /* librubberband.a in Frameworks */,
 				DBE71D572EE1BA1200E50D0D /* libfftw3f.a in Frameworks */,
-				DBE71D622EE1BA1300E50D0D /* libsndfile.a in Frameworks */,
 				DBE71D5C2EE1BA1200E50D0D /* libmpg123.a in Frameworks */,
 				DBE71D5E2EE1BA1200E50D0D /* libopus.a in Frameworks */,
 				DB40A2372EE1B21B00293509 /* SDL3.xcframework in Frameworks */,
-				DBE71D462EE1B9FC00E50D0D /* libsndfile.a in Frameworks */,
-				DBE71D602EE1BA1300E50D0D /* librubberband.a in Frameworks */,
 				DBE71D582EE1BA1200E50D0D /* libfftw3l.a in Frameworks */,
 				DBE71D5B2EE1BA1200E50D0D /* libmp3lame.a in Frameworks */,
 				DBE71D5D2EE1BA1200E50D0D /* libogg.a in Frameworks */,
@@ -383,7 +374,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/include\"";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LIBRARY_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/lib\"";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
@@ -441,7 +432,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				HEADER_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/include\"";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LIBRARY_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/lib\"";
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
