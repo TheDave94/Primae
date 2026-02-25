@@ -94,6 +94,8 @@ jobs:
       run: |
         set -o pipefail
         mkdir -p "${{ github.workspace }}/test-results"
+        # Tee raw output to a file so we capture full clang diagnostics,
+        # then also pretty-print for the Actions log.
         xcodebuild \
           -project         "${{ env.PROJECT }}" \
           -scheme          "${{ env.SCHEME }}" \
@@ -104,9 +106,12 @@ jobs:
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGN_IDENTITY="" \
           ONLY_ACTIVE_ARCH=YES \
-          build \
+          build 2>&1 | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
         | xcpretty --color --report junit \
-            --output "${{ github.workspace }}/test-results/build.xml"
+            --output "${{ github.workspace }}/test-results/build.xml" || \
+        { echo ""; echo "=== RAW COMPILER ERRORS ==="; \
+          grep -E "error:|warning:|note:" "${{ github.workspace }}/test-results/xcodebuild-raw.log" | head -50; \
+          exit 1; }
 
     # ── 7. Upload build logs ─────────────────────────────────────────────────
     - name: Upload build logs
