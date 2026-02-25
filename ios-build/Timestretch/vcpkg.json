@@ -2,6 +2,7 @@
   "name": "timestretch",
   "version": "1.0.0",
   "description": "iOS audio time-stretching app for children's letter writing",
+  "builtin-baseline": "2825cdd8fe079a9538032fd78c3102d033195a2c",
   "dependencies": [
     "rubberband",
     "libsndfile",
@@ -13,17 +14,5 @@
     "mp3lame",
     "mpg123",
     "opus"
-  ],
-  "overrides": [
-    { "name": "rubberband",     "version": "4.0.0"  },
-    { "name": "libsndfile",     "version": "1.2.2"  },
-    { "name": "fftw3",          "version": "3.3.10" },
-    { "name": "libflac",        "version": "1.5.0"  },
-    { "name": "libogg",         "version": "1.3.6"  },
-    { "name": "libvorbis",      "version": "1.3.7"  },
-    { "name": "libsamplerate",  "version": "0.2.2"  },
-    { "name": "mp3lame",        "version": "3.100"  },
-    { "name": "mpg123",         "version": "1.32.9" },
-    { "name": "opus",           "version": "1.5.2"  }
   ]
 }
