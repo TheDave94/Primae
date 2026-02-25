@@ -1,0 +1,225 @@
+name: iOS Build
+
+# ── Triggers ────────────────────────────────────────────────────────────────
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+# Cancel in-progress runs on the same branch to save CI minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Jobs ────────────────────────────────────────────────────────────────────
+jobs:
+  build:
+    name: Build (iOS Simulator — arm64)
+    runs-on: macos-15   # Xcode 16, iOS 18 SDK
+
+    # ── Path constants ──────────────────────────────────────────────────────
+    # The repo is checked out so that ios-build/ sits at the repo root:
+    #
+    #   repo-root/
+    #     ios-build/
+    #       SDL3.xcframework/
+    #       vcpkg/installed/arm64-ios/
+    #       Timestretch/              ← Xcode project lives here
+    #         .github/workflows/
+    #         vcpkg.json
+    #         Timestretch/main.mm
+    #         Timestretch.xcodeproj/
+    #
+    env:
+      SCHEME:         Timestretch
+      PROJECT:        Timestretch.xcodeproj
+      # Simulator destination — Xcode 16 ships with iOS 18 simulators.
+      DESTINATION:    "platform=iOS Simulator,name=iPad Pro 13-inch (M4),OS=latest"
+      DERIVED_DATA:   ${{ github.workspace }}/DerivedData
+      # Paths relative to the Xcode project folder (ios-build/Timestretch/)
+      VCPKG_INSTALLED: ${{ github.workspace }}/ios-build/vcpkg/installed
+      SDL_FRAMEWORK:   ${{ github.workspace }}/ios-build/SDL3.xcframework
+
+    steps:
+
+    # ── 1. Checkout ──────────────────────────────────────────────────────────
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # ── 2. Print build environment ───────────────────────────────────────────
+    - name: Show Xcode + SDK versions
+      run: |
+        xcodebuild -version
+        xcodebuild -showsdks | grep -i ios
+
+    # ── 3. Cache: pre-built vcpkg static libraries ──────────────────────────
+    # The arm64-ios libs are committed in vcpkg/installed/arm64-ios/ (11 MB).
+    # This cache key is keyed on the vcpkg.json manifest hash so it
+    # automatically invalidates when you upgrade a dependency version.
+    - name: Cache vcpkg arm64-ios libraries
+      id: cache-vcpkg
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.VCPKG_INSTALLED }}/arm64-ios
+        key: vcpkg-arm64-ios-${{ hashFiles('**/vcpkg.json') }}
+        restore-keys: |
+          vcpkg-arm64-ios-
+
+    # ── 4. (Re-)build vcpkg libs if cache missed ────────────────────────────
+    # This only runs on the very first build after a vcpkg.json change.
+    # Subsequent builds are served from cache (step 3).
+    - name: Bootstrap vcpkg
+      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      run: |
+        cd "${{ github.workspace }}/ios-build/vcpkg"
+        ./bootstrap-vcpkg.sh -disableMetrics
+
+    - name: Install vcpkg dependencies for arm64-ios
+      if: steps.cache-vcpkg.outputs.cache-hit != 'true'
+      run: |
+        cd "${{ github.workspace }}/ios-build/Timestretch"
+        "${{ github.workspace }}/ios-build/vcpkg/vcpkg" install \
+          --triplet arm64-ios \
+          --x-install-root "${{ env.VCPKG_INSTALLED }}" \
+          --no-print-usage
+
+    # ── 5. Cache: SDL3.xcframework ──────────────────────────────────────────
+    # SDL3 3.2.28, 102 MB. Keyed on the framework's Info.plist so it only
+    # rebuilds if the SDL version changes.
+    - name: Cache SDL3.xcframework
+      id: cache-sdl3
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.SDL_FRAMEWORK }}
+        key: sdl3-xcframework-${{ hashFiles('ios-build/SDL3.xcframework/**/Info.plist') }}
+
+    # If the SDL3 framework is missing from both the repo and cache,
+    # download a prebuilt release from GitHub.
+    - name: Download SDL3.xcframework if missing
+      if: steps.cache-sdl3.outputs.cache-hit != 'true'
+      run: |
+        if [ ! -d "${{ env.SDL_FRAMEWORK }}" ]; then
+          echo "SDL3.xcframework not found — downloading SDL3 3.2.28 prebuilt release..."
+          curl -L \
+            "https://github.com/libsdl-org/SDL/releases/download/release-3.2.28/SDL3-3.2.28.xcframework.zip" \
+            -o /tmp/SDL3.zip
+          unzip -q /tmp/SDL3.zip -d /tmp/sdl3_unzip
+          # The zip contains SDL3.xcframework at its root
+          mv /tmp/sdl3_unzip/SDL3.xcframework "${{ env.SDL_FRAMEWORK }}"
+          echo "✅  SDL3.xcframework downloaded."
+        else
+          echo "✅  SDL3.xcframework already present."
+        fi
+
+    # ── 6. Verify all required libraries are present ────────────────────────
+    - name: Verify library presence
+      run: |
+        LIBDIR="${{ env.VCPKG_INSTALLED }}/arm64-ios/lib"
+        REQUIRED=(
+          librubberband.a libsndfile.a
+          libfftw3.a libfftw3f.a libfftw3l.a
+          libFLAC.a "libFLAC++.a"
+          libmp3lame.a libmpg123.a
+          libogg.a libopus.a libout123.a
+          libsamplerate.a libsyn123.a
+          libvorbis.a libvorbisenc.a libvorbisfile.a
+        )
+        missing=0
+        for lib in "${REQUIRED[@]}"; do
+          if [ -f "$LIBDIR/$lib" ]; then
+            echo "✅  $lib"
+          else
+            echo "❌  MISSING: $LIBDIR/$lib"
+            missing=$((missing+1))
+          fi
+        done
+        [ -d "${{ env.SDL_FRAMEWORK }}" ] \
+          && echo "✅  SDL3.xcframework" \
+          || { echo "❌  MISSING: SDL3.xcframework"; missing=$((missing+1)); }
+        if [ $missing -gt 0 ]; then
+          echo ""; echo "ERROR: $missing dependencies missing. Aborting."; exit 1
+        fi
+
+    # ── 7. Cache: DerivedData (incremental Xcode builds) ────────────────────
+    - name: Cache DerivedData
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.DERIVED_DATA }}
+        key: deriveddata-${{ runner.os }}-${{ hashFiles('**/*.xcodeproj/project.pbxproj', '**/main.mm') }}
+        restore-keys: |
+          deriveddata-${{ runner.os }}-
+
+    # ── 8. Install xcpretty ──────────────────────────────────────────────────
+    - name: Install xcpretty
+      run: gem install xcpretty --no-document
+
+    # ── 9. Build ─────────────────────────────────────────────────────────────
+    # CODE_SIGNING_ALLOWED=NO skips provisioning requirements so any CI
+    # machine can build without certificates or Apple ID.
+    - name: Build for iOS Simulator
+      working-directory: ${{ github.workspace }}/ios-build/Timestretch
+      run: |
+        set -o pipefail
+        xcodebuild \
+          -project            "${{ env.PROJECT }}" \
+          -scheme             "${{ env.SCHEME }}" \
+          -destination        "${{ env.DESTINATION }}" \
+          -configuration      Debug \
+          -derivedDataPath    "${{ env.DERIVED_DATA }}" \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGN_IDENTITY="" \
+          ONLY_ACTIVE_ARCH=YES \
+          build \
+        | xcpretty --color --report junit --output "${{ github.workspace }}/test-results/build.xml"
+
+    # ── 10. Upload build logs ────────────────────────────────────────────────
+    - name: Upload build logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs-${{ github.run_number }}
+        path: |
+          ${{ github.workspace }}/test-results/
+          ${{ env.DERIVED_DATA }}/Logs/
+        retention-days: 14
+
+    # ── 11. Package and upload .app ──────────────────────────────────────────
+    # The simulator .app can be installed locally with:
+    #   xcrun simctl install booted Timestretch.app
+    #   xcrun simctl launch  booted Flamingistan.Timestretch
+    - name: Package simulator .app
+      if: success()
+      run: |
+        APP=$(find "${{ env.DERIVED_DATA }}" -name "Timestretch.app" -type d | head -1)
+        if [ -n "$APP" ]; then
+          echo "APP_PATH=$APP" >> $GITHUB_ENV
+          zip -r "${{ github.workspace }}/Timestretch-Simulator.zip" "$APP"
+          echo "✅  Packaged: $APP"
+        else
+          echo "⚠️  No .app found — skipping packaging"
+        fi
+
+    - name: Upload simulator .app
+      if: success() && env.APP_PATH != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: Timestretch-Simulator-${{ github.run_number }}
+        path: Timestretch-Simulator.zip
+        retention-days: 14
+
+    # ── 12. Build summary ────────────────────────────────────────────────────
+    - name: Print build summary
+      if: always()
+      run: |
+        echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+        echo "| | |" >> $GITHUB_STEP_SUMMARY
+        echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+        echo "| Scheme | ${{ env.SCHEME }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Destination | ${{ env.DESTINATION }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Run | ${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+        echo "| Commit | ${{ github.sha }} |" >> $GITHUB_STEP_SUMMARY

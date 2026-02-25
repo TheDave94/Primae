@@ -1,0 +1,38 @@
+# ── Xcode ───────────────────────────────────────────────────────────────────
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+
+# ── Build output ─────────────────────────────────────────────────────────────
+build/
+*.ipa
+*.dSYM.zip
+
+# ── vcpkg: commit ONLY the pre-built arm64-ios libraries ────────────────────
+# The full vcpkg source tree (~500 MB) is excluded. CI will restore the
+# arm64-ios libs from the GitHub Actions cache (keyed on vcpkg.json).
+# If the cache misses, the workflow rebuilds them automatically.
+ios-build/vcpkg/buildtrees/
+ios-build/vcpkg/downloads/
+ios-build/vcpkg/packages/
+ios-build/vcpkg/toolsrc/
+ios-build/vcpkg/docs/
+ios-build/vcpkg/ports/
+ios-build/vcpkg/scripts/
+ios-build/vcpkg/versions/
+ios-build/vcpkg/vcpkg          # compiled vcpkg binary
+ios-build/vcpkg/*.log
+
+# Keep committed:
+#   ios-build/vcpkg/installed/arm64-ios/   ← pre-built static libs (11 MB)
+#   ios-build/vcpkg/triplets/              ← custom triplet definitions
+#   ios-build/SDL3.xcframework/            ← SDL3 3.2.28 (102 MB)
+#   ios-build/vcpkg/bootstrap-vcpkg.sh    ← needed to rebuild if cache misses
+
+# ── macOS ────────────────────────────────────────────────────────────────────
+.DS_Store
+*.swp
