@@ -293,6 +293,8 @@ public:
                 prog.nextCP++;
                 prog.active = true;
                 if (prog.nextCP >= (int)strk.checkpoints.size()) {
+                    // Capture the final position before marking complete
+                    prog.paintedPoints.push_back({nx, ny});
                     prog.complete = true;
                     prog.active   = false;
                     std::cout << "✅ Stroke " << (currentStroke + 1) << " complete\n";
@@ -300,9 +302,8 @@ public:
             }
         }
 
-        // Accumulate paint trail while actively tracing
-        if (prog.active && prog.started && fingerDown) {
-            // Only add point if far enough from last to avoid overdraw
+        // Accumulate paint trail while tracing (active) OR after complete (finger still down)
+        if (prog.started && fingerDown && (prog.active || prog.complete)) {
             bool shouldAdd = prog.paintedPoints.empty();
             if (!shouldAdd) {
                 auto& last = prog.paintedPoints.back();
@@ -1259,14 +1260,25 @@ int main(int /*argc*/, char** /*argv*/) {
 
             // Read cursor/touch position via SDL mouse API
             // (SDL3 maps single-finger touch to mouse events on iOS)
+            // SDL_GetMouseState returns WINDOW POINTS (not render pixels).
+            // Convert to render pixels first so mask coords align with texture.
             float winX = 0, winY = 0;
             SDL_GetMouseState(&winX, &winY);
 
             if (winW > 0 && winH > 0) {
-                float scaleX = (float)winW / (float)mask.getW();
-                float scaleY = (float)winH / (float)mask.getH();
-                float imgX   = winX / scaleX;
-                float imgY   = winY / scaleY;
+                // Convert window points → render pixels
+                int rwLocal = 0, rhLocal = 0;
+                SDL_GetRenderOutputSize(renderer, &rwLocal, &rhLocal);
+                float rxScale = (winW > 0) ? (float)rwLocal / (float)winW : 1.f;
+                float ryScale = (winH > 0) ? (float)rhLocal / (float)winH : 1.f;
+                float renderX = winX * rxScale;
+                float renderY = winY * ryScale;
+
+                // Map render pixels → mask image space
+                float scaleX = (float)rwLocal / (float)mask.getW();
+                float scaleY = (float)rhLocal / (float)mask.getH();
+                float imgX   = renderX / scaleX;
+                float imgY   = renderY / scaleY;
 
                 if (firstFrame) { lastImgX = imgX; lastImgY = imgY; firstFrame = false; }
 
@@ -1381,6 +1393,14 @@ int main(int /*argc*/, char** /*argv*/) {
         int ww = 0, wh = 0;
         SDL_GetWindowSize(window, &ww, &wh);
 
+        // On Retina/HiDPI (iOS), the renderer output may be 2× the window points.
+        // We need render-output pixels for accurate drawing coordinates.
+        int rw = 0, rh = 0;
+        SDL_GetRenderOutputSize(renderer, &rw, &rh);
+        // Scale factor points → pixels (typically 2.0 on iPad Retina)
+        float ptToPxX = (ww > 0) ? (float)rw / (float)ww : 1.f;
+        float ptToPxY = (wh > 0) ? (float)rh / (float)wh : 1.f;
+
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
 
@@ -1389,10 +1409,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
         // --- Green paint trail (stroke correctness feedback) ---
         // Each completed stroke stays green permanently.
-        // The current active stroke paints in real time; lifing the finger clears it.
+        // The current active stroke paints in real time; lifting the finger clears it.
         {
-            // Brush radius: ~2.8% of the shorter screen dimension feels natural
-            float brushR = std::min(ww, wh) * 0.028f;
+            // Brush radius: ~2.8% of the shorter render dimension
+            float brushR = std::min(rw, rh) * 0.028f;
 
             for (auto& prog : strokeTracker.progress) {
                 if (prog.paintedPoints.empty()) continue;
@@ -1408,8 +1428,11 @@ int main(int /*argc*/, char** /*argv*/) {
                 }
 
                 for (auto& pt : prog.paintedPoints) {
-                    float sx = pt.x * (float)ww;
-                    float sy = pt.y * (float)wh;
+                    // normX/normY are in [0,1] relative to mask dims.
+                    // The outline texture is stretched to fill the full render output,
+                    // so we map directly to render-pixel coordinates.
+                    float sx = pt.x * (float)rw;
+                    float sy = pt.y * (float)rh;
                     renderFilledCircle(renderer, sx, sy, brushR);
                 }
             }
