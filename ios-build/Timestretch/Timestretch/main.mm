@@ -454,6 +454,14 @@ class AudioEngine {
     float currentPitch = 1.0f;
     std::mutex loadMutex;
 
+    // --- Fade-in/out state ---
+    float fadeGain = 0.0f;    // [0.0-1.0]
+    enum class FadeState { None, FadingIn, FadingOut };
+    FadeState fadeState = FadeState::None;
+    bool prevIsPlaying = false;
+    static constexpr float fadeTimeSec = 0.06f;
+    float fadeDelta = 1.0f; // fade rate (per sample)
+
 public:
     AudioEngine()  = default;
     ~AudioEngine() { stop(); if (snd) sf_close(snd); }
@@ -557,10 +565,24 @@ private:
      * @param frames  Number of frames to produce.
      */
     void process(float* output, unsigned long frames) {
-        if (!g_state.isPlaying || !snd) {
+        bool isPlaying = g_state.isPlaying.load();
+        if (!snd) {
             std::fill_n(output, frames * (size_t)sfInfo.channels, 0.0f);
+            fadeGain = 0.f;
+            fadeState = FadeState::None;
+            prevIsPlaying = false;
             return;
         }
+        // Handle fade-in/out transitions
+        if (!prevIsPlaying && isPlaying) {
+            fadeState = FadeState::FadingIn;
+            // Calculate per-sample fade increment
+            fadeDelta = (sfInfo.samplerate > 0) ? (1.0f / (fadeTimeSec * sfInfo.samplerate)) : 1.0f;
+        } else if (prevIsPlaying && !isPlaying) {
+            fadeState = FadeState::FadingOut;
+            fadeDelta = (sfInfo.samplerate > 0) ? (1.0f / (fadeTimeSec * sfInfo.samplerate)) : 1.0f;
+        }
+        prevIsPlaying = isPlaying;
 
         // --- Todo #8: Rewind if restart flag is set ---
         if (g_state.restart.exchange(false)) {
@@ -614,16 +636,36 @@ private:
 
             // Interleave + apply pan gain (Todo #6)
             for (size_t i = 0; i < ret; ++i) {
+                // Handle fade-in/fade-out
+                switch (fadeState) {
+                    case FadeState::FadingIn:
+                        fadeGain += fadeDelta;
+                        if (fadeGain >= 1.0f) { fadeGain = 1.0f; fadeState = FadeState::None; }
+                        break;
+                    case FadeState::FadingOut:
+                        fadeGain -= fadeDelta;
+                        if (fadeGain <= 0.0f) { fadeGain = 0.0f; fadeState = FadeState::None; }
+                        break;
+                    default: break;
+                }
+                float outGain = fadeGain;
+                if (isPlaying && fadeState != FadeState::FadingOut) {
+                    outGain = fadeGain; // ramp up
+                } else if (!isPlaying && fadeState != FadeState::FadingIn) {
+                    outGain = fadeGain; // ramp down
+                }
                 for (int c = 0; c < sfInfo.channels; ++c) {
                     float gain = 1.0f;
                     if (sfInfo.channels == 2) gain = (c == 0) ? panL : panR;
-                    *wptr++ = chanBufs[c][i] * gain;
+                    *wptr++ = chanBufs[c][i] * gain * outGain;
                 }
             }
 
             remaining -= ret;
             if (ret == 0 && stretcher->available() == 0) break; // safety: avoid spin
         }
+        // If fade is done and not playing, zero gain
+        if (!isPlaying && fadeState == FadeState::None) fadeGain = 0.0f;
     }
 };
 
