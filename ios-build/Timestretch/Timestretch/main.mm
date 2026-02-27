@@ -394,9 +394,16 @@ struct LetterFolder {
     std::string name;                      ///< Folder / letter name (e.g. "A")
     std::string path;                      ///< Absolute path to the folder
     std::string pbmPath;                   ///< Path to the P4 binary PBM mask file
-    std::string strokesPath;               ///< Path to strokes.json (may be empty)
+    std::string strokesPath;               ///< Path to strokes.json (manual checkpoints, Option B)
+    std::string skeletonPath;              ///< Path to strokes_skeleton.json (auto-extracted, Option C)
     std::vector<std::string> audioFiles;   ///< Sorted list of audio file paths
     int currentAudioIdx = 0;              ///< Currently selected audio variant index
+
+    /// Returns the best available strokes file: skeleton preferred, then manual
+    [[nodiscard]] std::string bestStrokesPath() const {
+        if (!skeletonPath.empty()) return skeletonPath;
+        return strokesPath;
+    }
 };
 
 /**
@@ -449,6 +456,8 @@ public:
                     if (ext == ".pbm") {
                         folder.pbmPath = sub.path().string();
                         hasPBM = true;
+                    } else if (sub.path().filename().string() == "strokes_skeleton.json") {
+                        folder.skeletonPath = sub.path().string();
                     } else if (sub.path().filename().string() == "strokes.json") {
                         folder.strokesPath = sub.path().string();
                     } else {
@@ -1053,13 +1062,13 @@ int main(int /*argc*/, char** /*argv*/) {
     VelocityStats    velStats;
 
     // --- Stroke tracker ---
-    LetterStrokes   currentStrokes = loadStrokes(browser.current().strokesPath);
+    LetterStrokes   currentStrokes = loadStrokes(browser.current().bestStrokesPath());
     StrokeTracker   strokeTracker;
     if (currentStrokes.valid) strokeTracker.load(currentStrokes);
 
     /// Helper: reload strokes for current letter
     auto reloadStrokes = [&]() {
-        currentStrokes = loadStrokes(browser.current().strokesPath);
+        currentStrokes = loadStrokes(browser.current().bestStrokesPath());
         strokeTracker.reset();
         if (currentStrokes.valid) strokeTracker.load(currentStrokes);
     };
