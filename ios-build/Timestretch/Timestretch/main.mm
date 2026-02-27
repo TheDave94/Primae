@@ -103,7 +103,7 @@ namespace Config {
     /// Maximum pitch-shift magnitude in semitones (applied symmetrically ±)
     constexpr float kMaxPitchSemitones   = 1.0f;
     /// Stereo spread coefficient driven by horizontal stroke direction [0–1]
-    constexpr float kPanSpread           = 0.8f;
+    constexpr float kPanSpread           = 0.3f;
 
     // --- Todo #7: Adaptive mute threshold ---
     /// Number of velocity samples in the rolling window
