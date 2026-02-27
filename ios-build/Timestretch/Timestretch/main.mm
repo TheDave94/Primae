@@ -101,7 +101,7 @@ namespace Config {
 
     // --- Todo #6: Pitch & panning ---
     /// Maximum pitch-shift magnitude in semitones (applied symmetrically ±)
-    constexpr float kMaxPitchSemitones   = 3.0f;
+    constexpr float kMaxPitchSemitones   = 1.0f;
     /// Stereo spread coefficient driven by horizontal stroke direction [0–1]
     constexpr float kPanSpread           = 0.8f;
 
