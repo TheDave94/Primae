@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		DB40A2372EE1B21B00293509 /* SDL3.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A2362EE1B21B00293509 /* SDL3.xcframework */; };
 		DB40A2382EE1B21B00293509 /* SDL3.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A2362EE1B21B00293509 /* SDL3.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
 		DBAA51932EE1C7D200792D51 /* O in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518C2EE1C7D200792D51 /* O */; };
 		DBAA51942EE1C7D200792D51 /* M in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518D2EE1C7D200792D51 /* M */; };
 		DBAA51952EE1C7D200792D51 /* A in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518E2EE1C7D200792D51 /* A */; };
@@ -16,7 +17,6 @@
 		DBAA51972EE1C7D200792D51 /* K in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51902EE1C7D200792D51 /* K */; };
 		DBAA51982EE1C7D200792D51 /* L in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51912EE1C7D200792D51 /* L */; };
 		DBAA51992EE1C7D200792D51 /* I in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51922EE1C7D200792D51 /* I */; };
-		DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
 		DBE71D452EE1B9FC00E50D0D /* librubberband.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23A2EE1B27200293509 /* librubberband.a */; };
 		DBE71D562EE1BA1200E50D0D /* libfftw3.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D482EE1B9FC00E50D0D /* libfftw3.a */; };
 		DBE71D572EE1BA1200E50D0D /* libfftw3f.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */; };
@@ -382,6 +382,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -439,6 +440,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
