@@ -299,25 +299,11 @@ public:
 
         // Finger lifted mid-stroke → reset paint + progress
         if (!fingerDown && (prog.active || prog.pending) && !prog.complete) {
-            // Auto-complete: if child lifted finger but had already passed ≥ 80% of
-            // checkpoints, treat the stroke as done.
-            int total    = (int)strk.checkpoints.size();
-            int passed   = prog.nextCP;
-            bool nearEnd = (passed >= total - 2) && (passed > 0) && !prog.pending;
-            if (nearEnd) {
-                drawing_overlay_add_point(currentStroke, nx, ny);
-                drawing_overlay_complete_stroke(currentStroke);
-                prog.complete = true;
-                prog.active   = false;
-                prog.pending  = false;
-                std::cout << "✅ Stroke " << (currentStroke + 1) << " auto-completed on lift\n";
-            } else {
-                prog.active   = false;
-                prog.pending  = false;
-                prog.started  = false;
-                prog.nextCP   = 0;
-                drawing_overlay_reset_stroke(currentStroke);
-            }
+            prog.active   = false;
+            prog.pending  = false;
+            prog.started  = false;
+            prog.nextCP   = 0;
+            drawing_overlay_reset_stroke(currentStroke);
         }
     }
 
