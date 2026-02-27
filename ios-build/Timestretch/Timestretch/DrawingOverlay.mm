@@ -1,22 +1,22 @@
 // DrawingOverlay.mm
-// UIView overlay for green stroke feedback. Uses CAShapeLayer with a thick
-// stroked path. kCALineCapButt is used — butt caps do NOT extend past the
-// endpoint so they never protrude into adjacent segments, eliminating bumps.
-// bezierPathByStrokingPath is macOS-only and must not be used on iOS.
+// UIView overlay for green stroke feedback.
+// CAShapeLayer with kCALineCapButt — flush caps, zero protrusion, no bumps.
+// Completed strokes are NEVER reset individually — only reset_all() clears them.
 
 #import "DrawingOverlay.h"
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
 static const int   kMaxStrokes   = 8;
-static const float kBrushWidth   = 40.0f;  // pt — thick enough to fill letter
-static const float kMinPointDist = 10.0f;  // pt — minimum spacing between recorded pts
+static const float kBrushWidth   = 40.0f;
+static const float kMinPointDist = 10.0f;
 
 // ---------------------------------------------------------------------------
 @interface DrawingOverlayView : UIView
 @property (nonatomic, strong) NSMutableArray<CAShapeLayer*>*             strokeLayers;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<NSValue*>*>* strokePoints;
 @property (nonatomic, strong) NSMutableArray<NSNumber*>*                 strokeStarted;
+@property (nonatomic, strong) NSMutableArray<NSNumber*>*                 strokeComplete; // guard: never erase a done stroke
 - (void)setupLayers;
 - (void)beginStroke:(int)idx;
 - (void)addPoint:(CGPoint)pt toStroke:(int)idx;
@@ -39,25 +39,25 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 }
 
 - (void)setupLayers {
-    _strokeLayers  = [NSMutableArray array];
-    _strokePoints  = [NSMutableArray array];
-    _strokeStarted = [NSMutableArray array];
+    _strokeLayers   = [NSMutableArray array];
+    _strokePoints   = [NSMutableArray array];
+    _strokeStarted  = [NSMutableArray array];
+    _strokeComplete = [NSMutableArray array];
 
     for (int i = 0; i < kMaxStrokes; ++i) {
         CAShapeLayer* layer = [CAShapeLayer layer];
         layer.fillColor     = [UIColor clearColor].CGColor;
         layer.strokeColor   = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
         layer.lineWidth     = kBrushWidth;
-        // kCALineCapButt: caps are flush with the endpoint — zero protrusion.
-        // This means segment ends cannot overlap into adjacent segments,
-        // which eliminates all visible scalloping/bumping artifacts.
+        // kCALineCapButt: flush caps — no protrusion past endpoint, no scalloping
         layer.lineCap       = kCALineCapButt;
         layer.lineJoin      = kCALineJoinRound;
         layer.hidden        = YES;
         [self.layer addSublayer:layer];
-        [_strokeLayers  addObject:layer];
-        [_strokePoints  addObject:[NSMutableArray array]];
-        [_strokeStarted addObject:@NO];
+        [_strokeLayers   addObject:layer];
+        [_strokePoints   addObject:[NSMutableArray array]];
+        [_strokeStarted  addObject:@NO];
+        [_strokeComplete addObject:@NO];
     }
 }
 
@@ -66,12 +66,10 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
                        ny * self.bounds.size.height);
 }
 
-// Build a smooth path through pts using midpoint quadratic Bézier curves.
 - (CGPathRef)smoothPathForPoints:(NSArray<NSValue*>*)pts CF_RETURNS_RETAINED {
     CGMutablePathRef path = CGPathCreateMutable();
     NSUInteger n = pts.count;
     if (n == 0) return path;
-
     CGPoint p0 = [pts[0] CGPointValue];
     CGPathMoveToPoint(path, nil, p0.x, p0.y);
     if (n == 1) return path;
@@ -91,6 +89,8 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 }
 
 - (void)updateLayer:(int)idx {
+    // Never rebuild path for a completed stroke — it's permanently green as-is
+    if ([_strokeComplete[(NSUInteger)idx] boolValue]) return;
     NSArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
     CGPathRef smooth = [self smoothPathForPoints:pts];
     [CATransaction begin];
@@ -102,6 +102,8 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 
 - (void)beginStroke:(int)idx {
     if (idx < 0 || idx >= kMaxStrokes) return;
+    // Never restart a completed stroke
+    if ([_strokeComplete[(NSUInteger)idx] boolValue]) return;
     [_strokePoints[(NSUInteger)idx] removeAllObjects];
     CAShapeLayer* layer = _strokeLayers[(NSUInteger)idx];
     [CATransaction begin];
@@ -116,6 +118,8 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 - (void)addPoint:(CGPoint)pt toStroke:(int)idx {
     if (idx < 0 || idx >= kMaxStrokes) return;
     if (![_strokeStarted[(NSUInteger)idx] boolValue]) return;
+    // For completed strokes, still allow adding points but don't rebuild path
+    if ([_strokeComplete[(NSUInteger)idx] boolValue]) return;
     NSMutableArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
     if (pts.count > 0) {
         CGPoint last = [pts.lastObject CGPointValue];
@@ -127,6 +131,7 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 
 - (void)completeStroke:(int)idx {
     if (idx < 0 || idx >= kMaxStrokes) return;
+    _strokeComplete[(NSUInteger)idx] = @YES;  // guard: this stroke is permanently done
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     _strokeLayers[(NSUInteger)idx].strokeColor =
@@ -137,6 +142,8 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 
 - (void)resetStroke:(int)idx {
     if (idx < 0 || idx >= kMaxStrokes) return;
+    // NEVER reset a completed stroke — this is the O green-persistence fix
+    if ([_strokeComplete[(NSUInteger)idx] boolValue]) return;
     [_strokePoints[(NSUInteger)idx] removeAllObjects];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -147,7 +154,16 @@ static const float kMinPointDist = 10.0f;  // pt — minimum spacing between rec
 }
 
 - (void)resetAll {
-    for (int i = 0; i < kMaxStrokes; ++i) [self resetStroke:i];
+    for (int i = 0; i < kMaxStrokes; ++i) {
+        [_strokePoints[(NSUInteger)i] removeAllObjects];
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        _strokeLayers[(NSUInteger)i].path   = nil;
+        _strokeLayers[(NSUInteger)i].hidden = YES;
+        [CATransaction commit];
+        _strokeStarted[(NSUInteger)i]  = @NO;
+        _strokeComplete[(NSUInteger)i] = @NO;
+    }
 }
 
 @end
