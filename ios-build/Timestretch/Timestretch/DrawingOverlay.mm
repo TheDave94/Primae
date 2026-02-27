@@ -45,11 +45,9 @@ static const int kMaxStrokes = 8;
 
     for (int i = 0; i < kMaxStrokes; ++i) {
         CAShapeLayer* layer = [CAShapeLayer layer];
-        layer.fillColor     = [UIColor clearColor].CGColor;
-        layer.strokeColor   = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
-        layer.lineWidth     = 44.0;   // ~44pt brush width on iPad
-        layer.lineCap       = kCALineCapRound;
-        layer.lineJoin      = kCALineJoinRound;
+        layer.fillColor     = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
+        layer.strokeColor   = [UIColor clearColor].CGColor;
+        layer.lineWidth     = 0;
         layer.hidden        = YES;
         [self.layer addSublayer:layer];
         [_strokeLayers  addObject:layer];
@@ -97,12 +95,24 @@ static const int kMaxStrokes = 8;
 
 - (void)updateLayer:(int)idx {
     NSArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
-    CGPathRef smooth = [self smoothPathForPoints:pts];
+    // Build the smooth centre-line path
+    CGPathRef centre = [self smoothPathForPoints:pts];
+    // Expand it into a filled ribbon — this eliminates all cap/join scalloping
+    // because the result is a single filled shape with no stroke endpoints.
+    CGPathRef ribbon = CGPathCreateCopyByStrokingPath(
+        centre,
+        nil,           // transform
+        38.0,          // brush width in points
+        kCGLineCapRound,
+        kCGLineJoinRound,
+        1.0            // miter limit (unused for round join)
+    );
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _strokeLayers[(NSUInteger)idx].path = smooth;
+    _strokeLayers[(NSUInteger)idx].path = ribbon;
     [CATransaction commit];
-    CGPathRelease(smooth);
+    CGPathRelease(ribbon);
+    CGPathRelease(centre);
 }
 
 - (void)beginStroke:(int)idx {
@@ -111,10 +121,10 @@ static const int kMaxStrokes = 8;
     CAShapeLayer* layer = _strokeLayers[(NSUInteger)idx];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    layer.path   = nil;
-    layer.hidden = NO;
+    layer.path      = nil;
+    layer.hidden    = NO;
     // In-progress: slightly lighter green
-    layer.strokeColor = [UIColor colorWithRed:0.39 green:0.90 blue:0.47 alpha:0.85].CGColor;
+    layer.fillColor = [UIColor colorWithRed:0.39 green:0.90 blue:0.47 alpha:0.85].CGColor;
     [CATransaction commit];
     _strokeStarted[(NSUInteger)idx] = @YES;
 }
@@ -138,7 +148,7 @@ static const int kMaxStrokes = 8;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     // Solid completed green
-    _strokeLayers[(NSUInteger)idx].strokeColor =
+    _strokeLayers[(NSUInteger)idx].fillColor =
         [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:1.0].CGColor;
     _strokeLayers[(NSUInteger)idx].hidden = NO;
     [CATransaction commit];
