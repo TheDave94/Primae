@@ -1105,9 +1105,6 @@ int main(int /*argc*/, char** /*argv*/) {
     // HUD: playback status dot (top-right)
     SDL_FRect statusDot = {0.f, 10.f, 30.f, 30.f};
 
-    // HUD: stroke mode indicator (top-left, small badge)
-    SDL_FRect strokeBadge = {8.f, 10.f, 28.f, 28.f};
-
     // ---- MAIN LOOP ----
     while (!g_state.shouldQuit) {
         SDL_Event ev;
