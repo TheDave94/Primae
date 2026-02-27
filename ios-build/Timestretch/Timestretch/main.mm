@@ -76,7 +76,7 @@ namespace Config {
     /// Extra source-audio chunks fed to RubberBand per callback to prevent underruns
     constexpr size_t kInputMultiplier    = 4;
     /// Speed / pitch interpolation coefficient (0 = frozen, 1 = instant snap)
-    constexpr float kInterpolationFactor = 0.15f;
+    constexpr float kInterpolationFactor = 0.05f;
 
     // --- Playback gate timers ---
     /// Milliseconds of stillness inside the mask before audio mutes (Todo #7 adapts this)
@@ -736,6 +736,9 @@ int main(int /*argc*/, char** /*argv*/) {
     DirectionTracker dirTracker;
     VelocityStats    velStats;
 
+    // Small smoothing buffer for speed mapping (separate from velStats adaptive window)
+    std::deque<float> velSmooth;
+
     // --- Multi-touch state ---
     int   activeFingers = 0;
     float touchStartX   = 0.f, touchStartY = 0.f;
@@ -865,7 +868,12 @@ int main(int /*argc*/, char** /*argv*/) {
                 if (vel > Config::kMoveThreshold) {
                     dirTracker.push(dx, dy);
                     velStats.push(vel);
+                    velSmooth.push_back(vel);
+                    if (velSmooth.size() > 8) velSmooth.pop_front();
                 }
+
+                float smoothVel = velSmooth.empty() ? 0.f
+                    : std::accumulate(velSmooth.begin(), velSmooth.end(), 0.f) / (float)velSmooth.size();
 
                 auto now = std::chrono::steady_clock::now();
 
@@ -877,8 +885,8 @@ int main(int /*argc*/, char** /*argv*/) {
                         lastSoundTime = now; // finger is active, reset pause clock
 
                         // --- Todo #2: Speed normalisation against baseline ---
-                        // Normalise velocity so that kBaselineVelocity → 1× speed.
-                        float normVel = vel / Config::kBaselineVelocity;
+                        // Use smoothed velocity to avoid rapid speed jitter → crackling.
+                        float normVel = smoothVel / Config::kBaselineVelocity;
                         float lo = Config::kLowVel  / Config::kBaselineVelocity;
                         float hi = Config::kHighVel / Config::kBaselineVelocity;
 
