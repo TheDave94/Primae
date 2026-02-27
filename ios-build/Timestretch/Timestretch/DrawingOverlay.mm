@@ -122,12 +122,12 @@ static const int kMaxStrokes = 8;
 - (void)addPoint:(CGPoint)pt toStroke:(int)idx {
     if (idx < 0 || idx >= kMaxStrokes) return;
     if (![_strokeStarted[(NSUInteger)idx] boolValue]) return;
-    // Deduplicate: skip if too close to last point (< 2pt)
+    // Deduplicate: skip if too close to last point (< 8pt = smoother path, fewer segments)
     NSMutableArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
     if (pts.count > 0) {
         CGPoint last = [pts.lastObject CGPointValue];
         CGFloat d = hypot(pt.x - last.x, pt.y - last.y);
-        if (d < 2.0) return;
+        if (d < 8.0) return;
     }
     [pts addObject:[NSValue valueWithCGPoint:pt]];
     [self updateLayer:idx];
