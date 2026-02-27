@@ -47,7 +47,7 @@
 // ---------------------------------------------------------------------------
 static const CGFloat kDotDiameter  = 60.0f;   // visual circle diameter (pts)
 static const CGFloat kDotAlpha     = 0.45f;   // opacity
-static const UIColor* kDotColor(void) {
+static UIColor* kDotColor(void) {
     return [UIColor colorWithRed:1.0 green:1.0 blue:1.0 alpha:kDotAlpha];
 }
 
