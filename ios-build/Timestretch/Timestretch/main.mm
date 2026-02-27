@@ -74,6 +74,7 @@ struct StrokeDef {
 /// Full letter stroke definition loaded from strokes.json
 struct LetterStrokes {
     std::string letter;
+    std::string pbmPath;              ///< Absolute path to the PBM mask (set after loading)
     float checkpointRadius = 0.06f;   ///< Hit radius in normalised units
     std::vector<StrokeDef> strokes;
     bool valid = false;
@@ -213,6 +214,7 @@ public:
     const LetterStrokes*         def          = nullptr;
     bool                         soundEnabled = false;
     bool                         wantRestart  = false;
+    bool                         maskShown    = false;
 
     void load(const LetterStrokes& ls) {
         def = &ls;
@@ -233,6 +235,7 @@ public:
         }
         soundEnabled = false;
         wantRestart  = false;
+        maskShown    = false;
         drawing_overlay_reset_all();
     }
 
@@ -251,7 +254,15 @@ public:
             if (!progress[(size_t)si].complete) { currentStroke = si; break; }
         }
 
-        if (currentStroke == -1) { soundEnabled = true; return; }
+        if (currentStroke == -1) {
+            soundEnabled = true;
+            // All strokes complete — flood the letter shape green if not already shown
+            if (!maskShown) {
+                drawing_overlay_show_mask(def->pbmPath.c_str());
+                maskShown = true;
+            }
+            return;
+        }
 
         auto& strk = def->strokes[(size_t)currentStroke];
         auto& prog = progress[(size_t)currentStroke];
@@ -1093,12 +1104,14 @@ int main(int /*argc*/, char** /*argv*/) {
 
     // --- Stroke tracker ---
     LetterStrokes   currentStrokes = loadStrokes(browser.current().bestStrokesPath());
+    currentStrokes.pbmPath = browser.current().pbmPath;
     StrokeTracker   strokeTracker;
     if (currentStrokes.valid) strokeTracker.load(currentStrokes);
 
     /// Helper: reload strokes for current letter
     auto reloadStrokes = [&]() {
         currentStrokes = loadStrokes(browser.current().bestStrokesPath());
+        currentStrokes.pbmPath = browser.current().pbmPath;
         strokeTracker.reset();
         if (currentStrokes.valid) strokeTracker.load(currentStrokes);
     };

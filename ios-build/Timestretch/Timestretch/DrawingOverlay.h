@@ -29,6 +29,13 @@ void drawing_overlay_reset_stroke(int strokeIndex);
 /// Reset all strokes (new letter loaded).
 void drawing_overlay_reset_all(void);
 
+/// Show the full letter mask as a solid green overlay (call when all strokes complete).
+/// pbmPath: absolute path to the P4 binary PBM file for the current letter.
+void drawing_overlay_show_mask(const char* pbmPath);
+
+/// Hide the mask overlay (called automatically by reset_all).
+void drawing_overlay_hide_mask(void);
+
 #ifdef __cplusplus
 }
 #endif
