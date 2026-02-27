@@ -1288,9 +1288,10 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 } else {
                     // Outside the letter mask — apply exit grace period
+                    // Only keep playing if stroke direction was correct
                     auto exitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                       now - lastValidTime).count();
-                    if (exitMs < Config::kExitTimeoutMs) {
+                    if (exitMs < Config::kExitTimeoutMs && strokeTracker.soundEnabled) {
                         g_state.targetSpeed = Config::kIdleSpeed;
                         g_state.isPlaying   = true;
                     } else {
