@@ -1,21 +1,21 @@
 {
   "letter": "A",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: A has 3 strokes. Stroke 1: left diagonal top→bottom-left. Stroke 2: right diagonal top→bottom-right. Stroke 3: crossbar left→right at midheight. All strokes start top.",
+  "comment": "Österreichische Druckschrift: 3 strokes in order. 1: bottom-left UP to apex. 2: apex DOWN to bottom-right. 3: crossbar left→right at mid-height.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Left leg: from apex top-center diagonally down to bottom-left",
+      "comment": "Left leg: bottom-left diagonally UP to apex (top-center)",
       "checkpoints": [
-        {"x": 0.50, "y": 0.22},
-        {"x": 0.44, "y": 0.38},
+        {"x": 0.34, "y": 0.72},
         {"x": 0.38, "y": 0.55},
-        {"x": 0.34, "y": 0.72}
+        {"x": 0.44, "y": 0.38},
+        {"x": 0.50, "y": 0.22}
       ]
     },
     {
       "id": 2,
-      "comment": "Right leg: from apex top-center diagonally down to bottom-right",
+      "comment": "Right leg: apex (top-center) diagonally DOWN to bottom-right",
       "checkpoints": [
         {"x": 0.50, "y": 0.22},
         {"x": 0.56, "y": 0.38},

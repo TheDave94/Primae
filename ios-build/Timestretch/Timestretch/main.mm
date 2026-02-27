@@ -191,29 +191,33 @@ static LetterStrokes loadStrokes(const std::string& path) {
 }
 
 /**
- * @brief Tracks progress through the ordered checkpoints of ALL strokes.
+ * @brief Tracks progress through ALL strokes, enforcing the correct stroke ORDER.
  *
  * Rules:
- *  - Each stroke must be started from checkpoint 0 (the designated start point).
- *  - Sound is only enabled if at least one stroke was started from its first CP.
- *  - Within a stroke, checkpoints must be passed in order.
- *  - Starting a stroke (touching CP0) triggers a sound restart.
- *  - Finger lift resets incomplete strokes (but keeps completed ones).
+ *  1. Strokes must be completed in sequence: stroke 1 fully done before stroke 2
+ *     can be started, stroke 2 done before stroke 3, etc.
+ *  2. Each stroke must begin at its designated CP0 (the start point).
+ *  3. Within a stroke, checkpoints must be passed in order (no skipping).
+ *  4. Sound is enabled only while the CURRENT expected stroke is being traced
+ *     correctly (started from CP0, in the right direction).
+ *  5. If the child lifts their finger mid-stroke, that stroke resets — they
+ *     must start it again from CP0.
+ *  6. Already-completed strokes stay complete (no regression).
  */
 class StrokeTracker {
 public:
     struct StrokeProgress {
         int    strokeId      = 0;
         int    nextCP        = 0;    ///< Index of next checkpoint to hit
-        bool   started       = false;///< CP0 was touched — stroke is legitimately begun
-        bool   active        = false;///< Currently being traced
+        bool   started       = false;///< CP0 was touched — stroke legitimately begun
+        bool   active        = false;///< Currently being traced (finger down)
         bool   complete      = false;///< All checkpoints passed
     };
 
     std::vector<StrokeProgress>  progress;
-    const LetterStrokes*         def      = nullptr;
+    const LetterStrokes*         def          = nullptr;
     bool                         soundEnabled = false;
-    bool                         wantRestart  = false; ///< Set when first CP touched
+    bool                         wantRestart  = false;
 
     void load(const LetterStrokes& ls) {
         def = &ls;
@@ -228,76 +232,97 @@ public:
     }
 
     void reset() {
-        for (auto& p : progress) { p.nextCP = 0; p.started = false; p.active = false; p.complete = false; }
+        for (auto& p : progress) {
+            p.nextCP = 0; p.started = false; p.active = false; p.complete = false;
+        }
         soundEnabled = false;
         wantRestart  = false;
     }
 
     /**
-     * @brief Update tracker with current finger position (normalised [0-1]).
-     * @param nx  Normalised x = imgX / maskW
-     * @param ny  Normalised y = imgY / maskH
-     * @param fingerDown  Whether a finger is currently touching the screen
+     * @brief Update tracker with current normalised finger position [0–1].
+     * @param nx          Normalised x = imgX / maskW
+     * @param ny          Normalised y = imgY / maskH
+     * @param fingerDown  True while a finger is touching the screen
      */
     void update(float nx, float ny, bool fingerDown) {
         if (!def || def->strokes.empty()) {
-            soundEnabled = true; // no strokes defined → always allow sound
+            soundEnabled = true;   // no definition → free play
             return;
         }
 
-        wantRestart = false;
+        wantRestart  = false;
         soundEnabled = false;
 
-        for (size_t si = 0; si < def->strokes.size(); ++si) {
-            auto& strk  = def->strokes[si];
-            auto& prog  = progress[si];
-
-            if (prog.complete) { soundEnabled = true; continue; }
-            if (strk.checkpoints.empty()) continue;
-
-            int  nextIdx = prog.nextCP;
-            auto& target = strk.checkpoints[(size_t)nextIdx];
-            float dist   = std::hypot(nx - target.x, ny - target.y);
-
-            if (dist <= def->checkpointRadius) {
-                if (nextIdx == 0) {
-                    // ✅ Child touched the designated start point — legitimate start
-                    prog.nextCP   = 1;
-                    prog.started  = true;
-                    prog.active   = true;
-                    prog.complete = false;
-                    wantRestart   = true;  // trigger audio restart
-                } else if (prog.started) {
-                    // ✅ Only advance if this stroke was legitimately started from CP0
-                    prog.nextCP++;
-                    prog.active = true;
-                    if (prog.nextCP >= (int)strk.checkpoints.size()) {
-                        prog.complete = true;
-                    }
-                }
-                // ❌ If nextIdx > 0 and !started: silently ignore — child skipped the start
+        // ── Find the index of the current expected stroke ──────────────────
+        // It is the first stroke that is not yet complete.
+        // Earlier strokes must ALL be complete before this one is unlocked.
+        int currentStroke = -1;
+        for (int si = 0; si < (int)progress.size(); ++si) {
+            if (!progress[(size_t)si].complete) {
+                currentStroke = si;
+                break;
             }
-
-            // Sound only plays if the stroke was started from the correct start point
-            if ((prog.active || prog.complete) && prog.started) soundEnabled = true;
         }
 
-        // Finger lifted → deactivate incomplete strokes (but keep completed ones)
-        if (!fingerDown) {
-            for (auto& p : progress) {
-                if (!p.complete) {
-                    p.active  = false;
-                    p.started = false; // must re-start from CP0 on next touch
-                    p.nextCP  = 0;
+        // All strokes done → letter complete, keep sound on
+        if (currentStroke == -1) {
+            soundEnabled = true;
+            return;
+        }
+
+        auto& strk = def->strokes[(size_t)currentStroke];
+        auto& prog = progress[(size_t)currentStroke];
+
+        if (strk.checkpoints.empty()) { soundEnabled = false; return; }
+
+        int   nextIdx = prog.nextCP;
+        auto& target  = strk.checkpoints[(size_t)nextIdx];
+        float dist    = std::hypot(nx - target.x, ny - target.y);
+
+        if (dist <= def->checkpointRadius) {
+            if (nextIdx == 0) {
+                // ✅ Child touched the correct start point of this stroke
+                prog.nextCP  = 1;
+                prog.started = true;
+                prog.active  = true;
+                prog.complete = false;
+                wantRestart  = true;   // trigger audio restart
+            } else if (prog.started) {
+                // ✅ Advancing through the stroke in correct order
+                prog.nextCP++;
+                prog.active = true;
+                if (prog.nextCP >= (int)strk.checkpoints.size()) {
+                    prog.complete = true;
+                    prog.active   = false;
+                    std::cout << "✅ Stroke " << (currentStroke+1) << " complete\n";
                 }
             }
+            // ❌ nextIdx > 0 and !started → silently ignore (skipped the start)
+        }
+
+        // Sound plays only while actively tracing this stroke correctly
+        if ((prog.active || prog.complete) && prog.started) soundEnabled = true;
+
+        // Finger lifted mid-stroke → reset that stroke (must redo from CP0)
+        if (!fingerDown && prog.active && !prog.complete) {
+            prog.active  = false;
+            prog.started = false;
+            prog.nextCP  = 0;
         }
     }
 
-    /// True if any stroke has been legitimately started or completed
+    /// True if any stroke is currently active or complete
     [[nodiscard]] bool anyActive() const {
         for (auto& p : progress) if ((p.active || p.complete) && p.started) return true;
         return false;
+    }
+
+    /// Index (0-based) of the stroke the child should be doing right now
+    [[nodiscard]] int currentStrokeIndex() const {
+        for (int si = 0; si < (int)progress.size(); ++si)
+            if (!progress[(size_t)si].complete) return si;
+        return (int)progress.size(); // all done
     }
 
     /// Returns 0.0–1.0 overall progress across all strokes
@@ -1384,12 +1409,36 @@ int main(int /*argc*/, char** /*argv*/) {
         SDL_RenderFillRect(renderer, &statusDot);
 
         // --- Stroke enforcement badge (top-left) ---
-        // Orange = enforcement ON, Grey = free mode
+        // Orange = enforcement ON (numbered stroke order required)
+        // Grey   = free mode (any stroke, any direction)
         if (strokeEnforced)
             SDL_SetRenderDrawColor(renderer, 255, 140,   0, 220);  // orange
         else
             SDL_SetRenderDrawColor(renderer,  90,  90,  90, 180);  // grey
         SDL_RenderFillRect(renderer, &strokeBadge);
+
+        // --- Current stroke number indicator (inside the badge) ---
+        // Draw 1–4 small dots inside the badge showing which stroke is next
+        if (strokeEnforced) {
+            int totalStrokes  = currentStrokes.valid ? (int)currentStrokes.strokes.size() : 0;
+            int currentStroke = strokeTracker.currentStrokeIndex(); // 0-based
+            float dotSize = 5.f;
+            float spacing = (strokeBadge.w - 4.f) / std::max(totalStrokes, 1);
+            for (int si = 0; si < totalStrokes; ++si) {
+                SDL_FRect dot = {
+                    strokeBadge.x + 2.f + si * spacing,
+                    strokeBadge.y + strokeBadge.h/2.f - dotSize/2.f,
+                    dotSize, dotSize
+                };
+                if (si < currentStroke)
+                    SDL_SetRenderDrawColor(renderer,   0, 200,  60, 255); // green = done
+                else if (si == currentStroke)
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // white = current
+                else
+                    SDL_SetRenderDrawColor(renderer,  60,  60,  60, 200); // dark = future
+                SDL_RenderFillRect(renderer, &dot);
+            }
+        }
 
         // --- Stroke progress bar (bottom, full width) ---
         // Shows overall checkpoint completion: empty = not started, full = letter complete

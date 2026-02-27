@@ -1,7 +1,7 @@
 {
   "letter": "I",
   "checkpointRadius": 0.07,
-  "comment": "Österreichische Druckschrift: I is a single vertical stroke top→bottom. Simple and unambiguous.",
+  "comment": "Österreichische Druckschrift: 1 stroke. Vertical top→bottom. Simple, unambiguous.",
   "strokes": [
     {
       "id": 1,

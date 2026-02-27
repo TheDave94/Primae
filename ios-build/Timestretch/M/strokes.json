@@ -1,7 +1,7 @@
 {
   "letter": "M",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: M has 4 strokes. Stroke 1: left vertical top→bottom. Stroke 2: left diagonal from top-left down to the valley center. Stroke 3: right diagonal from valley center up to top-right. Stroke 4: right vertical top→bottom. The two diagonals meet at the bottom center.",
+  "comment": "Österreichische Druckschrift: 4 strokes in order. 1: left vertical top→bottom. 2: left diagonal top-left DOWN to valley center. 3: right diagonal valley center UP to top-right. 4: right vertical top→bottom.",
   "strokes": [
     {
       "id": 1,
@@ -15,7 +15,7 @@
     },
     {
       "id": 2,
-      "comment": "Left diagonal: from top-left down to valley center-bottom",
+      "comment": "Left diagonal: top-left DOWN to valley center",
       "checkpoints": [
         {"x": 0.31, "y": 0.22},
         {"x": 0.40, "y": 0.40},
@@ -24,7 +24,7 @@
     },
     {
       "id": 3,
-      "comment": "Right diagonal: from valley center-bottom up to top-right",
+      "comment": "Right diagonal: valley center UP to top-right",
       "checkpoints": [
         {"x": 0.50, "y": 0.58},
         {"x": 0.60, "y": 0.40},

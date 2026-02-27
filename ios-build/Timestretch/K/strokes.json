@@ -1,33 +1,33 @@
 {
   "letter": "K",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: K has 3 strokes. Stroke 1: vertical spine top→bottom. Stroke 2: upper arm from top-right diagonally into the spine center. Stroke 3: lower arm from spine center diagonally down to bottom-right.",
+  "comment": "Österreichische Druckschrift: 3 strokes in order. 1: vertical spine top→bottom. 2: upper arm top-right diagonally IN to spine center. 3: lower arm from spine center diagonally OUT to bottom-right.",
   "strokes": [
     {
       "id": 1,
       "comment": "Vertical spine: top to bottom",
       "checkpoints": [
-        {"x": 0.40, "y": 0.22},
-        {"x": 0.40, "y": 0.38},
-        {"x": 0.40, "y": 0.55},
-        {"x": 0.40, "y": 0.72}
+        {"x": 0.38, "y": 0.22},
+        {"x": 0.38, "y": 0.38},
+        {"x": 0.38, "y": 0.55},
+        {"x": 0.38, "y": 0.72}
       ]
     },
     {
       "id": 2,
-      "comment": "Upper arm: top-right diagonally in to spine midpoint",
+      "comment": "Upper arm: from top-right diagonally inward to spine mid-point",
       "checkpoints": [
         {"x": 0.63, "y": 0.22},
         {"x": 0.55, "y": 0.34},
-        {"x": 0.46, "y": 0.48}
+        {"x": 0.44, "y": 0.48}
       ]
     },
     {
       "id": 3,
-      "comment": "Lower arm: from spine midpoint diagonally down to bottom-right",
+      "comment": "Lower arm: from spine mid-point diagonally out to bottom-right",
       "checkpoints": [
-        {"x": 0.46, "y": 0.50},
-        {"x": 0.54, "y": 0.61},
+        {"x": 0.44, "y": 0.50},
+        {"x": 0.53, "y": 0.61},
         {"x": 0.63, "y": 0.72}
       ]
     }
