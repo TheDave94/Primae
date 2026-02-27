@@ -145,7 +145,7 @@ static LetterStrokes loadStrokes(const std::string& path) {
         // id
         auto idPos = src.find("\"id\"", pos);
         auto cpPos = src.find("\"checkpoints\"", pos);
-        auto nextStroke [[maybe_unused]] = src.find("\"id\"", idPos+1); // find next stroke boundary
+        (void)src.find("\"id\"", idPos+1); // next stroke boundary (unused but kept for clarity)
 
         if (idPos == std::string::npos || cpPos == std::string::npos) break;
         // Ensure this id belongs to current stroke (before next checkpoints block)
@@ -402,9 +402,16 @@ struct LetterFolder {
     std::string name;                      ///< Folder / letter name (e.g. "A")
     std::string path;                      ///< Absolute path to the folder
     std::string pbmPath;                   ///< Path to the P4 binary PBM mask file
-    std::string strokesPath;               ///< Path to strokes.json (may be empty)
+    std::string strokesPath;               ///< Path to strokes.json (manual checkpoints, Option B)
+    std::string skeletonPath;              ///< Path to strokes_skeleton.json (auto-extracted, Option C)
     std::vector<std::string> audioFiles;   ///< Sorted list of audio file paths
     int currentAudioIdx = 0;              ///< Currently selected audio variant index
+
+    /// Returns the best available strokes file: skeleton preferred, then manual
+    [[nodiscard]] std::string bestStrokesPath() const {
+        if (!skeletonPath.empty()) return skeletonPath;
+        return strokesPath;
+    }
 };
 
 /**
@@ -457,6 +464,8 @@ public:
                     if (ext == ".pbm") {
                         folder.pbmPath = sub.path().string();
                         hasPBM = true;
+                    } else if (sub.path().filename().string() == "strokes_skeleton.json") {
+                        folder.skeletonPath = sub.path().string();
                     } else if (sub.path().filename().string() == "strokes.json") {
                         folder.strokesPath = sub.path().string();
                     } else {
@@ -1061,13 +1070,13 @@ int main(int /*argc*/, char** /*argv*/) {
     VelocityStats    velStats;
 
     // --- Stroke tracker ---
-    LetterStrokes   currentStrokes = loadStrokes(browser.current().strokesPath);
+    LetterStrokes   currentStrokes = loadStrokes(browser.current().bestStrokesPath());
     StrokeTracker   strokeTracker;
     if (currentStrokes.valid) strokeTracker.load(currentStrokes);
 
     /// Helper: reload strokes for current letter
     auto reloadStrokes = [&]() {
-        currentStrokes = loadStrokes(browser.current().strokesPath);
+        currentStrokes = loadStrokes(browser.current().bestStrokesPath());
         strokeTracker.reset();
         if (currentStrokes.valid) strokeTracker.load(currentStrokes);
     };
@@ -1095,6 +1104,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
     // HUD: playback status dot (top-right)
     SDL_FRect statusDot = {0.f, 10.f, 30.f, 30.f};
+
+    // HUD: stroke mode indicator (top-left, small badge)
+    SDL_FRect strokeBadge = {8.f, 10.f, 28.f, 28.f};
 
     // ---- MAIN LOOP ----
     while (!g_state.shouldQuit) {
@@ -1130,6 +1142,7 @@ int main(int /*argc*/, char** /*argv*/) {
                 else if (activeFingers == 4) {
                     // Four-finger tap: toggle stroke direction enforcement
                     strokeEnforced = !strokeEnforced;
+                    // Reset tracker so child gets a clean start in the new mode
                     strokeTracker.reset();
                     std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
                                                  : "🔓 Stroke enforcement OFF (free mode)\n");
@@ -1272,6 +1285,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         g_state.panRight = r;
 
                         // Gate audio by stroke correctness (bypass if enforcement is off)
+                        // Gate audio by stroke correctness (when enforced)
                         g_state.isPlaying = !strokeEnforced || strokeTracker.soundEnabled;
 
                     } else {
@@ -1341,6 +1355,21 @@ int main(int /*argc*/, char** /*argv*/) {
             SDL_FColor dc = DirectionTracker::hudColor(dirTracker.dominant());
             SDL_FRect inner = {dirHud.x + 2.f, dirHud.y + 2.f, dirHud.w - 4.f, dirHud.h - 4.f};
             SDL_SetRenderDrawColorFloat(renderer, dc.r, dc.g, dc.b, dc.a);
+            SDL_RenderFillRect(renderer, &inner);
+        }
+
+        // --- Stroke mode badge (top-left) ---
+        // 🔒 Orange = stroke enforcement ON (direction matters)
+        // 🔓 Grey   = free mode (sound plays anywhere on letter)
+        {
+            SDL_SetRenderDrawColor(renderer, 30, 30, 30, 180);
+            SDL_RenderFillRect(renderer, &strokeBadge);
+            SDL_FRect inner = {strokeBadge.x+2.f, strokeBadge.y+2.f,
+                               strokeBadge.w-4.f,  strokeBadge.h-4.f};
+            if (strokeEnforced)
+                SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);   // orange = enforced
+            else
+                SDL_SetRenderDrawColor(renderer, 120, 120, 120, 255); // grey = free
             SDL_RenderFillRect(renderer, &inner);
         }
 

@@ -1,0 +1,85 @@
+{
+  "letter": "K",
+  "checkpointRadius": 0.05,
+  "source": "skeleton+manual",
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "vertical top\u2192bottom",
+      "checkpoints": [
+        {
+          "x": 0.4,
+          "y": 0.265
+        },
+        {
+          "x": 0.4,
+          "y": 0.385
+        },
+        {
+          "x": 0.4,
+          "y": 0.5
+        },
+        {
+          "x": 0.4,
+          "y": 0.615
+        },
+        {
+          "x": 0.4,
+          "y": 0.71
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "upper arm: top-right \u2192 center junction",
+      "checkpoints": [
+        {
+          "x": 0.62,
+          "y": 0.265
+        },
+        {
+          "x": 0.58,
+          "y": 0.33
+        },
+        {
+          "x": 0.54,
+          "y": 0.395
+        },
+        {
+          "x": 0.5,
+          "y": 0.455
+        },
+        {
+          "x": 0.465,
+          "y": 0.5
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "lower arm: center junction \u2192 bottom-right",
+      "checkpoints": [
+        {
+          "x": 0.465,
+          "y": 0.5
+        },
+        {
+          "x": 0.5,
+          "y": 0.555
+        },
+        {
+          "x": 0.54,
+          "y": 0.61
+        },
+        {
+          "x": 0.58,
+          "y": 0.66
+        },
+        {
+          "x": 0.62,
+          "y": 0.71
+        }
+      ]
+    }
+  ]
+}
