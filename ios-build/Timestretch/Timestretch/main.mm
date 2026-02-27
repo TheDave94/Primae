@@ -72,9 +72,10 @@ namespace Config {
 
     // --- Audio engine ---
     /// SDL3 audio callback buffer size in frames
-    constexpr size_t kBufFrames          = 1024;
+    constexpr size_t kBufFrames          = 2048;
     /// Extra source-audio chunks fed to RubberBand per callback to prevent underruns
-    constexpr size_t kInputMultiplier    = 4;
+    /// Must be large enough to cover slow playback (kMinSpeed = 0.5 → 2× more input needed)
+    constexpr size_t kInputMultiplier    = 8;
     /// Speed / pitch interpolation coefficient (0 = frozen, 1 = instant snap)
     constexpr float kInterpolationFactor = 0.05f;
 
@@ -516,6 +517,19 @@ public:
         startStream();
         std::cout << "🎵 Loaded: " << fs::path(path).filename().string()
                   << "  (" << sfInfo.samplerate << " Hz, " << sfInfo.channels << " ch)\n";
+
+        // Pre-warm: feed RubberBand its required latency upfront so the first
+        // audio callback always has data available (prevents startup crackling).
+        int prewarmFrames = stretcher->getLatency() + (int)(Config::kBufFrames * Config::kInputMultiplier);
+        std::vector<float> prewarmBuf((size_t)(prewarmFrames * sfInfo.channels));
+        sf_readf_float(snd, prewarmBuf.data(), prewarmFrames);
+        // Rewind so normal playback starts from the beginning
+        sf_seek(snd, 0, SEEK_SET);
+        // De-interleave and submit to stretcher
+        for (int i = 0; i < prewarmFrames; ++i)
+            for (int c = 0; c < sfInfo.channels; ++c)
+                chanBufs[c][i % chanBufs[c].size()] = prewarmBuf[(size_t)(i * sfInfo.channels + c)];
+        stretcher->process(inPtrs.data(), (size_t)prewarmFrames, false);
     }
 
 private:
@@ -662,7 +676,12 @@ private:
             }
 
             remaining -= ret;
-            if (ret == 0 && stretcher->available() == 0) break; // safety: avoid spin
+            if (ret == 0) {
+                // RubberBand couldn't deliver — output silence for the rest to avoid
+                // uninitialized data reaching the speaker (prevents crackling)
+                std::fill_n(wptr, remaining * (size_t)sfInfo.channels, 0.0f);
+                break;
+            }
         }
         // If fade is done and not playing, zero gain
         if (!isPlaying && fadeState == FadeState::None) fadeGain = 0.0f;
