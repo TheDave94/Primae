@@ -1,43 +1,44 @@
 {
   "letter": "M",
   "checkpointRadius": 0.06,
+  "comment": "Österreichische Druckschrift: M has 4 strokes. Stroke 1: left vertical top→bottom. Stroke 2: left diagonal from top-left down to the valley center. Stroke 3: right diagonal from valley center up to top-right. Stroke 4: right vertical top→bottom. The two diagonals meet at the bottom center.",
   "strokes": [
     {
       "id": 1,
       "comment": "Left vertical: top to bottom",
       "checkpoints": [
-        {"x": 0.32, "y": 0.27},
-        {"x": 0.32, "y": 0.42},
-        {"x": 0.32, "y": 0.57},
-        {"x": 0.32, "y": 0.72}
+        {"x": 0.31, "y": 0.22},
+        {"x": 0.31, "y": 0.38},
+        {"x": 0.31, "y": 0.55},
+        {"x": 0.31, "y": 0.72}
       ]
     },
     {
       "id": 2,
-      "comment": "Left diagonal: top-left down to center-bottom",
+      "comment": "Left diagonal: from top-left down to valley center-bottom",
       "checkpoints": [
-        {"x": 0.32, "y": 0.27},
-        {"x": 0.40, "y": 0.42},
-        {"x": 0.49, "y": 0.55}
+        {"x": 0.31, "y": 0.22},
+        {"x": 0.40, "y": 0.40},
+        {"x": 0.50, "y": 0.58}
       ]
     },
     {
       "id": 3,
-      "comment": "Right diagonal: center-bottom up to top-right",
+      "comment": "Right diagonal: from valley center-bottom up to top-right",
       "checkpoints": [
-        {"x": 0.49, "y": 0.55},
-        {"x": 0.58, "y": 0.42},
-        {"x": 0.66, "y": 0.27}
+        {"x": 0.50, "y": 0.58},
+        {"x": 0.60, "y": 0.40},
+        {"x": 0.69, "y": 0.22}
       ]
     },
     {
       "id": 4,
       "comment": "Right vertical: top to bottom",
       "checkpoints": [
-        {"x": 0.66, "y": 0.27},
-        {"x": 0.66, "y": 0.42},
-        {"x": 0.66, "y": 0.57},
-        {"x": 0.66, "y": 0.72}
+        {"x": 0.69, "y": 0.22},
+        {"x": 0.69, "y": 0.38},
+        {"x": 0.69, "y": 0.55},
+        {"x": 0.69, "y": 0.72}
       ]
     }
   ]

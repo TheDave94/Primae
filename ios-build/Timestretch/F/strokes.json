@@ -1,29 +1,30 @@
 {
   "letter": "F",
   "checkpointRadius": 0.06,
+  "comment": "Österreichische Druckschrift: F has 3 strokes. Stroke 1: vertical top→bottom. Stroke 2: top crossbar left→right. Stroke 3: mid crossbar left→right. All strokes start from left or top.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Vertical stroke: top to bottom",
+      "comment": "Vertical spine: top to bottom",
       "checkpoints": [
-        {"x": 0.46, "y": 0.27},
-        {"x": 0.46, "y": 0.42},
-        {"x": 0.46, "y": 0.57},
-        {"x": 0.46, "y": 0.72}
+        {"x": 0.42, "y": 0.22},
+        {"x": 0.42, "y": 0.38},
+        {"x": 0.42, "y": 0.55},
+        {"x": 0.42, "y": 0.72}
       ]
     },
     {
       "id": 2,
-      "comment": "Top horizontal bar: left to right",
+      "comment": "Top crossbar: left to right at cap height",
       "checkpoints": [
-        {"x": 0.42, "y": 0.28},
-        {"x": 0.52, "y": 0.28},
-        {"x": 0.62, "y": 0.28}
+        {"x": 0.42, "y": 0.22},
+        {"x": 0.52, "y": 0.22},
+        {"x": 0.62, "y": 0.22}
       ]
     },
     {
       "id": 3,
-      "comment": "Middle horizontal bar: left to right",
+      "comment": "Mid crossbar: left to right at x-height",
       "checkpoints": [
         {"x": 0.42, "y": 0.48},
         {"x": 0.52, "y": 0.48},
