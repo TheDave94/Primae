@@ -145,7 +145,7 @@ static LetterStrokes loadStrokes(const std::string& path) {
         // id
         auto idPos = src.find("\"id\"", pos);
         auto cpPos = src.find("\"checkpoints\"", pos);
-        auto nextStroke = src.find("\"id\"", idPos+1); // find next stroke boundary
+        (void)src.find("\"id\"", idPos+1); // next stroke boundary (unused but kept for clarity)
 
         if (idPos == std::string::npos || cpPos == std::string::npos) break;
         // Ensure this id belongs to current stroke (before next checkpoints block)
@@ -1135,7 +1135,6 @@ int main(int /*argc*/, char** /*argv*/) {
                     strokeTracker.reset();
                     std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
                                                  : "🔓 Stroke enforcement OFF (free mode)\n");
-                }
                 }
                 break;
 
