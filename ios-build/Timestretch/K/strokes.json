@@ -1,7 +1,7 @@
 {
   "letter": "K",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: 3 strokes in order. 1: vertical spine top→bottom. 2: upper arm top-right diagonally IN to spine center. 3: lower arm from spine center diagonally OUT to bottom-right.",
+  "comment": "Österreichische Druckschrift (lesenlernen.at): 3 strokes. 1: vertical spine top→bottom. 2: from center of spine UP-RIGHT to top-right (arm goes outward upward). 3: from center of spine DOWN-RIGHT to bottom-right (arm goes outward downward). Both arms start at the SAME center point on the spine.",
   "strokes": [
     {
       "id": 1,
@@ -15,20 +15,22 @@
     },
     {
       "id": 2,
-      "comment": "Upper arm: from top-right diagonally inward to spine mid-point",
+      "comment": "Upper arm: from spine center outward UP to top-right",
       "checkpoints": [
-        {"x": 0.63, "y": 0.22},
-        {"x": 0.55, "y": 0.34},
-        {"x": 0.44, "y": 0.48}
+        {"x": 0.42, "y": 0.47},
+        {"x": 0.51, "y": 0.36},
+        {"x": 0.60, "y": 0.25},
+        {"x": 0.65, "y": 0.22}
       ]
     },
     {
       "id": 3,
-      "comment": "Lower arm: from spine mid-point diagonally out to bottom-right",
+      "comment": "Lower arm: from spine center outward DOWN to bottom-right",
       "checkpoints": [
-        {"x": 0.44, "y": 0.50},
-        {"x": 0.53, "y": 0.61},
-        {"x": 0.63, "y": 0.72}
+        {"x": 0.42, "y": 0.50},
+        {"x": 0.51, "y": 0.59},
+        {"x": 0.60, "y": 0.66},
+        {"x": 0.65, "y": 0.72}
       ]
     }
   ]
