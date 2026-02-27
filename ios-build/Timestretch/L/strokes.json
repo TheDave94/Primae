@@ -1,17 +1,25 @@
 {
   "letter": "L",
   "checkpointRadius": 0.06,
+  "comment": "Österreichische Druckschrift: L has 2 strokes. Stroke 1: vertical spine top→bottom. Stroke 2: baseline foot left→right. In some Austrian teaching materials L is drawn as a single continuous stroke (top→down→right), but the two-stroke version is more common in print Druckschrift.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Single stroke: top down then right",
+      "comment": "Vertical stroke: top to bottom",
       "checkpoints": [
-        {"x": 0.46, "y": 0.27},
-        {"x": 0.46, "y": 0.42},
-        {"x": 0.46, "y": 0.57},
-        {"x": 0.46, "y": 0.70},
-        {"x": 0.54, "y": 0.72},
-        {"x": 0.62, "y": 0.72}
+        {"x": 0.43, "y": 0.22},
+        {"x": 0.43, "y": 0.38},
+        {"x": 0.43, "y": 0.55},
+        {"x": 0.43, "y": 0.72}
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Baseline foot: left to right",
+      "checkpoints": [
+        {"x": 0.43, "y": 0.72},
+        {"x": 0.53, "y": 0.72},
+        {"x": 0.63, "y": 0.72}
       ]
     }
   ]
