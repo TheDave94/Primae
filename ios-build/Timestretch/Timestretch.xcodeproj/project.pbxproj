@@ -393,6 +393,12 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework UIKit",
+					"-framework QuartzCore",
+					"-framework CoreGraphics",
+				);
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 			};
@@ -451,6 +457,12 @@
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework UIKit",
+					"-framework QuartzCore",
+					"-framework CoreGraphics",
+				);
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 6.0;
 				VALIDATE_PRODUCT = YES;

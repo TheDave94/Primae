@@ -1,14 +1,16 @@
 // DrawingOverlay.mm
-// UIView overlay that draws the green tracing feedback using CAShapeLayer.
-// One CAShapeLayer per stroke — lives in UIKit points, Retina-correct automatically.
-// Smooth path: midpoint quadratic Bézier with 12pt minimum point spacing.
+// UIView overlay for green stroke feedback. Uses CAShapeLayer with a thick
+// stroked path. kCALineCapButt is used — butt caps do NOT extend past the
+// endpoint so they never protrude into adjacent segments, eliminating bumps.
+// bezierPathByStrokingPath is macOS-only and must not be used on iOS.
 
 #import "DrawingOverlay.h"
+#import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 
-static const int   kMaxStrokes  = 8;
-static const float kBrushWidth  = 38.0f;  // pt
-static const float kMinPointDist = 12.0f; // pt — fewer points = fewer caps = smoother
+static const int   kMaxStrokes   = 8;
+static const float kBrushWidth   = 40.0f;  // pt — thick enough to fill letter
+static const float kMinPointDist = 10.0f;  // pt — minimum spacing between recorded pts
 
 // ---------------------------------------------------------------------------
 @interface DrawingOverlayView : UIView
@@ -40,13 +42,18 @@ static const float kMinPointDist = 12.0f; // pt — fewer points = fewer caps = 
     _strokeLayers  = [NSMutableArray array];
     _strokePoints  = [NSMutableArray array];
     _strokeStarted = [NSMutableArray array];
+
     for (int i = 0; i < kMaxStrokes; ++i) {
         CAShapeLayer* layer = [CAShapeLayer layer];
-        // Filled shape — no stroke, no caps. Colour set per-stroke in begin/complete.
-        layer.fillColor   = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
-        layer.strokeColor = [UIColor clearColor].CGColor;
-        layer.lineWidth   = 0;
-        layer.hidden      = YES;
+        layer.fillColor     = [UIColor clearColor].CGColor;
+        layer.strokeColor   = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
+        layer.lineWidth     = kBrushWidth;
+        // kCALineCapButt: caps are flush with the endpoint — zero protrusion.
+        // This means segment ends cannot overlap into adjacent segments,
+        // which eliminates all visible scalloping/bumping artifacts.
+        layer.lineCap       = kCALineCapButt;
+        layer.lineJoin      = kCALineJoinRound;
+        layer.hidden        = YES;
         [self.layer addSublayer:layer];
         [_strokeLayers  addObject:layer];
         [_strokePoints  addObject:[NSMutableArray array]];
@@ -59,46 +66,38 @@ static const float kMinPointDist = 12.0f; // pt — fewer points = fewer caps = 
                        ny * self.bounds.size.height);
 }
 
+// Build a smooth path through pts using midpoint quadratic Bézier curves.
+- (CGPathRef)smoothPathForPoints:(NSArray<NSValue*>*)pts CF_RETURNS_RETAINED {
+    CGMutablePathRef path = CGPathCreateMutable();
+    NSUInteger n = pts.count;
+    if (n == 0) return path;
+
+    CGPoint p0 = [pts[0] CGPointValue];
+    CGPathMoveToPoint(path, nil, p0.x, p0.y);
+    if (n == 1) return path;
+    if (n == 2) {
+        CGPathAddLineToPoint(path, nil, [pts[1] CGPointValue].x, [pts[1] CGPointValue].y);
+        return path;
+    }
+    for (NSUInteger i = 0; i < n - 1; ++i) {
+        CGPoint curr = [pts[i]     CGPointValue];
+        CGPoint next = [pts[i + 1] CGPointValue];
+        CGPoint mid  = CGPointMake((curr.x + next.x) * 0.5f,
+                                   (curr.y + next.y) * 0.5f);
+        CGPathAddQuadCurveToPoint(path, nil, curr.x, curr.y, mid.x, mid.y);
+    }
+    CGPathAddLineToPoint(path, nil, [pts[n-1] CGPointValue].x, [pts[n-1] CGPointValue].y);
+    return path;
+}
+
 - (void)updateLayer:(int)idx {
     NSArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
-    // Build smooth centre-line as UIBezierPath
-    UIBezierPath* centre = [UIBezierPath bezierPath];
-    NSUInteger n = pts.count;
-    if (n == 0) {
-        [CATransaction begin];
-        [CATransaction setDisableActions:YES];
-        _strokeLayers[(NSUInteger)idx].path = nil;
-        [CATransaction commit];
-        return;
-    }
-    CGPoint p0 = [pts[0] CGPointValue];
-    [centre moveToPoint:p0];
-    if (n == 1) {
-        // Single point: draw a small circle so something appears immediately
-        [centre addArcWithCenter:p0 radius:kBrushWidth/2 startAngle:0 endAngle:M_PI*2 clockwise:YES];
-    } else if (n == 2) {
-        [centre addLineToPoint:[pts[1] CGPointValue]];
-    } else {
-        for (NSUInteger i = 0; i < n - 1; ++i) {
-            CGPoint curr = [pts[i]     CGPointValue];
-            CGPoint next = [pts[i + 1] CGPointValue];
-            CGPoint mid  = CGPointMake((curr.x + next.x) * 0.5f,
-                                       (curr.y + next.y) * 0.5f);
-            [centre addQuadCurveToPoint:mid controlPoint:curr];
-        }
-        [centre addLineToPoint:[pts[n-1] CGPointValue]];
-    }
-
-    // Expand to filled ribbon — UIBezierPath API, avoids the raw CG winding issue
-    centre.lineWidth     = kBrushWidth;
-    centre.lineCapStyle  = kCGLineCapRound;
-    centre.lineJoinStyle = kCGLineJoinRound;
-    UIBezierPath* ribbon = [centre bezierPathByStrokingPath];
-
+    CGPathRef smooth = [self smoothPathForPoints:pts];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _strokeLayers[(NSUInteger)idx].path = ribbon.CGPath;
+    _strokeLayers[(NSUInteger)idx].path = smooth;
     [CATransaction commit];
+    CGPathRelease(smooth);
 }
 
 - (void)beginStroke:(int)idx {
@@ -107,9 +106,9 @@ static const float kMinPointDist = 12.0f; // pt — fewer points = fewer caps = 
     CAShapeLayer* layer = _strokeLayers[(NSUInteger)idx];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    layer.path      = nil;
-    layer.hidden    = NO;
-    layer.fillColor = [UIColor colorWithRed:0.39 green:0.90 blue:0.47 alpha:0.85].CGColor;
+    layer.path        = nil;
+    layer.hidden      = NO;
+    layer.strokeColor = [UIColor colorWithRed:0.39 green:0.90 blue:0.47 alpha:0.85].CGColor;
     [CATransaction commit];
     _strokeStarted[(NSUInteger)idx] = @YES;
 }
@@ -130,7 +129,7 @@ static const float kMinPointDist = 12.0f; // pt — fewer points = fewer caps = 
     if (idx < 0 || idx >= kMaxStrokes) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _strokeLayers[(NSUInteger)idx].fillColor =
+    _strokeLayers[(NSUInteger)idx].strokeColor =
         [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:1.0].CGColor;
     _strokeLayers[(NSUInteger)idx].hidden = NO;
     [CATransaction commit];
@@ -162,7 +161,8 @@ void drawing_overlay_install(UIView* sdlView) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (gOverlay) { [gOverlay removeFromSuperview]; gOverlay = nil; }
         gOverlay = [[DrawingOverlayView alloc] initWithFrame:sdlView.bounds];
-        gOverlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        gOverlay.autoresizingMask =
+            UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [sdlView addSubview:gOverlay];
     });
 }
