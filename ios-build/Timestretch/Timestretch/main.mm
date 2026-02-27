@@ -203,8 +203,9 @@ public:
     struct StrokeProgress {
         int    strokeId      = 0;
         int    nextCP        = 0;
-        bool   started       = false;
-        bool   active        = false;
+        bool   started       = false;  // CP0 was hit
+        bool   pending       = false;  // CP0 hit but CP1 not yet confirmed (direction unverified)
+        bool   active        = false;  // CP1+ confirmed → sound/paint ON
         bool   complete      = false;
     };
 
@@ -228,7 +229,7 @@ public:
 
     void reset() {
         for (auto& p : progress) {
-            p.nextCP = 0; p.started = false; p.active = false; p.complete = false;
+            p.nextCP = 0; p.started = false; p.pending = false; p.active = false; p.complete = false;
         }
         soundEnabled = false;
         wantRestart  = false;
@@ -263,18 +264,21 @@ public:
 
         if (dist <= def->checkpointRadius) {
             if (nextIdx == 0) {
-                // ✅ Correct start — begin stroke
+                // CP0 hit — start pending: paint begins but sound stays OFF
+                // until CP1 is reached (proves correct direction)
                 drawing_overlay_reset_stroke(currentStroke);
                 drawing_overlay_begin_stroke(currentStroke);
                 drawing_overlay_add_point(currentStroke, nx, ny);
                 prog.nextCP   = 1;
                 prog.started  = true;
-                prog.active   = true;
+                prog.pending  = true;   // direction not yet confirmed
+                prog.active   = false;  // sound still OFF
                 prog.complete = false;
                 wantRestart   = true;
             } else if (prog.started) {
                 prog.nextCP++;
-                prog.active = true;
+                prog.pending = false;   // CP1+ hit → direction confirmed, sound ON
+                prog.active  = true;
                 if (prog.nextCP >= (int)strk.checkpoints.size()) {
                     drawing_overlay_add_point(currentStroke, nx, ny);
                     drawing_overlay_complete_stroke(currentStroke);
@@ -285,29 +289,31 @@ public:
             }
         }
 
-        // Add paint point while actively tracing
-        if (prog.started && fingerDown && (prog.active || prog.complete)) {
+        // Add paint point while started (pending or active) — visual feedback from CP0
+        if (prog.started && fingerDown && (prog.pending || prog.active || prog.complete)) {
             drawing_overlay_add_point(currentStroke, nx, ny);
         }
 
+        // Sound only when direction confirmed (active or complete), NOT while pending
         if ((prog.active || prog.complete) && prog.started) soundEnabled = true;
 
         // Finger lifted mid-stroke → reset paint + progress
-        if (!fingerDown && prog.active && !prog.complete) {
+        if (!fingerDown && (prog.active || prog.pending) && !prog.complete) {
             // Auto-complete: if child lifted finger but had already passed ≥ 80% of
-            // checkpoints, treat the stroke as done. Helps O (loop closure near start)
-            // and other strokes where the child lifts just before the final CP.
+            // checkpoints, treat the stroke as done.
             int total    = (int)strk.checkpoints.size();
-            int passed   = prog.nextCP; // nextCP = index of NEXT CP to hit = count passed so far
-            bool nearEnd = (passed >= total - 2) && (passed > 0);
+            int passed   = prog.nextCP;
+            bool nearEnd = (passed >= total - 2) && (passed > 0) && !prog.pending;
             if (nearEnd) {
                 drawing_overlay_add_point(currentStroke, nx, ny);
                 drawing_overlay_complete_stroke(currentStroke);
                 prog.complete = true;
                 prog.active   = false;
+                prog.pending  = false;
                 std::cout << "✅ Stroke " << (currentStroke + 1) << " auto-completed on lift\n";
             } else {
                 prog.active   = false;
+                prog.pending  = false;
                 prog.started  = false;
                 prog.nextCP   = 0;
                 drawing_overlay_reset_stroke(currentStroke);
