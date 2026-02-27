@@ -48,6 +48,8 @@
 #include <sstream>
 
 #include <SDL3/SDL.h>
+#include "DrawingOverlay.h"
+#include "OverlayInstaller.h"
 #include <SDL3/SDL_main.h>
 #include <sndfile.h>
 #include <rubberband/RubberBandStretcher.h>
@@ -193,30 +195,17 @@ static LetterStrokes loadStrokes(const std::string& path) {
 /**
  * @brief Tracks progress through ALL strokes, enforcing the correct stroke ORDER.
  *
- * Rules:
- *  1. Strokes must be completed in sequence: stroke 1 fully done before stroke 2
- *     can be started, stroke 2 done before stroke 3, etc.
- *  2. Each stroke must begin at its designated CP0 (the start point).
- *  3. Within a stroke, checkpoints must be passed in order (no skipping).
- *  4. Sound is enabled only while the CURRENT expected stroke is being traced
- *     correctly (started from CP0, in the right direction).
- *  5. If the child lifts their finger mid-stroke, that stroke's paint resets —
- *     they must start it again from CP0.
- *  6. Already-completed strokes stay painted green permanently.
- *  7. paintedPoints accumulates finger positions in real time while active,
- *     cleared on mid-stroke finger lift, kept on completion.
+ * Drawing feedback is handled by DrawingOverlay (UIKit CAShapeLayer) — not SDL.
+ * This class manages checkpoint logic only; it calls the C bridge to paint.
  */
 class StrokeTracker {
 public:
-    struct PaintPoint { float x, y; };   ///< Normalised screen coord [0–1]
-
     struct StrokeProgress {
         int    strokeId      = 0;
-        int    nextCP        = 0;    ///< Index of next checkpoint to hit
-        bool   started       = false;///< CP0 was touched — stroke legitimately begun
-        bool   active        = false;///< Currently being traced (finger down)
-        bool   complete      = false;///< All checkpoints passed
-        std::vector<PaintPoint> paintedPoints; ///< Trail drawn so far (cleared on reset)
+        int    nextCP        = 0;
+        bool   started       = false;
+        bool   active        = false;
+        bool   complete      = false;
     };
 
     std::vector<StrokeProgress>  progress;
@@ -234,39 +223,33 @@ public:
         }
         soundEnabled = false;
         wantRestart  = false;
+        drawing_overlay_reset_all();
     }
 
     void reset() {
         for (auto& p : progress) {
             p.nextCP = 0; p.started = false; p.active = false; p.complete = false;
-            p.paintedPoints.clear();
         }
         soundEnabled = false;
         wantRestart  = false;
+        drawing_overlay_reset_all();
     }
 
-    /**
-     * @brief Update tracker with current normalised finger position [0–1].
-     * @param nx          Normalised x = imgX / maskW
-     * @param ny          Normalised y = imgY / maskH
-     * @param fingerDown  True while a finger is touching the screen
-     */
     void update(float nx, float ny, bool fingerDown) {
         if (!def || def->strokes.empty()) {
-            soundEnabled = true;   // no definition → free play
+            soundEnabled = true;
             return;
         }
 
         wantRestart  = false;
         soundEnabled = false;
 
-        // ── Find the current expected stroke (first incomplete) ────────────
+        // Find the current expected stroke (first incomplete)
         int currentStroke = -1;
         for (int si = 0; si < (int)progress.size(); ++si) {
             if (!progress[(size_t)si].complete) { currentStroke = si; break; }
         }
 
-        // All strokes done → letter complete, keep sound on
         if (currentStroke == -1) { soundEnabled = true; return; }
 
         auto& strk = def->strokes[(size_t)currentStroke];
@@ -280,21 +263,21 @@ public:
 
         if (dist <= def->checkpointRadius) {
             if (nextIdx == 0) {
-                // ✅ Correct start point — begin stroke
-                prog.paintedPoints.clear();       // fresh start
-                prog.paintedPoints.push_back({nx, ny});
+                // ✅ Correct start — begin stroke
+                drawing_overlay_reset_stroke(currentStroke);
+                drawing_overlay_begin_stroke(currentStroke);
+                drawing_overlay_add_point(currentStroke, nx, ny);
                 prog.nextCP   = 1;
                 prog.started  = true;
                 prog.active   = true;
                 prog.complete = false;
                 wantRestart   = true;
             } else if (prog.started) {
-                // ✅ Advancing through the stroke in correct order
                 prog.nextCP++;
                 prog.active = true;
                 if (prog.nextCP >= (int)strk.checkpoints.size()) {
-                    // Capture the final position before marking complete
-                    prog.paintedPoints.push_back({nx, ny});
+                    drawing_overlay_add_point(currentStroke, nx, ny);
+                    drawing_overlay_complete_stroke(currentStroke);
                     prog.complete = true;
                     prog.active   = false;
                     std::cout << "✅ Stroke " << (currentStroke + 1) << " complete\n";
@@ -302,42 +285,33 @@ public:
             }
         }
 
-        // Accumulate paint trail while tracing (active) OR after complete (finger still down)
+        // Add paint point while actively tracing
         if (prog.started && fingerDown && (prog.active || prog.complete)) {
-            bool shouldAdd = prog.paintedPoints.empty();
-            if (!shouldAdd) {
-                auto& last = prog.paintedPoints.back();
-                shouldAdd = std::hypot(nx - last.x, ny - last.y) > 0.008f;
-            }
-            if (shouldAdd) prog.paintedPoints.push_back({nx, ny});
+            drawing_overlay_add_point(currentStroke, nx, ny);
         }
 
-        // Sound plays only while actively tracing correctly
         if ((prog.active || prog.complete) && prog.started) soundEnabled = true;
 
-        // Finger lifted mid-stroke → reset that stroke's paint and progress
+        // Finger lifted mid-stroke → reset paint + progress
         if (!fingerDown && prog.active && !prog.complete) {
-            prog.active         = false;
-            prog.started        = false;
-            prog.nextCP         = 0;
-            prog.paintedPoints.clear();   // ← erase the green trail
+            prog.active   = false;
+            prog.started  = false;
+            prog.nextCP   = 0;
+            drawing_overlay_reset_stroke(currentStroke);
         }
     }
 
-    /// True if any stroke is currently active or complete
     [[nodiscard]] bool anyActive() const {
         for (auto& p : progress) if ((p.active || p.complete) && p.started) return true;
         return false;
     }
 
-    /// Index (0-based) of the stroke the child should be doing right now
     [[nodiscard]] int currentStrokeIndex() const {
         for (int si = 0; si < (int)progress.size(); ++si)
             if (!progress[(size_t)si].complete) return si;
-        return (int)progress.size(); // all done
+        return (int)progress.size();
     }
 
-    /// Returns 0.0–1.0 overall progress across all strokes
     [[nodiscard]] float overallProgress() const {
         if (!def || def->strokes.empty()) return 1.f;
         int total = 0, done = 0;
@@ -1012,20 +986,6 @@ private:
  * @return New SDL_Texture* (caller owns it; destroy with SDL_DestroyTexture).
  */
 
-/**
- * @brief Draw a filled circle using horizontal scan lines (SDL3, no SDL_gfx needed).
- * @param r   SDL_Renderer
- * @param cx  Centre x (screen pixels)
- * @param cy  Centre y (screen pixels)
- * @param rad Radius (screen pixels)
- */
-static void renderFilledCircle(SDL_Renderer* r, float cx, float cy, float rad) {
-    for (float dy = -rad; dy <= rad; dy += 1.f) {
-        float dx = std::sqrt(rad * rad - dy * dy);
-        SDL_RenderLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
-    }
-}
-
 static SDL_Texture* buildOutlineTexture(SDL_Renderer* renderer, const BitmapMask& mask) {
     int W = mask.getW(), H = mask.getH();
     std::vector<uint32_t> px((size_t)(W * H));
@@ -1093,6 +1053,10 @@ int main(int /*argc*/, char** /*argv*/) {
     SDL_Window*   window   = SDL_CreateWindow("Timestretch", 800, 600,
                                               SDL_WINDOW_FULLSCREEN | SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
+
+    // Install the UIKit drawing overlay on top of the SDL view.
+    // Must be called after SDL_CreateRenderer so the UIWindow is set up.
+    overlay_installer_attach();
 
     // --- Textures ---
     SDL_Texture* outlineTex = buildOutlineTexture(renderer, mask);
@@ -1260,25 +1224,14 @@ int main(int /*argc*/, char** /*argv*/) {
 
             // Read cursor/touch position via SDL mouse API
             // (SDL3 maps single-finger touch to mouse events on iOS)
-            // SDL_GetMouseState returns WINDOW POINTS (not render pixels).
-            // Convert to render pixels first so mask coords align with texture.
             float winX = 0, winY = 0;
             SDL_GetMouseState(&winX, &winY);
 
             if (winW > 0 && winH > 0) {
-                // Convert window points → render pixels
-                int rwLocal = 0, rhLocal = 0;
-                SDL_GetRenderOutputSize(renderer, &rwLocal, &rhLocal);
-                float rxScale = (winW > 0) ? (float)rwLocal / (float)winW : 1.f;
-                float ryScale = (winH > 0) ? (float)rhLocal / (float)winH : 1.f;
-                float renderX = winX * rxScale;
-                float renderY = winY * ryScale;
-
-                // Map render pixels → mask image space
-                float scaleX = (float)rwLocal / (float)mask.getW();
-                float scaleY = (float)rhLocal / (float)mask.getH();
-                float imgX   = renderX / scaleX;
-                float imgY   = renderY / scaleY;
+                float scaleX = (float)winW / (float)mask.getW();
+                float scaleY = (float)winH / (float)mask.getH();
+                float imgX   = winX / scaleX;
+                float imgY   = winY / scaleY;
 
                 if (firstFrame) { lastImgX = imgX; lastImgY = imgY; firstFrame = false; }
 
@@ -1393,50 +1346,13 @@ int main(int /*argc*/, char** /*argv*/) {
         int ww = 0, wh = 0;
         SDL_GetWindowSize(window, &ww, &wh);
 
-        // On Retina/HiDPI (iOS), the renderer output may be 2× the window points.
-        // We need render-output pixels for accurate drawing coordinates.
-        int rw = 0, rh = 0;
-        SDL_GetRenderOutputSize(renderer, &rw, &rh);
-        // Scale factor points → pixels (typically 2.0 on iPad Retina)
-        float ptToPxX = (ww > 0) ? (float)rw / (float)ww : 1.f;
-        float ptToPxY = (wh > 0) ? (float)rh / (float)wh : 1.f;
-
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
 
         // Letter outline
         SDL_RenderTexture(renderer, outlineTex, nullptr, nullptr);
 
-        // --- Green paint trail (stroke correctness feedback) ---
-        // Each completed stroke stays green permanently.
-        // The current active stroke paints in real time; lifting the finger clears it.
-        {
-            // Brush radius: ~2.8% of the shorter render dimension
-            float brushR = std::min(rw, rh) * 0.028f;
-
-            for (auto& prog : strokeTracker.progress) {
-                if (prog.paintedPoints.empty()) continue;
-
-                // Completed strokes: solid bright green
-                // Active stroke: slightly lighter green (in-progress)
-                if (prog.complete) {
-                    SDL_SetRenderDrawColor(renderer, 60, 210, 80, 230);
-                } else if (prog.active && prog.started) {
-                    SDL_SetRenderDrawColor(renderer, 100, 230, 120, 200);
-                } else {
-                    continue; // nothing to draw
-                }
-
-                for (auto& pt : prog.paintedPoints) {
-                    // normX/normY are in [0,1] relative to mask dims.
-                    // The outline texture is stretched to fill the full render output,
-                    // so we map directly to render-pixel coordinates.
-                    float sx = pt.x * (float)rw;
-                    float sy = pt.y * (float)rh;
-                    renderFilledCircle(renderer, sx, sy, brushR);
-                }
-            }
-        }
+        // (Green stroke painting handled by DrawingOverlay UIKit layer above SDL view)
 
         // Todo #5: ghost tracing overlay (toggled by three-finger tap)
         if (tracingMode && ghostTex)
