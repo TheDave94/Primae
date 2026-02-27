@@ -1083,11 +1083,19 @@ int main(int /*argc*/, char** /*argv*/) {
     // Todo #5: tracing ghost toggle (3-finger tap)
     bool tracingMode = false;
 
+    // Stroke direction enforcement toggle (4-finger tap)
+    // true  = sound only plays when writing in correct direction (Option B/C)
+    // false = sound plays anywhere on the letter (free mode)
+    bool strokeEnforced = true;
+
     // HUD: direction indicator rectangle (bottom-left)
     SDL_FRect dirHud = {8.f, 0.f, 120.f, 28.f};
 
     // HUD: playback status dot (top-right)
     SDL_FRect statusDot = {0.f, 10.f, 30.f, 30.f};
+
+    // HUD: stroke mode indicator (top-left, small badge)
+    SDL_FRect strokeBadge = {8.f, 10.f, 28.f, 28.f};
 
     // ---- MAIN LOOP ----
     while (!g_state.shouldQuit) {
@@ -1119,6 +1127,15 @@ int main(int /*argc*/, char** /*argv*/) {
                 else if (activeFingers == 3) {
                     // Todo #5: three-finger tap toggles the ghost tracing overlay
                     tracingMode = !tracingMode;
+                }
+                else if (activeFingers == 4) {
+                    // Four-finger tap: toggle stroke direction enforcement
+                    strokeEnforced = !strokeEnforced;
+                    // Reset tracker so child gets a clean start in the new mode
+                    strokeTracker.reset();
+                    std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
+                                                 : "🔓 Stroke enforcement OFF (free mode)\n");
+                }
                 }
                 break;
 
@@ -1257,14 +1274,14 @@ int main(int /*argc*/, char** /*argv*/) {
                         g_state.panLeft  = l;
                         g_state.panRight = r;
 
-                        // Gate audio by stroke correctness
-                        g_state.isPlaying = strokeTracker.soundEnabled;
+                        // Gate audio by stroke correctness (when enforced)
+                        g_state.isPlaying = !strokeEnforced || strokeTracker.soundEnabled;
 
                     } else {
                         // Below adaptive mute threshold → idle timeout
                         auto idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                           now - lastMoveTime).count();
-                        g_state.isPlaying = strokeTracker.soundEnabled &&
+                        g_state.isPlaying = (!strokeEnforced || strokeTracker.soundEnabled) &&
                                             (idleMs <= Config::kIdleTimeoutMs);
                         if (g_state.isPlaying) g_state.targetSpeed = Config::kIdleSpeed;
                     }
@@ -1326,6 +1343,21 @@ int main(int /*argc*/, char** /*argv*/) {
             SDL_FColor dc = DirectionTracker::hudColor(dirTracker.dominant());
             SDL_FRect inner = {dirHud.x + 2.f, dirHud.y + 2.f, dirHud.w - 4.f, dirHud.h - 4.f};
             SDL_SetRenderDrawColorFloat(renderer, dc.r, dc.g, dc.b, dc.a);
+            SDL_RenderFillRect(renderer, &inner);
+        }
+
+        // --- Stroke mode badge (top-left) ---
+        // 🔒 Orange = stroke enforcement ON (direction matters)
+        // 🔓 Grey   = free mode (sound plays anywhere on letter)
+        {
+            SDL_SetRenderDrawColor(renderer, 30, 30, 30, 180);
+            SDL_RenderFillRect(renderer, &strokeBadge);
+            SDL_FRect inner = {strokeBadge.x+2.f, strokeBadge.y+2.f,
+                               strokeBadge.w-4.f,  strokeBadge.h-4.f};
+            if (strokeEnforced)
+                SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);   // orange = enforced
+            else
+                SDL_SetRenderDrawColor(renderer, 120, 120, 120, 255); // grey = free
             SDL_RenderFillRect(renderer, &inner);
         }
 
