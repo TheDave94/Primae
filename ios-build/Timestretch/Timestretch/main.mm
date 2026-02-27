@@ -200,18 +200,23 @@ static LetterStrokes loadStrokes(const std::string& path) {
  *  3. Within a stroke, checkpoints must be passed in order (no skipping).
  *  4. Sound is enabled only while the CURRENT expected stroke is being traced
  *     correctly (started from CP0, in the right direction).
- *  5. If the child lifts their finger mid-stroke, that stroke resets — they
- *     must start it again from CP0.
- *  6. Already-completed strokes stay complete (no regression).
+ *  5. If the child lifts their finger mid-stroke, that stroke's paint resets —
+ *     they must start it again from CP0.
+ *  6. Already-completed strokes stay painted green permanently.
+ *  7. paintedPoints accumulates finger positions in real time while active,
+ *     cleared on mid-stroke finger lift, kept on completion.
  */
 class StrokeTracker {
 public:
+    struct PaintPoint { float x, y; };   ///< Normalised screen coord [0–1]
+
     struct StrokeProgress {
         int    strokeId      = 0;
         int    nextCP        = 0;    ///< Index of next checkpoint to hit
         bool   started       = false;///< CP0 was touched — stroke legitimately begun
         bool   active        = false;///< Currently being traced (finger down)
         bool   complete      = false;///< All checkpoints passed
+        std::vector<PaintPoint> paintedPoints; ///< Trail drawn so far (cleared on reset)
     };
 
     std::vector<StrokeProgress>  progress;
@@ -234,6 +239,7 @@ public:
     void reset() {
         for (auto& p : progress) {
             p.nextCP = 0; p.started = false; p.active = false; p.complete = false;
+            p.paintedPoints.clear();
         }
         soundEnabled = false;
         wantRestart  = false;
@@ -254,22 +260,14 @@ public:
         wantRestart  = false;
         soundEnabled = false;
 
-        // ── Find the index of the current expected stroke ──────────────────
-        // It is the first stroke that is not yet complete.
-        // Earlier strokes must ALL be complete before this one is unlocked.
+        // ── Find the current expected stroke (first incomplete) ────────────
         int currentStroke = -1;
         for (int si = 0; si < (int)progress.size(); ++si) {
-            if (!progress[(size_t)si].complete) {
-                currentStroke = si;
-                break;
-            }
+            if (!progress[(size_t)si].complete) { currentStroke = si; break; }
         }
 
         // All strokes done → letter complete, keep sound on
-        if (currentStroke == -1) {
-            soundEnabled = true;
-            return;
-        }
+        if (currentStroke == -1) { soundEnabled = true; return; }
 
         auto& strk = def->strokes[(size_t)currentStroke];
         auto& prog = progress[(size_t)currentStroke];
@@ -282,12 +280,14 @@ public:
 
         if (dist <= def->checkpointRadius) {
             if (nextIdx == 0) {
-                // ✅ Child touched the correct start point of this stroke
-                prog.nextCP  = 1;
-                prog.started = true;
-                prog.active  = true;
+                // ✅ Correct start point — begin stroke
+                prog.paintedPoints.clear();       // fresh start
+                prog.paintedPoints.push_back({nx, ny});
+                prog.nextCP   = 1;
+                prog.started  = true;
+                prog.active   = true;
                 prog.complete = false;
-                wantRestart  = true;   // trigger audio restart
+                wantRestart   = true;
             } else if (prog.started) {
                 // ✅ Advancing through the stroke in correct order
                 prog.nextCP++;
@@ -295,20 +295,31 @@ public:
                 if (prog.nextCP >= (int)strk.checkpoints.size()) {
                     prog.complete = true;
                     prog.active   = false;
-                    std::cout << "✅ Stroke " << (currentStroke+1) << " complete\n";
+                    std::cout << "✅ Stroke " << (currentStroke + 1) << " complete\n";
                 }
             }
-            // ❌ nextIdx > 0 and !started → silently ignore (skipped the start)
         }
 
-        // Sound plays only while actively tracing this stroke correctly
+        // Accumulate paint trail while actively tracing
+        if (prog.active && prog.started && fingerDown) {
+            // Only add point if far enough from last to avoid overdraw
+            bool shouldAdd = prog.paintedPoints.empty();
+            if (!shouldAdd) {
+                auto& last = prog.paintedPoints.back();
+                shouldAdd = std::hypot(nx - last.x, ny - last.y) > 0.008f;
+            }
+            if (shouldAdd) prog.paintedPoints.push_back({nx, ny});
+        }
+
+        // Sound plays only while actively tracing correctly
         if ((prog.active || prog.complete) && prog.started) soundEnabled = true;
 
-        // Finger lifted mid-stroke → reset that stroke (must redo from CP0)
+        // Finger lifted mid-stroke → reset that stroke's paint and progress
         if (!fingerDown && prog.active && !prog.complete) {
-            prog.active  = false;
-            prog.started = false;
-            prog.nextCP  = 0;
+            prog.active         = false;
+            prog.started        = false;
+            prog.nextCP         = 0;
+            prog.paintedPoints.clear();   // ← erase the green trail
         }
     }
 
@@ -999,6 +1010,21 @@ private:
  * @param mask      Loaded BitmapMask.
  * @return New SDL_Texture* (caller owns it; destroy with SDL_DestroyTexture).
  */
+
+/**
+ * @brief Draw a filled circle using horizontal scan lines (SDL3, no SDL_gfx needed).
+ * @param r   SDL_Renderer
+ * @param cx  Centre x (screen pixels)
+ * @param cy  Centre y (screen pixels)
+ * @param rad Radius (screen pixels)
+ */
+static void renderFilledCircle(SDL_Renderer* r, float cx, float cy, float rad) {
+    for (float dy = -rad; dy <= rad; dy += 1.f) {
+        float dx = std::sqrt(rad * rad - dy * dy);
+        SDL_RenderLine(r, cx - dx, cy + dy, cx + dx, cy + dy);
+    }
+}
+
 static SDL_Texture* buildOutlineTexture(SDL_Renderer* renderer, const BitmapMask& mask) {
     int W = mask.getW(), H = mask.getH();
     std::vector<uint32_t> px((size_t)(W * H));
@@ -1360,6 +1386,34 @@ int main(int /*argc*/, char** /*argv*/) {
 
         // Letter outline
         SDL_RenderTexture(renderer, outlineTex, nullptr, nullptr);
+
+        // --- Green paint trail (stroke correctness feedback) ---
+        // Each completed stroke stays green permanently.
+        // The current active stroke paints in real time; lifing the finger clears it.
+        {
+            // Brush radius: ~2.8% of the shorter screen dimension feels natural
+            float brushR = std::min(ww, wh) * 0.028f;
+
+            for (auto& prog : strokeTracker.progress) {
+                if (prog.paintedPoints.empty()) continue;
+
+                // Completed strokes: solid bright green
+                // Active stroke: slightly lighter green (in-progress)
+                if (prog.complete) {
+                    SDL_SetRenderDrawColor(renderer, 60, 210, 80, 230);
+                } else if (prog.active && prog.started) {
+                    SDL_SetRenderDrawColor(renderer, 100, 230, 120, 200);
+                } else {
+                    continue; // nothing to draw
+                }
+
+                for (auto& pt : prog.paintedPoints) {
+                    float sx = pt.x * (float)ww;
+                    float sy = pt.y * (float)wh;
+                    renderFilledCircle(renderer, sx, sy, brushR);
+                }
+            }
+        }
 
         // Todo #5: ghost tracing overlay (toggled by three-finger tap)
         if (tracingMode && ghostTex)
