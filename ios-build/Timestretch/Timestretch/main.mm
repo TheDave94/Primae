@@ -194,18 +194,18 @@ static LetterStrokes loadStrokes(const std::string& path) {
  * @brief Tracks progress through the ordered checkpoints of ALL strokes.
  *
  * Rules:
- *  - All strokes are valid simultaneously (child can start any stroke).
+ *  - Each stroke must be started from checkpoint 0 (the designated start point).
+ *  - Sound is only enabled if at least one stroke was started from its first CP.
  *  - Within a stroke, checkpoints must be passed in order.
- *  - Sound is enabled iff at least one stroke is "active" (next checkpoint hit).
- *  - Touching the first checkpoint of ANY stroke restarts that stroke's progress
- *    AND triggers a sound restart if it was the globally first checkpoint.
- *  - Finger lift only resets progress for strokes that were mid-way.
+ *  - Starting a stroke (touching CP0) triggers a sound restart.
+ *  - Finger lift resets incomplete strokes (but keeps completed ones).
  */
 class StrokeTracker {
 public:
     struct StrokeProgress {
         int    strokeId      = 0;
         int    nextCP        = 0;    ///< Index of next checkpoint to hit
+        bool   started       = false;///< CP0 was touched — stroke is legitimately begun
         bool   active        = false;///< Currently being traced
         bool   complete      = false;///< All checkpoints passed
     };
@@ -228,7 +228,7 @@ public:
     }
 
     void reset() {
-        for (auto& p : progress) { p.nextCP = 0; p.active = false; p.complete = false; }
+        for (auto& p : progress) { p.nextCP = 0; p.started = false; p.active = false; p.complete = false; }
         soundEnabled = false;
         wantRestart  = false;
     }
@@ -261,34 +261,42 @@ public:
 
             if (dist <= def->checkpointRadius) {
                 if (nextIdx == 0) {
-                    // First checkpoint touched → restart sound, reset this stroke
-                    prog.nextCP  = 1;
-                    prog.active  = true;
+                    // ✅ Child touched the designated start point — legitimate start
+                    prog.nextCP   = 1;
+                    prog.started  = true;
+                    prog.active   = true;
                     prog.complete = false;
-                    wantRestart  = true;   // caller will trigger audio restart
-                } else {
+                    wantRestart   = true;  // trigger audio restart
+                } else if (prog.started) {
+                    // ✅ Only advance if this stroke was legitimately started from CP0
                     prog.nextCP++;
                     prog.active = true;
                     if (prog.nextCP >= (int)strk.checkpoints.size()) {
                         prog.complete = true;
                     }
                 }
+                // ❌ If nextIdx > 0 and !started: silently ignore — child skipped the start
             }
 
-            if (prog.active || prog.complete) soundEnabled = true;
+            // Sound only plays if the stroke was started from the correct start point
+            if ((prog.active || prog.complete) && prog.started) soundEnabled = true;
         }
 
-        // Finger lifted → deactivate incomplete strokes (but keep complete ones)
+        // Finger lifted → deactivate incomplete strokes (but keep completed ones)
         if (!fingerDown) {
             for (auto& p : progress) {
-                if (!p.complete) { p.active = false; }
+                if (!p.complete) {
+                    p.active  = false;
+                    p.started = false; // must re-start from CP0 on next touch
+                    p.nextCP  = 0;
+                }
             }
         }
     }
 
-    /// True if any stroke has been started (first CP passed but not yet complete)
+    /// True if any stroke has been legitimately started or completed
     [[nodiscard]] bool anyActive() const {
-        for (auto& p : progress) if (p.active || p.complete) return true;
+        for (auto& p : progress) if ((p.active || p.complete) && p.started) return true;
         return false;
     }
 
