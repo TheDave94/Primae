@@ -1,28 +1,26 @@
 // DrawingOverlay.mm
 // UIView overlay that draws the green tracing feedback using CAShapeLayer.
-// One CAShapeLayer per stroke — each layer lives in UIKit points, which are
-// automatically scaled by Core Animation for Retina without any manual maths.
-// Smooth path: uses midpoint quadratic Bézier curves to eliminate bumps.
+// One CAShapeLayer per stroke — lives in UIKit points, Retina-correct automatically.
+// Smooth path: midpoint quadratic Bézier with 12pt minimum point spacing.
 
 #import "DrawingOverlay.h"
 #import <QuartzCore/QuartzCore.h>
 
-static const int kMaxStrokes = 8;
+static const int   kMaxStrokes  = 8;
+static const float kBrushWidth  = 38.0f;  // pt
+static const float kMinPointDist = 12.0f; // pt — fewer points = fewer caps = smoother
 
 // ---------------------------------------------------------------------------
-// DrawingOverlayView
-// ---------------------------------------------------------------------------
 @interface DrawingOverlayView : UIView
-@property (nonatomic, strong) NSMutableArray<CAShapeLayer*>*           strokeLayers;
+@property (nonatomic, strong) NSMutableArray<CAShapeLayer*>*             strokeLayers;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<NSValue*>*>* strokePoints;
-@property (nonatomic, strong) NSMutableArray<NSNumber*>*               strokeStarted;
+@property (nonatomic, strong) NSMutableArray<NSNumber*>*                 strokeStarted;
 - (void)setupLayers;
 - (void)beginStroke:(int)idx;
 - (void)addPoint:(CGPoint)pt toStroke:(int)idx;
 - (void)completeStroke:(int)idx;
 - (void)resetStroke:(int)idx;
 - (void)resetAll;
-- (CGPathRef)smoothPathForPoints:(NSArray<NSValue*>*)pts CF_RETURNS_RETAINED;
 @end
 
 @implementation DrawingOverlayView
@@ -42,12 +40,13 @@ static const int kMaxStrokes = 8;
     _strokeLayers  = [NSMutableArray array];
     _strokePoints  = [NSMutableArray array];
     _strokeStarted = [NSMutableArray array];
-
     for (int i = 0; i < kMaxStrokes; ++i) {
         CAShapeLayer* layer = [CAShapeLayer layer];
-        layer.fillColor     = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
-        layer.strokeColor   = [UIColor clearColor].CGColor;
-        layer.lineWidth     = 0;
+        layer.fillColor     = [UIColor clearColor].CGColor;
+        layer.strokeColor   = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
+        layer.lineWidth     = kBrushWidth;
+        layer.lineCap       = kCALineCapRound;
+        layer.lineJoin      = kCALineJoinRound;
         layer.hidden        = YES;
         [self.layer addSublayer:layer];
         [_strokeLayers  addObject:layer];
@@ -61,25 +60,19 @@ static const int kMaxStrokes = 8;
                        ny * self.bounds.size.height);
 }
 
-// Midpoint quadratic Bézier smoothing — eliminates the bumpy segment look.
-// With 1 point: just a dot (moveToPoint only, no line).
-// With 2 points: straight line.
-// With 3+: smooth curve through midpoints with quadratic curves.
+// Midpoint quadratic Bézier — smooth curve through consecutive points.
 - (CGPathRef)smoothPathForPoints:(NSArray<NSValue*>*)pts CF_RETURNS_RETAINED {
     CGMutablePathRef path = CGPathCreateMutable();
     NSUInteger n = pts.count;
     if (n == 0) return path;
-
     CGPoint p0 = [pts[0] CGPointValue];
     CGPathMoveToPoint(path, nil, p0.x, p0.y);
-
     if (n == 1) return path;
     if (n == 2) {
         CGPoint p1 = [pts[1] CGPointValue];
         CGPathAddLineToPoint(path, nil, p1.x, p1.y);
         return path;
     }
-
     for (NSUInteger i = 0; i < n - 1; ++i) {
         CGPoint curr = [pts[i]     CGPointValue];
         CGPoint next = [pts[i + 1] CGPointValue];
@@ -87,7 +80,6 @@ static const int kMaxStrokes = 8;
                                    (curr.y + next.y) * 0.5f);
         CGPathAddQuadCurveToPoint(path, nil, curr.x, curr.y, mid.x, mid.y);
     }
-    // Final segment to last point
     CGPoint last = [pts[n-1] CGPointValue];
     CGPathAddLineToPoint(path, nil, last.x, last.y);
     return path;
@@ -95,24 +87,12 @@ static const int kMaxStrokes = 8;
 
 - (void)updateLayer:(int)idx {
     NSArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
-    // Build the smooth centre-line path
-    CGPathRef centre = [self smoothPathForPoints:pts];
-    // Expand it into a filled ribbon — this eliminates all cap/join scalloping
-    // because the result is a single filled shape with no stroke endpoints.
-    CGPathRef ribbon = CGPathCreateCopyByStrokingPath(
-        centre,
-        nil,           // transform
-        38.0,          // brush width in points
-        kCGLineCapRound,
-        kCGLineJoinRound,
-        1.0            // miter limit (unused for round join)
-    );
+    CGPathRef smooth = [self smoothPathForPoints:pts];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _strokeLayers[(NSUInteger)idx].path = ribbon;
+    _strokeLayers[(NSUInteger)idx].path = smooth;
     [CATransaction commit];
-    CGPathRelease(ribbon);
-    CGPathRelease(centre);
+    CGPathRelease(smooth);
 }
 
 - (void)beginStroke:(int)idx {
@@ -121,10 +101,9 @@ static const int kMaxStrokes = 8;
     CAShapeLayer* layer = _strokeLayers[(NSUInteger)idx];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    layer.path      = nil;
-    layer.hidden    = NO;
-    // In-progress: slightly lighter green
-    layer.fillColor = [UIColor colorWithRed:0.39 green:0.90 blue:0.47 alpha:0.85].CGColor;
+    layer.path        = nil;
+    layer.hidden      = NO;
+    layer.strokeColor = [UIColor colorWithRed:0.39 green:0.90 blue:0.47 alpha:0.85].CGColor;
     [CATransaction commit];
     _strokeStarted[(NSUInteger)idx] = @YES;
 }
@@ -132,12 +111,10 @@ static const int kMaxStrokes = 8;
 - (void)addPoint:(CGPoint)pt toStroke:(int)idx {
     if (idx < 0 || idx >= kMaxStrokes) return;
     if (![_strokeStarted[(NSUInteger)idx] boolValue]) return;
-    // Deduplicate: skip if too close to last point (< 8pt = smoother path, fewer segments)
     NSMutableArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
     if (pts.count > 0) {
         CGPoint last = [pts.lastObject CGPointValue];
-        CGFloat d = hypot(pt.x - last.x, pt.y - last.y);
-        if (d < 8.0) return;
+        if (hypot(pt.x - last.x, pt.y - last.y) < kMinPointDist) return;
     }
     [pts addObject:[NSValue valueWithCGPoint:pt]];
     [self updateLayer:idx];
@@ -147,8 +124,7 @@ static const int kMaxStrokes = 8;
     if (idx < 0 || idx >= kMaxStrokes) return;
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    // Solid completed green
-    _strokeLayers[(NSUInteger)idx].fillColor =
+    _strokeLayers[(NSUInteger)idx].strokeColor =
         [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:1.0].CGColor;
     _strokeLayers[(NSUInteger)idx].hidden = NO;
     [CATransaction commit];
