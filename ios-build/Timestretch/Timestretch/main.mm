@@ -370,8 +370,14 @@ namespace Config {
     // --- Playback gate timers ---
     /// Milliseconds of stillness inside the mask before audio mutes (Todo #7 adapts this)
     constexpr int kIdleTimeoutMs         = 800;
-    /// Grace period in ms after leaving the mask before audio stops
-    constexpr int kExitTimeoutMs         = 400;
+    /// Grace period in ms after leaving the mask before audio stops — MINIMUM (fast writers)
+    constexpr int kExitTimeoutMsMin      = 500;
+    /// Grace period — MAXIMUM (slow writers / between strokes)
+    constexpr int kExitTimeoutMsMax      = 3000;
+    /// Velocity (px/frame) considered "fast" — maps to kExitTimeoutMsMin
+    constexpr float kExitVelFast         = 25.0f;
+    /// Velocity (px/frame) considered "slow" — maps to kExitTimeoutMsMax
+    constexpr float kExitVelSlow         = 4.0f;
     /// Minimum movement per frame to register as "active" stroke (pixels in image space)
     constexpr float kMoveThreshold       = 0.5f;
 
@@ -1098,6 +1104,7 @@ int main(int /*argc*/, char** /*argv*/) {
     auto lastMoveTime  = std::chrono::steady_clock::now() - std::chrono::seconds(10);
     auto lastValidTime = std::chrono::steady_clock::now() - std::chrono::seconds(10);
     auto lastSoundTime = std::chrono::steady_clock::now();  ///< Todo #8 pause clock
+    int  adaptiveExitMs = Config::kExitTimeoutMsMin;        ///< Updated on each finger-lift
 
     DirectionTracker dirTracker;
     VelocityStats    velStats;
@@ -1222,6 +1229,22 @@ int main(int /*argc*/, char** /*argv*/) {
                 }
 
                 if (activeFingers > 0) activeFingers--;
+
+                // On single-finger lift: compute adaptive exit timeout from recent velocity.
+                // Slow writer → long grace (time to reposition for next stroke).
+                // Fast writer → short grace (they move quickly anyway).
+                if (activeFingers == 0) {
+                    float v = velSmooth.empty() ? Config::kExitVelFast
+                        : std::accumulate(velSmooth.begin(), velSmooth.end(), 0.f)
+                          / (float)velSmooth.size();
+                    float t = (v - Config::kExitVelSlow)
+                            / (Config::kExitVelFast - Config::kExitVelSlow);
+                    t = std::max(0.f, std::min(1.f, t));
+                    adaptiveExitMs = (int)(Config::kExitTimeoutMsMax
+                        + t * (Config::kExitTimeoutMsMin - Config::kExitTimeoutMsMax));
+                    std::cout << "⏱ adaptiveExitMs=" << adaptiveExitMs
+                              << " (vel=" << v << ")\n";
+                }
                 break;
 
             default: break;
@@ -1330,11 +1353,12 @@ int main(int /*argc*/, char** /*argv*/) {
                     }
 
                 } else {
-                    // Outside the letter mask — apply exit grace period
-                    // Only keep playing if stroke direction was correct
+                    // Outside the letter mask — apply adaptive exit grace period.
+                    // Grace period was set on finger-lift based on recent writing speed:
+                    // slow writers get more time to reposition for the next stroke.
                     auto exitMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                       now - lastValidTime).count();
-                    if (exitMs < Config::kExitTimeoutMs && strokeTracker.soundEnabled) {
+                    if (exitMs < adaptiveExitMs && strokeTracker.soundEnabled) {
                         g_state.targetSpeed = Config::kIdleSpeed;
                         g_state.isPlaying   = true;
                     } else {
