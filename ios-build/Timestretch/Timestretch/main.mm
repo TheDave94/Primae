@@ -145,7 +145,7 @@ static LetterStrokes loadStrokes(const std::string& path) {
         // id
         auto idPos = src.find("\"id\"", pos);
         auto cpPos = src.find("\"checkpoints\"", pos);
-        auto nextStroke = src.find("\"id\"", idPos+1); // find next stroke boundary
+        auto nextStroke [[maybe_unused]] = src.find("\"id\"", idPos+1); // find next stroke boundary
 
         if (idPos == std::string::npos || cpPos == std::string::npos) break;
         // Ensure this id belongs to current stroke (before next checkpoints block)
@@ -1074,6 +1074,14 @@ int main(int /*argc*/, char** /*argv*/) {
     // Todo #5: tracing ghost toggle (3-finger tap)
     bool tracingMode = false;
 
+    // Stroke direction enforcement toggle (4-finger tap)
+    // true  = sound only plays when writing in correct direction (Option B/C)
+    // false = sound plays anywhere on the letter (free mode)
+    bool strokeEnforced = true;
+
+    // HUD: stroke mode indicator (top-left, small badge)
+    SDL_FRect strokeBadge = {8.f, 10.f, 28.f, 28.f};
+
     // HUD: direction indicator rectangle (bottom-left)
     SDL_FRect dirHud = {8.f, 0.f, 120.f, 28.f};
 
@@ -1110,6 +1118,13 @@ int main(int /*argc*/, char** /*argv*/) {
                 else if (activeFingers == 3) {
                     // Todo #5: three-finger tap toggles the ghost tracing overlay
                     tracingMode = !tracingMode;
+                }
+                else if (activeFingers == 4) {
+                    // Four-finger tap: toggle stroke direction enforcement
+                    strokeEnforced = !strokeEnforced;
+                    strokeTracker.reset();
+                    std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
+                                                 : "🔓 Stroke enforcement OFF (free mode)\n");
                 }
                 break;
 
@@ -1248,14 +1263,14 @@ int main(int /*argc*/, char** /*argv*/) {
                         g_state.panLeft  = l;
                         g_state.panRight = r;
 
-                        // Gate audio by stroke correctness
-                        g_state.isPlaying = strokeTracker.soundEnabled;
+                        // Gate audio by stroke correctness (bypass if enforcement is off)
+                        g_state.isPlaying = !strokeEnforced || strokeTracker.soundEnabled;
 
                     } else {
                         // Below adaptive mute threshold → idle timeout
                         auto idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                           now - lastMoveTime).count();
-                        g_state.isPlaying = strokeTracker.soundEnabled &&
+                        g_state.isPlaying = (!strokeEnforced || strokeTracker.soundEnabled) &&
                                             (idleMs <= Config::kIdleTimeoutMs);
                         if (g_state.isPlaying) g_state.targetSpeed = Config::kIdleSpeed;
                     }
@@ -1333,6 +1348,14 @@ int main(int /*argc*/, char** /*argv*/) {
         else
             SDL_SetRenderDrawColor(renderer, 220,   0,   0, 255);  // red
         SDL_RenderFillRect(renderer, &statusDot);
+
+        // --- Stroke enforcement badge (top-left) ---
+        // Orange = enforcement ON, Grey = free mode
+        if (strokeEnforced)
+            SDL_SetRenderDrawColor(renderer, 255, 140,   0, 220);  // orange
+        else
+            SDL_SetRenderDrawColor(renderer,  90,  90,  90, 180);  // grey
+        SDL_RenderFillRect(renderer, &strokeBadge);
 
         // --- Stroke progress bar (bottom, full width) ---
         // Shows overall checkpoint completion: empty = not started, full = letter complete
