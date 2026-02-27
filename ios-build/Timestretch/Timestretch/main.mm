@@ -908,10 +908,12 @@ int main(int /*argc*/, char** /*argv*/) {
                         g_state.targetPitch = std::pow(2.f, semitones / 12.f);
 
                         // --- Todo #6: Stereo panning from horizontal direction ---
-                        float hBias = dirTracker.horizontalBias(); // [-1, +1]
-                        float angle = (hBias * Config::kPanSpread + 1.f) * (float)M_PI / 4.f;
-                        g_state.panLeft  = std::cos(angle);
-                        g_state.panRight = std::sin(angle);
+                        float hBias = std::max(-1.f, std::min(1.f, dirTracker.horizontalBias())); // clamp just in case
+                        // Linear pan: range 0.35 (full L) <-> 0.65 (full R), center is 0.5
+                        float l = 0.5f - 0.15f * hBias;
+                        float r = 0.5f + 0.15f * hBias;
+                        g_state.panLeft  = l;
+                        g_state.panRight = r;
 
                         g_state.isPlaying = true;
 
