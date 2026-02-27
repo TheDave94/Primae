@@ -1,0 +1,34 @@
+{
+  "letter": "F",
+  "checkpointRadius": 0.06,
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Vertical stroke: top to bottom",
+      "checkpoints": [
+        {"x": 0.46, "y": 0.27},
+        {"x": 0.46, "y": 0.42},
+        {"x": 0.46, "y": 0.57},
+        {"x": 0.46, "y": 0.72}
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Top horizontal bar: left to right",
+      "checkpoints": [
+        {"x": 0.42, "y": 0.28},
+        {"x": 0.52, "y": 0.28},
+        {"x": 0.62, "y": 0.28}
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "Middle horizontal bar: left to right",
+      "checkpoints": [
+        {"x": 0.42, "y": 0.48},
+        {"x": 0.52, "y": 0.48},
+        {"x": 0.60, "y": 0.48}
+      ]
+    }
+  ]
+}

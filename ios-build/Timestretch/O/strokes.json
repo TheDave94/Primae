@@ -1,0 +1,21 @@
+{
+  "letter": "O",
+  "checkpointRadius": 0.06,
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Full clockwise oval: start at top, go right, down, left, back up",
+      "checkpoints": [
+        {"x": 0.49, "y": 0.27},
+        {"x": 0.62, "y": 0.35},
+        {"x": 0.65, "y": 0.50},
+        {"x": 0.62, "y": 0.65},
+        {"x": 0.49, "y": 0.73},
+        {"x": 0.37, "y": 0.65},
+        {"x": 0.34, "y": 0.50},
+        {"x": 0.37, "y": 0.35},
+        {"x": 0.49, "y": 0.27}
+      ]
+    }
+  ]
+}

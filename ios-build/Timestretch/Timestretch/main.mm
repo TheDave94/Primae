@@ -55,6 +55,258 @@
 namespace fs = std::filesystem;
 
 // ============================================================================
+// Stroke checkpoint system  (Option B)
+// ============================================================================
+
+/// One checkpoint: normalised image-space coordinate [0–1]
+struct Checkpoint {
+    float x, y;
+};
+
+/// One stroke: ordered sequence of checkpoints the finger must pass through
+struct StrokeDef {
+    int id;
+    std::vector<Checkpoint> checkpoints;
+};
+
+/// Full letter stroke definition loaded from strokes.json
+struct LetterStrokes {
+    std::string letter;
+    float checkpointRadius = 0.06f;   ///< Hit radius in normalised units
+    std::vector<StrokeDef> strokes;
+    bool valid = false;
+};
+
+/**
+ * @brief Minimal JSON parser for strokes.json (no external dependencies).
+ *
+ * Parses a subset of JSON sufficient for our fixed schema:
+ * { "letter": "X", "checkpointRadius": 0.06, "strokes": [ { "id": 1,
+ *   "checkpoints": [ {"x": 0.5, "y": 0.3}, ... ] }, ... ] }
+ */
+static LetterStrokes loadStrokes(const std::string& path) {
+    LetterStrokes ls;
+    std::ifstream f(path);
+    if (!f) return ls;
+
+    std::string src((std::istreambuf_iterator<char>(f)),
+                     std::istreambuf_iterator<char>());
+
+    // Tiny helpers
+    auto skipWS = [&](size_t i) {
+        while (i < src.size() && (src[i]==' '||src[i]=='\n'||src[i]=='\r'||src[i]=='\t')) ++i;
+        return i;
+    };
+    auto readStr = [&](size_t i) -> std::pair<std::string,size_t> {
+        i = skipWS(i);
+        if (i >= src.size() || src[i] != '"') return {"", i};
+        ++i;
+        std::string out;
+        while (i < src.size() && src[i] != '"') out += src[i++];
+        return {out, i+1};
+    };
+    auto readNum = [&](size_t i) -> std::pair<float,size_t> {
+        i = skipWS(i);
+        size_t j = i;
+        while (j < src.size() && (std::isdigit(src[j]) || src[j]=='-' || src[j]=='.')) ++j;
+        float v = 0;
+        try { v = std::stof(src.substr(i, j-i)); } catch(...) {}
+        return {v, j};
+    };
+
+    // Parse letter
+    auto pos = src.find("\"letter\"");
+    if (pos != std::string::npos) {
+        pos = src.find(':', pos) + 1;
+        auto [s, _] = readStr(skipWS(pos));
+        ls.letter = s;
+    }
+
+    // Parse checkpointRadius
+    pos = src.find("\"checkpointRadius\"");
+    if (pos != std::string::npos) {
+        pos = src.find(':', pos) + 1;
+        auto [v, _] = readNum(skipWS(pos));
+        ls.checkpointRadius = v;
+    }
+
+    // Parse strokes array
+    pos = src.find("\"strokes\"");
+    if (pos == std::string::npos) return ls;
+    pos = src.find('[', pos);
+    if (pos == std::string::npos) return ls;
+
+    while (pos < src.size()) {
+        // Find next stroke object
+        pos = src.find('{', pos);
+        if (pos == std::string::npos) break;
+
+        StrokeDef stroke;
+        // id
+        auto idPos = src.find("\"id\"", pos);
+        auto cpPos = src.find("\"checkpoints\"", pos);
+        auto nextStroke = src.find("\"id\"", idPos+1); // find next stroke boundary
+
+        if (idPos == std::string::npos || cpPos == std::string::npos) break;
+        // Ensure this id belongs to current stroke (before next checkpoints block)
+        {
+            auto [v, _] = readNum(src.find(':', idPos) + 1);
+            stroke.id = (int)v;
+        }
+
+        // Parse checkpoints array for this stroke
+        cpPos = src.find('[', cpPos);
+        size_t cpEnd = src.find(']', cpPos);
+        if (cpPos == std::string::npos || cpEnd == std::string::npos) break;
+
+        size_t ci = cpPos + 1;
+        while (ci < cpEnd) {
+            ci = src.find('{', ci);
+            if (ci == std::string::npos || ci >= cpEnd) break;
+            Checkpoint cp;
+            auto xp = src.find("\"x\"", ci);
+            auto yp = src.find("\"y\"", ci);
+            auto nextCP = src.find('}', ci);
+            if (xp == std::string::npos || xp > nextCP) { ci = nextCP+1; continue; }
+            { auto [v,_] = readNum(src.find(':', xp)+1); cp.x = v; }
+            if (yp != std::string::npos && yp < nextCP) {
+                auto [v,_] = readNum(src.find(':', yp)+1); cp.y = v;
+            }
+            stroke.checkpoints.push_back(cp);
+            ci = nextCP + 1;
+        }
+
+        if (!stroke.checkpoints.empty())
+            ls.strokes.push_back(stroke);
+
+        pos = cpEnd + 1;
+        // Stop after all strokes (closing bracket of strokes array)
+        auto arrEnd = src.find(']', pos);
+        auto nextObj = src.find('{', pos);
+        if (nextObj == std::string::npos || nextObj > arrEnd) break;
+    }
+
+    ls.valid = !ls.strokes.empty();
+    return ls;
+}
+
+/**
+ * @brief Tracks progress through the ordered checkpoints of ALL strokes.
+ *
+ * Rules:
+ *  - All strokes are valid simultaneously (child can start any stroke).
+ *  - Within a stroke, checkpoints must be passed in order.
+ *  - Sound is enabled iff at least one stroke is "active" (next checkpoint hit).
+ *  - Touching the first checkpoint of ANY stroke restarts that stroke's progress
+ *    AND triggers a sound restart if it was the globally first checkpoint.
+ *  - Finger lift only resets progress for strokes that were mid-way.
+ */
+class StrokeTracker {
+public:
+    struct StrokeProgress {
+        int    strokeId      = 0;
+        int    nextCP        = 0;    ///< Index of next checkpoint to hit
+        bool   active        = false;///< Currently being traced
+        bool   complete      = false;///< All checkpoints passed
+    };
+
+    std::vector<StrokeProgress>  progress;
+    const LetterStrokes*         def      = nullptr;
+    bool                         soundEnabled = false;
+    bool                         wantRestart  = false; ///< Set when first CP touched
+
+    void load(const LetterStrokes& ls) {
+        def = &ls;
+        progress.clear();
+        for (auto& s : ls.strokes) {
+            StrokeProgress p;
+            p.strokeId = s.id;
+            progress.push_back(p);
+        }
+        soundEnabled = false;
+        wantRestart  = false;
+    }
+
+    void reset() {
+        for (auto& p : progress) { p.nextCP = 0; p.active = false; p.complete = false; }
+        soundEnabled = false;
+        wantRestart  = false;
+    }
+
+    /**
+     * @brief Update tracker with current finger position (normalised [0-1]).
+     * @param nx  Normalised x = imgX / maskW
+     * @param ny  Normalised y = imgY / maskH
+     * @param fingerDown  Whether a finger is currently touching the screen
+     */
+    void update(float nx, float ny, bool fingerDown) {
+        if (!def || def->strokes.empty()) {
+            soundEnabled = true; // no strokes defined → always allow sound
+            return;
+        }
+
+        wantRestart = false;
+        soundEnabled = false;
+
+        for (size_t si = 0; si < def->strokes.size(); ++si) {
+            auto& strk  = def->strokes[si];
+            auto& prog  = progress[si];
+
+            if (prog.complete) { soundEnabled = true; continue; }
+            if (strk.checkpoints.empty()) continue;
+
+            int  nextIdx = prog.nextCP;
+            auto& target = strk.checkpoints[(size_t)nextIdx];
+            float dist   = std::hypot(nx - target.x, ny - target.y);
+
+            if (dist <= def->checkpointRadius) {
+                if (nextIdx == 0) {
+                    // First checkpoint touched → restart sound, reset this stroke
+                    prog.nextCP  = 1;
+                    prog.active  = true;
+                    prog.complete = false;
+                    wantRestart  = true;   // caller will trigger audio restart
+                } else {
+                    prog.nextCP++;
+                    prog.active = true;
+                    if (prog.nextCP >= (int)strk.checkpoints.size()) {
+                        prog.complete = true;
+                    }
+                }
+            }
+
+            if (prog.active || prog.complete) soundEnabled = true;
+        }
+
+        // Finger lifted → deactivate incomplete strokes (but keep complete ones)
+        if (!fingerDown) {
+            for (auto& p : progress) {
+                if (!p.complete) { p.active = false; }
+            }
+        }
+    }
+
+    /// True if any stroke has been started (first CP passed but not yet complete)
+    [[nodiscard]] bool anyActive() const {
+        for (auto& p : progress) if (p.active || p.complete) return true;
+        return false;
+    }
+
+    /// Returns 0.0–1.0 overall progress across all strokes
+    [[nodiscard]] float overallProgress() const {
+        if (!def || def->strokes.empty()) return 1.f;
+        int total = 0, done = 0;
+        for (size_t si = 0; si < def->strokes.size(); ++si) {
+            total += (int)def->strokes[si].checkpoints.size();
+            done  += progress[si].complete
+                ? (int)def->strokes[si].checkpoints.size()
+                : progress[si].nextCP;
+        }
+        return total > 0 ? (float)done / (float)total : 0.f;
+    }
+};
+
+// ============================================================================
 // Configuration — all magic numbers live here
 // ============================================================================
 namespace Config {
@@ -142,6 +394,7 @@ struct LetterFolder {
     std::string name;                      ///< Folder / letter name (e.g. "A")
     std::string path;                      ///< Absolute path to the folder
     std::string pbmPath;                   ///< Path to the P4 binary PBM mask file
+    std::string strokesPath;               ///< Path to strokes.json (may be empty)
     std::vector<std::string> audioFiles;   ///< Sorted list of audio file paths
     int currentAudioIdx = 0;              ///< Currently selected audio variant index
 };
@@ -196,6 +449,8 @@ public:
                     if (ext == ".pbm") {
                         folder.pbmPath = sub.path().string();
                         hasPBM = true;
+                    } else if (sub.path().filename().string() == "strokes.json") {
+                        folder.strokesPath = sub.path().string();
                     } else {
                         for (const auto& ae : audExts)
                             if (ext == ae) { folder.audioFiles.push_back(sub.path().string()); break; }
@@ -797,6 +1052,18 @@ int main(int /*argc*/, char** /*argv*/) {
     DirectionTracker dirTracker;
     VelocityStats    velStats;
 
+    // --- Stroke tracker ---
+    LetterStrokes   currentStrokes = loadStrokes(browser.current().strokesPath);
+    StrokeTracker   strokeTracker;
+    if (currentStrokes.valid) strokeTracker.load(currentStrokes);
+
+    /// Helper: reload strokes for current letter
+    auto reloadStrokes = [&]() {
+        currentStrokes = loadStrokes(browser.current().strokesPath);
+        strokeTracker.reset();
+        if (currentStrokes.valid) strokeTracker.load(currentStrokes);
+    };
+
     // Small smoothing buffer for speed mapping (separate from velStats adaptive window)
     std::deque<float> velSmooth;
 
@@ -861,6 +1128,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         rebuildTextures();
                         audio.loadFile(browser.currentAudioPath());
                         dirTracker.reset();
+                        reloadStrokes();
                         assetsChanged = true;
 
                     } else if (std::abs(dy) > Config::kSwipeThreshold) {
@@ -872,16 +1140,13 @@ int main(int /*argc*/, char** /*argv*/) {
                     }
 
                     // Todo #1: two-finger double-tap → random letter
-                    // (SDL_FINGER_DOWN fires twice in quick succession;
-                    //  detect via tfinger.pressure == 0 on some platforms,
-                    //  or use a separate tap counter — simplified here as
-                    //  a no-horizontal/no-vertical gesture that moved less than 3%)
                     if (std::abs(dx) < 0.03f && std::abs(dy) < 0.03f) {
                         browser.pickRandom(rng);
                         mask.load(browser.current().pbmPath);
                         rebuildTextures();
                         audio.loadFile(browser.currentAudioPath());
                         dirTracker.reset();
+                        reloadStrokes();
                         assetsChanged = true;
                     }
 
@@ -938,15 +1203,25 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 auto now = std::chrono::steady_clock::now();
 
+                // --- Stroke tracking: update with normalised coords ---
+                float normX = (mask.getW() > 0) ? imgX / (float)mask.getW() : 0.f;
+                float normY = (mask.getH() > 0) ? imgY / (float)mask.getH() : 0.f;
+                strokeTracker.update(normX, normY, activeFingers == 1);
+
+                // Restart sound if first checkpoint was just touched
+                if (strokeTracker.wantRestart) {
+                    g_state.restart = true;
+                    lastSoundTime = now;
+                }
+
                 if (mask.isHit(imgX, imgY)) {
                     lastValidTime = now;
 
                     if (vel > velStats.muteThreshold()) {  // Todo #7: adaptive gate
                         lastMoveTime  = now;
-                        lastSoundTime = now; // finger is active, reset pause clock
+                        lastSoundTime = now;
 
                         // --- Todo #2: Speed normalisation against baseline ---
-                        // Use smoothed velocity to avoid rapid speed jitter → crackling.
                         float normVel = smoothVel / Config::kBaselineVelocity;
                         float lo = Config::kLowVel  / Config::kBaselineVelocity;
                         float hi = Config::kHighVel / Config::kBaselineVelocity;
@@ -961,28 +1236,27 @@ int main(int /*argc*/, char** /*argv*/) {
                         g_state.targetSpeed = speed;
 
                         // --- Todo #6: Pitch shift anti-correlated with speed ---
-                        // Fast stroke (speed < 1) → pitch slightly down.
-                        // Slow stroke (speed > 1) → pitch slightly up.
                         float normSpeed = (speed - Config::kMinSpeed)
-                                        / (Config::kMaxSpeed - Config::kMinSpeed); // [0,1]
+                                        / (Config::kMaxSpeed - Config::kMinSpeed);
                         float semitones = Config::kMaxPitchSemitones * (1.f - normSpeed * 2.f);
                         g_state.targetPitch = std::pow(2.f, semitones / 12.f);
 
-                        // --- Todo #6: Stereo panning from horizontal direction ---
-                        float hBias = std::max(-1.f, std::min(1.f, dirTracker.horizontalBias())); // clamp just in case
-                        // Linear pan: range 0.35 (full L) <-> 0.65 (full R), center is 0.5
+                        // --- Todo #6: Stereo panning ---
+                        float hBias = std::max(-1.f, std::min(1.f, dirTracker.horizontalBias()));
                         float l = 0.5f - 0.15f * hBias;
                         float r = 0.5f + 0.15f * hBias;
                         g_state.panLeft  = l;
                         g_state.panRight = r;
 
-                        g_state.isPlaying = true;
+                        // Gate audio by stroke correctness
+                        g_state.isPlaying = strokeTracker.soundEnabled;
 
                     } else {
-                        // Moving but below the adaptive mute threshold → idle timeout
+                        // Below adaptive mute threshold → idle timeout
                         auto idleMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                           now - lastMoveTime).count();
-                        g_state.isPlaying = (idleMs <= Config::kIdleTimeoutMs);
+                        g_state.isPlaying = strokeTracker.soundEnabled &&
+                                            (idleMs <= Config::kIdleTimeoutMs);
                         if (g_state.isPlaying) g_state.targetSpeed = Config::kIdleSpeed;
                     }
 
@@ -1047,15 +1321,31 @@ int main(int /*argc*/, char** /*argv*/) {
         }
 
         // --- Playback status dot (top-right) ---
-        // Green = playing, Blue = navigation mode, Red = idle
+        // Green = playing, Blue = navigation mode, Red = idle/wrong direction
         statusDot.x = (float)ww - 40.f;
         if (activeFingers >= 2)
             SDL_SetRenderDrawColor(renderer, 0, 120, 255, 255);  // blue
         else if (g_state.isPlaying)
             SDL_SetRenderDrawColor(renderer, 0,   220,   0, 255);  // green
+        else if (strokeTracker.anyActive())
+            SDL_SetRenderDrawColor(renderer, 255, 200,   0, 255);  // yellow = on letter, wrong direction
         else
             SDL_SetRenderDrawColor(renderer, 220,   0,   0, 255);  // red
         SDL_RenderFillRect(renderer, &statusDot);
+
+        // --- Stroke progress bar (bottom, full width) ---
+        // Shows overall checkpoint completion: empty = not started, full = letter complete
+        {
+            float prog = strokeTracker.overallProgress();
+            SDL_FRect barBg  = {0.f, (float)wh - 8.f, (float)ww, 8.f};
+            SDL_FRect barFg  = {0.f, (float)wh - 8.f, (float)ww * prog, 8.f};
+            SDL_SetRenderDrawColor(renderer, 60, 60, 60, 180);
+            SDL_RenderFillRect(renderer, &barBg);
+            if (prog > 0.01f) {
+                SDL_SetRenderDrawColor(renderer, 0, 210, 80, 220);
+                SDL_RenderFillRect(renderer, &barFg);
+            }
+        }
 
         SDL_RenderPresent(renderer);
         SDL_Delay(16); // ~60 fps
