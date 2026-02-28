@@ -120,17 +120,23 @@ static LetterStrokes loadStrokes(const std::string& path) {
     // Parse letter
     auto pos = src.find("\"letter\"");
     if (pos != std::string::npos) {
-        pos = src.find(':', pos) + 1;
-        auto [s, _] = readStr(skipWS(pos));
-        ls.letter = s;
+        auto colonPos = src.find(':', pos);
+        if (colonPos != std::string::npos) {
+            pos = colonPos + 1;
+            auto [s, _] = readStr(skipWS(pos));
+            ls.letter = s;
+        }
     }
 
     // Parse checkpointRadius
     pos = src.find("\"checkpointRadius\"");
     if (pos != std::string::npos) {
-        pos = src.find(':', pos) + 1;
-        auto [v, _] = readNum(skipWS(pos));
-        ls.checkpointRadius = v;
+        auto colonPos = src.find(':', pos);
+        if (colonPos != std::string::npos) {
+            pos = colonPos + 1;
+            auto [v, _] = readNum(skipWS(pos));
+            ls.checkpointRadius = v;
+        }
     }
 
     // Parse strokes array
@@ -153,8 +159,10 @@ static LetterStrokes loadStrokes(const std::string& path) {
         if (idPos == std::string::npos || cpPos == std::string::npos) break;
         // Ensure this id belongs to current stroke (before next checkpoints block)
         {
-            auto [v, _] = readNum(src.find(':', idPos) + 1);
-            stroke.id = (int)v;
+            auto idColonPos = src.find(':', idPos);
+            if (idColonPos == std::string::npos) break;
+            auto [v, _] = readNum(idColonPos + 1);
+            stroke.id = static_cast<int>(v);
         }
 
         // Parse checkpoints array for this stroke
@@ -171,9 +179,17 @@ static LetterStrokes loadStrokes(const std::string& path) {
             auto yp = src.find("\"y\"", ci);
             auto nextCP = src.find('}', ci);
             if (xp == std::string::npos || xp > nextCP) { ci = nextCP+1; continue; }
-            { auto [v,_] = readNum(src.find(':', xp)+1); cp.x = v; }
+            {
+                auto xColonPos = src.find(':', xp);
+                if (xColonPos != std::string::npos) {
+                    auto [v,_] = readNum(xColonPos + 1); cp.x = v;
+                }
+            }
             if (yp != std::string::npos && yp < nextCP) {
-                auto [v,_] = readNum(src.find(':', yp)+1); cp.y = v;
+                auto yColonPos = src.find(':', yp);
+                if (yColonPos != std::string::npos) {
+                    auto [v,_] = readNum(yColonPos + 1); cp.y = v;
+                }
             }
             stroke.checkpoints.push_back(cp);
             ci = nextCP + 1;
@@ -211,6 +227,10 @@ public:
     };
 
     std::vector<StrokeProgress>  progress;
+    // SAFETY: def is a raw non-owning pointer to the caller's LetterStrokes.
+    // It dangles between currentStrokes = loadStrokes(...) and strokeTracker.load(currentStrokes).
+    // Always call strokeTracker.load() immediately after assigning currentStrokes.
+    // See reloadStrokes() lambda which enforces this invariant.
     const LetterStrokes*         def          = nullptr;
     bool                         soundEnabled = false;
     bool                         wantRestart  = false;
@@ -475,15 +495,21 @@ public:
         folders.clear();
 
         if (rootPath.empty()) {
-            const char* base = SDL_GetBasePath();
+            char* base = SDL_GetBasePath();
             rootPath = base ? std::string(base) : ".";
+            SDL_free(base);  // SDL3: caller must free with SDL_free()
         }
 
         const std::vector<std::string> audExts = {".wav", ".mp3", ".flac", ".ogg", ".aiff"};
+        const auto rootCanon = fs::weakly_canonical(rootPath);
 
         try {
             for (const auto& entry : fs::directory_iterator(rootPath)) {
                 if (!entry.is_directory()) continue;
+
+                // Guard against path traversal (e.g. symlinks or "../" names)
+                auto entryCanon = fs::weakly_canonical(entry.path());
+                if (entryCanon.string().rfind(rootCanon.string(), 0) != 0) continue;
 
                 LetterFolder folder;
                 folder.path = entry.path().string();
@@ -515,8 +541,10 @@ public:
             }
             std::sort(folders.begin(), folders.end(),
                       [](const LetterFolder& a, const LetterFolder& b){ return a.name < b.name; });
-        } catch (...) {
-            std::cerr << "⚠️  Asset scan error.\n";
+        } catch (const fs::filesystem_error& e) {
+            std::cerr << "⚠️  Asset scan error: " << e.what() << " (" << e.path1() << ")\n";
+        } catch (const std::exception& e) {
+            std::cerr << "⚠️  Asset scan unexpected error: " << e.what() << "\n";
         }
     }
 
@@ -754,8 +782,10 @@ class AudioEngine {
     std::unique_ptr<RubberBand::RubberBandStretcher> stretcher;
 
     std::vector<float>              inBuf;
-    std::vector<std::vector<float>> chanBufs;
+    std::vector<std::vector<float>> inputBufs;   ///< De-interleaved input to RubberBand
+    std::vector<std::vector<float>> outputBufs;  ///< Retrieved output from RubberBand (separate!)
     std::vector<float*>             inPtrs, outPtrs;
+    std::vector<float>              callbackBuf; ///< Pre-allocated output buffer — no heap alloc in callback
 
     float currentSpeed = 1.0f;
     float currentPitch = 1.0f;
@@ -791,9 +821,15 @@ public:
      */
     void loadFile(const std::string& path) {
         if (path.empty()) return;
+
+        // Destroy the stream FIRST (before taking the lock) so the audio callback
+        // is guaranteed to have finished before we touch snd/stretcher/bufs.
+        // SDL_DestroyAudioStream is synchronous on SDL3: it blocks until the last
+        // callback has returned.  Only then do we take the lock and swap buffers.
+        stop();
+
         std::lock_guard<std::mutex> lock(loadMutex);
 
-        stop();
         if (snd) { sf_close(snd); snd = nullptr; }
 
         snd = sf_open(path.c_str(), SFM_READ, &sfInfo);
@@ -811,14 +847,21 @@ public:
         stretcher = std::make_unique<RBS>(sfInfo.samplerate, sfInfo.channels, opts);
 
         inBuf.resize(Config::kBufFrames * (size_t)sfInfo.channels * Config::kInputMultiplier);
-        chanBufs.resize((size_t)sfInfo.channels);
+        // Separate input and output channel buffers — they MUST NOT alias each other.
+        // RubberBand writes stretched output into outPtrs while still reading from inPtrs;
+        // aliasing the same memory corrupts the audio (critical bug fix).
+        inputBufs.resize((size_t)sfInfo.channels);
+        outputBufs.resize((size_t)sfInfo.channels);
         inPtrs.resize((size_t)sfInfo.channels);
         outPtrs.resize((size_t)sfInfo.channels);
         for (int c = 0; c < sfInfo.channels; ++c) {
-            chanBufs[c].resize(Config::kBufFrames * Config::kInputMultiplier * 2);
-            inPtrs[c]  = chanBufs[c].data();
-            outPtrs[c] = chanBufs[c].data();
+            inputBufs[c].resize(Config::kBufFrames * Config::kInputMultiplier * 2);
+            outputBufs[c].resize(Config::kBufFrames * Config::kInputMultiplier * 2);
+            inPtrs[c]  = inputBufs[c].data();
+            outPtrs[c] = outputBufs[c].data();
         }
+        // Pre-allocate callback output buffer to avoid heap allocation on the audio thread
+        callbackBuf.resize(Config::kBufFrames * (size_t)sfInfo.channels * 2);
 
         startStream();
         std::cout << "🎵 Loaded: " << fs::path(path).filename().string()
@@ -828,14 +871,15 @@ public:
         // audio callback always has data available (prevents startup crackling).
         int prewarmFrames = stretcher->getLatency() + (int)(Config::kBufFrames * Config::kInputMultiplier);
         std::vector<float> prewarmBuf((size_t)(prewarmFrames * sfInfo.channels));
-        sf_readf_float(snd, prewarmBuf.data(), prewarmFrames);
+        // Use the return value: file may be shorter than prewarmFrames (e.g. short phoneme)
+        sf_count_t prewarmGot = sf_readf_float(snd, prewarmBuf.data(), prewarmFrames);
         // Rewind so normal playback starts from the beginning
         sf_seek(snd, 0, SEEK_SET);
-        // De-interleave and submit to stretcher
-        for (int i = 0; i < prewarmFrames; ++i)
+        // De-interleave only as many frames as we actually read
+        for (sf_count_t i = 0; i < prewarmGot; ++i)
             for (int c = 0; c < sfInfo.channels; ++c)
-                chanBufs[c][i % chanBufs[c].size()] = prewarmBuf[(size_t)(i * sfInfo.channels + c)];
-        stretcher->process(inPtrs.data(), (size_t)prewarmFrames, false);
+                inputBufs[c][(size_t)i] = prewarmBuf[(size_t)(i * sfInfo.channels + c)];
+        stretcher->process(inPtrs.data(), (size_t)prewarmGot, false);
     }
 
 private:
@@ -871,9 +915,13 @@ private:
         int frameSize    = (int)sizeof(float) * self->sfInfo.channels;
         int framesNeeded = additional_amount / frameSize;
 
-        std::vector<float> out((size_t)(framesNeeded * self->sfInfo.channels));
-        self->process(out.data(), (unsigned long)framesNeeded);
-        SDL_PutAudioStreamData(stream, out.data(), (int)(out.size() * sizeof(float)));
+        // Use pre-allocated buffer — no heap allocation on the real-time audio thread
+        size_t samplesNeeded = (size_t)(framesNeeded * self->sfInfo.channels);
+        if (self->callbackBuf.size() < samplesNeeded)
+            self->callbackBuf.resize(samplesNeeded * 2); // only grows, never shrinks
+
+        self->process(self->callbackBuf.data(), (unsigned long)framesNeeded);
+        SDL_PutAudioStreamData(stream, self->callbackBuf.data(), (int)(samplesNeeded * sizeof(float)));
     }
 
     /**
@@ -944,10 +992,10 @@ private:
                         (sf_count_t)chunkSz - got);
                 }
 
-                // De-interleave for RubberBand
+                // De-interleave for RubberBand (into inputBufs — separate from outputBufs)
                 for (sf_count_t i = 0; i < got; ++i)
                     for (int c = 0; c < sfInfo.channels; ++c)
-                        chanBufs[c][i] = inBuf[i * sfInfo.channels + c];
+                        inputBufs[c][(size_t)i] = inBuf[(size_t)(i * sfInfo.channels + c)];
 
                 stretcher->process(inPtrs.data(), (size_t)got, false);
             }
@@ -969,15 +1017,12 @@ private:
                     default: break;
                 }
                 float outGain = fadeGain;
-                if (isPlaying && fadeState != FadeState::FadingOut) {
-                    outGain = fadeGain; // ramp up
-                } else if (!isPlaying && fadeState != FadeState::FadingIn) {
-                    outGain = fadeGain; // ramp down
-                }
+                // Note: outGain = fadeGain is correct here; the fade state machine above
+                // already updates fadeGain per-sample. No additional branch needed.
                 for (int c = 0; c < sfInfo.channels; ++c) {
                     float gain = 1.0f;
                     if (sfInfo.channels == 2) gain = (c == 0) ? panL : panR;
-                    *wptr++ = chanBufs[c][i] * gain * outGain;
+                    *wptr++ = outputBufs[c][i] * gain * outGain;
                 }
             }
 
@@ -1018,6 +1063,10 @@ static SDL_Texture* buildOutlineTexture(SDL_Renderer* renderer, const BitmapMask
 
     SDL_Texture* t = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                        SDL_TEXTUREACCESS_STATIC, W, H);
+    if (!t) {
+        std::cerr << "❌ buildOutlineTexture: SDL_CreateTexture failed: " << SDL_GetError() << "\n";
+        return nullptr;
+    }
     SDL_UpdateTexture(t, nullptr, px.data(), W * (int)sizeof(uint32_t));
     return t;
 }
@@ -1043,6 +1092,10 @@ static SDL_Texture* buildGhostTexture(SDL_Renderer* renderer, const BitmapMask& 
 
     SDL_Texture* t = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
                                        SDL_TEXTUREACCESS_STATIC, W, H);
+    if (!t) {
+        std::cerr << "❌ buildGhostTexture: SDL_CreateTexture failed: " << SDL_GetError() << "\n";
+        return nullptr;
+    }
     SDL_SetTextureBlendMode(t, SDL_BLENDMODE_BLEND);
     SDL_UpdateTexture(t, nullptr, px.data(), W * (int)sizeof(uint32_t));
     return t;
@@ -1075,7 +1128,21 @@ int main(int /*argc*/, char** /*argv*/) {
     // --- Window (fullscreen on iPad) ---
     SDL_Window*   window   = SDL_CreateWindow("Timestretch", 800, 600,
                                               SDL_WINDOW_FULLSCREEN | SDL_WINDOW_RESIZABLE);
+    if (!window) {
+        std::cerr << "❌ SDL_CreateWindow failed: " << SDL_GetError() << "\n";
+        SDL_Quit();
+        return 1;
+    }
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
+    if (!renderer) {
+        std::cerr << "❌ SDL_CreateRenderer failed: " << SDL_GetError() << "\n";
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return 1;
+    }
+    // Use vsync instead of SDL_Delay(16) — correctly limits to display refresh rate
+    // without adding extra latency on slow frames.
+    SDL_SetRenderVSync(renderer, 1);
 
     // Install the UIKit drawing overlay on top of the SDL view.
     // Must be called after SDL_CreateRenderer so the UIWindow is set up.
@@ -1245,8 +1312,10 @@ int main(int /*argc*/, char** /*argv*/) {
                     t = std::max(0.f, std::min(1.f, t));
                     adaptiveExitMs = (int)(Config::kExitTimeoutMsMax
                         + t * (Config::kExitTimeoutMsMin - Config::kExitTimeoutMsMax));
+#ifndef NDEBUG
                     std::cout << "⏱ adaptiveExitMs=" << adaptiveExitMs
                               << " (vel=" << v << ")\n";
+#endif
                 }
                 break;
 
@@ -1336,6 +1405,8 @@ int main(int /*argc*/, char** /*argv*/) {
                         g_state.targetPitch = std::pow(2.f, semitones / 12.f);
 
                         // --- Todo #6: Stereo panning ---
+                        // hBias is clamped to [-1,1] here; panLeft/panRight stay in [0.35, 0.65]
+                        // which ensures the total gain (L+R) is always exactly 1.0.
                         float hBias = std::max(-1.f, std::min(1.f, dirTracker.horizontalBias()));
                         float l = 0.5f - 0.15f * hBias;
                         float r = 0.5f + 0.15f * hBias;
@@ -1466,7 +1537,7 @@ int main(int /*argc*/, char** /*argv*/) {
         }
 
         // --- Playback status dot (top-right) ---
-        // Green = playing, Blue = navigation mode, Red = idle/wrong direction
+        // Green = playing, Blue = navigation mode, Yellow = on letter wrong direction, Red = idle
         statusDot.x = (float)ww - 40.f;
         if (activeFingers >= 2)
             SDL_SetRenderDrawColor(renderer, 0, 120, 255, 255);  // blue
@@ -1477,15 +1548,6 @@ int main(int /*argc*/, char** /*argv*/) {
         else
             SDL_SetRenderDrawColor(renderer, 220,   0,   0, 255);  // red
         SDL_RenderFillRect(renderer, &statusDot);
-
-        // --- Stroke enforcement badge (top-left) ---
-        // Orange = enforcement ON (numbered stroke order required)
-        // Grey   = free mode (any stroke, any direction)
-        if (strokeEnforced)
-            SDL_SetRenderDrawColor(renderer, 255, 140,   0, 220);  // orange
-        else
-            SDL_SetRenderDrawColor(renderer,  90,  90,  90, 180);  // grey
-        SDL_RenderFillRect(renderer, &strokeBadge);
 
         // --- Current stroke number indicator (inside the badge) ---
         // Draw 1–4 small dots inside the badge showing which stroke is next
@@ -1525,7 +1587,7 @@ int main(int /*argc*/, char** /*argv*/) {
         }
 
         SDL_RenderPresent(renderer);
-        SDL_Delay(16); // ~60 fps
+        // Frame pacing handled by SDL_SetRenderVSync(renderer, 1) — no SDL_Delay needed
     }
 
     // --- Cleanup ---
