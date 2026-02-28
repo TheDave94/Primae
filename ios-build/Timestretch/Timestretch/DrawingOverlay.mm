@@ -1,6 +1,6 @@
 // DrawingOverlay.mm
 // UIView overlay for green stroke feedback.
-// CAShapeLayer with kCALineCapButt — flush caps, zero protrusion, no bumps.
+// CAShapeLayer with kCALineCapRound — smooth caps for a natural brush feel.
 // Completed strokes are NEVER reset individually — only reset_all() clears them.
 // When all strokes are done, show_mask() floods the entire letter shape green.
 
@@ -10,7 +10,7 @@
 
 static const int   kMaxStrokes   = 8;
 static const float kBrushWidth   = 40.0f;
-static const float kMinPointDist = 10.0f;
+static const float kMinPointDist = 3.0f;   // tighter sampling → smoother curves
 
 // ---------------------------------------------------------------------------
 // PBM → green UIImage
@@ -125,7 +125,7 @@ static UIImage* greenImageFromPBM(NSString* path) {
         layer.fillColor     = [UIColor clearColor].CGColor;
         layer.strokeColor   = [UIColor colorWithRed:0.24 green:0.82 blue:0.31 alpha:0.9].CGColor;
         layer.lineWidth     = kBrushWidth;
-        layer.lineCap       = kCALineCapButt;
+        layer.lineCap       = kCALineCapRound;
         layer.lineJoin      = kCALineJoinRound;
         layer.hidden        = YES;
         [self.layer addSublayer:layer];

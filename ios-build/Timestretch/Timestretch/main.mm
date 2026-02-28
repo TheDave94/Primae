@@ -1109,6 +1109,9 @@ int main(int /*argc*/, char** /*argv*/) {
     DirectionTracker dirTracker;
     VelocityStats    velStats;
 
+    // --- Letter completion timing (fixes: stop audio ~300ms after green, reset after 2s) ---
+    auto letterCompleteTime = std::chrono::steady_clock::time_point{};
+
     // --- Stroke tracker ---
     LetterStrokes   currentStrokes = loadStrokes(browser.current().bestStrokesPath());
     currentStrokes.pbmPath = browser.current().pbmPath;
@@ -1380,6 +1383,37 @@ int main(int /*argc*/, char** /*argv*/) {
 
                 lastImgX = imgX;
                 lastImgY = imgY;
+            }
+        }
+
+        // ================================================================
+        // Letter completion: stop audio ~300ms after green, reset after 2s
+        // ================================================================
+        {
+            auto nowComp = std::chrono::steady_clock::now();
+            if (strokeTracker.maskShown) {
+                // Record the first moment the letter went green
+                if (letterCompleteTime == std::chrono::steady_clock::time_point{}) {
+                    letterCompleteTime = nowComp;
+                }
+                auto completionMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                        nowComp - letterCompleteTime).count();
+                // Stop audio 300ms after completion (lets the last note fade naturally)
+                if (completionMs >= 300) {
+                    g_state.isPlaying = false;
+                    g_state.targetSpeed = 1.0f;
+                }
+                // Reset drawing after 2 seconds so the child can start again
+                if (completionMs >= 2000) {
+                    strokeTracker.reset();
+                    reloadStrokes();
+                    letterCompleteTime = std::chrono::steady_clock::time_point{};
+                    g_state.restart = true;
+                    std::cout << "🔄 Letter reset — ready for next attempt\n";
+                }
+            } else if (letterCompleteTime != std::chrono::steady_clock::time_point{}) {
+                // Tracker was reset externally (e.g. letter change) — clear timer
+                letterCompleteTime = std::chrono::steady_clock::time_point{};
             }
         }
 
