@@ -1220,6 +1220,9 @@ int main(int /*argc*/, char** /*argv*/) {
     // Todo #5: tracing ghost toggle (3-finger tap)
     bool tracingMode = false;
 
+    // Debug checkpoint overlay (5-finger tap) — draws all checkpoint circles on screen
+    bool showCheckpoints = false;
+
     // Stroke direction enforcement toggle (4-finger tap)
     // true  = sound only plays when writing in correct direction (Option B/C)
     // false = sound plays anywhere on the letter (free mode)
@@ -1274,6 +1277,10 @@ int main(int /*argc*/, char** /*argv*/) {
                     std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
                                                  : "🔓 Stroke enforcement OFF (free mode)\n");
 #endif
+                }
+                else if (activeFingers == 5) {
+                    // Five-finger tap: toggle checkpoint debug overlay
+                    showCheckpoints = !showCheckpoints;
                 }
                 break;
 
@@ -1616,6 +1623,76 @@ int main(int /*argc*/, char** /*argv*/) {
                 SDL_SetRenderDrawColor(renderer, 0, 210, 80, 220);
                 SDL_RenderFillRect(renderer, &barFg);
             }
+        }
+
+        // --- Checkpoint debug overlay (5-finger tap to toggle) ---
+        // Draws each checkpoint as a filled circle: color = stroke id, filled = next target
+        // Stroke colors: 1=cyan, 2=yellow, 3=magenta, 4=orange
+        if (showCheckpoints && currentStrokes.valid) {
+            static const SDL_Color kStrokeColors[] = {
+                {0, 220, 255, 220},   // stroke 1: cyan
+                {255, 230, 0, 220},   // stroke 2: yellow
+                {255, 60, 200, 220},  // stroke 3: magenta
+                {255, 140, 0, 220},   // stroke 4: orange
+            };
+            int nextTarget  = strokeTracker.currentStrokeIndex();
+            int nextCPIdx   = (nextTarget < (int)strokeTracker.progress.size())
+                                  ? strokeTracker.progress[(size_t)nextTarget].nextCP : -1;
+
+            for (int si = 0; si < (int)currentStrokes.strokes.size(); ++si) {
+                auto& strk  = currentStrokes.strokes[(size_t)si];
+                auto& col   = kStrokeColors[std::min(si, 3)];
+                bool  isCur = (si == nextTarget);
+
+                for (int ci = 0; ci < (int)strk.checkpoints.size(); ++ci) {
+                    auto& cp = strk.checkpoints[(size_t)ci];
+                    float cx = cp.x * (float)ww;
+                    float cy = cp.y * (float)wh;
+                    float r  = currentStrokes.checkpointRadius * (float)ww;
+
+                    // Filled circle via series of horizontal rects
+                    bool isNextTarget = isCur && (ci == nextCPIdx);
+                    SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b,
+                                          isNextTarget ? 255 : 140);
+                    for (float dy2 = -r; dy2 <= r; dy2 += 1.f) {
+                        float hw = std::sqrt(std::max(0.f, r*r - dy2*dy2));
+                        SDL_FRect row = {cx - hw, cy + dy2, hw * 2.f, 1.f};
+                        SDL_RenderFillRect(renderer, &row);
+                    }
+
+                    // White border ring on the next target checkpoint
+                    if (isNextTarget) {
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                        for (float dy2 = -r; dy2 <= r; dy2 += 1.f) {
+                            float hw = std::sqrt(std::max(0.f, r*r - dy2*dy2));
+                            SDL_FRect px1 = {cx - hw - 2.f, cy + dy2, 2.f, 1.f};
+                            SDL_FRect px2 = {cx + hw,       cy + dy2, 2.f, 1.f};
+                            SDL_RenderFillRect(renderer, &px1);
+                            SDL_RenderFillRect(renderer, &px2);
+                        }
+                    }
+
+                    // Stroke/checkpoint index label (small white square as pixel glyph)
+                    // Draw a mini number using a 3x5 pixel font via filled rects
+                    // Stroke number (1-based) shown as that many stacked white pixels above the circle
+                    for (int dot = 0; dot <= si; ++dot) {
+                        SDL_FRect lbl = {cx - 3.f, cy - r - 10.f - dot * 6.f, 6.f, 4.f};
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 220);
+                        SDL_RenderFillRect(renderer, &lbl);
+                    }
+                    // CP index as stacked darker squares below stroke dots
+                    for (int dot = 0; dot < ci; ++dot) {
+                        SDL_FRect lbl = {cx - 2.f, cy - r - 8.f - (si+1)*6.f - dot*5.f, 4.f, 3.f};
+                        SDL_SetRenderDrawColor(renderer, col.r, col.g, col.b, 200);
+                        SDL_RenderFillRect(renderer, &lbl);
+                    }
+                }
+            }
+
+            // "DEBUG" label bar across the top so it's obvious the overlay is on
+            SDL_FRect debugBar = {0.f, 0.f, (float)ww, 28.f};
+            SDL_SetRenderDrawColor(renderer, 200, 0, 0, 200);
+            SDL_RenderFillRect(renderer, &debugBar);
         }
 
         SDL_RenderPresent(renderer);
