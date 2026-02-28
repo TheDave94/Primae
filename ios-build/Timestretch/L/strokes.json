@@ -1,25 +1,25 @@
 {
   "letter": "L",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: 2 strokes. 1: vertical top→bottom. 2: baseline foot right→LEFT (arrow points left).",
+  "comment": "Österreichische Druckschrift: 2 strokes. 1: vertical top→bottom. 2: baseline foot left→right.",
   "strokes": [
     {
       "id": 1,
       "comment": "Vertical stroke: top to bottom",
       "checkpoints": [
-        {"x": 0.55, "y": 0.22},
-        {"x": 0.55, "y": 0.38},
-        {"x": 0.55, "y": 0.55},
-        {"x": 0.55, "y": 0.72}
+        {"x": 0.50, "y": 0.27},
+        {"x": 0.50, "y": 0.40},
+        {"x": 0.50, "y": 0.55},
+        {"x": 0.50, "y": 0.72}
       ]
     },
     {
       "id": 2,
-      "comment": "Baseline foot: right to LEFT (arrow points left)",
+      "comment": "Baseline foot: left to right",
       "checkpoints": [
-        {"x": 0.55, "y": 0.72},
-        {"x": 0.45, "y": 0.72},
-        {"x": 0.35, "y": 0.72}
+        {"x": 0.50, "y": 0.72},
+        {"x": 0.58, "y": 0.72},
+        {"x": 0.67, "y": 0.72}
       ]
     }
   ]

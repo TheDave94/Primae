@@ -1,35 +1,35 @@
 {
   "letter": "A",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: 3 strokes. 1: apex (top-center) DOWN to bottom-left. 2: apex (top-center) DOWN to bottom-right. 3: crossbar left→right at mid-height.",
+  "comment": "Österreichische Druckschrift: 3 strokes. 1: apex top-center DOWN to bottom-left. 2: apex top-center DOWN to bottom-right. 3: crossbar left→right at mid-height.",
   "strokes": [
     {
       "id": 1,
       "comment": "Left leg: apex top-center DOWN to bottom-left",
       "checkpoints": [
-        {"x": 0.50, "y": 0.22},
-        {"x": 0.44, "y": 0.38},
-        {"x": 0.38, "y": 0.55},
-        {"x": 0.34, "y": 0.72}
+        {"x": 0.53, "y": 0.27},
+        {"x": 0.48, "y": 0.40},
+        {"x": 0.43, "y": 0.55},
+        {"x": 0.38, "y": 0.72}
       ]
     },
     {
       "id": 2,
       "comment": "Right leg: apex top-center DOWN to bottom-right",
       "checkpoints": [
-        {"x": 0.50, "y": 0.22},
-        {"x": 0.56, "y": 0.38},
-        {"x": 0.62, "y": 0.55},
-        {"x": 0.66, "y": 0.72}
+        {"x": 0.53, "y": 0.27},
+        {"x": 0.58, "y": 0.40},
+        {"x": 0.63, "y": 0.55},
+        {"x": 0.68, "y": 0.72}
       ]
     },
     {
       "id": 3,
       "comment": "Crossbar: left to right at mid-height",
       "checkpoints": [
-        {"x": 0.38, "y": 0.52},
-        {"x": 0.50, "y": 0.52},
-        {"x": 0.62, "y": 0.52}
+        {"x": 0.42, "y": 0.60},
+        {"x": 0.52, "y": 0.60},
+        {"x": 0.62, "y": 0.60}
       ]
     }
   ]

@@ -1,13 +1,13 @@
 {
   "letter": "I",
   "checkpointRadius": 0.07,
-  "comment": "Österreichische Druckschrift: 1 stroke. Vertical top→bottom. Simple, unambiguous.",
+  "comment": "Österreichische Druckschrift: 1 stroke. Vertical top→bottom down the center.",
   "strokes": [
     {
       "id": 1,
       "comment": "Vertical stroke: top to bottom",
       "checkpoints": [
-        {"x": 0.50, "y": 0.22},
+        {"x": 0.50, "y": 0.24},
         {"x": 0.50, "y": 0.38},
         {"x": 0.50, "y": 0.55},
         {"x": 0.50, "y": 0.72}

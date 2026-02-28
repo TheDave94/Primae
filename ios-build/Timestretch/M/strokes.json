@@ -1,46 +1,46 @@
 {
   "letter": "M",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift (lesenlernen.at): 4 strokes. 1: left vertical top→bottom. 2: top-left DOWN diagonally to valley center (starts at top, same x as stroke 1 top). 3: valley center UP diagonally to top-right. 4: top-right vertical top→bottom.",
+  "comment": "Österreichische Druckschrift: 4 strokes. 1: left vertical top→bottom. 2: top-left DOWN-RIGHT diagonally to valley. 3: valley UP-RIGHT diagonally to top-right. 4: right vertical top→bottom.",
   "strokes": [
     {
       "id": 1,
       "comment": "Left vertical: top-left down to bottom-left",
       "checkpoints": [
-        {"x": 0.30, "y": 0.22},
-        {"x": 0.30, "y": 0.38},
-        {"x": 0.30, "y": 0.55},
-        {"x": 0.30, "y": 0.72}
+        {"x": 0.35, "y": 0.27},
+        {"x": 0.35, "y": 0.40},
+        {"x": 0.35, "y": 0.55},
+        {"x": 0.35, "y": 0.72}
       ]
     },
     {
       "id": 2,
-      "comment": "Left diagonal: from top-left DOWN to valley center (starts at top, same start as stroke 1)",
+      "comment": "Left diagonal: top-left DOWN-RIGHT to center valley",
       "checkpoints": [
-        {"x": 0.30, "y": 0.22},
-        {"x": 0.38, "y": 0.38},
-        {"x": 0.44, "y": 0.52},
-        {"x": 0.50, "y": 0.62}
+        {"x": 0.35, "y": 0.27},
+        {"x": 0.40, "y": 0.38},
+        {"x": 0.45, "y": 0.48},
+        {"x": 0.50, "y": 0.60}
       ]
     },
     {
       "id": 3,
-      "comment": "Right diagonal: from valley center UP to top-right",
+      "comment": "Right diagonal: valley UP-RIGHT to top-right peak",
       "checkpoints": [
-        {"x": 0.50, "y": 0.62},
-        {"x": 0.56, "y": 0.52},
-        {"x": 0.62, "y": 0.38},
-        {"x": 0.70, "y": 0.22}
+        {"x": 0.50, "y": 0.60},
+        {"x": 0.55, "y": 0.48},
+        {"x": 0.60, "y": 0.38},
+        {"x": 0.65, "y": 0.27}
       ]
     },
     {
       "id": 4,
       "comment": "Right vertical: top-right down to bottom-right",
       "checkpoints": [
-        {"x": 0.70, "y": 0.22},
-        {"x": 0.70, "y": 0.38},
-        {"x": 0.70, "y": 0.55},
-        {"x": 0.70, "y": 0.72}
+        {"x": 0.65, "y": 0.27},
+        {"x": 0.65, "y": 0.40},
+        {"x": 0.65, "y": 0.55},
+        {"x": 0.65, "y": 0.72}
       ]
     }
   ]

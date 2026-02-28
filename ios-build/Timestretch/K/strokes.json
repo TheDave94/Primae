@@ -1,36 +1,36 @@
 {
   "letter": "K",
   "checkpointRadius": 0.06,
-  "comment": "Österreichische Druckschrift: 3 strokes. 1: vertical spine top→bottom. 2: top-right DOWN-LEFT into spine center (inward). 3: spine center DOWN-RIGHT to bottom-right (outward).",
+  "comment": "Österreichische Druckschrift: 3 strokes. 1: vertical spine top→bottom. 2: upper-right DOWN-LEFT to spine junction. 3: spine junction DOWN-RIGHT to bottom-right.",
   "strokes": [
     {
       "id": 1,
       "comment": "Vertical spine: top to bottom",
       "checkpoints": [
-        {"x": 0.38, "y": 0.22},
-        {"x": 0.38, "y": 0.38},
-        {"x": 0.38, "y": 0.55},
-        {"x": 0.38, "y": 0.72}
+        {"x": 0.42, "y": 0.25},
+        {"x": 0.42, "y": 0.38},
+        {"x": 0.42, "y": 0.55},
+        {"x": 0.42, "y": 0.72}
       ]
     },
     {
       "id": 2,
-      "comment": "Upper arm: from top-right inward DOWN-LEFT to spine center",
+      "comment": "Upper arm: from top-right DOWN-LEFT to spine junction",
       "checkpoints": [
-        {"x": 0.65, "y": 0.22},
-        {"x": 0.57, "y": 0.32},
-        {"x": 0.49, "y": 0.42},
-        {"x": 0.42, "y": 0.48}
+        {"x": 0.68, "y": 0.25},
+        {"x": 0.60, "y": 0.33},
+        {"x": 0.53, "y": 0.40},
+        {"x": 0.46, "y": 0.48}
       ]
     },
     {
       "id": 3,
-      "comment": "Lower arm: from spine center outward DOWN-RIGHT to bottom-right",
+      "comment": "Lower arm: from spine junction DOWN-RIGHT to bottom-right",
       "checkpoints": [
-        {"x": 0.42, "y": 0.50},
-        {"x": 0.50, "y": 0.59},
-        {"x": 0.57, "y": 0.65},
-        {"x": 0.65, "y": 0.72}
+        {"x": 0.46, "y": 0.48},
+        {"x": 0.54, "y": 0.57},
+        {"x": 0.61, "y": 0.65},
+        {"x": 0.68, "y": 0.72}
       ]
     }
   ]

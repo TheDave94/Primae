@@ -1,24 +1,24 @@
 {
   "letter": "O",
   "checkpointRadius": 0.07,
-  "comment": "Österreichische Druckschrift: 1 stroke. Start upper-left of oval, counter-clockwise. Arrow at top points LEFT. Last checkpoint returns near start to close the loop.",
+  "comment": "Österreichische Druckschrift: 1 stroke. Start upper-left, go clockwise down-left, around bottom, up-right, closing near start. Arrow at start points DOWN.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Oval: start upper-left, counter-clockwise, closing back near start",
+      "comment": "Oval: start upper-left, clockwise (down then right then up), closing near start",
       "checkpoints": [
-        {"x": 0.38, "y": 0.28},
-        {"x": 0.30, "y": 0.38},
-        {"x": 0.28, "y": 0.50},
-        {"x": 0.30, "y": 0.62},
-        {"x": 0.38, "y": 0.72},
-        {"x": 0.50, "y": 0.76},
+        {"x": 0.40, "y": 0.28},
+        {"x": 0.32, "y": 0.38},
+        {"x": 0.30, "y": 0.50},
+        {"x": 0.33, "y": 0.62},
+        {"x": 0.42, "y": 0.72},
+        {"x": 0.52, "y": 0.76},
         {"x": 0.62, "y": 0.72},
         {"x": 0.70, "y": 0.62},
         {"x": 0.72, "y": 0.50},
         {"x": 0.70, "y": 0.38},
         {"x": 0.62, "y": 0.28},
-        {"x": 0.50, "y": 0.23}
+        {"x": 0.52, "y": 0.24}
       ]
     }
   ]
