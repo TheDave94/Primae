@@ -497,9 +497,9 @@ public:
         folders.clear();
 
         if (rootPath.empty()) {
-            char* base = SDL_GetBasePath();
+            // SDL3: SDL_GetBasePath() returns a static const char* — do NOT free it
+            const char* base = SDL_GetBasePath();
             rootPath = base ? std::string(base) : ".";
-            SDL_free(base);  // SDL3: caller must free with SDL_free()
         }
 
         const std::vector<std::string> audExts = {".wav", ".mp3", ".flac", ".ogg", ".aiff"};
@@ -1181,6 +1181,13 @@ int main(int /*argc*/, char** /*argv*/) {
     // --- Letter completion timing (fixes: stop audio ~300ms after green, reset after 2s) ---
     auto letterCompleteTime = std::chrono::steady_clock::time_point{};
 
+    // --- Multi-touch state (declared early: referenced by resetLetterState lambda below) ---
+    int   activeFingers = 0;
+    float touchStartX   = 0.f, touchStartY = 0.f;
+
+    // Small smoothing buffer for speed mapping (declared early: referenced by resetLetterState)
+    std::deque<float> velSmooth;
+
     // --- Stroke tracker ---
     LetterStrokes   currentStrokes = loadStrokes(browser.current().bestStrokesPath());
     currentStrokes.pbmPath = browser.current().pbmPath;
@@ -1209,13 +1216,6 @@ int main(int /*argc*/, char** /*argv*/) {
         g_state.restart    = true;
         activeFingers      = 0;  // safe: letter change only happens on finger-up
     };
-
-    // Small smoothing buffer for speed mapping (separate from velStats adaptive window)
-    std::deque<float> velSmooth;
-
-    // --- Multi-touch state ---
-    int   activeFingers = 0;
-    float touchStartX   = 0.f, touchStartY = 0.f;
 
     // Todo #5: tracing ghost toggle (3-finger tap)
     bool tracingMode = false;
@@ -1340,7 +1340,7 @@ int main(int /*argc*/, char** /*argv*/) {
 
             // ---- Finger cancelled (system alert, incoming call, palm rejection) ----
             // Without handling this, activeFingers leaks and audio stays silenced forever.
-            case SDL_EVENT_FINGER_CANCELLED:
+            case SDL_EVENT_FINGER_CANCELED:
                 activeFingers = 0;
                 g_state.isPlaying = false;
                 break;
