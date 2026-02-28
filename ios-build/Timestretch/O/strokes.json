@@ -1,24 +1,23 @@
 {
   "letter": "O",
-  "checkpointRadius": 0.07,
-  "comment": "Österreichische Druckschrift: 1 stroke. Start upper-left, go clockwise down-left, around bottom, up-right, closing near start. Arrow at start points DOWN.",
+  "checkpointRadius": 0.08,
+  "comment": "Bbox x=[0.341..0.652] y=[0.243..0.756]. 1 stroke: start upper-left, clockwise (down-left, bottom, right, up, closing near start).",
   "strokes": [
     {
       "id": 1,
-      "comment": "Oval: start upper-left, clockwise (down then right then up), closing near start",
+      "comment": "Oval: start upper-left, go clockwise all the way around",
       "checkpoints": [
-        {"x": 0.40, "y": 0.28},
-        {"x": 0.32, "y": 0.38},
-        {"x": 0.30, "y": 0.50},
-        {"x": 0.33, "y": 0.62},
-        {"x": 0.42, "y": 0.72},
-        {"x": 0.52, "y": 0.76},
-        {"x": 0.62, "y": 0.72},
-        {"x": 0.70, "y": 0.62},
-        {"x": 0.72, "y": 0.50},
-        {"x": 0.70, "y": 0.38},
-        {"x": 0.62, "y": 0.28},
-        {"x": 0.52, "y": 0.24}
+        {"x": 0.380, "y": 0.295},
+        {"x": 0.341, "y": 0.371},
+        {"x": 0.341, "y": 0.499},
+        {"x": 0.380, "y": 0.628},
+        {"x": 0.452, "y": 0.718},
+        {"x": 0.541, "y": 0.718},
+        {"x": 0.613, "y": 0.628},
+        {"x": 0.652, "y": 0.499},
+        {"x": 0.613, "y": 0.371},
+        {"x": 0.541, "y": 0.281},
+        {"x": 0.452, "y": 0.253}
       ]
     }
   ]
