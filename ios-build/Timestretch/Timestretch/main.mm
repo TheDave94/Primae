@@ -276,11 +276,12 @@ public:
 
         if (currentStroke == -1) {
             soundEnabled = true;
-            // All strokes complete — flood the letter shape green if not already shown
-            if (!maskShown) {
-                drawing_overlay_show_mask(def->pbmPath.c_str());
-                maskShown = true;
-            }
+            // TEMP: skip green mask flood so drawn lines stay visible for screenshotting
+            // if (!maskShown) {
+            //     drawing_overlay_show_mask(def->pbmPath.c_str());
+            //     maskShown = true;
+            // }
+            maskShown = true; // still mark complete so audio/completion logic fires
             return;
         }
 
