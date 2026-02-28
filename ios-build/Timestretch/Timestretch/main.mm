@@ -1217,25 +1217,51 @@ int main(int /*argc*/, char** /*argv*/) {
         activeFingers      = 0;  // safe: letter change only happens on finger-up
     };
 
-    // Todo #5: tracing ghost toggle (3-finger tap)
+        // Ghost tracing overlay toggle
     bool tracingMode = false;
 
-    // Debug checkpoint overlay (5-finger tap) — draws all checkpoint circles on screen
+    // Debug checkpoint overlay toggle
     bool showCheckpoints = false;
 
-    // Stroke direction enforcement toggle (4-finger tap)
-    // true  = sound only plays when writing in correct direction (Option B/C)
+    // Stroke direction enforcement toggle
+    // true  = sound only plays when writing in correct direction
     // false = sound plays anywhere on the letter (free mode)
     bool strokeEnforced = true;
 
-    // HUD: stroke mode indicator (top-left, small badge)
-    SDL_FRect strokeBadge = {8.f, 10.f, 28.f, 28.f};
+    // ---- Top button bar ----
+    // All toggles are now tappable buttons in a bar across the top of the screen.
+    // Buttons are positioned at render-pixel coords; re-scaled each frame from ww/wh.
+    // Layout (left→right): [Ghost] [Enforce] [Debug CPs] [Reset]   ... [Status dot]
+    //
+    // Button hit-test: checked in SDL_EVENT_FINGER_DOWN when activeFingers == 1
+    // so single-finger button taps don't interfere with drawing.
+    // Button rects are recomputed each frame in the render section.
+    struct Button {
+        SDL_FRect rect  = {};
+        bool      state = false;   // current toggle state (for colour)
+        bool      isToggle = true; // false = momentary (reset)
+    };
+    // Indices: 0=Ghost, 1=Enforce, 2=Debug, 3=Reset
+    std::array<Button, 4> buttons;
+    buttons[0].state    = tracingMode;
+    buttons[1].state    = strokeEnforced;
+    buttons[2].state    = showCheckpoints;
+    buttons[3].isToggle = false;   // Reset is momentary
 
     // HUD: direction indicator rectangle (bottom-left)
     SDL_FRect dirHud = {8.f, 0.f, 120.f, 28.f};
 
     // HUD: playback status dot (top-right)
     SDL_FRect statusDot = {0.f, 10.f, 30.f, 30.f};
+
+    // Helper: test if a normalised finger position hits a button rect (pixel coords)
+    // tfinger.x/y are in [0,1] normalised window space in SDL3
+    auto fingerHitsButton = [&](const SDL_TouchFingerEvent& tf, const SDL_FRect& r,
+                                int rw, int rh) -> bool {
+        float px = tf.x * (float)rw;
+        float py = tf.y * (float)rh;
+        return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+    };
 
     // ---- MAIN LOOP ----
     while (!g_state.shouldQuit) {
@@ -1257,30 +1283,39 @@ int main(int /*argc*/, char** /*argv*/) {
             case SDL_EVENT_FINGER_DOWN:
                 activeFingers++;
 
-                if (activeFingers == 2) {
+                if (activeFingers == 1) {
+                    // Single finger down: check if it lands on a button.
+                    // Button rects are in render pixels; tfinger.x/y are [0,1] normalised.
+                    int curRW = 0, curRH = 0;
+                    SDL_GetRenderOutputSize(renderer, &curRW, &curRH);
+
+                    if (fingerHitsButton(ev.tfinger, buttons[0].rect, curRW, curRH)) {
+                        // Ghost tracing overlay toggle
+                        tracingMode      = !tracingMode;
+                        buttons[0].state = tracingMode;
+                    }
+                    else if (fingerHitsButton(ev.tfinger, buttons[1].rect, curRW, curRH)) {
+                        // Stroke enforcement toggle
+                        strokeEnforced   = !strokeEnforced;
+                        buttons[1].state = strokeEnforced;
+                        strokeTracker.reset();
+                    }
+                    else if (fingerHitsButton(ev.tfinger, buttons[2].rect, curRW, curRH)) {
+                        // Checkpoint debug overlay toggle
+                        showCheckpoints  = !showCheckpoints;
+                        buttons[2].state = showCheckpoints;
+                    }
+                    else if (fingerHitsButton(ev.tfinger, buttons[3].rect, curRW, curRH)) {
+                        // Reset current letter
+                        strokeTracker.reset();
+                    }
+                }
+                else if (activeFingers == 2) {
                     // Entering two-finger navigation mode:
                     // record start position and stop audio immediately (Todo #3)
                     touchStartX       = ev.tfinger.x;
                     touchStartY       = ev.tfinger.y;
                     g_state.isPlaying = false;
-                }
-                else if (activeFingers == 3) {
-                    // Todo #5: three-finger tap toggles the ghost tracing overlay
-                    tracingMode = !tracingMode;
-                }
-                else if (activeFingers == 4) {
-                    // Four-finger tap: toggle stroke direction enforcement
-                    strokeEnforced = !strokeEnforced;
-                    // Reset tracker so child gets a clean start in the new mode
-                    strokeTracker.reset();
-#ifndef NDEBUG
-                    std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
-                                                 : "🔓 Stroke enforcement OFF (free mode)\n");
-#endif
-                }
-                else if (activeFingers == 5) {
-                    // Five-finger tap: toggle checkpoint debug overlay
-                    showCheckpoints = !showCheckpoints;
                 }
                 break;
 
@@ -1559,74 +1594,181 @@ int main(int /*argc*/, char** /*argv*/) {
 
         // (Green stroke painting handled by DrawingOverlay UIKit layer above SDL view)
 
-        // Todo #5: ghost tracing overlay (toggled by three-finger tap)
+        // Ghost tracing overlay
         if (tracingMode && ghostTex)
             SDL_RenderTexture(renderer, ghostTex, nullptr, nullptr);
 
-        // --- Todo #4: Direction HUD (bottom-left) ---
-        // A colour-coded rectangle that tells the child which way they're writing.
-        // Blue = horizontal, Green = vertical, Orange = diagonal, Grey = idle.
+        // --- Top button bar ---
+        // Four tappable buttons across the top of the screen.
+        // Layout: [👁 Ghost] [🔒 Enforce] [● Debug] [↺ Reset]   [● Status]
+        // Each button is 120px wide × 72px tall (physical pixels, scales with screen).
+        {
+            const float btnH   = 72.f;
+            const float btnW   = 120.f;
+            const float btnGap = 12.f;
+            const float btnY   = 16.f;
+            const float cornerR = 14.f; // visual only — we draw as rect
+
+            // Compute rects and store them for hit-testing
+            for (int i = 0; i < 4; ++i) {
+                buttons[i].rect = {btnGap + i * (btnW + btnGap), btnY, btnW, btnH};
+            }
+
+            // Button labels and colours
+            // [0] Ghost  — cyan when ON,  dark grey when OFF
+            // [1] Enforce — orange when ON, dark grey when OFF
+            // [2] Debug  — red when ON,   dark grey when OFF
+            // [3] Reset  — always mid-blue (momentary)
+            struct BtnStyle { uint8_t r, g, b; };
+            const BtnStyle kActiveColors[4]  = {
+                {0,  200, 230},   // ghost   ON: cyan
+                {255,140,  0},    // enforce ON: orange
+                {220,  0,  0},    // debug   ON: red
+                { 60,120, 220},   // reset: always blue
+            };
+
+            for (int i = 0; i < 4; ++i) {
+                auto& btn = buttons[i];
+                bool  on  = btn.isToggle ? btn.state : false;
+
+                // Outer dark shadow rect
+                SDL_FRect shadow = {btn.rect.x + 3.f, btn.rect.y + 4.f,
+                                    btn.rect.w,       btn.rect.h};
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 80);
+                SDL_RenderFillRect(renderer, &shadow);
+
+                // Button background
+                if (on) {
+                    SDL_SetRenderDrawColor(renderer,
+                        kActiveColors[i].r, kActiveColors[i].g, kActiveColors[i].b, 230);
+                } else if (!btn.isToggle) {
+                    SDL_SetRenderDrawColor(renderer,
+                        kActiveColors[i].r, kActiveColors[i].g, kActiveColors[i].b, 180);
+                } else {
+                    SDL_SetRenderDrawColor(renderer, 40, 40, 40, 200);
+                }
+                SDL_RenderFillRect(renderer, &btn.rect);
+
+                // 2px white border
+                SDL_FRect border = {btn.rect.x - 2.f, btn.rect.y - 2.f,
+                                    btn.rect.w + 4.f,  btn.rect.h + 4.f};
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, on ? 220 : 80);
+                SDL_RenderRect(renderer, &border);
+
+                // Icon: a simple shape centred in the button
+                float cx = btn.rect.x + btn.rect.w * 0.5f;
+                float cy = btn.rect.y + btn.rect.h * 0.5f;
+
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 240);
+
+                if (i == 0) {
+                    // Ghost: eye shape — two horizontal dashes stacked
+                    SDL_FRect top = {cx - 20.f, cy - 10.f, 40.f, 8.f};
+                    SDL_FRect bot = {cx - 20.f, cy +  4.f, 40.f, 8.f};
+                    SDL_RenderFillRect(renderer, &top);
+                    SDL_RenderFillRect(renderer, &bot);
+                    // pupil dot
+                    SDL_FRect pupil = {cx - 6.f, cy - 6.f, 12.f, 12.f};
+                    SDL_SetRenderDrawColor(renderer, on ? 0 : 255,
+                                                     on ? 0 : 255,
+                                                     on ? 0 : 255, 240);
+                    SDL_RenderFillRect(renderer, &pupil);
+                }
+                else if (i == 1) {
+                    // Enforce: lock icon — rectangle body + arc top (drawn as two rects)
+                    SDL_FRect body  = {cx - 14.f, cy - 2.f,  28.f, 20.f};
+                    SDL_FRect arch1 = {cx - 10.f, cy - 18.f, 20.f,  8.f};
+                    SDL_FRect arch2 = {cx - 14.f, cy - 14.f,  8.f, 16.f};
+                    SDL_FRect arch3 = {cx +  6.f, cy - 14.f,  8.f, 16.f};
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 240);
+                    SDL_RenderFillRect(renderer, &body);
+                    SDL_RenderFillRect(renderer, &arch1);
+                    SDL_RenderFillRect(renderer, &arch2);
+                    SDL_RenderFillRect(renderer, &arch3);
+                    // keyhole
+                    SDL_FRect hole = {cx - 5.f, cy + 2.f, 10.f, 10.f};
+                    if (on)
+                        SDL_SetRenderDrawColor(renderer, kActiveColors[1].r,
+                                               kActiveColors[1].g, kActiveColors[1].b, 255);
+                    else
+                        SDL_SetRenderDrawColor(renderer, 40, 40, 40, 255);
+                    SDL_RenderFillRect(renderer, &hole);
+                }
+                else if (i == 2) {
+                    // Debug: grid of 4 dots (checkpoint metaphor)
+                    float r2 = 7.f;
+                    for (int row = 0; row < 2; ++row)
+                        for (int col = 0; col < 2; ++col) {
+                            SDL_FRect d = {cx - 18.f + col * 22.f - r2,
+                                           cy - 12.f + row * 22.f - r2,
+                                           r2 * 2.f, r2 * 2.f};
+                            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 240);
+                            SDL_RenderFillRect(renderer, &d);
+                        }
+                }
+                else {
+                    // Reset: arrow-circle symbol — two rectangles forming a bent arrow
+                    SDL_FRect hBar = {cx - 18.f, cy - 5.f, 28.f, 10.f};
+                    SDL_FRect vBar = {cx +  4.f, cy - 18.f, 10.f, 20.f};
+                    SDL_FRect tip1 = {cx - 18.f, cy - 14.f, 10.f, 10.f};
+                    SDL_FRect tip2 = {cx - 18.f, cy +  4.f, 10.f, 10.f};
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 240);
+                    SDL_RenderFillRect(renderer, &hBar);
+                    SDL_RenderFillRect(renderer, &vBar);
+                    SDL_RenderFillRect(renderer, &tip1);
+                    SDL_RenderFillRect(renderer, &tip2);
+                }
+            }
+
+            // --- Stroke progress indicator: small dots inside Enforce button ---
+            // Shows which stroke is next (replacing the old strokeBadge dots)
+            if (strokeEnforced && currentStrokes.valid) {
+                int total   = (int)currentStrokes.strokes.size();
+                int current = strokeTracker.currentStrokeIndex();
+                auto& ebtn  = buttons[1].rect;
+                float dotD  = 10.f;
+                float totalW = total * dotD + (total - 1) * 4.f;
+                float startX = ebtn.x + (ebtn.w - totalW) * 0.5f;
+                float dotY   = ebtn.y + ebtn.h - dotD - 6.f;
+                for (int si = 0; si < total; ++si) {
+                    SDL_FRect d = {startX + si * (dotD + 4.f), dotY, dotD, dotD};
+                    if (si < current)
+                        SDL_SetRenderDrawColor(renderer,   0, 220,  80, 255);
+                    else if (si == current)
+                        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                    else
+                        SDL_SetRenderDrawColor(renderer,  80,  80,  80, 200);
+                    SDL_RenderFillRect(renderer, &d);
+                }
+            }
+        }
+
+        // --- Playback status dot (top-right) ---
+        statusDot.x = (float)ww - 50.f;
+        statusDot.y = 28.f;
+        statusDot.w = 36.f;
+        statusDot.h = 36.f;
+        if (activeFingers >= 2)
+            SDL_SetRenderDrawColor(renderer, 0, 120, 255, 255);
+        else if (g_state.isPlaying)
+            SDL_SetRenderDrawColor(renderer, 0, 220,   0, 255);
+        else if (strokeTracker.anyActive())
+            SDL_SetRenderDrawColor(renderer, 255, 200,   0, 255);
+        else
+            SDL_SetRenderDrawColor(renderer, 220,   0,   0, 255);
+        SDL_RenderFillRect(renderer, &statusDot);
+
+        // --- Direction HUD (bottom-left) ---
         {
             dirHud.y = (float)wh - 38.f;
             SDL_FColor bg = {0.12f, 0.12f, 0.12f, 0.78f};
             SDL_SetRenderDrawColorFloat(renderer, bg.r, bg.g, bg.b, bg.a);
             SDL_RenderFillRect(renderer, &dirHud);
-
             SDL_FColor dc = DirectionTracker::hudColor(dirTracker.dominant());
-            SDL_FRect inner = {dirHud.x + 2.f, dirHud.y + 2.f, dirHud.w - 4.f, dirHud.h - 4.f};
+            SDL_FRect inner = {dirHud.x + 2.f, dirHud.y + 2.f,
+                               dirHud.w - 4.f, dirHud.h - 4.f};
             SDL_SetRenderDrawColorFloat(renderer, dc.r, dc.g, dc.b, dc.a);
             SDL_RenderFillRect(renderer, &inner);
-        }
-
-        // --- Stroke mode badge (top-left) ---
-        // 🔒 Orange = stroke enforcement ON (direction matters)
-        // 🔓 Grey   = free mode (sound plays anywhere on letter)
-        {
-            SDL_SetRenderDrawColor(renderer, 30, 30, 30, 180);
-            SDL_RenderFillRect(renderer, &strokeBadge);
-            SDL_FRect inner = {strokeBadge.x+2.f, strokeBadge.y+2.f,
-                               strokeBadge.w-4.f,  strokeBadge.h-4.f};
-            if (strokeEnforced)
-                SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);   // orange = enforced
-            else
-                SDL_SetRenderDrawColor(renderer, 120, 120, 120, 255); // grey = free
-            SDL_RenderFillRect(renderer, &inner);
-        }
-
-        // --- Playback status dot (top-right) ---
-        // Green = playing, Blue = navigation mode, Yellow = on letter wrong direction, Red = idle
-        statusDot.x = (float)ww - 40.f;
-        if (activeFingers >= 2)
-            SDL_SetRenderDrawColor(renderer, 0, 120, 255, 255);  // blue
-        else if (g_state.isPlaying)
-            SDL_SetRenderDrawColor(renderer, 0,   220,   0, 255);  // green
-        else if (strokeTracker.anyActive())
-            SDL_SetRenderDrawColor(renderer, 255, 200,   0, 255);  // yellow = on letter, wrong direction
-        else
-            SDL_SetRenderDrawColor(renderer, 220,   0,   0, 255);  // red
-        SDL_RenderFillRect(renderer, &statusDot);
-
-        // --- Current stroke number indicator (inside the badge) ---
-        // Draw 1–4 small dots inside the badge showing which stroke is next
-        if (strokeEnforced) {
-            int totalStrokes  = currentStrokes.valid ? (int)currentStrokes.strokes.size() : 0;
-            int currentStroke = strokeTracker.currentStrokeIndex(); // 0-based
-            float dotSize = 5.f;
-            float spacing = (strokeBadge.w - 4.f) / std::max(totalStrokes, 1);
-            for (int si = 0; si < totalStrokes; ++si) {
-                SDL_FRect dot = {
-                    strokeBadge.x + 2.f + si * spacing,
-                    strokeBadge.y + strokeBadge.h/2.f - dotSize/2.f,
-                    dotSize, dotSize
-                };
-                if (si < currentStroke)
-                    SDL_SetRenderDrawColor(renderer,   0, 200,  60, 255); // green = done
-                else if (si == currentStroke)
-                    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255); // white = current
-                else
-                    SDL_SetRenderDrawColor(renderer,  60,  60,  60, 200); // dark = future
-                SDL_RenderFillRect(renderer, &dot);
-            }
         }
 
         // --- Stroke progress bar (bottom, full width) ---
