@@ -1369,13 +1369,29 @@ int main(int /*argc*/, char** /*argv*/) {
             g_state.isPlaying = false;
 
         } else {
-            int winW = 0, winH = 0;
-            SDL_GetWindowSize(window, &winW, &winH);
+            // Use render output size (pixels) not window size (points).
+            // On Retina/HiDPI iPads SDL_GetWindowSize returns logical points
+            // (e.g. 1366x1024) while the PBM and render surface are in physical
+            // pixels (e.g. 2732x2048). SDL_GetMouseState also returns points,
+            // so we must scale touch coords up by the pixel ratio before
+            // converting to image (PBM) space.
+            int renderW = 0, renderH = 0;
+            SDL_GetRenderOutputSize(renderer, &renderW, &renderH);
+            int winW = renderW, winH = renderH;
 
             // Read cursor/touch position via SDL mouse API
             // (SDL3 maps single-finger touch to mouse events on iOS)
             float winX = 0, winY = 0;
             SDL_GetMouseState(&winX, &winY);
+
+            // SDL_GetMouseState returns logical (point) coordinates.
+            // Scale to physical pixels to match the PBM and render output.
+            {
+                int logW = 0, logH = 0;
+                SDL_GetWindowSize(window, &logW, &logH);
+                if (logW > 0) winX *= (float)renderW / (float)logW;
+                if (logH > 0) winY *= (float)renderH / (float)logH;
+            }
 
             if (winW > 0 && winH > 0) {
                 float scaleX = (float)winW / (float)mask.getW();
@@ -1530,8 +1546,10 @@ int main(int /*argc*/, char** /*argv*/) {
         // ================================================================
         // Rendering
         // ================================================================
+        // Use render output size (pixels) for all rendering geometry.
+        // SDL_GetWindowSize returns logical points on Retina displays.
         int ww = 0, wh = 0;
-        SDL_GetWindowSize(window, &ww, &wh);
+        SDL_GetRenderOutputSize(renderer, &ww, &wh);
 
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderClear(renderer);
