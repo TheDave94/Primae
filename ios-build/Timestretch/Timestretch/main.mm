@@ -391,11 +391,11 @@ namespace Config {
 
     // --- Playback gate timers ---
     /// Milliseconds of stillness inside the mask before audio mutes (Todo #7 adapts this)
-    constexpr int kIdleTimeoutMs         = 800;
+    constexpr int kIdleTimeoutMs         = 1800;  // was 800 — children pause inside the letter too
     /// Grace period in ms after leaving the mask before audio stops — MINIMUM (fast writers)
-    constexpr int kExitTimeoutMsMin      = 500;
+    constexpr int kExitTimeoutMsMin      = 1200;  // was 500 — even fast writers need lift-reposition time
     /// Grace period — MAXIMUM (slow writers / between strokes)
-    constexpr int kExitTimeoutMsMax      = 3000;
+    constexpr int kExitTimeoutMsMax      = 5000;  // was 3000 — give slow children full comfort
     /// Velocity (px/frame) considered "fast" — maps to kExitTimeoutMsMin
     constexpr float kExitVelFast         = 25.0f;
     /// Velocity (px/frame) considered "slow" — maps to kExitTimeoutMsMax
@@ -430,7 +430,7 @@ namespace Config {
 
     // --- Todo #8: Restart after pause ---
     /// Milliseconds of silence after which the current sound rewinds to the start
-    constexpr int kRestartAfterPauseMs   = 2000;
+    constexpr int kRestartAfterPauseMs   = 4000;  // was 2000 — avoid mid-stroke rewinding
 }
 
 // ============================================================================
@@ -1498,8 +1498,9 @@ int main(int /*argc*/, char** /*argv*/) {
                 }
                 auto completionMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         nowComp - letterCompleteTime).count();
-                // Stop audio 300ms after completion (lets the last note fade naturally)
-                if (completionMs >= 300) {
+                // Stop audio 1200ms after completion — long enough for the last
+                // phrase to resolve naturally, short enough the child doesn't wait
+                if (completionMs >= 1200) {
                     g_state.isPlaying = false;
                     g_state.targetSpeed = 1.0f;
                 }
