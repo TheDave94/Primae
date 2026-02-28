@@ -315,7 +315,9 @@ public:
                     drawing_overlay_complete_stroke(currentStroke);
                     prog.complete = true;
                     prog.active   = false;
+#ifndef NDEBUG
                     std::cout << "✅ Stroke " << (currentStroke + 1) << " complete\n";
+#endif
                 }
             }
         }
@@ -1193,6 +1195,21 @@ int main(int /*argc*/, char** /*argv*/) {
         if (currentStrokes.valid) strokeTracker.load(currentStrokes);
     };
 
+    /// Helper: reset all per-letter runtime state (call on letter change)
+    auto resetLetterState = [&]() {
+        dirTracker.reset();
+        velStats    = VelocityStats{};
+        velSmooth.clear();
+        firstFrame  = true;
+        lastMoveTime  = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+        lastValidTime = std::chrono::steady_clock::now() - std::chrono::seconds(10);
+        lastSoundTime = std::chrono::steady_clock::now();
+        letterCompleteTime = std::chrono::steady_clock::time_point{};
+        g_state.isPlaying  = false;
+        g_state.restart    = true;
+        activeFingers      = 0;  // safe: letter change only happens on finger-up
+    };
+
     // Small smoothing buffer for speed mapping (separate from velStats adaptive window)
     std::deque<float> velSmooth;
 
@@ -1253,8 +1270,10 @@ int main(int /*argc*/, char** /*argv*/) {
                     strokeEnforced = !strokeEnforced;
                     // Reset tracker so child gets a clean start in the new mode
                     strokeTracker.reset();
+#ifndef NDEBUG
                     std::cout << (strokeEnforced ? "🔒 Stroke enforcement ON\n"
                                                  : "🔓 Stroke enforcement OFF (free mode)\n");
+#endif
                 }
                 break;
 
@@ -1272,7 +1291,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         mask.load(browser.current().pbmPath);
                         rebuildTextures();
                         audio.loadFile(browser.currentAudioPath());
-                        dirTracker.reset();
+                        resetLetterState();
                         reloadStrokes();
                         assetsChanged = true;
 
@@ -1290,7 +1309,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         mask.load(browser.current().pbmPath);
                         rebuildTextures();
                         audio.loadFile(browser.currentAudioPath());
-                        dirTracker.reset();
+                        resetLetterState();
                         reloadStrokes();
                         assetsChanged = true;
                     }
@@ -1318,6 +1337,16 @@ int main(int /*argc*/, char** /*argv*/) {
 #endif
                 }
                 break;
+
+            // ---- Finger cancelled (system alert, incoming call, palm rejection) ----
+            // Without handling this, activeFingers leaks and audio stays silenced forever.
+            case SDL_EVENT_FINGER_CANCELLED:
+                activeFingers = 0;
+                g_state.isPlaying = false;
+                break;
+
+            // SDL_EVENT_FINGER_MOTION: position is polled via SDL_GetMouseState each frame.
+            // No explicit case needed; absorbed by default to avoid spurious fallthrough warnings.
 
             default: break;
             }
@@ -1480,7 +1509,9 @@ int main(int /*argc*/, char** /*argv*/) {
                     reloadStrokes();
                     letterCompleteTime = std::chrono::steady_clock::time_point{};
                     g_state.restart = true;
+#ifndef NDEBUG
                     std::cout << "🔄 Letter reset — ready for next attempt\n";
+#endif
                 }
             } else if (letterCompleteTime != std::chrono::steady_clock::time_point{}) {
                 // Tracker was reset externally (e.g. letter change) — clear timer

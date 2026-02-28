@@ -15,6 +15,9 @@ static const float kMinPointDist = 3.0f;   // tighter sampling → smoother curv
 // ---------------------------------------------------------------------------
 // PBM → green UIImage
 // Reads P4 binary PBM, renders black pixels as solid green, white as clear.
+// SECURITY: width/height are validated against a sane upper bound (16384px)
+//           and all size arithmetic uses checked multiplication to prevent
+//           integer overflow leading to heap underallocation + OOB write.
 // ---------------------------------------------------------------------------
 static UIImage* greenImageFromPBM(NSString* path) {
     if (!path) return nil;
@@ -36,15 +39,28 @@ static UIImage* greenImageFromPBM(NSString* path) {
     if (fscanf(f, " %d %d", &width, &height) != 2 || width <= 0 || height <= 0) { fclose(f); return nil; }
     fgetc(f); // consume single whitespace separator before binary data
 
+    // Sanity-clamp dimensions: refuse unreasonably large PBMs (prevents OOM / overflow)
+    static const int kMaxDim = 16384;
+    if (width > kMaxDim || height > kMaxDim) {
+        NSLog(@"DrawingOverlay: PBM dimensions too large (%dx%d), refusing to load", width, height);
+        fclose(f);
+        return nil;
+    }
+
+    // Checked arithmetic: rowBytes * height and width * height * 4 both overflow at large dims
     int rowBytes = (width + 7) / 8;
-    size_t dataSize = (size_t)(rowBytes * height);
+    size_t dataSize = (size_t)rowBytes * (size_t)height;
+    size_t rgbaSize = (size_t)width * (size_t)height * 4u;  // safe after kMaxDim guard above
+
     uint8_t* pbmBits = (uint8_t*)malloc(dataSize);
     if (!pbmBits) { fclose(f); return nil; }
-    fread(pbmBits, 1, dataSize, f);
-    fclose(f);
 
-    // Build RGBA8 bitmap: black PBM pixel → green, white → transparent
-    size_t rgbaSize = (size_t)(width * height * 4);
+    size_t bytesRead = fread(pbmBits, 1, dataSize, f);
+    fclose(f);
+    // If the file was truncated, only decode what we actually got
+    if (bytesRead < dataSize) {
+        memset(pbmBits + bytesRead, 0, dataSize - bytesRead);
+    }
     uint8_t* rgba = (uint8_t*)calloc(rgbaSize, 1);
     if (!rgba) { free(pbmBits); return nil; }
 
@@ -148,15 +164,15 @@ static UIImage* greenImageFromPBM(NSString* path) {
                        ny * self.bounds.size.height);
 }
 
-- (CGPathRef)smoothPathForPoints:(NSArray<NSValue*>*)pts CF_RETURNS_RETAINED {
-    CGMutablePathRef path = CGPathCreateMutable();
+- (UIBezierPath*)smoothUIPathForPoints:(NSArray<NSValue*>*)pts {
+    UIBezierPath* path = [UIBezierPath bezierPath];
     NSUInteger n = pts.count;
     if (n == 0) return path;
     CGPoint p0 = [pts[0] CGPointValue];
-    CGPathMoveToPoint(path, nil, p0.x, p0.y);
+    [path moveToPoint:p0];
     if (n == 1) return path;
     if (n == 2) {
-        CGPathAddLineToPoint(path, nil, [pts[1] CGPointValue].x, [pts[1] CGPointValue].y);
+        [path addLineToPoint:[pts[1] CGPointValue]];
         return path;
     }
     for (NSUInteger i = 0; i < n - 1; ++i) {
@@ -164,21 +180,20 @@ static UIImage* greenImageFromPBM(NSString* path) {
         CGPoint next = [pts[i + 1] CGPointValue];
         CGPoint mid  = CGPointMake((curr.x + next.x) * 0.5f,
                                    (curr.y + next.y) * 0.5f);
-        CGPathAddQuadCurveToPoint(path, nil, curr.x, curr.y, mid.x, mid.y);
+        [path addQuadCurveToPoint:mid controlPoint:curr];
     }
-    CGPathAddLineToPoint(path, nil, [pts[n-1] CGPointValue].x, [pts[n-1] CGPointValue].y);
+    [path addLineToPoint:[pts[n-1] CGPointValue]];
     return path;
 }
 
 - (void)updateLayer:(int)idx {
     if ([_strokeComplete[(NSUInteger)idx] boolValue]) return;
     NSArray<NSValue*>* pts = _strokePoints[(NSUInteger)idx];
-    CGPathRef smooth = [self smoothPathForPoints:pts];
+    UIBezierPath* smooth = [self smoothUIPathForPoints:pts];
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
-    _strokeLayers[(NSUInteger)idx].path = smooth;
+    _strokeLayers[(NSUInteger)idx].path = smooth.CGPath;
     [CATransaction commit];
-    CGPathRelease(smooth);
 }
 
 - (void)beginStroke:(int)idx {

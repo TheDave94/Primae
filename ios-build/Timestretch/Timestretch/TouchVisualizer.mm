@@ -74,7 +74,10 @@ static UIColor* kDotColor(void) {
 // The overlay view that manages one dot per active touch
 // ---------------------------------------------------------------------------
 @interface TouchVisualizerView : UIView
-@property (nonatomic, strong) NSMutableDictionary<NSValue*, TouchDotView*>* dotsByTouch;
+// NSMapTable with weak keys: touch objects are owned by UIKit; we must not
+// retain them (causes memory leak) or use non-retained NSValue pointers
+// (dangling pointer UB if UIKit reuses the address before we remove the key).
+@property (nonatomic, strong) NSMapTable<UITouch*, TouchDotView*>* dotsByTouch;
 @end
 
 @implementation TouchVisualizerView
@@ -85,22 +88,22 @@ static UIColor* kDotColor(void) {
         self.backgroundColor        = [UIColor clearColor];
         self.userInteractionEnabled = NO;
         self.autoresizingMask       = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-        self.dotsByTouch            = [NSMutableDictionary dictionary];
+        // weakToStrongObjectsMapTable: keys (UITouch*) are weak, values (TouchDotView*) are strong
+        self.dotsByTouch = [NSMapTable weakToStrongObjectsMapTable];
     }
     return self;
 }
 
-- (NSValue*)keyFor:(UITouch*)touch { return [NSValue valueWithNonretainedObject:touch]; }
+- (NSValue*)keyFor:(UITouch*)touch { (void)touch; return nil; } // unused — kept for ABI compat, do not call
 
 - (void)showTouches:(NSSet<UITouch*>*)touches {
     for (UITouch* touch in touches) {
         CGPoint loc = [touch locationInView:self];
-        NSValue* key = [self keyFor:touch];
-        TouchDotView* dot = self.dotsByTouch[key];
+        TouchDotView* dot = [self.dotsByTouch objectForKey:touch];
         if (!dot) {
             dot = [[TouchDotView alloc] init];
             [self addSubview:dot];
-            self.dotsByTouch[key] = dot;
+            [self.dotsByTouch setObject:dot forKey:touch];
         }
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
@@ -111,11 +114,10 @@ static UIColor* kDotColor(void) {
 
 - (void)hideTouches:(NSSet<UITouch*>*)touches {
     for (UITouch* touch in touches) {
-        NSValue* key = [self keyFor:touch];
-        TouchDotView* dot = self.dotsByTouch[key];
+        TouchDotView* dot = [self.dotsByTouch objectForKey:touch];
         if (dot) {
             [dot removeFromSuperview];
-            [self.dotsByTouch removeObjectForKey:key];
+            [self.dotsByTouch removeObjectForKey:touch];
         }
     }
 }

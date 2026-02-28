@@ -2,7 +2,21 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- File sharing OFF: app has no user documents to expose via iTunes/Files.
+	     Leaving this true would let anyone with physical device access browse
+	     and export all letter assets (PBM masks, audio files, JSON data). -->
 	<key>UIFileSharingEnabled</key>
-	<true/>
+	<false/>
+
+	<!-- Declare we use no exempt encryption → skip App Store encryption review -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- Suppress ATS: app has no network access whatsoever (pure local asset app) -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+	</dict>
 </dict>
 </plist>
