@@ -160,6 +160,14 @@ static UIImage* greenImageFromPBM(NSString* path) {
 }
 
 - (CGPoint)denorm:(float)nx y:(float)ny {
+    // nx/ny are normalised coords in SDL render-pixel space [0..1].
+    // CAShapeLayer paths live in UIKit point space (bounds, not pixel space).
+    // On a 2× Retina display: points = pixels / contentScaleFactor.
+    // So: point = normalised_pixel * bounds_points
+    //           = (px / totalPixels) * (totalPixels / scale)
+    //           = nx * bounds_points   ← which is exactly bounds.size.
+    // This works because the overlay covers the full SDL view, so
+    // bounds_points == render_pixels / scale.
     return CGPointMake(nx * self.bounds.size.width,
                        ny * self.bounds.size.height);
 }

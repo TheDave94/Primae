@@ -1,16 +1,16 @@
 {
   "letter": "I",
-  "checkpointRadius": 0.09,
-  "comment": "Bbox x=[0.452..0.542] y=[0.248..0.751]. 1 stroke: straight down center.",
+  "checkpointRadius": 0.04,
+  "comment": "Coords measured from debug screenshot (1194x896). 1 stroke: straight down.",
   "strokes": [
     {
       "id": 1,
       "comment": "Vertical stroke: top to bottom",
       "checkpoints": [
-        {"x": 0.497, "y": 0.258},
-        {"x": 0.497, "y": 0.374},
-        {"x": 0.497, "y": 0.499},
-        {"x": 0.497, "y": 0.741}
+        {"x": 0.532, "y": 0.234},
+        {"x": 0.532, "y": 0.396},
+        {"x": 0.532, "y": 0.558},
+        {"x": 0.532, "y": 0.776}
       ]
     }
   ]

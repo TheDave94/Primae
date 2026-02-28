@@ -1,25 +1,25 @@
 {
   "letter": "L",
-  "checkpointRadius": 0.08,
-  "comment": "Bbox x=[0.385..0.617] y=[0.248..0.751]. 2 strokes: 1=spine top→bottom, 2=foot left→right.",
+  "checkpointRadius": 0.04,
+  "comment": "Coords measured from debug screenshot (1194x896). 2 strokes: spine top→bot, foot L→R.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Vertical stroke: top to bottom-left corner",
+      "comment": "Vertical stroke: top to bottom",
       "checkpoints": [
-        {"x": 0.407, "y": 0.258},
-        {"x": 0.407, "y": 0.374},
-        {"x": 0.407, "y": 0.499},
-        {"x": 0.407, "y": 0.741}
+        {"x": 0.448, "y": 0.234},
+        {"x": 0.446, "y": 0.379},
+        {"x": 0.444, "y": 0.547},
+        {"x": 0.448, "y": 0.731}
       ]
     },
     {
       "id": 2,
       "comment": "Baseline foot: left to right",
       "checkpoints": [
-        {"x": 0.407, "y": 0.741},
-        {"x": 0.501, "y": 0.741},
-        {"x": 0.597, "y": 0.741}
+        {"x": 0.448, "y": 0.748},
+        {"x": 0.536, "y": 0.753},
+        {"x": 0.624, "y": 0.753}
       ]
     }
   ]
