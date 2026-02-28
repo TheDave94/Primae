@@ -1562,16 +1562,13 @@ int main(int /*argc*/, char** /*argv*/) {
                     g_state.isPlaying = false;
                     g_state.targetSpeed = 1.0f;
                 }
-                // Reset drawing after 2 seconds so the child can start again
-                if (completionMs >= 2000) {
-                    strokeTracker.reset();
-                    reloadStrokes();
-                    letterCompleteTime = std::chrono::steady_clock::time_point{};
-                    g_state.restart = true;
-#ifndef NDEBUG
-                    std::cout << "🔄 Letter reset — ready for next attempt\n";
-#endif
-                }
+                // TEMP: auto-reset disabled — lines stay until next swipe for screenshotting
+                // if (completionMs >= 2000) {
+                //     strokeTracker.reset();
+                //     reloadStrokes();
+                //     letterCompleteTime = std::chrono::steady_clock::time_point{};
+                //     g_state.restart = true;
+                // }
             } else if (letterCompleteTime != std::chrono::steady_clock::time_point{}) {
                 // Tracker was reset externally (e.g. letter change) — clear timer
                 letterCompleteTime = std::chrono::steady_clock::time_point{};
