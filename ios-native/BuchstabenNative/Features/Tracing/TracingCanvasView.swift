@@ -46,6 +46,19 @@ struct TracingCanvasView: View {
                 MagnificationGesture(minimumScaleDelta: 0.01)
                     .onEnded { _ in vm.randomLetter() }
             )
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 24)
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        let dy = abs(value.translation.height)
+                        guard abs(dx) > 40, dy < 50 else { return }
+                        if dx < 0 { vm.nextLetter() } else { vm.previousLetter() }
+                    }
+            )
+            .simultaneousGesture(
+                TapGesture(count: 2)
+                    .onEnded { vm.randomLetter() }
+            )
         }
     }
 }
