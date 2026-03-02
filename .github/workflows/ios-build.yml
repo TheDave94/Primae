@@ -1,17 +1,17 @@
-name: iOS Build
+name: iOS Build & Test
 
 on:
   push:
-    branches:
-      - ux/smoother-ui-experiments
+    branches: [ main ]
   pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+    branches: [ main ]
+  workflow_dispatch:  # allows Bonifazius to trigger manually via gh
 
 jobs:
   build:
+    name: Build & Test
     runs-on: macos-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,9 +19,17 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
-      - name: Show Xcode version
-        run: xcodebuild -version
-
-      - name: Build (iOS Simulator)
+      - name: Show build environment
         run: |
-          xcodebuild \n            -project ios-build/Timestretch/Timestretch/Timestretch.xcodeproj \n            -scheme Timestretch \n            -configuration Debug \n            -destination "platform=iOS Simulator,name=iPad Pro (12.9-inch) (6th generation)" \n            CODE_SIGNING_ALLOWED=NO \n            build
+          xcodebuild -version
+          swift --version
+
+      - name: Find project
+        run: find . -name "*.xcodeproj" -o -name "*.xcworkspace" | head -10
+
+      - name: Build
+        run: xcodebuild -scheme Timestretch -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+
+      - name: Test
+        run: xcodebuild -scheme Timestretch -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M4)' -configuration Debug CODE_SIGNING_ALLOWED=NO test
+        continue-on-error: true
