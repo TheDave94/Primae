@@ -2,22 +2,19 @@ name: iOS Build & Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, "ux/**" ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:  # allows Bonifazius to trigger manually via gh
+  workflow_dispatch:
 
 jobs:
   build:
-    name: Build & Test
+    name: Build (iOS Simulator)
     runs-on: macos-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
 
       - name: Show build environment
         run: |
