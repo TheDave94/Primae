@@ -24,10 +24,4 @@ jobs:
 
       - name: Build (iOS Simulator)
         run: |
-          xcodebuild \
-            -project ios-build/Timestretch/Timestretch/Timestretch.xcodeproj \
-            -scheme Timestretch \
-            -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPad Pro (12.9-inch) (6th generation)' \
-            CODE_SIGNING_ALLOWED=NO \
-            build
+          xcodebuild \n            -project ios-build/Timestretch/Timestretch/Timestretch.xcodeproj \n            -scheme Timestretch \n            -configuration Debug \n            -destination "platform=iOS Simulator,name=iPad Pro (12.9-inch) (6th generation)" \n            CODE_SIGNING_ALLOWED=NO \n            build
