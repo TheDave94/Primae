@@ -439,6 +439,7 @@ namespace Config {
     // --- UX micro-feedback ---
     constexpr int kToastMs               = 1600;
     constexpr int kToastFadeMs           = 300;
+    constexpr int kUiTapSuppressMs       = 220;
 }
 
 // ============================================================================
@@ -1283,6 +1284,9 @@ int main(int /*argc*/, char** /*argv*/) {
 
     showToast("Ready: 1 finger draw, 2 swipe, 2 tap random", 2400);
 
+    // Briefly suppress drawing/audio after top-bar interactions to avoid accidental strokes
+    auto suppressUntil = std::chrono::steady_clock::time_point{};
+
     // Helper: test if a normalised finger position hits a button rect (pixel coords)
     // tfinger.x/y are in [0,1] normalised window space in SDL3
     auto fingerHitsButton = [&](const SDL_TouchFingerEvent& tf, const SDL_FRect& r,
@@ -1323,6 +1327,8 @@ int main(int /*argc*/, char** /*argv*/) {
                         tracingMode      = !tracingMode;
                         buttons[0].state = tracingMode;
                         showToast(tracingMode ? "Ghost tracing ON" : "Ghost tracing OFF");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                     else if (fingerHitsButton(ev.tfinger, buttons[1].rect, curRW, curRH)) {
                         // Stroke enforcement toggle
@@ -1330,17 +1336,23 @@ int main(int /*argc*/, char** /*argv*/) {
                         buttons[1].state = strokeEnforced;
                         strokeTracker.reset();
                         showToast(strokeEnforced ? "Stroke order ON" : "Stroke order OFF");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                     else if (fingerHitsButton(ev.tfinger, buttons[2].rect, curRW, curRH)) {
                         // Checkpoint debug overlay toggle
                         showCheckpoints  = !showCheckpoints;
                         buttons[2].state = showCheckpoints;
                         showToast(showCheckpoints ? "Debug checkpoints ON" : "Debug checkpoints OFF");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                     else if (fingerHitsButton(ev.tfinger, buttons[3].rect, curRW, curRH)) {
                         // Reset current letter
                         strokeTracker.reset();
                         showToast("Letter reset");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                 }
                 else if (activeFingers == 2) {
@@ -1377,7 +1389,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         else        browser.prevAudio();
                         audio.loadFile(browser.currentAudioPath());
                         assetsChanged = true;
-                        showToast(std::string("Sound variant ") + std::to_string(browser.current().currentAudioIdx + 1));
+                        showToast(std::string("Sound ") + std::to_string(browser.current().currentAudioIdx + 1) + "/" + std::to_string(browser.current().audioFiles.size()));
                     }
 
                     // Todo #1: two-finger double-tap → random letter
@@ -1440,6 +1452,13 @@ int main(int /*argc*/, char** /*argv*/) {
             g_state.isPlaying = false;
 
         } else {
+            // After tapping top UI buttons, ignore drawing briefly to prevent accidental marks.
+            if (suppressUntil != std::chrono::steady_clock::time_point{} &&
+                std::chrono::steady_clock::now() < suppressUntil) {
+                g_state.isPlaying = false;
+                continue;
+            }
+
             // Use render output size (pixels) not window size (points).
             // On Retina/HiDPI iPads SDL_GetWindowSize returns logical points
             // (e.g. 1366x1024) while the PBM and render surface are in physical
