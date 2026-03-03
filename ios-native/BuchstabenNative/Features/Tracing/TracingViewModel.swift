@@ -1,5 +1,6 @@
 import Combine
 import CoreGraphics
+import QuartzCore
 import Foundation
 
 @MainActor
