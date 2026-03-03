@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-final class AudioEngine {
+final class AudioEngine: TracingAudioControlling {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
