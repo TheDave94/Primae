@@ -15,18 +15,15 @@ final class BuchstabenNativeTests: XCTestCase {
         )
         tracker.load(strokes)
 
-        // Hit second stroke first -> should not advance.
         tracker.update(normalizedPoint: CGPoint(x: 0.4, y: 0.4))
         XCTAssertEqual(tracker.progress[0].nextCheckpoint, 0)
         XCTAssertFalse(tracker.soundEnabled)
 
-        // Complete first stroke.
         tracker.update(normalizedPoint: CGPoint(x: 0.2, y: 0.2))
         tracker.update(normalizedPoint: CGPoint(x: 0.4, y: 0.2))
         XCTAssertTrue(tracker.progress[0].complete)
         XCTAssertEqual(tracker.currentStrokeIndex, 1)
 
-        // Complete second stroke.
         tracker.update(normalizedPoint: CGPoint(x: 0.4, y: 0.4))
         tracker.update(normalizedPoint: CGPoint(x: 0.6, y: 0.4))
         XCTAssertTrue(tracker.isComplete)
@@ -37,7 +34,6 @@ final class BuchstabenNativeTests: XCTestCase {
         let sample: [CGFloat] = [0, 60, 120, 240, 500, 900, 1300, 3000]
         let mapped = sample.map(TracingViewModel.mapVelocityToSpeed)
 
-        // Bounded
         XCTAssertEqual(mapped.first, 2.0, accuracy: 0.0001)
         XCTAssertEqual(mapped.last, 0.5, accuracy: 0.0001)
         mapped.forEach { value in
@@ -45,7 +41,6 @@ final class BuchstabenNativeTests: XCTestCase {
             XCTAssertLessThanOrEqual(value, 2.0)
         }
 
-        // Monotonic non-increasing
         for i in 1..<mapped.count {
             XCTAssertLessThanOrEqual(mapped[i], mapped[i - 1], "Speed should not increase with higher velocity")
         }
@@ -55,10 +50,7 @@ final class BuchstabenNativeTests: XCTestCase {
         let fs = try TempResourceFS()
         defer { fs.cleanup() }
 
-        // Invalid stroke json should be ignored.
         try fs.write(relative: "A_strokes.json", content: "{not-json")
-
-        // Folder-scan fallback should still produce A from A/A.pbm + A/A1.mp3
         try fs.write(relative: "A/A.pbm", content: "P1\n1 1\n0")
         try fs.write(relative: "A/A1.mp3", content: "dummy")
 
@@ -96,6 +88,14 @@ final class BuchstabenNativeTests: XCTestCase {
         let m = try XCTUnwrap(letters.first(where: { $0.id.uppercased() == "M" }))
 
         XCTAssertEqual(m.audioFiles, ["M/Meer.mp3", "M/Möwe.mp3"])
+    }
+
+    func testGuideRendererSupportsCouncilLetterSet() {
+        let rect = CGRect(x: 0, y: 0, width: 320, height: 480)
+        for letter in ["A", "F", "I", "K", "L", "M", "O"] {
+            XCTAssertNotNil(LetterGuideRenderer.guidePath(for: letter, in: rect), "Expected guide path for \(letter)")
+        }
+        XCTAssertNil(LetterGuideRenderer.guidePath(for: "Z", in: rect))
     }
 }
 

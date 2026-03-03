@@ -9,14 +9,13 @@ struct TracingCanvasView: View {
             ZStack {
                 Canvas { context, _ in
                     if vm.showGhost {
-                        let ghost = Path { p in
-                            p.addRoundedRect(in: CGRect(x: geo.size.width * 0.25,
-                                                        y: geo.size.height * 0.15,
-                                                        width: geo.size.width * 0.5,
-                                                        height: geo.size.height * 0.7),
-                                             cornerSize: CGSize(width: 18, height: 18))
+                        let guideRect = CGRect(x: geo.size.width * 0.14,
+                                               y: geo.size.height * 0.1,
+                                               width: geo.size.width * 0.72,
+                                               height: geo.size.height * 0.8)
+                        if let ghost = LetterGuideRenderer.guidePath(for: vm.currentLetterName, in: guideRect) {
+                            context.stroke(ghost, with: .color(.blue.opacity(0.22)), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
                         }
-                        context.stroke(ghost, with: .color(.blue.opacity(0.18)), lineWidth: 10)
                     }
 
                     if vm.activePath.count > 1 {
