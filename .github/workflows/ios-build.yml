@@ -9,7 +9,7 @@ on:
 
 jobs:
   build:
-    name: Build (iOS Simulator)
+    name: Build (legacy ios-build/Timestretch)
     runs-on: macos-latest
 
     steps:
@@ -31,3 +31,50 @@ jobs:
           else
             echo "No test action configured for scheme Timestretch; skipping tests."
           fi
+
+  ios_native:
+    name: Build & Test (ios-native / BuchstabenNativeTests)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve package and discover scheme
+        id: scheme
+        run: |
+          xcodebuild -list -json -package-path . > /tmp/spm_schemes.json
+          cat /tmp/spm_schemes.json
+          SCHEME=$(python3 - << 'PY'
+import json
+obj=json.load(open('/tmp/spm_schemes.json'))
+schemes=obj.get('workspace',{}).get('schemes',[])
+for s in schemes:
+    if 'BuchstabenNative' in s:
+        print(s)
+        break
+PY
+)
+          if [ -z "$SCHEME" ]; then
+            echo "Unable to find package scheme containing BuchstabenNative"
+            exit 1
+          fi
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+      - name: Build ios-native
+        run: |
+          xcodebuild \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Test BuchstabenNativeTests
+        run: |
+          xcodebuild \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            test
