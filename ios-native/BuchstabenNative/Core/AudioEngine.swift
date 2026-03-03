@@ -9,6 +9,10 @@ final class AudioEngine {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
 
+    private var shouldResumePlayback = false
+    private var appIsForeground = true
+    private var interrupted = false
+
     private(set) var isPlaying = false
 
     init() {
@@ -30,14 +34,19 @@ final class AudioEngine {
         stopAndReset()
     }
 
-    func loadAudioFile(named fileName: String) {
+    func loadAudioFile(named fileName: String, autoplay: Bool = false) {
         guard let url = resourceURL(for: fileName) else {
             print("Missing audio file: \(fileName)")
             return
         }
+
         do {
             currentFile = try AVAudioFile(forReading: url)
-            restart()
+            shouldResumePlayback = autoplay
+            prepareCurrentTrack()
+            if autoplay {
+                attemptResumePlayback()
+            }
         } catch {
             print("Audio load error: \(error)")
         }
@@ -50,38 +59,32 @@ final class AudioEngine {
     }
 
     func play() {
-        guard !isPlaying else { return }
-        startIfNeeded()
-        if !player.isPlaying {
-            player.play()
-        }
-        isPlaying = true
+        shouldResumePlayback = true
+        attemptResumePlayback()
     }
 
     func stop() {
+        shouldResumePlayback = false
         player.pause()
         isPlaying = false
     }
 
     func restart() {
-        guard let file = currentFile else { return }
-        player.stop()
-        player.scheduleFile(file, at: nil, completionHandler: nil)
-        player.play()
-        isPlaying = true
+        shouldResumePlayback = true
+        prepareCurrentTrack()
+        attemptResumePlayback()
     }
 
     func suspendForLifecycle() {
-        stop()
+        appIsForeground = false
+        player.pause()
+        isPlaying = false
         pendingSafeEnginePause()
     }
 
     func resumeAfterLifecycle() {
-        startIfNeeded()
-        guard let file = currentFile else { return }
-        if !player.isPlaying {
-            player.scheduleFile(file, at: nil, completionHandler: nil)
-        }
+        appIsForeground = true
+        attemptResumePlayback()
     }
 }
 
@@ -111,6 +114,35 @@ private extension AudioEngine {
         }
     }
 
+    func canResumePlayback() -> Bool {
+        appIsForeground && !interrupted
+    }
+
+    func attemptResumePlayback() {
+        startIfNeeded()
+        prepareCurrentTrack()
+
+        guard shouldResumePlayback, canResumePlayback() else {
+            player.pause()
+            isPlaying = false
+            pendingSafeEnginePause()
+            return
+        }
+
+        if !player.isPlaying {
+            player.play()
+        }
+        isPlaying = true
+    }
+
+    func prepareCurrentTrack() {
+        guard let file = currentFile else { return }
+
+        player.stop()
+        player.scheduleFile(file, at: nil, completionHandler: nil)
+        isPlaying = false
+    }
+
     func pendingSafeEnginePause() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
             guard let self else { return }
@@ -123,6 +155,9 @@ private extension AudioEngine {
         player.stop()
         engine.stop()
         currentFile = nil
+        shouldResumePlayback = false
+        appIsForeground = true
+        interrupted = false
         isPlaying = false
     }
 
@@ -152,12 +187,14 @@ private extension AudioEngine {
 
         switch type {
         case .began:
-            stop()
+            interrupted = true
+            player.pause()
+            isPlaying = false
         case .ended:
-            startIfNeeded()
+            interrupted = false
             if let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
                AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) {
-                play()
+                attemptResumePlayback()
             }
         @unknown default:
             break
@@ -170,8 +207,15 @@ private extension AudioEngine {
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
-        if reason == .oldDeviceUnavailable {
-            stop()
+        switch reason {
+        case .oldDeviceUnavailable:
+            player.pause()
+            isPlaying = false
+            attemptResumePlayback()
+        case .newDeviceAvailable, .categoryChange, .override, .routeConfigurationChange, .wakeFromSleep, .noSuitableRouteForCategory:
+            attemptResumePlayback()
+        default:
+            break
         }
     }
 }
