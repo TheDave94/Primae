@@ -1,0 +1,157 @@
+import XCTest
+import CoreGraphics
+@testable import BuchstabenNative
+
+final class BuchstabenNativeTests: XCTestCase {
+    func testStrokeTrackerProgressionRespectsOrder() {
+        let tracker = StrokeTracker()
+        let strokes = LetterStrokes(
+            letter: "T",
+            checkpointRadius: 0.06,
+            strokes: [
+                .init(id: 1, checkpoints: [.init(x: 0.2, y: 0.2), .init(x: 0.4, y: 0.2)]),
+                .init(id: 2, checkpoints: [.init(x: 0.4, y: 0.4), .init(x: 0.6, y: 0.4)])
+            ]
+        )
+        tracker.load(strokes)
+
+        // Hit second stroke first -> should not advance.
+        tracker.update(normalizedPoint: CGPoint(x: 0.4, y: 0.4))
+        XCTAssertEqual(tracker.progress[0].nextCheckpoint, 0)
+        XCTAssertFalse(tracker.soundEnabled)
+
+        // Complete first stroke.
+        tracker.update(normalizedPoint: CGPoint(x: 0.2, y: 0.2))
+        tracker.update(normalizedPoint: CGPoint(x: 0.4, y: 0.2))
+        XCTAssertTrue(tracker.progress[0].complete)
+        XCTAssertEqual(tracker.currentStrokeIndex, 1)
+
+        // Complete second stroke.
+        tracker.update(normalizedPoint: CGPoint(x: 0.4, y: 0.4))
+        tracker.update(normalizedPoint: CGPoint(x: 0.6, y: 0.4))
+        XCTAssertTrue(tracker.isComplete)
+        XCTAssertEqual(tracker.overallProgress, 1.0)
+    }
+
+    func testMapVelocityToSpeedIsMonotonicAndBounded() {
+        let sample: [CGFloat] = [0, 60, 120, 240, 500, 900, 1300, 3000]
+        let mapped = sample.map(TracingViewModel.mapVelocityToSpeed)
+
+        // Bounded
+        XCTAssertEqual(mapped.first, 2.0, accuracy: 0.0001)
+        XCTAssertEqual(mapped.last, 0.5, accuracy: 0.0001)
+        mapped.forEach { value in
+            XCTAssertGreaterThanOrEqual(value, 0.5)
+            XCTAssertLessThanOrEqual(value, 2.0)
+        }
+
+        // Monotonic non-increasing
+        for i in 1..<mapped.count {
+            XCTAssertLessThanOrEqual(mapped[i], mapped[i - 1], "Speed should not increase with higher velocity")
+        }
+    }
+
+    func testLetterRepositoryFallsBackFromInvalidJsonToFolderScan() throws {
+        let fs = try TempResourceFS()
+        defer { fs.cleanup() }
+
+        // Invalid stroke json should be ignored.
+        try fs.write(relative: "A_strokes.json", content: "{not-json")
+
+        // Folder-scan fallback should still produce A from A/A.pbm + A/A1.mp3
+        try fs.write(relative: "A/A.pbm", content: "P1\n1 1\n0")
+        try fs.write(relative: "A/A1.mp3", content: "dummy")
+
+        let repo = LetterRepository(resources: fs.provider)
+        let letters = repo.loadLetters()
+
+        XCTAssertEqual(letters.first?.name, "A")
+        XCTAssertEqual(letters.first?.imageName, "A/A.pbm")
+        XCTAssertEqual(letters.first?.audioFiles, ["A/A1.mp3"])
+    }
+
+    func testLetterRepositoryFallsBackToSampleWhenNoAssetsExist() {
+        let provider = MockResourceProvider(urls: [], byRelativePath: [:])
+        let repo = LetterRepository(resources: provider)
+        let letters = repo.loadLetters()
+
+        XCTAssertEqual(letters.count, 1)
+        XCTAssertEqual(letters[0].name, "A")
+        XCTAssertEqual(letters[0].audioFiles, ["A.mp3"])
+    }
+
+    func testLetterRepositoryPrefersCleanCuratedAudioForAtoM() throws {
+        let fs = try TempResourceFS()
+        defer { fs.cleanup() }
+
+        try fs.write(relative: "M_strokes.json", content: validJSON(letter: "M"))
+        try fs.write(relative: "M/M.pbm", content: "P1\n1 1\n0")
+        try fs.write(relative: "M/Möwe.mp3", content: "ok")
+        try fs.write(relative: "M/Meer.mp3", content: "ok")
+        try fs.write(relative: "M/hmmm.wav", content: "stale")
+        try fs.write(relative: "M/ElevenLabs_test.mp3", content: "stale")
+
+        let repo = LetterRepository(resources: fs.provider)
+        let letters = repo.loadLetters()
+        let m = try XCTUnwrap(letters.first(where: { $0.id.uppercased() == "M" }))
+
+        XCTAssertEqual(m.audioFiles, ["M/Meer.mp3", "M/Möwe.mp3"])
+    }
+}
+
+private func validJSON(letter: String) -> String {
+    """
+    {
+      "letter": "\(letter)",
+      "checkpointRadius": 0.06,
+      "strokes": [
+        {
+          "id": 1,
+          "checkpoints": [
+            { "x": 0.2, "y": 0.2 },
+            { "x": 0.8, "y": 0.8 }
+          ]
+        }
+      ]
+    }
+    """
+}
+
+private struct MockResourceProvider: LetterResourceProviding {
+    let urls: [URL]
+    let byRelativePath: [String: URL]
+
+    func allResourceURLs() -> [URL] { urls }
+    func resourceURL(for relativePath: String) -> URL? { byRelativePath[relativePath] }
+}
+
+private final class TempResourceFS {
+    let root: URL
+    var provider: MockResourceProvider {
+        let urls = (try? FileManager.default.subpathsOfDirectory(atPath: root.path))?.map {
+            root.appendingPathComponent($0)
+        } ?? []
+
+        let map = Dictionary(uniqueKeysWithValues: urls.map { (url) in
+            let rel = url.path.replacingOccurrences(of: root.path + "/", with: "")
+            return (rel, url)
+        })
+
+        return MockResourceProvider(urls: urls, byRelativePath: map)
+    }
+
+    init() throws {
+        root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    func write(relative: String, content: String) throws {
+        let url = root.appendingPathComponent(relative)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data(content.utf8).write(to: url)
+    }
+
+    func cleanup() {
+        try? FileManager.default.removeItem(at: root)
+    }
+}
