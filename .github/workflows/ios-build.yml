@@ -46,15 +46,15 @@ jobs:
           xcodebuild -list -json -package-path . > /tmp/spm_schemes.json
           cat /tmp/spm_schemes.json
           SCHEME=$(python3 - << 'PY'
-import json
-obj=json.load(open('/tmp/spm_schemes.json'))
-schemes=obj.get('workspace',{}).get('schemes',[])
-for s in schemes:
-    if 'BuchstabenNative' in s:
-        print(s)
-        break
-PY
-)
+          import json
+          obj=json.load(open('/tmp/spm_schemes.json'))
+          schemes=obj.get('workspace',{}).get('schemes',[])
+          for s in schemes:
+              if 'BuchstabenNative' in s:
+                  print(s)
+                  break
+          PY
+          )
           if [ -z "$SCHEME" ]; then
             echo "Unable to find package scheme containing BuchstabenNative"
             exit 1
