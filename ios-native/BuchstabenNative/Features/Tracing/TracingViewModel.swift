@@ -18,8 +18,10 @@ final class TracingViewModel: ObservableObject {
 
     private var letters: [LetterAsset] = []
     private var letterIndex = 0
+    private var audioIndex = 0
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
+    private var isMultiTouchNavigationActive = false
 
     init() {
         letters = repo.loadLetters()
@@ -59,16 +61,50 @@ final class TracingViewModel: ObservableObject {
         guard !letters.isEmpty else { return }
         letterIndex = Int.random(in: 0..<letters.count)
         load(letter: letters[letterIndex])
+        randomAudioVariant()
         toast("Random: \(currentLetterName)")
     }
 
+    func nextAudioVariant() {
+        guard !letters.isEmpty else { return }
+        let files = letters[letterIndex].audioFiles
+        guard !files.isEmpty else { return }
+        audioIndex = (audioIndex + 1) % files.count
+        audio.loadAudioFile(named: files[audioIndex])
+        audio.stop()
+        isPlaying = false
+        toast("Sound \(audioIndex + 1)/\(files.count)")
+    }
+
+    func previousAudioVariant() {
+        guard !letters.isEmpty else { return }
+        let files = letters[letterIndex].audioFiles
+        guard !files.isEmpty else { return }
+        audioIndex = (audioIndex - 1 + files.count) % files.count
+        audio.loadAudioFile(named: files[audioIndex])
+        audio.stop()
+        isPlaying = false
+        toast("Sound \(audioIndex + 1)/\(files.count)")
+    }
+
+    func beginMultiTouchNavigation() {
+        isMultiTouchNavigationActive = true
+        endTouch()
+    }
+
+    func endMultiTouchNavigation() {
+        isMultiTouchNavigationActive = false
+    }
+
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+        guard !isMultiTouchNavigationActive else { return }
         lastPoint = p
         lastTimestamp = t
         activePath = [p]
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
+        guard !isMultiTouchNavigationActive else { return }
         activePath.append(p)
 
         guard let lastPoint, let lastTimestamp else { return }
@@ -107,6 +143,7 @@ final class TracingViewModel: ObservableObject {
     func endTouch() {
         lastPoint = nil
         lastTimestamp = nil
+        activePath.removeAll(keepingCapacity: true)
         audio.stop()
         isPlaying = false
     }
@@ -115,12 +152,22 @@ final class TracingViewModel: ObservableObject {
         currentLetterName = letter.name
         strokeTracker.load(letter.strokes)
         progress = 0
+        audioIndex = 0
         activePath.removeAll(keepingCapacity: true)
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio)
             audio.stop()
             isPlaying = false
         }
+    }
+
+    private func randomAudioVariant() {
+        let files = letters[letterIndex].audioFiles
+        guard !files.isEmpty else { return }
+        audioIndex = Int.random(in: 0..<files.count)
+        audio.loadAudioFile(named: files[audioIndex])
+        audio.stop()
+        isPlaying = false
     }
 
     private func mapVelocityToSpeed(_ v: CGFloat) -> Float {

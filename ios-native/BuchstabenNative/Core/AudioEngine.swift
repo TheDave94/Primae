@@ -23,7 +23,7 @@ final class AudioEngine {
     }
 
     func loadAudioFile(named fileName: String) {
-        guard let url = Bundle.main.url(forResource: fileName, withExtension: nil) else {
+        guard let url = resourceURL(for: fileName) else {
             print("Missing audio file: \(fileName)")
             return
         }
@@ -64,5 +64,23 @@ final class AudioEngine {
         player.scheduleFile(file, at: nil, completionHandler: nil)
         player.play()
         isPlaying = true
+    }
+}
+
+private extension AudioEngine {
+    func resourceURL(for fileName: String) -> URL? {
+        if let direct = Bundle.main.url(forResource: fileName, withExtension: nil) {
+            return direct
+        }
+
+        let ns = fileName as NSString
+        let resource = ns.lastPathComponent
+        let subdir = ns.deletingLastPathComponent
+        if !subdir.isEmpty,
+           let nested = Bundle.main.url(forResource: resource, withExtension: nil, subdirectory: subdir) {
+            return nested
+        }
+
+        return nil
     }
 }
