@@ -423,9 +423,6 @@ namespace Config {
     // --- Todo #6: Pitch & panning ---
     /// Maximum pitch-shift magnitude in semitones (applied symmetrically ±)
     constexpr float kMaxPitchSemitones   = 1.0f;
-    /// Stereo spread coefficient driven by horizontal stroke direction [0–1]
-    constexpr float kPanSpread           = 0.3f;
-
     // --- Todo #7: Adaptive mute threshold ---
     /// Number of velocity samples in the rolling window
     constexpr size_t kVelocityWindowSize = 60;
@@ -882,7 +879,7 @@ public:
 
         // Pre-warm: feed RubberBand its required latency upfront so the first
         // audio callback always has data available (prevents startup crackling).
-        int prewarmFrames = stretcher->getLatency() + (int)(Config::kBufFrames * Config::kInputMultiplier);
+        int prewarmFrames = static_cast<int>(stretcher->getLatency()) + static_cast<int>(Config::kBufFrames * Config::kInputMultiplier);
         std::vector<float> prewarmBuf((size_t)(prewarmFrames * sfInfo.channels));
         // Use the return value: file may be shorter than prewarmFrames (e.g. short phoneme)
         sf_count_t prewarmGot = sf_readf_float(snd, prewarmBuf.data(), prewarmFrames);
@@ -919,7 +916,6 @@ private:
      * @param userdata         Pointer to the AudioEngine instance.
      * @param stream           The SDL_AudioStream to push data into.
      * @param additional_amount Bytes the stream is requesting.
-     * @param total_amount     Total buffered bytes (informational).
      */
     static void SDLCALL AudioCallback(void* userdata, SDL_AudioStream* stream,
                                       int additional_amount, int /*total_amount*/) {
@@ -1660,8 +1656,6 @@ int main(int /*argc*/, char** /*argv*/) {
             const float btnW   = 120.f;
             const float btnGap = 12.f;
             const float btnY   = 16.f;
-            const float cornerR = 14.f; // visual only — we draw as rect
-
             // Compute rects and store them for hit-testing
             for (int i = 0; i < 4; ++i) {
                 buttons[i].rect = {btnGap + i * (btnW + btnGap), btnY, btnW, btnH};
