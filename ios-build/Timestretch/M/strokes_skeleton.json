@@ -1,0 +1,51 @@
+{
+  "letter": "M",
+  "checkpointRadius": 0.055,
+  "source": "skeleton+manual",
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "left vertical top→bottom",
+      "checkpoints": [
+        {"x": 0.318, "y": 0.240},
+        {"x": 0.318, "y": 0.360},
+        {"x": 0.318, "y": 0.480},
+        {"x": 0.318, "y": 0.600},
+        {"x": 0.318, "y": 0.720}
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "left diagonal: top-left DOWN to valley",
+      "checkpoints": [
+        {"x": 0.318, "y": 0.240},
+        {"x": 0.365, "y": 0.340},
+        {"x": 0.412, "y": 0.460},
+        {"x": 0.459, "y": 0.560},
+        {"x": 0.490, "y": 0.640}
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "right diagonal: valley UP to top-right",
+      "checkpoints": [
+        {"x": 0.490, "y": 0.640},
+        {"x": 0.524, "y": 0.560},
+        {"x": 0.571, "y": 0.460},
+        {"x": 0.618, "y": 0.340},
+        {"x": 0.659, "y": 0.240}
+      ]
+    },
+    {
+      "id": 4,
+      "comment": "right vertical top→bottom",
+      "checkpoints": [
+        {"x": 0.659, "y": 0.240},
+        {"x": 0.659, "y": 0.360},
+        {"x": 0.659, "y": 0.480},
+        {"x": 0.659, "y": 0.600},
+        {"x": 0.659, "y": 0.720}
+      ]
+    }
+  ]
+}

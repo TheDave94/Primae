@@ -25,9 +25,3 @@ vcpkg/*.log
 .DS_Store
 *.swp
 new-sounds/
-ha-proposals/
-.build/
-.swiftpm/
-BuchstabenLernen/
-# Allow .xcodeproj and .xcworkspace to be committed (needed to build on device)
-# Only ignore generated/user-specific Xcode internals (xcuserdata, xcuserstate above)

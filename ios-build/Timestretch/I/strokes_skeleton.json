@@ -1,0 +1,37 @@
+{
+  "letter": "I",
+  "checkpointRadius": 0.05,
+  "source": "skeleton",
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "vertical top\u2192bottom",
+      "checkpoints": [
+        {
+          "x": 0.5,
+          "y": 0.265
+        },
+        {
+          "x": 0.5,
+          "y": 0.354
+        },
+        {
+          "x": 0.5,
+          "y": 0.443
+        },
+        {
+          "x": 0.5,
+          "y": 0.532
+        },
+        {
+          "x": 0.5,
+          "y": 0.621
+        },
+        {
+          "x": 0.5,
+          "y": 0.71
+        }
+      ]
+    }
+  ]
+}

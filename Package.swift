@@ -1,31 +1,24 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
     name: "BuchstabenNative",
     platforms: [
-        .iOS(.v18)
+        .iOS(.v17),
+        .macOS(.v14)
     ],
-    // ADD THIS NEW PRODUCTS SECTION:
     products: [
-        .library(
-            name: "BuchstabenNative",
-            targets: ["BuchstabenNative"]
-        )
+        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"])
     ],
-    // LEAVE THE REST AS IT WAS:
     targets: [
         .target(
             name: "BuchstabenNative",
-            path: "BuchstabenNative",
-            resources: [
-                .copy("Resources/Letters")
-            ]
+            path: "ios-native/BuchstabenNative"
         ),
         .testTarget(
             name: "BuchstabenNativeTests",
             dependencies: ["BuchstabenNative"],
-            path: "BuchstabenNativeTests"
+            path: "ios-native/BuchstabenNativeTests"
         )
     ]
 )

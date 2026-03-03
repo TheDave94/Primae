@@ -1,0 +1,496 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		DB40A2372EE1B21B00293509 /* SDL3.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A2362EE1B21B00293509 /* SDL3.xcframework */; };
+		DB40A2382EE1B21B00293509 /* SDL3.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A2362EE1B21B00293509 /* SDL3.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23B2EE1B27200293509 /* libsndfile.a */; };
+		DBAA51932EE1C7D200792D51 /* O in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518C2EE1C7D200792D51 /* O */; };
+		DBAA51942EE1C7D200792D51 /* M in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518D2EE1C7D200792D51 /* M */; };
+		DBAA51952EE1C7D200792D51 /* A in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518E2EE1C7D200792D51 /* A */; };
+		DBAA51962EE1C7D200792D51 /* F in Resources */ = {isa = PBXBuildFile; fileRef = DBAA518F2EE1C7D200792D51 /* F */; };
+		DBAA51972EE1C7D200792D51 /* K in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51902EE1C7D200792D51 /* K */; };
+		DBAA51982EE1C7D200792D51 /* L in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51912EE1C7D200792D51 /* L */; };
+		DBAA51992EE1C7D200792D51 /* I in Resources */ = {isa = PBXBuildFile; fileRef = DBAA51922EE1C7D200792D51 /* I */; };
+		DBE71D452EE1B9FC00E50D0D /* librubberband.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB40A23A2EE1B27200293509 /* librubberband.a */; };
+		DBE71D562EE1BA1200E50D0D /* libfftw3.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D482EE1B9FC00E50D0D /* libfftw3.a */; };
+		DBE71D572EE1BA1200E50D0D /* libfftw3f.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */; };
+		DBE71D582EE1BA1200E50D0D /* libfftw3l.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D542EE1B9FC00E50D0D /* libfftw3l.a */; };
+		DBE71D592EE1BA1200E50D0D /* libFLAC.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D522EE1B9FC00E50D0D /* libFLAC.a */; };
+		DBE71D5A2EE1BA1200E50D0D /* libFLAC++.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D472EE1B9FC00E50D0D /* libFLAC++.a */; };
+		DBE71D5B2EE1BA1200E50D0D /* libmp3lame.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4B2EE1B9FC00E50D0D /* libmp3lame.a */; };
+		DBE71D5C2EE1BA1200E50D0D /* libmpg123.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D492EE1B9FC00E50D0D /* libmpg123.a */; };
+		DBE71D5D2EE1BA1200E50D0D /* libogg.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D512EE1B9FC00E50D0D /* libogg.a */; };
+		DBE71D5E2EE1BA1200E50D0D /* libopus.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4F2EE1B9FC00E50D0D /* libopus.a */; };
+		DBE71D5F2EE1BA1200E50D0D /* libout123.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4D2EE1B9FC00E50D0D /* libout123.a */; };
+		DBE71D612EE1BA1300E50D0D /* libsamplerate.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D502EE1B9FC00E50D0D /* libsamplerate.a */; };
+		DBE71D632EE1BA1300E50D0D /* libsyn123.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4C2EE1B9FC00E50D0D /* libsyn123.a */; };
+		DBE71D642EE1BA1300E50D0D /* libvorbis.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D532EE1B9FC00E50D0D /* libvorbis.a */; };
+		DBE71D652EE1BA1300E50D0D /* libvorbisenc.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D552EE1B9FC00E50D0D /* libvorbisenc.a */; };
+		DBE71D662EE1BA1300E50D0D /* libvorbisfile.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DBE71D4A2EE1B9FC00E50D0D /* libvorbisfile.a */; };
+		DBNEW0001000000000000001 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DBNEW0001000000000000002 /* UIKit.framework */; };
+		DBNEW0001000000000000003 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DBNEW0001000000000000004 /* QuartzCore.framework */; };
+		DBNEW0001000000000000005 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DBNEW0001000000000000006 /* CoreGraphics.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DB40A2392EE1B21B00293509 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				DB40A2382EE1B21B00293509 /* SDL3.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		DB40A2182EE1B1ED00293509 /* Timestretch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Timestretch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DB40A2362EE1B21B00293509 /* SDL3.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = SDL3.xcframework; path = ../SDL3.xcframework; sourceTree = SOURCE_ROOT; };
+		DB40A23A2EE1B27200293509 /* librubberband.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = librubberband.a; path = "../vcpkg/installed/arm64-ios/lib/librubberband.a"; sourceTree = SOURCE_ROOT; };
+		DB40A23B2EE1B27200293509 /* libsndfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsndfile.a; path = "../vcpkg/installed/arm64-ios/lib/libsndfile.a"; sourceTree = SOURCE_ROOT; };
+		DBAA518C2EE1C7D200792D51 /* O */ = {isa = PBXFileReference; lastKnownFileType = folder; path = O; sourceTree = "<group>"; };
+		DBAA518D2EE1C7D200792D51 /* M */ = {isa = PBXFileReference; lastKnownFileType = folder; path = M; sourceTree = "<group>"; };
+		DBAA518E2EE1C7D200792D51 /* A */ = {isa = PBXFileReference; lastKnownFileType = folder; path = A; sourceTree = "<group>"; };
+		DBAA518F2EE1C7D200792D51 /* F */ = {isa = PBXFileReference; lastKnownFileType = folder; path = F; sourceTree = "<group>"; };
+		DBAA51902EE1C7D200792D51 /* K */ = {isa = PBXFileReference; lastKnownFileType = folder; path = K; sourceTree = "<group>"; };
+		DBAA51912EE1C7D200792D51 /* L */ = {isa = PBXFileReference; lastKnownFileType = folder; path = L; sourceTree = "<group>"; };
+		DBAA51922EE1C7D200792D51 /* I */ = {isa = PBXFileReference; lastKnownFileType = folder; path = I; sourceTree = "<group>"; };
+		DBE71D472EE1B9FC00E50D0D /* libFLAC++.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libFLAC++.a"; path = "../vcpkg/installed/arm64-ios/lib/libFLAC++.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D482EE1B9FC00E50D0D /* libfftw3.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D492EE1B9FC00E50D0D /* libmpg123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmpg123.a; path = "../vcpkg/installed/arm64-ios/lib/libmpg123.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4A2EE1B9FC00E50D0D /* libvorbisfile.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisfile.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbisfile.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4B2EE1B9FC00E50D0D /* libmp3lame.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libmp3lame.a; path = "../vcpkg/installed/arm64-ios/lib/libmp3lame.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4C2EE1B9FC00E50D0D /* libsyn123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsyn123.a; path = "../vcpkg/installed/arm64-ios/lib/libsyn123.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4D2EE1B9FC00E50D0D /* libout123.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libout123.a; path = "../vcpkg/installed/arm64-ios/lib/libout123.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3f.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3f.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D4F2EE1B9FC00E50D0D /* libopus.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libopus.a; path = "../vcpkg/installed/arm64-ios/lib/libopus.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D502EE1B9FC00E50D0D /* libsamplerate.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libsamplerate.a; path = "../vcpkg/installed/arm64-ios/lib/libsamplerate.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D512EE1B9FC00E50D0D /* libogg.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libogg.a; path = "../vcpkg/installed/arm64-ios/lib/libogg.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D522EE1B9FC00E50D0D /* libFLAC.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libFLAC.a; path = "../vcpkg/installed/arm64-ios/lib/libFLAC.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D532EE1B9FC00E50D0D /* libvorbis.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbis.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbis.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D542EE1B9FC00E50D0D /* libfftw3l.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libfftw3l.a; path = "../vcpkg/installed/arm64-ios/lib/libfftw3l.a"; sourceTree = SOURCE_ROOT; };
+		DBE71D552EE1B9FC00E50D0D /* libvorbisenc.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = libvorbisenc.a; path = "../vcpkg/installed/arm64-ios/lib/libvorbisenc.a"; sourceTree = SOURCE_ROOT; };
+		DBNEW0001000000000000002 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		DBNEW0001000000000000004 /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		DBNEW0001000000000000006 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DB40A22F2EE1B1EE00293509 /* Exceptions for "Timestretch" folder in "Timestretch" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				Info.plist,
+			);
+			target = DB40A2172EE1B1ED00293509 /* Timestretch */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		DB40A21A2EE1B1ED00293509 /* Timestretch */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DB40A22F2EE1B1EE00293509 /* Exceptions for "Timestretch" folder in "Timestretch" target */,
+			);
+			path = Timestretch;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		DB40A2152EE1B1ED00293509 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DBE71D562EE1BA1200E50D0D /* libfftw3.a in Frameworks */,
+				DBE71D5A2EE1BA1200E50D0D /* libFLAC++.a in Frameworks */,
+				DBE71D452EE1B9FC00E50D0D /* librubberband.a in Frameworks */,
+				DBE71D612EE1BA1300E50D0D /* libsamplerate.a in Frameworks */,
+				DBE71D592EE1BA1200E50D0D /* libFLAC.a in Frameworks */,
+				DBE71D652EE1BA1300E50D0D /* libvorbisenc.a in Frameworks */,
+				DBE71D5F2EE1BA1200E50D0D /* libout123.a in Frameworks */,
+				DBE71D642EE1BA1300E50D0D /* libvorbis.a in Frameworks */,
+				DBE71D662EE1BA1300E50D0D /* libvorbisfile.a in Frameworks */,
+				DB40A23F2EE1B2BD00293509 /* libsndfile.a in Frameworks */,
+				DBE71D572EE1BA1200E50D0D /* libfftw3f.a in Frameworks */,
+				DBE71D5C2EE1BA1200E50D0D /* libmpg123.a in Frameworks */,
+				DBE71D5E2EE1BA1200E50D0D /* libopus.a in Frameworks */,
+				DB40A2372EE1B21B00293509 /* SDL3.xcframework in Frameworks */,
+				DBE71D582EE1BA1200E50D0D /* libfftw3l.a in Frameworks */,
+				DBE71D5B2EE1BA1200E50D0D /* libmp3lame.a in Frameworks */,
+				DBE71D5D2EE1BA1200E50D0D /* libogg.a in Frameworks */,
+				DBE71D632EE1BA1300E50D0D /* libsyn123.a in Frameworks */,
+				DBNEW0001000000000000001 /* UIKit.framework in Frameworks */,
+				DBNEW0001000000000000003 /* QuartzCore.framework in Frameworks */,
+				DBNEW0001000000000000005 /* CoreGraphics.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		DB40A20F2EE1B1ED00293509 = {
+			isa = PBXGroup;
+			children = (
+				DBAA518E2EE1C7D200792D51 /* A */,
+				DBAA518F2EE1C7D200792D51 /* F */,
+				DBAA51922EE1C7D200792D51 /* I */,
+				DBAA51902EE1C7D200792D51 /* K */,
+				DBAA51912EE1C7D200792D51 /* L */,
+				DBAA518D2EE1C7D200792D51 /* M */,
+				DBAA518C2EE1C7D200792D51 /* O */,
+				DB40A21A2EE1B1ED00293509 /* Timestretch */,
+				DB40A2352EE1B21B00293509 /* Frameworks */,
+				DB40A2192EE1B1ED00293509 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		DB40A2192EE1B1ED00293509 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DB40A2182EE1B1ED00293509 /* Timestretch.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DB40A2352EE1B21B00293509 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				DBE71D482EE1B9FC00E50D0D /* libfftw3.a */,
+				DBE71D4E2EE1B9FC00E50D0D /* libfftw3f.a */,
+				DBE71D542EE1B9FC00E50D0D /* libfftw3l.a */,
+				DBE71D522EE1B9FC00E50D0D /* libFLAC.a */,
+				DBE71D472EE1B9FC00E50D0D /* libFLAC++.a */,
+				DBE71D4B2EE1B9FC00E50D0D /* libmp3lame.a */,
+				DBE71D492EE1B9FC00E50D0D /* libmpg123.a */,
+				DBE71D512EE1B9FC00E50D0D /* libogg.a */,
+				DBE71D4F2EE1B9FC00E50D0D /* libopus.a */,
+				DBE71D4D2EE1B9FC00E50D0D /* libout123.a */,
+				DBE71D502EE1B9FC00E50D0D /* libsamplerate.a */,
+				DBE71D4C2EE1B9FC00E50D0D /* libsyn123.a */,
+				DBE71D532EE1B9FC00E50D0D /* libvorbis.a */,
+				DBE71D552EE1B9FC00E50D0D /* libvorbisenc.a */,
+				DBE71D4A2EE1B9FC00E50D0D /* libvorbisfile.a */,
+				DB40A23A2EE1B27200293509 /* librubberband.a */,
+				DB40A23B2EE1B27200293509 /* libsndfile.a */,
+				DB40A2362EE1B21B00293509 /* SDL3.xcframework */,
+				DBNEW0001000000000000002 /* UIKit.framework */,
+				DBNEW0001000000000000004 /* QuartzCore.framework */,
+				DBNEW0001000000000000006 /* CoreGraphics.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DB40A2172EE1B1ED00293509 /* Timestretch */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DB40A2302EE1B1EE00293509 /* Build configuration list for PBXNativeTarget "Timestretch" */;
+			buildPhases = (
+				DB40A2142EE1B1ED00293509 /* Sources */,
+				DB40A2152EE1B1ED00293509 /* Frameworks */,
+				DB40A2162EE1B1ED00293509 /* Resources */,
+				DB40A2392EE1B21B00293509 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DB40A21A2EE1B1ED00293509 /* Timestretch */,
+			);
+			name = Timestretch;
+			packageProductDependencies = (
+			);
+			productName = Timestretch;
+			productReference = DB40A2182EE1B1ED00293509 /* Timestretch.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		DB40A2102EE1B1ED00293509 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastUpgradeCheck = 2610;
+				TargetAttributes = {
+					DB40A2172EE1B1ED00293509 = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
+				};
+			};
+			buildConfigurationList = DB40A2132EE1B1ED00293509 /* Build configuration list for PBXProject "Timestretch" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = DB40A20F2EE1B1ED00293509;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = DB40A2192EE1B1ED00293509 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DB40A2172EE1B1ED00293509 /* Timestretch */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DB40A2162EE1B1ED00293509 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DBAA51932EE1C7D200792D51 /* O in Resources */,
+				DBAA51942EE1C7D200792D51 /* M in Resources */,
+				DBAA51952EE1C7D200792D51 /* A in Resources */,
+				DBAA51962EE1C7D200792D51 /* F in Resources */,
+				DBAA51972EE1C7D200792D51 /* K in Resources */,
+				DBAA51982EE1C7D200792D51 /* L in Resources */,
+				DBAA51992EE1C7D200792D51 /* I in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DB40A2142EE1B1ED00293509 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		DB40A2312EE1B1EE00293509 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Timestretch/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Audio Output";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Flamingistan.Timestretch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		DB40A2322EE1B1EE00293509 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Timestretch/Info.plist;
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Audio Output";
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Flamingistan.Timestretch;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		DB40A2332EE1B1EE00293509 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/include\"";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LIBRARY_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/lib\"";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework UIKit",
+					"-framework QuartzCore",
+					"-framework CoreGraphics",
+				);
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		DB40A2342EE1B1EE00293509 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				HEADER_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/include\"";
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				LIBRARY_SEARCH_PATHS = "\"$(SRCROOT)/../vcpkg/installed/arm64-ios/lib\"";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-framework UIKit",
+					"-framework QuartzCore",
+					"-framework CoreGraphics",
+				);
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 6.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		DB40A2132EE1B1ED00293509 /* Build configuration list for PBXProject "Timestretch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB40A2332EE1B1EE00293509 /* Debug */,
+				DB40A2342EE1B1EE00293509 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DB40A2302EE1B1EE00293509 /* Build configuration list for PBXNativeTarget "Timestretch" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DB40A2312EE1B1EE00293509 /* Debug */,
+				DB40A2322EE1B1EE00293509 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = DB40A2102EE1B1ED00293509 /* Project object */;
+}

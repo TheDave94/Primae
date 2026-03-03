@@ -8,6 +8,30 @@ on:
   workflow_dispatch:
 
 jobs:
+  build:
+    name: Build (legacy ios-build/Timestretch)
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show build environment
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Build
+        run: xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
+
+      - name: Test (if supported by scheme)
+        run: |
+          if xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -showBuildSettings 2>/dev/null | grep -q TEST_HOST; then
+            xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO test
+          else
+            echo "No test action configured for scheme Timestretch; skipping tests."
+          fi
+
   ios_native:
     name: "Build & Test (ios-native / BuchstabenNativeTests)"
     runs-on: macos-latest
@@ -15,103 +39,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Run ios-native validation lane
+        run: |
+          IOS_NATIVE_ARTIFACT_DIR="$GITHUB_WORKSPACE/ios-native-ci-artifacts" \
+          ./scripts/ios-native-gate.sh --strict
+
+      - name: Upload ios-native test artifacts
+        if: always() && steps.scheme.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve package and discover scheme
-        id: scheme
-        run: |
-          xcodebuild -list -json 2>/tmp/xcodebuild-warnings.log > /tmp/spm_schemes.json
-          cat /tmp/spm_schemes.json
-          SCHEME=$(python3 - << 'PY'
-          import json
-          obj=json.load(open('/tmp/spm_schemes.json'))
-          scopes=[obj.get('workspace',{}), obj.get('project',{})]
-          for scope in scopes:
-              for s in scope.get('schemes',[]):
-                  if 'BuchstabenNative' in s:
-                      print(s)
-                      raise SystemExit
-          PY
-          )
-          if [ -z "$SCHEME" ]; then
-            echo "No BuchstabenNative scheme found; skipping ios_native build/test"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build ios-native
-        id: build
-        if: steps.scheme.outputs.skip != 'true'
-        run: |
-          xcodebuild \
-            -scheme "${{ steps.scheme.outputs.scheme }}" \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/build.log
-          echo "build_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
-
-      - name: Test BuchstabenNativeTests
-        id: test
-        if: steps.scheme.outputs.skip != 'true'
-        run: |
-          xcodebuild \
-            -scheme "${{ steps.scheme.outputs.scheme }}" \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            test 2>&1 | tee /tmp/test.log
-          echo "test_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
-
-      - name: Extract failure summary
-        id: failure
-        if: failure()
-        run: |
-          # Collect the most relevant error lines from build or test logs
-          ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log /tmp/build.log 2>/dev/null \
-            | grep -v "^Binary" | head -15 || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
-          # Write to file for next step (handles multiline safely)
-          printf '%s' "$ERRORS" > /tmp/ci_errors.txt
-          echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
-
-      - name: Inject priority task into council queue
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          ERRORS=$(cat /tmp/ci_errors.txt 2>/dev/null || echo "unknown error")
-          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          BRANCH="${{ github.ref_name }}"
-          SHA="${{ github.sha }}"
-          SHORT_SHA="${SHA:0:8}"
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          # Write a priority task file that the local agent picks up on next heartbeat
-          cat > /tmp/ci_priority_task.md << TASK_EOF
-          # CI FAILURE — PRIORITY TASK
-          ## Metadata
-          - branch: ${BRANCH}
-          - commit: ${SHORT_SHA}
-          - run: ${RUN_URL}
-          - timestamp: ${TIMESTAMP}
-
-          ## Errors
-          \`\`\`
-          ${ERRORS}
-          \`\`\`
-
-          ## Task
-          Fix the failing iOS CI tests on branch \`${BRANCH}\` (commit \`${SHORT_SHA}\`).
-          The errors above must be resolved and CI must pass before this task is complete.
-          TASK_EOF
-
-          # Commit the priority task file to the repo so the local agent can act on it
-          git config user.email "ci@openclaw.ai"
-          git config user.name "Bonifazius (OpenClaw)"
-          cp /tmp/ci_priority_task.md .ci-priority-task.md
-          git add .ci-priority-task.md
-          git commit -m "ci: inject priority fix task (run ${{ github.run_id }}) [ci-skip]" || echo "Nothing to commit"
-          git push origin HEAD:${BRANCH} || echo "Push failed — continuing"
+          name: ios-native-test-artifacts
+          if-no-files-found: warn
+          path: |
+            ${{ github.workspace }}/ios-native-ci-artifacts/*.log
+            ${{ github.workspace }}/ios-native-ci-artifacts/*.xcresult
