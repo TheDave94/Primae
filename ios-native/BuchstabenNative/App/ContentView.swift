@@ -20,11 +20,22 @@ struct ContentView: View {
                         .clipShape(Capsule())
                         .transition(.opacity.combined(with: .scale))
                 }
+
+                Spacer()
+
+                if let completion = vm.completionMessage {
+                    CompletionHUD(message: completion) {
+                        vm.dismissCompletionHUD()
+                    }
+                    .padding(.bottom, 26)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .padding(.top, 12)
             .padding(.horizontal, 12)
         }
         .animation(.easeInOut(duration: 0.2), value: vm.toastMessage)
+        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
     }
 
     private var topBar: some View {
@@ -60,5 +71,40 @@ private struct ToggleChip: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(isOn ? .blue : .gray)
+    }
+}
+
+
+private struct CompletionHUD: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.seal.fill")
+                .foregroundStyle(.green)
+                .font(.title3)
+
+            Text(message)
+                .font(.headline)
+                .multilineTextAlignment(.leading)
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(.thinMaterial, in: Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.green.opacity(0.28), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.1), radius: 10, y: 5)
     }
 }

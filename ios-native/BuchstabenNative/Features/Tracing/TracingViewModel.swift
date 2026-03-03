@@ -11,6 +11,7 @@ final class TracingViewModel: ObservableObject {
     @Published var progress: CGFloat = 0
     @Published var isPlaying = false
     @Published var activePath: [CGPoint] = []
+    @Published var completionMessage: String?
 
     private let repo = LetterRepository()
     private let strokeTracker = StrokeTracker()
@@ -22,6 +23,7 @@ final class TracingViewModel: ObservableObject {
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
     private var isMultiTouchNavigationActive = false
+    private var didCompleteCurrentLetter = false
 
     init() {
         letters = repo.loadLetters()
@@ -40,6 +42,8 @@ final class TracingViewModel: ObservableObject {
         activePath.removeAll(keepingCapacity: true)
         audio.stop()
         isPlaying = false
+        didCompleteCurrentLetter = false
+        completionMessage = nil
         toast("Reset")
     }
 
@@ -130,7 +134,9 @@ final class TracingViewModel: ObservableObject {
             isPlaying = false
         }
 
-        if strokeTracker.isComplete {
+        if strokeTracker.isComplete, !didCompleteCurrentLetter {
+            didCompleteCurrentLetter = true
+            showCompletionHUD()
             toast("Great! Completed")
             audio.stop()
             isPlaying = false
@@ -153,6 +159,8 @@ final class TracingViewModel: ObservableObject {
         strokeTracker.load(letter.strokes)
         progress = 0
         audioIndex = 0
+        didCompleteCurrentLetter = false
+        completionMessage = nil
         activePath.removeAll(keepingCapacity: true)
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio)
@@ -168,6 +176,22 @@ final class TracingViewModel: ObservableObject {
         audio.loadAudioFile(named: files[audioIndex])
         audio.stop()
         isPlaying = false
+    }
+
+
+    func dismissCompletionHUD() {
+        completionMessage = nil
+    }
+
+    private func showCompletionHUD() {
+        let letter = currentLetterName
+        completionMessage = "🎉 \(letter) geschafft!"
+        Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            if completionMessage == "🎉 \(letter) geschafft!" {
+                completionMessage = nil
+            }
+        }
     }
 
     private func mapVelocityToSpeed(_ v: CGFloat) -> Float {
