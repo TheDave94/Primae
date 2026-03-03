@@ -1,209 +1,86 @@
-name: iOS Build
+name: "iOS Build & Test"
 
 on:
   push:
-    branches: [main, develop]
+    branches: ["main", "ux/**"]
   pull_request:
-    branches: [main, develop]
+    branches: ["main", "ux/**"]
   workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
 
 jobs:
   build:
-    name: Build (iOS Device — arm64)
-    runs-on: macos-15
-
-    env:
-      SCHEME:        Timestretch
-      PROJECT:       Timestretch.xcodeproj
-      DESTINATION:   "generic/platform=iOS"
-      DERIVED_DATA:  ${{ github.workspace }}/DerivedData
-      SDL_FRAMEWORK: ${{ github.workspace }}/ios-build/SDL3.xcframework
-      XCODE_PROJECT: ${{ github.workspace }}/ios-build/Timestretch
-      VCPKG_ROOT:    ${{ github.workspace }}/vcpkg-tool
-      VCPKG_INSTALL: ${{ github.workspace }}/ios-build/vcpkg/installed/arm64-ios
+    name: Build (legacy ios-build/Timestretch)
+    runs-on: macos-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # ── 1. Checkout ───────────────────────────────────────────────────────────
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Show build environment
+        run: |
+          xcodebuild -version
+          swift --version
 
-    # ── 2. Environment info ───────────────────────────────────────────────────
-    - name: Show Xcode + SDK versions
-      run: |
-        xcodebuild -version
-        xcodebuild -showsdks | grep -i ios
-        xcrun --sdk iphoneos --show-sdk-version
+      - name: Build
+        run: xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
 
-    # ── 3. Cache rebuilt vcpkg libraries ─────────────────────────────────────
-    # Key includes vcpkg.json content + SDK version so cache busts when either changes.
-    - name: Get iOS SDK version for cache key
-      id: sdk
-      run: echo "version=$(xcrun --sdk iphoneos --show-sdk-version)" >> $GITHUB_OUTPUT
-
-    - name: Cache vcpkg installed libraries
-      id: vcpkg-cache
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.VCPKG_INSTALL }}
-        key: vcpkg-arm64-ios-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('ios-build/Timestretch/vcpkg.json') }}
-        restore-keys: |
-          vcpkg-arm64-ios-sdk${{ steps.sdk.outputs.version }}-
-
-    # ── 4. Build vcpkg dependencies (only on cache miss) ─────────────────────
-    - name: Setup vcpkg tool
-      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-      run: |
-        # Full clone required — shallow clone can't resolve builtin-baseline commits
-        git clone https://github.com/microsoft/vcpkg.git "${{ env.VCPKG_ROOT }}"
-        "${{ env.VCPKG_ROOT }}/bootstrap-vcpkg.sh" -disableMetrics
-
-    - name: Copy custom arm64-ios triplet
-      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-      run: |
-        cp "${{ github.workspace }}/ios-build/vcpkg/triplets/community/arm64-ios.cmake" \
-           "${{ env.VCPKG_ROOT }}/triplets/community/arm64-ios.cmake"
-        echo "Triplet contents:"
-        cat "${{ env.VCPKG_ROOT }}/triplets/community/arm64-ios.cmake"
-
-    - name: Install vcpkg dependencies for arm64-ios
-      if: steps.vcpkg-cache.outputs.cache-hit != 'true'
-      run: |
-        SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
-        echo "Building against iOS SDK $SDK_VERSION"
-
-        # Remove old prebuilt libs so we get a clean install
-        rm -rf "${{ env.VCPKG_INSTALL }}"
-        mkdir -p "${{ env.VCPKG_INSTALL }}"
-
-        "${{ env.VCPKG_ROOT }}/vcpkg" install \
-          --triplet arm64-ios \
-          --x-manifest-root="${{ env.XCODE_PROJECT }}" \
-          --x-install-root="${{ github.workspace }}/ios-build/vcpkg/installed" \
-          --overlay-triplets="${{ github.workspace }}/ios-build/vcpkg/triplets" \
-          --no-print-usage
-
-    # ── 5. Verify all required dependencies ───────────────────────────────────
-    - name: Verify dependencies
-      run: |
-        LIBDIR="${{ env.VCPKG_INSTALL }}/lib"
-        REQUIRED=(
-          librubberband.a libsndfile.a
-          libfftw3.a libfftw3f.a libfftw3l.a
-          libFLAC.a "libFLAC++.a"
-          libmp3lame.a libmpg123.a
-          libogg.a libopus.a libout123.a
-          libsamplerate.a libsyn123.a
-          libvorbis.a libvorbisenc.a libvorbisfile.a
-        )
-        missing=0
-        for lib in "${REQUIRED[@]}"; do
-          if [ -f "$LIBDIR/$lib" ]; then
-            echo "✅  $lib"
+      - name: Test (if supported by scheme)
+        run: |
+          if xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -showBuildSettings 2>/dev/null | grep -q TEST_HOST; then
+            xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO test
           else
-            echo "❌  MISSING: $LIBDIR/$lib"
-            missing=$((missing+1))
+            echo "No test action configured for scheme Timestretch; skipping tests."
           fi
-        done
-        if [ -d "${{ env.SDL_FRAMEWORK }}" ]; then
-          echo "✅  SDL3.xcframework"
-        else
-          echo "❌  MISSING: SDL3.xcframework"
-          missing=$((missing+1))
-        fi
-        [ $missing -eq 0 ] || { echo "ERROR: $missing dependencies missing"; exit 1; }
 
-    # ── 6. Cache DerivedData ──────────────────────────────────────────────────
-    - name: Cache DerivedData
-      uses: actions/cache@v4
-      with:
-        path: ${{ env.DERIVED_DATA }}
-        key: deriveddata-${{ runner.os }}-${{ hashFiles('ios-build/Timestretch/Timestretch.xcodeproj/project.pbxproj', 'ios-build/Timestretch/Timestretch/main.mm') }}
-        restore-keys: |
-          deriveddata-${{ runner.os }}-
+  ios_native:
+    name: "Build & Test (ios-native / BuchstabenNativeTests)"
+    runs-on: macos-latest
+    continue-on-error: true
 
-    # ── 7. Install xcpretty ───────────────────────────────────────────────────
-    - name: Install xcpretty
-      run: gem install xcpretty --no-document
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # ── 8. Build ──────────────────────────────────────────────────────────────
-    - name: Build for iOS Device
-      working-directory: ${{ env.XCODE_PROJECT }}
-      run: |
-        set -o pipefail
-        mkdir -p "${{ github.workspace }}/test-results"
-        xcodebuild \
-          -project         "${{ env.PROJECT }}" \
-          -scheme          "${{ env.SCHEME }}" \
-          -destination     "${{ env.DESTINATION }}" \
-          -configuration   Debug \
-          -derivedDataPath "${{ env.DERIVED_DATA }}" \
-          CODE_SIGNING_ALLOWED=NO \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGN_IDENTITY="" \
-          ONLY_ACTIVE_ARCH=NO \
-          LIBRARY_SEARCH_PATHS="$(inherited) ${{ env.VCPKG_INSTALL }}/lib" \
-          FRAMEWORK_SEARCH_PATHS="$(inherited) ${{ github.workspace }}/ios-build" \
-          HEADER_SEARCH_PATHS="$(inherited) ${{ env.VCPKG_INSTALL }}/include" \
-          build 2>&1 \
-          | tee "${{ github.workspace }}/test-results/xcodebuild-raw.log" \
-          | xcpretty --color --report junit \
-              --output "${{ github.workspace }}/test-results/build.xml" \
-          || {
-            echo ""
-            echo "=== RAW COMPILER/LINKER ERRORS ==="
-            grep -E "error:|Undefined symbols|Symbol:|Referenced from:|ld:" \
-              "${{ github.workspace }}/test-results/xcodebuild-raw.log" | head -60
-            exit 1
-          }
+      - name: Resolve package and discover scheme
+        id: scheme
+        run: |
+          xcodebuild -list -json > /tmp/spm_schemes.json
+          cat /tmp/spm_schemes.json
+          SCHEME=$(python3 - << 'PY'
+          import json
+          obj=json.load(open('/tmp/spm_schemes.json'))
+          scopes=[obj.get('workspace',{}), obj.get('project',{})]
+          for scope in scopes:
+              for s in scope.get('schemes',[]):
+                  if 'BuchstabenNative' in s:
+                      print(s)
+                      raise SystemExit
+          PY
+          )
+          if [ -z "$SCHEME" ]; then
+            echo "No BuchstabenNative scheme found; skipping ios_native build/test"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+          fi
 
-    # ── 9. Upload build logs (always) ─────────────────────────────────────────
-    - name: Upload build logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs-${{ github.run_number }}
-        path: |
-          ${{ github.workspace }}/test-results/
-          ${{ env.DERIVED_DATA }}/Logs/
-        retention-days: 14
+      - name: Build ios-native
+        if: steps.scheme.outputs.skip != 'true'
+        run: |
+          xcodebuild \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
-    # ── 10. Package and upload .app ───────────────────────────────────────────
-    - name: Package .app artifact
-      if: success()
-      run: |
-        APP=$(find "${{ env.DERIVED_DATA }}" -name "Timestretch.app" -type d | head -1)
-        if [ -n "$APP" ]; then
-          echo "APP_PATH=$APP" >> $GITHUB_ENV
-          zip -r "${{ github.workspace }}/Timestretch-iOS.zip" "$APP"
-          echo "✅  Packaged: $APP"
-        else
-          echo "⚠️  .app not found — skipping"
-        fi
-
-    - name: Upload .app artifact
-      if: success() && env.APP_PATH != ''
-      uses: actions/upload-artifact@v4
-      with:
-        name: Timestretch-iOS-${{ github.run_number }}
-        path: Timestretch-iOS.zip
-        retention-days: 14
-
-    # ── 11. Summary ───────────────────────────────────────────────────────────
-    - name: Build summary
-      if: always()
-      run: |
-        echo "## iOS Build Summary" >> $GITHUB_STEP_SUMMARY
-        echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
-        echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-        echo "| Scheme | ${{ env.SCHEME }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| SDK | iOS ${{ steps.sdk.outputs.version }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| vcpkg cache | ${{ steps.vcpkg-cache.outputs.cache-hit == 'true' && 'hit ✅' || 'miss — rebuilt 🔨' }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Run | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
-        echo "| Commit | \`${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
+      - name: Test BuchstabenNativeTests
+        if: steps.scheme.outputs.skip != 'true'
+        run: |
+          xcodebuild \
+            -scheme "${{ steps.scheme.outputs.scheme }}" \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            test

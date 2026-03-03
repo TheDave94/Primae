@@ -46,6 +46,7 @@
 #include <deque>
 #include <numeric>
 #include <sstream>
+#include <array>
 
 #include <SDL3/SDL.h>
 #include "DrawingOverlay.h"
@@ -389,6 +390,8 @@ namespace Config {
     constexpr size_t kInputMultiplier    = 8;
     /// Speed / pitch interpolation coefficient (0 = frozen, 1 = instant snap)
     constexpr float kInterpolationFactor = 0.05f;
+    /// Additional smoothing just for stereo panning to reduce abrupt side jumps
+    constexpr float kPanInterpolationFactor = 0.12f;
 
     // --- Playback gate timers ---
     /// Milliseconds of stillness inside the mask before audio mutes (Todo #7 adapts this)
@@ -420,9 +423,6 @@ namespace Config {
     // --- Todo #6: Pitch & panning ---
     /// Maximum pitch-shift magnitude in semitones (applied symmetrically ±)
     constexpr float kMaxPitchSemitones   = 1.0f;
-    /// Stereo spread coefficient driven by horizontal stroke direction [0–1]
-    constexpr float kPanSpread           = 0.3f;
-
     // --- Todo #7: Adaptive mute threshold ---
     /// Number of velocity samples in the rolling window
     constexpr size_t kVelocityWindowSize = 60;
@@ -432,6 +432,11 @@ namespace Config {
     // --- Todo #8: Restart after pause ---
     /// Milliseconds of silence after which the current sound rewinds to the start
     constexpr int kRestartAfterPauseMs   = 4000;  // was 2000 — avoid mid-stroke rewinding
+
+    // --- UX micro-feedback ---
+    constexpr int kToastMs               = 1600;
+    constexpr int kToastFadeMs           = 300;
+    constexpr int kUiTapSuppressMs       = 220;
 }
 
 // ============================================================================
@@ -792,6 +797,8 @@ class AudioEngine {
 
     float currentSpeed = 1.0f;
     float currentPitch = 1.0f;
+    float currentPanL  = 1.0f;
+    float currentPanR  = 1.0f;
     std::mutex loadMutex;
 
     // --- Fade-in/out state ---
@@ -872,7 +879,7 @@ public:
 
         // Pre-warm: feed RubberBand its required latency upfront so the first
         // audio callback always has data available (prevents startup crackling).
-        int prewarmFrames = stretcher->getLatency() + (int)(Config::kBufFrames * Config::kInputMultiplier);
+        int prewarmFrames = static_cast<int>(stretcher->getLatency()) + static_cast<int>(Config::kBufFrames * Config::kInputMultiplier);
         std::vector<float> prewarmBuf((size_t)(prewarmFrames * sfInfo.channels));
         // Use the return value: file may be shorter than prewarmFrames (e.g. short phoneme)
         sf_count_t prewarmGot = sf_readf_float(snd, prewarmBuf.data(), prewarmFrames);
@@ -909,7 +916,6 @@ private:
      * @param userdata         Pointer to the AudioEngine instance.
      * @param stream           The SDL_AudioStream to push data into.
      * @param additional_amount Bytes the stream is requesting.
-     * @param total_amount     Total buffered bytes (informational).
      */
     static void SDLCALL AudioCallback(void* userdata, SDL_AudioStream* stream,
                                       int additional_amount, int /*total_amount*/) {
@@ -975,8 +981,12 @@ private:
             stretcher->setPitchScale(currentPitch);
         }
 
-        float panL = g_state.panLeft.load();
-        float panR = g_state.panRight.load();
+        float tgtPanL = g_state.panLeft.load();
+        float tgtPanR = g_state.panRight.load();
+        currentPanL += (tgtPanL - currentPanL) * Config::kPanInterpolationFactor;
+        currentPanR += (tgtPanR - currentPanR) * Config::kPanInterpolationFactor;
+        float panL = currentPanL;
+        float panR = currentPanR;
 
         size_t remaining = frames;
         float* wptr      = output;
@@ -1255,6 +1265,24 @@ int main(int /*argc*/, char** /*argv*/) {
     // HUD: playback status dot (top-right)
     SDL_FRect statusDot = {0.f, 10.f, 30.f, 30.f};
 
+    // Small toast message for immediate action feedback (letter/sound/toggle changes)
+    struct ToastHUD {
+        std::string text;
+        std::chrono::steady_clock::time_point until{};
+        bool active = false;
+    } toast;
+
+    auto showToast = [&](std::string msg, int ms = Config::kToastMs) {
+        toast.text = std::move(msg);
+        toast.until = std::chrono::steady_clock::now() + std::chrono::milliseconds(ms);
+        toast.active = true;
+    };
+
+    showToast("Ready: 1 finger draw, 2 swipe, 2 tap random", 2400);
+
+    // Briefly suppress drawing/audio after top-bar interactions to avoid accidental strokes
+    auto suppressUntil = std::chrono::steady_clock::time_point{};
+
     // Helper: test if a normalised finger position hits a button rect (pixel coords)
     // tfinger.x/y are in [0,1] normalised window space in SDL3
     auto fingerHitsButton = [&](const SDL_TouchFingerEvent& tf, const SDL_FRect& r,
@@ -1294,21 +1322,33 @@ int main(int /*argc*/, char** /*argv*/) {
                         // Ghost tracing overlay toggle
                         tracingMode      = !tracingMode;
                         buttons[0].state = tracingMode;
+                        showToast(tracingMode ? "Ghost tracing ON" : "Ghost tracing OFF");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                     else if (fingerHitsButton(ev.tfinger, buttons[1].rect, curRW, curRH)) {
                         // Stroke enforcement toggle
                         strokeEnforced   = !strokeEnforced;
                         buttons[1].state = strokeEnforced;
                         strokeTracker.reset();
+                        showToast(strokeEnforced ? "Stroke order ON" : "Stroke order OFF");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                     else if (fingerHitsButton(ev.tfinger, buttons[2].rect, curRW, curRH)) {
                         // Checkpoint debug overlay toggle
                         showCheckpoints  = !showCheckpoints;
                         buttons[2].state = showCheckpoints;
+                        showToast(showCheckpoints ? "Debug checkpoints ON" : "Debug checkpoints OFF");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                     else if (fingerHitsButton(ev.tfinger, buttons[3].rect, curRW, curRH)) {
                         // Reset current letter
                         strokeTracker.reset();
+                        showToast("Letter reset");
+                        suppressUntil = std::chrono::steady_clock::now() + std::chrono::milliseconds(Config::kUiTapSuppressMs);
+                        g_state.isPlaying = false;
                     }
                 }
                 else if (activeFingers == 2) {
@@ -1337,6 +1377,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         resetLetterState();
                         reloadStrokes();
                         assetsChanged = true;
+                        showToast(std::string("Letter: ") + browser.current().name);
 
                     } else if (std::abs(dy) > Config::kSwipeThreshold) {
                         // Vertical swipe → change audio variant
@@ -1344,6 +1385,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         else        browser.prevAudio();
                         audio.loadFile(browser.currentAudioPath());
                         assetsChanged = true;
+                        showToast(std::string("Sound ") + std::to_string(browser.current().currentAudioIdx + 1) + "/" + std::to_string(browser.current().audioFiles.size()));
                     }
 
                     // Todo #1: two-finger double-tap → random letter
@@ -1355,6 +1397,7 @@ int main(int /*argc*/, char** /*argv*/) {
                         resetLetterState();
                         reloadStrokes();
                         assetsChanged = true;
+                        showToast(std::string("Random: ") + browser.current().name);
                     }
 
                     g_state.isPlaying = false;
@@ -1405,6 +1448,13 @@ int main(int /*argc*/, char** /*argv*/) {
             g_state.isPlaying = false;
 
         } else {
+            // After tapping top UI buttons, ignore drawing briefly to prevent accidental marks.
+            if (suppressUntil != std::chrono::steady_clock::time_point{} &&
+                std::chrono::steady_clock::now() < suppressUntil) {
+                g_state.isPlaying = false;
+                continue;
+            }
+
             // Use render output size (pixels) not window size (points).
             // On Retina/HiDPI iPads SDL_GetWindowSize returns logical points
             // (e.g. 1366x1024) while the PBM and render surface are in physical
@@ -1554,6 +1604,7 @@ int main(int /*argc*/, char** /*argv*/) {
                 // Record the first moment the letter went green
                 if (letterCompleteTime == std::chrono::steady_clock::time_point{}) {
                     letterCompleteTime = nowComp;
+                    showToast("Great! Letter complete", 2200);
                 }
                 auto completionMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                         nowComp - letterCompleteTime).count();
@@ -1605,8 +1656,6 @@ int main(int /*argc*/, char** /*argv*/) {
             const float btnW   = 120.f;
             const float btnGap = 12.f;
             const float btnY   = 16.f;
-            const float cornerR = 14.f; // visual only — we draw as rect
-
             // Compute rects and store them for hit-testing
             for (int i = 0; i < 4; ++i) {
                 buttons[i].rect = {btnGap + i * (btnW + btnGap), btnY, btnW, btnH};
@@ -1851,6 +1900,42 @@ int main(int /*argc*/, char** /*argv*/) {
             SDL_FRect debugBar = {0.f, 0.f, (float)ww, 28.f};
             SDL_SetRenderDrawColor(renderer, 200, 0, 0, 200);
             SDL_RenderFillRect(renderer, &debugBar);
+        }
+
+        // --- Toast HUD (center-top) ---
+        if (toast.active) {
+            auto nowToast = std::chrono::steady_clock::now();
+            if (nowToast >= toast.until) {
+                toast.active = false;
+            } else {
+                auto msLeft = std::chrono::duration_cast<std::chrono::milliseconds>(toast.until - nowToast).count();
+                float alpha = 1.0f;
+                if (msLeft < Config::kToastFadeMs)
+                    alpha = std::max(0.0f, (float)msLeft / (float)Config::kToastFadeMs);
+
+                float toastW = std::min(780.f, std::max(300.f, (float)toast.text.size() * 11.f));
+                SDL_FRect toastBg = {(ww - toastW) * 0.5f, 102.f, toastW, 42.f};
+                SDL_SetRenderDrawColor(renderer, 20, 20, 20, (Uint8)(210 * alpha));
+                SDL_RenderFillRect(renderer, &toastBg);
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, (Uint8)(180 * alpha));
+                SDL_RenderRect(renderer, &toastBg);
+
+                // Text-free indicator bars (works without SDL_ttf):
+                // one bar segment per word gives visual confirmation that mode changed.
+                std::istringstream iss(toast.text);
+                std::string word;
+                float x = toastBg.x + 14.f;
+                int seg = 0;
+                while (iss >> word && x < toastBg.x + toastBg.w - 22.f) {
+                    float w = std::min(120.f, std::max(26.f, (float)word.size() * 8.f));
+                    SDL_FRect chip = {x, toastBg.y + 12.f, w, 18.f};
+                    Uint8 shade = (Uint8)(120 + (seg % 3) * 35);
+                    SDL_SetRenderDrawColor(renderer, shade, (Uint8)(200 - seg * 4), 255, (Uint8)(220 * alpha));
+                    SDL_RenderFillRect(renderer, &chip);
+                    x += w + 8.f;
+                    ++seg;
+                }
+            }
         }
 
         SDL_RenderPresent(renderer);

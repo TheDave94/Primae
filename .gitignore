@@ -24,3 +24,4 @@ vcpkg/*.log
 # macOS
 .DS_Store
 *.swp
+new-sounds/
