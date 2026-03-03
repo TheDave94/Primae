@@ -4,8 +4,10 @@ import Foundation
 
 struct LetterGuideRenderer {
     static func guidePath(for letter: String, in rect: CGRect) -> Path? {
+        guard !rect.isEmpty else { return nil }
+
         let key = letter.uppercased()
-        guard let segments = guides[key] else { return nil }
+        let segments = guides[key] ?? fallbackSegments(for: key)
 
         var p = Path()
         for segment in segments {
@@ -43,6 +45,19 @@ private extension LetterGuideRenderer {
 
     static func map(_ point: CGPoint, in rect: CGRect) -> CGPoint {
         CGPoint(x: rect.minX + point.x * rect.width, y: rect.minY + point.y * rect.height)
+    }
+
+    static func fallbackSegments(for letter: String) -> [Segment] {
+        // Deterministic fallback for non-curated letters: keeps ghost guidance enabled
+        // for all loaded assets while preserving curated paths where available.
+        let hash = abs(letter.unicodeScalars.reduce(0) { ($0 * 31) + Int($1.value) })
+        let crossbarY = CGFloat(0.42 + (Double(hash % 20) / 100.0))
+
+        return [
+            .line(CGPoint(x: 0.22, y: 0.12), CGPoint(x: 0.22, y: 0.88)),
+            .line(CGPoint(x: 0.22, y: crossbarY), CGPoint(x: 0.78, y: crossbarY)),
+            .line(CGPoint(x: 0.22, y: 0.88), CGPoint(x: 0.78, y: 0.88))
+        ]
     }
 
     static let guides: [String: [Segment]] = [

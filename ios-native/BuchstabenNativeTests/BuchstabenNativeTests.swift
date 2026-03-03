@@ -95,9 +95,47 @@ final class BuchstabenNativeTests: XCTestCase {
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             XCTAssertNotNil(LetterGuideRenderer.guidePath(for: letter, in: rect), "Expected guide path for \(letter)")
         }
-        XCTAssertNil(LetterGuideRenderer.guidePath(for: "Z", in: rect))
+        XCTAssertNotNil(LetterGuideRenderer.guidePath(for: "Z", in: rect), "Fallback guide should exist for non-curated letters")
+    }
+
+    @MainActor
+    func testMultiTouchNavigationClearsAndSuppressesSingleTouchBriefly() {
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05)
+        let size = CGSize(width: 320, height: 480)
+
+        vm.beginTouch(at: CGPoint(x: 20, y: 20), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 28, y: 28), t: 1.03, canvasSize: size)
+        XCTAssertGreaterThan(vm.debugActivePathCount, 1)
+
+        vm.beginMultiTouchNavigation()
+        XCTAssertTrue(vm.debugIsMultiTouchNavigationActive)
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Two-finger nav should immediately clear active stroke")
+
+        vm.endMultiTouchNavigation()
+        XCTAssertFalse(vm.debugIsMultiTouchNavigationActive)
+
+        vm.beginTouch(at: CGPoint(x: 30, y: 30), t: CACurrentMediaTime())
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Single-touch should be briefly suppressed after multi-touch nav")
+
+        usleep(70_000)
+        vm.beginTouch(at: CGPoint(x: 32, y: 32), t: CACurrentMediaTime())
+        XCTAssertEqual(vm.debugActivePathCount, 1, "Single-touch should recover after suppression window")
+    }
+
+    @MainActor
+    func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() {
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0)
+
+        vm.beginMultiTouchNavigation()
+        vm.beginMultiTouchNavigation()
+        XCTAssertTrue(vm.debugIsMultiTouchNavigationActive)
+
+        vm.endMultiTouchNavigation()
+        vm.endMultiTouchNavigation()
+        XCTAssertFalse(vm.debugIsMultiTouchNavigationActive)
     }
 }
+
 
 private func validJSON(letter: String) -> String {
     """

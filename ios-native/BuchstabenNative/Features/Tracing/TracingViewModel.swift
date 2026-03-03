@@ -24,6 +24,8 @@ final class TracingViewModel: ObservableObject {
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
     private var isMultiTouchNavigationActive = false
+    private var singleTouchSuppressedUntil: CFTimeInterval = 0
+    private var isSingleTouchInteractionActive = false
     private var didCompleteCurrentLetter = false
 
     private enum AdaptivePlaybackState { case idle, active }
@@ -34,8 +36,10 @@ final class TracingViewModel: ObservableObject {
     private let activeDebounceSeconds: TimeInterval = 0.03
     private let idleDebounceSeconds: TimeInterval = 0.12
     private let playbackActivationVelocityThreshold: CGFloat = 22
+    private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
-    init() {
+    init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18) {
+        self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
         load(letter: first)
@@ -100,16 +104,23 @@ final class TracingViewModel: ObservableObject {
     }
 
     func beginMultiTouchNavigation() {
+        guard !isMultiTouchNavigationActive else { return }
         isMultiTouchNavigationActive = true
         endTouch()
     }
 
     func endMultiTouchNavigation() {
+        guard isMultiTouchNavigationActive else { return }
         isMultiTouchNavigationActive = false
+        singleTouchSuppressedUntil = CACurrentMediaTime() + singleTouchCooldownAfterNavigation
     }
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         guard !isMultiTouchNavigationActive else { return }
+        guard t >= singleTouchSuppressedUntil else { return }
+        guard !isSingleTouchInteractionActive else { return }
+
+        isSingleTouchInteractionActive = true
         lastPoint = p
         lastTimestamp = t
         activePath = [p]
@@ -117,6 +128,7 @@ final class TracingViewModel: ObservableObject {
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
         guard !isMultiTouchNavigationActive else { return }
+        guard isSingleTouchInteractionActive else { return }
         activePath.append(p)
 
         guard let lastPoint, let lastTimestamp else { return }
@@ -166,6 +178,7 @@ final class TracingViewModel: ObservableObject {
     }
 
     func endTouch() {
+        isSingleTouchInteractionActive = false
         lastPoint = nil
         lastTimestamp = nil
         activePath.removeAll(keepingCapacity: true)
@@ -181,6 +194,7 @@ final class TracingViewModel: ObservableObject {
         didCompleteCurrentLetter = false
         completionMessage = nil
         activePath.removeAll(keepingCapacity: true)
+        isSingleTouchInteractionActive = false
         smoothedVelocity = 0
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio)
@@ -196,6 +210,11 @@ final class TracingViewModel: ObservableObject {
         setPlaybackState(.idle, immediate: true)
     }
 
+
+    #if DEBUG
+    var debugIsMultiTouchNavigationActive: Bool { isMultiTouchNavigationActive }
+    var debugActivePathCount: Int { activePath.count }
+    #endif
 
     func dismissCompletionHUD() {
         completionMessage = nil
