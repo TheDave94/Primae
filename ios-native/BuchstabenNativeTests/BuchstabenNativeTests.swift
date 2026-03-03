@@ -34,8 +34,8 @@ final class BuchstabenNativeTests: XCTestCase {
         let sample: [CGFloat] = [0, 60, 120, 240, 500, 900, 1300, 3000]
         let mapped = sample.map(TracingViewModel.mapVelocityToSpeed)
 
-        XCTAssertEqual(mapped.first, 2.0, accuracy: 0.0001)
-        XCTAssertEqual(mapped.last, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(mapped.first ?? 0, Float(2.0), accuracy: 0.0001)
+        XCTAssertEqual(mapped.last ?? 0, Float(0.5), accuracy: 0.0001)
         mapped.forEach { value in
             XCTAssertGreaterThanOrEqual(value, 0.5)
             XCTAssertLessThanOrEqual(value, 2.0)
