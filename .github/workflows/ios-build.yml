@@ -1,10 +1,10 @@
-name: iOS Build & Test
+name: "iOS Build & Test"
 
 on:
   push:
-    branches: [ main, "ux/**" ]
+    branches: ["main", "ux/**"]
   pull_request:
-    branches: [ main, ux/** ]
+    branches: ["main", "ux/**"]
   workflow_dispatch:
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
           fi
 
   ios_native:
-    name: Build & Test (ios-native / BuchstabenNativeTests)
+    name: "Build & Test (ios-native / BuchstabenNativeTests)"
     runs-on: macos-latest
 
     steps:
