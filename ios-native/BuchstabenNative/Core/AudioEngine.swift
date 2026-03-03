@@ -6,6 +6,8 @@ final class AudioEngine {
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
     private var currentFile: AVAudioFile?
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
 
     private(set) var isPlaying = false
 
@@ -14,12 +16,18 @@ final class AudioEngine {
         engine.attach(timePitch)
         engine.connect(player, to: timePitch, format: nil)
         engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
+        installObservers()
+        startIfNeeded()
+    }
 
-        do {
-            try engine.start()
-        } catch {
-            print("AudioEngine start error: \(error)")
+    deinit {
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
         }
+        if let routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
+        stopAndReset()
     }
 
     func loadAudioFile(named fileName: String) {
@@ -36,20 +44,17 @@ final class AudioEngine {
     }
 
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
-        // Map speed (0.5...2.0) to native timePitch.rate (32...200)
         let clampedSpeed = max(0.5, min(2.0, speed))
         timePitch.rate = clampedSpeed * 100.0
-
-        // Pan on playerNode mixer output [-1, 1]
         player.pan = max(-1.0, min(1.0, horizontalBias))
     }
 
     func play() {
         guard !isPlaying else { return }
-        if !engine.isRunning {
-            try? engine.start()
+        startIfNeeded()
+        if !player.isPlaying {
+            player.play()
         }
-        player.play()
         isPlaying = true
     }
 
@@ -64,6 +69,19 @@ final class AudioEngine {
         player.scheduleFile(file, at: nil, completionHandler: nil)
         player.play()
         isPlaying = true
+    }
+
+    func suspendForLifecycle() {
+        stop()
+        pendingSafeEnginePause()
+    }
+
+    func resumeAfterLifecycle() {
+        startIfNeeded()
+        guard let file = currentFile else { return }
+        if !player.isPlaying {
+            player.scheduleFile(file, at: nil, completionHandler: nil)
+        }
     }
 }
 
@@ -82,5 +100,78 @@ private extension AudioEngine {
         }
 
         return nil
+    }
+
+    func startIfNeeded() {
+        guard !engine.isRunning else { return }
+        do {
+            try engine.start()
+        } catch {
+            print("AudioEngine start error: \(error)")
+        }
+    }
+
+    func pendingSafeEnginePause() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self else { return }
+            guard !self.isPlaying else { return }
+            self.engine.pause()
+        }
+    }
+
+    func stopAndReset() {
+        player.stop()
+        engine.stop()
+        currentFile = nil
+        isPlaying = false
+    }
+
+    func installObservers() {
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleInterruption(notification)
+        }
+
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            self?.handleRouteChange(notification)
+        }
+    }
+
+    func handleInterruption(_ notification: Notification) {
+        guard
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let type = AVAudioSession.InterruptionType(rawValue: typeValue)
+        else { return }
+
+        switch type {
+        case .began:
+            stop()
+        case .ended:
+            startIfNeeded()
+            if let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
+               AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) {
+                play()
+            }
+        @unknown default:
+            break
+        }
+    }
+
+    func handleRouteChange(_ notification: Notification) {
+        guard
+            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
+        else { return }
+
+        if reason == .oldDeviceUnavailable {
+            stop()
+        }
     }
 }

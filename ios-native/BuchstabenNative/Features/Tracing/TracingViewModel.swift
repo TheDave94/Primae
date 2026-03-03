@@ -1,3 +1,4 @@
+import Combine
 import CoreGraphics
 import Foundation
 
@@ -151,6 +152,17 @@ final class TracingViewModel: ObservableObject {
 
         self.lastPoint = p
         self.lastTimestamp = t
+    }
+
+
+    func appDidEnterBackground() {
+        endTouch()
+        setPlaybackState(.idle, immediate: true)
+        audio.suspendForLifecycle()
+    }
+
+    func appDidBecomeActive() {
+        audio.resumeAfterLifecycle()
     }
 
     func endTouch() {
