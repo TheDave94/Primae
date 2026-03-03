@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var vm: TracingViewModel
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -18,7 +19,8 @@ struct ContentView: View {
                         .padding(.vertical, 8)
                         .background(.ultraThinMaterial)
                         .clipShape(Capsule())
-                        .transition(.opacity.combined(with: .scale))
+                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
+                        .accessibilityAddTraits(.isStaticText)
                 }
 
                 Spacer()
@@ -28,33 +30,47 @@ struct ContentView: View {
                         vm.dismissCompletionHUD()
                     }
                     .padding(.bottom, 26)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
             .padding(.top, 12)
             .padding(.horizontal, 12)
         }
-        .animation(.easeInOut(duration: 0.2), value: vm.toastMessage)
-        .animation(.spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
+        .sensoryFeedback(.success, trigger: vm.completionMessage != nil)
     }
 
     private var topBar: some View {
         HStack(spacing: 8) {
-            ToggleChip(title: "Ghost", isOn: vm.showGhost) { vm.toggleGhost() }
-            ToggleChip(title: "Order", isOn: vm.strokeEnforced) { vm.toggleStrokeEnforcement() }
-            ToggleChip(title: "Debug", isOn: vm.showDebug) { vm.toggleDebug() }
+            ToggleChip(title: "Ghost", isOn: vm.showGhost, hint: "Show or hide guide lines") { vm.toggleGhost() }
+            ToggleChip(title: "Order", isOn: vm.strokeEnforced, hint: "Require stroke order for sound playback") { vm.toggleStrokeEnforcement() }
+            ToggleChip(title: "Debug", isOn: vm.showDebug, hint: "Show debug overlays") { vm.toggleDebug() }
+
             Button("Reset") { vm.resetLetter() }
                 .buttonStyle(.borderedProminent)
+                .accessibilityLabel("Reset current letter")
+                .accessibilityHint("Clears current stroke progress")
 
             Spacer(minLength: 6)
 
-            Circle()
-                .fill(vm.isPlaying ? .green : .red)
-                .frame(width: 14, height: 14)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(vm.isPlaying ? .green : .red)
+                    .frame(width: 12, height: 12)
+                    .accessibilityHidden(true)
 
-            Text(vm.currentLetterName)
-                .font(.headline)
-                .lineLimit(1)
+                Text(vm.currentLetterName)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Current letter")
+            .accessibilityValue(vm.currentLetterName)
+            .accessibilityHint(vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused")
         }
     }
 }
@@ -62,6 +78,7 @@ struct ContentView: View {
 private struct ToggleChip: View {
     let title: String
     let isOn: Bool
+    let hint: String
     let action: () -> Void
 
     var body: some View {
@@ -71,9 +88,11 @@ private struct ToggleChip: View {
         }
         .buttonStyle(.borderedProminent)
         .tint(isOn ? .blue : .gray)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityHint(hint)
     }
 }
-
 
 private struct CompletionHUD: View {
     let message: String
@@ -97,6 +116,7 @@ private struct CompletionHUD: View {
                     .background(.thinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss completion message")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

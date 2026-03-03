@@ -3,10 +3,11 @@ import UIKit
 
 struct TracingCanvasView: View {
     @EnvironmentObject private var vm: TracingViewModel
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     var body: some View {
         GeometryReader { geo in
-            ZStack {
+            ZStack(alignment: .bottomLeading) {
                 Canvas { context, _ in
                     if vm.showGhost {
                         let guideRect = CGRect(x: geo.size.width * 0.14,
@@ -21,14 +22,15 @@ struct TracingCanvasView: View {
                     if vm.activePath.count > 1 {
                         var path = Path()
                         path.addLines(vm.activePath)
-                        context.stroke(path, with: .color(.green), lineWidth: 8)
+                        context.stroke(path, with: .color(.green), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                     }
 
-                    let bar = CGRect(x: 0,
-                                     y: geo.size.height - 8,
-                                     width: geo.size.width * vm.progress,
-                                     height: 8)
-                    context.fill(Path(bar), with: .color(.green))
+                    let clampedProgress = max(0, min(1, vm.progress))
+                    let trackRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width, height: 8)
+                    let fillRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width * clampedProgress, height: 8)
+
+                    context.fill(Path(trackRect), with: .color(.black.opacity(0.1)))
+                    context.fill(Path(fillRect), with: .color(differentiateWithoutColor ? .blue : .green))
                 }
                 .contentShape(Rectangle())
                 .gesture(
@@ -43,7 +45,15 @@ struct TracingCanvasView: View {
                         }
                         .onEnded { _ in vm.endTouch() }
                 )
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("Tracing canvas")
+                .accessibilityValue("\(Int(vm.progress * 100)) percent complete")
 
+                ProgressPill(progress: vm.progress, differentiateWithoutColor: differentiateWithoutColor)
+                    .padding(.leading, 12)
+                    .padding(.bottom, 16)
+            }
+            .overlay(
                 MultiTouchGestureOverlay(
                     onTwoFingerPanBegan: { vm.beginMultiTouchNavigation() },
                     onTwoFingerPanEnded: { dx, dy in
@@ -67,8 +77,26 @@ struct TracingCanvasView: View {
                     onThreeFingerTap: { vm.toggleGhost() }
                 )
                 .allowsHitTesting(true)
-            }
+            )
         }
+    }
+}
+
+private struct ProgressPill: View {
+    let progress: CGFloat
+    let differentiateWithoutColor: Bool
+
+    var body: some View {
+        Text("Fortschritt \(Int(max(0, min(1, progress)) * 100))%")
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.ultraThinMaterial, in: Capsule())
+            .overlay(
+                Capsule()
+                    .stroke((differentiateWithoutColor ? Color.blue : Color.green).opacity(0.5), lineWidth: 1)
+            )
+            .accessibilityHidden(true)
     }
 }
 
