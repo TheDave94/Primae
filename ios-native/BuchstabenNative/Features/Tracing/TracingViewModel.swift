@@ -31,6 +31,8 @@ final class TracingViewModel: ObservableObject {
     private enum AdaptivePlaybackState { case idle, active }
     private var adaptivePlaybackState: AdaptivePlaybackState = .idle
     private var pendingPlaybackStateWorkItem: DispatchWorkItem?
+    private var toastTask: Task<Void, Never>?
+    private var completionDismissTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat = 0
     private let velocitySmoothingAlpha: CGFloat = 0.22
     private let activeDebounceSeconds: TimeInterval = 0.03
@@ -57,6 +59,7 @@ final class TracingViewModel: ObservableObject {
         smoothedVelocity = 0
         setPlaybackState(.idle, immediate: true)
         didCompleteCurrentLetter = false
+        completionDismissTask?.cancel()
         completionMessage = nil
         toast("Reset")
     }
@@ -192,6 +195,7 @@ final class TracingViewModel: ObservableObject {
         progress = 0
         audioIndex = 0
         didCompleteCurrentLetter = false
+        completionDismissTask?.cancel()
         completionMessage = nil
         activePath.removeAll(keepingCapacity: true)
         isSingleTouchInteractionActive = false
@@ -217,16 +221,19 @@ final class TracingViewModel: ObservableObject {
     #endif
 
     func dismissCompletionHUD() {
+        completionDismissTask?.cancel()
         completionMessage = nil
     }
 
     private func showCompletionHUD() {
+        completionDismissTask?.cancel()
         let letter = currentLetterName
         completionMessage = "🎉 \(letter) geschafft!"
-        Task {
+        completionDismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.8))
-            if completionMessage == "🎉 \(letter) geschafft!" {
-                completionMessage = nil
+            guard let self else { return }
+            if self.completionMessage == "🎉 \(letter) geschafft!" {
+                self.completionMessage = nil
             }
         }
     }
@@ -273,10 +280,12 @@ final class TracingViewModel: ObservableObject {
     }
 
     private func toast(_ text: String) {
+        toastTask?.cancel()
         toastMessage = text
-        Task {
+        toastTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.3))
-            if toastMessage == text { toastMessage = nil }
+            guard let self else { return }
+            if self.toastMessage == text { self.toastMessage = nil }
         }
     }
 }
