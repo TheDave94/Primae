@@ -216,6 +216,23 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(after, "A/A2.mp3")
     }
 
+
+    func testLetterRepositoryPreferredAudioMatchingHandlesUnicodeNormalization() throws {
+        let fs = try TempResourceFS()
+        defer { fs.cleanup() }
+
+        try fs.write(relative: "M_strokes.json", content: validJSON(letter: "M"))
+        try fs.write(relative: "M/M.pbm", content: "P1\n1 1\n0")
+        try fs.write(relative: "M/Möwe.mp3", content: "ok")
+        try fs.write(relative: "M/Meer.mp3", content: "ok")
+
+        let repo = LetterRepository(resources: fs.provider)
+        let letters = repo.loadLetters()
+        let m = try XCTUnwrap(letters.first(where: { $0.id.uppercased() == "M" }))
+
+        XCTAssertEqual(m.audioFiles, ["M/Meer.mp3", "M/Möwe.mp3"])
+    }
+
     @MainActor
     func testSingleTouchSuppressionWindowUsesInjectedClock() {
         let clock = FakeClock(100)
