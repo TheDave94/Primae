@@ -28,6 +28,8 @@ final class TracingViewModel: ObservableObject {
     private var singleTouchSuppressedUntil: CFTimeInterval = 0
     private var isSingleTouchInteractionActive = false
     private var didCompleteCurrentLetter = false
+    private var appIsForeground = true
+    private var resumeIntent = true
 
     private enum AdaptivePlaybackState { case idle, active }
     private var adaptivePlaybackState: AdaptivePlaybackState = .idle
@@ -50,6 +52,14 @@ final class TracingViewModel: ObservableObject {
         toast("Ready")
     }
 
+    deinit {
+        cancelPendingPlaybackWork()
+        toastTask?.cancel()
+        completionDismissTask?.cancel()
+        audio.cancelPendingLifecycleWork()
+        audio.stop()
+    }
+
     func toggleGhost() { showGhost.toggle(); toast(showGhost ? "Ghost ON" : "Ghost OFF") }
     func toggleStrokeEnforcement() { strokeEnforced.toggle(); resetLetter(); toast(strokeEnforced ? "Order ON" : "Order OFF") }
     func toggleDebug() { showDebug.toggle(); toast(showDebug ? "Debug ON" : "Debug OFF") }
@@ -59,6 +69,8 @@ final class TracingViewModel: ObservableObject {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
+        resumeIntent = false
+        cancelPendingPlaybackWork()
         setPlaybackState(.idle, immediate: true)
         didCompleteCurrentLetter = false
         completionDismissTask?.cancel()
@@ -126,6 +138,7 @@ final class TracingViewModel: ObservableObject {
         guard !isSingleTouchInteractionActive else { return }
 
         isSingleTouchInteractionActive = true
+        resumeIntent = true
         lastPoint = p
         lastTimestamp = t
         activePath = [p]
@@ -173,13 +186,19 @@ final class TracingViewModel: ObservableObject {
 
 
     func appDidEnterBackground() {
+        appIsForeground = false
+        cancelPendingPlaybackWork()
         endTouch()
         setPlaybackState(.idle, immediate: true)
         audio.suspendForLifecycle()
     }
 
     func appDidBecomeActive() {
+        appIsForeground = true
         audio.resumeAfterLifecycle()
+        if resumeIntent {
+            setPlaybackState(adaptivePlaybackState, immediate: true)
+        }
     }
 
     func endTouch() {
@@ -188,6 +207,8 @@ final class TracingViewModel: ObservableObject {
         lastTimestamp = nil
         activePath.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
+        resumeIntent = false
+        cancelPendingPlaybackWork()
         setPlaybackState(.idle, immediate: true)
     }
 
@@ -202,6 +223,8 @@ final class TracingViewModel: ObservableObject {
         activePath.removeAll(keepingCapacity: true)
         isSingleTouchInteractionActive = false
         smoothedVelocity = 0
+        resumeIntent = true
+        cancelPendingPlaybackWork()
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
@@ -253,19 +276,32 @@ final class TracingViewModel: ObservableObject {
         pendingPlaybackStateWorkItem?.cancel()
         pendingPlaybackStateWorkItem = nil
 
+        let resolvedTarget: AdaptivePlaybackState
+        if target == .active && (!appIsForeground || !resumeIntent) {
+            resolvedTarget = .idle
+        } else {
+            resolvedTarget = target
+        }
+
         if immediate {
-            applyPlaybackState(target)
+            applyPlaybackState(resolvedTarget)
             return
         }
 
-        guard target != adaptivePlaybackState else { return }
+        guard resolvedTarget != adaptivePlaybackState else { return }
 
-        let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
+        let delay = resolvedTarget == .active ? activeDebounceSeconds : idleDebounceSeconds
         let work = DispatchWorkItem { [weak self] in
-            self?.applyPlaybackState(target)
+            self?.applyPlaybackState(resolvedTarget)
         }
         pendingPlaybackStateWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func cancelPendingPlaybackWork() {
+        pendingPlaybackStateWorkItem?.cancel()
+        pendingPlaybackStateWorkItem = nil
+        audio.cancelPendingLifecycleWork()
     }
 
     private func applyPlaybackState(_ target: AdaptivePlaybackState) {

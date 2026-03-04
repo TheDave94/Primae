@@ -141,6 +141,31 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(audio.resumeAfterLifecycleCount, 1)
     }
 
+
+
+    @MainActor
+    func testBackgroundCancelsPendingPlaybackAndAvoidsResumeUntilNewIntent() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
+        vm.appDidEnterBackground()
+
+        XCTAssertGreaterThanOrEqual(audio.cancelPendingLifecycleWorkCount, 1)
+        XCTAssertGreaterThanOrEqual(audio.stopCount, 1)
+
+        vm.appDidBecomeActive()
+        XCTAssertEqual(audio.playCount, 0, "Should not auto-play on foreground without fresh touch intent")
+
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 2.0)
+        vm.updateTouch(at: CGPoint(x: 120, y: 120), t: 2.01, canvasSize: size)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertGreaterThanOrEqual(audio.playCount, 1, "Fresh touch intent should allow playback again")
+    }
+
     @MainActor
     func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() {
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0)
@@ -218,14 +243,17 @@ private final class MockAudioController: AudioControlling {
     private(set) var loadedFiles: [String] = []
     private(set) var suspendForLifecycleCount = 0
     private(set) var resumeAfterLifecycleCount = 0
+    private(set) var playCount = 0
+    private(set) var stopCount = 0
+    private(set) var cancelPendingLifecycleWorkCount = 0
 
     func loadAudioFile(named fileName: String, autoplay: Bool) {
         loadedFiles.append(fileName)
     }
 
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func play() {}
-    func stop() {}
+    func play() { playCount += 1 }
+    func stop() { stopCount += 1 }
     func restart() {}
 
     func suspendForLifecycle() {
@@ -236,5 +264,5 @@ private final class MockAudioController: AudioControlling {
         resumeAfterLifecycleCount += 1
     }
 
-    func cancelPendingLifecycleWork() {}
+    func cancelPendingLifecycleWork() { cancelPendingLifecycleWorkCount += 1 }
 }
