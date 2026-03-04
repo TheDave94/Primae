@@ -34,6 +34,13 @@ struct LetterGuideRenderer {
 
         return p
     }
+
+    static func fallbackCrossbarY(for letter: String) -> CGFloat {
+        let key = letter.uppercased()
+        let hash = abs(key.unicodeScalars.reduce(0) { ($0 * 31) + Int($1.value) })
+        return CGFloat(0.42 + (Double(hash % 20) / 100.0))
+    }
+
 }
 
 private extension LetterGuideRenderer {
@@ -50,8 +57,7 @@ private extension LetterGuideRenderer {
     static func fallbackSegments(for letter: String) -> [Segment] {
         // Deterministic fallback for non-curated letters: keeps ghost guidance enabled
         // for all loaded assets while preserving curated paths where available.
-        let hash = abs(letter.unicodeScalars.reduce(0) { ($0 * 31) + Int($1.value) })
-        let crossbarY = CGFloat(0.42 + (Double(hash % 20) / 100.0))
+        let crossbarY = fallbackCrossbarY(for: letter)
 
         return [
             .line(CGPoint(x: 0.22, y: 0.12), CGPoint(x: 0.22, y: 0.88)),
