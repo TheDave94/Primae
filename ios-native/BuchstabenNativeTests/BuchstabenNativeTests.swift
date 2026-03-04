@@ -161,6 +161,61 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertNotEqual(rPath?.contains(qProbe), true)
     }
 
+
+    @MainActor
+    func testRandomLetterAvoidsImmediateRepeatWhenMultipleLettersExist() throws {
+        let fs = try TempResourceFS()
+        defer { fs.cleanup() }
+
+        try fs.write(relative: "A_strokes.json", content: validJSON(letter: "A"))
+        try fs.write(relative: "A/A.pbm", content: "P1\n1 1\n0")
+        try fs.write(relative: "A/A1.mp3", content: "ok")
+
+        try fs.write(relative: "B_strokes.json", content: validJSON(letter: "B"))
+        try fs.write(relative: "B/B.pbm", content: "P1\n1 1\n0")
+        try fs.write(relative: "B/B1.mp3", content: "ok")
+
+        let vm = TracingViewModel(
+            repo: LetterRepository(resources: fs.provider),
+            audio: FakeAudioEngine(),
+            randomIndex: { _ in 0 },
+            activeDebounceSeconds: 0,
+            idleDebounceSeconds: 0
+        )
+
+        XCTAssertEqual(vm.currentLetterName, "A")
+        vm.randomLetter()
+        XCTAssertEqual(vm.currentLetterName, "B")
+    }
+
+    @MainActor
+    func testRandomAudioVariantAvoidsImmediateRepeatWhenMultipleFilesExist() throws {
+        let fs = try TempResourceFS()
+        defer { fs.cleanup() }
+
+        try fs.write(relative: "A_strokes.json", content: validJSON(letter: "A"))
+        try fs.write(relative: "A/A.pbm", content: "P1\n1 1\n0")
+        try fs.write(relative: "A/A1.mp3", content: "ok")
+        try fs.write(relative: "A/A2.mp3", content: "ok")
+
+        let audio = FakeAudioEngine()
+        let vm = TracingViewModel(
+            repo: LetterRepository(resources: fs.provider),
+            audio: audio,
+            randomIndex: { _ in 0 },
+            activeDebounceSeconds: 0,
+            idleDebounceSeconds: 0
+        )
+
+        let before = audio.loadedFiles.last
+        vm.randomLetter()
+        let after = audio.loadedFiles.last
+
+        XCTAssertEqual(vm.currentLetterName, "A")
+        XCTAssertEqual(before, "A/A1.mp3")
+        XCTAssertEqual(after, "A/A2.mp3")
+    }
+
     @MainActor
     func testSingleTouchSuppressionWindowUsesInjectedClock() {
         let clock = FakeClock(100)

@@ -19,6 +19,7 @@ final class TracingViewModel: ObservableObject {
     private let strokeTracker = StrokeTracker()
     private let audio: TracingAudioControlling
     private let now: () -> CFTimeInterval
+    private let randomIndex: (Range<Int>) -> Int
 
     private var letters: [LetterAsset] = []
     private var letterIndex = 0
@@ -47,6 +48,7 @@ final class TracingViewModel: ObservableObject {
         repo: LetterRepository = LetterRepository(),
         audio: TracingAudioControlling = AudioEngine(),
         now: @escaping () -> CFTimeInterval = CACurrentMediaTime,
+        randomIndex: @escaping (Range<Int>) -> Int = { Int.random(in: $0) },
         activeDebounceSeconds: TimeInterval = 0.03,
         idleDebounceSeconds: TimeInterval = 0.12,
         singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18
@@ -54,6 +56,7 @@ final class TracingViewModel: ObservableObject {
         self.repo = repo
         self.audio = audio
         self.now = now
+        self.randomIndex = randomIndex
         self.activeDebounceSeconds = activeDebounceSeconds
         self.idleDebounceSeconds = idleDebounceSeconds
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
@@ -96,7 +99,7 @@ final class TracingViewModel: ObservableObject {
 
     func randomLetter() {
         guard !letters.isEmpty else { return }
-        letterIndex = Int.random(in: 0..<letters.count)
+        letterIndex = randomNonRepeatingIndex(current: letterIndex, upperBound: letters.count)
         load(letter: letters[letterIndex])
         randomAudioVariant()
         toast("Random: \(currentLetterName)")
@@ -229,9 +232,18 @@ final class TracingViewModel: ObservableObject {
     private func randomAudioVariant() {
         let files = letters[letterIndex].audioFiles
         guard !files.isEmpty else { return }
-        audioIndex = Int.random(in: 0..<files.count)
+        audioIndex = randomNonRepeatingIndex(current: audioIndex, upperBound: files.count)
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
+    }
+
+    private func randomNonRepeatingIndex(current: Int, upperBound: Int) -> Int {
+        guard upperBound > 1 else { return 0 }
+        var candidate = randomIndex(0..<upperBound)
+        if candidate == current {
+            candidate = (candidate + 1) % upperBound
+        }
+        return candidate
     }
 
 
