@@ -17,6 +17,11 @@ This folder contains a native-first rewrite of the app architecture.
 - Two-finger gesture handling for navigation/randomize
 - Overlay toggles and completion feedback state
 
+## Validation lane (local + CI)
+- Local (macOS/Xcode): `./scripts/ios-native-gate.sh --strict`
+- Local (non-mac host): `./scripts/ios-native-gate.sh` (reports skip)
+- CI: `.github/workflows/ios-build.yml` calls the same script in strict mode.
+
 ## Next Milestones
 1. Wire this module into an Xcode iOS target
 2. Implement robust asset import from existing folder structure
