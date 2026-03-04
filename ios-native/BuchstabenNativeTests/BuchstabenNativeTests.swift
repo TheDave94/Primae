@@ -279,6 +279,35 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(audio.suspendCalls, 1)
     }
 
+
+    @MainActor
+    func testDuplicateBackgroundEventsSuspendOnlyOnceUntilActive() {
+        let audio = FakeAudioEngine()
+        let vm = TracingViewModel(audio: audio, activeDebounceSeconds: 0, idleDebounceSeconds: 0)
+
+        vm.appDidEnterBackground()
+        vm.appDidEnterBackground()
+
+        XCTAssertEqual(audio.suspendCalls, 1)
+
+        vm.appDidBecomeActive()
+        XCTAssertEqual(audio.resumeCalls, 1)
+
+        vm.appDidEnterBackground()
+        XCTAssertEqual(audio.suspendCalls, 2)
+    }
+
+    @MainActor
+    func testActiveWithoutPriorBackgroundDoesNotResumeAudioEngine() {
+        let audio = FakeAudioEngine()
+        let vm = TracingViewModel(audio: audio, activeDebounceSeconds: 0, idleDebounceSeconds: 0)
+
+        vm.appDidBecomeActive()
+
+        XCTAssertEqual(audio.resumeCalls, 0)
+    }
+
+
     @MainActor
     func testRepeatedLifecycleCyclesDoNotLeavePlaybackStuck() {
         let audio = FakeAudioEngine()

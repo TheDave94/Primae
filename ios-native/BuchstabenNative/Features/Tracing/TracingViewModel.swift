@@ -29,6 +29,7 @@ final class TracingViewModel: ObservableObject {
     private var singleTouchSuppressedUntil: CFTimeInterval = 0
     private var isSingleTouchInteractionActive = false
     private var didCompleteCurrentLetter = false
+    private var isLifecycleSuspended = false
 
     private enum AdaptivePlaybackState { case idle, active }
     private var adaptivePlaybackState: AdaptivePlaybackState = .idle
@@ -186,12 +187,16 @@ final class TracingViewModel: ObservableObject {
 
 
     func appDidEnterBackground() {
+        guard !isLifecycleSuspended else { return }
+        isLifecycleSuspended = true
         endTouch()
         setPlaybackState(.idle, immediate: true)
         audio.suspendForLifecycle()
     }
 
     func appDidBecomeActive() {
+        guard isLifecycleSuspended else { return }
+        isLifecycleSuspended = false
         audio.resumeAfterLifecycle()
     }
 
