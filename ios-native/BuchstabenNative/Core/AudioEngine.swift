@@ -12,6 +12,9 @@ final class AudioEngine: AudioControlling {
     private var shouldResumePlayback = false
     private var appIsForeground = true
     private var interrupted = false
+    private var interruptionShouldResume = true
+    private var interruptionResumeGateRequired = false
+    private var pendingLifecyclePauseWorkItem: DispatchWorkItem?
 
     private(set) var isPlaying = false
 
@@ -60,23 +63,29 @@ final class AudioEngine: AudioControlling {
 
     func play() {
         shouldResumePlayback = true
+        interruptionResumeGateRequired = false
+        interruptionShouldResume = true
         attemptResumePlayback()
     }
 
     func stop() {
         shouldResumePlayback = false
+        cancelPendingLifecycleWork()
         player.pause()
         isPlaying = false
     }
 
     func restart() {
         shouldResumePlayback = true
+        interruptionResumeGateRequired = false
+        interruptionShouldResume = true
         prepareCurrentTrack()
         attemptResumePlayback()
     }
 
     func suspendForLifecycle() {
         appIsForeground = false
+        cancelPendingLifecycleWork()
         player.pause()
         isPlaying = false
         pendingSafeEnginePause()
@@ -88,7 +97,8 @@ final class AudioEngine: AudioControlling {
     }
 
     func cancelPendingLifecycleWork() {
-        // No-op in baseline engine; used by injected test doubles and lifecycle hardening.
+        pendingLifecyclePauseWorkItem?.cancel()
+        pendingLifecyclePauseWorkItem = nil
     }
 }
 
@@ -119,14 +129,14 @@ private extension AudioEngine {
     }
 
     func canResumePlayback() -> Bool {
-        appIsForeground && !interrupted
+        appIsForeground && !interrupted && shouldResumePlayback && (!interruptionResumeGateRequired || interruptionShouldResume)
     }
 
     func attemptResumePlayback() {
         startIfNeeded()
         prepareCurrentTrack()
 
-        guard shouldResumePlayback, canResumePlayback() else {
+        guard canResumePlayback() else {
             player.pause()
             isPlaying = false
             pendingSafeEnginePause()
@@ -148,11 +158,14 @@ private extension AudioEngine {
     }
 
     func pendingSafeEnginePause() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        cancelPendingLifecycleWork()
+        let work = DispatchWorkItem { [weak self] in
             guard let self else { return }
             guard !self.isPlaying else { return }
             self.engine.pause()
         }
+        pendingLifecyclePauseWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
     }
 
     func stopAndReset() {
@@ -162,6 +175,9 @@ private extension AudioEngine {
         shouldResumePlayback = false
         appIsForeground = true
         interrupted = false
+        interruptionShouldResume = true
+        interruptionResumeGateRequired = false
+        cancelPendingLifecycleWork()
         isPlaying = false
     }
 
@@ -192,12 +208,19 @@ private extension AudioEngine {
         switch type {
         case .began:
             interrupted = true
+            interruptionResumeGateRequired = true
+            interruptionShouldResume = false
             player.pause()
             isPlaying = false
+            pendingSafeEnginePause()
         case .ended:
             interrupted = false
-            if let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt,
-               AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume) {
+            if let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt {
+                interruptionShouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
+            } else {
+                interruptionShouldResume = false
+            }
+            if interruptionShouldResume {
                 attemptResumePlayback()
             }
         @unknown default:
@@ -215,9 +238,11 @@ private extension AudioEngine {
         case .oldDeviceUnavailable:
             player.pause()
             isPlaying = false
-            attemptResumePlayback()
+            pendingSafeEnginePause()
         case .newDeviceAvailable, .categoryChange, .override, .routeConfigurationChange, .wakeFromSleep, .noSuitableRouteForCategory:
-            attemptResumePlayback()
+            if appIsForeground && !interrupted {
+                attemptResumePlayback()
+            }
         default:
             break
         }
