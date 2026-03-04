@@ -122,6 +122,25 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(vm.debugActivePathCount, 1, "Single-touch should recover after suppression window")
     }
 
+
+
+    @MainActor
+    func testTracingViewModelUsesInjectedAudioControllerAcrossLifecycle() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+
+        XCTAssertGreaterThanOrEqual(audio.loadedFiles.count, 1)
+
+        vm.nextAudioVariant()
+        vm.previousAudioVariant()
+        vm.appDidEnterBackground()
+        vm.appDidBecomeActive()
+
+        XCTAssertGreaterThanOrEqual(audio.loadedFiles.count, 3, "Init + next/previous variant should load audio through seam")
+        XCTAssertEqual(audio.suspendForLifecycleCount, 1)
+        XCTAssertEqual(audio.resumeAfterLifecycleCount, 1)
+    }
+
     @MainActor
     func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() {
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0)
@@ -192,4 +211,30 @@ private final class TempResourceFS {
     func cleanup() {
         try? FileManager.default.removeItem(at: root)
     }
+}
+
+
+private final class MockAudioController: AudioControlling {
+    private(set) var loadedFiles: [String] = []
+    private(set) var suspendForLifecycleCount = 0
+    private(set) var resumeAfterLifecycleCount = 0
+
+    func loadAudioFile(named fileName: String, autoplay: Bool) {
+        loadedFiles.append(fileName)
+    }
+
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
+    func play() {}
+    func stop() {}
+    func restart() {}
+
+    func suspendForLifecycle() {
+        suspendForLifecycleCount += 1
+    }
+
+    func resumeAfterLifecycle() {
+        resumeAfterLifecycleCount += 1
+    }
+
+    func cancelPendingLifecycleWork() {}
 }

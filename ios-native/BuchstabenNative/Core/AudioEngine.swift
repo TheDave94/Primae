@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-final class AudioEngine {
+final class AudioEngine: AudioControlling {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
@@ -85,6 +85,10 @@ final class AudioEngine {
     func resumeAfterLifecycle() {
         appIsForeground = true
         attemptResumePlayback()
+    }
+
+    func cancelPendingLifecycleWork() {
+        // No-op in baseline engine; used by injected test doubles and lifecycle hardening.
     }
 }
 

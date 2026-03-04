@@ -17,7 +17,7 @@ final class TracingViewModel: ObservableObject {
 
     private let repo = LetterRepository()
     private let strokeTracker = StrokeTracker()
-    private let audio = AudioEngine()
+    private let audio: AudioControlling
 
     private var letters: [LetterAsset] = []
     private var letterIndex = 0
@@ -41,8 +41,9 @@ final class TracingViewModel: ObservableObject {
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
-    init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18) {
+    init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18, audio: AudioControlling = AudioEngine()) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
+        self.audio = audio
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
         load(letter: first)
@@ -92,7 +93,7 @@ final class TracingViewModel: ObservableObject {
         let files = letters[letterIndex].audioFiles
         guard !files.isEmpty else { return }
         audioIndex = (audioIndex + 1) % files.count
-        audio.loadAudioFile(named: files[audioIndex])
+        audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
         toast("Sound \(audioIndex + 1)/\(files.count)")
     }
@@ -102,7 +103,7 @@ final class TracingViewModel: ObservableObject {
         let files = letters[letterIndex].audioFiles
         guard !files.isEmpty else { return }
         audioIndex = (audioIndex - 1 + files.count) % files.count
-        audio.loadAudioFile(named: files[audioIndex])
+        audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
         toast("Sound \(audioIndex + 1)/\(files.count)")
     }
@@ -202,7 +203,7 @@ final class TracingViewModel: ObservableObject {
         isSingleTouchInteractionActive = false
         smoothedVelocity = 0
         if let firstAudio = letter.audioFiles.first {
-            audio.loadAudioFile(named: firstAudio)
+            audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
         }
     }
@@ -211,7 +212,7 @@ final class TracingViewModel: ObservableObject {
         let files = letters[letterIndex].audioFiles
         guard !files.isEmpty else { return }
         audioIndex = Int.random(in: 0..<files.count)
-        audio.loadAudioFile(named: files[audioIndex])
+        audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
     }
 
