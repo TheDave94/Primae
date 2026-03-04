@@ -18,6 +18,15 @@ final class AudioEngine: AudioControlling {
 
     private(set) var isPlaying = false
 
+    #if DEBUG
+    var debugInterrupted: Bool { interrupted }
+    var debugInterruptionShouldResume: Bool { interruptionShouldResume }
+    var debugIsEngineRunning: Bool { engine.isRunning }
+    var debugShouldResumePlayback: Bool { shouldResumePlayback }
+    var debugAppIsForeground: Bool { appIsForeground }
+    var debugInterruptionResumeGateRequired: Bool { interruptionResumeGateRequired }
+    #endif
+
     init() {
         engine.attach(player)
         engine.attach(timePitch)
