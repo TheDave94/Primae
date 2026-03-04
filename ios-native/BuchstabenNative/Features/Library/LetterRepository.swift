@@ -184,15 +184,34 @@ private extension LetterRepository {
         let key = base.uppercased()
         let mapping: [String: [String]] = [
             "A": ["A/A1.mp3", "A/A2.mp3", "A/A3.mp3", "A/Affe.mp3", "A/Sirene.mp3", "A1.mp3", "A2.mp3", "A3.mp3", "Affe.mp3", "Sirene.mp3"],
-            "F": ["F/Frosch.mp3", "F/Föhn.mp3", "Frosch.mp3", "Föhn.mp3"],
+            "F": ["F/Frosch.mp3", "F/Föhn.mp3", "Frosch.mp3", "Föhn.mp3"],
             "K": ["K/K.mp3", "K/Katze.mp3", "K/Kuckuck1.mp3", "K.mp3", "Katze.mp3", "Kuckuck1.mp3"],
-            "L": ["L/Löwe.mp3", "Löwe.mp3"],
-            "M": ["M/Meer.mp3", "M/Möwe.mp3", "Meer.mp3", "Möwe.mp3"]
+            "L": ["L/Löwe.mp3", "Löwe.mp3"],
+            "M": ["M/Meer.mp3", "M/Möwe.mp3", "Meer.mp3", "Möwe.mp3"]
         ]
 
         guard let preferredOrder = mapping[key] else { return [] }
-        let availableSet = Set(available)
-        return preferredOrder.filter { availableSet.contains($0) }
+
+        let availableByNormalized = available.reduce(into: [String: String]()) { acc, path in
+            let normalized = normalizeResourceKey(path)
+            if acc[normalized] == nil { acc[normalized] = path }
+        }
+
+        var resolved: [String] = []
+        for preferred in preferredOrder {
+            let normalized = normalizeResourceKey(preferred)
+            if let match = availableByNormalized[normalized], !resolved.contains(match) {
+                resolved.append(match)
+            }
+        }
+        return resolved
+    }
+
+    func normalizeResourceKey(_ path: String) -> String {
+        path.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: Locale(identifier: "de_DE"))
+            .replacingOccurrences(of: "\\", with: "/")
+            .precomposedStringWithCanonicalMapping
+            .lowercased()
     }
 
     func isLikelyStaleAudioReference(_ path: String) -> Bool {
