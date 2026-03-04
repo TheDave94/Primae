@@ -191,6 +191,36 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(audio.playCount, 1, "Fresh touch intent should allow playback again")
     }
 
+
+
+    @MainActor
+    func testLongSessionLifecycleRegressionMatrix() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        for cycle in 0..<5 {
+            let base = CFTimeInterval(10 + cycle)
+            vm.beginTouch(at: CGPoint(x: 12, y: 12), t: base)
+            vm.updateTouch(at: CGPoint(x: 140, y: 160), t: base + 0.01, canvasSize: size)
+            vm.appDidEnterBackground()
+            vm.appDidBecomeActive()
+        }
+
+        for i in 0..<8 {
+            let t = CFTimeInterval(200) + (Double(i) * 0.004)
+            vm.beginTouch(at: CGPoint(x: 20 + CGFloat(i), y: 20 + CGFloat(i)), t: t)
+            vm.updateTouch(at: CGPoint(x: 25 + CGFloat(i), y: 25 + CGFloat(i)), t: t + 0.001, canvasSize: size)
+            vm.endTouch()
+        }
+
+        XCTAssertGreaterThanOrEqual(audio.suspendForLifecycleCount, 5)
+        XCTAssertGreaterThanOrEqual(audio.resumeAfterLifecycleCount, 5)
+        XCTAssertGreaterThanOrEqual(audio.cancelPendingLifecycleWorkCount, 5)
+        XCTAssertGreaterThan(audio.setAdaptivePlaybackCount, 0)
+        XCTAssertGreaterThanOrEqual(audio.stopCount, audio.suspendForLifecycleCount)
+    }
+
     @MainActor
     func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() {
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0)
@@ -271,12 +301,13 @@ private final class MockAudioController: AudioControlling {
     private(set) var playCount = 0
     private(set) var stopCount = 0
     private(set) var cancelPendingLifecycleWorkCount = 0
+    private(set) var setAdaptivePlaybackCount = 0
 
     func loadAudioFile(named fileName: String, autoplay: Bool) {
         loadedFiles.append(fileName)
     }
 
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) { setAdaptivePlaybackCount += 1 }
     func play() { playCount += 1 }
     func stop() { stopCount += 1 }
     func restart() {}
