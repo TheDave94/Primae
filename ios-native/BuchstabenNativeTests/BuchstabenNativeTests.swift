@@ -98,6 +98,31 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertNotNil(LetterGuideRenderer.guidePath(for: "Z", in: rect), "Fallback guide should exist for non-curated letters")
     }
 
+
+
+    func testGuideRendererGeometryIsNonDegenerateAndContained() {
+        let rect = CGRect(x: 20, y: 30, width: 320, height: 480)
+
+        for letter in ["A", "F", "I", "K", "L", "M", "O"] {
+            let path = try! XCTUnwrap(LetterGuideRenderer.guidePath(for: letter, in: rect))
+            let bounds = path.boundingRect
+            XCTAssertGreaterThan(bounds.width, 1, "Guide width should be non-degenerate for \(letter)")
+            XCTAssertGreaterThan(bounds.height, 1, "Guide height should be non-degenerate for \(letter)")
+            XCTAssertTrue(rect.intersects(bounds), "Guide should intersect tracing rect for \(letter)")
+            XCTAssertTrue(rect.insetBy(dx: -1, dy: -1).contains(bounds), "Guide bounds should remain inside tracing rect for \(letter)")
+        }
+    }
+
+    func testGuideRendererFallbackIsDeterministicForUnknownLetter() {
+        let rect = CGRect(x: 0, y: 0, width: 300, height: 500)
+        let fallback1 = try! XCTUnwrap(LetterGuideRenderer.guidePath(for: "Z", in: rect))
+        let fallback2 = try! XCTUnwrap(LetterGuideRenderer.guidePath(for: "?", in: rect))
+        let fallback3 = try! XCTUnwrap(LetterGuideRenderer.guidePath(for: "Z", in: rect))
+
+        XCTAssertEqual(fallback1.boundingRect.integral, fallback2.boundingRect.integral)
+        XCTAssertEqual(fallback1.boundingRect.integral, fallback3.boundingRect.integral)
+    }
+
     @MainActor
     func testMultiTouchNavigationClearsAndSuppressesSingleTouchBriefly() {
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05)
