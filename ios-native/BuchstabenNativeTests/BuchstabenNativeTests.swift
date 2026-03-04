@@ -121,12 +121,21 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertNotNil(p2)
         XCTAssertEqual(p1?.boundingRect, p2?.boundingRect)
 
-        let y = fallbackCrossbarY(for: "Q")
+        let y = LetterGuideRenderer.fallbackCrossbarY(for: "Q")
         let probe = CGPoint(x: rect.width * 0.5, y: rect.height * y)
         let s1 = p1?.strokedPath(.init(lineWidth: 6, lineCap: .round, lineJoin: .round))
         let s2 = p2?.strokedPath(.init(lineWidth: 6, lineCap: .round, lineJoin: .round))
         XCTAssertEqual(s1?.contains(probe), true)
         XCTAssertEqual(s2?.contains(probe), true)
+    }
+
+
+    func testFallbackCrossbarYStaysInExpectedBand() {
+        for letter in ["A", "M", "Q", "R", "Z", "Ä"] {
+            let y = LetterGuideRenderer.fallbackCrossbarY(for: letter)
+            XCTAssertGreaterThanOrEqual(y, 0.42)
+            XCTAssertLessThanOrEqual(y, 0.61)
+        }
     }
 
     func testGhostFallbackVariesAcrossDifferentUnknownLetters() {
@@ -136,8 +145,8 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertNotNil(q)
         XCTAssertNotNil(r)
 
-        let qY = fallbackCrossbarY(for: "Q")
-        let rY = fallbackCrossbarY(for: "R")
+        let qY = LetterGuideRenderer.fallbackCrossbarY(for: "Q")
+        let rY = LetterGuideRenderer.fallbackCrossbarY(for: "R")
         XCTAssertNotEqual(qY, rY)
 
         let qPath = q?.strokedPath(.init(lineWidth: 6, lineCap: .round, lineJoin: .round))
@@ -250,6 +259,26 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(audio.playCalls, playBeforeBackground)
     }
 
+
+    @MainActor
+    func testBackgroundCancelsPendingPlaybackActivation() async {
+        let audio = FakeAudioEngine()
+        let vm = TracingViewModel(audio: audio, activeDebounceSeconds: 0.05, idleDebounceSeconds: 0)
+        vm.strokeEnforced = false
+
+        let size = CGSize(width: 320, height: 480)
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 150, y: 10), t: 1.02, canvasSize: size)
+
+        vm.appDidEnterBackground()
+
+        try? await Task.sleep(for: .milliseconds(80))
+
+        XCTAssertFalse(vm.isPlaying)
+        XCTAssertEqual(audio.playCalls, 0)
+        XCTAssertEqual(audio.suspendCalls, 1)
+    }
+
     @MainActor
     func testRepeatedLifecycleCyclesDoNotLeavePlaybackStuck() {
         let audio = FakeAudioEngine()
@@ -272,11 +301,6 @@ final class BuchstabenNativeTests: XCTestCase {
     }
 }
 
-private func fallbackCrossbarY(for letter: String) -> CGFloat {
-    let key = letter.uppercased()
-    let hash = abs(key.unicodeScalars.reduce(0) { ($0 * 31) + Int($1.value) })
-    return CGFloat(0.42 + (Double(hash % 20) / 100.0))
-}
 
 private func validJSON(letter: String) -> String {
     """
