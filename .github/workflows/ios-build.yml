@@ -35,7 +35,6 @@ jobs:
   ios_native:
     name: "Build & Test (ios-native / BuchstabenNativeTests)"
     runs-on: macos-latest
-    continue-on-error: true
 
     steps:
       - name: Checkout
@@ -68,19 +67,34 @@ jobs:
       - name: Build ios-native
         if: steps.scheme.outputs.skip != 'true'
         run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ios-native-ci-artifacts"
           xcodebuild \
             -scheme "${{ steps.scheme.outputs.scheme }}" \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build | tee "$GITHUB_WORKSPACE/ios-native-ci-artifacts/build.log"
 
       - name: Test BuchstabenNativeTests
         if: steps.scheme.outputs.skip != 'true'
         run: |
+          set -o pipefail
+          mkdir -p "$GITHUB_WORKSPACE/ios-native-ci-artifacts"
           xcodebuild \
             -scheme "${{ steps.scheme.outputs.scheme }}" \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -configuration Debug \
+            -resultBundlePath "$GITHUB_WORKSPACE/ios-native-ci-artifacts/BuchstabenNativeTests.xcresult" \
             CODE_SIGNING_ALLOWED=NO \
-            test
+            test | tee "$GITHUB_WORKSPACE/ios-native-ci-artifacts/test.log"
+
+      - name: Upload ios-native test artifacts
+        if: always() && steps.scheme.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-native-test-artifacts
+          if-no-files-found: warn
+          path: |
+            ${{ github.workspace }}/ios-native-ci-artifacts/*.log
+            ${{ github.workspace }}/ios-native-ci-artifacts/*.xcresult
