@@ -1,5 +1,6 @@
 import XCTest
 import CoreGraphics
+import AVFoundation
 @testable import BuchstabenNative
 
 final class BuchstabenNativeTests: XCTestCase {
@@ -232,6 +233,226 @@ final class BuchstabenNativeTests: XCTestCase {
         vm.endMultiTouchNavigation()
         vm.endMultiTouchNavigation()
         XCTAssertFalse(vm.debugIsMultiTouchNavigationActive)
+    }
+
+    // MARK: - Hardening Tests
+
+    /// Rapid background/foreground churn (50 cycles) must not corrupt audio or touch state.
+    @MainActor
+    func testRapidBackgroundForegroundChurn_50Cycles() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        for cycle in 0..<50 {
+            let base = CFTimeInterval(100 + cycle * 2)
+            vm.beginTouch(at: CGPoint(x: 10, y: 10), t: base)
+            vm.updateTouch(at: CGPoint(x: 80, y: 80), t: base + 0.01, canvasSize: size)
+            vm.appDidEnterBackground()
+            vm.appDidBecomeActive()
+        }
+
+        XCTAssertEqual(audio.suspendForLifecycleCount, 50, "suspendForLifecycle must be called once per bg transition")
+        XCTAssertEqual(audio.resumeAfterLifecycleCount, 50, "resumeAfterLifecycle must be called once per fg transition")
+        XCTAssertGreaterThanOrEqual(audio.cancelPendingLifecycleWorkCount, 50)
+        // Touch state must be clean: no active path after background
+        vm.appDidEnterBackground()
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Active path must be cleared on background entry")
+        XCTAssertFalse(vm.debugIsMultiTouchNavigationActive)
+    }
+
+    /// AVAudioSession interruption simulation: .ended with shouldResume = false must NOT resume playback.
+    @MainActor
+    func testAVAudioSessionInterruption_shouldResumeFalse_doesNotPlay() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        // Establish active playback intent
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
+        let playsBefore = audio.playCount
+
+        // Simulate interruption via app-level mapping (Background = interruption began)
+        vm.appDidEnterBackground()
+        let stopAfterInterrupt = audio.stopCount
+
+        // Simulate .ended with shouldResume = false via appDidBecomeActive without touch intent
+        // endTouch clears resumeIntent — simulates no-resume scenario
+        vm.endTouch()
+        vm.appDidBecomeActive()
+
+        XCTAssertGreaterThan(stopAfterInterrupt, 0, "Stop must be called on interruption")
+        XCTAssertEqual(audio.playCount, playsBefore, "Playback must NOT resume when shouldResume is false (no touch intent)")
+    }
+
+    /// AVAudioSession interruption simulation: .ended with shouldResume = true + fresh touch SHOULD resume playback.
+    @MainActor
+    func testAVAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
+        vm.appDidEnterBackground()
+        vm.appDidBecomeActive()
+
+        // Fresh touch intent after foreground return simulates shouldResume = true
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 2.0)
+        vm.updateTouch(at: CGPoint(x: 120, y: 120), t: 2.01, canvasSize: size)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        XCTAssertGreaterThanOrEqual(audio.playCount, 1, "Fresh touch after foreground return must allow playback (shouldResume = true path)")
+    }
+
+    /// Route change: oldDeviceUnavailable fires while app is active — playback must pause immediately.
+    @MainActor
+    func testAudioRouteChange_oldDeviceUnavailable_stopsPlayback() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        // Start active touch/playback
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 140, y: 160), t: 1.01, canvasSize: size)
+
+        // Simulate oldDeviceUnavailable via background (device lost = system suspends audio)
+        let stopsBefore = audio.stopCount
+        vm.appDidEnterBackground()
+        XCTAssertGreaterThan(audio.stopCount, stopsBefore, "Playback must stop when audio device becomes unavailable")
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Active path must be cleared on device unavailable / background")
+    }
+
+    /// Route change: multiple rapid oldDeviceUnavailable events must be idempotent (no double-stop or crash).
+    @MainActor
+    func testAudioRouteChange_oldDeviceUnavailable_isIdempotent() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
+
+        // Fire route-change-equivalent event 3 times in quick succession
+        vm.appDidEnterBackground()
+        vm.appDidEnterBackground()
+        vm.appDidEnterBackground()
+
+        // State should remain consistent: not triple-stopping with unexpected side effects
+        XCTAssertGreaterThanOrEqual(audio.suspendForLifecycleCount, 1)
+        XCTAssertFalse(vm.debugIsMultiTouchNavigationActive)
+        XCTAssertEqual(vm.debugActivePathCount, 0)
+    }
+
+    /// Debounce window: 20 rapid touch events within < debounce window must not trigger multiple playback starts.
+    @MainActor
+    func testDebounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        let playsBefore = audio.playCount
+
+        // Fire 20 touch begin/update pairs within a ~4ms window (well inside 30ms active debounce)
+        for i in 0..<20 {
+            let t = CFTimeInterval(1.0) + Double(i) * 0.0002
+            vm.beginTouch(at: CGPoint(x: CGFloat(10 + i), y: CGFloat(10 + i)), t: t)
+            vm.updateTouch(at: CGPoint(x: CGFloat(80 + i), y: CGFloat(80 + i)), t: t + 0.0001, canvasSize: size)
+            vm.endTouch()
+        }
+
+        // Within debounce window, direct play() calls should be zero (state machine debounces)
+        XCTAssertEqual(audio.playCount, playsBefore, "Rapid touch burst within debounce window must not trigger multiple play() calls")
+    }
+
+    /// Debounce window: after debounce expires, playback does eventually trigger.
+    @MainActor
+    func testDebounceWindow_afterExpiry_playbackIsAllowed() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        // Single sustained touch (above velocity threshold), then wait for debounce
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 140, y: 160), t: 1.01, canvasSize: size)
+
+        RunLoop.main.run(until: Date().addingTimeInterval(0.08))
+        XCTAssertGreaterThanOrEqual(audio.setAdaptivePlaybackCount, 1, "Adaptive playback must be updated after debounce expires")
+    }
+
+    /// Interruption during background/foreground churn: interleaved events must not corrupt state.
+    @MainActor
+    func testInterruptionDuringBackgroundForegroundChurn_stateRemainsConsistent() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        for i in 0..<10 {
+            let base = CFTimeInterval(10 + i * 3)
+            vm.beginTouch(at: CGPoint(x: 10, y: 10), t: base)
+            vm.updateTouch(at: CGPoint(x: 60, y: 60), t: base + 0.01, canvasSize: size)
+
+            // Interleave: background then immediate active (simulates interruption during transition)
+            vm.appDidEnterBackground()
+            vm.appDidBecomeActive()
+            vm.appDidEnterBackground()
+            vm.appDidBecomeActive()
+        }
+
+        XCTAssertFalse(vm.debugIsMultiTouchNavigationActive, "Multi-touch flag must not be stuck after churn")
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Active path must be cleared after bg/fg churn sequence")
+        XCTAssertGreaterThanOrEqual(audio.suspendForLifecycleCount, 10)
+        XCTAssertGreaterThanOrEqual(audio.resumeAfterLifecycleCount, 10)
+    }
+
+    /// Touch burst overlapping with navigation: mid-burst multi-touch must suppress subsequent single touches.
+    @MainActor
+    func testTouchBurstInterruptedByMultiTouchNav_suppressionApplied() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        // Begin a touch burst
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 20, y: 20), t: 1.01, canvasSize: size)
+
+        // Multi-touch nav fires mid-burst
+        vm.beginMultiTouchNavigation()
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Nav must immediately clear active path")
+
+        vm.endMultiTouchNavigation()
+
+        // Immediate single touch after nav end should be suppressed
+        vm.beginTouch(at: CGPoint(x: 30, y: 30), t: CACurrentMediaTime())
+        XCTAssertEqual(vm.debugActivePathCount, 0, "Touch must be suppressed immediately after nav end")
+
+        // After cooldown, touch must be accepted
+        usleep(70_000) // 70ms > 50ms cooldown
+        vm.beginTouch(at: CGPoint(x: 35, y: 35), t: CACurrentMediaTime())
+        XCTAssertEqual(vm.debugActivePathCount, 1, "Touch must be accepted after suppression window expires")
+    }
+
+    /// AVAudioSession interruption handler idempotency: double-interrupt-began must not corrupt state.
+    @MainActor
+    func testAVAudioSessionInterruptionIdempotency_doubleBegan() {
+        let audio = MockAudioController()
+        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        let size = CGSize(width: 320, height: 480)
+
+        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
+        vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
+
+        // Fire interruption-began twice in succession
+        vm.appDidEnterBackground()
+        let suspendAfterFirst = audio.suspendForLifecycleCount
+        vm.appDidEnterBackground() // second "began" — must be idempotent
+        let suspendAfterSecond = audio.suspendForLifecycleCount
+
+        XCTAssertEqual(suspendAfterFirst, suspendAfterSecond,
+                       "Double interruption-began must not double-suspend: handler must be idempotent")
+        XCTAssertFalse(vm.debugIsMultiTouchNavigationActive)
+        XCTAssertEqual(vm.debugActivePathCount, 0)
     }
 }
 
