@@ -18,6 +18,7 @@ final class TracingViewModel: ObservableObject {
     private let repo = LetterRepository()
     private let strokeTracker = StrokeTracker()
     private let audio: AudioControlling
+    private let haptics: HapticEngineProviding
     let progressStore: ProgressStoring
 
     private var letters: [LetterAsset] = []
@@ -42,10 +43,13 @@ final class TracingViewModel: ObservableObject {
 
     init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
          audio: AudioControlling = AudioEngine(),
-         progressStore: ProgressStoring = JSONProgressStore()) {
+         progressStore: ProgressStoring = JSONProgressStore(),
+         haptics: HapticEngineProviding = CoreHapticsEngine()) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
         self.progressStore = progressStore
+        self.haptics = haptics
+        haptics.prepare()
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
         load(letter: first)
@@ -164,6 +168,7 @@ final class TracingViewModel: ObservableObject {
         lastPoint = p
         lastTimestamp = t
         activePath = [p]
+        haptics.fire(.strokeBegan)
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
@@ -184,8 +189,21 @@ final class TracingViewModel: ObservableObject {
         }
 
         let normalized = CGPoint(x: p.x / max(canvasSize.width, 1), y: p.y / max(canvasSize.height, 1))
+        let prevStrokeIndex = strokeTracker.currentStrokeIndex
+        let prevNextCheckpoint = strokeTracker.progress.indices.contains(prevStrokeIndex) ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
         strokeTracker.update(normalizedPoint: normalized)
         progress = strokeTracker.overallProgress
+
+        // Haptic: checkpoint hit or stroke completed
+        let newStrokeIndex = strokeTracker.currentStrokeIndex
+        let newNextCheckpoint = strokeTracker.progress.indices.contains(prevStrokeIndex) ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
+        if prevNextCheckpoint != newNextCheckpoint || newStrokeIndex != prevStrokeIndex {
+            if strokeTracker.progress.indices.contains(prevStrokeIndex) && strokeTracker.progress[prevStrokeIndex].complete {
+                haptics.fire(.strokeCompleted)
+            } else {
+                haptics.fire(.checkpointHit)
+            }
+        }
 
         let speed = Self.mapVelocityToSpeed(smoothedVelocity)
         let hBias = Float(max(-1.0, min(1.0, dx / 20.0)))
@@ -197,6 +215,7 @@ final class TracingViewModel: ObservableObject {
 
         if strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
+            haptics.fire(.letterCompleted)
             progressStore.recordCompletion(for: currentLetterName, accuracy: Double(strokeTracker.overallProgress))
             showCompletionHUD()
             toast("Great! Completed")
