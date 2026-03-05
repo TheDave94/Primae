@@ -14,7 +14,7 @@ final class AudioEngine: AudioControlling {
     private var interrupted = false
     private var interruptionShouldResume = true
     private var interruptionResumeGateRequired = false
-    private var pendingLifecyclePauseWorkItem: DispatchWorkItem?
+    private var pendingLifecyclePauseTask: Task<Void, Error>?
 
     private(set) var isPlaying = false
 
@@ -106,8 +106,8 @@ final class AudioEngine: AudioControlling {
     }
 
     func cancelPendingLifecycleWork() {
-        pendingLifecyclePauseWorkItem?.cancel()
-        pendingLifecyclePauseWorkItem = nil
+        pendingLifecyclePauseTask?.cancel()
+        pendingLifecyclePauseTask = nil
     }
 }
 
@@ -168,13 +168,13 @@ private extension AudioEngine {
 
     func pendingSafeEnginePause() {
         cancelPendingLifecycleWork()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+        let task = Task { @MainActor [weak self] in
+            try await Task.sleep(for: .seconds(0.2))
+            guard let self, !Task.isCancelled else { return }
             guard !self.isPlaying else { return }
             self.engine.pause()
         }
-        pendingLifecyclePauseWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: work)
+        pendingLifecyclePauseTask = task
     }
 
     func stopAndReset() {

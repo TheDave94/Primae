@@ -18,6 +18,7 @@ final class TracingViewModel: ObservableObject {
     private let repo = LetterRepository()
     private let strokeTracker = StrokeTracker()
     private let audio: AudioControlling
+    let progressStore: ProgressStoring
 
     private var letters: [LetterAsset] = []
     private var letterIndex = 0
@@ -29,7 +30,7 @@ final class TracingViewModel: ObservableObject {
     private var isSingleTouchInteractionActive = false
     private var didCompleteCurrentLetter = false
     private var playbackMachine = PlaybackStateMachine()
-    private var pendingPlaybackStateWorkItem: DispatchWorkItem?
+    private var pendingPlaybackStateTask: Task<Void, Error>?
     private var toastTask: Task<Void, Never>?
     private var completionDismissTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat = 0
@@ -39,9 +40,12 @@ final class TracingViewModel: ObservableObject {
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
-    init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18, audio: AudioControlling = AudioEngine()) {
+    init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+         audio: AudioControlling = AudioEngine(),
+         progressStore: ProgressStoring = JSONProgressStore()) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
+        self.progressStore = progressStore
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
         load(letter: first)
@@ -171,6 +175,7 @@ final class TracingViewModel: ObservableObject {
 
         if strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
+            progressStore.recordCompletion(for: currentLetterName, accuracy: Double(strokeTracker.overallProgress))
             showCompletionHUD()
             toast("Great! Completed")
             setPlaybackState(.idle, immediate: true)
@@ -269,8 +274,8 @@ final class TracingViewModel: ObservableObject {
     }
 
     private func setPlaybackState(_ target: PlaybackStateMachine.State, immediate: Bool) {
-        pendingPlaybackStateWorkItem?.cancel()
-        pendingPlaybackStateWorkItem = nil
+        pendingPlaybackStateTask?.cancel()
+        pendingPlaybackStateTask = nil
 
         // Guards are enforced inside PlaybackStateMachine.transition(to:)
         // For immediate path, apply directly; for debounced path, check early.
@@ -290,18 +295,18 @@ final class TracingViewModel: ObservableObject {
         guard wouldChange else { return }
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
-        let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+        let task = Task { @MainActor [weak self] in
+            try await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled else { return }
             let cmd = self.playbackMachine.transition(to: target)
             self.applyCommand(cmd)
         }
-        pendingPlaybackStateWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+        pendingPlaybackStateTask = task
     }
 
     private func cancelPendingPlaybackWork() {
-        pendingPlaybackStateWorkItem?.cancel()
-        pendingPlaybackStateWorkItem = nil
+        pendingPlaybackStateTask?.cancel()
+        pendingPlaybackStateTask = nil
         audio.cancelPendingLifecycleWork()
     }
 
