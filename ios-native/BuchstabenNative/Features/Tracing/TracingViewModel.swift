@@ -64,6 +64,28 @@ final class TracingViewModel: ObservableObject {
     func toggleStrokeEnforcement() { strokeEnforced.toggle(); resetLetter(); toast(strokeEnforced ? "Order ON" : "Order OFF") }
     func toggleDebug() { showDebug.toggle(); toast(showDebug ? "Debug ON" : "Debug OFF") }
 
+    // MARK: - Accessibility
+
+    /// Human-readable label for the tracing canvas, including current letter name.
+    var accessibilityCanvasLabel: String {
+        "Tracing canvas — Letter \(currentLetterName)"
+    }
+
+    /// Human-readable progress value for VoiceOver.
+    var accessibilityCanvasValue: String {
+        let pct = Int(max(0, min(1, progress)) * 100)
+        if pct == 0 { return "Not started" }
+        if pct == 100 { return "Complete" }
+        return "\(pct) percent complete"
+    }
+
+    /// Plays the current letter's audio from the beginning (VoiceOver custom action).
+    func replayAudio() {
+        audio.stop()
+        audio.play()
+    }
+
+
     func resetLetter() {
         strokeTracker.reset()
         progress = 0

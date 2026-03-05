@@ -46,8 +46,33 @@ struct TracingCanvasView: View {
                         .onEnded { _ in vm.endTouch() }
                 )
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Tracing canvas")
-                .accessibilityValue("\(Int(vm.progress * 100)) percent complete")
+                .accessibilityLabel(vm.accessibilityCanvasLabel)
+                .accessibilityValue(vm.accessibilityCanvasValue)
+                .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
+                .accessibilityCustomAction(named: "Play letter sound") {
+                    vm.replayAudio()
+                    return true
+                }
+                .accessibilityCustomAction(named: "Next letter") {
+                    vm.nextLetter()
+                    return true
+                }
+                .accessibilityCustomAction(named: "Previous letter") {
+                    vm.previousLetter()
+                    return true
+                }
+                .accessibilityCustomAction(named: "Random letter") {
+                    vm.randomLetter()
+                    return true
+                }
+                .accessibilityCustomAction(named: "Reset tracing") {
+                    vm.resetLetter()
+                    return true
+                }
+                .accessibilityCustomAction(named: "Toggle guide overlay") {
+                    vm.toggleGhost()
+                    return true
+                }
 
                 ProgressPill(progress: vm.progress, differentiateWithoutColor: differentiateWithoutColor)
                     .padding(.leading, 12)
