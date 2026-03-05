@@ -34,27 +34,84 @@ final class LetterRepository {
     }
 
     private let resources: LetterResourceProviding
+    private let cache: LetterCacheStoring
 
-    init(resources: LetterResourceProviding = BundleLetterResourceProvider()) {
+    init(resources: LetterResourceProviding = BundleLetterResourceProvider(),
+         cache: LetterCacheStoring = JSONLetterCache()) {
         self.resources = resources
+        self.cache = cache
     }
 
-    /// Native-first repository. Loads JSON-based stroke metadata and explicitly maps
-    /// each letter to concrete audio/image resources in the bundle.
+    /// Loads letters from bundle with cache fallback.
+    /// - Returns letters on success (never empty — uses cache or fallback)
+    /// - Throws `LetterRepositoryError` only when both bundle AND cache fail
     func loadLetters() -> [LetterAsset] {
+        let result = loadWithErrors()
+        switch result {
+        case .success(let letters):
+            return letters
+        case .failure(let error):
+            logError(error)
+            return [fallbackSampleLetter()]
+        }
+    }
+
+    /// Typed-error variant for callers that want to surface failures.
+    func loadWithErrors() -> Result<[LetterAsset], LetterRepositoryError> {
         let stroked = loadBundledStrokeLettersWithValidation()
         if !stroked.letters.isEmpty {
             logValidationIssues(stroked.issues)
-            return stroked.letters
+            persistToCache(stroked.letters)
+            if !stroked.issues.isEmpty {
+                return .success(stroked.letters)   // partial load — letters available, issues logged
+            }
+            return .success(stroked.letters)
         }
 
         let folderOnly = loadBundledFolderLettersWithValidation()
         if !folderOnly.letters.isEmpty {
             logValidationIssues(folderOnly.issues)
-            return folderOnly.letters
+            persistToCache(folderOnly.letters)
+            return .success(folderOnly.letters)
         }
 
-        return [fallbackSampleLetter()]
+        // Bundle failed — try cache
+        if let cached = loadFromCache() {
+            let issueMessages = (stroked.issues + folderOnly.issues).map { "\($0.letter): \($0.message)" }
+            return .success(cached)   // cache hit — surface issues but don't fail
+        }
+
+        // Both bundle and cache failed
+        let allIssues = (stroked.issues + folderOnly.issues).map { "\($0.letter): \($0.message)" }
+        if !allIssues.isEmpty {
+            return .failure(.partialLoad(loaded: 0, issues: allIssues))
+        }
+        return .failure(.noAssetsFound)
+    }
+
+    // MARK: - Private
+
+    private func persistToCache(_ letters: [LetterAsset]) {
+        try? cache.save(letters)
+    }
+
+    private func loadFromCache() -> [LetterAsset]? {
+        guard let letters = try? cache.load(), !letters.isEmpty else { return nil }
+        print("ℹ️ LetterRepository: using cached letters (bundle load failed)")
+        return letters
+    }
+
+    private func logError(_ error: LetterRepositoryError) {
+        switch error {
+        case .noAssetsFound:
+            print("❌ LetterRepository: no assets found in bundle or cache — using fallback")
+        case .partialLoad(_, let issues):
+            print("⚠️ LetterRepository: partial load. Issues: \(issues.joined(separator: "; "))")
+        case .cacheCorrupted(let msg):
+            print("❌ LetterRepository: cache corrupted — \(msg)")
+        case .cacheReadFailed(let path):
+            print("⚠️ LetterRepository: cache not found at \(path)")
+        }
     }
 }
 
