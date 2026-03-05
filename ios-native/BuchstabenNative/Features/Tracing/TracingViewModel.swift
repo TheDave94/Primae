@@ -14,12 +14,14 @@ final class TracingViewModel: ObservableObject {
     @Published var isPlaying = false
     @Published var activePath: [CGPoint] = []
     @Published var completionMessage: String?
+    @Published private(set) var currentDifficultyTier: DifficultyTier = .standard
 
     private let repo = LetterRepository()
     private let strokeTracker = StrokeTracker()
     private let audio: AudioControlling
     private let haptics: HapticEngineProviding
     let progressStore: ProgressStoring
+    private var adaptationPolicy: any AdaptationPolicy
 
     private var letters: [LetterAsset] = []
     private var letterIndex = 0
@@ -44,11 +46,13 @@ final class TracingViewModel: ObservableObject {
     init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
          audio: AudioControlling = AudioEngine(),
          progressStore: ProgressStoring = JSONProgressStore(),
-         haptics: HapticEngineProviding = CoreHapticsEngine()) {
+         haptics: HapticEngineProviding = CoreHapticsEngine(),
+         adaptationPolicy: (any AdaptationPolicy)? = nil) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
         self.progressStore = progressStore
         self.haptics = haptics
+        self.adaptationPolicy = adaptationPolicy ?? MovingAverageAdaptationPolicy()
         haptics.prepare()
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
@@ -216,7 +220,12 @@ final class TracingViewModel: ObservableObject {
         if strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
             haptics.fire(.letterCompleted)
-            progressStore.recordCompletion(for: currentLetterName, accuracy: Double(strokeTracker.overallProgress))
+            let accuracy = Double(strokeTracker.overallProgress)
+            progressStore.recordCompletion(for: currentLetterName, accuracy: accuracy)
+            let adaptSample = AdaptationSample(letter: currentLetterName, accuracy: CGFloat(accuracy), completionTime: 0)
+            adaptationPolicy.record(adaptSample)
+            currentDifficultyTier = adaptationPolicy.currentTier
+            strokeTracker.radiusMultiplier = currentDifficultyTier.radiusMultiplier
             showCompletionHUD()
             toast("Great! Completed")
             setPlaybackState(.idle, immediate: true)
