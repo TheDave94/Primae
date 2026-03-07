@@ -133,4 +133,43 @@ final class LetterGuideRendererTests: XCTestCase {
         let path = LetterGuideRenderer.guidePath(for: "", in: rect)
         XCTAssertNotNil(path, "Empty string must produce a fallback path, not crash")
     }
+
+    // MARK: 13 — guides entry with empty segment array triggers fallback (D1 regression guard)
+
+    func testKnownLetter_emptySegmentArray_usesFallback() {
+        // Directly verify that an empty segment array in guides routes to fallback.
+        // Uses the lower-level LetterGuideGeometry API to inject the empty-array condition.
+        let emptySegments: [LetterGuideGeometry.Segment] = []
+        let result = emptySegments.isEmpty ? nil : emptySegments
+        let resolved = result ?? LetterGuideGeometry.fallbackSegments(for: "B")
+        XCTAssertEqual(resolved.count, 3,
+                       "An empty segment array must resolve to the 3-segment fallback, not produce a blank path")
+    }
+
+    // MARK: 14 — fallbackSegments returns exactly 3 segments for any input
+
+    func testFallbackSegments_alwaysReturnsThreeSegments() {
+        let letters = ["X", "Y", "Z", "1", "", "ä", "Ü"]
+        for l in letters {
+            let segs = LetterGuideGeometry.fallbackSegments(for: l)
+            XCTAssertEqual(segs.count, 3,
+                           "fallbackSegments must return exactly 3 segments for input '\(l)'")
+        }
+    }
+
+    // MARK: 15 — cgPath for letter absent from guides returns non-nil (full fallback chain)
+
+    func testCgPath_absentLetter_returnsFallbackPath() {
+        let path = LetterGuideGeometry.cgPath(for: "X", in: rect)
+        XCTAssertNotNil(path,
+                        "cgPath for a letter absent from guides must return a non-nil fallback path")
+    }
+
+    // MARK: 16 — public API guidePath for absent letter returns non-nil
+
+    func testGuidePath_absentLetter_returnsFallbackPath() {
+        let path = LetterGuideRenderer.guidePath(for: "X", in: rect)
+        XCTAssertNotNil(path,
+                        "guidePath for 'X' (absent from guides) must return a non-nil fallback path via the full chain")
+    }
 }

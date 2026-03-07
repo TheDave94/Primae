@@ -15,7 +15,7 @@ public struct LetterGuideGeometry {
     public static func cgPath(for letter: String, in rect: CGRect) -> CGPath? {
         guard !rect.isEmpty else { return nil }
         let key = letter.uppercased()
-        let segments = guides[key] ?? fallbackSegments(for: key)
+        let segments = guides[key].flatMap { $0.isEmpty ? nil : $0 } ?? fallbackSegments(for: key)
         let path = CGMutablePath()
         for segment in segments {
             apply(segment, to: path, in: rect)
