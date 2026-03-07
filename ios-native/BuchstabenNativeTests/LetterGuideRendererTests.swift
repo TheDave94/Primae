@@ -38,22 +38,29 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 4 — Lowercase normalised to uppercase
 
-    func testLowercaseLetter_normalised() {
-        let lower = LetterGuideRenderer.guidePath(for: "a", in: rect)
-        let upper = LetterGuideRenderer.guidePath(for: "A", in: rect)
-        XCTAssertNotNil(lower)
-        XCTAssertNotNil(upper)
+    func testLowercaseLetter_normalised() throws {
+        let lower = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "a", in: rect),
+            "guidePath for 'a' must not be nil"
+        )
+        let upper = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "A", in: rect),
+            "guidePath for 'A' must not be nil"
+        )
         // Both should produce the same bounding box
-        XCTAssertEqual(lower!.boundingRect, upper!.boundingRect,
+        XCTAssertEqual(lower.boundingRect, upper.boundingRect,
                        "Lowercase and uppercase must produce identical paths")
     }
 
     // MARK: 5 — Path bounding rect is within the provided rect (+ small tolerance for arcs)
 
-    func testPathBoundingRect_withinProvidedRect() {
+    func testPathBoundingRect_withinProvidedRect() throws {
         let tolerance: CGFloat = 2.0  // arcs can slightly exceed due to control point approximation
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
-            let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
+            let path = try XCTUnwrap(
+                LetterGuideRenderer.guidePath(for: letter, in: rect),
+                "guidePath for '\(letter)' must not be nil"
+            )
             let bounds = path.boundingRect
             XCTAssertGreaterThanOrEqual(bounds.minX, rect.minX - tolerance, "\(letter) minX out of bounds")
             XCTAssertGreaterThanOrEqual(bounds.minY, rect.minY - tolerance, "\(letter) minY out of bounds")
@@ -73,32 +80,45 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 7 — Different unknown letters produce different crossbar positions
 
-    func testFallback_differentLetters_differentPaths() {
-        let pZ = LetterGuideRenderer.guidePath(for: "Z", in: rect)?.boundingRect
-        let pQ = LetterGuideRenderer.guidePath(for: "Q", in: rect)?.boundingRect
+    func testFallback_differentLetters_differentPaths() throws {
+        let pZ = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "Z", in: rect),
+            "guidePath for 'Z' must not be nil"
+        )
+        let pQ = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "Q", in: rect),
+            "guidePath for 'Q' must not be nil"
+        )
         // Not strictly guaranteed, but hash diversity should differ for Z vs Q
-        // Just assert both are non-nil and non-zero
-        XCTAssertNotNil(pZ)
-        XCTAssertNotNil(pQ)
-        XCTAssertFalse(pZ!.isEmpty)
-        XCTAssertFalse(pQ!.isEmpty)
+        // Just assert both produce non-zero bounding boxes
+        XCTAssertFalse(pZ.boundingRect.isEmpty)
+        XCTAssertFalse(pQ.boundingRect.isEmpty)
     }
 
     // MARK: 8 — Rect scaling: larger rect produces proportionally larger bounding box
 
-    func testScaling_largerRect_producesBiggerPath() {
+    func testScaling_largerRect_producesBiggerPath() throws {
         let small = CGRect(x: 0, y: 0, width: 100, height: 100)
         let large = CGRect(x: 0, y: 0, width: 400, height: 400)
-        let ps = LetterGuideRenderer.guidePath(for: "A", in: small)!.boundingRect
-        let pl = LetterGuideRenderer.guidePath(for: "A", in: large)!.boundingRect
+        let ps = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "A", in: small),
+            "guidePath for 'A' in small rect must not be nil"
+        ).boundingRect
+        let pl = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "A", in: large),
+            "guidePath for 'A' in large rect must not be nil"
+        ).boundingRect
         XCTAssertLessThan(ps.width,  pl.width,  "Larger rect must produce wider path for A")
         XCTAssertLessThan(ps.height, pl.height, "Larger rect must produce taller path for A")
     }
 
     // MARK: 9 — O arc path bounding rect is roughly square and centred
 
-    func testO_arcPath_isRoughlySquare() {
-        let path = LetterGuideRenderer.guidePath(for: "O", in: rect)!
+    func testO_arcPath_isRoughlySquare() throws {
+        let path = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "O", in: rect),
+            "guidePath for 'O' must not be nil"
+        )
         let bounds = path.boundingRect
         let ratio = bounds.width / bounds.height
         XCTAssertEqual(Double(ratio), 1.0, accuracy: 0.15,
@@ -107,8 +127,11 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 10 — M polyline produces a path spanning most of the horizontal extent
 
-    func testM_polyline_spansHorizontalExtent() {
-        let path = LetterGuideRenderer.guidePath(for: "M", in: rect)!
+    func testM_polyline_spansHorizontalExtent() throws {
+        let path = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "M", in: rect),
+            "guidePath for 'M' must not be nil"
+        )
         let bounds = path.boundingRect
         // M goes from x≈0.15 to x≈0.85 → spans 70% of width
         let span = bounds.width / rect.width
@@ -118,11 +141,13 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 11 — Non-square rect maps correctly (no square assumption)
 
-    func testNonSquareRect_noAssumption() {
+    func testNonSquareRect_noAssumption() throws {
         let wide = CGRect(x: 0, y: 0, width: 600, height: 200)
-        let path = LetterGuideRenderer.guidePath(for: "L", in: wide)
-        XCTAssertNotNil(path)
-        let bounds = path!.boundingRect
+        let path = try XCTUnwrap(
+            LetterGuideRenderer.guidePath(for: "L", in: wide),
+            "guidePath for 'L' in wide rect must not be nil"
+        )
+        let bounds = path.boundingRect
         XCTAssertLessThanOrEqual(bounds.maxX, wide.maxX + 2.0)
         XCTAssertLessThanOrEqual(bounds.maxY, wide.maxY + 2.0)
     }
