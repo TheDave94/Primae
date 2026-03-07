@@ -320,4 +320,61 @@ final class TracingViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isPlaying,
                        "After ending in background, isPlaying must be false")
     }
+
+    // MARK: - Ghost guide lifecycle
+
+    func testNextLetter_resetsShowGhostToFalse() throws {
+        // Enable ghost on first letter
+        vm.toggleGhost()
+        XCTAssertTrue(vm.showGhost, "Pre-condition: showGhost should be true after toggle")
+
+        // Navigate to next letter — load(letter:) must reset showGhost
+        vm.nextLetter()
+
+        XCTAssertFalse(vm.showGhost,
+                       "showGhost must reset to false when navigating to the next letter")
+    }
+
+    func testPreviousLetter_resetsShowGhostToFalse() throws {
+        // Navigate away first so previousLetter() has room to go back
+        vm.nextLetter()
+        vm.toggleGhost()
+        XCTAssertTrue(vm.showGhost, "Pre-condition: showGhost should be true after toggle")
+
+        vm.previousLetter()
+
+        XCTAssertFalse(vm.showGhost,
+                       "showGhost must reset to false when navigating to the previous letter")
+    }
+
+    func testResetLetter_doesNotChangeShowGhost() throws {
+        // resetLetter reloads same letter — ghost state is intentionally preserved
+        // (user enabled ghost on this letter and reset their attempt, not navigated away)
+        vm.toggleGhost()
+        vm.resetLetter()
+        XCTAssertTrue(vm.showGhost,
+                       "showGhost should survive resetLetter — user intent was to retry, not navigate")
+    }
+
+    // MARK: - Retain cycle
+
+    func testTracingViewModel_doesNotRetainSelf() async throws {
+        weak var weakVM: TracingViewModel?
+
+        await MainActor.run {
+            let localVM = TracingViewModel()
+            weakVM = localVM
+            // Trigger async work that captures self, then immediately release the strong ref
+            localVM.appDidBecomeActive()
+        }
+
+        // 500ms: conservative drain window for cancelled @MainActor Task.sleep closures.
+        // Longest queued sleep in TracingViewModel is ~1.3s (toast), but CancellationError
+        // propagates immediately — 500ms provides headroom for system load variance.
+        // If this test becomes flaky in CI, check for a new strong self capture in a stored Task.
+        try? await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertNil(weakVM,
+                     "TracingViewModel must deallocate — retain cycle in a stored Task closure suspected if this fails")
+    }
 }
