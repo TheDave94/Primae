@@ -435,4 +435,105 @@ final class StrokeTrackerTests: XCTestCase {
                       "Targeted polar perturbations within radius must eventually complete all strokes")
         XCTAssertEqual(t.overallProgress, 1.0, accuracy: 1e-9)
     }
+
+    // MARK: 22–28 — radiusMultiplier edge cases
+
+    // 22: radiusMultiplier = 0.0 — exact-coordinate hit registers (0.0 ≤ 0.0 per IEEE-754)
+    func testRadiusMultiplier_zero_onlyExactHitRegisters() {
+        var t = StrokeTracker()
+        let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
+        t.load(def)
+        t.radiusMultiplier = 0.0
+
+        // hypot(0,0) = 0.0; 0.0 <= 0.1 * 0.0 = 0.0 → true (IEEE-754 ≤)
+        t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
+        XCTAssertTrue(t.isComplete,
+                      "An exact-coordinate hit must still register with radiusMultiplier=0.0 (0.0 ≤ 0.0 per IEEE-754)")
+    }
+
+    // 23: radiusMultiplier = 0.0 — near-miss does not register
+    func testRadiusMultiplier_zero_nearMissDoesNotRegister() {
+        var t = StrokeTracker()
+        let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
+        t.load(def)
+        t.radiusMultiplier = 0.0
+
+        // dist ≈ 1e-9 > 0.0 → must not register
+        t.update(normalizedPoint: CGPoint(x: 0.5 + 1e-9, y: 0.5))
+        XCTAssertFalse(t.isComplete,
+                       "A point 1e-9 away from the checkpoint must not register with radiusMultiplier=0.0")
+        XCTAssertFalse(t.soundEnabled,
+                       "soundEnabled must remain false when no checkpoint has been hit")
+    }
+
+    // 24: switching multiplier from 0 → 1 mid-stroke — pending checkpoint becomes hittable
+    func testRadiusMultiplier_switchFromZeroToOne_pendingCheckpointBecomesHittable() {
+        var t = StrokeTracker()
+        let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
+        let insidePoint = CGPoint(x: 0.55, y: 0.5) // dist = 0.05 < radius 0.1
+        t.load(def)
+
+        // Phase 1: multiplier = 0 → inside point does not register
+        t.radiusMultiplier = 0.0
+        t.update(normalizedPoint: insidePoint)
+        XCTAssertFalse(t.isComplete, "Phase 1: inside point must not register with multiplier=0.0")
+
+        // Phase 2: restore multiplier → same point now registers
+        t.radiusMultiplier = 1.0
+        t.update(normalizedPoint: insidePoint)
+        XCTAssertTrue(t.isComplete, "Phase 2: inside point must register once multiplier is restored to 1.0")
+    }
+
+    // 25: radiusMultiplier = 0.0, empty strokes — no crash, trivially complete
+    func testRadiusMultiplier_zero_emptyStrokes_noCrash() {
+        var t = StrokeTracker()
+        let def = letter(radius: 0.1, strokes: [])
+        t.load(def)
+        t.radiusMultiplier = 0.0
+        t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
+        XCTAssertTrue(t.isComplete,   "Empty stroke set is trivially complete")
+        XCTAssertFalse(t.soundEnabled, "soundEnabled must be false with no checkpoints")
+    }
+
+    // 26: negative radiusMultiplier — dist via hypot is always ≥ 0, so dist ≤ negative is false
+    func testRadiusMultiplier_negative_exactHitDoesNotRegister() {
+        var t = StrokeTracker()
+        let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
+        t.load(def)
+        t.radiusMultiplier = -0.3
+
+        // dist(cp, cp) = 0.0; 0.0 <= 0.1 * -0.3 = -0.03 → false
+        t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
+        XCTAssertFalse(t.isComplete,
+                       "A negative radiusMultiplier must never match any point — dist via hypot is non-negative")
+    }
+
+    // 27: radiusMultiplier = 2.0 — point outside base radius but inside doubled radius registers
+    func testRadiusMultiplier_two_enlargedRadiusAcceptsPoint() {
+        var t = StrokeTracker()
+        let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
+        // dist = 0.15 — outside base radius 0.1, inside 2× radius 0.2
+        let outsideBase = CGPoint(x: 0.65, y: 0.5)
+        t.load(def)
+        t.radiusMultiplier = 2.0
+
+        t.update(normalizedPoint: outsideBase)
+        XCTAssertTrue(t.isComplete,
+                      "radiusMultiplier=2.0 doubles the acceptance radius; a point at 1.5× the base radius must register")
+    }
+
+    // 28: default radiusMultiplier = 1.0 — point exactly at boundary registers (≤ not <)
+    func testRadiusMultiplier_default_boundaryPointRegisters() {
+        var t = StrokeTracker()
+        let radius: CGFloat = 0.1
+        let def = letter(radius: radius, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
+        // Point exactly at distance == radius (on boundary)
+        let boundaryPoint = CGPoint(x: 0.5 + radius, y: 0.5)
+        t.load(def)
+        t.radiusMultiplier = 1.0
+
+        t.update(normalizedPoint: boundaryPoint)
+        XCTAssertTrue(t.isComplete,
+                      "A point exactly on the checkpoint radius boundary must register — condition is ≤ not <")
+    }
 }
