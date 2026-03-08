@@ -134,7 +134,7 @@ final class CoreHapticsEngine: HapticEngineProviding {
         case .offPath:
             events = [makeTransient(intensity: 0.2, sharpness: 0.1)]
         }
-        return try? CHHapticPattern(events: events, parameters: [])
+        do { return try CHHapticPattern(events: events, parameters: []) } catch { return nil }
     }
 
     private func makeTransient(
