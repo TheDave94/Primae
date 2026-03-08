@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-final class AudioEngine: AudioControlling {
+final class AudioEngine: @unchecked Sendable, AudioControlling {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
