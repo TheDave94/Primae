@@ -67,6 +67,7 @@ final class HapticEventEquatabilityTests: XCTestCase {
 
 // MARK: - TracingViewModel haptic integration tests
 
+@MainActor
 private final class TrackingMockAudio: AudioControlling {
     func loadAudioFile(named: String, autoplay: Bool) {}
     func play() {}

@@ -133,6 +133,7 @@ final class VoiceOverAccessibilityTests: XCTestCase {
 
 // MARK: - Local mock for this test file
 
+@MainActor
 private final class LocalMockAudioController: AudioControlling {
     var stopCount = 0
     var playCount = 0

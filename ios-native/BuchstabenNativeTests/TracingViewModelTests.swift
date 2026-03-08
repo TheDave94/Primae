@@ -12,6 +12,7 @@ import CoreGraphics
 // MARK: - MockAudioController (local, mirrors BuchstabenNativeTests.swift)
 // Redeclared here as internal so these tests are self-contained.
 
+@MainActor
 private final class MockAudio: AudioControlling {
     private(set) var loadedFiles: [String] = []
     private(set) var playCount  = 0

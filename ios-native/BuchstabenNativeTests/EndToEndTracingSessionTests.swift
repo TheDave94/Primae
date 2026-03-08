@@ -20,6 +20,7 @@ import CoreGraphics
 
 // MARK: - Recording MockAudio
 
+@MainActor
 private final class RecordingAudio: AudioControlling {
     enum Event: Equatable {
         case load(String)

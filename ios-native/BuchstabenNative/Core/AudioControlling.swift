@@ -1,5 +1,6 @@
 import Foundation
 
+@MainActor
 protocol AudioControlling: AnyObject {
     func loadAudioFile(named fileName: String, autoplay: Bool)
     func setAdaptivePlayback(speed: Float, horizontalBias: Float)

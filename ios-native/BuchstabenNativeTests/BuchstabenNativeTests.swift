@@ -515,6 +515,7 @@ private final class TempResourceFS {
 }
 
 
+@MainActor
 private final class MockAudioController: AudioControlling {
     private(set) var loadedFiles: [String] = []
     private(set) var suspendForLifecycleCount = 0
