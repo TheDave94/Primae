@@ -104,7 +104,7 @@ private struct TracingCanvasAccessibility: ViewModifier {
     @ObservedObject var vm: TracingViewModel
 
     func body(content: Content) -> some View {
-        content
+        AnyView(content
             .accessibilityElement(children: .ignore)
             .accessibilityCustomAction(named: "Play letter sound") { vm.replayAudio(); return true }
             .accessibilityCustomAction(named: "Next letter") { vm.nextLetter(); return true }
@@ -115,6 +115,7 @@ private struct TracingCanvasAccessibility: ViewModifier {
             .accessibilityLabel(vm.accessibilityCanvasLabel)
             .accessibilityValue(vm.accessibilityCanvasValue)
             .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
+        )
     }
 }
 
