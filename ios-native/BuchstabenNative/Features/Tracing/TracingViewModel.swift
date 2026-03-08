@@ -65,7 +65,6 @@ final class TracingViewModel: ObservableObject {
     }
 
     deinit {
-        cancelPendingPlaybackWork()
         toastTask?.cancel()
         completionDismissTask?.cancel()
         audio.cancelPendingLifecycleWork()
