@@ -22,14 +22,10 @@ struct TracingCanvasView: View {
                     if vm.activePath.count > 1 {
                         var path = Path()
                         path.addLines(vm.activePath)
-                        // Pencil pressure maps linearly: 4 pt @ 0.0 … 14 pt @ 1.0; finger defaults to 8 pt
-                        let inkWidth: CGFloat
-                        if let pressure = vm.pencilPressure {
-                            inkWidth = 4 + pressure * 10
-                        } else {
-                            inkWidth = 8
-                        }
-                        context.stroke(path, with: .color(.green), style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
+                        context.stroke(path, with: .color(.green), style: StrokeStyle(lineWidth: {
+                            if let p = vm.pencilPressure { return 4 + p * 10 }
+                            return 8
+                        }(), lineCap: .round, lineJoin: .round))
                     }
 
                     let clampedProgress = max(0, min(1, vm.progress))
@@ -96,7 +92,6 @@ struct TracingCanvasView: View {
                     },
                     onEnded: { vm.endTouch() }
                 )
-                .allowsHitTesting(true)
             )
             .overlay(
                 MultiTouchGestureOverlay(
@@ -144,91 +139,6 @@ private struct ProgressPill: View {
             .accessibilityHidden(true)
     }
 }
-
-// MARK: - Apple Pencil overlay
-
-/// Transparent UIView overlay that intercepts Apple Pencil touches and
-/// forwards force/tilt via callbacks. Finger touches are ignored here so
-/// SwiftUI's DragGesture handles them unmodified.
-private struct PencilAwareCanvasOverlay: UIViewRepresentable {
-    let canvasSize: CGSize
-    let onBegan: @MainActor (CGPoint, CFTimeInterval) -> Void
-    let onMoved: @MainActor (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
-    let onEnded: @MainActor () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded)
-    }
-
-    func makeUIView(context: Context) -> TouchTrackingView {
-        let view = TouchTrackingView()
-        view.backgroundColor = .clear
-        view.coordinator = context.coordinator
-        return view
-    }
-
-    func updateUIView(_ uiView: TouchTrackingView, context: Context) {
-        uiView.coordinator = context.coordinator
-        uiView.canvasSize = canvasSize
-    }
-
-    final class Coordinator {
-        let onBegan: @MainActor (CGPoint, CFTimeInterval) -> Void
-        let onMoved: @MainActor (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
-        let onEnded: @MainActor () -> Void
-        init(
-            onBegan: @escaping @MainActor (CGPoint, CFTimeInterval) -> Void,
-            onMoved: @escaping @MainActor (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
-            onEnded: @escaping @MainActor () -> Void
-        ) {
-            self.onBegan = onBegan
-            self.onMoved = onMoved
-            self.onEnded = onEnded
-        }
-    }
-
-    final class TouchTrackingView: UIView {
-        var coordinator: Coordinator?
-        var canvasSize: CGSize = .zero
-
-        // Only intercept Apple Pencil touches; let fingers fall through to SwiftUI
-        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            guard let touch = event?.allTouches?.first else { return nil }
-            return touch.type == .pencil ? self : nil
-        }
-
-        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let touch = touches.first, touch.type == .pencil else { return }
-            let loc = touch.location(in: self); let ts = touch.timestamp
-            let cb = coordinator?.onBegan
-            Task { @MainActor in cb?(loc, ts) }
-        }
-
-        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let touch = touches.first, touch.type == .pencil else { return }
-            let loc = touch.location(in: self); let ts = touch.timestamp
-            let pressure = touch.force / max(touch.maximumPossibleForce, 1)
-            let azimuth = touch.azimuthAngle(in: self)
-            let size = canvasSize
-            let cb = coordinator?.onMoved
-            Task { @MainActor in cb?(loc, ts, pressure, azimuth, size) }
-        }
-
-        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard touches.first?.type == .pencil else { return }
-            let cb = coordinator?.onEnded
-            Task { @MainActor in cb?() }
-        }
-
-        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard touches.first?.type == .pencil else { return }
-            let cb = coordinator?.onEnded
-            Task { @MainActor in cb?() }
-        }
-    }
-}
-
-// MARK: - Multi-touch gesture overlay
 
 private struct MultiTouchGestureOverlay: UIViewRepresentable {
     let onTwoFingerPanBegan: () -> Void
@@ -323,3 +233,72 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
     }
 }
 
+// MARK: - Apple Pencil overlay
+
+private struct PencilAwareCanvasOverlay: UIViewRepresentable {
+    let canvasSize: CGSize
+    let onBegan: (CGPoint, CFTimeInterval) -> Void
+    let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
+    let onEnded: () -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded) }
+
+    func makeUIView(context: Context) -> TouchTrackingView {
+        let v = TouchTrackingView()
+        v.backgroundColor = .clear
+        v.coordinator = context.coordinator
+        return v
+    }
+
+    func updateUIView(_ uiView: TouchTrackingView, context: Context) {
+        uiView.coordinator = context.coordinator
+        uiView.canvasSize = canvasSize
+    }
+
+    final class Coordinator {
+        let onBegan: (CGPoint, CFTimeInterval) -> Void
+        let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
+        let onEnded: () -> Void
+        init(
+            onBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
+            onMoved: @escaping (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
+            onEnded: @escaping () -> Void
+        ) { self.onBegan = onBegan; self.onMoved = onMoved; self.onEnded = onEnded }
+    }
+
+    final class TouchTrackingView: UIView {
+        var coordinator: Coordinator?
+        var canvasSize: CGSize = .zero
+
+        // Only intercept pencil; fingers fall through to SwiftUI DragGesture
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            guard let touch = event?.allTouches?.first else { return nil }
+            return touch.type == .pencil ? self : nil
+        }
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let t = touches.first, t.type == .pencil else { return }
+            let loc = t.location(in: self); let ts = t.timestamp
+            DispatchQueue.main.async { self.coordinator?.onBegan(loc, ts) }
+        }
+
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let t = touches.first, t.type == .pencil else { return }
+            let loc = t.location(in: self); let ts = t.timestamp
+            let pressure = t.force / max(t.maximumPossibleForce, 1)
+            let azimuth = t.azimuthAngle(in: self)
+            let size = canvasSize
+            DispatchQueue.main.async { self.coordinator?.onMoved(loc, ts, pressure, azimuth, size) }
+        }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard touches.first?.type == .pencil else { return }
+            DispatchQueue.main.async { self.coordinator?.onEnded() }
+        }
+
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard touches.first?.type == .pencil else { return }
+            DispatchQueue.main.async { self.coordinator?.onEnded() }
+        }
+    }
+}
