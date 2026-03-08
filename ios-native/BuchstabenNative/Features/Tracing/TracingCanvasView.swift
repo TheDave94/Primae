@@ -51,34 +51,7 @@ struct TracingCanvasView: View {
         GeometryReader { geo in
             ZStack(alignment: .bottomLeading) {
                 tracingCanvas(geo: geo)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(vm.accessibilityCanvasLabel)
-                    .accessibilityValue(vm.accessibilityCanvasValue)
-                    .accessibilityCustomAction(named: "Play letter sound") {
-                        vm.replayAudio()
-                        return true
-                    }
-                    .accessibilityCustomAction(named: "Next letter") {
-                        vm.nextLetter()
-                        return true
-                    }
-                    .accessibilityCustomAction(named: "Previous letter") {
-                        vm.previousLetter()
-                        return true
-                    }
-                    .accessibilityCustomAction(named: "Random letter") {
-                        vm.randomLetter()
-                        return true
-                    }
-                    .accessibilityCustomAction(named: "Reset tracing") {
-                        vm.resetLetter()
-                        return true
-                    }
-                    .accessibilityCustomAction(named: "Toggle guide overlay") {
-                        vm.toggleGhost()
-                        return true
-                    }
-                    .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
+                    .modifier(TracingCanvasAccessibility(vm: vm))
 
                 ProgressPill(progress: vm.progress, differentiateWithoutColor: differentiateWithoutColor)
                     .padding(.leading, 12)
@@ -124,6 +97,28 @@ struct TracingCanvasView: View {
         }
     }
 }
+
+// MARK: - Accessibility modifier
+
+private struct TracingCanvasAccessibility: ViewModifier {
+    @ObservedObject var vm: TracingViewModel
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(vm.accessibilityCanvasLabel)
+            .accessibilityValue(vm.accessibilityCanvasValue)
+            .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
+            .accessibilityCustomAction(named: "Play letter sound") { vm.replayAudio(); return true }
+            .accessibilityCustomAction(named: "Next letter") { vm.nextLetter(); return true }
+            .accessibilityCustomAction(named: "Previous letter") { vm.previousLetter(); return true }
+            .accessibilityCustomAction(named: "Random letter") { vm.randomLetter(); return true }
+            .accessibilityCustomAction(named: "Reset tracing") { vm.resetLetter(); return true }
+            .accessibilityCustomAction(named: "Toggle guide overlay") { vm.toggleGhost(); return true }
+    }
+}
+
+// MARK: - Progress pill
 
 private struct ProgressPill: View {
     let progress: CGFloat
