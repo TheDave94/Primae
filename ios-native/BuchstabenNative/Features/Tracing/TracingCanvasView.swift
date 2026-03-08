@@ -5,76 +5,80 @@ struct TracingCanvasView: View {
     @EnvironmentObject private var vm: TracingViewModel
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
+    @ViewBuilder
+    private func tracingCanvas(geo: GeometryProxy) -> some View {
+        Canvas { context, _ in
+            if vm.showGhost {
+                let guideRect = CGRect(x: geo.size.width * 0.14,
+                                       y: geo.size.height * 0.1,
+                                       width: geo.size.width * 0.72,
+                                       height: geo.size.height * 0.8)
+                if let ghost = LetterGuideRenderer.guidePath(for: vm.currentLetterName, in: guideRect) {
+                    context.stroke(ghost, with: .color(.blue.opacity(0.22)), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
+                }
+            }
+
+            if vm.activePath.count > 1 {
+                var path = Path()
+                path.addLines(vm.activePath)
+                let inkWidth: CGFloat = vm.pencilPressure.map { 4 + $0 * 10 } ?? 8
+                context.stroke(path, with: .color(.green), style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
+            }
+
+            let clampedProgress = max(0, min(1, vm.progress))
+            let trackRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width, height: 8)
+            let fillRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width * clampedProgress, height: 8)
+
+            context.fill(Path(trackRect), with: .color(.black.opacity(0.1)))
+            context.fill(Path(fillRect), with: .color(differentiateWithoutColor ? .blue : .green))
+        }
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if vm.activePath.isEmpty {
+                        vm.beginTouch(at: value.location, t: CACurrentMediaTime())
+                    }
+                    vm.updateTouch(at: value.location,
+                                   t: CACurrentMediaTime(),
+                                   canvasSize: geo.size)
+                }
+                .onEnded { _ in vm.endTouch() }
+        )
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottomLeading) {
-                Canvas { context, _ in
-                    if vm.showGhost {
-                        let guideRect = CGRect(x: geo.size.width * 0.14,
-                                               y: geo.size.height * 0.1,
-                                               width: geo.size.width * 0.72,
-                                               height: geo.size.height * 0.8)
-                        if let ghost = LetterGuideRenderer.guidePath(for: vm.currentLetterName, in: guideRect) {
-                            context.stroke(ghost, with: .color(.blue.opacity(0.22)), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
-                        }
+                tracingCanvas(geo: geo)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(vm.accessibilityCanvasLabel)
+                    .accessibilityValue(vm.accessibilityCanvasValue)
+                    .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
+                    .accessibilityCustomAction(named: "Play letter sound") {
+                        vm.replayAudio()
+                        return true
                     }
-
-                    if vm.activePath.count > 1 {
-                        var path = Path()
-                        path.addLines(vm.activePath)
-                        context.stroke(path, with: .color(.green), style: StrokeStyle(lineWidth: {
-                            if let p = vm.pencilPressure { return 4 + p * 10 }
-                            return 8
-                        }(), lineCap: .round, lineJoin: .round))
+                    .accessibilityCustomAction(named: "Next letter") {
+                        vm.nextLetter()
+                        return true
                     }
-
-                    let clampedProgress = max(0, min(1, vm.progress))
-                    let trackRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width, height: 8)
-                    let fillRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width * clampedProgress, height: 8)
-
-                    context.fill(Path(trackRect), with: .color(.black.opacity(0.1)))
-                    context.fill(Path(fillRect), with: .color(differentiateWithoutColor ? .blue : .green))
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if vm.activePath.isEmpty {
-                                vm.beginTouch(at: value.location, t: CACurrentMediaTime())
-                            }
-                            vm.updateTouch(at: value.location,
-                                           t: CACurrentMediaTime(),
-                                           canvasSize: geo.size)
-                        }
-                        .onEnded { _ in vm.endTouch() }
-                )
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(vm.accessibilityCanvasLabel)
-                .accessibilityValue(vm.accessibilityCanvasValue)
-                .accessibilityCustomAction(named: "Play letter sound") {
-                    vm.replayAudio()
-                    return true
-                }
-                .accessibilityCustomAction(named: "Next letter") {
-                    vm.nextLetter()
-                    return true
-                }
-                .accessibilityCustomAction(named: "Previous letter") {
-                    vm.previousLetter()
-                    return true
-                }
-                .accessibilityCustomAction(named: "Random letter") {
-                    vm.randomLetter()
-                    return true
-                }
-                .accessibilityCustomAction(named: "Reset tracing") {
-                    vm.resetLetter()
-                    return true
-                }
-                .accessibilityCustomAction(named: "Toggle guide overlay") {
-                    vm.toggleGhost()
-                    return true
-                }
+                    .accessibilityCustomAction(named: "Previous letter") {
+                        vm.previousLetter()
+                        return true
+                    }
+                    .accessibilityCustomAction(named: "Random letter") {
+                        vm.randomLetter()
+                        return true
+                    }
+                    .accessibilityCustomAction(named: "Reset tracing") {
+                        vm.resetLetter()
+                        return true
+                    }
+                    .accessibilityCustomAction(named: "Toggle guide overlay") {
+                        vm.toggleGhost()
+                        return true
+                    }
 
                 ProgressPill(progress: vm.progress, differentiateWithoutColor: differentiateWithoutColor)
                     .padding(.leading, 12)
