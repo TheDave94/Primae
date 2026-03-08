@@ -43,6 +43,7 @@ final class NullHapticEngine: HapticEngineProviding {
 
 /// Uses UIImpactFeedbackGenerator for devices with Taptic Engine but without
 /// CoreHaptics (or when CoreHaptics setup fails).
+@MainActor
 final class UIKitHapticEngine: HapticEngineProviding {
 
     private let light  = UIImpactFeedbackGenerator(style: .light)

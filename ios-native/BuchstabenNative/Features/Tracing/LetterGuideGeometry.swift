@@ -25,7 +25,7 @@ public struct LetterGuideGeometry {
 
     // MARK: - Segment model
 
-    public enum Segment {
+    public enum Segment: Sendable {
         case line(CGPoint, CGPoint)
         case polyline([CGPoint])
         case arc(center: CGPoint, radius: CGFloat, start: CGFloat, end: CGFloat, clockwise: Bool)
