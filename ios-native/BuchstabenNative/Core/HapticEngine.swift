@@ -102,8 +102,8 @@ final class CoreHapticsEngine: HapticEngineProviding {
             fallback.fire(event)
             return
         }
-        let pattern = hapticPattern(for: event)
-        guard let player = try? engine.makePlayer(with: pattern) else {
+        guard let pattern = hapticPattern(for: event),
+              let player = try? engine.makePlayer(with: pattern) else {
             fallback.fire(event)
             return
         }
@@ -113,7 +113,7 @@ final class CoreHapticsEngine: HapticEngineProviding {
 
     // MARK: - Pattern definitions
 
-    private func hapticPattern(for event: HapticEvent) -> CHHapticPattern {
+    private func hapticPattern(for event: HapticEvent) -> CHHapticPattern? {
         let events: [CHHapticEvent]
         switch event {
         case .strokeBegan:
@@ -134,7 +134,7 @@ final class CoreHapticsEngine: HapticEngineProviding {
         case .offPath:
             events = [makeTransient(intensity: 0.2, sharpness: 0.1)]
         }
-        return (try? CHHapticPattern(events: events, parameters: [])) ?? CHHapticPattern()
+        return try? CHHapticPattern(events: events, parameters: [])
     }
 
     private func makeTransient(
