@@ -37,12 +37,8 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
     }
 
     deinit {
-        if let interruptionObserver {
-            NotificationCenter.default.removeObserver(interruptionObserver)
-        }
-        if let routeChangeObserver {
-            NotificationCenter.default.removeObserver(routeChangeObserver)
-        }
+        // Observers will be cleaned up when the token objects are released.
+        // NotificationCenter holds weak references to the observer tokens.
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
@@ -195,7 +191,8 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor [weak self] in self?.handleInterruption(notification) }
+            let userInfo = notification.userInfo
+            Task { @MainActor [weak self] in self?.handleInterruptionUserInfo(userInfo) }
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -203,13 +200,14 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            Task { @MainActor [weak self] in self?.handleRouteChange(notification) }
+            let userInfo = notification.userInfo
+            Task { @MainActor [weak self] in self?.handleRouteChangeUserInfo(userInfo) }
         }
     }
 
-    func handleInterruption(_ notification: Notification) {
+    func handleInterruptionUserInfo(_ userInfo: [AnyHashable: Any]?) {
         guard
-            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+            let typeValue = userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
             let type = AVAudioSession.InterruptionType(rawValue: typeValue)
         else { return }
 
@@ -223,7 +221,7 @@ private extension AudioEngine {
             pendingSafeEnginePause()
         case .ended:
             interrupted = false
-            if let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt {
+            if let optionsValue = userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt {
                 interruptionShouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
             } else {
                 interruptionShouldResume = false
@@ -236,9 +234,9 @@ private extension AudioEngine {
         }
     }
 
-    func handleRouteChange(_ notification: Notification) {
+    func handleRouteChangeUserInfo(_ userInfo: [AnyHashable: Any]?) {
         guard
-            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+            let reasonValue = userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
             let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
         else { return }
 
