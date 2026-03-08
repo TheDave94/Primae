@@ -104,18 +104,19 @@ private struct TracingCanvasAccessibility: ViewModifier {
     @ObservedObject var vm: TracingViewModel
 
     func body(content: Content) -> some View {
-        AnyView(content
+        content
             .accessibilityElement(children: .ignore)
-            .accessibilityCustomAction(named: "Play letter sound") { vm.replayAudio(); return true }
-            .accessibilityCustomAction(named: "Next letter") { vm.nextLetter(); return true }
-            .accessibilityCustomAction(named: "Previous letter") { vm.previousLetter(); return true }
-            .accessibilityCustomAction(named: "Random letter") { vm.randomLetter(); return true }
-            .accessibilityCustomAction(named: "Reset tracing") { vm.resetLetter(); return true }
-            .accessibilityCustomAction(named: "Toggle guide overlay") { vm.toggleGhost(); return true }
             .accessibilityLabel(vm.accessibilityCanvasLabel)
             .accessibilityValue(vm.accessibilityCanvasValue)
             .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
-        )
+            .accessibilityActions {
+                Button("Play letter sound") { vm.replayAudio() }
+                Button("Next letter") { vm.nextLetter() }
+                Button("Previous letter") { vm.previousLetter() }
+                Button("Random letter") { vm.randomLetter() }
+                Button("Reset tracing") { vm.resetLetter() }
+                Button("Toggle guide overlay") { vm.toggleGhost() }
+            }
     }
 }
 
