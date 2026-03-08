@@ -6,6 +6,10 @@ import Foundation
 @MainActor
 final class TracingViewModel: ObservableObject {
     @Published var showGhost = false
+    /// Non-nil while an Apple Pencil is in contact; nil for finger/mouse. Range 0–1.
+    @Published var pencilPressure: CGFloat? = nil
+    /// Azimuth angle (radians) of the Apple Pencil; 0 when no pencil.
+    @Published var pencilAzimuth: CGFloat = 0
     @Published var strokeEnforced = true
     @Published var showDebug = false
     @Published var toastMessage: String?
@@ -210,7 +214,8 @@ final class TracingViewModel: ObservableObject {
         }
 
         let speed = Self.mapVelocityToSpeed(smoothedVelocity)
-        let hBias = Float(max(-1.0, min(1.0, dx / 20.0)))
+        let azimuthBias = pencilPressure != nil ? cos(pencilAzimuth) * 0.5 : 0
+        let hBias = Float(max(-1.0, min(1.0, dx / 20.0 + azimuthBias)))
         audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
         let shouldPlayForStroke = strokeEnforced ? strokeTracker.soundEnabled : true
@@ -258,6 +263,8 @@ final class TracingViewModel: ObservableObject {
         lastTimestamp = nil
         activePath.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
+        pencilPressure = nil
+        pencilAzimuth = 0
         playbackMachine.resumeIntent = false
         cancelPendingPlaybackWork()
         setPlaybackState(.idle, immediate: true)
