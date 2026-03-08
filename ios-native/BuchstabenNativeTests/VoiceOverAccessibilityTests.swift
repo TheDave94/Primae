@@ -144,6 +144,7 @@ private final class LocalMockAudioController: AudioControlling {
     func loadAudioFile(named: String, autoplay: Bool) { loadedFile = named }
     func play() { playCount += 1 }
     func stop() { stopCount += 1 }
+    func restart() {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
         adaptiveSpeed = speed
         self.horizontalBias = horizontalBias

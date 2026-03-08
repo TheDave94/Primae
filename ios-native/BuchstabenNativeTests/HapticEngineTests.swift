@@ -71,6 +71,7 @@ private final class TrackingMockAudio: AudioControlling {
     func loadAudioFile(named: String, autoplay: Bool) {}
     func play() {}
     func stop() {}
+    func restart() {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
     func suspendForLifecycle() {}
     func resumeAfterLifecycle() {}
