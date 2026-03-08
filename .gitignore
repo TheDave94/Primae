@@ -25,3 +25,4 @@ vcpkg/*.log
 .DS_Store
 *.swp
 new-sounds/
+ha-proposals/
