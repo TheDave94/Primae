@@ -43,7 +43,6 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
         if let routeChangeObserver {
             NotificationCenter.default.removeObserver(routeChangeObserver)
         }
-        stopAndReset()
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
@@ -196,7 +195,7 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleInterruption(notification)
+            Task { @MainActor [weak self] in self?.handleInterruption(notification) }
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -204,7 +203,7 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleRouteChange(notification)
+            Task { @MainActor [weak self] in self?.handleRouteChange(notification) }
         }
     }
 

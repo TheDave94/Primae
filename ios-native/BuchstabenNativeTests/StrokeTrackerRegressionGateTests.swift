@@ -37,6 +37,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
     }
 
     private let canvas = CGSize(width: 400, height: 400)
+    private func norm(_ pt: CGPoint) -> CGPoint { CGPoint(x: pt.x / canvas.width, y: pt.y / canvas.height) }
 
     /// Pre-generated touch points (deterministic, covers all checkpoints)
     private var touchPoints: [CGPoint] {
@@ -58,7 +59,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
             var tracker = StrokeTracker()
             tracker.load(definition)
             for pt in points {
-                tracker.update(at: pt, canvasSize: canvas)
+                tracker.update(normalizedPoint: norm(pt))
             }
         }
     }
@@ -72,7 +73,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
             var tracker = StrokeTracker()
             tracker.load(definition)
             for pt in points {
-                tracker.update(at: pt, canvasSize: canvas)
+                tracker.update(normalizedPoint: norm(pt))
             }
         }
     }
@@ -87,7 +88,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
             for _ in 0..<20 {
                 tracker.load(definition)
                 for pt in points.prefix(50) {
-                    tracker.update(at: pt, canvasSize: canvas)
+                    tracker.update(normalizedPoint: norm(pt))
                 }
                 tracker.reset()
             }
@@ -101,7 +102,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
         tracker.load(realisticDefinition)
         // Drive partial progress
         for pt in touchPoints.prefix(100) {
-            tracker.update(at: pt, canvasSize: canvas)
+            tracker.update(normalizedPoint: norm(pt))
         }
         measure(metrics: [XCTClockMetric()]) {
             // 10,000 progress reads — must be negligible
@@ -141,7 +142,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
             var tracker = StrokeTracker()
             tracker.load(dense)
             for pt in points {
-                tracker.update(at: pt, canvasSize: canvas)
+                tracker.update(normalizedPoint: norm(pt))
             }
         }
     }
