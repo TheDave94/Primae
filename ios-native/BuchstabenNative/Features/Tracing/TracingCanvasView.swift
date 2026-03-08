@@ -152,9 +152,9 @@ private struct ProgressPill: View {
 /// SwiftUI's DragGesture handles them unmodified.
 private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let canvasSize: CGSize
-    let onBegan: (CGPoint, CFTimeInterval) -> Void
-    let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
-    let onEnded: () -> Void
+    let onBegan: @MainActor (CGPoint, CFTimeInterval) -> Void
+    let onMoved: @MainActor (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
+    let onEnded: @MainActor () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded)
@@ -173,13 +173,13 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     }
 
     final class Coordinator {
-        let onBegan: (CGPoint, CFTimeInterval) -> Void
-        let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
-        let onEnded: () -> Void
+        let onBegan: @MainActor (CGPoint, CFTimeInterval) -> Void
+        let onMoved: @MainActor (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
+        let onEnded: @MainActor () -> Void
         init(
-            onBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
-            onMoved: @escaping (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
-            onEnded: @escaping () -> Void
+            onBegan: @escaping @MainActor (CGPoint, CFTimeInterval) -> Void,
+            onMoved: @escaping @MainActor (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
+            onEnded: @escaping @MainActor () -> Void
         ) {
             self.onBegan = onBegan
             self.onMoved = onMoved
@@ -199,24 +199,31 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard let touch = touches.first, touch.type == .pencil else { return }
-            coordinator?.onBegan(touch.location(in: self), touch.timestamp)
+            let loc = touch.location(in: self); let ts = touch.timestamp
+            let cb = coordinator?.onBegan
+            Task { @MainActor in cb?(loc, ts) }
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard let touch = touches.first, touch.type == .pencil else { return }
+            let loc = touch.location(in: self); let ts = touch.timestamp
             let pressure = touch.force / max(touch.maximumPossibleForce, 1)
             let azimuth = touch.azimuthAngle(in: self)
-            coordinator?.onMoved(touch.location(in: self), touch.timestamp, pressure, azimuth, canvasSize)
+            let size = canvasSize
+            let cb = coordinator?.onMoved
+            Task { @MainActor in cb?(loc, ts, pressure, azimuth, size) }
         }
 
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard touches.first?.type == .pencil else { return }
-            coordinator?.onEnded()
+            let cb = coordinator?.onEnded
+            Task { @MainActor in cb?() }
         }
 
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard touches.first?.type == .pencil else { return }
-            coordinator?.onEnded()
+            let cb = coordinator?.onEnded
+            Task { @MainActor in cb?() }
         }
     }
 }
