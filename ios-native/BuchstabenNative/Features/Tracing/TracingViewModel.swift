@@ -67,8 +67,6 @@ final class TracingViewModel: ObservableObject {
     deinit {
         toastTask?.cancel()
         completionDismissTask?.cancel()
-        audio.cancelPendingLifecycleWork()
-        audio.stop()
     }
 
     func toggleGhost() { showGhost.toggle(); toast(showGhost ? "Ghost ON" : "Ghost OFF") }
