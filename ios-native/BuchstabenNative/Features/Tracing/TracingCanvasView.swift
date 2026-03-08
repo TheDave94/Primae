@@ -49,7 +49,6 @@ struct TracingCanvasView: View {
                 )
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(vm.accessibilityCanvasLabel)
-                .accessibilityValue(vm.accessibilityCanvasValue)
                 .accessibilityCustomAction(named: "Play letter sound") {
                     vm.replayAudio()
                     return true
@@ -74,6 +73,7 @@ struct TracingCanvasView: View {
                     vm.toggleGhost()
                     return true
                 }
+                .accessibilityValue(vm.accessibilityCanvasValue)
                 .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio. Apple Pencil tilt and pressure supported.")
 
                 ProgressPill(progress: vm.progress, differentiateWithoutColor: differentiateWithoutColor)
