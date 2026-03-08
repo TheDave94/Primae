@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Export format
 
-public enum DashboardExportFormat {
+enum DashboardExportFormat {
     case csv
     case json
 }
@@ -11,13 +11,13 @@ public enum DashboardExportFormat {
 
 /// Converts a ``DashboardSnapshot`` to shareable file data.
 /// No UIKit/SwiftUI dependency — kept in Core so it's testable on Linux CI.
-public struct ParentDashboardExporter {
+struct ParentDashboardExporter {
 
     // MARK: CSV
 
     /// Produces a UTF-8 CSV with one row per letter containing:
     /// letter, sessionCount, averageAccuracy, trend, bestAccuracy
-    public static func csvData(from snapshot: DashboardSnapshot) -> Data {
+    static func csvData(from snapshot: DashboardSnapshot) -> Data {
         var lines: [String] = [
             "letter,sessionCount,averageAccuracy,trend"
         ]
@@ -41,7 +41,7 @@ public struct ParentDashboardExporter {
     // MARK: JSON
 
     /// Produces pretty-printed JSON of the full ``DashboardSnapshot``.
-    public static func jsonData(from snapshot: DashboardSnapshot) throws -> Data {
+    static func jsonData(from snapshot: DashboardSnapshot) throws -> Data {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
@@ -56,7 +56,7 @@ public struct ParentDashboardExporter {
     ///   - format: `.csv` or `.json`
     ///   - tempDirectory: Override for testing; defaults to `FileManager.default.temporaryDirectory`.
     /// - Returns: URL of the written temp file.
-    public static func exportFileURL(
+    static func exportFileURL(
         from snapshot: DashboardSnapshot,
         format: DashboardExportFormat,
         tempDirectory: URL = FileManager.default.temporaryDirectory
