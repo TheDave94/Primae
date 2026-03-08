@@ -23,7 +23,12 @@ struct TracingCanvasView: View {
                         var path = Path()
                         path.addLines(vm.activePath)
                         // Pencil pressure maps linearly: 4 pt @ 0.0 … 14 pt @ 1.0; finger defaults to 8 pt
-                        let inkWidth: CGFloat = vm.pencilPressure.map { 4 + $0 * 10 } ?? 8
+                        let inkWidth: CGFloat
+                        if let pressure = vm.pencilPressure {
+                            inkWidth = 4 + pressure * 10
+                        } else {
+                            inkWidth = 8
+                        }
                         context.stroke(path, with: .color(.green), style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
                     }
 
@@ -49,6 +54,8 @@ struct TracingCanvasView: View {
                 )
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(vm.accessibilityCanvasLabel)
+                .accessibilityValue(vm.accessibilityCanvasValue)
+                .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
                 .accessibilityCustomAction(named: "Play letter sound") {
                     vm.replayAudio()
                     return true
@@ -73,8 +80,6 @@ struct TracingCanvasView: View {
                     vm.toggleGhost()
                     return true
                 }
-                .accessibilityValue(vm.accessibilityCanvasValue)
-                .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio. Apple Pencil tilt and pressure supported.")
 
                 ProgressPill(progress: vm.progress, differentiateWithoutColor: differentiateWithoutColor)
                     .padding(.leading, 12)
