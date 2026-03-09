@@ -114,10 +114,10 @@ final class LocalNotificationScheduler {
         self.calendar = calendar
     }
 
-    func requestPermission(completion: @escaping (NotificationPermissionStatus) -> Void) {
+    func requestPermission(completion: @escaping @Sendable (NotificationPermissionStatus) -> Void) {
         center.requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] granted, _ in
             let status: NotificationPermissionStatus = granted ? .authorized : .denied
-            self?.permissionStatus = status
+            MainActor.assumeIsolated { self?.permissionStatus = status }
             completion(status)
         }
     }
