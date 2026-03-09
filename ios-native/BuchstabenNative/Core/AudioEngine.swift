@@ -198,7 +198,8 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleInterruptionUserInfo(notification.userInfo)
+            let userInfo = notification.userInfo
+            Task { @MainActor [weak self] in self?.handleInterruptionUserInfo(userInfo) }
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -206,7 +207,8 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            self?.handleRouteChangeUserInfo(notification.userInfo)
+            let userInfo = notification.userInfo
+            Task { @MainActor [weak self] in self?.handleRouteChangeUserInfo(userInfo) }
         }
     }
 
