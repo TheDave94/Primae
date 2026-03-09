@@ -198,8 +198,9 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let userInfo = notification.userInfo
-            Task { @MainActor [weak self] in self?.handleInterruptionUserInfo(userInfo) }
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            Task { @MainActor [weak self] in self?.handleInterruptionValues(type: typeValue, options: optionsValue) }
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -207,8 +208,8 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let userInfo = notification.userInfo
-            Task { @MainActor [weak self] in self?.handleRouteChangeUserInfo(userInfo) }
+            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+            Task { @MainActor [weak self] in self?.handleRouteChangeValue(reason: reasonValue) }
         }
     }
 
@@ -241,11 +242,8 @@ private extension AudioEngine {
         }
     }
 
-    func handleRouteChangeUserInfo(_ userInfo: [AnyHashable: Any]?) {
-        guard
-            let reasonValue = userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
-            let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue)
-        else { return }
+    func handleRouteChangeValue(reason reasonValue: UInt?) {
+        guard let reasonValue, let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
 
         switch reason {
         case .oldDeviceUnavailable:
