@@ -8,30 +8,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    name: Build (legacy ios-build/Timestretch)
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Show build environment
-        run: |
-          xcodebuild -version
-          swift --version
-
-      - name: Build
-        run: xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
-
-      - name: Test (if supported by scheme)
-        run: |
-          if xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -showBuildSettings 2>/dev/null | grep -q TEST_HOST; then
-            xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO test
-          else
-            echo "No test action configured for scheme Timestretch; skipping tests."
-          fi
-
   ios_native:
     name: "Build & Test (ios-native / BuchstabenNativeTests)"
     runs-on: macos-latest
