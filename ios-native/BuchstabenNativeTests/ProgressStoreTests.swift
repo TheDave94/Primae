@@ -14,7 +14,7 @@ final class ProgressStoreTests: XCTestCase {
     private var store: JSONProgressStore!
 
     override func setUp() async throws {
-        try await super.setUp()
+        super.setUp()
         // async throws override ensures @MainActor isolation is preserved (Swift 6).
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ProgressStoreTests-\(UUID().uuidString)", isDirectory: true)
@@ -25,7 +25,7 @@ final class ProgressStoreTests: XCTestCase {
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tempURL.deletingLastPathComponent())
-        try await super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Initial state

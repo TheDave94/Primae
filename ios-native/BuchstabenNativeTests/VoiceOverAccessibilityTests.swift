@@ -17,7 +17,7 @@ final class VoiceOverAccessibilityTests: XCTestCase {
     private var audioController: LocalMockAudioController!
 
     override func setUp() async throws {
-        try await super.setUp()
+        super.setUp()
         // async throws override preserves @MainActor isolation (Swift 6).
         audioController = LocalMockAudioController()
         vm = TracingViewModel(audio: audioController)

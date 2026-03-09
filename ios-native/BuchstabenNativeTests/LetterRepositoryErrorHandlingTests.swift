@@ -73,7 +73,7 @@ final class JSONLetterCacheTests: XCTestCase {
     private var cache: JSONLetterCache!
 
     override func setUp() async throws {
-        try await super.setUp()
+        super.setUp()
         // setUp is declared `async throws` in XCTestCase; overriding as `async throws`
         // ensures Swift 6 runs this body on @MainActor (inherited from the class
         // annotation) without the "nonisolated mutation" errors from plain override func setUp().
@@ -84,7 +84,7 @@ final class JSONLetterCacheTests: XCTestCase {
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tempURL)
-        try await super.tearDown()
+        super.tearDown()
     }
 
     func testSaveAndLoad_roundtrips() throws {

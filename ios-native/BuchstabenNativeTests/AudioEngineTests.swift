@@ -39,7 +39,7 @@ final class AudioEngineTests: XCTestCase {
     // MARK: - Instance setup
 
     override func setUp() async throws {
-        try await super.setUp()
+        super.setUp()
         continueAfterFailure = false
         // Guard: skip entire suite if audio session unavailable (headless CI without audio HW)
         guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty || true else {
@@ -57,7 +57,7 @@ final class AudioEngineTests: XCTestCase {
         // firing after tearDown on a deallocated engine.
         engine.cancelPendingLifecycleWork()
         engine = nil
-        try await super.tearDown()
+        super.tearDown()
     }
 
     // MARK: - Direct methods: stop() / play() / restart()
