@@ -213,35 +213,6 @@ private extension AudioEngine {
         }
     }
 
-    func handleInterruptionUserInfo(_ userInfo: [AnyHashable: Any]?) {
-        guard
-            let typeValue = userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-            let type = AVAudioSession.InterruptionType(rawValue: typeValue)
-        else { return }
-
-        switch type {
-        case .began:
-            interrupted = true
-            interruptionResumeGateRequired = true
-            interruptionShouldResume = false
-            player.pause()
-            isPlaying = false
-            pendingSafeEnginePause()
-        case .ended:
-            interrupted = false
-            if let optionsValue = userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt {
-                interruptionShouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
-            } else {
-                interruptionShouldResume = false
-            }
-            if interruptionShouldResume {
-                attemptResumePlayback()
-            }
-        @unknown default:
-            break
-        }
-    }
-
     func handleRouteChangeValue(reason reasonValue: UInt?) {
         guard let reasonValue, let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
 
