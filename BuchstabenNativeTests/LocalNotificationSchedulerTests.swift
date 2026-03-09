@@ -143,28 +143,28 @@ final class LocalNotificationSchedulerTests: XCTestCase {
         )
     }
 
-    func testRequestPermission_granted_returnsAuthorized() {
+    func testRequestPermission_granted_returnsAuthorized() async {
         let mock = MockNotificationCenter()
         mock.authorizationGranted = true
         let scheduler = makeScheduler(mock: mock)
-        let exp = expectation(description: "perm")
-        scheduler.requestPermission { status in
-            XCTAssertEqual(status, .authorized)
-            exp.fulfill()
+        let status = await withCheckedContinuation { continuation in
+            scheduler.requestPermission { status in
+                continuation.resume(returning: status)
+            }
         }
-        waitForExpectations(timeout: 1)
+        XCTAssertEqual(status, .authorized)
     }
 
-    func testRequestPermission_denied_returnsDenied() {
+    func testRequestPermission_denied_returnsDenied() async {
         let mock = MockNotificationCenter()
         mock.authorizationGranted = false
         let scheduler = makeScheduler(mock: mock)
-        let exp = expectation(description: "perm")
-        scheduler.requestPermission { status in
-            XCTAssertEqual(status, .denied)
-            exp.fulfill()
+        let status = await withCheckedContinuation { continuation in
+            scheduler.requestPermission { status in
+                continuation.resume(returning: status)
+            }
         }
-        waitForExpectations(timeout: 1)
+        XCTAssertEqual(status, .denied)
     }
 
     func testScheduleDailyReminder_addsRequest() {
@@ -203,14 +203,14 @@ final class LocalNotificationSchedulerTests: XCTestCase {
         XCTAssertTrue(mock.removedIdentifiers.contains("some_id"))
     }
 
-    func testPermissionStatus_updatesAfterRequest() {
+    func testPermissionStatus_updatesAfterRequest() async {
         let mock = MockNotificationCenter()
         mock.authorizationGranted = true
         let scheduler = makeScheduler(mock: mock)
         XCTAssertEqual(scheduler.permissionStatus, .notDetermined)
-        let exp = expectation(description: "perm")
-        scheduler.requestPermission { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await withCheckedContinuation { continuation in
+            scheduler.requestPermission { _ in continuation.resume() }
+        }
         XCTAssertEqual(scheduler.permissionStatus, .authorized)
     }
 }

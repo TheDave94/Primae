@@ -31,7 +31,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             }
         )
 
-        var tracker = StrokeTracker()
+        let tracker = StrokeTracker()
         tracker.load(definition)
         let canvas = CGSize(width: 400, height: 400)
 
@@ -66,7 +66,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
             ]
         )
 
-        var tracker = StrokeTracker()
+        let tracker = StrokeTracker()
         measure {
             for _ in 0..<500 {
                 tracker.load(definition)
