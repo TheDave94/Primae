@@ -1,4 +1,4 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
 
 final class AudioEngine: @unchecked Sendable, AudioControlling {
