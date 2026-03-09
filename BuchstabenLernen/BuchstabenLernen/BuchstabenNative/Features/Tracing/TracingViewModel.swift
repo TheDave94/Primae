@@ -47,7 +47,7 @@ final class TracingViewModel: ObservableObject {
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
-    @MainActor init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+    init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
          audio: AudioControlling = AudioEngine(),
          progressStore: ProgressStoring = JSONProgressStore(),
          haptics: HapticEngineProviding = CoreHapticsEngine(),

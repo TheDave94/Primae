@@ -84,7 +84,7 @@ final class CoreHapticsEngine: HapticEngineProviding {
     private var engine: CHHapticEngine?
     private let fallback: HapticEngineProviding
 
-    @MainActor init(fallback: HapticEngineProviding = UIKitHapticEngine()) {
+    init(fallback: HapticEngineProviding = UIKitHapticEngine()) {
         self.fallback = fallback
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else { return }
         engine = try? CHHapticEngine()
