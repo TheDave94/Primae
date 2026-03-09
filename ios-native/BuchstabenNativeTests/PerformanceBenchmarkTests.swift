@@ -47,7 +47,10 @@ final class PerformanceBenchmarkTests: XCTestCase {
         measure {
             tracker.load(definition)   // reset for each iteration
             for pt in points {
-                tracker.update(at: pt, canvasSize: canvas)
+                // StrokeTracker.update(normalizedPoint:) expects coordinates in 0…1.
+                // Normalize from canvas-space (0…400) by dividing by canvas dimensions.
+                let normalized = CGPoint(x: pt.x / canvas.width, y: pt.y / canvas.height)
+                tracker.update(normalizedPoint: normalized)
             }
         }
     }

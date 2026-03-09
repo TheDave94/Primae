@@ -130,6 +130,7 @@ final class DefaultDailyReminderPolicyTests: XCTestCase {
 
 // MARK: - LocalNotificationScheduler tests
 
+@MainActor
 final class LocalNotificationSchedulerTests: XCTestCase {
 
     private func makeScheduler(mock: MockNotificationCenter,
