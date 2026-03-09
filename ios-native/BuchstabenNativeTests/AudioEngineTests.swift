@@ -46,7 +46,7 @@ final class AudioEngineTests: XCTestCase {
         continueAfterFailure = false
         // Guard: skip entire suite if audio session unavailable (headless CI without audio HW)
         guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty || true else {
-            XCTSkip("AVAudioSession has no viable route on this runner")
+            throw XCTSkip("AVAudioSession has no viable route on this runner")
         }
         // setUp is async throws so @MainActor isolation is preserved for this @MainActor class.
         engine = AudioEngine()
