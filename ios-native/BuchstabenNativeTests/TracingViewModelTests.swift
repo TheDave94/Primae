@@ -81,7 +81,6 @@ private func slowDrag(
 // MARK: - TracingViewModelTests
 
 @MainActor
-@MainActor
 final class TracingViewModelTests: XCTestCase {
 
     private var audio: MockAudio!
