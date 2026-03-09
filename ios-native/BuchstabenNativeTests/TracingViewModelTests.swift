@@ -90,8 +90,12 @@ final class TracingViewModelTests: XCTestCase {
 
     override func setUp() async throws {
         audio = MockAudio()
-        // singleTouchCooldownAfterNavigation=0 eliminates cooldown timing from tests
+        // singleTouchCooldownAfterNavigation=0 eliminates cooldown timing from tests.
+        // strokeEnforced=false allows audio to trigger on velocity alone, regardless of
+        // whether the test environment has letter stroke definitions loaded — these tests
+        // exercise the audio/lifecycle pipeline, not stroke recognition.
         vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
     }
 
     override func tearDown() async throws {

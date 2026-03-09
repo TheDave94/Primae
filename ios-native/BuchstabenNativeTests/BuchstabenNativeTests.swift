@@ -66,7 +66,8 @@ final class BuchstabenNativeTests: XCTestCase {
 
     func testLetterRepositoryFallsBackToSampleWhenNoAssetsExist() {
         let provider = MockResourceProvider(urls: [], byRelativePath: [:])
-        let repo = LetterRepository(resources: provider)
+        // NullLetterCache ensures no disk-cache hit from other tests in the same process
+        let repo = LetterRepository(resources: provider, cache: NullLetterCache())
         let letters = repo.loadLetters()
 
         XCTAssertEqual(letters.count, 1)
@@ -155,6 +156,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testTracingViewModelUsesInjectedAudioControllerAcrossLifecycle() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
 
         XCTAssertGreaterThanOrEqual(audio.loadedFiles.count, 1)
 
@@ -174,6 +176,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testBackgroundCancelsPendingPlaybackAndAvoidsResumeUntilNewIntent() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
@@ -199,6 +202,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testLongSessionLifecycleRegressionMatrix() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         for cycle in 0..<5 {
@@ -243,6 +247,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testRapidBackgroundForegroundChurn_50Cycles() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         for cycle in 0..<50 {
@@ -267,6 +272,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testAVAudioSessionInterruption_shouldResumeFalse_doesNotPlay() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         // Establish active playback intent
@@ -292,6 +298,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testAVAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
@@ -312,6 +319,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testAudioRouteChange_oldDeviceUnavailable_stopsPlayback() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         // Start active touch/playback
@@ -330,6 +338,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testAudioRouteChange_oldDeviceUnavailable_isIdempotent() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
@@ -351,6 +360,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testDebounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         let playsBefore = audio.playCount
@@ -372,6 +382,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testDebounceWindow_afterExpiry_playbackIsAllowed() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         // Single sustained touch (above velocity threshold), then wait for debounce
@@ -387,6 +398,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testInterruptionDuringBackgroundForegroundChurn_stateRemainsConsistent() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         for i in 0..<10 {
@@ -439,6 +451,7 @@ final class BuchstabenNativeTests: XCTestCase {
     func testAVAudioSessionInterruptionIdempotency_doubleBegan() {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
@@ -482,6 +495,14 @@ private struct MockResourceProvider: LetterResourceProviding {
 
     func allResourceURLs() -> [URL] { urls }
     func resourceURL(for relativePath: String) -> URL? { byRelativePath[relativePath] }
+}
+
+/// An in-memory no-op cache that always appears empty — used to isolate
+/// LetterRepository tests from real disk cache state in CI.
+private struct NullLetterCache: LetterCacheStoring {
+    func save(_ letters: [LetterAsset]) throws { }
+    func load() throws -> [LetterAsset] { [] }
+    func clear() { }
 }
 
 private final class TempResourceFS {

@@ -62,7 +62,11 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     override func setUp() async throws {
         audio = RecordingAudio()
+        // strokeEnforced=false allows velocity-based audio playback without requiring
+        // actual stroke checkpoints to be hit — these tests cover the audio/lifecycle
+        // pipeline, not stroke recognition accuracy.
         vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
     }
 
     override func tearDown() async throws {

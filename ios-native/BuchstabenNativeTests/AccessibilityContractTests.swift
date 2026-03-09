@@ -21,7 +21,10 @@ final class AccessibilityContractTests: XCTestCase {
 
     override func setUp() async throws {
         audio = MockAccessibilityAudio()
+        // strokeEnforced=false allows audio/isPlaying state to be driven by velocity
+        // alone — these tests verify accessibility string contracts, not stroke recognition.
         vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio)
+        vm.strokeEnforced = false
     }
 
     override func tearDown() async throws {

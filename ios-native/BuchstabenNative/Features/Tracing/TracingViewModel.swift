@@ -239,10 +239,26 @@ final class TracingViewModel: ObservableObject {
 
 
     func appDidEnterBackground() {
+        // Guard against re-entrant / duplicate background events (idempotency).
+        // AVAudioSession interruptions and UIApplication.didEnterBackground can fire
+        // in quick succession; only process the first one per foreground period.
+        guard playbackMachine.appIsForeground else { return }
         playbackMachine.appIsForeground = false
         cancelPendingPlaybackWork()
         endTouch()
-        setPlaybackState(.idle, immediate: true)
+        // Apply state machine transition and honour the returned command.
+        // Then also call audio.stop() unconditionally as a belt-and-suspenders
+        // safety net: if a debounced "active" transition was queued but hadn't
+        // fired yet, the machine is still .idle (transition returns .none) so
+        // applyCommand would be a no-op — but audio must be definitively silent
+        // before suspension (e.g. AVAudioSession interruption mid-debounce window).
+        let cmd = playbackMachine.transition(to: .idle)
+        applyCommand(cmd)
+        // Unconditional stop ensures audio is silent even if cmd == .none.
+        if cmd == .none {
+            audio.stop()
+            isPlaying = false
+        }
         audio.suspendForLifecycle()
     }
 

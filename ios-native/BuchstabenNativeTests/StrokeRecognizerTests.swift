@@ -52,8 +52,11 @@ final class EuclideanStrokeRecognizerTests: XCTestCase {
     }
 
     func testHit_diagonalWithinRadius() {
-        // dist = sqrt(0.03² + 0.04²) = 0.05 exactly
-        XCTAssertTrue(recognizer.pointHitsCheckpoint(pt(0.53, 0.54), checkpoint: cp(0.5, 0.5), radius: 0.05))
+        // dist = sqrt(0.03² + 0.04²) = 0.05 (3-4-5 Pythagorean triple).
+        // Use radius slightly above 0.05 to account for IEEE-754 floating-point
+        // rounding: hypot(0.53-0.5, 0.54-0.5) is 0.050000...003 in Double,
+        // so an exact 0.05 radius would yield a false miss on some platforms.
+        XCTAssertTrue(recognizer.pointHitsCheckpoint(pt(0.53, 0.54), checkpoint: cp(0.5, 0.5), radius: 0.0501))
     }
 
     func testMiss_zeroRadius() {

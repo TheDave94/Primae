@@ -7,6 +7,14 @@
 import XCTest
 @testable import BuchstabenNative
 
+// MARK: - NullLetterCache (empty, never persists — isolates tests from real cache)
+
+private struct NullLetterCache: LetterCacheStoring {
+    func save(_ letters: [LetterAsset]) throws { /* no-op */ }
+    func load() throws -> [LetterAsset] { [] }
+    func clear() { /* no-op */ }
+}
+
 // MARK: - MockResourceProvider
 
 private final class MockResourceProvider: LetterResourceProviding {
@@ -73,7 +81,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 1 — Empty provider returns fallback (non-empty, non-crash)
 
     func testEmptyProvider_returnsFallbackLetter() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let letters = repo.loadLetters()
         XCTAssertFalse(letters.isEmpty, "loadLetters() must never return empty — fallback expected")
         XCTAssertEqual(letters.first?.id, "A", "Fallback must be letter A")
@@ -82,7 +90,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 2 — Fallback letter has required fields populated
 
     func testFallbackLetter_hasRequiredFields() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let letter = repo.loadLetters().first!
         XCTAssertFalse(letter.name.isEmpty, "name must not be empty")
         XCTAssertFalse(letter.audioFiles.isEmpty, "audioFiles must not be empty")
@@ -107,7 +115,7 @@ final class LetterRepositoryTests: XCTestCase {
         }
         let badURL = FileManager.default.temporaryDirectory.appendingPathComponent("X_strokes.json")
         try? "{{invalid}}".data(using: .utf8)?.write(to: badURL)
-        let repo = LetterRepository(resources: BadProvider(url: badURL))
+        let repo = LetterRepository(resources: BadProvider(url: badURL), cache: NullLetterCache())
         let letters = repo.loadLetters()
         // Should fall through to fallback — must not crash and must return something
         XCTAssertFalse(letters.isEmpty)
@@ -116,7 +124,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 4 — LetterAsset names are non-empty strings
 
     func testLetterAsset_names_areNonEmpty() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             XCTAssertFalse(letter.name.isEmpty, "Every LetterAsset must have a non-empty name")
         }
@@ -125,7 +133,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 5 — LetterAsset audioFiles are non-empty
 
     func testLetterAsset_audioFiles_areNonEmpty() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             XCTAssertFalse(letter.audioFiles.isEmpty,
                            "Every LetterAsset must have at least one audio file (letter: \(letter.name))")
@@ -135,7 +143,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 6 — Default strokes checkpoints are in normalized [0,1] range
 
     func testDefaultStrokes_checkpoints_areNormalized() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             for stroke in letter.strokes.strokes {
                 for cp in stroke.checkpoints {
@@ -151,7 +159,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 7 — checkpointRadius is positive
 
     func testDefaultStrokes_checkpointRadius_isPositive() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             XCTAssertGreaterThan(letter.strokes.checkpointRadius, 0.0,
                                  "checkpointRadius must be > 0 (letter: \(letter.name))")
@@ -161,7 +169,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 8 — No duplicate letter ids in result
 
     func testLoadLetters_noDuplicateIds() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let ids = repo.loadLetters().map(\.id)
         let unique = Set(ids)
         XCTAssertEqual(ids.count, unique.count, "loadLetters() must not return duplicate ids")
@@ -170,7 +178,7 @@ final class LetterRepositoryTests: XCTestCase {
     // MARK: 9 — loadLetters is idempotent (same result on two calls)
 
     func testLoadLetters_isIdempotent() {
-        let repo = LetterRepository(resources: MockResourceProvider())
+        let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let first  = repo.loadLetters()
         let second = repo.loadLetters()
         XCTAssertEqual(first, second, "loadLetters() must return the same result on repeated calls")
