@@ -77,6 +77,6 @@ final class ApplePencilPressureTests: XCTestCase {
     func testP10_pencilPressureIsSettable() {
         let vm = makeVM()
         vm.pencilPressure = 0.65
-        XCTAssertEqual(vm.pencilPressure, 0.65, accuracy: 0.001)
+        XCTAssertEqual(vm.pencilPressure.map(Double.init) ?? 0, 0.65, accuracy: 0.001)
     }
 }

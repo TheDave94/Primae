@@ -12,6 +12,7 @@ import XCTest
 import AVFoundation
 @testable import BuchstabenNative
 
+@MainActor
 final class AudioEngineTests: XCTestCase {
 
     private var engine: AudioEngine!
