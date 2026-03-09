@@ -1,12 +1,29 @@
 import XCTest
 @testable import BuchstabenNative
 
-/// P1–P8: Apple Pencil pressure, azimuth, and state-reset tests.
+// MARK: - Minimal no-op audio stub (avoids real AVAudioEngine in unit tests)
+
+private final class StubAudio: AudioControlling {
+    func loadAudioFile(named: String, autoplay: Bool) {}
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
+    func play() {}
+    func stop() {}
+    func restart() {}
+    func suspendForLifecycle() {}
+    func resumeAfterLifecycle() {}
+    func cancelPendingLifecycleWork() {}
+}
+
+/// P1–P10: Apple Pencil pressure, azimuth, and state-reset tests.
 @MainActor
 final class ApplePencilPressureTests: XCTestCase {
 
+    // Inject a no-op audio stub so tests never spin up a real AVAudioEngine.
+    // Using the real AudioEngine causes AVAudioSession state pollution across
+    // the 10 sequential makeVM() calls in this suite, which manifests as an
+    // uncaught ObjC exception on the 10th init (testP10) in headless CI.
     private func makeVM() -> TracingViewModel {
-        TracingViewModel()
+        TracingViewModel(audio: StubAudio())
     }
 
     // P1: pencilPressure defaults to nil (no pencil contact)
