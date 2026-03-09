@@ -189,12 +189,16 @@ private extension AudioEngine {
     }
 
     func installObservers() {
+        // Both observers use queue: .main, so the closure body already runs on the
+        // main thread. Calling handlers directly (no Task, no MainActor.assumeIsolated)
+        // avoids sending the non-Sendable notification/userInfo across an isolation
+        // boundary, which is the Swift 6 data-race error at the call site.
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            MainActor.assumeIsolated { [weak self] in self?.handleInterruptionUserInfo(notification.userInfo) }
+            self?.handleInterruptionUserInfo(notification.userInfo)
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -202,7 +206,7 @@ private extension AudioEngine {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            MainActor.assumeIsolated { [weak self] in self?.handleRouteChangeUserInfo(notification.userInfo) }
+            self?.handleRouteChangeUserInfo(notification.userInfo)
         }
     }
 
