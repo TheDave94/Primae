@@ -39,7 +39,10 @@ final class AudioEngineTests: XCTestCase {
     // MARK: - Instance setup
 
     override func setUp() async throws {
-        super.setUp()
+        // Do NOT call super.setUp(): XCTestCase.setUp() is `async throws` in Swift 6,
+        // but calling it via `try await` from @MainActor triggers "sending non-Sendable
+        // XCTestCase" and without `try await` triggers "call can throw/is async". The
+        // default implementation is a no-op so omitting the super call is safe.
         continueAfterFailure = false
         // Guard: skip entire suite if audio session unavailable (headless CI without audio HW)
         guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty || true else {
@@ -57,7 +60,7 @@ final class AudioEngineTests: XCTestCase {
         // firing after tearDown on a deallocated engine.
         engine.cancelPendingLifecycleWork()
         engine = nil
-        super.tearDown()
+        // Do NOT call super.tearDown() — same reason as setUp() above.
     }
 
     // MARK: - Direct methods: stop() / play() / restart()

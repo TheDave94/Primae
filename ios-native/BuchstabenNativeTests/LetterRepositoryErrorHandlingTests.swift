@@ -73,10 +73,11 @@ final class JSONLetterCacheTests: XCTestCase {
     private var cache: JSONLetterCache!
 
     override func setUp() async throws {
-        super.setUp()
-        // setUp is declared `async throws` in XCTestCase; overriding as `async throws`
-        // ensures Swift 6 runs this body on @MainActor (inherited from the class
-        // annotation) without the "nonisolated mutation" errors from plain override func setUp().
+        // Do NOT call super.setUp() here: XCTestCase.setUp() is declared as
+        // `open func setUp() async throws` in Swift 6, so calling it from a
+        // @MainActor-isolated context requires `try await`, which itself triggers
+        // a "sending non-Sendable XCTestCase" error. The default implementation
+        // is a no-op, so omitting the super call is safe.
         tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("LetterCacheTest-\(UUID().uuidString).json")
         cache = JSONLetterCache(fileURL: tempURL)
@@ -84,7 +85,7 @@ final class JSONLetterCacheTests: XCTestCase {
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tempURL)
-        super.tearDown()
+        // Do NOT call super.tearDown() — same reason as setUp() above.
     }
 
     func testSaveAndLoad_roundtrips() throws {

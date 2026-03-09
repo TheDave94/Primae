@@ -14,8 +14,9 @@ final class ProgressStoreTests: XCTestCase {
     private var store: JSONProgressStore!
 
     override func setUp() async throws {
-        super.setUp()
-        // async throws override ensures @MainActor isolation is preserved (Swift 6).
+        // Do NOT call super.setUp(): XCTestCase.setUp() is `async throws` in Swift 6;
+        // calling with `try await` triggers "sending non-Sendable XCTestCase", without
+        // `try await` triggers "call can throw/is async". Default impl is a no-op.
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("ProgressStoreTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -25,7 +26,7 @@ final class ProgressStoreTests: XCTestCase {
 
     override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tempURL.deletingLastPathComponent())
-        super.tearDown()
+        // Do NOT call super.tearDown() — same reason as setUp() above.
     }
 
     // MARK: - Initial state
