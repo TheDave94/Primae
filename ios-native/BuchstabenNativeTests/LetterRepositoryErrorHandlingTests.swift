@@ -72,19 +72,19 @@ final class JSONLetterCacheTests: XCTestCase {
     private var tempURL: URL!
     private var cache: JSONLetterCache!
 
-    override func setUp() async {
-        await super.setUp()
-        // setUp runs on @MainActor because the class is @MainActor-isolated.
-        // Using async override ensures Swift 6 does not treat this as a
-        // nonisolated XCTestCase.setUp call accessing @MainActor-isolated properties.
+    override func setUp() async throws {
+        try await super.setUp()
+        // setUp is declared `async throws` in XCTestCase; overriding as `async throws`
+        // ensures Swift 6 runs this body on @MainActor (inherited from the class
+        // annotation) without the "nonisolated mutation" errors from plain override func setUp().
         tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("LetterCacheTest-\(UUID().uuidString).json")
         cache = JSONLetterCache(fileURL: tempURL)
     }
 
-    override func tearDown() async {
+    override func tearDown() async throws {
         try? FileManager.default.removeItem(at: tempURL)
-        await super.tearDown()
+        try await super.tearDown()
     }
 
     func testSaveAndLoad_roundtrips() throws {
