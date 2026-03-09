@@ -3,6 +3,7 @@ import CoreGraphics
 import AVFoundation
 @testable import BuchstabenNative
 
+@MainActor
 final class BuchstabenNativeTests: XCTestCase {
     func testStrokeTrackerProgressionRespectsOrder() {
         let tracker = StrokeTracker()

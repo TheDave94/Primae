@@ -36,6 +36,7 @@ private final class MockAudio: AudioControlling {
 
 /// Simulate a fast drag at velocity >> 22 pt/s over `count` points.
 /// Returns the last timestamp used.
+@MainActor
 @discardableResult
 private func fastDrag(
     vm: TracingViewModel,
@@ -58,6 +59,7 @@ private func fastDrag(
 }
 
 /// Simulate a slow drag at velocity << 22 pt/s.
+@MainActor
 @discardableResult
 private func slowDrag(
     vm: TracingViewModel,

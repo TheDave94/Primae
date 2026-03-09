@@ -50,6 +50,7 @@ final class SyncStateTests: XCTestCase {
 
 // MARK: - NullSyncService tests
 
+@MainActor
 final class NullSyncServiceTests: XCTestCase {
 
     func testInitialState_idle() {
@@ -150,6 +151,7 @@ final class NullSyncServiceTests: XCTestCase {
 
 // MARK: - SyncCoordinator tests
 
+@MainActor
 final class SyncCoordinatorTests: XCTestCase {
 
     func testPushAll_pushesBothRecordTypes() {

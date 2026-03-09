@@ -10,6 +10,7 @@ import CoreGraphics
 
 // MARK: - NullHapticEngine tests
 
+@MainActor
 final class NullHapticEngineTests: XCTestCase {
 
     func testPrepare_incrementsCallCount() {
@@ -79,10 +80,12 @@ private final class TrackingMockAudio: AudioControlling {
     func cancelPendingLifecycleWork() {}
 }
 
+@MainActor
 private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
     TracingViewModel(audio: TrackingMockAudio(), haptics: haptics)
 }
 
+@MainActor
 final class TracingViewModelHapticTests: XCTestCase {
 
     func testBeginTouch_firesStrokeBegan() {
@@ -104,22 +107,27 @@ final class TracingViewModelHapticTests: XCTestCase {
     func testLetterCompleted_firesLetterCompleted() {
         let haptics = NullHapticEngine()
         let vm = makeVM(haptics: haptics)
-        guard let letter = vm.letters.first else {
+        // letters is private; check via public currentLetterName instead
+        guard !vm.currentLetterName.isEmpty else {
             XCTSkip("No letters loaded in test bundle")
             return
         }
         haptics.reset()
 
-        // Drive all checkpoints home
+        // Drive the letter to completion by sweeping across the entire canvas.
+        // With standard difficulty the checkpoint radius is generous enough that
+        // a horizontal sweep will hit all checkpoints for the default A letter.
         let canvasSize = CGSize(width: 400, height: 400)
         let t0 = CACurrentMediaTime()
         vm.beginTouch(at: CGPoint(x: 0, y: 0), t: t0)
 
-        for stroke in letter.strokes.strokes {
-            for cp in stroke.checkpoints {
-                let px = cp.x * canvasSize.width
-                let py = cp.y * canvasSize.height
-                vm.updateTouch(at: CGPoint(x: px, y: py), t: CACurrentMediaTime() + 0.01, canvasSize: canvasSize)
+        // Sweep horizontally across the canvas at 5-pt intervals to hit checkpoints
+        var t = t0
+        for row in stride(from: 0, through: Int(canvasSize.height), by: 20) {
+            for col in stride(from: 0, through: Int(canvasSize.width), by: 5) {
+                t += 0.001
+                vm.updateTouch(at: CGPoint(x: CGFloat(col), y: CGFloat(row)),
+                                t: t, canvasSize: canvasSize)
             }
         }
 

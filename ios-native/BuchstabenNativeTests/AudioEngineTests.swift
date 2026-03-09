@@ -38,25 +38,26 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Instance setup
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         continueAfterFailure = false
         // Guard: skip entire suite if audio session unavailable (headless CI without audio HW)
         guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty || true else {
             XCTSkip("AVAudioSession has no viable route on this runner")
         }
+        // setUp is async throws so @MainActor isolation is preserved for this @MainActor class.
         engine = AudioEngine()
         // Ensure AVAudioEngine is in a known running state before any test that checks isRunning.
         // resumeAfterLifecycle() calls startIfNeeded() which starts the engine if not yet running.
         engine.resumeAfterLifecycle()
     }
 
-    override func tearDown() {
+    override func tearDown() async throws {
         // Cancel any pending debounce work before nil-ing engine to avoid DispatchWorkItem
         // firing after tearDown on a deallocated engine.
         engine.cancelPendingLifecycleWork()
         engine = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     // MARK: - Direct methods: stop() / play() / restart()
