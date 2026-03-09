@@ -4,21 +4,17 @@ import PackageDescription
 let package = Package(
     name: "BuchstabenNative",
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14)
-    ],
-    products: [
-        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"])
+        .iOS(.v17)
     ],
     targets: [
         .target(
             name: "BuchstabenNative",
-            path: "ios-native/BuchstabenNative"
+            path: "BuchstabenNative"
         ),
         .testTarget(
             name: "BuchstabenNativeTests",
             dependencies: ["BuchstabenNative"],
-            path: "ios-native/BuchstabenNativeTests"
+            path: "BuchstabenNativeTests"
         )
     ]
 )
