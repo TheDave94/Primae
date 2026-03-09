@@ -100,7 +100,24 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
 
     func resumeAfterLifecycle() {
         appIsForeground = true
-        attemptResumePlayback()
+        // Cancel any pending engine-pause task scheduled by suspendForLifecycle
+        // before attempting resume. Without this cancellation, the 0.2-second
+        // deferred engine.pause() fires after foreground return, stops the engine,
+        // and causes testPendingSafeEnginePause_cancelledByResume to fail.
+        cancelPendingLifecycleWork()
+        // Restart the AVAudioEngine if it was stopped during suspension so the
+        // next play() doesn't incur a cold-start latency. This must happen even
+        // when shouldResumePlayback is false (no active playback intent) so that
+        // the engine stays running and ready — matching the test assertion that
+        // engine.isRunning == true after suspend+resume with no pending pause.
+        startIfNeeded()
+        if canResumePlayback() {
+            prepareCurrentTrack()
+            if !player.isPlaying {
+                player.play()
+            }
+            isPlaying = true
+        }
     }
 
     func cancelPendingLifecycleWork() {

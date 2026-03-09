@@ -102,7 +102,14 @@ final class TracingViewModel: ObservableObject {
         smoothedVelocity = 0
         playbackMachine.resumeIntent = false
         cancelPendingPlaybackWork()
-        setPlaybackState(.idle, immediate: true)
+        // Always stop audio unconditionally: setPlaybackState only fires stop when
+        // the machine transitions active→idle, but any pending debounce work or
+        // not-yet-activated audio must also be silenced on reset. Explicit stop
+        // ensures tests that assert "reset stops audio" pass even if the debounce
+        // never fired (e.g. synchronous grid scans that don't pump the RunLoop).
+        audio.stop()
+        playbackMachine.forceIdle()
+        isPlaying = false
         didCompleteCurrentLetter = false
         completionDismissTask?.cancel()
         completionMessage = nil
