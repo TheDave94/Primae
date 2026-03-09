@@ -26,3 +26,8 @@ vcpkg/*.log
 *.swp
 new-sounds/
 ha-proposals/
+.build/
+.swiftpm/
+BuchstabenLernen/
+*.xcodeproj
+*.xcworkspace
