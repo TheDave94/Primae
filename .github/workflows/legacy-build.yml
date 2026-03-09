@@ -1,0 +1,17 @@
+name: "Legacy iOS Build"
+on:
+  push:
+    branches: ["main", "ux/**"]
+    paths: ["ios-build/**"]
+  pull_request:
+    branches: ["main", "ux/**"]
+    paths: ["ios-build/**"]
+  workflow_dispatch:
+jobs:
+  build:
+    name: Build (legacy ios-build/Timestretch)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: xcodebuild -project ios-build/Timestretch/Timestretch.xcodeproj -scheme Timestretch -destination 'generic/platform=iOS' -configuration Debug CODE_SIGNING_ALLOWED=NO build
