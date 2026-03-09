@@ -22,6 +22,7 @@ private func makeStore() -> JSONParentDashboardStore {
     return JSONParentDashboardStore(fileURL: url, calendar: utcCal())
 }
 
+@MainActor
 final class LetterAccuracyStatTests: XCTestCase {
 
     func testAverageAccuracy_empty() {

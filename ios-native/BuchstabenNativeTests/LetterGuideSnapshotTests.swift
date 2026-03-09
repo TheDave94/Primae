@@ -18,6 +18,7 @@ import UIKit
 #endif
 @testable import BuchstabenNative
 
+@MainActor
 final class LetterGuideSnapshotTests: XCTestCase {
 
     private let rect = CGRect(x: 0, y: 0, width: 200, height: 200)

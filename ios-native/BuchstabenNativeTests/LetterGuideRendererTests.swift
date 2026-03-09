@@ -9,6 +9,7 @@ import CoreGraphics
 import SwiftUI
 @testable import BuchstabenNative
 
+@MainActor
 final class LetterGuideRendererTests: XCTestCase {
 
     private let rect = CGRect(x: 0, y: 0, width: 400, height: 400)

@@ -24,6 +24,7 @@ private func date(_ year: Int, _ month: Int, _ day: Int, calendar: Calendar = ut
     return calendar.date(from: c)!
 }
 
+@MainActor
 final class StreakStoreTests: XCTestCase {
 
     // MARK: Initial state

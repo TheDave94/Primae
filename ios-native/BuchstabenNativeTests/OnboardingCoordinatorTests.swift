@@ -16,6 +16,7 @@ private func makeStore() -> JSONOnboardingStore {
 
 // MARK: - Coordinator state machine tests
 
+@MainActor
 final class OnboardingCoordinatorTests: XCTestCase {
 
     func testInitialStep_isWelcome() {

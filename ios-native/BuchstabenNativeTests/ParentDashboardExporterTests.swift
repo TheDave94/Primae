@@ -1,6 +1,7 @@
 import XCTest
 @testable import BuchstabenNative
 
+@MainActor
 final class ParentDashboardExporterTests: XCTestCase {
 
     // MARK: Helpers

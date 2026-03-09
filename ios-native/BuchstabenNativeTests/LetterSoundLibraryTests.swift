@@ -41,6 +41,7 @@ struct MockAudioSessionQuery: AudioSessionQuerying {
 
 // MARK: - BundledAudioAssetCatalog tests
 
+@MainActor
 final class BundledAudioAssetCatalogTests: XCTestCase {
 
     private let catalog = BundledAudioAssetCatalog()

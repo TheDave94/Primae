@@ -40,6 +40,7 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
 
 // MARK: - QuietHours tests
 
+@MainActor
 final class QuietHoursTests: XCTestCase {
 
     func testNonWrapping_inRange() {

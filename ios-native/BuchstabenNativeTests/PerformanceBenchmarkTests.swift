@@ -8,6 +8,7 @@ import XCTest
 import CoreGraphics
 @testable import BuchstabenNative
 
+@MainActor
 final class PerformanceBenchmarkTests: XCTestCase {
 
     // MARK: - StrokeTracker hit-test performance

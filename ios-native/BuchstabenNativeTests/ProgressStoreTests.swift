@@ -7,6 +7,7 @@
 import XCTest
 @testable import BuchstabenNative
 
+@MainActor
 final class ProgressStoreTests: XCTestCase {
 
     private var tempURL: URL!

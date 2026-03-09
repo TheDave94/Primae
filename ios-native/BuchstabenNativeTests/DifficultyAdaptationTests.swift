@@ -25,6 +25,7 @@ private func makePolicy(
     )
 }
 
+@MainActor
 final class DifficultyTierTests: XCTestCase {
 
     func testTierOrdering() {

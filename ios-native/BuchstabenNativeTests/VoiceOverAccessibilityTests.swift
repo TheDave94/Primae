@@ -10,6 +10,7 @@
 import XCTest
 @testable import BuchstabenNative
 
+@MainActor
 final class VoiceOverAccessibilityTests: XCTestCase {
 
     private var vm: TracingViewModel!

@@ -28,6 +28,7 @@ private func pt(_ x: Double, _ y: Double) -> CGPoint { CGPoint(x: x, y: y) }
 
 // MARK: - EuclideanStrokeRecognizer unit tests
 
+@MainActor
 final class EuclideanStrokeRecognizerTests: XCTestCase {
 
     let recognizer = EuclideanStrokeRecognizer()

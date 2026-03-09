@@ -66,6 +66,7 @@ private func makeSampleLetter(_ id: String = "A") -> LetterAsset {
 
 // MARK: - JSONLetterCache tests
 
+@MainActor
 final class JSONLetterCacheTests: XCTestCase {
 
     private var tempURL: URL!

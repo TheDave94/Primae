@@ -7,6 +7,7 @@
 import XCTest
 @testable import BuchstabenNative
 
+@MainActor
 final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Initial state

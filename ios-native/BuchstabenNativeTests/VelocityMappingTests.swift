@@ -8,6 +8,7 @@ import XCTest
 import CoreGraphics
 @testable import BuchstabenNative
 
+@MainActor
 final class VelocityMappingTests: XCTestCase {
 
     // Constants mirrored from TracingViewModel (not exposed, so duplicated here)

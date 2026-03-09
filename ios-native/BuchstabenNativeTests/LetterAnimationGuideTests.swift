@@ -21,6 +21,7 @@ private func makeGuide(stepCount: Int = 4, duration: TimeInterval = 0.3) -> Lett
 
 // MARK: - AnimationSpeed tests
 
+@MainActor
 final class AnimationSpeedTests: XCTestCase {
 
     func testNormalMultiplier_isOne() {

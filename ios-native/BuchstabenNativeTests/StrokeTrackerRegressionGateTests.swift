@@ -13,6 +13,7 @@ import XCTest
 import CoreGraphics
 @testable import BuchstabenNative
 
+@MainActor
 final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     // MARK: - Fixtures

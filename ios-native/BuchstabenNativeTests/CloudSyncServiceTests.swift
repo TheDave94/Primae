@@ -29,6 +29,7 @@ private func makeStreakStore() -> JSONStreakStore {
 
 // MARK: - SyncState equality
 
+@MainActor
 final class SyncStateTests: XCTestCase {
     func testIdle_equalToIdle() {
         XCTAssertEqual(SyncState.idle, .idle)

@@ -67,6 +67,7 @@ private extension MockResourceProvider {
 
 // MARK: - LetterRepositoryTests
 
+@MainActor
 final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 1 — Empty provider returns fallback (non-empty, non-crash)

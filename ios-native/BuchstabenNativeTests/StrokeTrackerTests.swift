@@ -56,6 +56,7 @@ private func completeAll(_ tracker: StrokeTracker, _ def: LetterStrokes) {
 
 // MARK: - StrokeTrackerTests
 
+@MainActor
 final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 1 — Pre-load nil-guard computed properties
