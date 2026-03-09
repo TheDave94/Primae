@@ -72,16 +72,19 @@ final class JSONLetterCacheTests: XCTestCase {
     private var tempURL: URL!
     private var cache: JSONLetterCache!
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async {
+        await super.setUp()
+        // setUp runs on @MainActor because the class is @MainActor-isolated.
+        // Using async override ensures Swift 6 does not treat this as a
+        // nonisolated XCTestCase.setUp call accessing @MainActor-isolated properties.
         tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("LetterCacheTest-\(UUID().uuidString).json")
         cache = JSONLetterCache(fileURL: tempURL)
     }
 
-    override func tearDown() {
+    override func tearDown() async {
         try? FileManager.default.removeItem(at: tempURL)
-        super.tearDown()
+        await super.tearDown()
     }
 
     func testSaveAndLoad_roundtrips() throws {
