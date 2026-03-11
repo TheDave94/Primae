@@ -15,7 +15,7 @@ import AVFoundation
 @MainActor
 final class AudioEngineTests: XCTestCase {
 
-    private var engine: AudioEngine!
+    private var engine: AudioEngine?
 
     // MARK: - Class-level session setup
     // Activate once per suite to avoid interrupting the shared session on every test setUp.
@@ -45,40 +45,43 @@ final class AudioEngineTests: XCTestCase {
         // default implementation is a no-op so omitting the super call is safe.
         continueAfterFailure = false
         // Guard: skip entire suite if audio session unavailable (headless CI without audio HW)
-        guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty || true else {
+        guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty else {
             throw XCTSkip("AVAudioSession has no viable route on this runner")
         }
         // setUp is async throws so @MainActor isolation is preserved for this @MainActor class.
         engine = AudioEngine()
         // Ensure AVAudioEngine is in a known running state before any test that checks isRunning.
         // resumeAfterLifecycle() calls startIfNeeded() which starts the engine if not yet running.
-        engine.resumeAfterLifecycle()
+        engine?.resumeAfterLifecycle()
     }
 
     override func tearDown() async throws {
         // Cancel any pending debounce work before nil-ing engine to avoid DispatchWorkItem
         // firing after tearDown on a deallocated engine.
-        engine.cancelPendingLifecycleWork()
+        engine?.cancelPendingLifecycleWork()
         engine = nil
         // Do NOT call super.tearDown() — same reason as setUp() above.
     }
 
     // MARK: - Direct methods: stop() / play() / restart()
 
-    func testStop_setsIsPlayingFalse() {
+    func testStop_setsIsPlayingFalse() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.stop()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugShouldResumePlayback)
     }
 
-    func testStop_isIdempotent() {
+    func testStop_isIdempotent() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.stop()
         engine.stop()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugShouldResumePlayback)
     }
 
-    func testPlay_withNoFile_doesNotCrash() {
+    func testPlay_withNoFile_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.play()
         // No file loaded — isPlaying stays false, but shouldResumePlayback must be set
         XCTAssertFalse(engine.isPlaying)
@@ -86,7 +89,8 @@ final class AudioEngineTests: XCTestCase {
                       "play() must set shouldResumePlayback=true even without a loaded file")
     }
 
-    func testRestart_withNoFile_doesNotCrashAndSetsShouldResume() {
+    func testRestart_withNoFile_doesNotCrashAndSetsShouldResume() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // restart() is a distinct code path: clears gate flags, calls prepareCurrentTrack, attemptResumePlayback
         engine.restart()
         XCTAssertFalse(engine.isPlaying)
@@ -98,13 +102,15 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - loadAudioFile edge cases
 
-    func testLoadAudioFile_missingFile_doesNotCrash() {
+    func testLoadAudioFile_missingFile_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.loadAudioFile(named: "nonexistent_totally_fake_file_xyz.mp3", autoplay: false)
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugShouldResumePlayback)
     }
 
-    func testLoadAudioFile_missingFile_autoplayTrue_doesNotCrash() {
+    func testLoadAudioFile_missingFile_autoplayTrue_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // autoplay=true with missing file must not crash or corrupt state
         engine.loadAudioFile(named: "nonexistent_totally_fake_file_xyz.mp3", autoplay: true)
         XCTAssertFalse(engine.isPlaying)
@@ -114,7 +120,8 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Interruption: .began
 
-    func testInterruptionBegan_stopsPlayback() {
+    func testInterruptionBegan_stopsPlayback() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postInterruption(type: .began)
         XCTAssertFalse(engine.isPlaying, "isPlaying must be false after interruption began")
         XCTAssertTrue(engine.debugInterrupted, "interrupted flag must be set")
@@ -124,7 +131,8 @@ final class AudioEngineTests: XCTestCase {
                       "interruptionResumeGateRequired must be set after .began")
     }
 
-    func testInterruptionBegan_isIdempotent() {
+    func testInterruptionBegan_isIdempotent() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postInterruption(type: .began)
         let interruptedAfterFirst = engine.debugInterrupted
         postInterruption(type: .began)
@@ -135,7 +143,8 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Interruption: .ended
 
-    func testInterruptionEnded_shouldResumeFalse_remainsPaused() {
+    func testInterruptionEnded_shouldResumeFalse_remainsPaused() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postInterruption(type: .began)
         postInterruption(type: .ended, shouldResume: false)
         XCTAssertFalse(engine.isPlaying, "Must stay paused when shouldResume=false")
@@ -144,7 +153,8 @@ final class AudioEngineTests: XCTestCase {
                        "interruptionShouldResume must be false")
     }
 
-    func testInterruptionEnded_shouldResumeTrue_setsFlag() {
+    func testInterruptionEnded_shouldResumeTrue_setsFlag() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postInterruption(type: .began)
         postInterruption(type: .ended, shouldResume: true)
         // Even without a loaded file, the flag must reflect the system's intent
@@ -153,13 +163,15 @@ final class AudioEngineTests: XCTestCase {
                       "interruptionShouldResume must be true when OS signals .shouldResume")
     }
 
-    func testInterruptionEnded_withoutPrecedingBegan_isHarmless() {
+    func testInterruptionEnded_withoutPrecedingBegan_isHarmless() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postInterruption(type: .ended, shouldResume: true)
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugInterrupted)
     }
 
-    func testInterruptionEnded_missingOptionKey_defaultsToNoResume() {
+    func testInterruptionEnded_missingOptionKey_defaultsToNoResume() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // Post .ended with no option key — edge case from older OS versions
         let userInfo: [AnyHashable: Any] = [
             AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue
@@ -177,33 +189,39 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Route Change
 
-    func testRouteChange_oldDeviceUnavailable_stopsPlayback() {
+    func testRouteChange_oldDeviceUnavailable_stopsPlayback() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertFalse(engine.isPlaying, "oldDeviceUnavailable must stop playback")
     }
 
-    func testRouteChange_oldDeviceUnavailable_isIdempotent() {
+    func testRouteChange_oldDeviceUnavailable_isIdempotent() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postRouteChange(reason: .oldDeviceUnavailable)
         postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertFalse(engine.isPlaying)
     }
 
-    func testRouteChange_newDeviceAvailable_doesNotCrash() {
+    func testRouteChange_newDeviceAvailable_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postRouteChange(reason: .newDeviceAvailable)
         XCTAssertFalse(engine.isPlaying) // no file; no shouldResume intent
     }
 
-    func testRouteChange_categoryChange_doesNotCrash() {
+    func testRouteChange_categoryChange_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postRouteChange(reason: .categoryChange)
         XCTAssertFalse(engine.isPlaying)
     }
 
-    func testRouteChange_wakeFromSleep_doesNotCrash() {
+    func testRouteChange_wakeFromSleep_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postRouteChange(reason: .wakeFromSleep)
         XCTAssertFalse(engine.isPlaying)
     }
 
-    func testRouteChange_malformedUserInfo_isHarmless() {
+    func testRouteChange_malformedUserInfo_isHarmless() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // Missing reason key — guard in handleRouteChange must absorb this silently
         NotificationCenter.default.post(
             name: AVAudioSession.routeChangeNotification,
@@ -216,32 +234,37 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Lifecycle
 
-    func testSuspendForLifecycle_stopsPlayback() {
+    func testSuspendForLifecycle_stopsPlayback() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugAppIsForeground)
     }
 
-    func testSuspendForLifecycle_isIdempotent() {
+    func testSuspendForLifecycle_isIdempotent() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         engine.suspendForLifecycle()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugAppIsForeground)
     }
 
-    func testResumeAfterLifecycle_setsAppIsForeground() {
+    func testResumeAfterLifecycle_setsAppIsForeground() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         engine.resumeAfterLifecycle()
         XCTAssertTrue(engine.debugAppIsForeground)
     }
 
-    func testSuspendThenResume_doesNotCrash() {
+    func testSuspendThenResume_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         engine.resumeAfterLifecycle()
         XCTAssertFalse(engine.isPlaying) // no file loaded
     }
 
-    func testCancelPendingLifecycleWork_isIdempotent() {
+    func testCancelPendingLifecycleWork_isIdempotent() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         engine.cancelPendingLifecycleWork()
         engine.cancelPendingLifecycleWork()
@@ -254,8 +277,8 @@ final class AudioEngineTests: XCTestCase {
     // from nil-ing `engine` before the async closure asserts, which would cause
     // vacuous passes via nil-coalescing.
 
-    func testPendingSafeEnginePause_firesAfterDelay() {
-        let localEngine = engine!  // strong capture — survives past tearDown if needed
+    func testPendingSafeEnginePause_firesAfterDelay() throws {
+        let localEngine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         localEngine.suspendForLifecycle()
 
         let exp = expectation(description: "AVAudioEngine pauses after 0.2s debounce")
@@ -267,8 +290,8 @@ final class AudioEngineTests: XCTestCase {
         wait(for: [exp], timeout: 1.0)
     }
 
-    func testPendingSafeEnginePause_cancelledByResume() {
-        let localEngine = engine!  // strong capture
+    func testPendingSafeEnginePause_cancelledByResume() throws {
+        let localEngine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         localEngine.suspendForLifecycle()
         // Immediately resume — DispatchWorkItem must be cancelled before it fires
         localEngine.resumeAfterLifecycle()
@@ -286,17 +309,20 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - setAdaptivePlayback clamping
 
-    func testSetAdaptivePlayback_clampsBelowMinSpeed_doesNotCrash() {
+    func testSetAdaptivePlayback_clampsBelowMinSpeed_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // min valid speed is 0.5; values below must be clamped, not crash
         engine.setAdaptivePlayback(speed: 0.1, horizontalBias: 0)
     }
 
-    func testSetAdaptivePlayback_clampsAboveMaxSpeed_doesNotCrash() {
+    func testSetAdaptivePlayback_clampsAboveMaxSpeed_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // max valid speed is 2.0; values above must be clamped, not crash
         engine.setAdaptivePlayback(speed: 9.9, horizontalBias: 0)
     }
 
-    func testSetAdaptivePlayback_clampsBias_doesNotCrash() {
+    func testSetAdaptivePlayback_clampsBias_doesNotCrash() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // pan range is -1.0...1.0
         engine.setAdaptivePlayback(speed: 1.0, horizontalBias: -5.0)
         engine.setAdaptivePlayback(speed: 1.0, horizontalBias: 5.0)
@@ -304,7 +330,8 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Interleaved / overlap scenarios
 
-    func testInterruptionDuringBackground_stateIsConsistent() {
+    func testInterruptionDuringBackground_stateIsConsistent() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         postInterruption(type: .began)
         XCTAssertTrue(engine.debugInterrupted)
@@ -315,7 +342,8 @@ final class AudioEngineTests: XCTestCase {
         XCTAssertTrue(engine.debugAppIsForeground)
     }
 
-    func testRouteChangeDuringInterruption_doesNotCorruptState() {
+    func testRouteChangeDuringInterruption_doesNotCorruptState() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         postInterruption(type: .began)
         postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertTrue(engine.debugInterrupted, "interrupted must remain set after route change during interruption")
@@ -325,17 +353,18 @@ final class AudioEngineTests: XCTestCase {
         XCTAssertTrue(engine.debugInterruptionShouldResume)
     }
 
-    func testRapidSuspendResumeCycle_completesWithinTimeout() {
+    func testRapidSuspendResumeCycle_completesWithinTimeout() throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // Wrap in expectation with explicit timeout so a deadlock surfaces as a fast failure
         // rather than hanging the CI job indefinitely.
         let exp = expectation(description: "20 rapid suspend/resume cycles complete without deadlock")
         DispatchQueue.main.async {
             for _ in 0..<20 {
-                self.engine.suspendForLifecycle()
-                self.engine.resumeAfterLifecycle()
+                engine.suspendForLifecycle()
+                engine.resumeAfterLifecycle()
             }
-            XCTAssertTrue(self.engine.debugAppIsForeground)
-            XCTAssertFalse(self.engine.isPlaying)
+            XCTAssertTrue(engine.debugAppIsForeground)
+            XCTAssertFalse(engine.isPlaying)
             exp.fulfill()
         }
         wait(for: [exp], timeout: 2.0)
