@@ -158,14 +158,26 @@ private extension LetterRepository {
         var issues: [ValidationIssue] = []
 
         let letters = urls.compactMap { url -> LetterAsset? in
-            guard url.lastPathComponent.hasSuffix("_strokes.json") else { return nil }
+            // Accept both "A_strokes.json" (old convention) and "strokes.json" (current convention
+            // where the file lives inside a per-letter folder like Letters/A/strokes.json).
+            let filename = url.lastPathComponent
+            let isStrokesFile = filename.hasSuffix("_strokes.json") || filename == "strokes.json"
+            guard isStrokesFile else { return nil }
             guard let data = try? Data(contentsOf: url),
                   let strokes = try? decoder.decode(LetterStrokes.self, from: data) else {
                 issues.append(.init(letter: url.lastPathComponent, message: "Invalid stroke JSON"))
                 return nil
             }
 
-            let base = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_strokes", with: "")
+            // Derive the letter base: "A_strokes.json" → "A", or "strokes.json" inside Letters/A/ → "A"
+            let base: String
+            if filename.hasSuffix("_strokes.json") {
+                base = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_strokes", with: "")
+            } else {
+                // "strokes.json" — use the parent folder name (e.g. Letters/A/strokes.json → "A")
+                base = url.deletingLastPathComponent().lastPathComponent
+            }
+            guard !base.isEmpty, base.count <= 2 else { return nil }
             let imageCandidates = ["Letters/\(base)/\(base).pbm", "\(base)/\(base).pbm", "\(base).pbm"]
             let imageName = imageCandidates.first(where: { bundleHasResource(at: $0) }) ?? "\(base).pbm"
 

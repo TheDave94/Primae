@@ -12,14 +12,37 @@ enum PBMLoader {
     }
 
     private static func resourceURL(for relativePath: String, bundle: Bundle) -> URL? {
-        // Try Bundle.main resourceURL + relative path
-        if let root = bundle.resourceURL {
-            let candidate = root.appendingPathComponent(relativePath)
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
-        }
-        // Fallback: bundle URL lookup
+        // Search the provided bundle first, then Bundle.module (SPM resource bundle) and Bundle.main.
+        // This ensures assets are found whether the caller specifies .main, .module, or a test bundle.
+        var bundles: [Bundle] = [bundle]
+        if bundle != .module { bundles.append(.module) }
+        if bundle != .main   { bundles.append(.main) }
+
         let ns = relativePath as NSString
-        return bundle.url(forResource: ns.deletingPathExtension, withExtension: ns.pathExtension.isEmpty ? nil : ns.pathExtension)
+        let resource = ns.deletingPathExtension
+        let ext = ns.pathExtension
+        let subdir = (ns.deletingLastPathComponent as NSString)
+
+        for b in bundles {
+            // FileManager path construction — most reliable for nested paths on device
+            if let root = b.resourceURL {
+                let candidate = root.appendingPathComponent(relativePath)
+                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            }
+            // Bundle API subdirectory lookup
+            let dir = String(subdir)
+            if !dir.isEmpty,
+               let url = b.url(forResource: (ns.lastPathComponent as NSString).deletingPathExtension,
+                               withExtension: ext.isEmpty ? nil : ext,
+                               subdirectory: dir) {
+                return url
+            }
+            // Bundle API flat lookup
+            if let url = b.url(forResource: resource, withExtension: ext.isEmpty ? nil : ext) {
+                return url
+            }
+        }
+        return nil
     }
 
     static func decode(data: Data) -> UIImage? {
