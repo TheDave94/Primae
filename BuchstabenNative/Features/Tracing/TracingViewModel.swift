@@ -69,6 +69,17 @@ public final class TracingViewModel: ObservableObject {
         self.adaptationPolicy = adaptationPolicy ?? MovingAverageAdaptationPolicy()
         haptics.prepare()
         letters = repo.loadLetters()
+        // DEBUG: print bundle contents to diagnose asset loading
+        let mainRoot = Bundle.main.resourceURL?.path ?? "nil"
+        print("[DEBUG] Bundle.main.resourceURL: \(mainRoot)")
+        let lettersPath = Bundle.main.resourceURL?.appendingPathComponent("Letters").path ?? "nil"
+        let lettersExists = FileManager.default.fileExists(atPath: lettersPath)
+        print("[DEBUG] Letters/ exists in Bundle.main: \(lettersExists) at \(lettersPath)")
+        print("[DEBUG] Letters loaded: \(letters.map { $0.name })")
+        if let lettersDir = Bundle.main.resourceURL?.appendingPathComponent("Letters") {
+            let contents = (try? FileManager.default.contentsOfDirectory(atPath: lettersDir.path)) ?? []
+            print("[DEBUG] Letters/ contents: \(contents)")
+        }
         guard let first = letters.first else { return }
         load(letter: first)
         toast("Ready")
