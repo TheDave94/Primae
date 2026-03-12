@@ -36,7 +36,6 @@ struct TracingCanvasView: View {
         .gesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
-                    print("[Gesture] DragGesture onChanged loc=\(value.location)")
                     if vm.activePath.isEmpty {
                         vm.beginTouch(at: value.location, t: CACurrentMediaTime())
                     }

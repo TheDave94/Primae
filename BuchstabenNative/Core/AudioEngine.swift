@@ -148,7 +148,6 @@ private extension AudioEngine {
             // FileManager path -- works for both flat and subdirectory paths
             if let root = bundle.resourceURL {
                 let candidate = root.appendingPathComponent(fileName)
-                print("[AudioEngine] trying: \(candidate.path) exists=\(FileManager.default.fileExists(atPath: candidate.path))")
                 if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
             }
             // Bundle API subdirectory lookup
@@ -173,7 +172,6 @@ private extension AudioEngine {
 
     func canResumePlayback() -> Bool {
         let result = appIsForeground && !interrupted && shouldResumePlayback && (!interruptionResumeGateRequired || interruptionShouldResume)
-        print("[AudioEngine] canResume=\(result) foreground=\(appIsForeground) interrupted=\(interrupted) shouldResume=\(shouldResumePlayback) gateRequired=\(interruptionResumeGateRequired) intShouldResume=\(interruptionShouldResume) engineRunning=\(engine.isRunning) isPlaying=\(isPlaying)")
         return result
     }
 

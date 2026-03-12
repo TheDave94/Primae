@@ -71,18 +71,12 @@ public final class TracingViewModel: ObservableObject {
         letters = repo.loadLetters()
         // DEBUG: print bundle contents to diagnose asset loading
         let mainRoot = Bundle.main.resourceURL?.path ?? "nil"
-        print("[DEBUG] Bundle.main.resourceURL: \(mainRoot)")
         let lettersPath = Bundle.main.resourceURL?.appendingPathComponent("Letters").path ?? "nil"
         let lettersExists = FileManager.default.fileExists(atPath: lettersPath)
-        print("[DEBUG] Letters/ exists in Bundle.main: \(lettersExists) at \(lettersPath)")
-        print("[DEBUG] Letters loaded: \(letters.map { $0.name })")
         letters.forEach { print("[DEBUG] \($0.name) audioFiles: \($0.audioFiles)") }
-        print("[DEBUG] Bundle.module.resourceURL: \(Bundle.module.resourceURL?.path ?? "nil")")
         let modLetters = Bundle.module.resourceURL?.appendingPathComponent("Letters").path ?? "nil"
-        print("[DEBUG] Letters/ in Bundle.module exists: \(FileManager.default.fileExists(atPath: modLetters))")
         if let lettersDir = Bundle.main.resourceURL?.appendingPathComponent("Letters") {
             let contents = (try? FileManager.default.contentsOfDirectory(atPath: lettersDir.path)) ?? []
-            print("[DEBUG] Letters/ contents: \(contents)")
         }
         guard let first = letters.first else { return }
         load(letter: first)
@@ -196,7 +190,6 @@ public final class TracingViewModel: ObservableObject {
     }
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
-        print("[Touch] beginTouch p=\(p) multiTouch=\(isMultiTouchNavigationActive) cooldown=\(t < singleTouchSuppressedUntil) singleActive=\(isSingleTouchInteractionActive)")
         guard !isMultiTouchNavigationActive else { return }
         guard t >= singleTouchSuppressedUntil else { return }
         guard !isSingleTouchInteractionActive else { return }
@@ -210,7 +203,6 @@ public final class TracingViewModel: ObservableObject {
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
-        print("[Touch] updateTouch p=\(p) multiTouch=\(isMultiTouchNavigationActive) singleActive=\(isSingleTouchInteractionActive) vel=\(smoothedVelocity)")
         guard !isMultiTouchNavigationActive else { return }
         guard isSingleTouchInteractionActive else { return }
         activePath.append(p)
