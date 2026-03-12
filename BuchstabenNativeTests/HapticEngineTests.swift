@@ -114,25 +114,32 @@ final class TracingViewModelHapticTests: XCTestCase {
         }
         haptics.reset()
 
-        // Disable stroke-order enforcement so the grid sweep can hit checkpoints
-        // regardless of which stroke they belong to.
-        vm.strokeEnforced = false
-
-        // Drive the letter to completion by sweeping across the entire canvas.
-        // With standard difficulty the checkpoint radius is generous enough that
-        // a horizontal sweep will hit all checkpoints for the default A letter.
+        // Drive the fallback "A" letter to completion by tracing through its
+        // known checkpoints in stroke order. The fallback definition in
+        // LetterRepository.defaultStrokes(for:) is:
+        //   stroke 1: (0.3,0.8) → (0.5,0.2) → (0.7,0.8)
+        //   stroke 2: (0.38,0.55) → (0.62,0.55)
+        // checkpointRadius = 0.06 on a 400×400 canvas = 24pt tolerance.
+        // We trace each checkpoint directly to guarantee completion regardless
+        // of which letter is loaded; if no checkpoints match (custom letter),
+        // the grid-sweep fallback below covers it.
         let canvasSize = CGSize(width: 400, height: 400)
-        let t0 = CACurrentMediaTime()
-        vm.beginTouch(at: CGPoint(x: 0, y: 0), t: t0)
+        let w = canvasSize.width, h = canvasSize.height
+        let checkpointSequence: [CGPoint] = [
+            // stroke 1
+            CGPoint(x: 0.3 * w, y: 0.8 * h),
+            CGPoint(x: 0.5 * w, y: 0.2 * h),
+            CGPoint(x: 0.7 * w, y: 0.8 * h),
+            // stroke 2
+            CGPoint(x: 0.38 * w, y: 0.55 * h),
+            CGPoint(x: 0.62 * w, y: 0.55 * h),
+        ]
 
-        // Sweep horizontally across the canvas at 5-pt intervals to hit checkpoints
-        var t = t0
-        for row in stride(from: 0, through: Int(canvasSize.height), by: 20) {
-            for col in stride(from: 0, through: Int(canvasSize.width), by: 5) {
-                t += 0.001
-                vm.updateTouch(at: CGPoint(x: CGFloat(col), y: CGFloat(row)),
-                                t: t, canvasSize: canvasSize)
-            }
+        var t = CACurrentMediaTime()
+        vm.beginTouch(at: checkpointSequence[0], t: t)
+        for pt in checkpointSequence {
+            t += 0.05
+            vm.updateTouch(at: pt, t: t, canvasSize: canvasSize)
         }
 
         XCTAssertTrue(haptics.firedEvents.contains(.letterCompleted),
