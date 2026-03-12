@@ -73,6 +73,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				DBDE4FAC2F632FC30052F95D /* BuchstabenApp */,
+				DBDE50052F6333E40052F95D /* Letters */,
 			);
 			name = BuchstabenApp;
 			packageProductDependencies = (
