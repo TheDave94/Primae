@@ -128,18 +128,26 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
 
 private extension AudioEngine {
     func resourceURL(for fileName: String) -> URL? {
-        if let direct = Bundle.main.url(forResource: fileName, withExtension: nil) {
-            return direct
-        }
-
+        // Try module bundle first (Swift PM resource bundle for this target)
+        let bundles: [Bundle] = [.module, .main]
         let ns = fileName as NSString
         let resource = ns.lastPathComponent
         let subdir = ns.deletingLastPathComponent
-        if !subdir.isEmpty,
-           let nested = Bundle.main.url(forResource: resource, withExtension: nil, subdirectory: subdir) {
-            return nested
-        }
 
+        for bundle in bundles {
+            // Direct flat lookup
+            if let url = bundle.url(forResource: fileName, withExtension: nil) { return url }
+            // Subdirectory lookup (e.g. "Letters/A/A1.mp3")
+            if !subdir.isEmpty,
+               let url = bundle.url(forResource: resource, withExtension: nil, subdirectory: subdir) {
+                return url
+            }
+            // FileManager-based path resolution (most reliable on device)
+            if let root = bundle.resourceURL {
+                let candidate = root.appendingPathComponent(fileName)
+                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            }
+        }
         return nil
     }
 

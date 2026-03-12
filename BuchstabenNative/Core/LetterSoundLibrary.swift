@@ -38,12 +38,40 @@ protocol AudioPlayerFactory {
 
 struct BundleAudioPlayerFactory: AudioPlayerFactory {
     func makePlayer(for resourceName: String, bundle: Bundle) throws -> AVAudioPlayer? {
-        guard let url = bundle.url(forResource: resourceName, withExtension: "mp3")
-               ?? bundle.url(forResource: resourceName, withExtension: "caf")
-               ?? bundle.url(forResource: resourceName, withExtension: "aiff") else {
-            return nil
-        }
+        guard let url = resolveURL(for: resourceName, in: bundle) else { return nil }
         return try AVAudioPlayer(contentsOf: url)
+    }
+
+    private func resolveURL(for resourceName: String, in bundle: Bundle) -> URL? {
+        let ns = resourceName as NSString
+        let file = ns.lastPathComponent
+        let subdir = ns.deletingLastPathComponent
+        let extensions = ["mp3", "wav", "caf", "aiff", "m4a"]
+
+        // 1. FileManager path -- most reliable for subdirectory assets on device
+        if let root = bundle.resourceURL {
+            let candidate = root.appendingPathComponent(resourceName)
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+
+        // 2. Bundle API with subdirectory
+        for ext in extensions {
+            if !subdir.isEmpty,
+               let url = bundle.url(forResource: (file as NSString).deletingPathExtension,
+                                    withExtension: ext,
+                                    subdirectory: subdir) {
+                return url
+            }
+        }
+
+        // 3. Flat bundle lookup
+        for ext in extensions {
+            if let url = bundle.url(forResource: (resourceName as NSString).deletingPathExtension,
+                                    withExtension: ext) {
+                return url
+            }
+        }
+        return nil
     }
 }
 
@@ -71,7 +99,7 @@ final class LetterSoundLibrary {
 
     init(catalog: AudioAssetCatalog = BundledAudioAssetCatalog(),
          factory: AudioPlayerFactory = BundleAudioPlayerFactory(),
-         bundle: Bundle = .main,
+         bundle: Bundle = .module,
          session: AudioSessionQuerying = LiveAudioSessionQuery()) {
         self.catalog = catalog
         self.factory = factory

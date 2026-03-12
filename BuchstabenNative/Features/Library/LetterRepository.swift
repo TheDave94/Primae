@@ -8,29 +8,31 @@ protocol LetterResourceProviding {
 struct BundleLetterResourceProvider: LetterResourceProviding {
     let bundle: Bundle
 
-    init(bundle: Bundle = .main) {
+    init(bundle: Bundle = .module) {
         self.bundle = bundle
     }
 
+    /// Enumerate all files reachable from this bundle using FileManager deep traversal.
+    /// `bundle.urls(forResourcesWithExtension:subdirectory:)` is unreliable on device
+    /// when extension is nil and subdirectories are involved; FileManager is authoritative.
     func allResourceURLs() -> [URL] {
-        var results: [URL] = bundle.urls(forResourcesWithExtension: nil, subdirectory: nil) ?? []
-
-        // Recursively enumerate BundleLetterResourceProvider/Resources/Letters and per-letter subfolders
-        // so that files like "Letters/A/A1.mp3" are discoverable on device (Bundle API only returns
-        // top-level resources without a subdirectory argument).
-        let lettersSubdirs = ["Letters"] + ["A","B","C","D","E","F","G","H","I","J","K","L","M",
-                                             "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
-                                             "Ä","Ö","Ü"].map { "Letters/\($0)" }
-        for subdir in lettersSubdirs {
-            if let urls = bundle.urls(forResourcesWithExtension: nil, subdirectory: subdir) {
-                results.append(contentsOf: urls)
-            }
+        guard let root = bundle.resourceURL else { return [] }
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: root,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return enumerator.compactMap { $0 as? URL }.filter {
+            (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
         }
-
-        return results
     }
 
     func resourceURL(for relativePath: String) -> URL? {
+        guard let root = bundle.resourceURL else { return nil }
+        let candidate = root.appendingPathComponent(relativePath)
+        if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        // Fallback: try bundle API for flat resources
         let ns = relativePath as NSString
         let file = ns.lastPathComponent
         let directory = ns.deletingLastPathComponent
