@@ -114,6 +114,10 @@ final class TracingViewModelHapticTests: XCTestCase {
         }
         haptics.reset()
 
+        // Disable stroke-order enforcement so the grid sweep can hit checkpoints
+        // regardless of which stroke they belong to.
+        vm.strokeEnforced = false
+
         // Drive the letter to completion by sweeping across the entire canvas.
         // With standard difficulty the checkpoint radius is generous enough that
         // a horizontal sweep will hit all checkpoints for the default A letter.
