@@ -2,6 +2,7 @@ import Foundation
 
 protocol LetterResourceProviding {
     var bundle: Bundle { get }
+    var searchBundles: [Bundle] { get }
     func allResourceURLs() -> [URL]
     func resourceURL(for relativePath: String) -> URL?
 }
@@ -229,7 +230,11 @@ private extension LetterRepository {
     func findAudioAssets(for base: String) -> [String] {
         let supported = Set(["mp3", "wav", "m4a", "aac", "flac", "ogg"])
         let allResources = resources.allResourceURLs()
-        let bundleRoot = resources.bundle.resourceURL?.path ?? ""
+        // Collect all bundle roots (with trailing slash) for relative path computation
+        let bundleRoots: [String] = resources.searchBundles.compactMap {
+            guard let p = $0.resourceURL?.path else { return nil }
+            return p.hasSuffix("/") ? p : p + "/"
+        }
 
         let audio = allResources.compactMap { url -> String? in
             let ext = url.pathExtension.lowercased()
@@ -238,10 +243,11 @@ private extension LetterRepository {
             let normalizedPath = url.path.replacingOccurrences(of: "\\", with: "/")
             let marker = "/\(base)/"
             if normalizedPath.range(of: marker, options: [.caseInsensitive]) != nil {
-                // Return path relative to bundle.resourceURL so AudioEngine can resolve it
-                if !bundleRoot.isEmpty, normalizedPath.hasPrefix(bundleRoot) {
-                    let rel = String(normalizedPath.dropFirst(bundleRoot.count))
-                    return rel.hasPrefix("/") ? String(rel.dropFirst()) : rel
+                // Return path relative to its bundle root (e.g. "Letters/A/A1.mp3")
+                for root in bundleRoots {
+                    if normalizedPath.hasPrefix(root) {
+                        return String(normalizedPath.dropFirst(root.count))
+                    }
                 }
                 // Fallback: return the letter-folder-relative path (old behaviour)
                 if let markerRange = normalizedPath.range(of: marker, options: [.caseInsensitive]) {

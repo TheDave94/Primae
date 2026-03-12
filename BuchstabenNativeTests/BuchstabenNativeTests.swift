@@ -491,6 +491,7 @@ private func validJSON(letter: String) -> String {
 
 private struct MockResourceProvider: LetterResourceProviding {
     var bundle: Bundle = .main
+    var searchBundles: [Bundle] { [bundle] }
     let urls: [URL]
     let byRelativePath: [String: URL]
 

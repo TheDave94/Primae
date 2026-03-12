@@ -19,6 +19,7 @@ private struct NullLetterCache: LetterCacheStoring {
 
 private final class MockResourceProvider: LetterResourceProviding {
     var bundle: Bundle = .main
+    var searchBundles: [Bundle] { [bundle] }
     /// Map from filename → URL (file:///mock/<filename>)
     private var resources: [String: URL] = [:]
 
@@ -110,6 +111,7 @@ final class LetterRepositoryTests: XCTestCase {
         // Since MockResourceProvider is file-based, add directly:
         class BadProvider: LetterResourceProviding {
             var bundle: Bundle = .main
+    var searchBundles: [Bundle] { [bundle] }
             let badURL: URL
             init(url: URL) { badURL = url }
             func allResourceURLs() -> [URL] { [badURL] }

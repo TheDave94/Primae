@@ -15,6 +15,7 @@ import Foundation
 
 private final class EmptyResourceProvider: LetterResourceProviding {
     var bundle: Bundle = .main
+    var searchBundles: [Bundle] { [bundle] }
     func allResourceURLs() -> [URL] { [] }
     func resourceURL(for relativePath: String) -> URL? { nil }
 }
