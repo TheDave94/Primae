@@ -15,10 +15,8 @@ struct TracingCanvasView: View {
             }
 
             if vm.showGhost {
-                let guideRect = CGRect(x: size.width * 0.14,
-                                       y: size.height * 0.1,
-                                       width: size.width * 0.72,
-                                       height: size.height * 0.8)
+                // Use the full canvas rect so the guide overlays exactly on the PBM bitmap
+                let guideRect = CGRect(origin: .zero, size: size)
                 if let ghost = LetterGuideRenderer.guidePath(for: vm.currentLetterName, in: guideRect) {
                     context.stroke(ghost, with: .color(.blue.opacity(0.22)), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
                 }

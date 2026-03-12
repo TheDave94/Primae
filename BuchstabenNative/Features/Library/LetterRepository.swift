@@ -326,14 +326,64 @@ private extension LetterRepository {
     }
 
     func defaultStrokes(for letter: String) -> LetterStrokes {
-        LetterStrokes(
-            letter: letter,
-            checkpointRadius: 0.06,
-            strokes: [
-                .init(id: 1, checkpoints: [.init(x: 0.3, y: 0.8), .init(x: 0.5, y: 0.2), .init(x: 0.7, y: 0.8)]),
-                .init(id: 2, checkpoints: [.init(x: 0.38, y: 0.55), .init(x: 0.62, y: 0.55)])
+        // Letter-specific checkpoints derived from PBM bitmap analysis.
+        // Coordinates are normalized [0,1] matching the actual letter positions in the PBM canvas.
+        // checkpointRadius 0.08 gives a generous hit zone (8% of canvas width).
+        let strokes: [StrokeDefinition]
+        switch letter.uppercased() {
+        case "A":
+            strokes = [
+                .init(id: 1, checkpoints: [.init(x: 0.22, y: 0.83), .init(x: 0.38, y: 0.50), .init(x: 0.55, y: 0.17)]),
+                .init(id: 2, checkpoints: [.init(x: 0.55, y: 0.17), .init(x: 0.67, y: 0.50), .init(x: 0.79, y: 0.83)]),
+                .init(id: 3, checkpoints: [.init(x: 0.35, y: 0.59), .init(x: 0.72, y: 0.59)])
             ]
-        )
+        case "F":
+            strokes = [
+                .init(id: 1, checkpoints: [.init(x: 0.41, y: 0.18), .init(x: 0.41, y: 0.50), .init(x: 0.41, y: 0.83)]),
+                .init(id: 2, checkpoints: [.init(x: 0.41, y: 0.20), .init(x: 0.66, y: 0.20)]),
+                .init(id: 3, checkpoints: [.init(x: 0.41, y: 0.49), .init(x: 0.62, y: 0.49)])
+            ]
+        case "I":
+            strokes = [
+                .init(id: 1, checkpoints: [.init(x: 0.38, y: 0.20), .init(x: 0.62, y: 0.20)]),
+                .init(id: 2, checkpoints: [.init(x: 0.50, y: 0.20), .init(x: 0.50, y: 0.50), .init(x: 0.50, y: 0.82)]),
+                .init(id: 3, checkpoints: [.init(x: 0.38, y: 0.82), .init(x: 0.62, y: 0.82)])
+            ]
+        case "K":
+            strokes = [
+                .init(id: 1, checkpoints: [.init(x: 0.41, y: 0.17), .init(x: 0.41, y: 0.50), .init(x: 0.41, y: 0.83)]),
+                .init(id: 2, checkpoints: [.init(x: 0.78, y: 0.17), .init(x: 0.60, y: 0.33), .init(x: 0.41, y: 0.50)]),
+                .init(id: 3, checkpoints: [.init(x: 0.41, y: 0.50), .init(x: 0.60, y: 0.67), .init(x: 0.78, y: 0.83)])
+            ]
+        case "L":
+            strokes = [
+                .init(id: 1, checkpoints: [.init(x: 0.44, y: 0.17), .init(x: 0.44, y: 0.50), .init(x: 0.44, y: 0.78)]),
+                .init(id: 2, checkpoints: [.init(x: 0.44, y: 0.78), .init(x: 0.70, y: 0.78)])
+            ]
+        case "M":
+            strokes = [
+                .init(id: 1, checkpoints: [
+                    .init(x: 0.13, y: 0.83), .init(x: 0.13, y: 0.50), .init(x: 0.13, y: 0.17),
+                    .init(x: 0.31, y: 0.35), .init(x: 0.50, y: 0.52),
+                    .init(x: 0.69, y: 0.35), .init(x: 0.87, y: 0.17),
+                    .init(x: 0.87, y: 0.50), .init(x: 0.87, y: 0.83)
+                ])
+            ]
+        case "O":
+            strokes = [
+                .init(id: 1, checkpoints: [
+                    .init(x: 0.50, y: 0.17), .init(x: 0.71, y: 0.33),
+                    .init(x: 0.71, y: 0.67), .init(x: 0.50, y: 0.83),
+                    .init(x: 0.29, y: 0.67), .init(x: 0.29, y: 0.33), .init(x: 0.50, y: 0.17)
+                ])
+            ]
+        default:
+            // Generic fallback for unknown letters
+            strokes = [
+                .init(id: 1, checkpoints: [.init(x: 0.50, y: 0.17), .init(x: 0.50, y: 0.50), .init(x: 0.50, y: 0.83)])
+            ]
+        }
+        return LetterStrokes(letter: letter, checkpointRadius: 0.08, strokes: strokes)
     }
 
     func fallbackSampleLetter() -> LetterAsset {

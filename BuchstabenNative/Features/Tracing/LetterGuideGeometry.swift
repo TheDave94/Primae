@@ -77,43 +77,59 @@ public struct LetterGuideGeometry {
     }
 
     // MARK: - Letter definitions
-
+    // Coordinates are normalized to [0,1] x [0,1] and match the PBM bitmap layout.
+    // Letters occupy roughly x=[0.22,0.79], y=[0.17,0.83] of the 2732×2048 canvas.
     static let guides: [String: [Segment]] = [
         "A": [
-            .line(CGPoint(x: 0.18, y: 0.88), CGPoint(x: 0.5, y: 0.12)),
-            .line(CGPoint(x: 0.82, y: 0.88), CGPoint(x: 0.5, y: 0.12)),
-            .line(CGPoint(x: 0.32, y: 0.56), CGPoint(x: 0.68, y: 0.56))
+            // Left diagonal: bottom-left → apex
+            .line(CGPoint(x: 0.22, y: 0.83), CGPoint(x: 0.55, y: 0.17)),
+            // Right diagonal: apex → bottom-right
+            .line(CGPoint(x: 0.55, y: 0.17), CGPoint(x: 0.79, y: 0.83)),
+            // Crossbar at ~60% down
+            .line(CGPoint(x: 0.35, y: 0.59), CGPoint(x: 0.72, y: 0.59))
         ],
         "F": [
-            .line(CGPoint(x: 0.25, y: 0.12), CGPoint(x: 0.25, y: 0.88)),
-            .line(CGPoint(x: 0.25, y: 0.12), CGPoint(x: 0.78, y: 0.12)),
-            .line(CGPoint(x: 0.25, y: 0.5), CGPoint(x: 0.68, y: 0.5))
+            // Vertical stem at x≈0.41, top-to-bottom
+            .line(CGPoint(x: 0.41, y: 0.18), CGPoint(x: 0.41, y: 0.83)),
+            // Top horizontal bar
+            .line(CGPoint(x: 0.41, y: 0.20), CGPoint(x: 0.66, y: 0.20)),
+            // Mid horizontal bar at y≈0.49
+            .line(CGPoint(x: 0.41, y: 0.49), CGPoint(x: 0.62, y: 0.49))
         ],
         "I": [
-            .line(CGPoint(x: 0.2, y: 0.12), CGPoint(x: 0.8, y: 0.12)),
-            .line(CGPoint(x: 0.5, y: 0.12), CGPoint(x: 0.5, y: 0.88)),
-            .line(CGPoint(x: 0.2, y: 0.88), CGPoint(x: 0.8, y: 0.88))
+            // Top serif
+            .line(CGPoint(x: 0.38, y: 0.20), CGPoint(x: 0.62, y: 0.20)),
+            // Vertical stem
+            .line(CGPoint(x: 0.50, y: 0.20), CGPoint(x: 0.50, y: 0.82)),
+            // Bottom serif
+            .line(CGPoint(x: 0.38, y: 0.82), CGPoint(x: 0.62, y: 0.82))
         ],
         "K": [
-            .line(CGPoint(x: 0.25, y: 0.12), CGPoint(x: 0.25, y: 0.88)),
-            .line(CGPoint(x: 0.75, y: 0.12), CGPoint(x: 0.25, y: 0.52)),
-            .line(CGPoint(x: 0.25, y: 0.52), CGPoint(x: 0.78, y: 0.88))
+            // Vertical stem at x≈0.41
+            .line(CGPoint(x: 0.41, y: 0.17), CGPoint(x: 0.41, y: 0.83)),
+            // Upper diagonal: top-right → stem junction
+            .line(CGPoint(x: 0.78, y: 0.17), CGPoint(x: 0.41, y: 0.50)),
+            // Lower diagonal: stem junction → bottom-right
+            .line(CGPoint(x: 0.41, y: 0.50), CGPoint(x: 0.78, y: 0.83))
         ],
         "L": [
-            .line(CGPoint(x: 0.25, y: 0.12), CGPoint(x: 0.25, y: 0.88)),
-            .line(CGPoint(x: 0.25, y: 0.88), CGPoint(x: 0.8, y: 0.88))
+            // Vertical stem at x≈0.44
+            .line(CGPoint(x: 0.44, y: 0.17), CGPoint(x: 0.44, y: 0.78)),
+            // Baseline
+            .line(CGPoint(x: 0.44, y: 0.78), CGPoint(x: 0.70, y: 0.78))
         ],
         "M": [
             .polyline([
-                CGPoint(x: 0.15, y: 0.88),
-                CGPoint(x: 0.15, y: 0.12),
-                CGPoint(x: 0.5, y: 0.52),
-                CGPoint(x: 0.85, y: 0.12),
-                CGPoint(x: 0.85, y: 0.88)
+                CGPoint(x: 0.13, y: 0.83),
+                CGPoint(x: 0.13, y: 0.17),
+                CGPoint(x: 0.50, y: 0.52),
+                CGPoint(x: 0.87, y: 0.17),
+                CGPoint(x: 0.87, y: 0.83)
             ])
         ],
         "O": [
-            .arc(center: CGPoint(x: 0.5, y: 0.5), radius: 0.36, start: 0, end: 360, clockwise: false)
+            // Ellipse: center (0.50, 0.50), rx≈0.21, ry≈0.33 — approximated as arc scaled to rect
+            .arc(center: CGPoint(x: 0.50, y: 0.50), radius: 0.33, start: 0, end: 360, clockwise: false)
         ]
     ]
 }
