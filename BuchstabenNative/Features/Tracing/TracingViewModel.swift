@@ -196,6 +196,7 @@ public final class TracingViewModel: ObservableObject {
     }
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+        print("[Touch] beginTouch p=\(p) multiTouch=\(isMultiTouchNavigationActive) cooldown=\(t < singleTouchSuppressedUntil) singleActive=\(isSingleTouchInteractionActive)")
         guard !isMultiTouchNavigationActive else { return }
         guard t >= singleTouchSuppressedUntil else { return }
         guard !isSingleTouchInteractionActive else { return }
