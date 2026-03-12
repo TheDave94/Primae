@@ -1,0 +1,26 @@
+{
+  "letter": "L",
+  "checkpointRadius": 0.04,
+  "comment": "Coords measured from debug screenshot (1194x896). 2 strokes: spine top→bot, foot L→R.",
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Vertical stroke: top to bottom",
+      "checkpoints": [
+        {"x": 0.448, "y": 0.234},
+        {"x": 0.446, "y": 0.379},
+        {"x": 0.444, "y": 0.547},
+        {"x": 0.448, "y": 0.731}
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Baseline foot: left to right",
+      "checkpoints": [
+        {"x": 0.448, "y": 0.748},
+        {"x": 0.536, "y": 0.753},
+        {"x": 0.624, "y": 0.753}
+      ]
+    }
+  ]
+}

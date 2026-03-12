@@ -1,0 +1,35 @@
+{
+  "letter": "F",
+  "checkpointRadius": 0.04,
+  "comment": "Coords measured from debug screenshot (1194x896). 3 strokes: spine top→bot, top bar L→R, mid bar L→R.",
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Vertical spine: top to bottom",
+      "checkpoints": [
+        {"x": 0.444, "y": 0.251},
+        {"x": 0.436, "y": 0.424},
+        {"x": 0.431, "y": 0.569},
+        {"x": 0.444, "y": 0.759}
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Top crossbar: left to right",
+      "checkpoints": [
+        {"x": 0.456, "y": 0.268},
+        {"x": 0.570, "y": 0.268},
+        {"x": 0.670, "y": 0.279}
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "Mid crossbar: left to right",
+      "checkpoints": [
+        {"x": 0.452, "y": 0.508},
+        {"x": 0.536, "y": 0.508},
+        {"x": 0.607, "y": 0.511}
+      ]
+    }
+  ]
+}

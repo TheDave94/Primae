@@ -77,59 +77,70 @@ public struct LetterGuideGeometry {
     }
 
     // MARK: - Letter definitions
-    // Coordinates are normalized to [0,1] x [0,1] and match the PBM bitmap layout.
-    // Letters occupy roughly x=[0.22,0.79], y=[0.17,0.83] of the 2732×2048 canvas.
+    // Coordinates measured from real device debug screenshots in the legacy Timestretch build.
+    // Stroke order and direction match the strokes.json checkpoint files exactly.
     static let guides: [String: [Segment]] = [
         "A": [
-            // Left diagonal: bottom-left → apex
-            .line(CGPoint(x: 0.22, y: 0.83), CGPoint(x: 0.55, y: 0.17)),
-            // Right diagonal: apex → bottom-right
-            .line(CGPoint(x: 0.55, y: 0.17), CGPoint(x: 0.79, y: 0.83)),
-            // Crossbar at ~60% down
-            .line(CGPoint(x: 0.35, y: 0.59), CGPoint(x: 0.72, y: 0.59))
+            // Stroke 1: left leg — apex (top-center) DOWN to bottom-left
+            .line(CGPoint(x: 0.507, y: 0.240), CGPoint(x: 0.360, y: 0.759)),
+            // Stroke 2: right leg — apex (top-center) DOWN to bottom-right
+            .line(CGPoint(x: 0.532, y: 0.240), CGPoint(x: 0.678, y: 0.759)),
+            // Stroke 3: crossbar — left to right
+            .line(CGPoint(x: 0.377, y: 0.597), CGPoint(x: 0.620, y: 0.597))
         ],
         "F": [
-            // Vertical stem at x≈0.41, top-to-bottom
-            .line(CGPoint(x: 0.41, y: 0.18), CGPoint(x: 0.41, y: 0.83)),
-            // Top horizontal bar
-            .line(CGPoint(x: 0.41, y: 0.20), CGPoint(x: 0.66, y: 0.20)),
-            // Mid horizontal bar at y≈0.49
-            .line(CGPoint(x: 0.41, y: 0.49), CGPoint(x: 0.62, y: 0.49))
+            // Stroke 1: vertical spine — top to bottom
+            .line(CGPoint(x: 0.444, y: 0.251), CGPoint(x: 0.444, y: 0.759)),
+            // Stroke 2: top crossbar — left to right
+            .line(CGPoint(x: 0.456, y: 0.268), CGPoint(x: 0.670, y: 0.279)),
+            // Stroke 3: mid crossbar — left to right
+            .line(CGPoint(x: 0.452, y: 0.508), CGPoint(x: 0.607, y: 0.511))
         ],
         "I": [
-            // Top serif
-            .line(CGPoint(x: 0.38, y: 0.20), CGPoint(x: 0.62, y: 0.20)),
-            // Vertical stem
-            .line(CGPoint(x: 0.50, y: 0.20), CGPoint(x: 0.50, y: 0.82)),
-            // Bottom serif
-            .line(CGPoint(x: 0.38, y: 0.82), CGPoint(x: 0.62, y: 0.82))
+            // Stroke 1: straight down (single stroke, no serifs in checkpoint data)
+            .line(CGPoint(x: 0.532, y: 0.234), CGPoint(x: 0.532, y: 0.776))
         ],
         "K": [
-            // Vertical stem at x≈0.41
-            .line(CGPoint(x: 0.41, y: 0.17), CGPoint(x: 0.41, y: 0.83)),
-            // Upper diagonal: top-right → stem junction
-            .line(CGPoint(x: 0.78, y: 0.17), CGPoint(x: 0.41, y: 0.50)),
-            // Lower diagonal: stem junction → bottom-right
-            .line(CGPoint(x: 0.41, y: 0.50), CGPoint(x: 0.78, y: 0.83))
+            // Stroke 1: vertical spine — top to bottom
+            .line(CGPoint(x: 0.465, y: 0.223), CGPoint(x: 0.431, y: 0.770)),
+            // Stroke 2: upper arm — top-right DOWN-LEFT to junction
+            .line(CGPoint(x: 0.637, y: 0.223), CGPoint(x: 0.536, y: 0.480)),
+            // Stroke 3: lower arm — junction DOWN-RIGHT to bottom-right
+            .line(CGPoint(x: 0.523, y: 0.519), CGPoint(x: 0.653, y: 0.781))
         ],
         "L": [
-            // Vertical stem at x≈0.44
-            .line(CGPoint(x: 0.44, y: 0.17), CGPoint(x: 0.44, y: 0.78)),
-            // Baseline
-            .line(CGPoint(x: 0.44, y: 0.78), CGPoint(x: 0.70, y: 0.78))
+            // Stroke 1: vertical stroke — top to bottom
+            .line(CGPoint(x: 0.448, y: 0.234), CGPoint(x: 0.448, y: 0.731)),
+            // Stroke 2: baseline foot — left to right
+            .line(CGPoint(x: 0.448, y: 0.748), CGPoint(x: 0.624, y: 0.753))
         ],
         "M": [
-            .polyline([
-                CGPoint(x: 0.13, y: 0.83),
-                CGPoint(x: 0.13, y: 0.17),
-                CGPoint(x: 0.50, y: 0.52),
-                CGPoint(x: 0.87, y: 0.17),
-                CGPoint(x: 0.87, y: 0.83)
-            ])
+            // Stroke 1: left spine — top-left down to bottom-left
+            .line(CGPoint(x: 0.302, y: 0.301), CGPoint(x: 0.297, y: 0.759)),
+            // Stroke 2: left diagonal — top-left DOWN-RIGHT to valley
+            .line(CGPoint(x: 0.369, y: 0.257), CGPoint(x: 0.511, y: 0.625)),
+            // Stroke 3: right diagonal — valley UP-RIGHT to top-right
+            .line(CGPoint(x: 0.549, y: 0.608), CGPoint(x: 0.670, y: 0.312)),
+            // Stroke 4: right spine — top-right down to bottom-right
+            .line(CGPoint(x: 0.737, y: 0.240), CGPoint(x: 0.754, y: 0.770))
         ],
         "O": [
-            // Ellipse: center (0.50, 0.50), rx≈0.21, ry≈0.33 — approximated as arc scaled to rect
-            .arc(center: CGPoint(x: 0.50, y: 0.50), radius: 0.33, start: 0, end: 360, clockwise: false)
+            // Stroke 1: clockwise oval starting top-left, all the way around
+            .polyline([
+                CGPoint(x: 0.436, y: 0.268),
+                CGPoint(x: 0.523, y: 0.257),
+                CGPoint(x: 0.641, y: 0.268),
+                CGPoint(x: 0.720, y: 0.368),
+                CGPoint(x: 0.737, y: 0.491),
+                CGPoint(x: 0.716, y: 0.625),
+                CGPoint(x: 0.657, y: 0.725),
+                CGPoint(x: 0.553, y: 0.765),
+                CGPoint(x: 0.440, y: 0.725),
+                CGPoint(x: 0.356, y: 0.608),
+                CGPoint(x: 0.335, y: 0.480),
+                CGPoint(x: 0.356, y: 0.357),
+                CGPoint(x: 0.436, y: 0.268)
+            ])
         ]
     ]
 }

@@ -1,0 +1,25 @@
+{
+  "letter": "O",
+  "checkpointRadius": 0.04,
+  "comment": "Coords measured from debug screenshot (1194x896). 1 stroke: clockwise oval from top-left.",
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Oval: start top-left, clockwise all the way around",
+      "checkpoints": [
+        {"x": 0.436, "y": 0.268},
+        {"x": 0.523, "y": 0.257},
+        {"x": 0.641, "y": 0.268},
+        {"x": 0.720, "y": 0.368},
+        {"x": 0.737, "y": 0.491},
+        {"x": 0.716, "y": 0.625},
+        {"x": 0.657, "y": 0.725},
+        {"x": 0.553, "y": 0.765},
+        {"x": 0.440, "y": 0.725},
+        {"x": 0.356, "y": 0.608},
+        {"x": 0.335, "y": 0.480},
+        {"x": 0.356, "y": 0.357}
+      ]
+    }
+  ]
+}
