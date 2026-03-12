@@ -33,18 +33,6 @@ struct TracingCanvasView: View {
             context.fill(Path(fillRect), with: .color(differentiateWithoutColor ? .blue : .green))
         }
         .contentShape(Rectangle())
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if vm.activePath.isEmpty {
-                        vm.beginTouch(at: value.location, t: CACurrentMediaTime())
-                    }
-                    vm.updateTouch(at: value.location,
-                                   t: CACurrentMediaTime(),
-                                   canvasSize: geo.size)
-                }
-                .onEnded { _ in vm.endTouch() }
-        )
     }
 
     var body: some View {
@@ -70,15 +58,20 @@ struct TracingCanvasView: View {
                 )
             )
             .overlay(
-                MultiTouchGestureOverlay(
+                // Single UIView handles all finger touches: 1-finger → tracing,
+                // 2-finger pan → letter/audio navigation, 2-finger tap → random,
+                // 3-finger tap → ghost. Using UIKit directly avoids SwiftUI
+                // DragGesture stealing touches before multi-touch recognizers fire.
+                UnifiedTouchOverlay(
+                    canvasSize: geo.size,
+                    onSingleTouchBegan: { pt, t in vm.beginTouch(at: pt, t: t) },
+                    onSingleTouchMoved: { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
+                    onSingleTouchEnded: { vm.endTouch() },
                     onTwoFingerPanBegan: { vm.beginMultiTouchNavigation() },
                     onTwoFingerPanEnded: { dx, dy in
                         defer { vm.endMultiTouchNavigation() }
-                        let absX = abs(dx)
-                        let absY = abs(dy)
-                        let threshold: CGFloat = 40
-
-                        guard max(absX, absY) > threshold else { return }
+                        let absX = abs(dx), absY = abs(dy)
+                        guard max(absX, absY) > 40 else { return }
                         if absX > absY {
                             if dx < 0 { vm.nextLetter() } else { vm.previousLetter() }
                         } else {
@@ -92,7 +85,6 @@ struct TracingCanvasView: View {
                     },
                     onThreeFingerTap: { vm.toggleGhost() }
                 )
-                .allowsHitTesting(true)
             )
         }
     }
@@ -140,7 +132,17 @@ private struct ProgressPill: View {
     }
 }
 
-private struct MultiTouchGestureOverlay: UIViewRepresentable {
+// MARK: - Unified touch overlay
+// Handles all finger input in one UIView: 1-finger tracing via touchesBegan/Moved/Ended,
+// plus 2-finger pan/tap and 3-finger tap via UIGestureRecognizers.
+// This avoids the fundamental conflict where SwiftUI's DragGesture intercepts all touches
+// before UIKit gesture recognizers on sibling/child views can claim them.
+
+private struct UnifiedTouchOverlay: UIViewRepresentable {
+    let canvasSize: CGSize
+    let onSingleTouchBegan: (CGPoint, CFTimeInterval) -> Void
+    let onSingleTouchMoved: (CGPoint, CFTimeInterval, CGSize) -> Void
+    let onSingleTouchEnded: () -> Void
     let onTwoFingerPanBegan: () -> Void
     let onTwoFingerPanEnded: (CGFloat, CGFloat) -> Void
     let onTwoFingerTap: () -> Void
@@ -148,6 +150,10 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
+            canvasSize: canvasSize,
+            onSingleTouchBegan: onSingleTouchBegan,
+            onSingleTouchMoved: onSingleTouchMoved,
+            onSingleTouchEnded: onSingleTouchEnded,
             onTwoFingerPanBegan: onTwoFingerPanBegan,
             onTwoFingerPanEnded: onTwoFingerPanEnded,
             onTwoFingerTap: onTwoFingerTap,
@@ -155,9 +161,10 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
         )
     }
 
-    func makeUIView(context: Context) -> PassthroughView {
-        let view = PassthroughView(frame: .zero)
+    func makeUIView(context: Context) -> TouchView {
+        let view = TouchView(coordinator: context.coordinator)
         view.backgroundColor = .clear
+        view.isMultipleTouchEnabled = true
 
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerPan(_:)))
         pan.minimumNumberOfTouches = 2
@@ -185,49 +192,94 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: PassthroughView, context: Context) {}
+    func updateUIView(_ uiView: TouchView, context: Context) {
+        context.coordinator.canvasSize = canvasSize
+    }
 
-    /// A UIView that is transparent to single-finger hit testing but captures
-    /// multi-finger events for its gesture recognizers.
-    /// - For 2+ finger touches: returns `self` so UIKit delivers touches to the
-    ///   pan/tap gesture recognizers attached to this view.
-    /// - For single-finger touches: returns `nil` so the touch falls through to
-    ///   the SwiftUI DragGesture on the underlying Canvas.
-    final class PassthroughView: UIView {
-        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            guard bounds.contains(point) else { return nil }
-            // Return self for multi-finger events so gesture recognizers fire.
-            // Return nil for single-finger so the DragGesture underneath gets it.
-            let touchCount = event?.allTouches?.count ?? 0
-            return touchCount >= 2 ? self : nil
+    // Full-coverage UIView — owns all touches (finger + Apple Pencil exclusion handled in Coordinator)
+    final class TouchView: UIView {
+        var coordinator: Coordinator
+        init(coordinator: Coordinator) {
+            self.coordinator = coordinator
+            super.init(frame: .zero)
         }
+        required init?(coder: NSCoder) { fatalError() }
 
-        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
-            bounds.contains(point)
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            coordinator.touchesBegan(touches, with: event, in: self)
+        }
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            coordinator.touchesMoved(touches, with: event, in: self)
+        }
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            coordinator.touchesEnded(touches, with: event)
+        }
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+            coordinator.touchesEnded(touches, with: event)
         }
     }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var canvasSize: CGSize
+        private let onSingleTouchBegan: (CGPoint, CFTimeInterval) -> Void
+        private let onSingleTouchMoved: (CGPoint, CFTimeInterval, CGSize) -> Void
+        private let onSingleTouchEnded: () -> Void
         private let onTwoFingerPanBegan: () -> Void
         private let onTwoFingerPanEnded: (CGFloat, CGFloat) -> Void
         private let onTwoFingerTap: () -> Void
         private let onThreeFingerTap: () -> Void
 
-        init(
-            onTwoFingerPanBegan: @escaping () -> Void,
-            onTwoFingerPanEnded: @escaping (CGFloat, CGFloat) -> Void,
-            onTwoFingerTap: @escaping () -> Void,
-            onThreeFingerTap: @escaping () -> Void
-        ) {
+        // Track active single-finger touch identity
+        private weak var trackedTouch: UITouch?
+
+        init(canvasSize: CGSize,
+             onSingleTouchBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
+             onSingleTouchMoved: @escaping (CGPoint, CFTimeInterval, CGSize) -> Void,
+             onSingleTouchEnded: @escaping () -> Void,
+             onTwoFingerPanBegan: @escaping () -> Void,
+             onTwoFingerPanEnded: @escaping (CGFloat, CGFloat) -> Void,
+             onTwoFingerTap: @escaping () -> Void,
+             onThreeFingerTap: @escaping () -> Void) {
+            self.canvasSize = canvasSize
+            self.onSingleTouchBegan = onSingleTouchBegan
+            self.onSingleTouchMoved = onSingleTouchMoved
+            self.onSingleTouchEnded = onSingleTouchEnded
             self.onTwoFingerPanBegan = onTwoFingerPanBegan
             self.onTwoFingerPanEnded = onTwoFingerPanEnded
             self.onTwoFingerTap = onTwoFingerTap
             self.onThreeFingerTap = onThreeFingerTap
         }
 
+        func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?, in view: UIView) {
+            let allTouches = event?.allTouches ?? touches
+            // Ignore pencil — handled by PencilAwareCanvasOverlay
+            let fingerTouches = allTouches.filter { $0.type != .pencil }
+            guard fingerTouches.count == 1, trackedTouch == nil else { return }
+            guard let t = fingerTouches.first else { return }
+            trackedTouch = t
+            let pt = t.location(in: view)
+            onSingleTouchBegan(pt, t.timestamp)
+        }
+
+        func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?, in view: UIView) {
+            guard let tracked = trackedTouch, touches.contains(tracked) else { return }
+            let pt = tracked.location(in: view)
+            onSingleTouchMoved(pt, tracked.timestamp, canvasSize)
+        }
+
+        func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let tracked = trackedTouch, touches.contains(tracked) else { return }
+            trackedTouch = nil
+            onSingleTouchEnded()
+        }
+
+        // MARK: Gesture recognizer handlers
+
         @objc func handleTwoFingerPan(_ recognizer: UIPanGestureRecognizer) {
             switch recognizer.state {
             case .began:
+                trackedTouch = nil  // cancel any active single-touch tracing
+                onSingleTouchEnded()
                 onTwoFingerPanBegan()
             case .ended, .cancelled, .failed:
                 let t = recognizer.translation(in: recognizer.view)
@@ -247,9 +299,9 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
             onThreeFingerTap()
         }
 
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            true
-        }
+        // Allow simultaneous recognition so pan + tap failure requirement works cleanly
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
     }
 }
 
