@@ -48,7 +48,7 @@ jobs:
         run: |
           xcodebuild \
             -scheme "${{ steps.scheme.outputs.scheme }}" \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             build 2>&1 | tee /tmp/build.log
@@ -60,7 +60,7 @@ jobs:
         run: |
           xcodebuild \
             -scheme "${{ steps.scheme.outputs.scheme }}" \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             test 2>&1 | tee /tmp/test.log

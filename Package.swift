@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "BuchstabenNative",
     platforms: [
-        .iOS(.v17)
+        .iOS(.v18)
     ],
     // ADD THIS NEW PRODUCTS SECTION:
     products: [
