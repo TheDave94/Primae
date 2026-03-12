@@ -156,8 +156,8 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
         )
     }
 
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView(frame: .zero)
+    func makeUIView(context: Context) -> PassthroughView {
+        let view = PassthroughView(frame: .zero)
         view.backgroundColor = .clear
 
         let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTwoFingerPan(_:)))
@@ -186,7 +186,20 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func updateUIView(_ uiView: PassthroughView, context: Context) {}
+
+    /// A UIView that only claims hit tests when 2+ fingers are involved,
+    /// so single-finger drags fall through to the SwiftUI DragGesture below.
+    final class PassthroughView: UIView {
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            let touchCount = event?.allTouches?.filter {
+                $0.phase != .cancelled && $0.phase != .ended
+            }.count ?? 0
+            // Only intercept multi-touch (2+ fingers); let single touches pass through
+            guard touchCount >= 2 else { return nil }
+            return super.hitTest(point, with: event)
+        }
+    }
 
     final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         private let onTwoFingerPanBegan: () -> Void
