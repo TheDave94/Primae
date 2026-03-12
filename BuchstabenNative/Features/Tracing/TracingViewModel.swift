@@ -209,6 +209,7 @@ public final class TracingViewModel: ObservableObject {
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
+        print("[Touch] updateTouch p=\(p) multiTouch=\(isMultiTouchNavigationActive) singleActive=\(isSingleTouchInteractionActive) vel=\(smoothedVelocity)")
         guard !isMultiTouchNavigationActive else { return }
         guard isSingleTouchInteractionActive else { return }
         activePath.append(p)
