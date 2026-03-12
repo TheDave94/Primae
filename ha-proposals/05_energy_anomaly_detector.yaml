@@ -1,0 +1,228 @@
+# Proposal: Energy Baseline Anomaly Detector
+# 4-week rolling per-hour-of-week kWh average, >30% deviation alert
+# commit: bf8cb617
+#
+# ── DESIGN ───────────────────────────────────────────────────────────────────
+#
+# 168 buckets (7 days × 24 hours). Each bucket stores the rolling average kWh
+# for that hour-of-week. Every hour, the actual kWh consumed is compared
+# against the bucket for the current hour-of-week; if deviation > threshold,
+# alert fires.
+#
+# Rolling average update: new_avg = old_avg * (n-1)/n + actual * 1/n
+# where n = min(samples, 4) to give a 4-week rolling window.
+# n is stored in a parallel sample-count bucket so the average converges
+# correctly over the first 4 weeks.
+#
+# Storage: 168 averages + 168 sample counts = 336 values.
+# HA has no native array store, so these are stored as a JSON blob in a
+# single input_text entity (max 255 chars is too small — use a
+# `var` custom component OR write to a file via `shell_command` + read back).
+#
+# PRACTICAL ALTERNATIVE (no custom component):
+# Use AppDaemon or a Python script run via shell_command. BUT since the
+# constraint is pure HA YAML, we use a recorder + template sensor approach:
+# store the 336 floats as a compressed CSV in two input_text entities
+# (168 chars each, values rounded to 2dp, comma-separated).
+# At 6 chars/value avg (e.g. "2.34,") × 168 = ~1000 chars — too long for
+# input_text (max 255).
+#
+# VIABLE PURE-YAML APPROACH:
+# Reduce to 24 buckets (hour-of-day only, drop day-of-week granularity).
+# 24 values at 6 chars each = ~144 chars — fits in one input_text.
+# Day-of-week distinction is captured separately via "weekday vs weekend"
+# toggle, giving effectively 48 buckets with 2 input_text entities.
+#
+# This trades some accuracy for zero custom-component dependency.
+# For full 168-bucket support, AppDaemon is recommended (noted below).
+#
+# ── HELPER ENTITIES ──────────────────────────────────────────────────────────
+
+# configuration.yaml additions:
+#
+# input_text:
+#   energy_baseline_weekday_avgs:
+#     name: Energy Baseline — Weekday Hourly Averages (CSV)
+#     max: 255
+#   energy_baseline_weekend_avgs:
+#     name: Energy Baseline — Weekend Hourly Averages (CSV)
+#     max: 255
+#   energy_baseline_weekday_counts:
+#     name: Energy Baseline — Weekday Sample Counts (CSV)
+#     max: 255
+#   energy_baseline_weekend_counts:
+#     name: Energy Baseline — Weekend Sample Counts (CSV)
+#     max: 255
+#
+# input_number:
+#   energy_anomaly_threshold_pct:
+#     name: Energy Anomaly Alert Threshold (%)
+#     min: 10
+#     max: 100
+#     step: 5
+#     initial: 30
+#     icon: mdi:percent
+#
+#   energy_baseline_min_samples:
+#     name: Min Samples Before Anomaly Alerts Fire
+#     min: 1
+#     max: 8
+#     step: 1
+#     initial: 4
+#     icon: mdi:chart-timeline
+#
+# input_boolean:
+#   energy_anomaly_detector_enabled:
+#     name: Energy Anomaly Detector Enabled
+#
+# counter:
+#   energy_anomaly_alerts_today:
+#     name: Energy Anomaly Alerts Today
+#     initial: 0
+#
+# utility_meter:
+#   hourly_energy:
+#     source: sensor.total_home_power    # ← confirm entity id
+#     cycle: hourly
+#     unit_of_measurement: kWh
+
+# ── SCRIPTS ───────────────────────────────────────────────────────────────────
+
+# energy_baseline_update:
+#   alias: 'Energy Baseline — Update Rolling Average'
+#   sequence:
+#     - variables:
+#         hour_idx: "{{ now().hour }}"
+#         is_weekend: "{{ now().weekday() >= 5 }}"
+#         avgs_entity: >
+#           {{ 'input_text.energy_baseline_weekend_avgs' if is_weekend
+#              else 'input_text.energy_baseline_weekday_avgs' }}
+#         counts_entity: >
+#           {{ 'input_text.energy_baseline_weekend_counts' if is_weekend
+#              else 'input_text.energy_baseline_weekday_counts' }}
+#         actual_kwh: "{{ states('sensor.hourly_energy') | float(0) }}"
+#         avgs_raw: "{{ states(avgs_entity) }}"
+#         counts_raw: "{{ states(counts_entity) }}"
+#         # Parse CSV; default to 24 zeros if not yet initialized
+#         avgs_list: >
+#           {% if avgs_raw in ['unknown', 'unavailable', ''] %}
+#             {{ [0.0] * 24 }}
+#           {% else %}
+#             {{ avgs_raw.split(',') | map('float') | list }}
+#           {% endif %}
+#         counts_list: >
+#           {% if counts_raw in ['unknown', 'unavailable', ''] %}
+#             {{ [0] * 24 }}
+#           {% else %}
+#             {{ counts_raw.split(',') | map('int') | list }}
+#           {% endif %}
+#         old_avg: "{{ avgs_list[hour_idx] | float(0) }}"
+#         old_count: "{{ counts_list[hour_idx] | int(0) }}"
+#         new_count: "{{ [old_count + 1, 4] | min }}"
+#         new_avg: >
+#           {{ ((old_avg * (new_count - 1)) + actual_kwh) / new_count }}
+#         # Rebuild CSV strings with updated slot
+#         new_avgs_list: >
+#           {% set ns = namespace(out=[]) %}
+#           {% for i in range(24) %}
+#             {% if i == hour_idx %}
+#               {% set ns.out = ns.out + [new_avg | round(3) | string] %}
+#             {% else %}
+#               {% set ns.out = ns.out + [avgs_list[i] | round(3) | string] %}
+#             {% endif %}
+#           {% endfor %}
+#           {{ ns.out | join(',') }}
+#         new_counts_list: >
+#           {% set ns = namespace(out=[]) %}
+#           {% for i in range(24) %}
+#             {% if i == hour_idx %}
+#               {% set ns.out = ns.out + [[counts_list[i] | int + 1, 4] | min | string] %}
+#             {% else %}
+#               {% set ns.out = ns.out + [counts_list[i] | string] %}
+#             {% endif %}
+#           {% endfor %}
+#           {{ ns.out | join(',') }}
+#         threshold_pct: "{{ states('input_number.energy_anomaly_threshold_pct') | float(30) / 100 }}"
+#         min_samples: "{{ states('input_number.energy_baseline_min_samples') | int(4) }}"
+#         deviation: >
+#           {% if old_avg > 0 %}
+#             {{ ((actual_kwh - old_avg) / old_avg) | abs }}
+#           {% else %}
+#             0
+#           {% endif %}
+#         anomaly: >
+#           {{ old_count >= min_samples
+#              and deviation > threshold_pct
+#              and actual_kwh > 0.05 }}
+#
+#     # Write updated averages back
+#     - action: input_text.set_value
+#       target: { entity_id: "{{ avgs_entity }}" }
+#       data: { value: "{{ new_avgs_list }}" }
+#     - action: input_text.set_value
+#       target: { entity_id: "{{ counts_entity }}" }
+#       data: { value: "{{ new_counts_list }}" }
+#
+#     # Fire alert if anomaly
+#     - if:
+#         - condition: template
+#           value_template: "{{ anomaly }}"
+#       then:
+#         - action: counter.increment
+#           target: { entity_id: counter.energy_anomaly_alerts_today }
+#         - action: script.notify_me
+#           data:
+#             title: "⚡ Energieverbrauch-Anomalie"
+#             message: >
+#               {{ now().strftime('%H:00') }}: {{ actual_kwh | round(3) }} kWh
+#               (Basis: {{ old_avg | round(3) }} kWh,
+#               +{{ ((actual_kwh - old_avg) / old_avg * 100) | round(0) }}% Abweichung).
+#   mode: single
+
+# ── AUTOMATIONS ───────────────────────────────────────────────────────────────
+
+- id: energy_baseline_hourly_update
+  alias: '[Energy] Baseline Anomaly Detector — Hourly Update'
+  triggers:
+    - trigger: time_pattern
+      minutes: 2    # fire 2 min past the hour so utility_meter has updated
+  conditions:
+    - condition: state
+      entity_id: input_boolean.energy_anomaly_detector_enabled
+      state: 'on'
+    - condition: template
+      value_template: "{{ now().minute == 2 }}"
+  actions:
+    - action: script.energy_baseline_update
+  mode: single
+
+- id: energy_anomaly_daily_stats
+  alias: '[Energy] Baseline Anomaly Detector — Daily Stats'
+  triggers:
+    - trigger: time
+      at: '00:00:00'
+  conditions:
+    - condition: numeric_state
+      entity_id: counter.energy_anomaly_alerts_today
+      above: 0
+  actions:
+    - variables:
+        alerts: "{{ states('counter.energy_anomaly_alerts_today') | int(0) }}"
+    - action: script.notify_me_direct
+      data:
+        title: "📊 Energie-Anomalien heute"
+        message: "{{ alerts }} Anomalie-Alarm(e) ausgelöst. Baselines prüfen?"
+    - action: counter.reset
+      target: { entity_id: counter.energy_anomaly_alerts_today }
+  mode: single
+
+# ── APPDEAMON ALTERNATIVE (for full 168-bucket day-of-week accuracy) ─────────
+# If AppDaemon is available, replace the CSV input_text approach with a
+# native Python dict stored in a JSON file:
+#
+# apps/energy_anomaly.py:
+#   - Load/save baseline dict from /config/energy_baseline.json
+#   - Key: f"{weekday}_{hour}" (0_0 through 6_23 = 168 buckets)
+#   - Update rolling avg each hour from sensor.hourly_energy
+#   - Call notify service if deviation > threshold
+#   - Exposes input_number.energy_anomaly_threshold_pct for HA UI control

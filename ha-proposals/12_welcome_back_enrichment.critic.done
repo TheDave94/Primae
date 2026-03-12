@@ -1,0 +1,10 @@
+# CRITIC REVIEW COMPLETE
+# task: Enrich Welcome Back notification with weather + indoor temperature trend
+# domain: ha
+# status: REVIEWED — 8 objections (4 critical, 2 high, 2 medium)
+# blockers:
+#   - variables: block does not chain — temp_delta/arrival_tip silently use 0/undefined
+#   - weather.home unavailable not guarded — renders misleading "0.0°C, unavailable"
+#   - climate current_temperature may be None — no availability guard
+#   - baseline stored on arrival not departure — trend meaningless for long stays
+# do not re-invoke critic. advance to validator after proposer revision.

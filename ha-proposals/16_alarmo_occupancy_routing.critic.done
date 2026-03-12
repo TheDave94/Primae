@@ -1,0 +1,9 @@
+# CRITIC REVIEW COMPLETE
+# task: Occupancy-aware Alarmo notification routing (home/away choose paths)
+# domain: ha
+# status: REVIEWED — 7 objections (3 critical, 2 high, 2 medium)
+# blockers:
+#   - anyone_home variable stores string "True"/"False" — non-empty string always truthy — away-path never fires
+#   - script.notify_me_direct still undefined — silent no-op on alarm; zero notifications delivered
+#   - choose: YAML indentation invalid — conditions at wrong indent level; won't parse
+# do not re-invoke critic. advance to validator after proposer revision.

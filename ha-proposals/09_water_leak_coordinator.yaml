@@ -1,0 +1,357 @@
+# Proposal: Water Leak & Flood Detection Coordinator
+# Tiered response, valve shutoff, weekly dry-run test
+# commit: a2ed330b
+#
+# ── DESIGN ───────────────────────────────────────────────────────────────────
+#
+# Three-tier response based on sensor count and duration:
+#
+#   Tier 1 (ALERT):   1 sensor wet → immediate notification, start timer
+#   Tier 2 (WARNING): sensor still wet after 3 min → repeat alert, log to todo
+#   Tier 3 (SHUTOFF): 2+ sensors wet OR still wet after 10 min → close valve,
+#                     critical notification, disable washing machine / dishwasher
+#
+# Weekly dry-run: every Sunday 10:00, pulse the valve closed/open (2s) to verify
+# it responds. Notify result.
+#
+# Entities assumed:
+#   binary_sensor.leak_sensor_bathroom    )
+#   binary_sensor.leak_sensor_kitchen     ) ← confirm entity ids
+#   binary_sensor.leak_sensor_washing     )
+#   switch.water_main_valve               ← confirm (or valve.water_main)
+#
+# ── HELPER ENTITIES ──────────────────────────────────────────────────────────
+#
+# input_boolean:
+#   water_valve_shutoff_active:
+#     name: Water Main Valve Shutoff Active
+#     icon: mdi:pipe-valve
+#   leak_coordinator_enabled:
+#     name: Leak Coordinator Enabled
+#
+# input_text:
+#   leak_first_detected_at:
+#     name: Leak First Detected At (iso)
+#     max: 50
+#   leak_triggering_sensor:
+#     name: Leak Triggering Sensor Entity ID
+#     max: 100
+#
+# counter:
+#   leak_events_this_month:
+#     name: Leak Events This Month
+#     initial: 0
+#
+# timer:
+#   leak_tier2_escalation:
+#     name: Leak Tier-2 Escalation Timer
+#     duration: "00:03:00"
+#   leak_tier3_shutoff:
+#     name: Leak Tier-3 Shutoff Timer
+#     duration: "00:10:00"
+
+# ── AUTOMATIONS ───────────────────────────────────────────────────────────────
+
+# ── Tier 1: Any leak sensor goes wet ─────────────────────────────────────────
+- id: leak_tier1_alert
+  alias: '[Safety] Leak Coordinator — Tier 1 Alert'
+  triggers:
+    - trigger: state
+      entity_id:
+        - binary_sensor.leak_sensor_bathroom
+        - binary_sensor.leak_sensor_kitchen
+        - binary_sensor.leak_sensor_washing
+      to: 'on'
+  conditions:
+    - condition: state
+      entity_id: input_boolean.leak_coordinator_enabled
+      state: 'on'
+    - condition: state
+      entity_id: input_boolean.water_valve_shutoff_active
+      state: 'off'
+  actions:
+    - action: input_text.set_value
+      target: { entity_id: input_text.leak_first_detected_at }
+      data: { value: "{{ now().isoformat() }}" }
+    - action: input_text.set_value
+      target: { entity_id: input_text.leak_triggering_sensor }
+      data: { value: "{{ trigger.entity_id }}" }
+    - action: counter.increment
+      target: { entity_id: counter.leak_events_this_month }
+    - action: timer.start
+      target: { entity_id: timer.leak_tier2_escalation }
+    - action: timer.start
+      target: { entity_id: timer.leak_tier3_shutoff }
+    - action: script.notify_me
+      data:
+        title: "💧 Wasserleck erkannt!"
+        message: >
+          Sensor: {{ state_attr(trigger.entity_id, 'friendly_name') | default(trigger.entity_id) }}.
+          Ventil wird in 10 Min. geschlossen falls nicht behoben.
+        data:
+          push:
+            sound:
+              name: default
+              critical: 1
+              volume: 0.8
+          actions:
+            - action: LEAK_SHUTOFF_NOW
+              title: "🚰 Ventil jetzt schließen"
+            - action: LEAK_FALSE_ALARM
+              title: "✅ Fehlalarm"
+  mode: single
+
+# ── Tier 2: Still wet after 3 min ────────────────────────────────────────────
+- id: leak_tier2_escalation
+  alias: '[Safety] Leak Coordinator — Tier 2 Escalation'
+  triggers:
+    - trigger: event
+      event_type: timer.finished
+      event_data: { entity_id: timer.leak_tier2_escalation }
+  conditions:
+    # At least one leak sensor still wet
+    - condition: template
+      value_template: >
+        {{ is_state('binary_sensor.leak_sensor_bathroom', 'on')
+           or is_state('binary_sensor.leak_sensor_kitchen', 'on')
+           or is_state('binary_sensor.leak_sensor_washing', 'on') }}
+  actions:
+    - action: script.notify_me
+      data:
+        title: "🚨 Leck dauert an! (3 Min)"
+        message: >
+          Sensor {{ states('input_text.leak_triggering_sensor') }} ist noch nass.
+          Ventilschliessung in {{ (10 - 3) }} Min. falls keine Aktion.
+        data:
+          push:
+            sound:
+              name: default
+              critical: 1
+              volume: 1
+    - action: todo.add_item
+      target: { entity_id: todo.notifications }
+      data:
+        item: >
+          Wasserleck – {{ states('input_text.leak_triggering_sensor') }}
+          seit {{ states('input_text.leak_first_detected_at')[:16] }}
+  mode: single
+
+# ── Tier 3: Shutoff after 10 min ─────────────────────────────────────────────
+- id: leak_tier3_shutoff_timer
+  alias: '[Safety] Leak Coordinator — Tier 3 Auto Shutoff (Timer)'
+  triggers:
+    - trigger: event
+      event_type: timer.finished
+      event_data: { entity_id: timer.leak_tier3_shutoff }
+  conditions:
+    - condition: template
+      value_template: >
+        {{ is_state('binary_sensor.leak_sensor_bathroom', 'on')
+           or is_state('binary_sensor.leak_sensor_kitchen', 'on')
+           or is_state('binary_sensor.leak_sensor_washing', 'on') }}
+    - condition: state
+      entity_id: input_boolean.water_valve_shutoff_active
+      state: 'off'
+  actions:
+    - action: script.leak_emergency_shutoff
+  mode: single
+
+# ── Tier 3: Immediate shutoff if 2+ sensors wet simultaneously ───────────────
+- id: leak_tier3_multi_sensor
+  alias: '[Safety] Leak Coordinator — Tier 3 Multi-Sensor Shutoff'
+  triggers:
+    - trigger: state
+      entity_id:
+        - binary_sensor.leak_sensor_bathroom
+        - binary_sensor.leak_sensor_kitchen
+        - binary_sensor.leak_sensor_washing
+      to: 'on'
+  conditions:
+    - condition: state
+      entity_id: input_boolean.water_valve_shutoff_active
+      state: 'off'
+    - condition: template
+      value_template: >
+        {% set wet = [
+          is_state('binary_sensor.leak_sensor_bathroom', 'on'),
+          is_state('binary_sensor.leak_sensor_kitchen', 'on'),
+          is_state('binary_sensor.leak_sensor_washing', 'on')
+        ] %}
+        {{ wet | select('equalto', true) | list | count >= 2 }}
+  actions:
+    - action: script.leak_emergency_shutoff
+  mode: single
+
+# ── Manual shutoff via notification action ────────────────────────────────────
+- id: leak_manual_shutoff_action
+  alias: '[Safety] Leak Coordinator — Manual Shutoff Action'
+  triggers:
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data: { action: LEAK_SHUTOFF_NOW }
+  actions:
+    - action: script.leak_emergency_shutoff
+  mode: single
+
+# ── False alarm: cancel timers ────────────────────────────────────────────────
+- id: leak_false_alarm_action
+  alias: '[Safety] Leak Coordinator — False Alarm Cancel'
+  triggers:
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data: { action: LEAK_FALSE_ALARM }
+  actions:
+    - action: timer.cancel
+      target: { entity_id: timer.leak_tier2_escalation }
+    - action: timer.cancel
+      target: { entity_id: timer.leak_tier3_shutoff }
+    - action: script.notify_me
+      data:
+        title: "✅ Leck-Alarm abgebrochen"
+        message: "Fehlalarm bestätigt. Ventil bleibt offen."
+  mode: single
+
+# ── Auto-clear when all sensors dry ──────────────────────────────────────────
+- id: leak_all_sensors_dry
+  alias: '[Safety] Leak Coordinator — All Sensors Dry'
+  triggers:
+    - trigger: state
+      entity_id:
+        - binary_sensor.leak_sensor_bathroom
+        - binary_sensor.leak_sensor_kitchen
+        - binary_sensor.leak_sensor_washing
+      to: 'off'
+  conditions:
+    - condition: template
+      value_template: >
+        {{ not is_state('binary_sensor.leak_sensor_bathroom', 'on')
+           and not is_state('binary_sensor.leak_sensor_kitchen', 'on')
+           and not is_state('binary_sensor.leak_sensor_washing', 'on') }}
+  actions:
+    - action: timer.cancel
+      target: { entity_id: timer.leak_tier2_escalation }
+    - action: timer.cancel
+      target: { entity_id: timer.leak_tier3_shutoff }
+    # Only notify/reopen if shutoff was active
+    - if:
+        - condition: state
+          entity_id: input_boolean.water_valve_shutoff_active
+          state: 'on'
+      then:
+        - action: script.notify_me
+          data:
+            title: "💧 Leck behoben?"
+            message: "Alle Sensoren trocken. Ventil manuell öffnen wenn sicher."
+            data:
+              actions:
+                - action: LEAK_REOPEN_VALVE
+                  title: "🚰 Ventil öffnen"
+  mode: single
+
+# ── Reopen valve via notification action ─────────────────────────────────────
+- id: leak_reopen_valve_action
+  alias: '[Safety] Leak Coordinator — Reopen Valve'
+  triggers:
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data: { action: LEAK_REOPEN_VALVE }
+  actions:
+    - action: switch.turn_on
+      target: { entity_id: switch.water_main_valve }
+      continue_on_error: true
+    - action: input_boolean.turn_off
+      target: { entity_id: input_boolean.water_valve_shutoff_active }
+    - action: script.notify_me
+      data:
+        title: "✅ Wasserventil geöffnet"
+        message: "Hauptventil wurde manuell wieder geöffnet."
+  mode: single
+
+# ── Weekly dry-run valve test ─────────────────────────────────────────────────
+- id: leak_valve_weekly_dry_run
+  alias: '[Safety] Leak Coordinator — Weekly Valve Dry-Run'
+  triggers:
+    - trigger: time
+      at: '10:00:00'
+  conditions:
+    - condition: template
+      value_template: "{{ now().weekday() == 6 }}"    # Sunday
+    - condition: state
+      entity_id: input_boolean.leak_coordinator_enabled
+      state: 'on'
+    - condition: state
+      entity_id: input_boolean.water_valve_shutoff_active
+      state: 'off'
+    # Don't run dry-run if any sensor is already wet
+    - condition: template
+      value_template: >
+        {{ not is_state('binary_sensor.leak_sensor_bathroom', 'on')
+           and not is_state('binary_sensor.leak_sensor_kitchen', 'on')
+           and not is_state('binary_sensor.leak_sensor_washing', 'on') }}
+  actions:
+    - action: script.notify_me
+      data:
+        title: "🔧 Ventil-Test läuft"
+        message: "Wöchentlicher Trockentest: Ventil wird kurz geschlossen und wieder geöffnet."
+    - action: switch.turn_off
+      target: { entity_id: switch.water_main_valve }
+      continue_on_error: true
+    - delay: { seconds: 2 }
+    - action: switch.turn_on
+      target: { entity_id: switch.water_main_valve }
+      continue_on_error: true
+    - delay: { seconds: 3 }
+    - variables:
+        valve_ok: "{{ is_state('switch.water_main_valve', 'on') }}"
+    - action: script.notify_me
+      data:
+        title: >
+          {{ '✅ Ventil-Test OK' if valve_ok else '⚠️ Ventil-Test FEHLGESCHLAGEN' }}
+        message: >
+          {% if valve_ok %}
+            Ventil hat korrekt reagiert und ist wieder offen.
+          {% else %}
+            Ventil reagiert möglicherweise nicht. Manuelle Prüfung empfohlen.
+          {% endif %}
+  mode: single
+
+# ── SCRIPTS ───────────────────────────────────────────────────────────────────
+
+# script.leak_emergency_shutoff:
+#   alias: 'Leak Coordinator — Emergency Shutoff'
+#   sequence:
+#     - action: switch.turn_off
+#       target: { entity_id: switch.water_main_valve }
+#       continue_on_error: true
+#     - action: input_boolean.turn_on
+#       target: { entity_id: input_boolean.water_valve_shutoff_active }
+#     # Cancel timers
+#     - action: timer.cancel
+#       target: { entity_id: timer.leak_tier2_escalation }
+#     - action: timer.cancel
+#       target: { entity_id: timer.leak_tier3_shutoff }
+#     # Disable appliances mid-cycle guard
+#     - action: switch.turn_off
+#       target:
+#         entity_id:
+#           - switch.plug_washing_machine
+#           - switch.plug_dishwasher
+#       continue_on_error: true
+#     # Critical notification
+#     - action: script.notify_me_direct
+#       data:
+#         title: "🚰 WASSERVENTIL GESCHLOSSEN"
+#         message: >
+#           Hauptventil wurde notabgeschaltet.
+#           Waschmaschine + Spülmaschine deaktiviert.
+#           Prüfe auf Wasserschäden.
+#         data:
+#           push:
+#             sound:
+#               name: default
+#               critical: 1
+#               volume: 1
+#           actions:
+#             - action: LEAK_REOPEN_VALVE
+#               title: "🚰 Ventil öffnen (nach Reparatur)"
+#   mode: single

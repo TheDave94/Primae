@@ -1,0 +1,300 @@
+# Proposal: Multi-Room Audio Presence Routing
+# 30s grace period, desk↔living_room follow, circuit-breaker + Sleep/Away gates
+# commit: 6edf82db
+#
+# ── DESIGN ───────────────────────────────────────────────────────────────────
+#
+# When presence moves between desk and living room, audio playback follows:
+# 1. Detect presence change (binary_sensor.desk_presence / binary_sensor.living_room_presence)
+# 2. Wait 30s grace period (cancels if person returns to origin room)
+# 3. If grace period completes: pause origin media player, resume on destination
+# 4. Gates: Skip if Sleep mode, Skip if Away, Skip if circuit breaker active
+# 5. Circuit breaker: if audio routing fires >3 times in 5 min (flapping), pause routing
+#
+# Media players assumed:
+#   media_player.desk_speaker    (e.g. Sonos/Chromecast at desk)
+#   media_player.living_room_speaker
+# Presence sensors:
+#   binary_sensor.desk_presence
+#   binary_sensor.living_room_presence   ← confirm entity ids
+#
+# ── HELPER ENTITIES ──────────────────────────────────────────────────────────
+#
+# input_boolean:
+#   audio_routing_enabled:
+#     name: Audio Presence Routing Enabled
+#     icon: mdi:headphones
+#   audio_routing_circuit_breaker:
+#     name: Audio Routing Circuit Breaker Active
+#     icon: mdi:circuit-breaker
+#
+# input_number:
+#   audio_routing_trip_count:
+#     name: Audio Routing Trip Count (flap window)
+#     min: 0
+#     max: 50
+#     step: 1
+#     initial: 0
+#   audio_routing_trip_window_start:
+#     name: Audio Routing Trip Window Start (unix ts)
+#     min: 0
+#     max: 9999999999
+#     step: 1
+#     initial: 0
+#
+# input_text:
+#   audio_routing_last_room:
+#     name: Audio Routing — Last Known Room
+#     max: 50
+#     initial: ''
+
+# ── SCRIPTS ───────────────────────────────────────────────────────────────────
+
+# script.audio_route_to_room:
+#   alias: 'Audio Routing — Route to Room'
+#   fields:
+#     destination:
+#       description: "Target room: desk or living_room"
+#       required: true
+#   sequence:
+#     - variables:
+#         origin: >
+#           {{ 'living_room' if destination == 'desk' else 'desk' }}
+#         origin_player: >
+#           {{ 'media_player.desk_speaker' if origin == 'desk'
+#              else 'media_player.living_room_speaker' }}
+#         dest_player: >
+#           {{ 'media_player.desk_speaker' if destination == 'desk'
+#              else 'media_player.living_room_speaker' }}
+#         origin_playing: >
+#           {{ is_state(origin_player, 'playing') }}
+#         origin_media_content_id: >
+#           {{ state_attr(origin_player, 'media_content_id') }}
+#         origin_media_content_type: >
+#           {{ state_attr(origin_player, 'media_content_type') }}
+#         origin_volume: >
+#           {{ state_attr(origin_player, 'volume_level') | float(0.5) }}
+#
+#     # Skip if origin isn't playing (nothing to route)
+#     - condition: template
+#       value_template: "{{ origin_playing }}"
+#
+#     # Pause origin
+#     - action: media_player.media_pause
+#       target: { entity_id: "{{ origin_player }}" }
+#
+#     # Resume on destination (if it supports play_media; fallback to media_play)
+#     - if:
+#         - condition: template
+#           value_template: "{{ origin_media_content_id is not none }}"
+#       then:
+#         - action: media_player.play_media
+#           target: { entity_id: "{{ dest_player }}" }
+#           data:
+#             media_content_id: "{{ origin_media_content_id }}"
+#             media_content_type: "{{ origin_media_content_type | default('music') }}"
+#       else:
+#         - action: media_player.media_play
+#           target: { entity_id: "{{ dest_player }}" }
+#
+#     # Match volume
+#     - action: media_player.volume_set
+#       target: { entity_id: "{{ dest_player }}" }
+#       data:
+#         volume_level: "{{ origin_volume }}"
+#
+#     # Update last room
+#     - action: input_text.set_value
+#       target: { entity_id: input_text.audio_routing_last_room }
+#       data: { value: "{{ destination }}" }
+#   mode: single
+
+# ── AUTOMATIONS ───────────────────────────────────────────────────────────────
+
+- id: audio_routing_desk_to_living
+  alias: '[Audio] Presence Routing — Desk → Living Room'
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.desk_presence
+      to: 'off'
+      for:
+        seconds: 30
+  conditions:
+    - condition: state
+      entity_id: input_boolean.audio_routing_enabled
+      state: 'on'
+    - condition: state
+      entity_id: input_boolean.audio_routing_circuit_breaker
+      state: 'off'
+    - condition: state
+      entity_id: binary_sensor.is_anyone_at_home
+      state: 'on'
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: input_select.room_mode
+          state: Sleep
+    # Only route if living room presence is active (person actually moved there)
+    - condition: state
+      entity_id: binary_sensor.living_room_presence   # ← confirm entity id
+      state: 'on'
+    # Origin player must be playing
+    - condition: state
+      entity_id: media_player.desk_speaker
+      state: playing
+  actions:
+    - action: script.audio_route_to_room
+      data: { destination: living_room }
+    - action: script.audio_routing_increment_trip_count
+  mode: single
+
+- id: audio_routing_living_to_desk
+  alias: '[Audio] Presence Routing — Living Room → Desk'
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.living_room_presence
+      to: 'off'
+      for:
+        seconds: 30
+  conditions:
+    - condition: state
+      entity_id: input_boolean.audio_routing_enabled
+      state: 'on'
+    - condition: state
+      entity_id: input_boolean.audio_routing_circuit_breaker
+      state: 'off'
+    - condition: state
+      entity_id: binary_sensor.is_anyone_at_home
+      state: 'on'
+    - condition: not
+      conditions:
+        - condition: state
+          entity_id: input_select.room_mode
+          state: Sleep
+    - condition: state
+      entity_id: binary_sensor.desk_presence
+      state: 'on'
+    - condition: state
+      entity_id: media_player.living_room_speaker
+      state: playing
+  actions:
+    - action: script.audio_route_to_room
+      data: { destination: desk }
+    - action: script.audio_routing_increment_trip_count
+  mode: single
+
+# ── Circuit breaker trip ──────────────────────────────────────────────────────
+- id: audio_routing_circuit_breaker_check
+  alias: '[Audio] Presence Routing — Circuit Breaker'
+  triggers:
+    - trigger: numeric_state
+      entity_id: input_number.audio_routing_trip_count
+      above: 3
+  conditions:
+    - condition: state
+      entity_id: input_boolean.audio_routing_circuit_breaker
+      state: 'off'
+    - condition: template
+      value_template: >
+        {{ (as_timestamp(now())
+            - states('input_number.audio_routing_trip_window_start') | float(0)) < 300 }}
+  actions:
+    - action: input_boolean.turn_on
+      target: { entity_id: input_boolean.audio_routing_circuit_breaker }
+    - action: script.notify_me
+      data:
+        title: "🎵 Audio-Routing pausiert"
+        message: "Zu viele Raumwechsel in kurzer Zeit. Audio-Routing pausiert für 10 min."
+        data:
+          actions:
+            - action: AUDIO_ROUTING_RESET
+              title: "▶️ Jetzt reaktivieren"
+  mode: single
+
+# ── Circuit breaker auto-reset after 10 min ───────────────────────────────────
+- id: audio_routing_circuit_breaker_auto_reset
+  alias: '[Audio] Presence Routing — Circuit Breaker Auto Reset'
+  triggers:
+    - trigger: state
+      entity_id: input_boolean.audio_routing_circuit_breaker
+      to: 'on'
+      for: { minutes: 10 }
+  actions:
+    - action: input_boolean.turn_off
+      target: { entity_id: input_boolean.audio_routing_circuit_breaker }
+    - action: input_number.set_value
+      target: { entity_id: input_number.audio_routing_trip_count }
+      data: { value: 0 }
+  mode: single
+
+# ── Circuit breaker manual reset via notification action ──────────────────────
+- id: audio_routing_circuit_breaker_manual_reset
+  alias: '[Audio] Presence Routing — Circuit Breaker Manual Reset'
+  triggers:
+    - trigger: event
+      event_type: mobile_app_notification_action
+      event_data: { action: AUDIO_ROUTING_RESET }
+  actions:
+    - action: input_boolean.turn_off
+      target: { entity_id: input_boolean.audio_routing_circuit_breaker }
+    - action: input_number.set_value
+      target: { entity_id: input_number.audio_routing_trip_count }
+      data: { value: 0 }
+  mode: single
+
+# ── Pause all audio on Away / Sleep ──────────────────────────────────────────
+- id: audio_routing_pause_on_away
+  alias: '[Audio] Presence Routing — Pause on Away'
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.is_anyone_at_home
+      to: 'off'
+      for: { minutes: 2 }
+  actions:
+    - action: media_player.media_pause
+      target:
+        entity_id:
+          - media_player.desk_speaker
+          - media_player.living_room_speaker
+      continue_on_error: true
+  mode: single
+
+- id: audio_routing_pause_on_sleep
+  alias: '[Audio] Presence Routing — Pause on Sleep Mode'
+  triggers:
+    - trigger: state
+      entity_id: input_select.room_mode
+      to: Sleep
+  actions:
+    - action: media_player.media_pause
+      target:
+        entity_id:
+          - media_player.desk_speaker
+          - media_player.living_room_speaker
+      continue_on_error: true
+  mode: single
+
+# ── Trip counter increment script ─────────────────────────────────────────────
+# script.audio_routing_increment_trip_count:
+#   sequence:
+#     - variables:
+#         now_ts: "{{ as_timestamp(now()) }}"
+#         window_start: "{{ states('input_number.audio_routing_trip_window_start') | float(0) }}"
+#         elapsed: "{{ now_ts - window_start }}"
+#     - if:
+#         - condition: template
+#           value_template: "{{ elapsed > 300 }}"
+#       then:
+#         - action: input_number.set_value
+#           target: { entity_id: input_number.audio_routing_trip_count }
+#           data: { value: 1 }
+#         - action: input_number.set_value
+#           target: { entity_id: input_number.audio_routing_trip_window_start }
+#           data: { value: "{{ now_ts }}" }
+#       else:
+#         - action: input_number.set_value
+#           target: { entity_id: input_number.audio_routing_trip_count }
+#           data:
+#             value: "{{ (states('input_number.audio_routing_trip_count') | int) + 1 }}"
+#   mode: queued
+#   max: 5
