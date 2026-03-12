@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve package and discover scheme
         id: scheme
@@ -41,6 +43,7 @@ jobs:
           fi
 
       - name: Build ios-native
+        id: build
         if: steps.scheme.outputs.skip != 'true'
         run: |
           xcodebuild \
@@ -48,9 +51,11 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            build
+            build 2>&1 | tee /tmp/build.log
+          echo "build_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Test BuchstabenNativeTests
+        id: test
         if: steps.scheme.outputs.skip != 'true'
         run: |
           xcodebuild \
@@ -58,4 +63,55 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            test
+            test 2>&1 | tee /tmp/test.log
+          echo "test_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+
+      - name: Extract failure summary
+        id: failure
+        if: failure()
+        run: |
+          # Collect the most relevant error lines from build or test logs
+          ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log /tmp/build.log 2>/dev/null \
+            | grep -v "^Binary" | head -15 || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          # Write to file for next step (handles multiline safely)
+          printf '%s' "$ERRORS" > /tmp/ci_errors.txt
+          echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+
+      - name: Inject priority task into council queue
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ERRORS=$(cat /tmp/ci_errors.txt 2>/dev/null || echo "unknown error")
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          BRANCH="${{ github.ref_name }}"
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:8}"
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+          # Write a priority task file that the local agent picks up on next heartbeat
+          cat > /tmp/ci_priority_task.md << TASK_EOF
+          # CI FAILURE — PRIORITY TASK
+          ## Metadata
+          - branch: ${BRANCH}
+          - commit: ${SHORT_SHA}
+          - run: ${RUN_URL}
+          - timestamp: ${TIMESTAMP}
+
+          ## Errors
+          \`\`\`
+          ${ERRORS}
+          \`\`\`
+
+          ## Task
+          Fix the failing iOS CI tests on branch \`${BRANCH}\` (commit \`${SHORT_SHA}\`).
+          The errors above must be resolved and CI must pass before this task is complete.
+          TASK_EOF
+
+          # Commit the priority task file to the repo so the local agent can act on it
+          git config user.email "ci@openclaw.ai"
+          git config user.name "Bonifazius (OpenClaw)"
+          cp /tmp/ci_priority_task.md .ci-priority-task.md
+          git add .ci-priority-task.md
+          git commit -m "ci: inject priority fix task (run ${{ github.run_id }}) [ci-skip]" || echo "Nothing to commit"
+          git push origin HEAD:${BRANCH} || echo "Push failed — continuing"
