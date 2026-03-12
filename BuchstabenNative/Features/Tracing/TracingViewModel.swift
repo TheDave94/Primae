@@ -270,7 +270,7 @@ public final class TracingViewModel: ObservableObject {
     }
 
 
-    func appDidEnterBackground() {
+    public func appDidEnterBackground() {
         // Guard against re-entrant / duplicate background events (idempotency).
         // AVAudioSession interruptions and UIApplication.didEnterBackground can fire
         // in quick succession; only process the first one per foreground period.
@@ -294,7 +294,7 @@ public final class TracingViewModel: ObservableObject {
         audio.suspendForLifecycle()
     }
 
-    func appDidBecomeActive() {
+    public func appDidBecomeActive() {
         playbackMachine.appIsForeground = true
         audio.resumeAfterLifecycle()
         if playbackMachine.resumeIntent {
