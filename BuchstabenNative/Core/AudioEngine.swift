@@ -172,7 +172,9 @@ private extension AudioEngine {
     }
 
     func canResumePlayback() -> Bool {
-        appIsForeground && !interrupted && shouldResumePlayback && (!interruptionResumeGateRequired || interruptionShouldResume)
+        let result = appIsForeground && !interrupted && shouldResumePlayback && (!interruptionResumeGateRequired || interruptionShouldResume)
+        print("[AudioEngine] canResume=\(result) foreground=\(appIsForeground) interrupted=\(interrupted) shouldResume=\(shouldResumePlayback) gateRequired=\(interruptionResumeGateRequired) intShouldResume=\(interruptionShouldResume) engineRunning=\(engine.isRunning) isPlaying=\(isPlaying)")
+        return result
     }
 
     func attemptResumePlayback() {
