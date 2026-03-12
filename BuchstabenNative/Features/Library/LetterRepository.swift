@@ -1,6 +1,7 @@
 import Foundation
 
 protocol LetterResourceProviding {
+    var bundle: Bundle { get }
     func allResourceURLs() -> [URL]
     func resourceURL(for relativePath: String) -> URL?
 }
@@ -148,10 +149,10 @@ private extension LetterRepository {
             }
 
             let base = url.deletingPathExtension().lastPathComponent.replacingOccurrences(of: "_strokes", with: "")
-            let imageCandidates = ["\(base)/\(base).pbm", "\(base).pbm"]
+            let imageCandidates = ["Letters/\(base)/\(base).pbm", "\(base)/\(base).pbm", "\(base).pbm"]
             let imageName = imageCandidates.first(where: { bundleHasResource(at: $0) }) ?? "\(base).pbm"
 
-            if imageName == "\(base).pbm" && !bundleHasResource(at: imageName) {
+            if !bundleHasResource(at: imageName) {
                 issues.append(.init(letter: base, message: "Missing PBM image (expected \(imageCandidates.joined(separator: " or "))"))
             }
 
@@ -187,7 +188,7 @@ private extension LetterRepository {
             guard folder.count == 1 || file.count == 5 else { return nil }
 
             let id = folder.count == 1 ? folder : String(file.prefix(1))
-            let imageRelative = "\(id)/\(id).pbm"
+            let imageRelative = "Letters/\(id)/\(id).pbm"
             let audio = findAudioAssets(for: id)
             if audio.isEmpty {
                 issues.append(.init(letter: id, message: "No audio files found for folder-scanned letter"))
@@ -197,7 +198,7 @@ private extension LetterRepository {
             return LetterAsset(
                 id: id,
                 name: id.uppercased(),
-                imageName: bundleHasResource(at: imageRelative) ? imageRelative : "\(id).pbm",
+                imageName: bundleHasResource(at: imageRelative) ? imageRelative : "\(id)/\(id).pbm",
                 audioFiles: audio,
                 strokes: defaultStrokes(for: id.uppercased())
             )
@@ -212,6 +213,7 @@ private extension LetterRepository {
     func findAudioAssets(for base: String) -> [String] {
         let supported = Set(["mp3", "wav", "m4a", "aac", "flac", "ogg"])
         let allResources = resources.allResourceURLs()
+        let bundleRoot = resources.bundle.resourceURL?.path ?? ""
 
         let audio = allResources.compactMap { url -> String? in
             let ext = url.pathExtension.lowercased()
@@ -219,9 +221,16 @@ private extension LetterRepository {
 
             let normalizedPath = url.path.replacingOccurrences(of: "\\", with: "/")
             let marker = "/\(base)/"
-            if let markerRange = normalizedPath.range(of: marker, options: [.caseInsensitive]) {
-                let relative = String(normalizedPath[markerRange.lowerBound...].dropFirst())
-                return relative
+            if normalizedPath.range(of: marker, options: [.caseInsensitive]) != nil {
+                // Return path relative to bundle.resourceURL so AudioEngine can resolve it
+                if !bundleRoot.isEmpty, normalizedPath.hasPrefix(bundleRoot) {
+                    let rel = String(normalizedPath.dropFirst(bundleRoot.count))
+                    return rel.hasPrefix("/") ? String(rel.dropFirst()) : rel
+                }
+                // Fallback: return the letter-folder-relative path (old behaviour)
+                if let markerRange = normalizedPath.range(of: marker, options: [.caseInsensitive]) {
+                    return String(normalizedPath[markerRange.lowerBound...].dropFirst())
+                }
             }
 
             let file = url.lastPathComponent
@@ -254,18 +263,17 @@ private extension LetterRepository {
 
     func preferredAudioFiles(for base: String, available: [String]) -> [String] {
         let key = base.uppercased()
+        // Paths are relative to bundle.resourceURL (e.g. "Letters/A/A1.mp3")
         let mapping: [String: [String]] = [
-            "A": ["A/A1.mp3", "A/A2.mp3", "A/A3.mp3", "A/Affe.mp3", "A/Alarm.mp3",
-                  "A1.mp3", "A2.mp3", "A3.mp3", "Affe.mp3", "Alarm.mp3"],
-            "F": ["F/Ffffff.mp3", "F/Frosch.mp3", "F/Frosch 2.mp3", "F/Föhn.mp3",
-                  "Ffffff.mp3", "Frosch.mp3", "Frosch 2.mp3", "Föhn.mp3"],
-            "I": ["I/Iii.mp3", "I/Iiii.mp3", "Iii.mp3", "Iiii.mp3"],
-            "K": ["K/K.mp3", "K/Katze.mp3", "K/Kuckuck1.mp3",
-                  "K.mp3", "Katze.mp3", "Kuckuck1.mp3"],
-            "L": ["L/Lllllll.mp3", "L/Löwe.mp3", "Lllllll.mp3", "Löwe.mp3"],
-            "M": ["M/Meer.mp3", "M/Möwe.mp3", "M/Mmmmm.mp3",
-                  "Meer.mp3", "Möwe.mp3", "Mmmmm.mp3"],
-            "O": ["O/Ooo.mp3", "O/Ooooo.mp3", "Ooo.mp3", "Ooooo.mp3"]
+            "A": ["Letters/A/A1.mp3", "Letters/A/A2.mp3", "Letters/A/A3.mp3",
+                  "Letters/A/Affe.mp3", "Letters/A/Alarm.mp3"],
+            "F": ["Letters/F/Ffffff.mp3", "Letters/F/Frosch.mp3",
+                  "Letters/F/Frosch 2.mp3", "Letters/F/Föhn.mp3"],
+            "I": ["Letters/I/Iii.mp3", "Letters/I/Iiii.mp3"],
+            "K": ["Letters/K/K.mp3", "Letters/K/Katze.mp3", "Letters/K/Kuckuck1.mp3"],
+            "L": ["Letters/L/Lllllll.mp3", "Letters/L/Löwe.mp3"],
+            "M": ["Letters/M/Meer.mp3", "Letters/M/Möwe.mp3", "Letters/M/Mmmmm.mp3"],
+            "O": ["Letters/O/Ooo.mp3", "Letters/O/Ooooo.mp3"]
         ]
 
         guard let preferredOrder = mapping[key] else { return [] }

@@ -14,6 +14,7 @@ import Foundation
 // MARK: - Test doubles
 
 private final class EmptyResourceProvider: LetterResourceProviding {
+    var bundle: Bundle = .main
     func allResourceURLs() -> [URL] { [] }
     func resourceURL(for relativePath: String) -> URL? { nil }
 }

@@ -18,6 +18,7 @@ private struct NullLetterCache: LetterCacheStoring {
 // MARK: - MockResourceProvider
 
 private final class MockResourceProvider: LetterResourceProviding {
+    var bundle: Bundle = .main
     /// Map from filename → URL (file:///mock/<filename>)
     private var resources: [String: URL] = [:]
 
@@ -108,6 +109,7 @@ final class LetterRepositoryTests: XCTestCase {
         // allResourceURLs to return the bad file path.
         // Since MockResourceProvider is file-based, add directly:
         class BadProvider: LetterResourceProviding {
+            var bundle: Bundle = .main
             let badURL: URL
             init(url: URL) { badURL = url }
             func allResourceURLs() -> [URL] { [badURL] }

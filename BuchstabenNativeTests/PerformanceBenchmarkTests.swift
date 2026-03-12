@@ -128,6 +128,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
 // MARK: - EmptyProvider
 
 private struct EmptyProvider: LetterResourceProviding {
+    var bundle: Bundle = .main
     func allResourceURLs() -> [URL] { [] }
     func resourceURL(for relativePath: String) -> URL? { nil }
 }
