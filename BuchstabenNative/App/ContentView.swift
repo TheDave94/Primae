@@ -1,10 +1,15 @@
 import SwiftUI
 
-struct ContentView: View {
+// 1. Added 'public' to the struct
+public struct ContentView: View {
     @EnvironmentObject private var vm: TracingViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var body: some View {
+    // 2. Added a public initializer
+    public init() {}
+
+    // 3. Added 'public' to the body
+    public var body: some View {
         ZStack(alignment: .top) {
             TracingCanvasView()
                 .background(Color.white)

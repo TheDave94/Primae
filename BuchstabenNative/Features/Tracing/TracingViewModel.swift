@@ -3,8 +3,9 @@ import CoreGraphics
 import QuartzCore
 import Foundation
 
+// 1. Added 'public' to the class
 @MainActor
-final class TracingViewModel: ObservableObject {
+public final class TracingViewModel: ObservableObject {
     @Published var showGhost = false
     /// Non-nil while an Apple Pencil is in contact; nil for finger/mouse. Range 0–1.
     @Published var pencilPressure: CGFloat? = nil
@@ -47,6 +48,15 @@ final class TracingViewModel: ObservableObject {
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
+    // 2. NEW PUBLIC INITIALIZER
+    // This allows your Host App to create the ViewModel without needing to know
+    // about all the internal tools like AudioEngine or JSONProgressStore.
+    @MainActor
+    public convenience init() {
+        self.init(singleTouchCooldownAfterNavigation: 0.18)
+    }
+
+    // ORIGINAL INITIALIZER (Stays internal exactly as it was)
     @MainActor init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
          audio: AudioControlling = AudioEngine(),
          progressStore: ProgressStoring = JSONProgressStore(),

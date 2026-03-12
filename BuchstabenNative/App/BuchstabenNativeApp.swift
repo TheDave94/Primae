@@ -1,6 +1,6 @@
 import SwiftUI
 
-@main
+
 struct BuchstabenNativeApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var vm = TracingViewModel()
