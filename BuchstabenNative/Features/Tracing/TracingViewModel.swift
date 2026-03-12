@@ -76,6 +76,7 @@ public final class TracingViewModel: ObservableObject {
         let lettersExists = FileManager.default.fileExists(atPath: lettersPath)
         print("[DEBUG] Letters/ exists in Bundle.main: \(lettersExists) at \(lettersPath)")
         print("[DEBUG] Letters loaded: \(letters.map { $0.name })")
+        letters.forEach { print("[DEBUG] \($0.name) audioFiles: \($0.audioFiles)") }
         if let lettersDir = Bundle.main.resourceURL?.appendingPathComponent("Letters") {
             let contents = (try? FileManager.default.contentsOfDirectory(atPath: lettersDir.path)) ?? []
             print("[DEBUG] Letters/ contents: \(contents)")
