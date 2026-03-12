@@ -74,6 +74,8 @@ final class LetterRepository {
          cache: LetterCacheStoring = JSONLetterCache()) {
         self.resources = resources
         self.cache = cache
+        // Clear stale cache on init so path format changes always take effect
+        self.cache.clear()
     }
 
     /// Loads letters from bundle with cache fallback.
