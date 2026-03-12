@@ -1,9 +1,0 @@
-# CRITIC REVIEW COMPLETE
-# task: Welcome Back notification — recent home activity context (alarm, temp swing, appliances)
-# domain: ha
-# status: REVIEWED — 8 objections (3 critical, 3 high, 2 medium)
-# blockers:
-#   - variables: sibling reference bug: last_alarm_state in alarm_was_triggered resolves to '' — alarm line never shows
-#   - temp_swing uses arrival-time baseline not departure-time baseline — measures wrong interval
-#   - input_text.alarmo_last_notified_cause not defined anywhere — condition always false, blocks alarm trigger detection
-# do not re-invoke critic. advance to validator after proposer revision.
