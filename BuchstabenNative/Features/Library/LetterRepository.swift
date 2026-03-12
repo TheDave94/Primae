@@ -26,17 +26,27 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     /// Enumerate all files from all search bundles using FileManager deep traversal.
     func allResourceURLs() -> [URL] {
         let fm = FileManager.default
-        return searchBundles.flatMap { b -> [URL] in
-            guard let root = b.resourceURL else { return [] }
+        let results = searchBundles.flatMap { b -> [URL] in
+            guard let root = b.resourceURL else {
+                print("[BundleLetterResourceProvider] bundle has no resourceURL: \(b.bundleURL)")
+                return []
+            }
+            print("[BundleLetterResourceProvider] scanning: \(root.path)")
             guard let enumerator = fm.enumerator(
                 at: root,
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
             ) else { return [] }
-            return enumerator.compactMap { $0 as? URL }.filter {
+            let urls = enumerator.compactMap { $0 as? URL }.filter {
                 (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
             }
+            print("[BundleLetterResourceProvider] found \(urls.count) files in \(root.lastPathComponent)")
+            // Print first 10 for debugging
+            urls.prefix(10).forEach { print("  \($0.path)") }
+            return urls
         }
+        print("[BundleLetterResourceProvider] total files: \(results.count)")
+        return results
     }
 
     func resourceURL(for relativePath: String) -> URL? {
