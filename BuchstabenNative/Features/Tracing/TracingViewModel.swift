@@ -15,6 +15,8 @@ public final class TracingViewModel: ObservableObject {
     @Published var showDebug = false
     @Published var toastMessage: String?
     @Published var currentLetterName = "A"
+    @Published var currentLetterImageName = ""
+    @Published var currentLetterImage: UIImage? = nil
     @Published var progress: CGFloat = 0
     @Published var isPlaying = false
     @Published var activePath: [CGPoint] = []
@@ -311,6 +313,8 @@ public final class TracingViewModel: ObservableObject {
 
     private func load(letter: LetterAsset) {
         currentLetterName = letter.name
+        currentLetterImageName = letter.imageName
+        currentLetterImage = PBMLoader.load(named: letter.imageName)
         strokeTracker.load(letter.strokes)
         progress = 0
         audioIndex = 0

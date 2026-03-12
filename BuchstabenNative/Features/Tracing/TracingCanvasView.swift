@@ -7,12 +7,18 @@ struct TracingCanvasView: View {
 
     @ViewBuilder
     private func tracingCanvas(geo: GeometryProxy) -> some View {
-        Canvas { context, _ in
+        Canvas { context, size in
+            // Background: PBM letter bitmap (cached in VM, loaded once per letter change)
+            if let img = vm.currentLetterImage {
+                let uiImage = Image(uiImage: img)
+                context.draw(uiImage, in: CGRect(origin: .zero, size: size))
+            }
+
             if vm.showGhost {
-                let guideRect = CGRect(x: geo.size.width * 0.14,
-                                       y: geo.size.height * 0.1,
-                                       width: geo.size.width * 0.72,
-                                       height: geo.size.height * 0.8)
+                let guideRect = CGRect(x: size.width * 0.14,
+                                       y: size.height * 0.1,
+                                       width: size.width * 0.72,
+                                       height: size.height * 0.8)
                 if let ghost = LetterGuideRenderer.guidePath(for: vm.currentLetterName, in: guideRect) {
                     context.stroke(ghost, with: .color(.blue.opacity(0.22)), style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
                 }
@@ -26,8 +32,8 @@ struct TracingCanvasView: View {
             }
 
             let clampedProgress = max(0, min(1, vm.progress))
-            let trackRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width, height: 8)
-            let fillRect = CGRect(x: 0, y: geo.size.height - 8, width: geo.size.width * clampedProgress, height: 8)
+            let trackRect = CGRect(x: 0, y: size.height - 8, width: size.width, height: 8)
+            let fillRect = CGRect(x: 0, y: size.height - 8, width: size.width * clampedProgress, height: 8)
 
             context.fill(Path(trackRect), with: .color(.black.opacity(0.1)))
             context.fill(Path(fillRect), with: .color(differentiateWithoutColor ? .blue : .green))
