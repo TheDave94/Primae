@@ -13,34 +13,50 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
         self.bundle = bundle
     }
 
-    /// Enumerate all files reachable from this bundle using FileManager deep traversal.
-    /// `bundle.urls(forResourcesWithExtension:subdirectory:)` is unreliable on device
-    /// when extension is nil and subdirectories are involved; FileManager is authoritative.
+    /// All bundles to search: the Swift PM module bundle + Bundle.main.
+    /// When running as an Xcode app target, the Letters folder is in Bundle.main
+    /// (added via Copy Bundle Resources). When running via Swift PM directly,
+    /// it lives in Bundle.module. We search both to cover both cases.
+    private var searchBundles: [Bundle] {
+        var bundles: [Bundle] = [bundle]
+        if bundle != .main { bundles.append(.main) }
+        return bundles
+    }
+
+    /// Enumerate all files from all search bundles using FileManager deep traversal.
     func allResourceURLs() -> [URL] {
-        guard let root = bundle.resourceURL else { return [] }
         let fm = FileManager.default
-        guard let enumerator = fm.enumerator(
-            at: root,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        ) else { return [] }
-        return enumerator.compactMap { $0 as? URL }.filter {
-            (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        return searchBundles.flatMap { b -> [URL] in
+            guard let root = b.resourceURL else { return [] }
+            guard let enumerator = fm.enumerator(
+                at: root,
+                includingPropertiesForKeys: [.isRegularFileKey],
+                options: [.skipsHiddenFiles]
+            ) else { return [] }
+            return enumerator.compactMap { $0 as? URL }.filter {
+                (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            }
         }
     }
 
     func resourceURL(for relativePath: String) -> URL? {
-        guard let root = bundle.resourceURL else { return nil }
-        let candidate = root.appendingPathComponent(relativePath)
-        if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
-        // Fallback: try bundle API for flat resources
+        for b in searchBundles {
+            guard let root = b.resourceURL else { continue }
+            let candidate = root.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+        }
+        // Fallback: bundle API
         let ns = relativePath as NSString
         let file = ns.lastPathComponent
         let directory = ns.deletingLastPathComponent
-        if directory.isEmpty {
-            return bundle.url(forResource: file, withExtension: nil)
+        for b in searchBundles {
+            if directory.isEmpty {
+                if let url = b.url(forResource: file, withExtension: nil) { return url }
+            } else {
+                if let url = b.url(forResource: file, withExtension: nil, subdirectory: directory) { return url }
+            }
         }
-        return bundle.url(forResource: file, withExtension: nil, subdirectory: directory)
+        return nil
     }
 }
 

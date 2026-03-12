@@ -47,28 +47,31 @@ struct BundleAudioPlayerFactory: AudioPlayerFactory {
         let file = ns.lastPathComponent
         let subdir = ns.deletingLastPathComponent
         let extensions = ["mp3", "wav", "caf", "aiff", "m4a"]
+        // Search Bundle.main first (Xcode Copy Bundle Resources), then the passed bundle (Bundle.module)
+        var bundles: [Bundle] = [.main]
+        if bundle != .main { bundles.append(bundle) }
 
-        // 1. FileManager path -- most reliable for subdirectory assets on device
-        if let root = bundle.resourceURL {
-            let candidate = root.appendingPathComponent(resourceName)
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
-        }
-
-        // 2. Bundle API with subdirectory
-        for ext in extensions {
-            if !subdir.isEmpty,
-               let url = bundle.url(forResource: (file as NSString).deletingPathExtension,
-                                    withExtension: ext,
-                                    subdirectory: subdir) {
-                return url
+        for b in bundles {
+            // 1. FileManager path -- most reliable for subdirectory assets on device
+            if let root = b.resourceURL {
+                let candidate = root.appendingPathComponent(resourceName)
+                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
             }
-        }
-
-        // 3. Flat bundle lookup
-        for ext in extensions {
-            if let url = bundle.url(forResource: (resourceName as NSString).deletingPathExtension,
-                                    withExtension: ext) {
-                return url
+            // 2. Bundle API with subdirectory
+            for ext in extensions {
+                if !subdir.isEmpty,
+                   let url = b.url(forResource: (file as NSString).deletingPathExtension,
+                                   withExtension: ext,
+                                   subdirectory: subdir) {
+                    return url
+                }
+            }
+            // 3. Flat bundle lookup
+            for ext in extensions {
+                if let url = b.url(forResource: (resourceName as NSString).deletingPathExtension,
+                                   withExtension: ext) {
+                    return url
+                }
             }
         }
         return nil

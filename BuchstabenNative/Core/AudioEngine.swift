@@ -128,25 +128,27 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
 
 private extension AudioEngine {
     func resourceURL(for fileName: String) -> URL? {
-        // Try module bundle first (Swift PM resource bundle for this target)
-        let bundles: [Bundle] = [.module, .main]
+        // Search Bundle.main first (Xcode app target puts resources there via Copy Bundle Resources),
+        // then Bundle.module (Swift PM resource bundle). FileManager path construction is most
+        // reliable for subdirectory assets on device.
+        let bundles: [Bundle] = [.main, .module]
         let ns = fileName as NSString
         let resource = ns.lastPathComponent
         let subdir = ns.deletingLastPathComponent
 
         for bundle in bundles {
-            // Direct flat lookup
-            if let url = bundle.url(forResource: fileName, withExtension: nil) { return url }
-            // Subdirectory lookup (e.g. "Letters/A/A1.mp3")
-            if !subdir.isEmpty,
-               let url = bundle.url(forResource: resource, withExtension: nil, subdirectory: subdir) {
-                return url
-            }
-            // FileManager-based path resolution (most reliable on device)
+            // FileManager path -- works for both flat and subdirectory paths
             if let root = bundle.resourceURL {
                 let candidate = root.appendingPathComponent(fileName)
                 if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
             }
+            // Bundle API subdirectory lookup
+            if !subdir.isEmpty,
+               let url = bundle.url(forResource: resource, withExtension: nil, subdirectory: subdir) {
+                return url
+            }
+            // Bundle API flat lookup
+            if let url = bundle.url(forResource: fileName, withExtension: nil) { return url }
         }
         return nil
     }
