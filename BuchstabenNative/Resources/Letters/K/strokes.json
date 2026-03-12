@@ -1,34 +1,76 @@
 {
   "letter": "K",
   "checkpointRadius": 0.04,
-  "comment": "Coords measured from debug screenshot (1194x896). 3 strokes: spine top→bot, upper arm TR→junction, lower arm junction→BR.",
+  "comment": "PBM centerline skeleton. 3 strokes: spine top\u2192bot, upper arm TR\u2192junction, lower arm junction\u2192BR.",
   "strokes": [
     {
       "id": 1,
       "comment": "Vertical spine: top to bottom",
       "checkpoints": [
-        {"x": 0.465, "y": 0.223},
-        {"x": 0.436, "y": 0.413},
-        {"x": 0.431, "y": 0.580},
-        {"x": 0.431, "y": 0.770}
+        {
+          "x": 0.417,
+          "y": 0.17
+        },
+        {
+          "x": 0.413,
+          "y": 0.336
+        },
+        {
+          "x": 0.413,
+          "y": 0.502
+        },
+        {
+          "x": 0.413,
+          "y": 0.635
+        },
+        {
+          "x": 0.413,
+          "y": 0.801
+        }
       ]
     },
     {
       "id": 2,
       "comment": "Upper arm: top-right DOWN-LEFT to junction",
       "checkpoints": [
-        {"x": 0.637, "y": 0.223},
-        {"x": 0.578, "y": 0.352},
-        {"x": 0.536, "y": 0.480}
+        {
+          "x": 0.685,
+          "y": 0.17
+        },
+        {
+          "x": 0.618,
+          "y": 0.27
+        },
+        {
+          "x": 0.567,
+          "y": 0.419
+        },
+        {
+          "x": 0.517,
+          "y": 0.519
+        }
       ]
     },
     {
       "id": 3,
       "comment": "Lower arm: junction DOWN-RIGHT to bottom-right",
       "checkpoints": [
-        {"x": 0.523, "y": 0.519},
-        {"x": 0.586, "y": 0.642},
-        {"x": 0.653, "y": 0.781}
+        {
+          "x": 0.503,
+          "y": 0.48
+        },
+        {
+          "x": 0.587,
+          "y": 0.58
+        },
+        {
+          "x": 0.675,
+          "y": 0.729
+        },
+        {
+          "x": 0.691,
+          "y": 0.829
+        }
       ]
     }
   ]

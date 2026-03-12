@@ -326,113 +326,87 @@ private extension LetterRepository {
     }
 
     func defaultStrokes(for letter: String) -> LetterStrokes {
-        // Coordinates measured from real device debug screenshots in the legacy Timestretch build.
+        // Coordinates computed from PBM pixel centerlines (2732×2048 bitmaps).
         // Matches strokes.json files exactly — stroke order, direction, and checkpoint positions.
         let strokes: [StrokeDefinition]
         switch letter.uppercased() {
         case "A":
             strokes = [
-                // Stroke 1: left leg — apex (top-center) DOWN to bottom-left
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.507, y: 0.240), .init(x: 0.477, y: 0.379),
-                    .init(x: 0.410, y: 0.569), .init(x: 0.360, y: 0.759)
-                ]),
-                // Stroke 2: right leg — apex (top-center) DOWN to bottom-right
-                .init(id: 2, checkpoints: [
-                    .init(x: 0.532, y: 0.240), .init(x: 0.578, y: 0.379),
-                    .init(x: 0.632, y: 0.547), .init(x: 0.678, y: 0.759)
-                ]),
-                // Stroke 3: crossbar — left to right
-                .init(id: 3, checkpoints: [
-                    .init(x: 0.377, y: 0.597), .init(x: 0.511, y: 0.597), .init(x: 0.620, y: 0.597)
-                ])
+                .init(id: 1, checkpoints: [ // left leg: apex DOWN to bottom-left
+                    .init(x: 0.515, y: 0.170), .init(x: 0.514, y: 0.319),
+                    .init(x: 0.514, y: 0.469), .init(x: 0.400, y: 0.668), .init(x: 0.296, y: 0.817)]),
+                .init(id: 2, checkpoints: [ // right leg: apex DOWN to bottom-right
+                    .init(x: 0.515, y: 0.170), .init(x: 0.514, y: 0.319),
+                    .init(x: 0.514, y: 0.494), .init(x: 0.762, y: 0.668), .init(x: 0.695, y: 0.817)]),
+                .init(id: 3, checkpoints: [ // crossbar: left to right
+                    .init(x: 0.399, y: 0.597), .init(x: 0.512, y: 0.597), .init(x: 0.624, y: 0.597)])
             ]
         case "F":
             strokes = [
-                // Stroke 1: vertical spine — top to bottom
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.444, y: 0.251), .init(x: 0.436, y: 0.424),
-                    .init(x: 0.431, y: 0.569), .init(x: 0.444, y: 0.759)
-                ]),
-                // Stroke 2: top crossbar — left to right
-                .init(id: 2, checkpoints: [
-                    .init(x: 0.456, y: 0.268), .init(x: 0.570, y: 0.268), .init(x: 0.670, y: 0.279)
-                ]),
-                // Stroke 3: mid crossbar — left to right
-                .init(id: 3, checkpoints: [
-                    .init(x: 0.452, y: 0.508), .init(x: 0.536, y: 0.508), .init(x: 0.607, y: 0.511)
-                ])
+                .init(id: 1, checkpoints: [ // vertical spine: top to bottom
+                    .init(x: 0.421, y: 0.180), .init(x: 0.421, y: 0.346),
+                    .init(x: 0.421, y: 0.512), .init(x: 0.421, y: 0.645), .init(x: 0.421, y: 0.811)]),
+                .init(id: 2, checkpoints: [ // top crossbar: left to right
+                    .init(x: 0.397, y: 0.200), .init(x: 0.531, y: 0.200), .init(x: 0.664, y: 0.200)]),
+                .init(id: 3, checkpoints: [ // mid crossbar: left to right
+                    .init(x: 0.397, y: 0.500), .init(x: 0.513, y: 0.500), .init(x: 0.630, y: 0.500)])
             ]
         case "I":
             strokes = [
-                // Stroke 1: straight down
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.532, y: 0.234), .init(x: 0.532, y: 0.396),
-                    .init(x: 0.532, y: 0.558), .init(x: 0.532, y: 0.776)
-                ])
+                .init(id: 1, checkpoints: [ // top serif: left to right
+                    .init(x: 0.387, y: 0.237), .init(x: 0.495, y: 0.237), .init(x: 0.602, y: 0.237)]),
+                .init(id: 2, checkpoints: [ // stem: straight down
+                    .init(x: 0.579, y: 0.250), .init(x: 0.579, y: 0.369),
+                    .init(x: 0.579, y: 0.487), .init(x: 0.579, y: 0.646), .init(x: 0.579, y: 0.764)]),
+                .init(id: 3, checkpoints: [ // bottom serif: left to right
+                    .init(x: 0.396, y: 0.771), .init(x: 0.487, y: 0.771), .init(x: 0.579, y: 0.771)])
             ]
         case "K":
             strokes = [
-                // Stroke 1: vertical spine — top to bottom
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.465, y: 0.223), .init(x: 0.436, y: 0.413),
-                    .init(x: 0.431, y: 0.580), .init(x: 0.431, y: 0.770)
-                ]),
-                // Stroke 2: upper arm — top-right DOWN-LEFT to junction
-                .init(id: 2, checkpoints: [
-                    .init(x: 0.637, y: 0.223), .init(x: 0.578, y: 0.352), .init(x: 0.536, y: 0.480)
-                ]),
-                // Stroke 3: lower arm — junction DOWN-RIGHT to bottom-right
-                .init(id: 3, checkpoints: [
-                    .init(x: 0.523, y: 0.519), .init(x: 0.586, y: 0.642), .init(x: 0.653, y: 0.781)
-                ])
+                .init(id: 1, checkpoints: [ // vertical spine: top to bottom
+                    .init(x: 0.417, y: 0.170), .init(x: 0.413, y: 0.336),
+                    .init(x: 0.413, y: 0.502), .init(x: 0.413, y: 0.635), .init(x: 0.413, y: 0.801)]),
+                .init(id: 2, checkpoints: [ // upper arm: top-right DOWN-LEFT to junction
+                    .init(x: 0.685, y: 0.170), .init(x: 0.618, y: 0.270),
+                    .init(x: 0.567, y: 0.419), .init(x: 0.517, y: 0.519)]),
+                .init(id: 3, checkpoints: [ // lower arm: junction DOWN-RIGHT to bottom-right
+                    .init(x: 0.503, y: 0.480), .init(x: 0.587, y: 0.580),
+                    .init(x: 0.675, y: 0.729), .init(x: 0.691, y: 0.829)])
             ]
         case "L":
             strokes = [
-                // Stroke 1: vertical stroke — top to bottom
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.448, y: 0.234), .init(x: 0.446, y: 0.379),
-                    .init(x: 0.444, y: 0.547), .init(x: 0.448, y: 0.731)
-                ]),
-                // Stroke 2: baseline foot — left to right
-                .init(id: 2, checkpoints: [
-                    .init(x: 0.448, y: 0.748), .init(x: 0.536, y: 0.753), .init(x: 0.624, y: 0.753)
-                ])
+                .init(id: 1, checkpoints: [ // vertical stroke: top to bottom
+                    .init(x: 0.425, y: 0.170), .init(x: 0.425, y: 0.328),
+                    .init(x: 0.425, y: 0.486), .init(x: 0.425, y: 0.605), .init(x: 0.425, y: 0.763)]),
+                .init(id: 2, checkpoints: [ // baseline foot: left to right
+                    .init(x: 0.293, y: 0.780), .init(x: 0.476, y: 0.780), .init(x: 0.657, y: 0.780)])
             ]
         case "M":
             strokes = [
-                // Stroke 1: left spine — top-left down to bottom-left
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.302, y: 0.301), .init(x: 0.293, y: 0.446),
-                    .init(x: 0.289, y: 0.603), .init(x: 0.297, y: 0.759)
-                ]),
-                // Stroke 2: left diagonal — top-left DOWN-RIGHT to valley
-                .init(id: 2, checkpoints: [
-                    .init(x: 0.369, y: 0.257), .init(x: 0.436, y: 0.413),
-                    .init(x: 0.482, y: 0.519), .init(x: 0.511, y: 0.625)
-                ]),
-                // Stroke 3: right diagonal — valley UP-RIGHT to top-right
-                .init(id: 3, checkpoints: [
-                    .init(x: 0.549, y: 0.608), .init(x: 0.607, y: 0.480),
-                    .init(x: 0.645, y: 0.391), .init(x: 0.670, y: 0.312)
-                ]),
-                // Stroke 4: right spine — top-right down to bottom-right
-                .init(id: 4, checkpoints: [
-                    .init(x: 0.737, y: 0.240), .init(x: 0.745, y: 0.413),
-                    .init(x: 0.750, y: 0.592), .init(x: 0.754, y: 0.770)
-                ])
+                .init(id: 1, checkpoints: [ // left spine: top-left down to bottom-left
+                    .init(x: 0.384, y: 0.170), .init(x: 0.364, y: 0.340),
+                    .init(x: 0.324, y: 0.510), .init(x: 0.185, y: 0.668), .init(x: 0.209, y: 0.821)]),
+                .init(id: 2, checkpoints: [ // left diagonal: top-left DOWN-RIGHT to valley
+                    .init(x: 0.384, y: 0.170), .init(x: 0.396, y: 0.319),
+                    .init(x: 0.413, y: 0.419), .init(x: 0.431, y: 0.519), .init(x: 0.450, y: 0.595)]),
+                .init(id: 3, checkpoints: [ // right diagonal: valley UP-RIGHT to top-right
+                    .init(x: 0.569, y: 0.595), .init(x: 0.601, y: 0.481),
+                    .init(x: 0.625, y: 0.381), .init(x: 0.645, y: 0.270), .init(x: 0.658, y: 0.170)]),
+                .init(id: 4, checkpoints: [ // right spine: top-right down to bottom-right
+                    .init(x: 0.658, y: 0.170), .init(x: 0.658, y: 0.340),
+                    .init(x: 0.672, y: 0.510), .init(x: 0.836, y: 0.668), .init(x: 0.777, y: 0.821)])
             ]
         case "O":
             strokes = [
-                // Stroke 1: clockwise oval from top-left all the way around
-                .init(id: 1, checkpoints: [
-                    .init(x: 0.436, y: 0.268), .init(x: 0.523, y: 0.257),
-                    .init(x: 0.641, y: 0.268), .init(x: 0.720, y: 0.368),
-                    .init(x: 0.737, y: 0.491), .init(x: 0.716, y: 0.625),
-                    .init(x: 0.657, y: 0.725), .init(x: 0.553, y: 0.765),
-                    .init(x: 0.440, y: 0.725), .init(x: 0.356, y: 0.608),
-                    .init(x: 0.335, y: 0.480), .init(x: 0.356, y: 0.357)
-                ])
+                .init(id: 1, checkpoints: [ // clockwise oval from top
+                    .init(x: 0.500, y: 0.197), .init(x: 0.606, y: 0.244),
+                    .init(x: 0.661, y: 0.339), .init(x: 0.680, y: 0.425),
+                    .init(x: 0.682, y: 0.500), .init(x: 0.680, y: 0.575),
+                    .init(x: 0.661, y: 0.661), .init(x: 0.606, y: 0.756),
+                    .init(x: 0.500, y: 0.802), .init(x: 0.395, y: 0.754),
+                    .init(x: 0.339, y: 0.661), .init(x: 0.320, y: 0.575),
+                    .init(x: 0.318, y: 0.500), .init(x: 0.320, y: 0.425),
+                    .init(x: 0.339, y: 0.339), .init(x: 0.394, y: 0.244)])
             ]
         default:
             strokes = [

@@ -67,79 +67,106 @@ public struct LetterGuideGeometry {
     }
 
     static func fallbackSegments(for letter: String) -> [Segment] {
-        let hash = abs(letter.unicodeScalars.reduce(0) { ($0 * 31) + Int($1.value) })
-        let crossbarY = CGFloat(0.42 + (Double(hash % 20) / 100.0))
         return [
-            .line(CGPoint(x: 0.22, y: 0.12), CGPoint(x: 0.22, y: 0.88)),
-            .line(CGPoint(x: 0.22, y: crossbarY), CGPoint(x: 0.78, y: crossbarY)),
-            .line(CGPoint(x: 0.22, y: 0.88), CGPoint(x: 0.78, y: 0.88))
+            .line(CGPoint(x: 0.50, y: 0.20), CGPoint(x: 0.50, y: 0.80))
         ]
     }
 
     // MARK: - Letter definitions
-    // Coordinates measured from real device debug screenshots in the legacy Timestretch build.
-    // Stroke order and direction match the strokes.json checkpoint files exactly.
+    // Coordinates computed from PBM pixel centerlines (2732×2048 bitmaps).
+    // Each stroke traces the exact center of the ink at measured sample points.
+    // Stroke order and direction match strokes.json exactly.
     static let guides: [String: [Segment]] = [
         "A": [
-            // Stroke 1: left leg — apex (top-center) DOWN to bottom-left
-            .line(CGPoint(x: 0.507, y: 0.240), CGPoint(x: 0.360, y: 0.759)),
-            // Stroke 2: right leg — apex (top-center) DOWN to bottom-right
-            .line(CGPoint(x: 0.532, y: 0.240), CGPoint(x: 0.678, y: 0.759)),
+            // Stroke 1: left leg — apex DOWN to bottom-left
+            .polyline([
+                CGPoint(x: 0.515, y: 0.170), CGPoint(x: 0.514, y: 0.319),
+                CGPoint(x: 0.514, y: 0.469), CGPoint(x: 0.400, y: 0.668),
+                CGPoint(x: 0.296, y: 0.817)
+            ]),
+            // Stroke 2: right leg — apex DOWN to bottom-right
+            .polyline([
+                CGPoint(x: 0.515, y: 0.170), CGPoint(x: 0.514, y: 0.319),
+                CGPoint(x: 0.514, y: 0.494), CGPoint(x: 0.762, y: 0.668),
+                CGPoint(x: 0.695, y: 0.817)
+            ]),
             // Stroke 3: crossbar — left to right
-            .line(CGPoint(x: 0.377, y: 0.597), CGPoint(x: 0.620, y: 0.597))
+            .line(CGPoint(x: 0.399, y: 0.597), CGPoint(x: 0.624, y: 0.597))
         ],
         "F": [
             // Stroke 1: vertical spine — top to bottom
-            .line(CGPoint(x: 0.444, y: 0.251), CGPoint(x: 0.444, y: 0.759)),
+            .line(CGPoint(x: 0.421, y: 0.180), CGPoint(x: 0.421, y: 0.811)),
             // Stroke 2: top crossbar — left to right
-            .line(CGPoint(x: 0.456, y: 0.268), CGPoint(x: 0.670, y: 0.279)),
+            .line(CGPoint(x: 0.397, y: 0.200), CGPoint(x: 0.664, y: 0.200)),
             // Stroke 3: mid crossbar — left to right
-            .line(CGPoint(x: 0.452, y: 0.508), CGPoint(x: 0.607, y: 0.511))
+            .line(CGPoint(x: 0.397, y: 0.500), CGPoint(x: 0.630, y: 0.500))
         ],
         "I": [
-            // Stroke 1: straight down (single stroke, no serifs in checkpoint data)
-            .line(CGPoint(x: 0.532, y: 0.234), CGPoint(x: 0.532, y: 0.776))
+            // Stroke 1: top serif — left to right
+            .line(CGPoint(x: 0.387, y: 0.237), CGPoint(x: 0.602, y: 0.237)),
+            // Stroke 2: stem — straight down
+            .line(CGPoint(x: 0.579, y: 0.250), CGPoint(x: 0.579, y: 0.764)),
+            // Stroke 3: bottom serif — left to right
+            .line(CGPoint(x: 0.396, y: 0.771), CGPoint(x: 0.579, y: 0.771))
         ],
         "K": [
             // Stroke 1: vertical spine — top to bottom
-            .line(CGPoint(x: 0.465, y: 0.223), CGPoint(x: 0.431, y: 0.770)),
+            .line(CGPoint(x: 0.417, y: 0.170), CGPoint(x: 0.413, y: 0.801)),
             // Stroke 2: upper arm — top-right DOWN-LEFT to junction
-            .line(CGPoint(x: 0.637, y: 0.223), CGPoint(x: 0.536, y: 0.480)),
+            .polyline([
+                CGPoint(x: 0.685, y: 0.170), CGPoint(x: 0.618, y: 0.270),
+                CGPoint(x: 0.567, y: 0.419), CGPoint(x: 0.517, y: 0.519)
+            ]),
             // Stroke 3: lower arm — junction DOWN-RIGHT to bottom-right
-            .line(CGPoint(x: 0.523, y: 0.519), CGPoint(x: 0.653, y: 0.781))
+            .polyline([
+                CGPoint(x: 0.503, y: 0.480), CGPoint(x: 0.587, y: 0.580),
+                CGPoint(x: 0.675, y: 0.729), CGPoint(x: 0.691, y: 0.829)
+            ])
         ],
         "L": [
             // Stroke 1: vertical stroke — top to bottom
-            .line(CGPoint(x: 0.448, y: 0.234), CGPoint(x: 0.448, y: 0.731)),
+            .line(CGPoint(x: 0.425, y: 0.170), CGPoint(x: 0.425, y: 0.763)),
             // Stroke 2: baseline foot — left to right
-            .line(CGPoint(x: 0.448, y: 0.748), CGPoint(x: 0.624, y: 0.753))
+            .line(CGPoint(x: 0.293, y: 0.780), CGPoint(x: 0.657, y: 0.780))
         ],
         "M": [
             // Stroke 1: left spine — top-left down to bottom-left
-            .line(CGPoint(x: 0.302, y: 0.301), CGPoint(x: 0.297, y: 0.759)),
+            .polyline([
+                CGPoint(x: 0.384, y: 0.170), CGPoint(x: 0.364, y: 0.340),
+                CGPoint(x: 0.324, y: 0.510), CGPoint(x: 0.185, y: 0.668),
+                CGPoint(x: 0.209, y: 0.821)
+            ]),
             // Stroke 2: left diagonal — top-left DOWN-RIGHT to valley
-            .line(CGPoint(x: 0.369, y: 0.257), CGPoint(x: 0.511, y: 0.625)),
+            .polyline([
+                CGPoint(x: 0.384, y: 0.170), CGPoint(x: 0.396, y: 0.319),
+                CGPoint(x: 0.413, y: 0.419), CGPoint(x: 0.431, y: 0.519),
+                CGPoint(x: 0.450, y: 0.595)
+            ]),
             // Stroke 3: right diagonal — valley UP-RIGHT to top-right
-            .line(CGPoint(x: 0.549, y: 0.608), CGPoint(x: 0.670, y: 0.312)),
+            .polyline([
+                CGPoint(x: 0.569, y: 0.595), CGPoint(x: 0.601, y: 0.481),
+                CGPoint(x: 0.625, y: 0.381), CGPoint(x: 0.645, y: 0.270),
+                CGPoint(x: 0.658, y: 0.170)
+            ]),
             // Stroke 4: right spine — top-right down to bottom-right
-            .line(CGPoint(x: 0.737, y: 0.240), CGPoint(x: 0.754, y: 0.770))
+            .polyline([
+                CGPoint(x: 0.658, y: 0.170), CGPoint(x: 0.658, y: 0.340),
+                CGPoint(x: 0.672, y: 0.510), CGPoint(x: 0.836, y: 0.668),
+                CGPoint(x: 0.777, y: 0.821)
+            ])
         ],
         "O": [
-            // Stroke 1: clockwise oval starting top-left, all the way around
+            // Stroke 1: clockwise oval from top, 16 measured points
             .polyline([
-                CGPoint(x: 0.436, y: 0.268),
-                CGPoint(x: 0.523, y: 0.257),
-                CGPoint(x: 0.641, y: 0.268),
-                CGPoint(x: 0.720, y: 0.368),
-                CGPoint(x: 0.737, y: 0.491),
-                CGPoint(x: 0.716, y: 0.625),
-                CGPoint(x: 0.657, y: 0.725),
-                CGPoint(x: 0.553, y: 0.765),
-                CGPoint(x: 0.440, y: 0.725),
-                CGPoint(x: 0.356, y: 0.608),
-                CGPoint(x: 0.335, y: 0.480),
-                CGPoint(x: 0.356, y: 0.357),
-                CGPoint(x: 0.436, y: 0.268)
+                CGPoint(x: 0.500, y: 0.197), CGPoint(x: 0.606, y: 0.244),
+                CGPoint(x: 0.661, y: 0.339), CGPoint(x: 0.680, y: 0.425),
+                CGPoint(x: 0.682, y: 0.500), CGPoint(x: 0.680, y: 0.575),
+                CGPoint(x: 0.661, y: 0.661), CGPoint(x: 0.606, y: 0.756),
+                CGPoint(x: 0.500, y: 0.802), CGPoint(x: 0.395, y: 0.754),
+                CGPoint(x: 0.339, y: 0.661), CGPoint(x: 0.320, y: 0.575),
+                CGPoint(x: 0.318, y: 0.500), CGPoint(x: 0.320, y: 0.425),
+                CGPoint(x: 0.339, y: 0.339), CGPoint(x: 0.394, y: 0.244),
+                CGPoint(x: 0.500, y: 0.197)
             ])
         ]
     ]

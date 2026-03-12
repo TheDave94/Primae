@@ -1,24 +1,80 @@
 {
   "letter": "O",
   "checkpointRadius": 0.04,
-  "comment": "Coords measured from debug screenshot (1194x896). 1 stroke: clockwise oval from top-left.",
+  "comment": "PBM centerline skeleton. 1 stroke: clockwise oval from top, 16 points.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Oval: start top-left, clockwise all the way around",
+      "comment": "Oval: clockwise from top all the way around",
       "checkpoints": [
-        {"x": 0.436, "y": 0.268},
-        {"x": 0.523, "y": 0.257},
-        {"x": 0.641, "y": 0.268},
-        {"x": 0.720, "y": 0.368},
-        {"x": 0.737, "y": 0.491},
-        {"x": 0.716, "y": 0.625},
-        {"x": 0.657, "y": 0.725},
-        {"x": 0.553, "y": 0.765},
-        {"x": 0.440, "y": 0.725},
-        {"x": 0.356, "y": 0.608},
-        {"x": 0.335, "y": 0.480},
-        {"x": 0.356, "y": 0.357}
+        {
+          "x": 0.5,
+          "y": 0.197
+        },
+        {
+          "x": 0.606,
+          "y": 0.244
+        },
+        {
+          "x": 0.661,
+          "y": 0.339
+        },
+        {
+          "x": 0.68,
+          "y": 0.425
+        },
+        {
+          "x": 0.682,
+          "y": 0.5
+        },
+        {
+          "x": 0.68,
+          "y": 0.575
+        },
+        {
+          "x": 0.661,
+          "y": 0.661
+        },
+        {
+          "x": 0.606,
+          "y": 0.756
+        },
+        {
+          "x": 0.5,
+          "y": 0.802
+        },
+        {
+          "x": 0.395,
+          "y": 0.754
+        },
+        {
+          "x": 0.339,
+          "y": 0.661
+        },
+        {
+          "x": 0.32,
+          "y": 0.575
+        },
+        {
+          "x": 0.318,
+          "y": 0.5
+        },
+        {
+          "x": 0.32,
+          "y": 0.425
+        },
+        {
+          "x": 0.339,
+          "y": 0.339
+        },
+        {
+          "x": 0.394,
+          "y": 0.244
+        },
+        {
+          "x": 0.5,
+          "y": 0.197
+        }
       ]
     }
   ]

@@ -1,16 +1,68 @@
 {
   "letter": "I",
   "checkpointRadius": 0.04,
-  "comment": "Coords measured from debug screenshot (1194x896). 1 stroke: straight down.",
+  "comment": "PBM centerline skeleton. 3 strokes: top serif, stem top\u2192bot, bottom serif.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Vertical stroke: top to bottom",
+      "comment": "Top serif: left to right",
       "checkpoints": [
-        {"x": 0.532, "y": 0.234},
-        {"x": 0.532, "y": 0.396},
-        {"x": 0.532, "y": 0.558},
-        {"x": 0.532, "y": 0.776}
+        {
+          "x": 0.387,
+          "y": 0.237
+        },
+        {
+          "x": 0.495,
+          "y": 0.237
+        },
+        {
+          "x": 0.602,
+          "y": 0.237
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Stem: straight down",
+      "checkpoints": [
+        {
+          "x": 0.579,
+          "y": 0.25
+        },
+        {
+          "x": 0.579,
+          "y": 0.369
+        },
+        {
+          "x": 0.579,
+          "y": 0.487
+        },
+        {
+          "x": 0.579,
+          "y": 0.646
+        },
+        {
+          "x": 0.579,
+          "y": 0.764
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "Bottom serif: left to right",
+      "checkpoints": [
+        {
+          "x": 0.396,
+          "y": 0.771
+        },
+        {
+          "x": 0.487,
+          "y": 0.771
+        },
+        {
+          "x": 0.579,
+          "y": 0.771
+        }
       ]
     }
   ]

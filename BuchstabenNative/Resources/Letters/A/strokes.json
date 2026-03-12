@@ -1,35 +1,76 @@
 {
   "letter": "A",
   "checkpointRadius": 0.04,
-  "comment": "Coords measured from debug screenshot (1194x896). 3 strokes: left leg apex→BL, right leg apex→BR, crossbar L→R.",
+  "comment": "PBM centerline skeleton. 3 strokes: left leg apex\u2192BL, right leg apex\u2192BR, crossbar L\u2192R.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Left leg: apex top-center DOWN to bottom-left",
+      "comment": "Left leg: apex (top-center) DOWN to bottom-left",
       "checkpoints": [
-        {"x": 0.507, "y": 0.240},
-        {"x": 0.477, "y": 0.379},
-        {"x": 0.410, "y": 0.569},
-        {"x": 0.360, "y": 0.759}
+        {
+          "x": 0.515,
+          "y": 0.17
+        },
+        {
+          "x": 0.514,
+          "y": 0.319
+        },
+        {
+          "x": 0.514,
+          "y": 0.469
+        },
+        {
+          "x": 0.4,
+          "y": 0.668
+        },
+        {
+          "x": 0.296,
+          "y": 0.817
+        }
       ]
     },
     {
       "id": 2,
-      "comment": "Right leg: apex top-center DOWN to bottom-right",
+      "comment": "Right leg: apex (top-center) DOWN to bottom-right",
       "checkpoints": [
-        {"x": 0.532, "y": 0.240},
-        {"x": 0.578, "y": 0.379},
-        {"x": 0.632, "y": 0.547},
-        {"x": 0.678, "y": 0.759}
+        {
+          "x": 0.515,
+          "y": 0.17
+        },
+        {
+          "x": 0.514,
+          "y": 0.319
+        },
+        {
+          "x": 0.514,
+          "y": 0.494
+        },
+        {
+          "x": 0.762,
+          "y": 0.668
+        },
+        {
+          "x": 0.695,
+          "y": 0.817
+        }
       ]
     },
     {
       "id": 3,
       "comment": "Crossbar: left to right",
       "checkpoints": [
-        {"x": 0.377, "y": 0.597},
-        {"x": 0.511, "y": 0.597},
-        {"x": 0.620, "y": 0.597}
+        {
+          "x": 0.399,
+          "y": 0.597
+        },
+        {
+          "x": 0.512,
+          "y": 0.597
+        },
+        {
+          "x": 0.624,
+          "y": 0.597
+        }
       ]
     }
   ]
