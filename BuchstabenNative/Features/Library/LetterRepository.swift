@@ -284,25 +284,22 @@ private extension LetterRepository {
     }
 
     func preferredAudioFiles(for base: String, available: [String]) -> [String] {
-        let key = base.uppercased()
-        // Paths are relative to bundle.resourceURL (e.g. "Letters/A/A1.mp3")
-        let mapping: [String: [String]] = [
-            "A": ["Letters/A/A1.mp3", "Letters/A/A2.mp3", "Letters/A/A3.mp3",
-                  "Letters/A/Affe.mp3", "Letters/A/Alarm.mp3"],
-            "F": ["Letters/F/Ffffff.mp3", "Letters/F/Frosch.mp3",
-                  "Letters/F/Frosch 2.mp3", "Letters/F/Föhn.mp3"],
-            "I": ["Letters/I/Iii.mp3", "Letters/I/Iiii.mp3"],
-            "K": ["Letters/K/K.mp3", "Letters/K/Katze.mp3", "Letters/K/Kuckuck1.mp3"],
-            "L": ["Letters/L/Lllllll.mp3", "Letters/L/Löwe.mp3"],
-            "M": ["Letters/M/Meer.mp3", "Letters/M/Möwe.mp3", "Letters/M/Mmmmm.mp3"],
-            "O": ["Letters/O/Ooo.mp3", "Letters/O/Ooooo.mp3"]
-        ]
+        // Pick paths that are inside the letter subfolder (e.g. contain "/A/" or end with "/A/xxx.mp3").
+        // This works regardless of whether the path is "Letters/A/A1.mp3" or
+        // "BuchstabenNative_BuchstabenNative.bundle/Letters/A/A1.mp3".
+        let marker = "/\(base.uppercased())/"
+        let subfolderPaths = available.filter {
+            $0.range(of: marker, options: .caseInsensitive) != nil
+        }.sorted()
+        if !subfolderPaths.isEmpty { return subfolderPaths }
 
-        guard let preferredOrder = mapping[key] else { return [] }
-        let availableSet = Set(available)
-        return preferredOrder.filter { availableSet.contains($0) }
+        // Fallback: flat files that start with the letter name
+        let flatPaths = available.filter {
+            let file = ($0 as NSString).lastPathComponent
+            return file.lowercased().hasPrefix(base.lowercased())
+        }.sorted()
+        return flatPaths
     }
-
     func isLikelyStaleAudioReference(_ path: String) -> Bool {
         let lower = path.lowercased()
         if lower.contains("elevenlabs_") { return true }
