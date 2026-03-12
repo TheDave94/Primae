@@ -28,6 +28,14 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
     #endif
 
     init() {
+        // Configure AVAudioSession for playback so audio isn't silenced by the
+        // mute switch or default ambient category.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("AudioEngine: AVAudioSession setup error: \(error)")
+        }
         engine.attach(player)
         engine.attach(timePitch)
         engine.connect(player, to: timePitch, format: nil)
