@@ -18,7 +18,7 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     /// When running as an Xcode app target, the Letters folder is in Bundle.main
     /// (added via Copy Bundle Resources). When running via Swift PM directly,
     /// it lives in Bundle.module. We search both to cover both cases.
-    private var searchBundles: [Bundle] {
+    var searchBundles: [Bundle] {
         var bundles: [Bundle] = [bundle]
         if bundle != .main { bundles.append(.main) }
         return bundles
