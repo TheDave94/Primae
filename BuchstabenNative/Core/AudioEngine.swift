@@ -140,6 +140,7 @@ private extension AudioEngine {
             // FileManager path -- works for both flat and subdirectory paths
             if let root = bundle.resourceURL {
                 let candidate = root.appendingPathComponent(fileName)
+                print("[AudioEngine] trying: \(candidate.path) exists=\(FileManager.default.fileExists(atPath: candidate.path))")
                 if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
             }
             // Bundle API subdirectory lookup
