@@ -188,16 +188,23 @@ private struct MultiTouchGestureOverlay: UIViewRepresentable {
 
     func updateUIView(_ uiView: PassthroughView, context: Context) {}
 
-    /// A UIView that only claims hit tests when 2+ fingers are involved,
-    /// so single-finger drags fall through to the SwiftUI DragGesture below.
+    /// A UIView that is transparent to hit testing but still receives
+    /// gesture recognizer events. The gesture recognizers themselves are
+    /// configured with minimumNumberOfTouches = 2, so they only activate
+    /// for multi-finger gestures. Single-finger touches pass through to
+    /// the SwiftUI DragGesture on the underlying Canvas.
     final class PassthroughView: UIView {
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            let touchCount = event?.allTouches?.filter {
-                $0.phase != .cancelled && $0.phase != .ended
-            }.count ?? 0
-            // Only intercept multi-touch (2+ fingers); let single touches pass through
-            guard touchCount >= 2 else { return nil }
-            return super.hitTest(point, with: event)
+            // Always return nil so single-finger touches fall through to SwiftUI.
+            // Multi-touch gesture recognizers attached to this view still fire
+            // because UIKit delivers touches to gesture recognizers independently
+            // of the responder chain when the recognizer is on a view in the hierarchy.
+            nil
+        }
+
+        override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+            // Report as covering the full area so gesture recognizers get touches.
+            bounds.contains(point)
         }
     }
 
