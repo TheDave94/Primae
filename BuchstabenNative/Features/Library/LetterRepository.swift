@@ -13,7 +13,21 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     }
 
     func allResourceURLs() -> [URL] {
-        bundle.urls(forResourcesWithExtension: nil, subdirectory: nil) ?? []
+        var results: [URL] = bundle.urls(forResourcesWithExtension: nil, subdirectory: nil) ?? []
+
+        // Recursively enumerate BundleLetterResourceProvider/Resources/Letters and per-letter subfolders
+        // so that files like "Letters/A/A1.mp3" are discoverable on device (Bundle API only returns
+        // top-level resources without a subdirectory argument).
+        let lettersSubdirs = ["Letters"] + ["A","B","C","D","E","F","G","H","I","J","K","L","M",
+                                             "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+                                             "Ä","Ö","Ü"].map { "Letters/\($0)" }
+        for subdir in lettersSubdirs {
+            if let urls = bundle.urls(forResourcesWithExtension: nil, subdirectory: subdir) {
+                results.append(contentsOf: urls)
+            }
+        }
+
+        return results
     }
 
     func resourceURL(for relativePath: String) -> URL? {
@@ -239,11 +253,17 @@ private extension LetterRepository {
     func preferredAudioFiles(for base: String, available: [String]) -> [String] {
         let key = base.uppercased()
         let mapping: [String: [String]] = [
-            "A": ["A/A1.mp3", "A/A2.mp3", "A/A3.mp3", "A/Affe.mp3", "A/Sirene.mp3", "A1.mp3", "A2.mp3", "A3.mp3", "Affe.mp3", "Sirene.mp3"],
-            "F": ["F/Frosch.mp3", "F/Föhn.mp3", "Frosch.mp3", "Föhn.mp3"],
-            "K": ["K/K.mp3", "K/Katze.mp3", "K/Kuckuck1.mp3", "K.mp3", "Katze.mp3", "Kuckuck1.mp3"],
-            "L": ["L/Löwe.mp3", "Löwe.mp3"],
-            "M": ["M/Meer.mp3", "M/Möwe.mp3", "Meer.mp3", "Möwe.mp3"]
+            "A": ["A/A1.mp3", "A/A2.mp3", "A/A3.mp3", "A/Affe.mp3", "A/Alarm.mp3",
+                  "A1.mp3", "A2.mp3", "A3.mp3", "Affe.mp3", "Alarm.mp3"],
+            "F": ["F/Ffffff.mp3", "F/Frosch.mp3", "F/Frosch 2.mp3", "F/Föhn.mp3",
+                  "Ffffff.mp3", "Frosch.mp3", "Frosch 2.mp3", "Föhn.mp3"],
+            "I": ["I/Iii.mp3", "I/Iiii.mp3", "Iii.mp3", "Iiii.mp3"],
+            "K": ["K/K.mp3", "K/Katze.mp3", "K/Kuckuck1.mp3",
+                  "K.mp3", "Katze.mp3", "Kuckuck1.mp3"],
+            "L": ["L/Lllllll.mp3", "L/Löwe.mp3", "Lllllll.mp3", "Löwe.mp3"],
+            "M": ["M/Meer.mp3", "M/Möwe.mp3", "M/Mmmmm.mp3",
+                  "Meer.mp3", "Möwe.mp3", "Mmmmm.mp3"],
+            "O": ["O/Ooo.mp3", "O/Ooooo.mp3", "Ooo.mp3", "Ooooo.mp3"]
         ]
 
         guard let preferredOrder = mapping[key] else { return [] }

@@ -17,7 +17,10 @@ let package = Package(
     targets: [
         .target(
             name: "BuchstabenNative",
-            path: "BuchstabenNative"
+            path: "BuchstabenNative",
+            resources: [
+                .copy("Resources/Letters")
+            ]
         ),
         .testTarget(
             name: "BuchstabenNativeTests",
