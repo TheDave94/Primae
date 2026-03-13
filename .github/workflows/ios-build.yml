@@ -18,52 +18,16 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Resolve package and discover scheme
-        id: scheme
-        run: |
-          xcodebuild -list -json 2>&1 | sed -n '/^[[:space:]]*{$/,/^[[:space:]]*}$/p' > /tmp/spm_schemes.json
-          cat /tmp/spm_schemes.json
-          SCHEME=$(python3 - << 'PY'
-          import json
-          obj=json.load(open('/tmp/spm_schemes.json'))
-          scopes=[obj.get('workspace',{}), obj.get('project',{})]
-          for scope in scopes:
-              for s in scope.get('schemes',[]):
-                  if 'BuchstabenNative' in s:
-                      print(s)
-                      raise SystemExit
-          PY
-          )
-          if [ -z "$SCHEME" ]; then
-            echo "No BuchstabenNative scheme found; skipping ios_native build/test"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Build ios-native
+      - name: Build BuchstabenNative
         id: build
-        if: steps.scheme.outputs.skip != 'true'
         run: |
-          xcodebuild \
-            -scheme "${{ steps.scheme.outputs.scheme }}" \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/build.log
+          swift build --target BuchstabenNative 2>&1 | tee /tmp/build.log
           echo "build_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Test BuchstabenNativeTests
         id: test
-        if: steps.scheme.outputs.skip != 'true'
         run: |
-          xcodebuild \
-            -scheme "${{ steps.scheme.outputs.scheme }}" \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=18.4' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            test 2>&1 | tee /tmp/test.log
+          swift test --filter BuchstabenNativeTests 2>&1 | tee /tmp/test.log
           echo "test_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Extract failure summary
@@ -79,8 +43,6 @@ jobs:
         if: failure()
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CI_ERRORS: ${{ steps.failure.outputs.ci_errors }}
-          RUN_URL: ${{ steps.failure.outputs.run_url }}
         run: |
           CI_ERRORS=$(cat /tmp/ci_errors.txt 2>/dev/null || echo "unknown")
           TASK="[P1-ci-fix] Fix CI failure on ${{ github.ref_name }}: $(echo "$CI_ERRORS" | head -3 | tr '\n' ' ') — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -101,7 +63,7 @@ jobs:
             git add task-queue.md && git commit -m "ci: inject P1 fix task for failing build" && git push
           fi
 
-      - name: Upload ios-native test artifacts
+      - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
