@@ -21,7 +21,7 @@ jobs:
       - name: Resolve package and discover scheme
         id: scheme
         run: |
-          xcodebuild -list -json > /tmp/spm_schemes.json
+          xcodebuild -list -json 2>&1 | sed -n '/^[[:space:]]*{$/,/^[[:space:]]*}$/p' > /tmp/spm_schemes.json
           cat /tmp/spm_schemes.json
           SCHEME=$(python3 - << 'PY'
           import json

@@ -313,6 +313,7 @@ public final class TracingViewModel: ObservableObject {
     }
 
     private func load(letter: LetterAsset) {
+        showGhost = false
         currentLetterName = letter.name
         currentLetterImageName = letter.imageName
         currentLetterImage = PBMLoader.load(named: letter.imageName)
@@ -359,7 +360,7 @@ public final class TracingViewModel: ObservableObject {
         completionDismissTask?.cancel()
         let letter = currentLetterName
         completionMessage = "🎉 \(letter) geschafft!"
-        completionDismissTask = Task { [weak self] in
+        completionDismissTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1.8))
             guard let self else { return }
             if self.completionMessage == "🎉 \(letter) geschafft!" {
@@ -430,7 +431,7 @@ public final class TracingViewModel: ObservableObject {
     private func toast(_ text: String) {
         toastTask?.cancel()
         toastMessage = text
-        toastTask = Task { [weak self] in
+        toastTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(1.3))
             guard let self else { return }
             if self.toastMessage == text { self.toastMessage = nil }
