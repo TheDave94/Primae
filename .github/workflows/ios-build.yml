@@ -18,32 +18,25 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build BuchstabenApp for iOS Simulator
-        id: build
+      - name: Build & Test (iOS Simulator)
+        id: test
         run: |
-          xcodebuild \
+          xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
-            build 2>&1 | tee /tmp/build.log
-          echo "build_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
-
-      - name: Test BuchstabenNativeTests (SPM)
-        id: test
-        run: |
-          swift test --filter BuchstabenNativeTests 2>&1 | tee /tmp/test.log
+            2>&1 | tee /tmp/test.log
           echo "test_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Extract failure summary
         id: failure
         if: failure()
         run: |
-          ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log /tmp/build.log 2>/dev/null \
+          ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log 2>/dev/null \
             | grep -v "^Binary" | head -15 || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           printf '%s' "$ERRORS" > /tmp/ci_errors.txt
-          echo "run_url=${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> "$GITHUB_OUTPUT"
 
       - name: Inject priority task into council queue
         if: failure()
@@ -75,6 +68,4 @@ jobs:
         with:
           name: ios-native-test-artifacts
           if-no-files-found: warn
-          path: |
-            /tmp/build.log
-            /tmp/test.log
+          path: /tmp/test.log

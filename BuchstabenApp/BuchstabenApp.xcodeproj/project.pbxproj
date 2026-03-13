@@ -8,10 +8,14 @@
 
 /* Begin PBXBuildFile section */
 		DBDE4FBA2F6330730052F95D /* BuchstabenNative in Frameworks */ = {isa = PBXBuildFile; productRef = DBDE4FB92F6330730052F95D /* BuchstabenNative */; };
+
+		F58E6EA8C93BF4B59A2341BA /* BuchstabenNativeTests in Frameworks */ = {isa = PBXBuildFile; productRef = 71EEE4F7084503E680A21AAA /* BuchstabenNativeTests */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		DBDE4FAA2F632FC30052F95D /* BuchstabenApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BuchstabenApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+
+		9FAA85E4814CF09513405571 /* BuchstabenNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BuchstabenNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -25,6 +29,12 @@
 			path = Letters;
 			sourceTree = "<group>";
 		};
+
+		FC232BB4343BDEA478F5E6E5 /* BuchstabenNativeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ../BuchstabenNativeTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -33,6 +43,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				DBDE4FBA2F6330730052F95D /* BuchstabenNative in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		C97523547CBDF68781C570C0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				F58E6EA8C93BF4B59A2341BA /* BuchstabenNativeTests in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -52,6 +71,7 @@
 			isa = PBXGroup;
 			children = (
 				DBDE4FAA2F632FC30052F95D /* BuchstabenApp.app */,
+				9FAA85E4814CF09513405571 /* BuchstabenNativeTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -83,6 +103,29 @@
 			productReference = DBDE4FAA2F632FC30052F95D /* BuchstabenApp.app */;
 			productType = "com.apple.product-type.application";
 		};
+
+		DC81ED0CB6E1B1C304209F6A /* BuchstabenNativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6218514A0CB4B9C58D5F2631 /* Build configuration list for PBXNativeTarget "BuchstabenNativeTests" */;
+			buildPhases = (
+				1ACC3DE65C17C32CD2C6B734 /* Sources */,
+				C97523547CBDF68781C570C0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FC232BB4343BDEA478F5E6E5 /* BuchstabenNativeTests */,
+			);
+			name = BuchstabenNativeTests;
+			packageProductDependencies = (
+				71EEE4F7084503E680A21AAA /* BuchstabenNativeTests */,
+			);
+			productName = BuchstabenNativeTests;
+			productReference = 9FAA85E4814CF09513405571 /* BuchstabenNativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -95,6 +138,10 @@
 				TargetAttributes = {
 					DBDE4FA92F632FC30052F95D = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					DC81ED0CB6E1B1C304209F6A = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = DBDE4FA92F632FC30052F95D;
 					};
 				};
 			};
@@ -116,6 +163,7 @@
 			projectRoot = "";
 			targets = (
 				DBDE4FA92F632FC30052F95D /* BuchstabenApp */,
+				DC81ED0CB6E1B1C304209F6A /* BuchstabenNativeTests */,
 			);
 		};
 /* End PBXProject section */
@@ -132,6 +180,14 @@
 
 /* Begin PBXSourcesBuildPhase section */
 		DBDE4FA62F632FC30052F95D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+
+		1ACC3DE65C17C32CD2C6B734 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -326,6 +382,47 @@
 			};
 			name = Release;
 		};
+
+		0170380416A87A1278248E94 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Flamingistan.BuchstabenNativeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BuchstabenApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BuchstabenApp";
+			};
+			name = Debug;
+		};
+		CC476E0DBE5DA3DCEF735B05 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Flamingistan.BuchstabenNativeTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/BuchstabenApp.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/BuchstabenApp";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -347,6 +444,16 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+
+		6218514A0CB4B9C58D5F2631 /* Build configuration list for PBXNativeTarget "BuchstabenNativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0170380416A87A1278248E94 /* Debug */,
+				CC476E0DBE5DA3DCEF735B05 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -360,6 +467,11 @@
 		DBDE4FB92F6330730052F95D /* BuchstabenNative */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BuchstabenNative;
+		};
+
+		71EEE4F7084503E680A21AAA /* BuchstabenNativeTests */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BuchstabenNativeTests;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
