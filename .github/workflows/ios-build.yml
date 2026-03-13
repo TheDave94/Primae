@@ -18,13 +18,19 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build BuchstabenNative
+      - name: Build BuchstabenApp for iOS Simulator
         id: build
         run: |
-          swift build --target BuchstabenNative 2>&1 | tee /tmp/build.log
+          xcodebuild \
+            -project BuchstabenApp/BuchstabenApp.xcodeproj \
+            -scheme BuchstabenApp \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee /tmp/build.log
           echo "build_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
-      - name: Test BuchstabenNativeTests
+      - name: Test BuchstabenNativeTests (SPM)
         id: test
         run: |
           swift test --filter BuchstabenNativeTests 2>&1 | tee /tmp/test.log
