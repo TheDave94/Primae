@@ -3,7 +3,9 @@
 //
 //  Integration tests for TracingViewModel touch→playback pipeline.
 //  Uses MockAudioController (injected via init) to observe audio side-effects.
-//  All tests run on MainActor (TracingViewModel is @MainActor).
+//  MainActor isolation is applied per setup/test method where @MainActor VM state
+//  is accessed, which is safer under Swift 6 strict concurrency than isolating
+//  the entire XCTestCase subclass.
 
 import XCTest
 import CoreGraphics
@@ -82,12 +84,12 @@ private func slowDrag(
 
 // MARK: - TracingViewModelTests
 
-@MainActor
 final class TracingViewModelTests: XCTestCase {
 
     private var audio: MockAudio!
     private var vm: TracingViewModel!
 
+    @MainActor
     override func setUp() async throws {
         audio = MockAudio()
         // singleTouchCooldownAfterNavigation=0 eliminates cooldown timing from tests.
@@ -98,6 +100,7 @@ final class TracingViewModelTests: XCTestCase {
         vm.strokeEnforced = false
     }
 
+    @MainActor
     override func tearDown() async throws {
         vm = nil
         audio = nil
@@ -105,13 +108,12 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 1 — Velocity below threshold keeps playback idle (no play after debounce)
 
-    func testSlowVelocity_doesNotTriggerPlay() throws {
+    @MainActor
+    func testSlowVelocity_doesNotTriggerPlay() async throws {
         let playBefore = audio.playCount
         slowDrag(vm: vm)
         // Wait longer than active debounce (0.03s) + idle debounce (0.12s)
-        let exp = expectation(description: "debounce window")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 250_000_000) // 0.25s
         XCTAssertEqual(audio.playCount, playBefore,
                        "Slow velocity must never trigger audio.play()")
         XCTAssertFalse(vm.isPlaying)
@@ -119,13 +121,13 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 2 — Velocity above threshold triggers play after active debounce
 
-    func testFastVelocity_triggersPlayAfterDebounce() throws {
+    @MainActor
+    func testFastVelocity_triggersPlayAfterDebounce() async throws {
         let playBefore = audio.playCount
         fastDrag(vm: vm, audio: audio)
 
-        let exp = expectation(description: "active debounce 0.03s")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        // wait for active debounce (0.03s)
+        try await Task.sleep(nanoseconds: 80_000_000) // 0.08s
 
         XCTAssertGreaterThan(audio.playCount, playBefore,
                              "Fast velocity must trigger audio.play() after active debounce")
@@ -134,11 +136,10 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 3 — endTouch always stops playback, regardless of prior velocity
 
-    func testEndTouch_stopsPlayback() throws {
+    @MainActor
+    func testEndTouch_stopsPlayback() async throws {
         fastDrag(vm: vm, audio: audio)
-        let exp = expectation(description: "let play fire")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         let stopBefore = audio.stopCount
         vm.endTouch()
@@ -147,6 +148,7 @@ final class TracingViewModelTests: XCTestCase {
         XCTAssertFalse(vm.isPlaying)
     }
 
+    @MainActor
     func testEndTouch_withoutPriorTouch_doesNotCrash() {
         // endTouch with no active touch must be a no-op, not a crash
         vm.endTouch()
@@ -155,11 +157,10 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 4 — appDidEnterBackground suspends audio and clears touch state
 
-    func testAppDidEnterBackground_suspendsClearsState() throws {
+    @MainActor
+    func testAppDidEnterBackground_suspendsClearsState() async throws {
         fastDrag(vm: vm, audio: audio)
-        let exp = expectation(description: "play fires")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         let suspendBefore = audio.suspendForLifecycleCount
         let stopBefore    = audio.stopCount
@@ -175,12 +176,11 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 5 — appDidBecomeActive with prior resumeIntent resumes playback state
 
-    func testAppDidBecomeActive_withResumeIntent_resumesAudio() throws {
+    @MainActor
+    func testAppDidBecomeActive_withResumeIntent_resumesAudio() async throws {
         // Drive a fast touch to set resumeIntent=true and establish active state
         fastDrag(vm: vm, audio: audio)
-        let exp1 = expectation(description: "play fires")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp1.fulfill() }
-        wait(for: [exp1], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         vm.appDidEnterBackground()
 
@@ -191,21 +191,18 @@ final class TracingViewModelTests: XCTestCase {
                        "resumeAfterLifecycle must be called on foreground")
     }
 
-    func testAppDidBecomeActive_withoutResumeIntent_doesNotForcePlay() throws {
+    @MainActor
+    func testAppDidBecomeActive_withoutResumeIntent_doesNotForcePlay() async throws {
         // endTouch clears resumeIntent; subsequent BecomeActive should not re-play
         fastDrag(vm: vm, audio: audio)
-        let exp = expectation(description: "play fires")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         vm.endTouch()           // clears resumeIntent
         vm.appDidEnterBackground()
         let playBefore = audio.playCount
         vm.appDidBecomeActive()
 
-        let exp2 = expectation(description: "give debounce time")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { exp2.fulfill() }
-        wait(for: [exp2], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertEqual(audio.playCount, playBefore,
                        "No spurious play after BecomeActive when resumeIntent=false")
@@ -213,20 +210,8 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 6 — Stroke completion forces idle and sets isComplete
 
-    func testStrokeCompletion_forcesIdleAndSetsComplete() throws {
-        // The VM loads the first letter on init. Drive all checkpoints to completion
-        // using the strokeTracker's known definition via normalized coordinates.
-        // We hit progress=1.0 by sending the exact checkpoint centres.
-        // Since we can't access strokeTracker internals directly, drive via a letter
-        // with a known simple path by resetting and using a high-velocity swipe
-        // that covers the entire canvas systematically.
-        //
-        // Simpler approach: use resetLetter() then verify that after a real letter
-        // completes (progress==1.0), isPlaying is false.
-        //
-        // Because we can't easily control which letter is loaded in CI,
-        // we verify the invariant: after progress==1.0, isPlaying must be false.
-
+    @MainActor
+    func testStrokeCompletion_forcesIdleAndSetsComplete() async throws {
         // Manually drive progress to 1.0 via rapid multi-point drag
         // spanning the canvas to hit all checkpoints.
         let canvas = CGSize(width: 400, height: 400)
@@ -256,9 +241,7 @@ final class TracingViewModelTests: XCTestCase {
         }
 
         // Give debounce time to fire, then assert idle
-        let exp = expectation(description: "completion idle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 200_000_000)
 
         XCTAssertEqual(vm.progress, 1.0, accuracy: 1e-9)
         XCTAssertFalse(vm.isPlaying,
@@ -267,11 +250,10 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 7 — resetLetter clears progress and stops playback
 
-    func testResetLetter_clearsProgressAndStops() throws {
+    @MainActor
+    func testResetLetter_clearsProgressAndStops() async throws {
         fastDrag(vm: vm, audio: audio)
-        let exp = expectation(description: "play fires")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         let stopBefore = audio.stopCount
         vm.resetLetter()
@@ -283,15 +265,14 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 8 — multitouch navigation suppresses single touch
 
-    func testMultiTouchNavigation_suppressesSingleTouch() throws {
+    @MainActor
+    func testMultiTouchNavigation_suppressesSingleTouch() async throws {
         vm.beginMultiTouchNavigation()
         // beginTouch during multitouch must be ignored
         vm.beginTouch(at: CGPoint(x: 100, y: 100), t: 1000)
         fastDrag(vm: vm, audio: audio, startTime: 1000.1)
 
-        let exp = expectation(description: "debounce")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 150_000_000)
 
         XCTAssertFalse(vm.isPlaying,
                        "Touch during multitouch navigation must not trigger playback")
@@ -299,6 +280,7 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 9 — setAdaptivePlayback is called during touch updates
 
+    @MainActor
     func testUpdateTouch_callsSetAdaptivePlayback() {
         let countBefore = audio.setAdaptivePlaybackCount
         fastDrag(vm: vm, audio: audio, count: 5)
@@ -308,11 +290,10 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: 10 — Rapid background/foreground churn does not leave isPlaying=true
 
-    func testRapidBgFgChurn_neverLeavesPlayingTrue() throws {
+    @MainActor
+    func testRapidBgFgChurn_neverLeavesPlayingTrue() async throws {
         fastDrag(vm: vm, audio: audio)
-        let exp0 = expectation(description: "play fires")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp0.fulfill() }
-        wait(for: [exp0], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 80_000_000)
 
         for _ in 0..<10 {
             vm.appDidEnterBackground()
@@ -320,9 +301,7 @@ final class TracingViewModelTests: XCTestCase {
         }
         vm.appDidEnterBackground()
 
-        let exp = expectation(description: "settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try await Task.sleep(nanoseconds: 200_000_000)
 
         XCTAssertFalse(vm.isPlaying,
                        "After ending in background, isPlaying must be false")
@@ -330,6 +309,7 @@ final class TracingViewModelTests: XCTestCase {
 
     // MARK: - Ghost guide lifecycle
 
+    @MainActor
     func testNextLetter_resetsShowGhostToFalse() throws {
         // Enable ghost on first letter
         vm.toggleGhost()
@@ -342,6 +322,7 @@ final class TracingViewModelTests: XCTestCase {
                        "showGhost must reset to false when navigating to the next letter")
     }
 
+    @MainActor
     func testPreviousLetter_resetsShowGhostToFalse() throws {
         // Navigate away first so previousLetter() has room to go back
         vm.nextLetter()
@@ -354,6 +335,7 @@ final class TracingViewModelTests: XCTestCase {
                        "showGhost must reset to false when navigating to the previous letter")
     }
 
+    @MainActor
     func testResetLetter_doesNotChangeShowGhost() throws {
         // resetLetter reloads same letter — ghost state is intentionally preserved
         // (user enabled ghost on this letter and reset their attempt, not navigated away)
@@ -376,10 +358,8 @@ final class TracingViewModelTests: XCTestCase {
         }
 
         // 500ms: conservative drain window for cancelled @MainActor Task.sleep closures.
-        // Longest queued sleep in TracingViewModel is ~1.3s (toast), but CancellationError
-        // propagates immediately — 500ms provides headroom for system load variance.
-        // If this test becomes flaky in CI, check for a new strong self capture in a stored Task.
-        try? await Task.sleep(for: .milliseconds(500))
+        // Longest queued sleep in ViewModel is ~1.3s, but CancellationError propagates immediately.
+        try await Task.sleep(nanoseconds: 500_000_000)
 
         XCTAssertNil(weakVM,
                      "TracingViewModel must deallocate — retain cycle in a stored Task closure suspected if this fails")
