@@ -8,6 +8,7 @@
 //  the entire XCTestCase subclass.
 
 import XCTest
+import Testing
 import CoreGraphics
 @testable import BuchstabenNative
 
@@ -363,5 +364,104 @@ final class TracingViewModelTests: XCTestCase {
 
         XCTAssertNil(weakVM,
                      "TracingViewModel must deallocate — retain cycle in a stored Task closure suspected if this fails")
+    }
+}
+
+// MARK: - Swift Testing: showGhost Regression Tests
+
+@MainActor
+@Suite("TracingViewModel showGhost reset regression tests")
+struct TracingViewModelShowGhostRegressionTests {
+
+    @Test("showGhost resets to false when nextLetter() is invoked")
+    func nextLetterResetsShowGhost() {
+        let viewModel = TracingViewModel()
+        viewModel.showGhost = true
+        #expect(viewModel.showGhost == true, "Pre-condition: showGhost should be true after direct assignment")
+        viewModel.nextLetter()
+        #expect(viewModel.showGhost == false, "showGhost must reset to false when navigating to next letter")
+    }
+
+    @Test("showGhost resets to false when previousLetter() is invoked")
+    func previousLetterResetsShowGhost() {
+        let viewModel = TracingViewModel()
+        // Navigate away first so previousLetter() has room to go back
+        viewModel.nextLetter()
+        viewModel.showGhost = true
+        #expect(viewModel.showGhost == true, "Pre-condition: showGhost should be true after direct assignment")
+        viewModel.previousLetter()
+        #expect(viewModel.showGhost == false, "showGhost must reset to false when navigating to previous letter")
+    }
+
+    @Test("showGhost resets to false when randomLetter() is invoked")
+    func randomLetterResetsShowGhost() {
+        let viewModel = TracingViewModel()
+        viewModel.showGhost = true
+        #expect(viewModel.showGhost == true, "Pre-condition: showGhost should be true after direct assignment")
+        viewModel.randomLetter()
+        #expect(viewModel.showGhost == false, "showGhost must reset to false when navigating to a random letter")
+    }
+
+    @Test("showGhost is preserved when resetLetter() is invoked (same letter retry)")
+    func resetLetterPreservesShowGhost() {
+        let viewModel = TracingViewModel()
+        viewModel.showGhost = true
+        viewModel.resetLetter()
+        #expect(viewModel.showGhost == true, 
+                "showGhost should survive resetLetter — user intent was to retry the same letter, not navigate")
+    }
+
+    @Test("toggleGhost correctly switches showGhost state bidirectionally")
+    func toggleGhostSwitchesState() {
+        let viewModel = TracingViewModel()
+        let initialState = viewModel.showGhost
+        viewModel.toggleGhost()
+        #expect(viewModel.showGhost == !initialState, "toggleGhost should flip state once")
+        viewModel.toggleGhost()
+        #expect(viewModel.showGhost == initialState, "toggleGhost should flip state again")
+    }
+
+    @Test("showGhost is preserved when nextAudioVariant() is invoked")
+    func nextAudioVariantPreservesShowGhost() {
+        let viewModel = TracingViewModel()
+        viewModel.showGhost = true
+        viewModel.nextAudioVariant()
+        #expect(viewModel.showGhost == true, 
+                "showGhost should not be affected by audio variant navigation")
+    }
+
+    @Test("showGhost is preserved when previousAudioVariant() is invoked")
+    func previousAudioVariantPreservesShowGhost() {
+        let viewModel = TracingViewModel()
+        viewModel.showGhost = true
+        viewModel.previousAudioVariant()
+        #expect(viewModel.showGhost == true, 
+                "showGhost should not be affected by audio variant navigation")
+    }
+
+    @Test("showGhost resets for each new letter in a repeated navigation sequence")
+    func multipleNavigationsResetGhostSequence() {
+        let viewModel = TracingViewModel()
+
+        // First letter: enable ghost
+        viewModel.showGhost = true
+        #expect(viewModel.showGhost == true, "Pre-condition: showGhost should be enabled")
+
+        // Navigate to next letter: ghost should reset
+        viewModel.nextLetter()
+        #expect(viewModel.showGhost == false, "showGhost must reset after first navigation")
+
+        // Re-enable ghost on new letter
+        viewModel.showGhost = true
+        #expect(viewModel.showGhost == true, "Pre-condition: showGhost should be enabled again")
+
+        // Navigate again: ghost should reset again
+        viewModel.nextLetter()
+        #expect(viewModel.showGhost == false, "showGhost must reset after second navigation")
+
+        // Same with random letter
+        viewModel.showGhost = true
+        viewModel.randomLetter()
+        #expect(viewModel.showGhost == false, "showGhost must reset after random letter navigation")
     }
 }

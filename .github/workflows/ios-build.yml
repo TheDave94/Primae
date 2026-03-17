@@ -7,6 +7,8 @@ on:
     branches: ["main", "ux/**"]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 jobs:
   ios_native:
     name: "Build & Test (ios-native / BuchstabenNativeTests)"
@@ -64,7 +66,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
           name: ios-native-test-artifacts
           if-no-files-found: warn
