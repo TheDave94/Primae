@@ -208,7 +208,7 @@ private extension AudioEngine {
 
     func pendingSafeEnginePause() {
         cancelPendingLifecycleWork()
-        let task = Task { [weak self] in
+        let task = Task { @MainActor [weak self] in
             try await Task.sleep(for: .seconds(0.2))
             guard let self, !Task.isCancelled else { return }
             guard !self.isPlaying else { return }
