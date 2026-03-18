@@ -8,8 +8,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"]),
-        .library(name: "BuchstabenNativeTests", targets: ["BuchstabenNativeTests"])
+        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"])
     ],
     targets: [
         .target(
