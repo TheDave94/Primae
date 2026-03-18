@@ -24,8 +24,13 @@ jobs:
         id: test
         run: |
           set -o pipefail
-          # Run Swift package tests
-          swift test --package-path . 2>&1 | tee /tmp/test.log
+          xcodebuild test \
+            -project BuchstabenApp/BuchstabenApp.xcodeproj \
+            -scheme BuchstabenApp \
+            -destination 'platform=iOS,name=iPad' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee /tmp/test.log
           echo "test_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Extract failure summary
