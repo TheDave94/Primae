@@ -1,5 +1,7 @@
 import CoreHaptics
+#if canImport(UIKit)
 import UIKit
+#endif
 
 // MARK: - Protocol
 
