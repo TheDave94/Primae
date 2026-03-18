@@ -31,3 +31,13 @@ Do not mix @Test and XCTestCase in the same file.
 ### Do not migrate ObservableObject to @Observable
 Existing ObservableObject types must stay as-is unless explicitly asked.
 New types should use @Observable, but never migrate existing ones unprompted.
+
+### Never modify .github/workflows/
+CI workflow files are infrastructure, not application code.
+Any proposal that modifies .github/workflows/ must be rejected.
+The council does not have permission to change CI configuration.
+
+### Never modify .github/workflows/ files
+- CI workflows are infrastructure, not application code
+- Invalid actions syntax (upload-artifact@v3 → v3) breaks all future runs
+- Deprecations are handled by Dependabot PRs, not manual edits
