@@ -77,15 +77,6 @@ public final class TracingViewModel: ObservableObject {
         toast("Ready")
     }
 
-    deinit {
-        let toastTask = self.toastTask
-        let completionDismissTask = self.completionDismissTask
-        Task { @MainActor in
-            toastTask?.cancel()
-            completionDismissTask?.cancel()
-        }
-    }
-
     func toggleGhost() { showGhost.toggle(); toast(showGhost ? "Ghost ON" : "Ghost OFF") }
     func toggleStrokeEnforcement() { strokeEnforced.toggle(); resetLetter(); toast(strokeEnforced ? "Order ON" : "Order OFF") }
     func toggleDebug() { showDebug.toggle(); toast(showDebug ? "Debug ON" : "Debug OFF") }
