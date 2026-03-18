@@ -13,12 +13,12 @@ let package = Package(
     targets: [
         .target(
             name: "BuchstabenNative",
-            path: "ios-native/BuchstabenNative"
+            path: "BuchstabenNative"
         ),
         .testTarget(
             name: "BuchstabenNativeTests",
             dependencies: ["BuchstabenNative"],
-            path: "ios-native/BuchstabenNativeTests"
+            path: "BuchstabenNativeTests"
         )
     ]
 )
