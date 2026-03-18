@@ -45,8 +45,14 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
     }
 
     deinit {
-        // Observers will be cleaned up when the token objects are released.
-        // NotificationCenter holds weak references to the observer tokens.
+        cancelPendingLifecycleWork()
+        engine.stop()
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        if let routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
