@@ -23,6 +23,7 @@ jobs:
       - name: Build & Test (iOS Simulator)
         id: test
         run: |
+          set -o pipefail
           xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
