@@ -12,7 +12,7 @@ env:
 jobs:
   ios_native:
     name: "Build & Test (ios-native / BuchstabenNativeTests)"
-    runs-on: macos-latest
+    runs-on: self-hosted
 
     steps:
       - name: Checkout
