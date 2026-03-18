@@ -78,8 +78,12 @@ public final class TracingViewModel: ObservableObject {
     }
 
     deinit {
-        toastTask?.cancel()
-        completionDismissTask?.cancel()
+        let toastTask = self.toastTask
+        let completionDismissTask = self.completionDismissTask
+        Task { @MainActor in
+            toastTask?.cancel()
+            completionDismissTask?.cancel()
+        }
     }
 
     func toggleGhost() { showGhost.toggle(); toast(showGhost ? "Ghost ON" : "Ghost OFF") }
