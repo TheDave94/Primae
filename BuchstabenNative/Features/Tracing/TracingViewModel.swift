@@ -59,8 +59,8 @@ public final class TracingViewModel: ObservableObject {
         self.init(singleTouchCooldownAfterNavigation: 0.18)
     }
 
-    // ORIGINAL INITIALIZER (Stays internal exactly as it was)
-    @MainActor init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+    // ORIGINAL INITIALIZER
+    @MainActor public init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
          audio: AudioControlling = AudioEngine(),
          progressStore: ProgressStoring = JSONProgressStore(),
          haptics: HapticEngineProviding = CoreHapticsEngine(),
@@ -72,15 +72,6 @@ public final class TracingViewModel: ObservableObject {
         self.adaptationPolicy = adaptationPolicy ?? MovingAverageAdaptationPolicy()
         haptics.prepare()
         letters = repo.loadLetters()
-        // DEBUG: print bundle contents to diagnose asset loading
-        let mainRoot = Bundle.main.resourceURL?.path ?? "nil"
-        let lettersPath = Bundle.main.resourceURL?.appendingPathComponent("Letters").path ?? "nil"
-        let lettersExists = FileManager.default.fileExists(atPath: lettersPath)
-        letters.forEach { print("[DEBUG] \($0.name) audioFiles: \($0.audioFiles)") }
-        let modLetters = Bundle.module.resourceURL?.appendingPathComponent("Letters").path ?? "nil"
-        if let lettersDir = Bundle.main.resourceURL?.appendingPathComponent("Letters") {
-            let contents = (try? FileManager.default.contentsOfDirectory(atPath: lettersDir.path)) ?? []
-        }
         guard let first = letters.first else { return }
         load(letter: first)
         toast("Ready")
