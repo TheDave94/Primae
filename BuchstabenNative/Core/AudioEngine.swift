@@ -47,12 +47,7 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
     deinit {
         cancelPendingLifecycleWork()
         engine.stop()
-        if let interruptionObserver {
-            NotificationCenter.default.removeObserver(interruptionObserver)
-        }
-        if let routeChangeObserver {
-            NotificationCenter.default.removeObserver(routeChangeObserver)
-        }
+        NotificationCenter.default.removeObserver(self) // Remove all observers registered by this instance
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
