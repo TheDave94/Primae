@@ -110,7 +110,9 @@ jobs:
             -scheme BuchstabenApp \
             -destination 'platform=iOS Simulator,name=iPad (A16)' \
             -configuration Debug \
+            -enableCodeCoverage NO \
             CODE_SIGNING_ALLOWED=NO \
+            ENABLE_DEBUG_DYLIB=NO \
             2>&1 | tee /tmp/test-device.log
 
       - name: Upload device test log
