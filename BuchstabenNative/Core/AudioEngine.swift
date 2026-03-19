@@ -2,8 +2,7 @@
 import Foundation
 
 @MainActor
-@MainActor
-final class AudioEngine: @unchecked Sendable, AudioControlling {
+final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
@@ -301,12 +300,7 @@ private extension AudioEngine {
             break
         }
     }
+    nonisolated var description: String { "<AudioEngine>" }
+
 }
 
-@MainActor
-extension AudioEngine: CustomStringConvertible {
-    var description: String {
-        let fileName = currentFile?.url.lastPathComponent ?? "none"
-        return "<AudioEngine: isPlaying=\(isPlaying), engineRunning=\(engine.isRunning), file=\(fileName), shouldResume=\(shouldResumePlayback), appIsForeground=\(appIsForeground)>"
-    }
-}
