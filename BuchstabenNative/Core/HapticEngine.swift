@@ -10,9 +10,9 @@ import UIKit
 @MainActor
 public protocol HapticEngineProviding {
     /// Prepare the engine for use (call once, idempotent).
-    public func prepare()
+    func prepare()
     /// Fire feedback for a stroke lifecycle event.
-    public func fire(_ event: HapticEvent)
+    func fire(_ event: HapticEvent)
 }
 
 // MARK: - Event type
