@@ -34,7 +34,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 1 — Progress value string is "0 percent complete" on fresh load
 
-    func testProgressString_initial_isZeroPercent() {
+    func testProgressString_initial_isZeroPercent() async {
         let pct = Int(vm.progress * 100)
         let valueString = "\(pct) percent complete"
         XCTAssertEqual(valueString, "0 percent complete")
@@ -42,7 +42,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 2 — Progress value string reflects partial progress
 
-    func testProgressString_partial_isCorrectPercent() {
+    func testProgressString_partial_isCorrectPercent() async {
         // Drive to ≈50% by completing half the strokes (requires grid scan)
         // We verify the string format is well-formed regardless of exact value.
         let pct = Int(vm.progress * 100)
@@ -55,7 +55,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 3 — Progress value clamped to [0, 100]
 
-    func testProgressValue_isClamped() {
+    func testProgressValue_isClamped() async {
         let pct = Int(vm.progress * 100)
         XCTAssertGreaterThanOrEqual(pct, 0,   "Progress percent must be >= 0")
         XCTAssertLessThanOrEqual(pct,    100, "Progress percent must be <= 100")
@@ -63,7 +63,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 4 — isPlaying=false hint text contains "paused"
 
-    func testAudioHintString_notPlaying_containsPaused() {
+    func testAudioHintString_notPlaying_containsPaused() async {
         XCTAssertFalse(vm.isPlaying)
         let hint = vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused"
         XCTAssertTrue(hint.lowercased().contains("paused"),
@@ -92,14 +92,14 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 6 — currentLetterName is non-empty (used in accessibilityValue)
 
-    func testCurrentLetterName_isNonEmpty() {
+    func testCurrentLetterName_isNonEmpty() async {
         XCTAssertFalse(vm.currentLetterName.isEmpty,
                        "currentLetterName must be non-empty for VoiceOver to read")
     }
 
     // MARK: 7 — currentLetterName is uppercase (WCAG: consistent labelling)
 
-    func testCurrentLetterName_isUppercase() {
+    func testCurrentLetterName_isUppercase() async {
         let name = vm.currentLetterName
         XCTAssertEqual(name, name.uppercased(),
                        "Letter name exposed for VoiceOver must be uppercase")
@@ -130,7 +130,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 10 — Progress is never NaN or Infinite (accessibility value safety)
 
-    func testProgress_isFinite() {
+    func testProgress_isFinite() async {
         XCTAssertFalse(vm.progress.isNaN,      "progress must not be NaN")
         XCTAssertFalse(vm.progress.isInfinite, "progress must not be Infinite")
     }

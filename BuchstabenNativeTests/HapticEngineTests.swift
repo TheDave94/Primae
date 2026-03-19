@@ -13,7 +13,7 @@ import CoreGraphics
 @MainActor
 final class NullHapticEngineTests: XCTestCase {
 
-    func testPrepare_incrementsCallCount() {
+    func testPrepare_incrementsCallCount() async {
         let engine = NullHapticEngine()
         XCTAssertEqual(engine.prepareCallCount, 0)
         engine.prepare()
@@ -22,20 +22,20 @@ final class NullHapticEngineTests: XCTestCase {
         XCTAssertEqual(engine.prepareCallCount, 2)
     }
 
-    func testFire_recordsEvent() {
+    func testFire_recordsEvent() async {
         let engine = NullHapticEngine()
         engine.fire(.strokeBegan)
         XCTAssertEqual(engine.firedEvents, [.strokeBegan])
     }
 
-    func testFire_allEventTypes_recorded() {
+    func testFire_allEventTypes_recorded() async {
         let engine = NullHapticEngine()
         let all: [HapticEvent] = [.strokeBegan, .checkpointHit, .strokeCompleted, .letterCompleted, .offPath]
         all.forEach { engine.fire($0) }
         XCTAssertEqual(engine.firedEvents, all)
     }
 
-    func testFire_order_preserved() {
+    func testFire_order_preserved() async {
         let engine = NullHapticEngine()
         engine.fire(.strokeBegan)
         engine.fire(.checkpointHit)
@@ -45,7 +45,7 @@ final class NullHapticEngineTests: XCTestCase {
         XCTAssertEqual(engine.firedEvents[2], .strokeCompleted)
     }
 
-    func testFire_multipleCheckpoints_allRecorded() {
+    func testFire_multipleCheckpoints_allRecorded() async {
         let engine = NullHapticEngine()
         for _ in 0..<5 { engine.fire(.checkpointHit) }
         XCTAssertEqual(engine.firedEvents.filter { $0 == .checkpointHit }.count, 5)
@@ -55,12 +55,12 @@ final class NullHapticEngineTests: XCTestCase {
 // MARK: - HapticEvent equatability
 
 final class HapticEventEquatabilityTests: XCTestCase {
-    func testAllCases_selfEqual() {
+    func testAllCases_selfEqual() async {
         let cases: [HapticEvent] = [.strokeBegan, .checkpointHit, .strokeCompleted, .letterCompleted, .offPath]
         for c in cases { XCTAssertEqual(c, c) }
     }
 
-    func testDifferentCases_notEqual() {
+    func testDifferentCases_notEqual() async {
         XCTAssertNotEqual(HapticEvent.strokeBegan, .strokeCompleted)
         XCTAssertNotEqual(HapticEvent.checkpointHit, .letterCompleted)
     }
@@ -88,7 +88,7 @@ private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
 @MainActor
 final class TracingViewModelHapticTests: XCTestCase {
 
-    func testBeginTouch_firesStrokeBegan() {
+    func testBeginTouch_firesStrokeBegan() async {
         let haptics = NullHapticEngine()
         let vm = makeVM(haptics: haptics)
         haptics.reset()  // clear prepare-time events
@@ -98,13 +98,13 @@ final class TracingViewModelHapticTests: XCTestCase {
                       "Expected strokeBegan, got \(haptics.firedEvents)")
     }
 
-    func testPrepare_calledOnInit() {
+    func testPrepare_calledOnInit() async {
         let haptics = NullHapticEngine()
         _ = makeVM(haptics: haptics)
         XCTAssertEqual(haptics.prepareCallCount, 1)
     }
 
-    func testLetterCompleted_firesLetterCompleted() {
+    func testLetterCompleted_firesLetterCompleted() async {
         let haptics = NullHapticEngine()
         let vm = makeVM(haptics: haptics)
         // letters is private; check via public currentLetterName instead
@@ -146,7 +146,7 @@ final class TracingViewModelHapticTests: XCTestCase {
                       "Expected letterCompleted in \(haptics.firedEvents)")
     }
 
-    func testNoHapticOnMultiTouchNavigation() {
+    func testNoHapticOnMultiTouchNavigation() async {
         let haptics = NullHapticEngine()
         let vm = makeVM(haptics: haptics)
         haptics.reset()

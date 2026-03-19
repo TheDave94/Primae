@@ -21,17 +21,17 @@ final class ApplePencilPressureTests: XCTestCase {
     }
 
     // P1: pencilPressure defaults to nil (no pencil contact)
-    func testP1_pencilPressureDefaultsToNil() {
+    func testP1_pencilPressureDefaultsToNil() async {
         XCTAssertNil(vm.pencilPressure)
     }
 
     // P2: pencilAzimuth defaults to 0
-    func testP2_pencilAzimuthDefaultsToZero() {
+    func testP2_pencilAzimuthDefaultsToZero() async {
         XCTAssertEqual(vm.pencilAzimuth, 0, accuracy: 0.001)
     }
 
     // P3: endTouch resets pencilPressure to nil
-    func testP3_endTouchResetsPressureToNil() {
+    func testP3_endTouchResetsPressureToNil() async {
         vm.pencilPressure = 0.8
         vm.pencilAzimuth = 1.0
         vm.endTouch()
@@ -39,49 +39,49 @@ final class ApplePencilPressureTests: XCTestCase {
     }
 
     // P4: endTouch resets pencilAzimuth to 0
-    func testP4_endTouchResetsAzimuthToZero() {
+    func testP4_endTouchResetsAzimuthToZero() async {
         vm.pencilAzimuth = 1.5
         vm.endTouch()
         XCTAssertEqual(vm.pencilAzimuth, 0, accuracy: 0.001)
     }
 
     // P5: ink width formula — pressure 0.0 → 4 pt
-    func testP5_inkWidthAtZeroPressure() {
+    func testP5_inkWidthAtZeroPressure() async {
         let pressure: CGFloat = 0.0
         let inkWidth: CGFloat = 4 + pressure * 10
         XCTAssertEqual(inkWidth, 4, accuracy: 0.001)
     }
 
     // P6: ink width formula — pressure 1.0 → 14 pt
-    func testP6_inkWidthAtFullPressure() {
+    func testP6_inkWidthAtFullPressure() async {
         let pressure: CGFloat = 1.0
         let inkWidth: CGFloat = 4 + pressure * 10
         XCTAssertEqual(inkWidth, 14, accuracy: 0.001)
     }
 
     // P7: ink width formula — no pencil (nil pressure) → 8 pt
-    func testP7_inkWidthFingerDefault() {
+    func testP7_inkWidthFingerDefault() async {
         let pressure: CGFloat? = nil
         let inkWidth: CGFloat = pressure.map { 4 + $0 * 10 } ?? 8
         XCTAssertEqual(inkWidth, 8, accuracy: 0.001)
     }
 
     // P8: azimuth bias — azimuth=0 (tip pointing right) → cos(0)*0.5 = +0.5 contribution
-    func testP8_azimuthBiasAtZero() {
+    func testP8_azimuthBiasAtZero() async {
         let azimuth: CGFloat = 0
         let azimuthBias = cos(azimuth) * 0.5
         XCTAssertEqual(azimuthBias, 0.5, accuracy: 0.001)
     }
 
     // P9: azimuth bias — azimuth=π (tip pointing left) → cos(π)*0.5 = -0.5 contribution
-    func testP9_azimuthBiasAtPi() {
+    func testP9_azimuthBiasAtPi() async {
         let azimuth: CGFloat = .pi
         let azimuthBias = cos(azimuth) * 0.5
         XCTAssertEqual(azimuthBias, -0.5, accuracy: 0.001)
     }
 
     // P10: pencilPressure is settable and observable
-    func testP10_pencilPressureIsSettable() {
+    func testP10_pencilPressureIsSettable() async {
         vm.pencilPressure = 0.65
         XCTAssertEqual(vm.pencilPressure.map(Double.init) ?? 0, 0.65, accuracy: 0.001)
     }

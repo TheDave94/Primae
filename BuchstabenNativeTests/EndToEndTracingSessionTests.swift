@@ -76,7 +76,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 1 — Initial state is correct before any touch
 
-    func testInitialState() {
+    func testInitialState() async {
         XCTAssertFalse(vm.isPlaying, "Initial: not playing")
         XCTAssertEqual(vm.progress, 0.0, accuracy: 1e-9, "Initial: progress = 0")
         XCTAssertFalse(vm.currentLetterName.isEmpty, "Initial: letter name set")
@@ -85,7 +85,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 2 — Audio load called on init (first letter loaded)
 
-    func testAudioLoaded_onInit() {
+    func testAudioLoaded_onInit() async {
         XCTAssertFalse(audio.events.filter { if case .load = $0 { return true }; return false }.isEmpty,
                        "Audio loadAudioFile must be called during init")
     }
@@ -116,7 +116,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 5 — setAdaptivePlayback called during touch (speed clamped to valid range)
 
-    func testAdaptivePlayback_calledDuringTouch() {
+    func testAdaptivePlayback_calledDuringTouch() async {
         simulateFastTouch(t0: 1000)
         let adaptiveEvents = audio.events.compactMap { e -> Float? in
             if case .setAdaptive(let s) = e { return s }; return nil
