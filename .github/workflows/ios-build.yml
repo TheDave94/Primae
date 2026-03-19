@@ -19,8 +19,14 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
+      - name: Resolve Swift Package dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project BuchstabenApp/BuchstabenApp.xcodeproj \
+            -scheme BuchstabenApp \
+            -disablePackageRepositoryCache
+
       - name: Build & Test (iOS Simulator)
-        id: test
         run: |
           set -o pipefail
           xcodebuild test \
@@ -29,10 +35,10 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
+            -disablePackageRepositoryCache \
             2>&1 | tee /tmp/test.log
 
       - name: Extract failure summary
-        id: failure
         if: failure()
         run: |
           ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log 2>/dev/null \
