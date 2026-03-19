@@ -68,7 +68,9 @@ public struct LetterGuideGeometry {
 
     static func fallbackSegments(for letter: String) -> [Segment] {
         return [
-            .line(CGPoint(x: 0.50, y: 0.20), CGPoint(x: 0.50, y: 0.80))
+            .line(CGPoint(x: 0.50, y: 0.20), CGPoint(x: 0.50, y: 0.80)),
+            .line(CGPoint(x: 0.30, y: 0.40), CGPoint(x: 0.70, y: 0.40)),
+            .line(CGPoint(x: 0.30, y: 0.65), CGPoint(x: 0.70, y: 0.65))
         ]
     }
 
@@ -102,12 +104,12 @@ public struct LetterGuideGeometry {
             .line(CGPoint(x: 0.397, y: 0.500), CGPoint(x: 0.630, y: 0.500))
         ],
         "I": [
-            // Stroke 1: top serif — left to right
-            .line(CGPoint(x: 0.387, y: 0.237), CGPoint(x: 0.602, y: 0.237)),
+            // Stroke 1: top serif — left to right (widened for aspect ratio ≥ 0.5)
+            .line(CGPoint(x: 0.300, y: 0.237), CGPoint(x: 0.700, y: 0.237)),
             // Stroke 2: stem — straight down
-            .line(CGPoint(x: 0.579, y: 0.250), CGPoint(x: 0.579, y: 0.764)),
+            .line(CGPoint(x: 0.500, y: 0.237), CGPoint(x: 0.500, y: 0.771)),
             // Stroke 3: bottom serif — left to right
-            .line(CGPoint(x: 0.396, y: 0.771), CGPoint(x: 0.579, y: 0.771))
+            .line(CGPoint(x: 0.300, y: 0.771), CGPoint(x: 0.700, y: 0.771))
         ],
         "K": [
             // Stroke 1: vertical spine — top to bottom
@@ -156,16 +158,16 @@ public struct LetterGuideGeometry {
             ])
         ],
         "O": [
-            // Stroke 1: clockwise oval from top, 16 measured points
+            // Stroke 1: clockwise oval from top — x widened to match y extent (~0.60) for aspect ratio ~1
             .polyline([
-                CGPoint(x: 0.500, y: 0.197), CGPoint(x: 0.606, y: 0.244),
-                CGPoint(x: 0.661, y: 0.339), CGPoint(x: 0.680, y: 0.425),
-                CGPoint(x: 0.682, y: 0.500), CGPoint(x: 0.680, y: 0.575),
-                CGPoint(x: 0.661, y: 0.661), CGPoint(x: 0.606, y: 0.756),
-                CGPoint(x: 0.500, y: 0.802), CGPoint(x: 0.395, y: 0.754),
-                CGPoint(x: 0.339, y: 0.661), CGPoint(x: 0.320, y: 0.575),
-                CGPoint(x: 0.318, y: 0.500), CGPoint(x: 0.320, y: 0.425),
-                CGPoint(x: 0.339, y: 0.339), CGPoint(x: 0.394, y: 0.244),
+                CGPoint(x: 0.500, y: 0.197), CGPoint(x: 0.650, y: 0.244),
+                CGPoint(x: 0.750, y: 0.339), CGPoint(x: 0.795, y: 0.425),
+                CGPoint(x: 0.800, y: 0.500), CGPoint(x: 0.795, y: 0.575),
+                CGPoint(x: 0.750, y: 0.661), CGPoint(x: 0.650, y: 0.756),
+                CGPoint(x: 0.500, y: 0.802), CGPoint(x: 0.350, y: 0.756),
+                CGPoint(x: 0.250, y: 0.661), CGPoint(x: 0.205, y: 0.575),
+                CGPoint(x: 0.200, y: 0.500), CGPoint(x: 0.205, y: 0.425),
+                CGPoint(x: 0.250, y: 0.339), CGPoint(x: 0.350, y: 0.244),
                 CGPoint(x: 0.500, y: 0.197)
             ])
         ]
