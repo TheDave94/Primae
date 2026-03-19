@@ -116,10 +116,4 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_DEBUG_DYLIB=NO \
             2>&1 | tee /tmp/test-device.log
-      - name: Upload device test log
-        if: always()
-        uses: actions/upload-artifact@v5
-        with:
-          name: ios-device-test-log
-          if-no-files-found: warn
-          path: /tmp/test-device.log
+
