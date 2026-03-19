@@ -89,39 +89,3 @@ jobs:
           path: |
             /tmp/xcode-test.log
             /tmp/TestResults.xcresult
-
-  device_test:
-    name: "Device Test (MacBook self-hosted)"
-    runs-on: self-hosted
-    needs: xcode_test
-    steps:
-      - uses: actions/checkout@v4.2.2
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: List available iPad simulators
-        run: xcrun simctl list devices available | grep -i ipad
-
-      - name: Clean DerivedData
-        run: |
-          rm -rf ~/Library/Developer/Xcode/DerivedData/BuchstabenApp-*
-      - name: Build & Test (local simulator)
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp \
-            -destination 'platform=iOS Simulator,name=iPad (A16)' \
-            -configuration Debug \
-            -enableCodeCoverage NO \
-            CODE_SIGNING_ALLOWED=NO \
-            ENABLE_DEBUG_DYLIB=NO \
-            2>&1 | tee /tmp/test-device.log
-
-      - name: Upload device test log
-        if: always()
-        uses: actions/upload-artifact@v4.6.2
-        with:
-          name: ios-device-test-log
-          if-no-files-found: warn
-          path: /tmp/test-device.log
