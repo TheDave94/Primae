@@ -178,9 +178,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     func testLifecycleAroundSession() async throws {
         simulateFastTouch(t0: 1000)
-        let exp1 = expectation(description: "play")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp1.fulfill() }
-        wait(for: [exp1], timeout: 1.0)
+        try? await Task.sleep(for: .milliseconds(80))
 
         // Enter background mid-session
         vm.appDidEnterBackground()
