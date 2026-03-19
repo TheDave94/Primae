@@ -10,8 +10,21 @@ protocol LetterResourceProviding {
 struct BundleLetterResourceProvider: LetterResourceProviding {
     let bundle: Bundle
 
-    init(bundle: Bundle = .module) {
+    init(bundle: Bundle = BundleLetterResourceProvider.safeModuleBundle()) {
         self.bundle = bundle
+    }
+
+    /// Returns Bundle.module if available, falling back to Bundle.main.
+    /// Avoids the fatalError that SPM's generated Bundle.module accessor
+    /// throws when the resource bundle cannot be located (e.g. in test hosts).
+    private static func safeModuleBundle() -> Bundle {
+        let bundleName = "BuchstabenNative_BuchstabenNative"
+        let candidates: [Bundle?] = [
+            Bundle(identifier: bundleName),
+            Bundle.allBundles.first(where: { $0.bundlePath.hasSuffix(bundleName + ".bundle") }),
+            Bundle.allFrameworks.first(where: { $0.bundlePath.hasSuffix(bundleName + ".bundle") })
+        ]
+        return candidates.compactMap { $0 }.first ?? .main
     }
 
     /// All bundles to search: the Swift PM module bundle + Bundle.main.
