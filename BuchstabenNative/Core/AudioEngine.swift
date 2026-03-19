@@ -1,7 +1,7 @@
 @preconcurrency import AVFoundation
 import Foundation
 
-final class AudioEngine: @unchecked Sendable, AudioControlling {
+final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
@@ -17,6 +17,11 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
     private var pendingLifecyclePauseTask: Task<Void, Error>?
 
     private(set) var isPlaying = false
+
+    var description: String {
+        let fileName = currentFile?.url.lastPathComponent ?? "none"
+        return "<AudioEngine: isPlaying=\(isPlaying), engineRunning=\(engine.isRunning), file=\(fileName), shouldResume=\(shouldResumePlayback), appIsForeground=\(appIsForeground)>"
+    }
 
     #if DEBUG
     var debugInterrupted: Bool { interrupted }
