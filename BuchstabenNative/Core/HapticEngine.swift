@@ -10,14 +10,14 @@ import UIKit
 @MainActor
 public protocol HapticEngineProviding {
     /// Prepare the engine for use (call once, idempotent).
-    func prepare()
+    public func prepare()
     /// Fire feedback for a stroke lifecycle event.
-    func fire(_ event: HapticEvent)
+    public func fire(_ event: HapticEvent)
 }
 
 // MARK: - Event type
 
-enum HapticEvent: Equatable {
+public enum HapticEvent: Equatable {
     /// User placed finger on canvas to start a stroke.
     case strokeBegan
     /// Touch point hit the next checkpoint (on-path confirmation).
@@ -37,8 +37,8 @@ final class NullHapticEngine: HapticEngineProviding {
     private(set) var prepareCallCount = 0
     private(set) var firedEvents: [HapticEvent] = []
 
-    func prepare() { prepareCallCount += 1 }
-    func fire(_ event: HapticEvent) { firedEvents.append(event) }
+    public func prepare() { prepareCallCount += 1 }
+    public func fire(_ event: HapticEvent) { firedEvents.append(event) }
     func reset() { firedEvents.removeAll() }
 }
 
@@ -54,14 +54,14 @@ public final class UIKitHapticEngine: HapticEngineProviding {
     private let heavy  = UIImpactFeedbackGenerator(style: .heavy)
     private let notification = UINotificationFeedbackGenerator()
 
-    func prepare() {
+    public func prepare() {
         light.prepare()
         medium.prepare()
         heavy.prepare()
         notification.prepare()
     }
 
-    func fire(_ event: HapticEvent) {
+    public func fire(_ event: HapticEvent) {
         switch event {
         case .strokeBegan:
             light.impactOccurred()
@@ -94,13 +94,13 @@ public final class CoreHapticsEngine: HapticEngineProviding {
         engine?.isAutoShutdownEnabled = true
     }
 
-    func prepare() {
+    public func prepare() {
         guard let engine else { fallback.prepare(); return }
         try? engine.start()
         fallback.prepare()
     }
 
-    func fire(_ event: HapticEvent) {
+    public func fire(_ event: HapticEvent) {
         guard let engine, CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             fallback.fire(event)
             return
