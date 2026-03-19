@@ -5,7 +5,7 @@ import AVFoundation
 
 @MainActor
 final class BuchstabenNativeTests: XCTestCase {
-    func testStrokeTrackerProgressionRespectsOrder() {
+    func testStrokeTrackerProgressionRespectsOrder() async {
         let tracker = StrokeTracker()
         let strokes = LetterStrokes(
             letter: "T",
@@ -32,7 +32,7 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(tracker.overallProgress, 1.0)
     }
 
-    func testMapVelocityToSpeedIsMonotonicAndBounded() {
+    func testMapVelocityToSpeedIsMonotonicAndBounded() async {
         let sample: [CGFloat] = [0, 60, 120, 240, 500, 900, 1300, 3000]
         let mapped = sample.map(TracingViewModel.mapVelocityToSpeed)
 
@@ -64,7 +64,7 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(letters.first?.audioFiles, ["A/A1.mp3"])
     }
 
-    func testLetterRepositoryFallsBackToSampleWhenNoAssetsExist() {
+    func testLetterRepositoryFallsBackToSampleWhenNoAssetsExist() async {
         let provider = MockResourceProvider(urls: [], byRelativePath: [:])
         // NullLetterCache ensures no disk-cache hit from other tests in the same process
         let repo = LetterRepository(resources: provider, cache: NullLetterCache())
@@ -93,7 +93,7 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(m.audioFiles, ["M/Meer.mp3", "M/Möwe.mp3"])
     }
 
-    func testGuideRendererSupportsCouncilLetterSet() {
+    func testGuideRendererSupportsCouncilLetterSet() async {
         let rect = CGRect(x: 0, y: 0, width: 320, height: 480)
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             XCTAssertNotNil(LetterGuideRenderer.guidePath(for: letter, in: rect), "Expected guide path for \(letter)")
@@ -103,7 +103,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
 
 
-    func testGuideRendererGeometryIsNonDegenerateAndContained() {
+    func testGuideRendererGeometryIsNonDegenerateAndContained() async {
         let rect = CGRect(x: 20, y: 30, width: 320, height: 480)
 
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
@@ -116,7 +116,7 @@ final class BuchstabenNativeTests: XCTestCase {
         }
     }
 
-    func testGuideRendererFallbackIsDeterministicForUnknownLetter() {
+    func testGuideRendererFallbackIsDeterministicForUnknownLetter() async {
         let rect = CGRect(x: 0, y: 0, width: 300, height: 500)
         let fallback1 = try! XCTUnwrap(LetterGuideRenderer.guidePath(for: "Z", in: rect))
         let fallback2 = try! XCTUnwrap(LetterGuideRenderer.guidePath(for: "?", in: rect))
