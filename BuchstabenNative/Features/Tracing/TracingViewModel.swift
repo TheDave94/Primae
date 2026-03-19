@@ -304,7 +304,7 @@ init(
         showGhost = false
         currentLetterName = letter.name
         currentLetterImageName = letter.imageName
-        currentLetterImage = PBMLoader.load(named: letter.imageName)
+        currentLetterImage = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize)
         strokeTracker.load(letter.strokes)
         progress = 0
         audioIndex = 0
