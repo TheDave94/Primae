@@ -52,12 +52,10 @@ public final class TracingViewModel {
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
-    // 2. NEW PUBLIC INITIALIZER
-    // This allows your Host App to create the ViewModel without needing to know
-    // about all the internal tools like AudioEngine or JSONProgressStore.
+    // Public no-arg initializer uses .live dependencies (production defaults).
 @MainActor
 public convenience init() {
-    self.init(singleTouchCooldownAfterNavigation: 0.18)
+    self.init(.live)
 }
 
 // Not public: Parameter types are internal.
