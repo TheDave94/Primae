@@ -2,6 +2,7 @@
 import Foundation
 
 @MainActor
+@MainActor
 final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
