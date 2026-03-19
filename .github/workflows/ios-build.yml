@@ -14,7 +14,7 @@ jobs:
     name: "Build & Test — iPad Simulator (macos-26 / Xcode 26)"
     runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4
 
       - name: Show Xcode + Swift version
         run: |
@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: xcode-test-results
           if-no-files-found: warn
@@ -95,7 +95,7 @@ jobs:
     runs-on: self-hosted
     needs: xcode_test
     steps:
-      - uses: actions/checkout@v4.2.2
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: List available iPad simulators
@@ -115,7 +115,7 @@ jobs:
             2>&1 | tee /tmp/test-device.log
       - name: Upload device test log
         if: always()
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: ios-device-test-log
           if-no-files-found: warn
