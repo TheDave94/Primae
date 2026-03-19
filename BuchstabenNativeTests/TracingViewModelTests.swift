@@ -96,7 +96,7 @@ final class TracingViewModelTests: XCTestCase {
         // strokeEnforced=false allows audio to trigger on velocity alone, regardless of
         // whether the test environment has letter stroke definitions loaded — these tests
         // exercise the audio/lifecycle pipeline, not stroke recognition.
-        vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, haptics: StubHaptics())
+        vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, haptics: StubHaptics(, repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
     }
 
