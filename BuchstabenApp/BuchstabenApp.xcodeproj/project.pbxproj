@@ -119,7 +119,7 @@
 			);
 			name = BuchstabenNativeTests;
 			packageProductDependencies = (
-				71EEE4F7084503E680A21AAA /* BuchstabenNativeTests */,
+				DBDE4FB92F6330730052F95D /* BuchstabenNative */,
 			);
 			productName = BuchstabenNativeTests;
 			productReference = 9FAA85E4814CF09513405571 /* BuchstabenNativeTests.xctest */;
