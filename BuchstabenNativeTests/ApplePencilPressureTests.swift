@@ -10,23 +10,28 @@ final class ApplePencilPressureTests: XCTestCase {
     // Using the real AudioEngine causes AVAudioSession state pollution across
     // the 10 sequential makeVM() calls in this suite, which manifests as an
     // uncaught ObjC exception on the 10th init (testP10) in headless CI.
-    private func makeVM() -> TracingViewModel { makeTestVM() }
+    private var vm: TracingViewModel!
+
+    override func setUp() async throws {
+        vm = makeTestVM()
+    }
+
+    override func tearDown() async throws {
+        vm = nil
+    }
 
     // P1: pencilPressure defaults to nil (no pencil contact)
     func testP1_pencilPressureDefaultsToNil() {
-        let vm = makeVM()
         XCTAssertNil(vm.pencilPressure)
     }
 
     // P2: pencilAzimuth defaults to 0
     func testP2_pencilAzimuthDefaultsToZero() {
-        let vm = makeVM()
         XCTAssertEqual(vm.pencilAzimuth, 0, accuracy: 0.001)
     }
 
     // P3: endTouch resets pencilPressure to nil
     func testP3_endTouchResetsPressureToNil() {
-        let vm = makeVM()
         vm.pencilPressure = 0.8
         vm.pencilAzimuth = 1.0
         vm.endTouch()
@@ -35,7 +40,6 @@ final class ApplePencilPressureTests: XCTestCase {
 
     // P4: endTouch resets pencilAzimuth to 0
     func testP4_endTouchResetsAzimuthToZero() {
-        let vm = makeVM()
         vm.pencilAzimuth = 1.5
         vm.endTouch()
         XCTAssertEqual(vm.pencilAzimuth, 0, accuracy: 0.001)
@@ -78,7 +82,6 @@ final class ApplePencilPressureTests: XCTestCase {
 
     // P10: pencilPressure is settable and observable
     func testP10_pencilPressureIsSettable() {
-        let vm = makeVM()
         vm.pencilPressure = 0.65
         XCTAssertEqual(vm.pencilPressure.map(Double.init) ?? 0, 0.65, accuracy: 0.001)
     }
