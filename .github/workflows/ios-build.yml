@@ -36,7 +36,7 @@ jobs:
           xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
-            -destination 'platform=iOS Simulator,name=iPad (10th generation),OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=latest' \
             -configuration Debug \
             -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=NO \
