@@ -17,13 +17,13 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 1 — Empty rect returns nil
 
-    func testEmptyRect_returnsNil() {
+    func testEmptyRect_returnsNil() async {
         XCTAssertNil(LetterGuideRenderer.guidePath(for: "A", in: emptyRect))
     }
 
     // MARK: 2 — Known letters return non-nil paths
 
-    func testKnownLetters_returnNonNilPath() {
+    func testKnownLetters_returnNonNilPath() async {
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)
             XCTAssertNotNil(path, "guidePath for '\(letter)' must not be nil")
@@ -32,14 +32,14 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 3 — Unknown letter uses fallback (non-nil)
 
-    func testUnknownLetter_usesFallback_nonNil() {
+    func testUnknownLetter_usesFallback_nonNil() async {
         let path = LetterGuideRenderer.guidePath(for: "Z", in: rect)
         XCTAssertNotNil(path, "Fallback path for unknown letter must not be nil")
     }
 
     // MARK: 4 — Lowercase normalised to uppercase
 
-    func testLowercaseLetter_normalised() throws {
+    func testLowercaseLetter_normalised() async throws {
         let lower = try XCTUnwrap(
             LetterGuideRenderer.guidePath(for: "a", in: rect),
             "guidePath for 'a' must not be nil"
@@ -55,7 +55,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 5 — Path bounding rect is within the provided rect (+ small tolerance for arcs)
 
-    func testPathBoundingRect_withinProvidedRect() throws {
+    func testPathBoundingRect_withinProvidedRect() async throws {
         let tolerance: CGFloat = 2.0  // arcs can slightly exceed due to control point approximation
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             let path = try XCTUnwrap(
@@ -72,7 +72,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 6 — Fallback crossbar Y is deterministic (same letter → same path)
 
-    func testFallbackDeterminism() {
+    func testFallbackDeterminism() async {
         let p1 = LetterGuideRenderer.guidePath(for: "Z", in: rect)
         let p2 = LetterGuideRenderer.guidePath(for: "Z", in: rect)
         XCTAssertEqual(p1?.boundingRect, p2?.boundingRect,
@@ -81,7 +81,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 7 — Different unknown letters produce different crossbar positions
 
-    func testFallback_differentLetters_differentPaths() throws {
+    func testFallback_differentLetters_differentPaths() async throws {
         let pZ = try XCTUnwrap(
             LetterGuideRenderer.guidePath(for: "Z", in: rect),
             "guidePath for 'Z' must not be nil"
@@ -98,7 +98,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 8 — Rect scaling: larger rect produces proportionally larger bounding box
 
-    func testScaling_largerRect_producesBiggerPath() throws {
+    func testScaling_largerRect_producesBiggerPath() async throws {
         let small = CGRect(x: 0, y: 0, width: 100, height: 100)
         let large = CGRect(x: 0, y: 0, width: 400, height: 400)
         let ps = try XCTUnwrap(
@@ -115,7 +115,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 9 — O arc path bounding rect is roughly square and centred
 
-    func testO_arcPath_isRoughlySquare() throws {
+    func testO_arcPath_isRoughlySquare() async throws {
         let path = try XCTUnwrap(
             LetterGuideRenderer.guidePath(for: "O", in: rect),
             "guidePath for 'O' must not be nil"
@@ -128,7 +128,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 10 — M polyline produces a path spanning most of the horizontal extent
 
-    func testM_polyline_spansHorizontalExtent() throws {
+    func testM_polyline_spansHorizontalExtent() async throws {
         let path = try XCTUnwrap(
             LetterGuideRenderer.guidePath(for: "M", in: rect),
             "guidePath for 'M' must not be nil"
@@ -142,7 +142,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 11 — Non-square rect maps correctly (no square assumption)
 
-    func testNonSquareRect_noAssumption() throws {
+    func testNonSquareRect_noAssumption() async throws {
         let wide = CGRect(x: 0, y: 0, width: 600, height: 200)
         let path = try XCTUnwrap(
             LetterGuideRenderer.guidePath(for: "L", in: wide),
@@ -155,14 +155,14 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 12 — Empty string returns fallback (non-crash)
 
-    func testEmptyStringLetter_doesNotCrash() {
+    func testEmptyStringLetter_doesNotCrash() async {
         let path = LetterGuideRenderer.guidePath(for: "", in: rect)
         XCTAssertNotNil(path, "Empty string must produce a fallback path, not crash")
     }
 
     // MARK: 13 — guides entry with empty segment array triggers fallback (D1 regression guard)
 
-    func testKnownLetter_emptySegmentArray_usesFallback() {
+    func testKnownLetter_emptySegmentArray_usesFallback() async {
         // Directly verify that an empty segment array in guides routes to fallback.
         // Uses the lower-level LetterGuideGeometry API to inject the empty-array condition.
         let emptySegments: [LetterGuideGeometry.Segment] = []
@@ -174,7 +174,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 14 — fallbackSegments returns exactly 3 segments for any input
 
-    func testFallbackSegments_alwaysReturnsThreeSegments() {
+    func testFallbackSegments_alwaysReturnsThreeSegments() async {
         let letters = ["X", "Y", "Z", "1", "", "ä", "Ü"]
         for l in letters {
             let segs = LetterGuideGeometry.fallbackSegments(for: l)
@@ -185,7 +185,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 15 — cgPath for letter absent from guides returns non-nil (full fallback chain)
 
-    func testCgPath_absentLetter_returnsFallbackPath() {
+    func testCgPath_absentLetter_returnsFallbackPath() async {
         let path = LetterGuideGeometry.cgPath(for: "X", in: rect)
         XCTAssertNotNil(path,
                         "cgPath for a letter absent from guides must return a non-nil fallback path")
@@ -193,7 +193,7 @@ final class LetterGuideRendererTests: XCTestCase {
 
     // MARK: 16 — public API guidePath for absent letter returns non-nil
 
-    func testGuidePath_absentLetter_returnsFallbackPath() {
+    func testGuidePath_absentLetter_returnsFallbackPath() async {
         let path = LetterGuideRenderer.guidePath(for: "X", in: rect)
         XCTAssertNotNil(path,
                         "guidePath for 'X' (absent from guides) must return a non-nil fallback path via the full chain")

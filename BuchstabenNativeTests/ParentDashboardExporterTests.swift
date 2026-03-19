@@ -22,38 +22,38 @@ final class ParentDashboardExporterTests: XCTestCase {
 
     // MARK: CSV
 
-    func testCSVContainsHeader() {
+    func testCSVContainsHeader() async {
         let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
         XCTAssertTrue(csv.hasPrefix("letter,sessionCount,averageAccuracy,trend"))
     }
 
-    func testCSVContainsLetterRows() {
+    func testCSVContainsLetterRows() async {
         let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
         XCTAssertTrue(csv.contains("A,2,"), "Expected A row with 2 sessions")
         XCTAssertTrue(csv.contains("B,1,"), "Expected B row with 1 session")
     }
 
-    func testCSVContainsDurationSection() {
+    func testCSVContainsDurationSection() async {
         let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
         XCTAssertTrue(csv.contains("date,durationSeconds"))
         XCTAssertTrue(csv.contains("2026-03-01"))
     }
 
-    func testCSVEmptySnapshotIsValid() {
+    func testCSVEmptySnapshotIsValid() async {
         let csv = String(data: ParentDashboardExporter.csvData(from: DashboardSnapshot()), encoding: .utf8)!
         XCTAssertTrue(csv.hasPrefix("letter,sessionCount,averageAccuracy,trend"))
     }
 
     // MARK: JSON
 
-    func testJSONDecodesBack() throws {
+    func testJSONDecodesBack() async throws {
         let snap = makeSnapshot()
         let data = try ParentDashboardExporter.jsonData(from: snap)
         let decoded = try JSONDecoder().decode(DashboardSnapshot.self, from: data)
         XCTAssertEqual(decoded.letterStats.count, snap.letterStats.count)
     }
 
-    func testJSONIsPrettyPrinted() throws {
+    func testJSONIsPrettyPrinted() async throws {
         let data = try ParentDashboardExporter.jsonData(from: makeSnapshot())
         let str = String(data: data, encoding: .utf8)!
         XCTAssertTrue(str.contains("\n"), "Expected pretty-printed JSON with newlines")
@@ -61,7 +61,7 @@ final class ParentDashboardExporterTests: XCTestCase {
 
     // MARK: File export
 
-    func testExportFileURLCSVWritesFile() throws {
+    func testExportFileURLCSVWritesFile() async throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
         let url = try ParentDashboardExporter.exportFileURL(from: makeSnapshot(), format: .csv, tempDirectory: tmp)
         XCTAssertTrue(url.pathExtension == "csv")
@@ -69,7 +69,7 @@ final class ParentDashboardExporterTests: XCTestCase {
         try? FileManager.default.removeItem(at: url)
     }
 
-    func testExportFileURLJSONWritesFile() throws {
+    func testExportFileURLJSONWritesFile() async throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
         let url = try ParentDashboardExporter.exportFileURL(from: makeSnapshot(), format: .json, tempDirectory: tmp)
         XCTAssertTrue(url.pathExtension == "json")
@@ -77,7 +77,7 @@ final class ParentDashboardExporterTests: XCTestCase {
         try? FileManager.default.removeItem(at: url)
     }
 
-    func testExportFilenameContainsDate() throws {
+    func testExportFilenameContainsDate() async throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
         let url = try ParentDashboardExporter.exportFileURL(from: makeSnapshot(), format: .csv, tempDirectory: tmp)
         XCTAssertTrue(url.lastPathComponent.contains("buchstaben_progress_"))

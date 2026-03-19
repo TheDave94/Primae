@@ -12,7 +12,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Initial state
 
-    func testInitialState_isIdle() {
+    func testInitialState_isIdle() async {
         let m = PlaybackStateMachine()
         XCTAssertEqual(m.state, .idle)
         XCTAssertFalse(m.isPlaying)
@@ -22,7 +22,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Happy-path transitions
 
-    func testTransition_idleToActive_returnsPlay() {
+    func testTransition_idleToActive_returnsPlay() async {
         var m = PlaybackStateMachine()
         let cmd = m.transition(to: .active)
         XCTAssertEqual(cmd, .play)
@@ -30,7 +30,7 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertTrue(m.isPlaying)
     }
 
-    func testTransition_activeToIdle_returnsStop() {
+    func testTransition_activeToIdle_returnsStop() async {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         let cmd = m.transition(to: .idle)
@@ -41,14 +41,14 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - No-op transitions (same state)
 
-    func testTransition_idleToIdle_returnsNone() {
+    func testTransition_idleToIdle_returnsNone() async {
         var m = PlaybackStateMachine()
         let cmd = m.transition(to: .idle)
         XCTAssertEqual(cmd, .none)
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testTransition_activeToActive_returnsNone() {
+    func testTransition_activeToActive_returnsNone() async {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         let cmd = m.transition(to: .active)
@@ -58,7 +58,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Guard: appIsForeground == false blocks .active
 
-    func testGuard_appNotForeground_blocksActive_fromIdle() {
+    func testGuard_appNotForeground_blocksActive_fromIdle() async {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         let cmd = m.transition(to: .active)
@@ -66,7 +66,7 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testGuard_appNotForeground_blocksActive_fromActive() {
+    func testGuard_appNotForeground_blocksActive_fromActive() async {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.appIsForeground = false
@@ -76,7 +76,7 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testGuard_appNotForeground_idleToIdle_returnsNone() {
+    func testGuard_appNotForeground_idleToIdle_returnsNone() async {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         // idle→active blocked, resolved to idle; already idle → none
@@ -84,7 +84,7 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertEqual(cmd, .none)
     }
 
-    func testGuard_appNotForeground_transitionToIdle_works() {
+    func testGuard_appNotForeground_transitionToIdle_works() async {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.appIsForeground = false
@@ -95,7 +95,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Guard: resumeIntent == false blocks .active
 
-    func testGuard_noResumeIntent_blocksActive() {
+    func testGuard_noResumeIntent_blocksActive() async {
         var m = PlaybackStateMachine()
         m.resumeIntent = false
         let cmd = m.transition(to: .active)
@@ -103,7 +103,7 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testGuard_noResumeIntent_activeToActive_stopsEngine() {
+    func testGuard_noResumeIntent_activeToActive_stopsEngine() async {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.resumeIntent = false
@@ -112,7 +112,7 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testGuard_bothFalse_blocksActive() {
+    func testGuard_bothFalse_blocksActive() async {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         m.resumeIntent = false
@@ -123,7 +123,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Guard restores: re-enabling allows .active
 
-    func testGuard_restored_allowsActive() {
+    func testGuard_restored_allowsActive() async {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         m.transition(to: .active) // blocked
@@ -137,7 +137,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - forceIdle
 
-    func testForceIdle_fromActive_returnsStop() {
+    func testForceIdle_fromActive_returnsStop() async {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         let cmd = m.forceIdle()
@@ -145,14 +145,14 @@ final class PlaybackStateMachineTests: XCTestCase {
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testForceIdle_fromIdle_returnsNone() {
+    func testForceIdle_fromIdle_returnsNone() async {
         var m = PlaybackStateMachine()
         let cmd = m.forceIdle()
         XCTAssertEqual(cmd, .none)
         XCTAssertEqual(m.state, .idle)
     }
 
-    func testForceIdle_bypassesGuards() {
+    func testForceIdle_bypassesGuards() async {
         // forceIdle must work even when guards would normally block
         var m = PlaybackStateMachine()
         m.transition(to: .active)
@@ -174,7 +174,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - isPlaying mirrors state
 
-    func testIsPlaying_mirorsState() {
+    func testIsPlaying_mirorsState() async {
         var m = PlaybackStateMachine()
         XCTAssertFalse(m.isPlaying)
         m.transition(to: .active)
@@ -185,7 +185,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Value semantics
 
-    func testValueSemantics_copyIsIndependent() {
+    func testValueSemantics_copyIsIndependent() async {
         var original = PlaybackStateMachine()
         original.transition(to: .active)
 
@@ -198,7 +198,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Rapid churn
 
-    func testRapidChurn_multipleTransitions_consistentState() {
+    func testRapidChurn_multipleTransitions_consistentState() async {
         var m = PlaybackStateMachine()
         for i in 0..<100 {
             let target: PlaybackStateMachine.State = i % 2 == 0 ? .active : .idle
@@ -211,7 +211,7 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Command sequence correctness
 
-    func testCommandSequence_noSpuriousCommands() {
+    func testCommandSequence_noSpuriousCommands() async {
         var m = PlaybackStateMachine()
         var commands: [PlaybackStateMachine.Command] = []
 
@@ -227,13 +227,13 @@ final class PlaybackStateMachineTests: XCTestCase {
 
     // MARK: - Equatable conformance
 
-    func testEquatable_sameState_areEqual() {
+    func testEquatable_sameState_areEqual() async {
         let m1 = PlaybackStateMachine()
         let m2 = PlaybackStateMachine()
         XCTAssertEqual(m1, m2)
     }
 
-    func testEquatable_differentState_notEqual() {
+    func testEquatable_differentState_notEqual() async {
         var m1 = PlaybackStateMachine()
         var m2 = PlaybackStateMachine()
         m1.transition(to: .active)

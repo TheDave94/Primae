@@ -82,7 +82,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 1 — Empty provider returns fallback (non-empty, non-crash)
 
-    func testEmptyProvider_returnsFallbackLetter() {
+    func testEmptyProvider_returnsFallbackLetter() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let letters = repo.loadLetters()
         XCTAssertFalse(letters.isEmpty, "loadLetters() must never return empty — fallback expected")
@@ -91,7 +91,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 2 — Fallback letter has required fields populated
 
-    func testFallbackLetter_hasRequiredFields() {
+    func testFallbackLetter_hasRequiredFields() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let letter = repo.loadLetters().first!
         XCTAssertFalse(letter.name.isEmpty, "name must not be empty")
@@ -101,7 +101,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 3 — Stroke JSON with invalid data is skipped (no crash)
 
-    func testInvalidJSON_isSkipped_returnsAtLeastFallback() {
+    func testInvalidJSON_isSkipped_returnsAtLeastFallback() async {
         let provider = MockResourceProvider()
         let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("bad_strokes.json")
         try? "not json at all {{{{".data(using: .utf8)?.write(to: tmp)
@@ -127,7 +127,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 4 — LetterAsset names are non-empty strings
 
-    func testLetterAsset_names_areNonEmpty() {
+    func testLetterAsset_names_areNonEmpty() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             XCTAssertFalse(letter.name.isEmpty, "Every LetterAsset must have a non-empty name")
@@ -136,7 +136,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 5 — LetterAsset audioFiles are non-empty
 
-    func testLetterAsset_audioFiles_areNonEmpty() {
+    func testLetterAsset_audioFiles_areNonEmpty() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             XCTAssertFalse(letter.audioFiles.isEmpty,
@@ -146,7 +146,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 6 — Default strokes checkpoints are in normalized [0,1] range
 
-    func testDefaultStrokes_checkpoints_areNormalized() {
+    func testDefaultStrokes_checkpoints_areNormalized() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             for stroke in letter.strokes.strokes {
@@ -162,7 +162,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 7 — checkpointRadius is positive
 
-    func testDefaultStrokes_checkpointRadius_isPositive() {
+    func testDefaultStrokes_checkpointRadius_isPositive() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
             XCTAssertGreaterThan(letter.strokes.checkpointRadius, 0.0,
@@ -172,7 +172,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 8 — No duplicate letter ids in result
 
-    func testLoadLetters_noDuplicateIds() {
+    func testLoadLetters_noDuplicateIds() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let ids = repo.loadLetters().map(\.id)
         let unique = Set(ids)
@@ -181,7 +181,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 9 — loadLetters is idempotent (same result on two calls)
 
-    func testLoadLetters_isIdempotent() {
+    func testLoadLetters_isIdempotent() async {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let first  = repo.loadLetters()
         let second = repo.loadLetters()
@@ -190,7 +190,7 @@ final class LetterRepositoryTests: XCTestCase {
 
     // MARK: 10 — LetterAsset conforms to Equatable
 
-    func testLetterAsset_equatable() {
+    func testLetterAsset_equatable() async {
         let a = LetterAsset(id: "A", name: "A", imageName: "A.pbm",
                             audioFiles: ["A.mp3"], strokes: LetterStrokes(letter: "A", checkpointRadius: 0.06, strokes: []))
         let b = LetterAsset(id: "A", name: "A", imageName: "A.pbm",

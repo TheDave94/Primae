@@ -29,7 +29,7 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: Initial state
 
-    func testInitialState_allZero() {
+    func testInitialState_allZero() async {
         let store = makeStore()
         XCTAssertEqual(store.currentStreak, 0)
         XCTAssertEqual(store.longestStreak, 0)
@@ -39,13 +39,13 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: Streak increment
 
-    func testFirstSession_startsStreakAt1() {
+    func testFirstSession_startsStreakAt1() async {
         let store = makeStore(calendar: utcCalendar())
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 0.9)
         XCTAssertEqual(store.currentStreak, 1)
     }
 
-    func testConsecutiveDays_incrementsStreak() {
+    func testConsecutiveDays_incrementsStreak() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 0.9)
@@ -54,7 +54,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertEqual(store.currentStreak, 3)
     }
 
-    func testGap_resetsStreak() {
+    func testGap_resetsStreak() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 0.9)
@@ -64,7 +64,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertEqual(store.currentStreak, 1)
     }
 
-    func testSameDayTwice_doesNotDoubleIncrementStreak() {
+    func testSameDayTwice_doesNotDoubleIncrementStreak() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         store.recordSession(date: date(2025, 3, 5), lettersCompleted: ["A"], accuracy: 0.8)
@@ -72,7 +72,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertEqual(store.currentStreak, 1)
     }
 
-    func testLongestStreak_trackedCorrectly() {
+    func testLongestStreak_trackedCorrectly() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         // 5-day run
@@ -88,7 +88,7 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: DST / month boundary
 
-    func testMonthBoundary_consecutive() {
+    func testMonthBoundary_consecutive() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         store.recordSession(date: date(2025, 1, 31), lettersCompleted: ["A"], accuracy: 0.9)
@@ -96,7 +96,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertEqual(store.currentStreak, 2)
     }
 
-    func testYearBoundary_consecutive() {
+    func testYearBoundary_consecutive() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         store.recordSession(date: date(2024, 12, 31), lettersCompleted: ["A"], accuracy: 0.9)
@@ -106,7 +106,7 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: Total completions
 
-    func testTotalCompletions_accumulates() {
+    func testTotalCompletions_accumulates() async {
         let store = makeStore()
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A", "B"], accuracy: 0.9)
         store.recordSession(date: date(2025, 1, 2), lettersCompleted: ["C"], accuracy: 0.9)
@@ -115,7 +115,7 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: Reward events
 
-    func testFirstLetter_reward_firedOnce() {
+    func testFirstLetter_reward_firedOnce() async {
         let store = makeStore()
         let r1 = store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 0.5)
         let r2 = store.recordSession(date: date(2025, 1, 2), lettersCompleted: ["B"], accuracy: 0.5)
@@ -123,19 +123,19 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertFalse(r2.contains(.firstLetter), "firstLetter should only fire once")
     }
 
-    func testPerfectAccuracy_reward() {
+    func testPerfectAccuracy_reward() async {
         let store = makeStore()
         let r = store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 1.0)
         XCTAssertTrue(r.contains(.perfectAccuracy))
     }
 
-    func testPerfectAccuracy_notFiredBelow1() {
+    func testPerfectAccuracy_notFiredBelow1() async {
         let store = makeStore()
         let r = store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 0.99)
         XCTAssertFalse(r.contains(.perfectAccuracy))
     }
 
-    func testStreakDay3_reward() {
+    func testStreakDay3_reward() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 0.9)
@@ -144,7 +144,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertTrue(r.contains(.streakDay3))
     }
 
-    func testStreakWeek_reward() {
+    func testStreakWeek_reward() async {
         let cal = utcCalendar()
         let store = makeStore(calendar: cal)
         var lastRewards: [RewardEvent] = []
@@ -154,7 +154,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertTrue(lastRewards.contains(.streakWeek))
     }
 
-    func testCenturyClub_reward() {
+    func testCenturyClub_reward() async {
         let store = makeStore(calendar: utcCalendar())
         // 99 completions spread over days (same day doesn't double-increment streak but does count completions)
         for d in 1...33 {
@@ -165,7 +165,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertTrue(r.contains(.centuryClub) || store.totalCompletions >= 100)
     }
 
-    func testRewards_notDuplicated() {
+    func testRewards_notDuplicated() async {
         let store = makeStore(calendar: utcCalendar())
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A"], accuracy: 1.0)
         let r2 = store.recordSession(date: date(2025, 1, 2), lettersCompleted: ["B"], accuracy: 1.0)
@@ -174,7 +174,7 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: Persistence
 
-    func testReset_clearsAll() {
+    func testReset_clearsAll() async {
         let store = makeStore(calendar: utcCalendar())
         store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A", "B"], accuracy: 0.9)
         store.reset()
@@ -183,7 +183,7 @@ final class StreakStoreTests: XCTestCase {
         XCTAssertTrue(store.completedLetters.isEmpty)
     }
 
-    func testPersistence_roundtrip() {
+    func testPersistence_roundtrip() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("StreakPersist-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -202,7 +202,7 @@ final class StreakStoreTests: XCTestCase {
 
     // MARK: Empty session
 
-    func testEmptySession_noSideEffects() {
+    func testEmptySession_noSideEffects() async {
         let store = makeStore()
         let r = store.recordSession(date: date(2025, 1, 1), lettersCompleted: [], accuracy: 0.9)
         XCTAssertTrue(r.isEmpty)

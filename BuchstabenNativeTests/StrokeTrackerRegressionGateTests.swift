@@ -53,7 +53,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     // MARK: - Gate 1: update() throughput (clock time)
 
-    func testStrokeTrackerUpdate_clockTime() {
+    func testStrokeTrackerUpdate_clockTime() async {
         let points = touchPoints
         let definition = realisticDefinition
         measure(metrics: [XCTClockMetric()]) {
@@ -67,7 +67,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     // MARK: - Gate 2: update() CPU time
 
-    func testStrokeTrackerUpdate_cpuTime() {
+    func testStrokeTrackerUpdate_cpuTime() async {
         let points = touchPoints
         let definition = realisticDefinition
         measure(metrics: [XCTCPUMetric()]) {
@@ -81,7 +81,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     // MARK: - Gate 3: Memory footprint during rapid load/update/reset cycles
 
-    func testStrokeTrackerLoadResetCycle_memory() {
+    func testStrokeTrackerLoadResetCycle_memory() async {
         let definition = realisticDefinition
         let points = touchPoints
         measure(metrics: [XCTMemoryMetric()]) {
@@ -98,7 +98,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     // MARK: - Gate 4: overallProgress computation is O(1) — not re-scanning on each call
 
-    func testOverallProgress_isEfficient() {
+    func testOverallProgress_isEfficient() async {
         var tracker = StrokeTracker()
         tracker.load(realisticDefinition)
         // Drive partial progress
@@ -118,7 +118,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     // MARK: - Gate 5: High-density checkpoint letter (stress test)
 
-    func testStrokeTracker_highDensityLetter_clockTime() {
+    func testStrokeTracker_highDensityLetter_clockTime() async {
         // 10 strokes × 20 checkpoints = 200 checkpoints total
         let dense = LetterStrokes(
             letter: "DENSE",

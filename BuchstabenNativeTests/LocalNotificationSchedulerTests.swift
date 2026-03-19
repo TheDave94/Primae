@@ -43,27 +43,27 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
 @MainActor
 final class QuietHoursTests: XCTestCase {
 
-    func testNonWrapping_inRange() {
+    func testNonWrapping_inRange() async {
         let qh = QuietHours(startHour: 22, endHour: 8)
         XCTAssertTrue(qh.isQuiet(hour: 23))
         XCTAssertTrue(qh.isQuiet(hour: 0))
         XCTAssertTrue(qh.isQuiet(hour: 7))
     }
 
-    func testNonWrapping_outOfRange() {
+    func testNonWrapping_outOfRange() async {
         let qh = QuietHours(startHour: 22, endHour: 8)
         XCTAssertFalse(qh.isQuiet(hour: 9))
         XCTAssertFalse(qh.isQuiet(hour: 17))
         XCTAssertFalse(qh.isQuiet(hour: 21))
     }
 
-    func testSimpleRange_inRange() {
+    func testSimpleRange_inRange() async {
         let qh = QuietHours(startHour: 13, endHour: 15)
         XCTAssertTrue(qh.isQuiet(hour: 13))
         XCTAssertTrue(qh.isQuiet(hour: 14))
     }
 
-    func testSimpleRange_outOfRange() {
+    func testSimpleRange_outOfRange() async {
         let qh = QuietHours(startHour: 13, endHour: 15)
         XCTAssertFalse(qh.isQuiet(hour: 15))
         XCTAssertFalse(qh.isQuiet(hour: 12))
@@ -80,48 +80,48 @@ final class DefaultDailyReminderPolicyTests: XCTestCase {
         DefaultDailyReminderPolicy(defaultHour: hour, defaultMinute: 0, quietHours: quietHours)
     }
 
-    func testOnboardingIncomplete_returnsNil() {
+    func testOnboardingIncomplete_returnsNil() async {
         let p = makePolicy()
         XCTAssertNil(p.content(currentStreak: 0, onboardingComplete: false, calendar: .current))
     }
 
-    func testQuietHour_returnsNil() {
+    func testQuietHour_returnsNil() async {
         let p = makePolicy(hour: 22) // 22 is quiet
         XCTAssertNil(p.content(currentStreak: 5, onboardingComplete: true, calendar: .current))
     }
 
-    func testStreak0_defaultMessage() {
+    func testStreak0_defaultMessage() async {
         let p = makePolicy()
         let c = p.content(currentStreak: 0, onboardingComplete: true, calendar: .current)
         XCTAssertNotNil(c)
         XCTAssertTrue(c!.body.contains("Time to practice"))
     }
 
-    func testStreak1_day2Message() {
+    func testStreak1_day2Message() async {
         let p = makePolicy()
         let c = p.content(currentStreak: 1, onboardingComplete: true, calendar: .current)
         XCTAssertTrue(c!.body.contains("day 2"))
     }
 
-    func testStreak3_fireEmoji() {
+    func testStreak3_fireEmoji() async {
         let p = makePolicy()
         let c = p.content(currentStreak: 3, onboardingComplete: true, calendar: .current)
         XCTAssertTrue(c!.body.contains("3-day streak"))
     }
 
-    func testStreak7_trophyMessage() {
+    func testStreak7_trophyMessage() async {
         let p = makePolicy()
         let c = p.content(currentStreak: 7, onboardingComplete: true, calendar: .current)
         XCTAssertTrue(c!.body.contains("7-day streak") || c!.body.contains("master"))
     }
 
-    func testContent_identifier_isDailyPractice() {
+    func testContent_identifier_isDailyPractice() async {
         let p = makePolicy()
         let c = p.content(currentStreak: 0, onboardingComplete: true, calendar: .current)
         XCTAssertEqual(c?.identifier, "daily_practice_reminder")
     }
 
-    func testContent_titleIsBuchstabenLernen() {
+    func testContent_titleIsBuchstabenLernen() async {
         let p = makePolicy()
         let c = p.content(currentStreak: 0, onboardingComplete: true, calendar: .current)
         XCTAssertEqual(c?.title, "Buchstaben Lernen")
@@ -167,7 +167,7 @@ final class LocalNotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(status, .denied)
     }
 
-    func testScheduleDailyReminder_addsRequest() {
+    func testScheduleDailyReminder_addsRequest() async {
         let mock = MockNotificationCenter()
         let scheduler = makeScheduler(mock: mock)
         scheduler.scheduleDailyReminder(currentStreak: 3, onboardingComplete: true)
@@ -175,28 +175,28 @@ final class LocalNotificationSchedulerTests: XCTestCase {
         XCTAssertEqual(mock.addedRequests.first?.identifier, "daily_practice_reminder")
     }
 
-    func testScheduleDailyReminder_removesExistingFirst() {
+    func testScheduleDailyReminder_removesExistingFirst() async {
         let mock = MockNotificationCenter()
         let scheduler = makeScheduler(mock: mock)
         scheduler.scheduleDailyReminder(currentStreak: 0, onboardingComplete: true)
         XCTAssertTrue(mock.removedIdentifiers.contains("daily_practice_reminder"))
     }
 
-    func testScheduleDailyReminder_onboardingIncomplete_doesNotAdd() {
+    func testScheduleDailyReminder_onboardingIncomplete_doesNotAdd() async {
         let mock = MockNotificationCenter()
         let scheduler = makeScheduler(mock: mock)
         scheduler.scheduleDailyReminder(currentStreak: 5, onboardingComplete: false)
         XCTAssertTrue(mock.addedRequests.isEmpty)
     }
 
-    func testCancelAllReminders_callsRemoveAll() {
+    func testCancelAllReminders_callsRemoveAll() async {
         let mock = MockNotificationCenter()
         let scheduler = makeScheduler(mock: mock)
         scheduler.cancelAllReminders()
         XCTAssertTrue(mock.removeAllCalled)
     }
 
-    func testCancelReminder_specificIdentifier() {
+    func testCancelReminder_specificIdentifier() async {
         let mock = MockNotificationCenter()
         let scheduler = makeScheduler(mock: mock)
         scheduler.cancelReminder(identifier: "some_id")

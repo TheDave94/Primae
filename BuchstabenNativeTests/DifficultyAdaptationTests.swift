@@ -28,36 +28,36 @@ private func makePolicy(
 @MainActor
 final class DifficultyTierTests: XCTestCase {
 
-    func testTierOrdering() {
+    func testTierOrdering() async {
         XCTAssertLessThan(DifficultyTier.easy, .standard)
         XCTAssertLessThan(DifficultyTier.standard, .strict)
         XCTAssertGreaterThan(DifficultyTier.strict, .easy)
     }
 
-    func testRadiusMultiplier_easyLargest() {
+    func testRadiusMultiplier_easyLargest() async {
         XCTAssertGreaterThan(DifficultyTier.easy.radiusMultiplier, DifficultyTier.standard.radiusMultiplier)
         XCTAssertGreaterThan(DifficultyTier.standard.radiusMultiplier, DifficultyTier.strict.radiusMultiplier)
     }
 
-    func testRadiusMultiplier_standardIsOne() {
+    func testRadiusMultiplier_standardIsOne() async {
         XCTAssertEqual(DifficultyTier.standard.radiusMultiplier, 1.0, accuracy: 1e-9)
     }
 
-    func testAllCases_count() {
+    func testAllCases_count() async {
         XCTAssertEqual(DifficultyTier.allCases.count, 3)
     }
 }
 
 final class FixedAdaptationPolicyTests: XCTestCase {
 
-    func testFixed_alwaysReturnsSameTier() {
+    func testFixed_alwaysReturnsSameTier() async {
         var policy = FixedAdaptationPolicy(currentTier: .easy)
         policy.record(sample(1.0))
         policy.record(sample(1.0))
         XCTAssertEqual(policy.currentTier, .easy)
     }
 
-    func testFixed_resetNoOp() {
+    func testFixed_resetNoOp() async {
         var policy = FixedAdaptationPolicy(currentTier: .strict)
         policy.reset()
         XCTAssertEqual(policy.currentTier, .strict)
@@ -68,19 +68,19 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Initial state
 
-    func testInitialTier_isStandard() {
+    func testInitialTier_isStandard() async {
         let policy = makePolicy()
         XCTAssertEqual(policy.currentTier, .standard)
     }
 
-    func testInitialWindowAccuracy_isZero() {
+    func testInitialWindowAccuracy_isZero() async {
         let policy = makePolicy()
         XCTAssertEqual(policy.windowAccuracy, 0, accuracy: 1e-9)
     }
 
     // MARK: No change before window fills
 
-    func testNoPromotion_beforeWindowFills() {
+    func testNoPromotion_beforeWindowFills() async {
         var policy = makePolicy(windowSize: 5, hysteresisCount: 2)
         // Add 4 perfect samples — window not yet full
         for _ in 0..<4 { policy.record(sample(1.0)) }
@@ -89,7 +89,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Promotion
 
-    func testPromotion_afterWindowAndHysteresis() {
+    func testPromotion_afterWindowAndHysteresis() async {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 2, promotionThreshold: 0.85)
         // Fill window with high accuracy, then 2 more evaluations above threshold
         for _ in 0..<3 { policy.record(sample(0.9)) }  // window fills, eval 1
@@ -98,7 +98,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
         XCTAssertEqual(policy.currentTier, .strict)
     }
 
-    func testPromotion_capsAtStrict() {
+    func testPromotion_capsAtStrict() async {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 1, initial: .strict)
         for _ in 0..<10 { policy.record(sample(1.0)) }
         XCTAssertEqual(policy.currentTier, .strict)
@@ -106,7 +106,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Demotion
 
-    func testDemotion_afterWindowAndHysteresis() {
+    func testDemotion_afterWindowAndHysteresis() async {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 2, demotionThreshold: 0.55)
         for _ in 0..<3 { policy.record(sample(0.4)) }  // eval 1
         XCTAssertEqual(policy.currentTier, .standard)
@@ -114,7 +114,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
         XCTAssertEqual(policy.currentTier, .easy)
     }
 
-    func testDemotion_floorAtEasy() {
+    func testDemotion_floorAtEasy() async {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 1, initial: .easy)
         for _ in 0..<10 { policy.record(sample(0.1)) }
         XCTAssertEqual(policy.currentTier, .easy)
@@ -122,7 +122,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Hysteresis prevents rapid flipping
 
-    func testHysteresis_doesNotFlipOnSingleAboveThreshold() {
+    func testHysteresis_doesNotFlipOnSingleAboveThreshold() async {
         var policy = makePolicy(windowSize: 5, hysteresisCount: 3, promotionThreshold: 0.85)
         // Fill window
         for _ in 0..<5 { policy.record(sample(0.9)) }  // 1 consecutive
@@ -134,7 +134,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Window size — only last N samples counted
 
-    func testWindowAccuracy_onlyLastNSamples() {
+    func testWindowAccuracy_onlyLastNSamples() async {
         var policy = makePolicy(windowSize: 3)
         policy.record(sample(0.0))
         policy.record(sample(0.0))
@@ -147,7 +147,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Reset
 
-    func testReset_clearsSamplesAndTier() {
+    func testReset_clearsSamplesAndTier() async {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 1)
         for _ in 0..<5 { policy.record(sample(1.0)) }
         XCTAssertEqual(policy.currentTier, .strict)
@@ -159,7 +159,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Sparse history (fewer than window)
 
-    func testSparseHistory_noEvaluation() {
+    func testSparseHistory_noEvaluation() async {
         var policy = makePolicy(windowSize: 10, hysteresisCount: 2)
         policy.record(sample(1.0))
         policy.record(sample(1.0))
@@ -168,7 +168,7 @@ final class MovingAverageAdaptationPolicyTests: XCTestCase {
 
     // MARK: Mixed accuracy in window
 
-    func testMixedAccuracy_staysInMidZone() {
+    func testMixedAccuracy_staysInMidZone() async {
         var policy = makePolicy(windowSize: 4, hysteresisCount: 2,
                                 promotionThreshold: 0.85, demotionThreshold: 0.55)
         // Average ~0.7 — in the middle band, no change

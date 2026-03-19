@@ -35,23 +35,23 @@ final class EuclideanStrokeRecognizerTests: XCTestCase {
 
     // pointHitsCheckpoint
 
-    func testHit_atExactCenter() {
+    func testHit_atExactCenter() async {
         XCTAssertTrue(recognizer.pointHitsCheckpoint(pt(0.5, 0.5), checkpoint: cp(0.5, 0.5), radius: 0.05))
     }
 
-    func testHit_justInsideRadius() {
+    func testHit_justInsideRadius() async {
         let r = 0.05
         let offset = r * (1.0 - 1e-6)
         XCTAssertTrue(recognizer.pointHitsCheckpoint(pt(0.5 + offset, 0.5), checkpoint: cp(0.5, 0.5), radius: r))
     }
 
-    func testMiss_justOutsideRadius() {
+    func testMiss_justOutsideRadius() async {
         let r = 0.05
         let offset = r * (1.0 + 1e-6)
         XCTAssertFalse(recognizer.pointHitsCheckpoint(pt(0.5 + offset, 0.5), checkpoint: cp(0.5, 0.5), radius: r))
     }
 
-    func testHit_diagonalWithinRadius() {
+    func testHit_diagonalWithinRadius() async {
         // dist = sqrt(0.03² + 0.04²) = 0.05 (3-4-5 Pythagorean triple).
         // Use radius slightly above 0.05 to account for IEEE-754 floating-point
         // rounding: hypot(0.53-0.5, 0.54-0.5) is 0.050000...003 in Double,
@@ -59,7 +59,7 @@ final class EuclideanStrokeRecognizerTests: XCTestCase {
         XCTAssertTrue(recognizer.pointHitsCheckpoint(pt(0.53, 0.54), checkpoint: cp(0.5, 0.5), radius: 0.0501))
     }
 
-    func testMiss_zeroRadius() {
+    func testMiss_zeroRadius() async {
         // Only exact center hits with radius=0
         XCTAssertTrue(recognizer.pointHitsCheckpoint(pt(0.5, 0.5), checkpoint: cp(0.5, 0.5), radius: 0))
         XCTAssertFalse(recognizer.pointHitsCheckpoint(pt(0.5001, 0.5), checkpoint: cp(0.5, 0.5), radius: 0))
@@ -67,7 +67,7 @@ final class EuclideanStrokeRecognizerTests: XCTestCase {
 
     // evaluate
 
-    func testEvaluate_hit_advancesCheckpoint() {
+    func testEvaluate_hit_advancesCheckpoint() async {
         let stroke = StrokeDefinition(id: 1, checkpoints: [cp(0.3, 0.3), cp(0.7, 0.7)])
         let current = StrokeMatchResult(accuracy: 0, isComplete: false, nextCheckpointIndex: 0, checkpointCount: 2)
         let result = recognizer.evaluate(point: pt(0.3, 0.3), stroke: stroke, current: current, radius: 0.05)
@@ -77,7 +77,7 @@ final class EuclideanStrokeRecognizerTests: XCTestCase {
         XCTAssertEqual(result!.accuracy, 0.5, accuracy: 1e-9)
     }
 
-    func testEvaluate_finalCheckpoint_marksComplete() {
+    func testEvaluate_finalCheckpoint_marksComplete() async {
         let stroke = StrokeDefinition(id: 1, checkpoints: [cp(0.5, 0.5)])
         let current = StrokeMatchResult(accuracy: 0, isComplete: false, nextCheckpointIndex: 0, checkpointCount: 1)
         let result = recognizer.evaluate(point: pt(0.5, 0.5), stroke: stroke, current: current, radius: 0.05)
@@ -86,14 +86,14 @@ final class EuclideanStrokeRecognizerTests: XCTestCase {
         XCTAssertEqual(result!.accuracy, 1.0, accuracy: 1e-9)
     }
 
-    func testEvaluate_miss_returnsNil() {
+    func testEvaluate_miss_returnsNil() async {
         let stroke = StrokeDefinition(id: 1, checkpoints: [cp(0.5, 0.5)])
         let current = StrokeMatchResult(accuracy: 0, isComplete: false, nextCheckpointIndex: 0, checkpointCount: 1)
         let result = recognizer.evaluate(point: pt(0.9, 0.9), stroke: stroke, current: current, radius: 0.05)
         XCTAssertNil(result)
     }
 
-    func testEvaluate_alreadyComplete_returnsNil() {
+    func testEvaluate_alreadyComplete_returnsNil() async {
         let stroke = StrokeDefinition(id: 1, checkpoints: [cp(0.5, 0.5)])
         let current = StrokeMatchResult(accuracy: 1, isComplete: true, nextCheckpointIndex: 1, checkpointCount: 1)
         let result = recognizer.evaluate(point: pt(0.5, 0.5), stroke: stroke, current: current, radius: 0.05)
@@ -111,7 +111,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
 
     // MARK: Single-stroke
 
-    func testSingleStroke_singleCheckpoint_completes() {
+    func testSingleStroke_singleCheckpoint_completes() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [[cp(0.5, 0.5)]]))
         let result = session.update(normalizedPoint: pt(0.5, 0.5))
@@ -120,7 +120,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
         XCTAssertEqual(result!.overallAccuracy, 1.0, accuracy: 1e-9)
     }
 
-    func testSingleStroke_multiCheckpoint_partialProgress() {
+    func testSingleStroke_multiCheckpoint_partialProgress() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [[cp(0.1, 0.1), cp(0.5, 0.5), cp(0.9, 0.9)]]))
         _ = session.update(normalizedPoint: pt(0.1, 0.1))  // hit cp 0
@@ -129,7 +129,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
         XCTAssertEqual(r!.overallAccuracy, 2.0/3.0, accuracy: 1e-9)
     }
 
-    func testSingleStroke_mustFollowOrder() {
+    func testSingleStroke_mustFollowOrder() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [[cp(0.1, 0.1), cp(0.5, 0.5)]]))
         // Try to hit cp1 before cp0 — should not register
@@ -140,7 +140,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
 
     // MARK: Multi-stroke
 
-    func testMultiStroke_secondStrokeOnlyActiveAfterFirst() {
+    func testMultiStroke_secondStrokeOnlyActiveAfterFirst() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [
             [cp(0.1, 0.1)],
@@ -159,7 +159,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
         XCTAssertTrue(session.result!.isLetterComplete)
     }
 
-    func testMultiStroke_overallAccuracy_acrossStrokes() {
+    func testMultiStroke_overallAccuracy_acrossStrokes() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [
             [cp(0.1, 0.1), cp(0.2, 0.2)],  // 2 checkpoints
@@ -172,7 +172,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
 
     // MARK: Reset
 
-    func testReset_clearsProgress() {
+    func testReset_clearsProgress() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [[cp(0.5, 0.5)]]))
         _ = session.update(normalizedPoint: pt(0.5, 0.5))
@@ -183,26 +183,26 @@ final class StrokeRecognizerSessionTests: XCTestCase {
 
     // MARK: Not loaded
 
-    func testUpdate_withoutLoad_returnsNil() {
+    func testUpdate_withoutLoad_returnsNil() async {
         let session = makeSession()
         let result = session.update(normalizedPoint: pt(0.5, 0.5))
         XCTAssertNil(result)
     }
 
-    func testResult_withoutLoad_returnsNil() {
+    func testResult_withoutLoad_returnsNil() async {
         let session = makeSession()
         XCTAssertNil(session.result)
     }
 
     // MARK: activeStrokeIndex
 
-    func testActiveStrokeIndex_firstStrokeIncomplete() {
+    func testActiveStrokeIndex_firstStrokeIncomplete() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [[cp(0.1, 0.1)], [cp(0.9, 0.9)]]))
         XCTAssertEqual(session.result!.activeStrokeIndex, 0)
     }
 
-    func testActiveStrokeIndex_allComplete_equalsCount() {
+    func testActiveStrokeIndex_allComplete_equalsCount() async {
         let session = makeSession()
         session.load(makeStrokes(strokes: [[cp(0.5, 0.5)]]))
         _ = session.update(normalizedPoint: pt(0.5, 0.5))
@@ -211,7 +211,7 @@ final class StrokeRecognizerSessionTests: XCTestCase {
 
     // MARK: Custom recognizer injection
 
-    func testCustomRecognizer_isUsed() {
+    func testCustomRecognizer_isUsed() async {
         // Recognizer that always hits everything
         struct AlwaysHitRecognizer: StrokeRecognizing {
             func pointHitsCheckpoint(_ point: CGPoint, checkpoint: Checkpoint, radius: CGFloat) -> Bool { true }

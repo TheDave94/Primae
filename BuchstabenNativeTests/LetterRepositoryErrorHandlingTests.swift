@@ -90,7 +90,7 @@ final class JSONLetterCacheTests: XCTestCase {
         // Do NOT call super.tearDown() — same reason as setUp() above.
     }
 
-    func testSaveAndLoad_roundtrips() throws {
+    func testSaveAndLoad_roundtrips() async throws {
         let letters = [makeSampleLetter("A"), makeSampleLetter("B")]
         try cache.save(letters)
         let loaded = try cache.load()
@@ -99,7 +99,7 @@ final class JSONLetterCacheTests: XCTestCase {
         XCTAssertEqual(loaded[0].audioFiles, ["A.mp3"])
     }
 
-    func testLoad_whenNoFile_throwsCacheReadFailed() {
+    func testLoad_whenNoFile_throwsCacheReadFailed() async {
         XCTAssertThrowsError(try cache.load()) { error in
             guard case LetterRepositoryError.cacheReadFailed = error else {
                 XCTFail("Expected cacheReadFailed, got \(error)"); return
@@ -107,13 +107,13 @@ final class JSONLetterCacheTests: XCTestCase {
         }
     }
 
-    func testClear_removesFile() throws {
+    func testClear_removesFile() async throws {
         try cache.save([makeSampleLetter("C")])
         cache.clear()
         XCTAssertThrowsError(try cache.load())
     }
 
-    func testSave_isAtomic_doesNotCorruptOnRepeat() throws {
+    func testSave_isAtomic_doesNotCorruptOnRepeat() async throws {
         let first = [makeSampleLetter("X")]
         let second = [makeSampleLetter("Y"), makeSampleLetter("Z")]
         try cache.save(first)
@@ -122,7 +122,7 @@ final class JSONLetterCacheTests: XCTestCase {
         XCTAssertEqual(loaded.map(\.id), ["Y", "Z"])
     }
 
-    func testSaveAndLoad_preservesStrokeGeometry() throws {
+    func testSaveAndLoad_preservesStrokeGeometry() async throws {
         let strokes = LetterStrokes(
             letter: "M",
             checkpointRadius: 0.07,
@@ -144,7 +144,7 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
 
     // MARK: Bundle success → cache written
 
-    func testBundleSuccess_persistsToCache() {
+    func testBundleSuccess_persistsToCache() async {
         let cache = InMemoryCache()
         let repo = LetterRepository(resources: BundleLetterResourceProvider(), cache: cache)
         _ = repo.loadLetters()
@@ -154,14 +154,14 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
 
     // MARK: Empty bundle → cache fallback
 
-    func testEmptyBundle_usesCacheFallback() {
+    func testEmptyBundle_usesCacheFallback() async {
         let cache = InMemoryCache(storedLetters: [makeSampleLetter("A"), makeSampleLetter("B")])
         let repo = LetterRepository(resources: EmptyResourceProvider(), cache: cache)
         let letters = repo.loadLetters()
         XCTAssertEqual(letters.map(\.id).sorted(), ["A", "B"])
     }
 
-    func testEmptyBundle_withEmptyCache_returnsFallbackSample() {
+    func testEmptyBundle_withEmptyCache_returnsFallbackSample() async {
         let cache = InMemoryCache()  // no stored letters
         let repo = LetterRepository(resources: EmptyResourceProvider(), cache: cache)
         let letters = repo.loadLetters()
@@ -171,7 +171,7 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
 
     // MARK: Typed errors via loadWithErrors()
 
-    func testLoadWithErrors_emptyBundle_emptyCache_returnsNoAssetsFoundError() {
+    func testLoadWithErrors_emptyBundle_emptyCache_returnsNoAssetsFoundError() async {
         let cache = InMemoryCache()
         let repo = LetterRepository(resources: EmptyResourceProvider(), cache: cache)
         let result = repo.loadWithErrors()
@@ -182,7 +182,7 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
         }
     }
 
-    func testLoadWithErrors_emptyBundle_withCache_returnsSuccess() {
+    func testLoadWithErrors_emptyBundle_withCache_returnsSuccess() async {
         let cache = InMemoryCache(storedLetters: [makeSampleLetter("F")])
         let repo = LetterRepository(resources: EmptyResourceProvider(), cache: cache)
         let result = repo.loadWithErrors()
@@ -193,7 +193,7 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
         }
     }
 
-    func testLoadWithErrors_cacheThrows_returnsError() {
+    func testLoadWithErrors_cacheThrows_returnsError() async {
         let cache = InMemoryCache()
         cache.shouldThrowOnLoad = true
         let repo = LetterRepository(resources: EmptyResourceProvider(), cache: cache)
@@ -205,7 +205,7 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
 
     // MARK: Cache not called on empty bundle when already empty
 
-    func testLoadLetters_emptyBundle_cacheFallback_doesNotSaveEmptyToCache() {
+    func testLoadLetters_emptyBundle_cacheFallback_doesNotSaveEmptyToCache() async {
         let cache = InMemoryCache(storedLetters: [makeSampleLetter("K")])
         let repo = LetterRepository(resources: EmptyResourceProvider(), cache: cache)
         _ = repo.loadLetters()
@@ -216,7 +216,7 @@ final class LetterRepositoryErrorHandlingTests: XCTestCase {
 
     // MARK: Error equatability
 
-    func testLetterRepositoryError_equatability() {
+    func testLetterRepositoryError_equatability() async {
         XCTAssertEqual(LetterRepositoryError.noAssetsFound, .noAssetsFound)
         XCTAssertEqual(
             LetterRepositoryError.partialLoad(loaded: 2, issues: ["A: missing audio"]),

@@ -61,7 +61,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 1 — Pre-load nil-guard computed properties
 
-    func testPreLoad_allComputedProperties_safeDefaults() {
+    func testPreLoad_allComputedProperties_safeDefaults() async {
         let t = StrokeTracker()
         XCTAssertFalse(t.soundEnabled,  "soundEnabled must be false before load")
         XCTAssertFalse(t.isComplete,    "isComplete must be false before load")
@@ -73,7 +73,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 2 — update() before load must not crash
 
-    func testUpdate_beforeLoad_doesNotCrash() {
+    func testUpdate_beforeLoad_doesNotCrash() async {
         let t = StrokeTracker()
         t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
         t.update(normalizedPoint: CGPoint(x: 0.0, y: 0.0))
@@ -82,7 +82,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 3 — reset() before load must not crash
 
-    func testReset_beforeLoad_doesNotCrash() {
+    func testReset_beforeLoad_doesNotCrash() async {
         let t = StrokeTracker()
         t.reset()
         XCTAssertFalse(t.isComplete)
@@ -93,7 +93,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 4 — Single-stroke happy path
 
-    func testSingleStroke_happyPath() {
+    func testSingleStroke_happyPath() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.1, 0.1), cp(0.5, 0.5), cp(0.9, 0.9)])
@@ -110,7 +110,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 5 — Multi-stroke happy path
 
-    func testMultiStroke_happyPath() {
+    func testMultiStroke_happyPath() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.1, 0.1), cp(0.2, 0.2)]),
@@ -125,7 +125,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 6 — Edge: zero-stroke LetterStrokes
 
-    func testZeroStrokes_isCompleteImmediately() {
+    func testZeroStrokes_isCompleteImmediately() async {
         let t = StrokeTracker()
         let def = letter(strokes: [])
         t.load(def)
@@ -143,7 +143,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 7 — Edge: single-checkpoint stroke
 
-    func testSingleCheckpoint_completesOnHit() {
+    func testSingleCheckpoint_completesOnHit() async {
         let t = StrokeTracker()
         let def = letter(strokes: [strokeDef(id: 0, checkpoints: [cp(0.5, 0.5)])])
         t.load(def)
@@ -154,7 +154,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 8 — Edge: zero-checkpoint stroke (KNOWN BEHAVIOUR)
 
-    func testZeroCheckpointStroke_neverCompletes() {
+    func testZeroCheckpointStroke_neverCompletes() async {
         // KNOWN BEHAVIOUR: a stroke with 0 checkpoints can never be marked complete
         // via update() — the guard `nextCheckpoint < stroke.checkpoints.count` fires
         // immediately (0 < 0 is false). isComplete therefore stays false permanently.
@@ -172,7 +172,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 9 — Edge: all strokes have zero checkpoints (NaN guard)
 
-    func testMultiStroke_allZeroCheckpoints_overallProgressIsNotNaN() {
+    func testMultiStroke_allZeroCheckpoints_overallProgressIsNotNaN() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: []),
@@ -186,7 +186,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 10 — Boundary hit: point just inside radius
 
-    func testBoundaryHit_justInsideRadius_registers() {
+    func testBoundaryHit_justInsideRadius_registers() async {
         // Avoid exact-boundary test: hypot(r, 0) may not equal r exactly for non-representable
         // CGFloat values (e.g. 0.05). Use radius * (1 - 1e-6) to guarantee inside.
         let radius: CGFloat = 0.1
@@ -203,7 +203,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 11 — Boundary miss: point just outside radius
 
-    func testBoundaryMiss_justOutsideRadius_doesNotRegister() {
+    func testBoundaryMiss_justOutsideRadius_doesNotRegister() async {
         let radius: CGFloat = 0.1
         let c = cp(0.5, 0.5)
         let t = StrokeTracker()
@@ -218,7 +218,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 12 — reset() restores state after partial progress
 
-    func testReset_restoresInitialState() {
+    func testReset_restoresInitialState() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.1, 0.1), cp(0.9, 0.9)])
@@ -239,7 +239,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 13 — isComplete only after ALL strokes done
 
-    func testIsComplete_onlyAfterAllStrokes() {
+    func testIsComplete_onlyAfterAllStrokes() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.1, 0.1)]),
@@ -256,7 +256,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 14 — overallProgress fractions
 
-    func testOverallProgress_fractions() {
+    func testOverallProgress_fractions() async {
         let t = StrokeTracker()
         // 2 strokes × 2 checkpoints = 4 total → each hit adds 0.25
         let def = letter(strokes: [
@@ -278,7 +278,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 15 — currentStrokeIndex advances correctly
 
-    func testCurrentStrokeIndex_advances_andIsCompleteSafe() {
+    func testCurrentStrokeIndex_advances_andIsCompleteSafe() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.1, 0.1)]),
@@ -305,7 +305,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 16 — soundEnabled behaviour
 
-    func testSoundEnabled_falseBeforeFirstHit_trueAfter() {
+    func testSoundEnabled_falseBeforeFirstHit_trueAfter() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.2, 0.2), cp(0.8, 0.8)])
@@ -316,7 +316,7 @@ final class StrokeTrackerTests: XCTestCase {
         XCTAssertTrue(t.soundEnabled, "soundEnabled true after first checkpoint hit")
     }
 
-    func testSoundEnabled_resetsOnNewStroke() {
+    func testSoundEnabled_resetsOnNewStroke() async {
         let t = StrokeTracker()
         let def = letter(strokes: [
             strokeDef(id: 0, checkpoints: [cp(0.1, 0.1)]),
@@ -333,7 +333,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 17 — update() after isComplete is a no-op
 
-    func testUpdate_afterComplete_isNoOp() {
+    func testUpdate_afterComplete_isNoOp() async {
         let t = StrokeTracker()
         let def = letter(strokes: [strokeDef(id: 0, checkpoints: [cp(0.5, 0.5)])])
         t.load(def)
@@ -352,7 +352,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 18 — load() twice replaces state (reload test)
 
-    func testReload_withDifferentDefinition_resetsState() {
+    func testReload_withDifferentDefinition_resetsState() async {
         let t = StrokeTracker()
         let defA = letter("A", strokes: [strokeDef(id: 0, checkpoints: [cp(0.1, 0.1)])])
         t.load(defA)
@@ -374,7 +374,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 19 — Fuzz: random points never crash, progress stays in [0,1]
 
-    func testFuzz_randomPoints_neverCrash_progressStaysInRange() {
+    func testFuzz_randomPoints_neverCrash_progressStaysInRange() async {
         var rng = SeededRNG(seed: 0xdeadbeef_cafebabe)
         XCTContext.runActivity(named: "Fuzz seed: 0xdeadbeef_cafebabe") { _ in }
 
@@ -401,7 +401,7 @@ final class StrokeTrackerTests: XCTestCase {
 
     // MARK: 20 — Fuzz: targeted perturbations eventually drive tracker to completion
 
-    func testFuzz_targetedPerturbations_eventuallyComplete() {
+    func testFuzz_targetedPerturbations_eventuallyComplete() async {
         // Use polar perturbations to guarantee points land inside the circular acceptance radius.
         // Square perturbations (±r, ±r) have corners at distance r*sqrt(2) ≈ 1.41r which is
         // outside the acceptance circle — ~21% of square-generated points would miss.
@@ -440,7 +440,7 @@ final class StrokeTrackerTests: XCTestCase {
     // MARK: 22–28 — radiusMultiplier edge cases
 
     // 22: radiusMultiplier = 0.0 — exact-coordinate hit registers (0.0 ≤ 0.0 per IEEE-754)
-    func testRadiusMultiplier_zero_onlyExactHitRegisters() {
+    func testRadiusMultiplier_zero_onlyExactHitRegisters() async {
         var t = StrokeTracker()
         let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
         t.load(def)
@@ -453,7 +453,7 @@ final class StrokeTrackerTests: XCTestCase {
     }
 
     // 23: radiusMultiplier = 0.0 — near-miss does not register
-    func testRadiusMultiplier_zero_nearMissDoesNotRegister() {
+    func testRadiusMultiplier_zero_nearMissDoesNotRegister() async {
         var t = StrokeTracker()
         let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
         t.load(def)
@@ -468,7 +468,7 @@ final class StrokeTrackerTests: XCTestCase {
     }
 
     // 24: switching multiplier from 0 → 1 mid-stroke — pending checkpoint becomes hittable
-    func testRadiusMultiplier_switchFromZeroToOne_pendingCheckpointBecomesHittable() {
+    func testRadiusMultiplier_switchFromZeroToOne_pendingCheckpointBecomesHittable() async {
         var t = StrokeTracker()
         let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
         let insidePoint = CGPoint(x: 0.55, y: 0.5) // dist = 0.05 < radius 0.1
@@ -486,7 +486,7 @@ final class StrokeTrackerTests: XCTestCase {
     }
 
     // 25: radiusMultiplier = 0.0, empty strokes — no crash, trivially complete
-    func testRadiusMultiplier_zero_emptyStrokes_noCrash() {
+    func testRadiusMultiplier_zero_emptyStrokes_noCrash() async {
         var t = StrokeTracker()
         let def = letter(radius: 0.1, strokes: [])
         t.load(def)
@@ -497,7 +497,7 @@ final class StrokeTrackerTests: XCTestCase {
     }
 
     // 26: negative radiusMultiplier — dist via hypot is always ≥ 0, so dist ≤ negative is false
-    func testRadiusMultiplier_negative_exactHitDoesNotRegister() {
+    func testRadiusMultiplier_negative_exactHitDoesNotRegister() async {
         var t = StrokeTracker()
         let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
         t.load(def)
@@ -510,7 +510,7 @@ final class StrokeTrackerTests: XCTestCase {
     }
 
     // 27: radiusMultiplier = 2.0 — point outside base radius but inside doubled radius registers
-    func testRadiusMultiplier_two_enlargedRadiusAcceptsPoint() {
+    func testRadiusMultiplier_two_enlargedRadiusAcceptsPoint() async {
         var t = StrokeTracker()
         let def = letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])
         // dist = 0.15 — outside base radius 0.1, inside 2× radius 0.2
@@ -524,7 +524,7 @@ final class StrokeTrackerTests: XCTestCase {
     }
 
     // 28: default radiusMultiplier = 1.0 — point exactly at boundary registers (≤ not <)
-    func testRadiusMultiplier_default_boundaryPointRegisters() {
+    func testRadiusMultiplier_default_boundaryPointRegisters() async {
         var t = StrokeTracker()
         let radius: CGFloat = 0.1
         let def = letter(radius: radius, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5, 0.5)])])

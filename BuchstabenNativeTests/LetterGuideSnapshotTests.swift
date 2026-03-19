@@ -37,7 +37,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
         "O": 1,  // 1 arc element
     ]
 
-    func testCuratedLetters_pathElementCount_isStable() {
+    func testCuratedLetters_pathElementCount_isStable() async {
         for (letter, minCount) in expectedMinElements {
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             var count = 0
@@ -51,7 +51,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
 
     /// Aspect ratios that define each letter's visual identity.
     /// Tolerances are generous (±25%) to survive minor coordinate tweaks.
-    func testCuratedLetters_boundingBoxRatios_areStable() {
+    func testCuratedLetters_boundingBoxRatios_areStable() async {
         let expectations: [(String, CGFloat, CGFloat)] = [
             // letter, minAspect (w/h), maxAspect (w/h)
             ("A", 0.4, 1.2),   // tall triangle shape
@@ -76,7 +76,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
 
     // MARK: - Determinism snapshot: same path on repeated calls
 
-    func testAllCuratedLetters_pathIsDeterministic() {
+    func testAllCuratedLetters_pathIsDeterministic() async {
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             let p1 = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             let p2 = LetterGuideRenderer.guidePath(for: letter, in: rect)!
@@ -91,7 +91,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
 
     // MARK: - Scale invariance: element count must not change with rect size
 
-    func testPathElementCount_invariantUnderScaling() {
+    func testPathElementCount_invariantUnderScaling() async {
         let rects: [CGRect] = [
             CGRect(x: 0, y: 0, width: 50,  height: 50),
             CGRect(x: 0, y: 0, width: 200, height: 200),
@@ -115,7 +115,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
     /// Render each curated letter to a 100×100 bitmap and verify:
     /// 1. The image is non-empty (has drawn pixels)
     /// 2. CRC32 is stable across two renders (deterministic rendering)
-    func testRendering_isNonEmptyAndDeterministic() {
+    func testRendering_isNonEmptyAndDeterministic() async {
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             let size = CGSize(width: 100, height: 100)
             let r1 = renderLetter(letter, size: size)
@@ -174,7 +174,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
 
     // MARK: - Fallback letter snapshot: crossbar Y is within expected vertical range
 
-    func testFallbackLetters_crossbarY_isInRange() {
+    func testFallbackLetters_crossbarY_isInRange() async {
         let knownLetters: Set<String> = ["A","F","I","K","L","M","O"]
         for ascii in 65...90 {
             let letter = String(UnicodeScalar(ascii)!)

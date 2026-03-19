@@ -31,13 +31,13 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - Initial state
 
-    func testInitialState_isEmpty() {
+    func testInitialState_isEmpty() async {
         XCTAssertEqual(store.totalCompletions, 0)
         XCTAssertEqual(store.currentStreakDays, 0)
         XCTAssertTrue(store.allProgress.isEmpty)
     }
 
-    func testInitialProgress_forUnknownLetter_returnsDefault() {
+    func testInitialProgress_forUnknownLetter_returnsDefault() async {
         let p = store.progress(for: "Z")
         XCTAssertEqual(p.completionCount, 0)
         XCTAssertEqual(p.bestAccuracy, 0.0)
@@ -46,26 +46,26 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - recordCompletion
 
-    func testRecordCompletion_incrementsCount() {
+    func testRecordCompletion_incrementsCount() async {
         store.recordCompletion(for: "A", accuracy: 0.9)
         XCTAssertEqual(store.progress(for: "A").completionCount, 1)
     }
 
-    func testRecordCompletion_multipleTimes_incrementsCount() {
+    func testRecordCompletion_multipleTimes_incrementsCount() async {
         store.recordCompletion(for: "B", accuracy: 0.5)
         store.recordCompletion(for: "B", accuracy: 0.7)
         store.recordCompletion(for: "B", accuracy: 0.6)
         XCTAssertEqual(store.progress(for: "B").completionCount, 3)
     }
 
-    func testRecordCompletion_tracksBestAccuracy() {
+    func testRecordCompletion_tracksBestAccuracy() async {
         store.recordCompletion(for: "C", accuracy: 0.5)
         store.recordCompletion(for: "C", accuracy: 0.9)
         store.recordCompletion(for: "C", accuracy: 0.7)
         XCTAssertEqual(store.progress(for: "C").bestAccuracy, 0.9, accuracy: 1e-9)
     }
 
-    func testRecordCompletion_setsLastCompletedAt() {
+    func testRecordCompletion_setsLastCompletedAt() async {
         let before = Date()
         store.recordCompletion(for: "D", accuracy: 1.0)
         let after = Date()
@@ -75,14 +75,14 @@ final class ProgressStoreTests: XCTestCase {
         XCTAssertLessThanOrEqual(ts!, after)
     }
 
-    func testRecordCompletion_isCaseInsensitive() {
+    func testRecordCompletion_isCaseInsensitive() async {
         store.recordCompletion(for: "a", accuracy: 0.8)
         store.recordCompletion(for: "A", accuracy: 0.6)
         XCTAssertEqual(store.progress(for: "A").completionCount, 2)
         XCTAssertEqual(store.progress(for: "a").completionCount, 2)
     }
 
-    func testRecordCompletion_clampsAccuracyToUnit() {
+    func testRecordCompletion_clampsAccuracyToUnit() async {
         store.recordCompletion(for: "E", accuracy: 2.5)   // over
         XCTAssertLessThanOrEqual(store.progress(for: "E").bestAccuracy, 1.0)
         store.recordCompletion(for: "F", accuracy: -0.5)  // under
@@ -91,7 +91,7 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - totalCompletions
 
-    func testTotalCompletions_sumsAcrossAllLetters() {
+    func testTotalCompletions_sumsAcrossAllLetters() async {
         store.recordCompletion(for: "A", accuracy: 1.0)
         store.recordCompletion(for: "A", accuracy: 1.0)
         store.recordCompletion(for: "B", accuracy: 0.8)
@@ -100,7 +100,7 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - Persistence (reload from disk)
 
-    func testPersistence_survivesReinit() {
+    func testPersistence_survivesReinit() async {
         store.recordCompletion(for: "G", accuracy: 0.75)
         store.recordCompletion(for: "G", accuracy: 0.95)
 
@@ -110,7 +110,7 @@ final class ProgressStoreTests: XCTestCase {
         XCTAssertEqual(reloaded.progress(for: "G").bestAccuracy, 0.95, accuracy: 1e-9)
     }
 
-    func testPersistence_totalCompletionsSurvivesReinit() {
+    func testPersistence_totalCompletionsSurvivesReinit() async {
         store.recordCompletion(for: "H", accuracy: 1.0)
         store.recordCompletion(for: "I", accuracy: 0.9)
         let reloaded = JSONProgressStore(fileURL: tempURL)
@@ -119,7 +119,7 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - resetAll
 
-    func testResetAll_clearsEverything() {
+    func testResetAll_clearsEverything() async {
         store.recordCompletion(for: "J", accuracy: 1.0)
         store.recordCompletion(for: "K", accuracy: 0.8)
         store.resetAll()
@@ -128,7 +128,7 @@ final class ProgressStoreTests: XCTestCase {
         XCTAssertEqual(store.currentStreakDays, 0)
     }
 
-    func testResetAll_persistsOnDisk() {
+    func testResetAll_persistsOnDisk() async {
         store.recordCompletion(for: "L", accuracy: 1.0)
         store.resetAll()
         let reloaded = JSONProgressStore(fileURL: tempURL)
@@ -137,17 +137,17 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - Streak
 
-    func testStreak_singleCompletionToday_isOne() {
+    func testStreak_singleCompletionToday_isOne() async {
         store.recordCompletion(for: "M", accuracy: 1.0)
         // Streak should be at least 1 (completed today)
         XCTAssertGreaterThanOrEqual(store.currentStreakDays, 1)
     }
 
-    func testStreak_noCompletions_isZero() {
+    func testStreak_noCompletions_isZero() async {
         XCTAssertEqual(store.currentStreakDays, 0)
     }
 
-    func testStreak_multipleCompletionsSameDay_countsOnce() {
+    func testStreak_multipleCompletionsSameDay_countsOnce() async {
         for _ in 0..<5 {
             store.recordCompletion(for: "N", accuracy: 1.0)
         }
@@ -156,7 +156,7 @@ final class ProgressStoreTests: XCTestCase {
 
     // MARK: - allProgress dictionary
 
-    func testAllProgress_containsAllRecordedLetters() {
+    func testAllProgress_containsAllRecordedLetters() async {
         store.recordCompletion(for: "O", accuracy: 0.9)
         store.recordCompletion(for: "P", accuracy: 0.5)
         let all = store.allProgress

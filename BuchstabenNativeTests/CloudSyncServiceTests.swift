@@ -31,19 +31,19 @@ private func makeStreakStore() -> JSONStreakStore {
 
 @MainActor
 final class SyncStateTests: XCTestCase {
-    func testIdle_equalToIdle() {
+    func testIdle_equalToIdle() async {
         XCTAssertEqual(SyncState.idle, .idle)
     }
-    func testSyncing_equalToSyncing() {
+    func testSyncing_equalToSyncing() async {
         XCTAssertEqual(SyncState.syncing, .syncing)
     }
-    func testError_equalWithSameMessage() {
+    func testError_equalWithSameMessage() async {
         XCTAssertEqual(SyncState.error("oops"), .error("oops"))
     }
-    func testError_notEqualWithDifferentMessage() {
+    func testError_notEqualWithDifferentMessage() async {
         XCTAssertNotEqual(SyncState.error("a"), .error("b"))
     }
-    func testIdle_notEqualToSyncing() {
+    func testIdle_notEqualToSyncing() async {
         XCTAssertNotEqual(SyncState.idle, .syncing)
     }
 }
@@ -53,12 +53,12 @@ final class SyncStateTests: XCTestCase {
 @MainActor
 final class NullSyncServiceTests: XCTestCase {
 
-    func testInitialState_idle() {
+    func testInitialState_idle() async {
         let svc = NullSyncService()
         XCTAssertEqual(svc.syncState, .idle)
     }
 
-    func testPush_recordsPayload() {
+    func testPush_recordsPayload() async {
         let svc = NullSyncService()
         let exp = expectation(description: "push")
         svc.push(recordType: .progress, payload: ["key": "val"]) { _ in exp.fulfill() }
@@ -67,7 +67,7 @@ final class NullSyncServiceTests: XCTestCase {
         XCTAssertEqual(svc.pushedRecords.first?.0, .progress)
     }
 
-    func testPush_storesForFetch() {
+    func testPush_storesForFetch() async {
         let svc = NullSyncService()
         let exp1 = expectation(description: "push")
         let exp2 = expectation(description: "fetch")
@@ -82,7 +82,7 @@ final class NullSyncServiceTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
 
-    func testPush_successResult() {
+    func testPush_successResult() async {
         let svc = NullSyncService()
         let exp = expectation(description: "push")
         svc.push(recordType: .progress, payload: [:]) { result in
@@ -92,7 +92,7 @@ final class NullSyncServiceTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
 
-    func testFetch_emptyWhenNotSeeded() {
+    func testFetch_emptyWhenNotSeeded() async {
         let svc = NullSyncService()
         let exp = expectation(description: "fetch")
         svc.fetch(recordType: .progress) { result in
@@ -103,7 +103,7 @@ final class NullSyncServiceTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
 
-    func testSeedRecord_returnedByFetch() {
+    func testSeedRecord_returnedByFetch() async {
         let svc = NullSyncService()
         svc.seedRecord(type: .progress, payload: ["total": 42])
         let exp = expectation(description: "fetch")
@@ -115,7 +115,7 @@ final class NullSyncServiceTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
 
-    func testSimulateError_pushFails() {
+    func testSimulateError_pushFails() async {
         let svc = NullSyncService()
         svc.simulateError = TestError.forced
         let exp = expectation(description: "push")
@@ -127,7 +127,7 @@ final class NullSyncServiceTests: XCTestCase {
         XCTAssertEqual(svc.syncState, .error("Forced test error"))
     }
 
-    func testSimulateError_fetchFails() {
+    func testSimulateError_fetchFails() async {
         let svc = NullSyncService()
         svc.simulateError = TestError.forced
         let exp = expectation(description: "fetch")
@@ -138,7 +138,7 @@ final class NullSyncServiceTests: XCTestCase {
         waitForExpectations(timeout: 1)
     }
 
-    func testReset_clearsAll() {
+    func testReset_clearsAll() async {
         let svc = NullSyncService()
         svc.push(recordType: .progress, payload: ["x": 1]) { _ in }
         svc.simulateError = TestError.forced
@@ -154,7 +154,7 @@ final class NullSyncServiceTests: XCTestCase {
 @MainActor
 final class SyncCoordinatorTests: XCTestCase {
 
-    func testPushAll_pushesBothRecordTypes() {
+    func testPushAll_pushesBothRecordTypes() async {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         let exp = expectation(description: "pushAll")
@@ -165,7 +165,7 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertTrue(types.contains(.streak))
     }
 
-    func testPushAll_setsLastSyncDate() {
+    func testPushAll_setsLastSyncDate() async {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         XCTAssertNil(coord.lastSyncDate)
@@ -175,7 +175,7 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertNotNil(coord.lastSyncDate)
     }
 
-    func testPushAll_onError_doesNotSetLastSyncDate() {
+    func testPushAll_onError_doesNotSetLastSyncDate() async {
         let svc = NullSyncService()
         svc.simulateError = TestError.forced
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
@@ -185,7 +185,7 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertNil(coord.lastSyncDate)
     }
 
-    func testPushAll_progressPayload_containsTimestamp() {
+    func testPushAll_progressPayload_containsTimestamp() async {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         let exp = expectation(description: "pushAll")
@@ -195,7 +195,7 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertNotNil(progressRecord?["timestamp"] as? String)
     }
 
-    func testPushAll_streakPayload_containsStreakFields() {
+    func testPushAll_streakPayload_containsStreakFields() async {
         let svc = NullSyncService()
         let streakStore = makeStreakStore()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: streakStore)

@@ -19,39 +19,39 @@ final class VelocityMappingTests: XCTestCase {
 
     // MARK: 1 — v=0 returns max speed (2.0)
 
-    func testZeroVelocity_returnsMaxSpeed() {
+    func testZeroVelocity_returnsMaxSpeed() async {
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(0), 2.0, accuracy: 1e-6)
     }
 
     // MARK: 2 — v at low boundary returns 2.0
 
-    func testLowBoundary_returnsMaxSpeed() {
+    func testLowBoundary_returnsMaxSpeed() async {
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(120), 2.0, accuracy: 1e-6)
     }
 
     // MARK: 3 — v at high boundary returns 0.5
 
-    func testHighBoundary_returnsMinSpeed() {
+    func testHighBoundary_returnsMinSpeed() async {
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(1300), 0.5, accuracy: 1e-6)
     }
 
     // MARK: 4 — v > high clamps to 0.5
 
-    func testAboveHigh_clampsToMinSpeed() {
+    func testAboveHigh_clampsToMinSpeed() async {
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(5000), 0.5, accuracy: 1e-6)
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(.greatestFiniteMagnitude), 0.5, accuracy: 1e-6)
     }
 
     // MARK: 5 — v < low (but > 0) returns 2.0
 
-    func testBelowLow_returnsMaxSpeed() {
+    func testBelowLow_returnsMaxSpeed() async {
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(50),  2.0, accuracy: 1e-6)
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(119), 2.0, accuracy: 1e-6)
     }
 
     // MARK: 6 — Midpoint v=710 is halfway → speed = 2.0 - 1.5*0.5 = 1.25
 
-    func testMidpoint_returnsLinearInterpolation() {
+    func testMidpoint_returnsLinearInterpolation() async {
         let mid: CGFloat = (120 + 1300) / 2.0  // 710
         let expected: Float = 2.0 - (1.5 * 0.5)  // 1.25
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(mid), expected, accuracy: 1e-5)
@@ -59,7 +59,7 @@ final class VelocityMappingTests: XCTestCase {
 
     // MARK: 7 — Result is monotonically non-increasing
 
-    func testMonotonicallyNonIncreasing() {
+    func testMonotonicallyNonIncreasing() async {
         var prev: Float = 2.0
         for v in stride(from: CGFloat(0), through: 2000, by: 10) {
             let speed = TracingViewModel.mapVelocityToSpeed(v)
@@ -71,7 +71,7 @@ final class VelocityMappingTests: XCTestCase {
 
     // MARK: 8 — Result always in [0.5, 2.0]
 
-    func testResult_alwaysInRange() {
+    func testResult_alwaysInRange() async {
         var rng = SeededRNGLocal()
         for _ in 0..<10_000 {
             let v = CGFloat(Double.random(in: 0...5000, using: &rng))
@@ -85,14 +85,14 @@ final class VelocityMappingTests: XCTestCase {
 
     // MARK: 9 — Negative velocity treated like zero (returns 2.0)
 
-    func testNegativeVelocity_treatedLikeZero() {
+    func testNegativeVelocity_treatedLikeZero() async {
         // hypot always returns positive; direct negative call tests the clamp path
         XCTAssertEqual(TracingViewModel.mapVelocityToSpeed(-100), 2.0, accuracy: 1e-6)
     }
 
     // MARK: 10 — Return type is Float (not Double)
 
-    func testReturnType_isFloat() {
+    func testReturnType_isFloat() async {
         let result = TracingViewModel.mapVelocityToSpeed(500)
         // Compiler enforces this, but a runtime check documents the contract.
         XCTAssertTrue(type(of: result) == Float.self)

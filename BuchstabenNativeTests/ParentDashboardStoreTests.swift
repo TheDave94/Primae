@@ -25,42 +25,42 @@ private func makeStore() -> JSONParentDashboardStore {
 @MainActor
 final class LetterAccuracyStatTests: XCTestCase {
 
-    func testAverageAccuracy_empty() {
+    func testAverageAccuracy_empty() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [])
         XCTAssertEqual(stat.averageAccuracy, 0)
     }
 
-    func testAverageAccuracy_singleSample() {
+    func testAverageAccuracy_singleSample() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [0.8])
         XCTAssertEqual(stat.averageAccuracy, 0.8, accuracy: 1e-9)
     }
 
-    func testAverageAccuracy_multipleSamples() {
+    func testAverageAccuracy_multipleSamples() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [0.6, 0.8, 1.0])
         XCTAssertEqual(stat.averageAccuracy, 0.8, accuracy: 1e-9)
     }
 
-    func testTrend_empty_isZero() {
+    func testTrend_empty_isZero() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [])
         XCTAssertEqual(stat.trend, 0)
     }
 
-    func testTrend_singleSample_isZero() {
+    func testTrend_singleSample_isZero() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [0.5])
         XCTAssertEqual(stat.trend, 0)
     }
 
-    func testTrend_improvingSequence_positive() {
+    func testTrend_improvingSequence_positive() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [0.3, 0.5, 0.7, 0.9])
         XCTAssertGreaterThan(stat.trend, 0)
     }
 
-    func testTrend_decliningSequence_negative() {
+    func testTrend_decliningSequence_negative() async {
         let stat = LetterAccuracyStat(letter: "A", accuracySamples: [0.9, 0.7, 0.5, 0.3])
         XCTAssertLessThan(stat.trend, 0)
     }
 
-    func testTrend_usesLast10Samples() {
+    func testTrend_usesLast10Samples() async {
         // First 5 samples are very bad (should be excluded), last 10 are perfect
         let early = Array(repeating: 0.0, count: 5)
         let recent = Array(repeating: 1.0, count: 10)
@@ -72,12 +72,12 @@ final class LetterAccuracyStatTests: XCTestCase {
 
 final class DashboardSnapshotTests: XCTestCase {
 
-    func testTopLetters_empty() {
+    func testTopLetters_empty() async {
         let snap = DashboardSnapshot()
         XCTAssertTrue(snap.topLetters.isEmpty)
     }
 
-    func testTopLetters_limitsToFive() {
+    func testTopLetters_limitsToFive() async {
         var snap = DashboardSnapshot()
         for (i, letter) in "ABCDEFGH".map(String.init).enumerated() {
             snap.letterStats[letter] = LetterAccuracyStat(
@@ -88,7 +88,7 @@ final class DashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(snap.topLetters.count, 5)
     }
 
-    func testTopLetters_sortedByAccuracyDescending() {
+    func testTopLetters_sortedByAccuracyDescending() async {
         var snap = DashboardSnapshot()
         snap.letterStats["A"] = LetterAccuracyStat(letter: "A", accuracySamples: [0.9])
         snap.letterStats["B"] = LetterAccuracyStat(letter: "B", accuracySamples: [0.5])
@@ -97,7 +97,7 @@ final class DashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(top.first?.letter, "A")
     }
 
-    func testLettersBelow_filtersCorrectly() {
+    func testLettersBelow_filtersCorrectly() async {
         var snap = DashboardSnapshot()
         snap.letterStats["A"] = LetterAccuracyStat(letter: "A", accuracySamples: [0.9])
         snap.letterStats["B"] = LetterAccuracyStat(letter: "B", accuracySamples: [0.4])
@@ -106,7 +106,7 @@ final class DashboardSnapshotTests: XCTestCase {
         XCTAssertEqual(below.map(\.letter), ["B", "C"])
     }
 
-    func testTotalPracticeTime_sumsRecentDays() {
+    func testTotalPracticeTime_sumsRecentDays() async {
         var snap = DashboardSnapshot()
         let ref = date(2025, 3, 10)
         snap.sessionDurations = [
@@ -122,39 +122,39 @@ final class DashboardSnapshotTests: XCTestCase {
 
 final class JSONParentDashboardStoreTests: XCTestCase {
 
-    func testInitialState_empty() {
+    func testInitialState_empty() async {
         let store = makeStore()
         XCTAssertTrue(store.snapshot.letterStats.isEmpty)
         XCTAssertTrue(store.snapshot.sessionDurations.isEmpty)
     }
 
-    func testRecordSession_updatesLetterStats() {
+    func testRecordSession_updatesLetterStats() async {
         let store = makeStore()
         store.recordSession(letter: "A", accuracy: 0.8, durationSeconds: 60, date: date(2025, 1, 1))
         XCTAssertEqual(store.snapshot.letterStats["A"]?.accuracySamples, [0.8])
     }
 
-    func testRecordSession_accumulates() {
+    func testRecordSession_accumulates() async {
         let store = makeStore()
         store.recordSession(letter: "A", accuracy: 0.6, durationSeconds: 30, date: date(2025, 1, 1))
         store.recordSession(letter: "A", accuracy: 0.9, durationSeconds: 40, date: date(2025, 1, 2))
         XCTAssertEqual(store.snapshot.letterStats["A"]?.accuracySamples.count, 2)
     }
 
-    func testRecordSession_normalizesLetterToUppercase() {
+    func testRecordSession_normalizesLetterToUppercase() async {
         let store = makeStore()
         store.recordSession(letter: "a", accuracy: 0.7, durationSeconds: 20, date: date(2025, 1, 1))
         XCTAssertNotNil(store.snapshot.letterStats["A"])
         XCTAssertNil(store.snapshot.letterStats["a"])
     }
 
-    func testRecordSession_zeroDuration_notRecorded() {
+    func testRecordSession_zeroDuration_notRecorded() async {
         let store = makeStore()
         store.recordSession(letter: "B", accuracy: 0.5, durationSeconds: 0, date: date(2025, 1, 1))
         XCTAssertTrue(store.snapshot.sessionDurations.isEmpty)
     }
 
-    func testReset_clearsAll() {
+    func testReset_clearsAll() async {
         let store = makeStore()
         store.recordSession(letter: "A", accuracy: 0.9, durationSeconds: 120, date: date(2025, 1, 1))
         store.reset()
@@ -162,7 +162,7 @@ final class JSONParentDashboardStoreTests: XCTestCase {
         XCTAssertTrue(store.snapshot.sessionDurations.isEmpty)
     }
 
-    func testPersistence_roundtrip() {
+    func testPersistence_roundtrip() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashPersist-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
@@ -176,7 +176,7 @@ final class JSONParentDashboardStoreTests: XCTestCase {
         XCTAssertEqual(store2.snapshot.sessionDurations.count, 1)
     }
 
-    func testMultipleLetters_independent() {
+    func testMultipleLetters_independent() async {
         let store = makeStore()
         store.recordSession(letter: "A", accuracy: 1.0, durationSeconds: 10, date: date(2025, 1, 1))
         store.recordSession(letter: "B", accuracy: 0.5, durationSeconds: 10, date: date(2025, 1, 1))

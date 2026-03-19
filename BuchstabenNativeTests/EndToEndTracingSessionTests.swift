@@ -92,7 +92,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 3 — Fast touch → play fires after debounce
 
-    func testFastTouch_triggersPlay() throws {
+    func testFastTouch_triggersPlay() async throws {
         simulateFastTouch(t0: 1000)
         let exp = expectation(description: "play debounce")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
@@ -103,7 +103,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 4 — endTouch stops audio
 
-    func testEndTouch_stopsAudio() throws {
+    func testEndTouch_stopsAudio() async throws {
         simulateFastTouch(t0: 1000)
         let exp = expectation(description: "play")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
@@ -130,7 +130,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 6 — Full session: progress reaches 1.0 via grid scan
 
-    func testFullSession_progressReachesOne() throws {
+    func testFullSession_progressReachesOne() async throws {
         let didComplete = gridScanUntilComplete()
         guard didComplete else {
             throw XCTSkip("Letter not completable via grid scan")
@@ -140,7 +140,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 7 — After completion, isPlaying forced to false
 
-    func testFullSession_isPlayingFalseAfterCompletion() throws {
+    func testFullSession_isPlayingFalseAfterCompletion() async throws {
         let didComplete = gridScanUntilComplete()
         guard didComplete else { throw XCTSkip("Not completable via grid scan") }
 
@@ -153,7 +153,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 8 — resetLetter restores initial state
 
-    func testResetLetter_restoresInitialState() throws {
+    func testResetLetter_restoresInitialState() async throws {
         gridScanUntilComplete()
         vm.resetLetter()
         XCTAssertEqual(vm.progress, 0.0, accuracy: 1e-9, "Progress must be 0 after reset")
@@ -163,7 +163,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 9 — Accessibility strings valid throughout session
 
-    func testAccessibilityStrings_validThroughoutSession() throws {
+    func testAccessibilityStrings_validThroughoutSession() async throws {
         // Initial
         assertAccessibilityStringsValid(label: "initial")
 
@@ -182,7 +182,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 10 — Full bg/fg lifecycle around a session
 
-    func testLifecycleAroundSession() throws {
+    func testLifecycleAroundSession() async throws {
         simulateFastTouch(t0: 1000)
         let exp1 = expectation(description: "play")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp1.fulfill() }
@@ -204,7 +204,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     // MARK: 11 — Multiple letters: selectLetter changes currentLetterName
 
-    func testSelectLetter_changesCurrentLetter() throws {
+    func testSelectLetter_changesCurrentLetter() async throws {
         let initial = vm.currentLetterName
         // Try rotating to a different letter
         vm.nextLetter()

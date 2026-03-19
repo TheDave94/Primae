@@ -46,40 +46,40 @@ final class BundledAudioAssetCatalogTests: XCTestCase {
 
     private let catalog = BundledAudioAssetCatalog()
 
-    func testAssetName_germanLocale() {
+    func testAssetName_germanLocale() async {
         let name = catalog.assetName(for: "A", locale: Locale(identifier: "de"))
         XCTAssertEqual(name, "letter_a_de")
     }
 
-    func testAssetName_englishLocale() {
+    func testAssetName_englishLocale() async {
         let name = catalog.assetName(for: "B", locale: Locale(identifier: "en"))
         XCTAssertEqual(name, "letter_b_en")
     }
 
-    func testAssetName_lowercaseInput_normalized() {
+    func testAssetName_lowercaseInput_normalized() async {
         let name = catalog.assetName(for: "c", locale: Locale(identifier: "de"))
         XCTAssertEqual(name, "letter_c_de")
     }
 
-    func testAssetName_emptyString_returnsNil() {
+    func testAssetName_emptyString_returnsNil() async {
         XCTAssertNil(catalog.assetName(for: "", locale: Locale(identifier: "de")))
     }
 
-    func testAssetName_nonLetter_returnsNil() {
+    func testAssetName_nonLetter_returnsNil() async {
         XCTAssertNil(catalog.assetName(for: "1", locale: Locale(identifier: "de")))
     }
 
-    func testExampleWordAssetName_germanLocale() {
+    func testExampleWordAssetName_germanLocale() async {
         let name = catalog.exampleWordAssetName(for: "A", locale: Locale(identifier: "de"))
         XCTAssertEqual(name, "word_a_de")
     }
 
-    func testExampleWordAssetName_englishLocale() {
+    func testExampleWordAssetName_englishLocale() async {
         let name = catalog.exampleWordAssetName(for: "Z", locale: Locale(identifier: "en"))
         XCTAssertEqual(name, "word_z_en")
     }
 
-    func testAllAlphabetLetters_producesName() {
+    func testAllAlphabetLetters_producesName() async {
         for ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ" {
             let name = catalog.assetName(for: String(ch), locale: Locale(identifier: "de"))
             XCTAssertNotNil(name, "Expected name for letter \(ch)")
@@ -111,28 +111,28 @@ private func makeLibrary(
 
 final class LetterSoundLibraryTests: XCTestCase {
 
-    func testPlayLetterSound_requestsCorrectAssetName() {
+    func testPlayLetterSound_requestsCorrectAssetName() async {
         let factory = MockAudioPlayerFactory()
         let (lib, _, _) = makeLibrary(factory: factory)
         lib.playLetterSound(for: "A", locale: Locale(identifier: "de"))
         XCTAssertTrue(factory.requestedNames.contains("letter_a_de"))
     }
 
-    func testPlayExampleWord_requestsCorrectAssetName() {
+    func testPlayExampleWord_requestsCorrectAssetName() async {
         let factory = MockAudioPlayerFactory()
         let (lib, _, _) = makeLibrary(factory: factory)
         lib.playExampleWord(for: "A", locale: Locale(identifier: "de"))
         XCTAssertTrue(factory.requestedNames.contains("word_a_de"))
     }
 
-    func testSilentMode_skipsPlayback() {
+    func testSilentMode_skipsPlayback() async {
         let factory = MockAudioPlayerFactory()
         let (lib, _, _) = makeLibrary(outputAvailable: false, factory: factory)
         lib.playLetterSound(for: "A", locale: Locale(identifier: "de"))
         XCTAssertTrue(factory.requestedNames.isEmpty, "Should not request player when output unavailable")
     }
 
-    func testUnknownLetter_noAsset_skipsPlayback() {
+    func testUnknownLetter_noAsset_skipsPlayback() async {
         let factory = MockAudioPlayerFactory()
         let cat = MockAudioAssetCatalog() // no entries
         let (lib, _, _) = makeLibrary(factory: factory, catalog: cat)
@@ -140,25 +140,25 @@ final class LetterSoundLibraryTests: XCTestCase {
         XCTAssertTrue(factory.requestedNames.isEmpty)
     }
 
-    func testPlayLetterSound_emptyCatalog_doesNotCrash() {
+    func testPlayLetterSound_emptyCatalog_doesNotCrash() async {
         let factory = MockAudioPlayerFactory()
         let (lib, _, _) = makeLibrary(outputAvailable: true, factory: factory)
         XCTAssertNoThrow(lib.playLetterSound(for: "Z", locale: Locale(identifier: "de")))
     }
 
-    func testStopCurrent_doesNotCrash_whenNothingPlaying() {
+    func testStopCurrent_doesNotCrash_whenNothingPlaying() async {
         let (lib, _, _) = makeLibrary()
         XCTAssertNoThrow(lib.stopCurrent())
     }
 
-    func testPlayLetterSound_letterB_requestsLetterB() {
+    func testPlayLetterSound_letterB_requestsLetterB() async {
         let factory = MockAudioPlayerFactory()
         let (lib, _, _) = makeLibrary(factory: factory)
         lib.playLetterSound(for: "B", locale: Locale(identifier: "de"))
         XCTAssertTrue(factory.requestedNames.contains("letter_b_de"))
     }
 
-    func testConsecutivePlays_bothRequested() {
+    func testConsecutivePlays_bothRequested() async {
         let factory = MockAudioPlayerFactory()
         let (lib, _, _) = makeLibrary(factory: factory)
         lib.playLetterSound(for: "A", locale: Locale(identifier: "de"))

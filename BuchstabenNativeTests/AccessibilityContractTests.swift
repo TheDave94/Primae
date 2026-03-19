@@ -72,7 +72,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 5 — isPlaying=true hint text contains "playing"
 
-    func testAudioHintString_isPlaying_containsPlaying() throws {
+    func testAudioHintString_isPlaying_containsPlaying() async throws {
         // Trigger fast touch to set isPlaying=true
         vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
         var t = 1000.0
@@ -107,7 +107,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 8 — After resetLetter, progress string returns to 0 percent
 
-    func testAfterReset_progressStringIsZero() throws {
+    func testAfterReset_progressStringIsZero() async throws {
         vm.resetLetter()
         let pct = Int(vm.progress * 100)
         XCTAssertEqual(pct, 0, "After resetLetter(), accessibility progress must be 0")
@@ -115,7 +115,7 @@ final class AccessibilityContractTests: XCTestCase {
 
     // MARK: 9 — After background, isPlaying=false (hint stays consistent)
 
-    func testAfterBackground_isPlayingFalse_hintIsPaused() throws {
+    func testAfterBackground_isPlayingFalse_hintIsPaused() async throws {
         vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
         var t = 1000.0; var p = CGPoint(x: 100, y: 200)
         for _ in 0..<10 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: .init(width: 400, height: 400)) }
