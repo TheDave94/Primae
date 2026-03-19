@@ -40,7 +40,7 @@ public final class TracingViewModel: ObservableObject {
     private var singleTouchSuppressedUntil: CFTimeInterval = 0
     private var isSingleTouchInteractionActive = false
     private var didCompleteCurrentLetter = false
-    private let playbackMachine = PlaybackStateMachine()
+    private var playbackMachine = PlaybackStateMachine()
     private var pendingPlaybackStateTask: Task<Void, Error>?
     private var toastTask: Task<Void, Never>?
     private var completionDismissTask: Task<Void, Never>?
