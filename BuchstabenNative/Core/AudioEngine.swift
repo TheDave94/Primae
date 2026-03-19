@@ -34,7 +34,7 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            print("AudioEngine: AVAudioSession setup error: \(error)")
+            Logger.shared.error("AudioEngine: AVAudioSession setup error: \(error)")
         }
         engine.attach(player)
         engine.attach(timePitch)
@@ -53,7 +53,7 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
         guard let url = resourceURL(for: fileName) else {
-            print("Missing audio file: \(fileName) [stack: \(Thread.callStackSymbols.prefix(4))]")
+            Logger.shared.error("Missing audio file: \(fileName) [stack: \(Thread.callStackSymbols.prefix(4))]")
             return
         }
 
@@ -65,7 +65,7 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
                 attemptResumePlayback()
             }
         } catch {
-            print("Audio load error: \(error)")
+            Logger.shared.error("Audio load error: \(error)")
         }
     }
 
@@ -168,7 +168,7 @@ private extension AudioEngine {
         do {
             try engine.start()
         } catch {
-            print("AudioEngine start error: \(error)")
+            Logger.shared.error("AudioEngine start error: \(error)")
         }
     }
 
