@@ -5,6 +5,7 @@ import CoreGraphics
 /// Renders a single letter using the Primae-Regular OTF font into a UIImage.
 /// Produces the same dark-gray-on-transparent style as PBMLoader.
 /// Results are cached by letter+size to avoid redundant renders.
+@MainActor
 public enum PrimaeLetterRenderer {
 
     // MARK: - Cache
@@ -16,25 +17,20 @@ public enum PrimaeLetterRenderer {
     }
 
     private static var cache: [CacheKey: UIImage] = [:]
-    private static let lock = NSLock()
 
     // MARK: - Public API
 
     public static func render(letter: String, size: CGSize) -> UIImage? {
         guard size.width > 0, size.height > 0, !letter.isEmpty else { return nil }
         let key = CacheKey(letter: letter, width: Int(size.width), height: Int(size.height))
-        lock.lock()
-        if let cached = cache[key] { lock.unlock(); return cached }
-        lock.unlock()
+        if let cached = cache[key] { return cached }
         guard let image = draw(letter: letter, size: size) else { return nil }
-        lock.lock()
         cache[key] = image
-        lock.unlock()
         return image
     }
 
     public static func clearCache() {
-        lock.lock(); cache.removeAll(); lock.unlock()
+        cache.removeAll()
     }
 
     // MARK: - Private
