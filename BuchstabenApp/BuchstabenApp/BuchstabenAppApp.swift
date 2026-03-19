@@ -8,7 +8,7 @@ struct BuchstabenAppApp: App {
     // which crashes in headless simulator. Tests inject their own stubs via DI anyway.
     @StateObject private var vm: TracingViewModel = {
         if NSClassFromString("XCTestCase") != nil {
-            return TracingViewModel(audio: NullAudio())
+            return TracingViewModel(singleTouchCooldownAfterNavigation: 0.18, audio: NullAudio())
         }
         return TracingViewModel()
     }()
