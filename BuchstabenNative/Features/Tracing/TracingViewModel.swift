@@ -55,7 +55,7 @@ public final class TracingViewModel: ObservableObject {
     // This allows your Host App to create the ViewModel without needing to know
     // about all the internal tools like AudioEngine or JSONProgressStore.
 @MainActor
-internal convenience init() {
+public convenience init() {
     self.init(singleTouchCooldownAfterNavigation: 0.18)
 }
 
