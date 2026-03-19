@@ -38,7 +38,7 @@ jobs:
             -scheme BuchstabenApp \
             -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=latest' \
             -configuration Debug \
-            -enableCodeCoverage YES \
+            -enableCodeCoverage NO \
             CODE_SIGNING_ALLOWED=NO \
             -resultBundlePath /tmp/TestResults.xcresult \
             2>&1 | tee /tmp/xcode-test.log
