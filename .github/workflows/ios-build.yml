@@ -12,7 +12,7 @@ env:
 jobs:
   xcode_test:
     name: "Build & Test — iPad Simulator (macos-15 / Xcode 16.4)"
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
