@@ -1,10 +1,6 @@
 import XCTest
 @testable import BuchstabenNative
 
-private final class StubHaptics: HapticEngineProviding {
-    func prepare() {}
-    func fire(_ event: HapticEvent) {}
-}
 
 /// P1–P10: Apple Pencil pressure, azimuth, and state-reset tests.
 @MainActor
