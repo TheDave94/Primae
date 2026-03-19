@@ -41,6 +41,7 @@ struct TracingCanvasView: View {
 
     var body: some View {
         GeometryReader { geo in
+            let _ = { vm.canvasSize = geo.size }()
             ZStack(alignment: .bottomLeading) {
                 tracingCanvas(geo: geo)
                     .modifier(TracingCanvasAccessibility(vm: vm))

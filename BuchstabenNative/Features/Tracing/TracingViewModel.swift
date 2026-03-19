@@ -18,6 +18,7 @@ public final class TracingViewModel: ObservableObject {
     @Published var currentLetterName = "A"
     @Published var currentLetterImageName = ""
     @Published var currentLetterImage: UIImage? = nil
+    var canvasSize: CGSize = CGSize(width: 1024, height: 1024)
     @Published var progress: CGFloat = 0
     @Published var isPlaying = false
     @Published var activePath: [CGPoint] = []
