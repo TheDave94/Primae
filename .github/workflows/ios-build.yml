@@ -102,6 +102,9 @@ jobs:
       - name: List available iPad simulators
         run: xcrun simctl list devices available | grep -i ipad
 
+      - name: Clean DerivedData
+        run: |
+          rm -rf ~/Library/Developer/Xcode/DerivedData/BuchstabenApp-*
       - name: Build & Test (local simulator)
         run: |
           set -o pipefail
