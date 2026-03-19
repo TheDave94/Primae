@@ -11,13 +11,18 @@ env:
 
 jobs:
   xcode_test:
-    name: "Build & Test — iPad Simulator (macos-15 / Xcode 16.4)"
+    name: "Build & Test — iPad Simulator (macos-26 / Xcode 26)"
     runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
 
-      - name: Show Xcode version
-        run: xcodebuild -version
+      - name: Show Xcode + Swift version
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: List available iPad simulators
+        run: xcrun simctl list devices available | grep -i ipad
 
       - name: Resolve Swift Package dependencies
         run: |
@@ -25,13 +30,7 @@ jobs:
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp
 
-      - name: Cache Xcode SPM dependencies
-        uses: irgaly/xcode-cache@v1
-        with:
-          key: xcode-spm-${{ hashFiles('BuchstabenApp/BuchstabenApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
-          restore-keys: xcode-spm-
-
-      - name: Build & Test — iPad (10th generation)
+      - name: Build & Test — iPad simulator
         run: |
           set -o pipefail
           xcodebuild test \
@@ -91,38 +90,6 @@ jobs:
             /tmp/xcode-test.log
             /tmp/TestResults.xcresult
 
-  xcode26_compat:
-    name: "Xcode 26 Forward-Compat (non-blocking)"
-    runs-on: macos-26
-    needs: xcode_test
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Show Xcode version
-        run: xcodebuild -version
-      - name: Resolve dependencies
-        run: |
-          xcodebuild -resolvePackageDependencies \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp
-      - name: Build check — Xcode 26
-        run: |
-          set -o pipefail
-          xcodebuild build \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp \
-            -destination 'platform=iOS Simulator,name=iPad (10th generation),OS=latest' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO \
-            2>&1 | tee /tmp/xcode26-build.log
-      - name: Upload log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: xcode26-build-log
-          if-no-files-found: warn
-          path: /tmp/xcode26-build.log
-
   device_test:
     name: "Device Test (MacBook self-hosted)"
     runs-on: self-hosted
@@ -131,8 +98,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: List available iPad simulators
         run: xcrun simctl list devices available | grep -i ipad
+
       - name: Build & Test (local simulator)
         run: |
           set -o pipefail
@@ -143,6 +112,7 @@ jobs:
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee /tmp/test-device.log
+
       - name: Upload device test log
         if: always()
         uses: actions/upload-artifact@v4
