@@ -62,7 +62,7 @@ final class NullSyncServiceTests: XCTestCase {
         let svc = NullSyncService()
         let exp = expectation(description: "push")
         svc.push(recordType: .progress, payload: ["key": "val"]) { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         XCTAssertEqual(svc.pushedRecords.count, 1)
         XCTAssertEqual(svc.pushedRecords.first?.0, .progress)
     }
@@ -72,14 +72,14 @@ final class NullSyncServiceTests: XCTestCase {
         let exp1 = expectation(description: "push")
         let exp2 = expectation(description: "fetch")
         svc.push(recordType: .streak, payload: ["streak": 7]) { _ in exp1.fulfill() }
-        wait(for: [exp1], timeout: 1)
+        await fulfillment(of: [exp1], timeout: 1)
         svc.fetch(recordType: .streak) { result in
             if case .success(let d) = result {
                 XCTAssertEqual(d["streak"] as? Int, 7)
             } else { XCTFail("Expected success") }
             exp2.fulfill()
         }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp2], timeout: 1)
     }
 
     func testPush_successResult() async {
@@ -89,7 +89,7 @@ final class NullSyncServiceTests: XCTestCase {
             if case .failure = result { XCTFail("Expected success") }
             exp.fulfill()
         }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
     }
 
     func testFetch_emptyWhenNotSeeded() async {
@@ -100,7 +100,7 @@ final class NullSyncServiceTests: XCTestCase {
             else { XCTFail() }
             exp.fulfill()
         }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
     }
 
     func testSeedRecord_returnedByFetch() async {
@@ -112,7 +112,7 @@ final class NullSyncServiceTests: XCTestCase {
             else { XCTFail() }
             exp.fulfill()
         }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
     }
 
     func testSimulateError_pushFails() async {
@@ -123,7 +123,7 @@ final class NullSyncServiceTests: XCTestCase {
             if case .success = result { XCTFail("Expected failure") }
             exp.fulfill()
         }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         XCTAssertEqual(svc.syncState, .error("Forced test error"))
     }
 
@@ -135,7 +135,7 @@ final class NullSyncServiceTests: XCTestCase {
             if case .success = result { XCTFail("Expected failure") }
             exp.fulfill()
         }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
     }
 
     func testReset_clearsAll() async {
@@ -159,7 +159,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         let exp = expectation(description: "pushAll")
         coord.pushAll { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         let types = svc.pushedRecords.map(\.0)
         XCTAssertTrue(types.contains(.progress))
         XCTAssertTrue(types.contains(.streak))
@@ -171,7 +171,7 @@ final class SyncCoordinatorTests: XCTestCase {
         XCTAssertNil(coord.lastSyncDate)
         let exp = expectation(description: "pushAll")
         coord.pushAll { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         XCTAssertNotNil(coord.lastSyncDate)
     }
 
@@ -181,7 +181,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         let exp = expectation(description: "pushAll")
         coord.pushAll { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         XCTAssertNil(coord.lastSyncDate)
     }
 
@@ -190,7 +190,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         let exp = expectation(description: "pushAll")
         coord.pushAll { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         let progressRecord = svc.pushedRecords.first(where: { $0.0 == .progress })?.1
         XCTAssertNotNil(progressRecord?["timestamp"] as? String)
     }
@@ -201,7 +201,7 @@ final class SyncCoordinatorTests: XCTestCase {
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: streakStore)
         let exp = expectation(description: "pushAll")
         coord.pushAll { _ in exp.fulfill() }
-        waitForExpectations(timeout: 1)
+        await fulfillment(of: [exp], timeout: 1)
         let streakRecord = svc.pushedRecords.first(where: { $0.0 == .streak })?.1
         XCTAssertNotNil(streakRecord?["currentStreak"])
         XCTAssertNotNil(streakRecord?["totalCompletions"])

@@ -81,9 +81,7 @@ final class AccessibilityContractTests: XCTestCase {
             t += 0.001; p.x += 10
             vm.updateTouch(at: p, t: t, canvasSize: CGSize(width: 400, height: 400))
         }
-        let exp = expectation(description: "debounce")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try? await Task.sleep(for: .milliseconds(80))
 
         let hint = vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused"
         XCTAssertTrue(hint.lowercased().contains("playing"),
@@ -119,8 +117,7 @@ final class AccessibilityContractTests: XCTestCase {
         vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
         var t = 1000.0; var p = CGPoint(x: 100, y: 200)
         for _ in 0..<10 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: .init(width: 400, height: 400)) }
-        let exp = expectation(description: "play"); DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try? await Task.sleep(for: .milliseconds(80))
 
         vm.appDidEnterBackground()
         XCTAssertFalse(vm.isPlaying)

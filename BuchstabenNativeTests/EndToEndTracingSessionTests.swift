@@ -94,9 +94,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     func testFastTouch_triggersPlay() async throws {
         simulateFastTouch(t0: 1000)
-        let exp = expectation(description: "play debounce")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try? await Task.sleep(for: .milliseconds(80))
         XCTAssertTrue(audio.hasEvent(.play), "Fast touch must trigger audio.play()")
         XCTAssertTrue(vm.isPlaying)
     }
@@ -105,9 +103,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     func testEndTouch_stopsAudio() async throws {
         simulateFastTouch(t0: 1000)
-        let exp = expectation(description: "play")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try? await Task.sleep(for: .milliseconds(80))
         audio.reset()
         vm.endTouch()
         XCTAssertTrue(audio.hasEvent(.stop), "endTouch must call audio.stop()")
@@ -144,9 +140,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
         let didComplete = gridScanUntilComplete()
         guard didComplete else { throw XCTSkip("Not completable via grid scan") }
 
-        let exp = expectation(description: "settle")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { exp.fulfill() }
-        wait(for: [exp], timeout: 1.0)
+        try? await Task.sleep(for: .milliseconds(200))
 
         XCTAssertFalse(vm.isPlaying, "After completion, playback must be forced idle")
     }
