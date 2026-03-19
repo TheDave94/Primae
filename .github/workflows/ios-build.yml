@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: xcode-test-results
           if-no-files-found: warn
@@ -115,7 +115,7 @@ jobs:
             2>&1 | tee /tmp/test-device.log
       - name: Upload device test log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ios-device-test-log
           if-no-files-found: warn
