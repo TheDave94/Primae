@@ -351,7 +351,7 @@ final class TracingViewModelTests: XCTestCase {
         weak var weakVM: TracingViewModel?
 
         await MainActor.run {
-            let localVM = TracingViewModel()
+            let localVM = TracingViewModel(repo: LetterRepository(resources: StubResourceProvider()))
             weakVM = localVM
             // Trigger async work that captures self, then immediately release the strong ref
             localVM.appDidBecomeActive()
