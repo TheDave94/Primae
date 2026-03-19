@@ -128,7 +128,12 @@ final class BuchstabenNativeTests: XCTestCase {
 
     @MainActor
     func testMultiTouchNavigationClearsAndSuppressesSingleTouchBriefly() async {
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0.05,
+                    audio: StubAudio(),
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         let size = CGSize(width: 320, height: 480)
 
         vm.beginTouch(at: CGPoint(x: 20, y: 20), t: 1.0)
@@ -155,7 +160,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testTracingViewModelUsesInjectedAudioControllerAcrossLifecycle() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
 
         XCTAssertGreaterThanOrEqual(audio.loadedFiles.count, 1)
@@ -175,7 +185,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testBackgroundCancelsPendingPlaybackAndAvoidsResumeUntilNewIntent() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -201,7 +216,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testLongSessionLifecycleRegressionMatrix() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -229,7 +249,12 @@ final class BuchstabenNativeTests: XCTestCase {
 
     @MainActor
     func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() async {
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: StubAudio(),
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
 
         vm.beginMultiTouchNavigation()
         vm.beginMultiTouchNavigation()
@@ -246,7 +271,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testRapidBackgroundForegroundChurn_50Cycles() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -271,7 +301,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testAVAudioSessionInterruption_shouldResumeFalse_doesNotPlay() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -297,7 +332,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testAVAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -318,7 +358,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testAudioRouteChange_oldDeviceUnavailable_stopsPlayback() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -337,7 +382,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testAudioRouteChange_oldDeviceUnavailable_isIdempotent() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -359,7 +409,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testDebounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -381,7 +436,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testDebounceWindow_afterExpiry_playbackIsAllowed() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -397,7 +457,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testInterruptionDuringBackgroundForegroundChurn_stateRemainsConsistent() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 
@@ -423,7 +488,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testTouchBurstInterruptedByMultiTouchNav_suppressionApplied() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0.05,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         let size = CGSize(width: 320, height: 480)
 
         // Begin a touch burst
@@ -450,7 +520,12 @@ final class BuchstabenNativeTests: XCTestCase {
     @MainActor
     func testAVAudioSessionInterruptionIdempotency_doubleBegan() async {
         let audio = MockAudioController()
-        let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        let vm = TracingViewModel(TracingDependencies(
+                    singleTouchCooldownAfterNavigation: 0,
+                    audio: audio,
+                    progressStore: StubProgressStore(),
+                    haptics: StubHaptics(),
+                    repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
 

@@ -46,11 +46,12 @@ func makeTestVM(
     audio: AudioControlling? = nil,
     haptics: HapticEngineProviding? = nil
 ) -> TracingViewModel {
-    TracingViewModel(
+    let deps = TracingDependencies(
         singleTouchCooldownAfterNavigation: cooldown,
         audio: audio ?? StubAudio(),
         progressStore: StubProgressStore(),
         haptics: haptics ?? StubHaptics(),
         repo: LetterRepository(resources: StubResourceProvider())
     )
+    return TracingViewModel(deps)
 }

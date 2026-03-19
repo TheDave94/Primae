@@ -96,7 +96,12 @@ final class TracingViewModelTests: XCTestCase {
         // strokeEnforced=false allows audio to trigger on velocity alone, regardless of
         // whether the test environment has letter stroke definitions loaded — these tests
         // exercise the audio/lifecycle pipeline, not stroke recognition.
-        vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        vm = TracingViewModel(TracingDependencies(
+            singleTouchCooldownAfterNavigation: 0,
+            audio: audio,
+            progressStore: StubProgressStore(),
+            haptics: StubHaptics(),
+            repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
     }
 
@@ -351,7 +356,7 @@ final class TracingViewModelTests: XCTestCase {
         weak var weakVM: TracingViewModel?
 
         await MainActor.run {
-            let localVM = TracingViewModel(repo: LetterRepository(resources: StubResourceProvider()))
+            let localVM = TracingViewModel(TracingDependencies(repo: LetterRepository(resources: StubResourceProvider())))
             weakVM = localVM
             // Trigger async work that captures self, then immediately release the strong ref
             localVM.appDidBecomeActive()

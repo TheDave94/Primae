@@ -62,20 +62,13 @@ public convenience init() {
 
 // Not public: Parameter types are internal.
 @MainActor
-init(
-    singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
-    audio: AudioControlling = AudioEngine(),
-    progressStore: ProgressStoring = JSONProgressStore(),
-    haptics: HapticEngineProviding = CoreHapticsEngine(),
-    adaptationPolicy: (any AdaptationPolicy)? = nil,
-    repo: LetterRepository = LetterRepository()
-) {
-    self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
-    self.audio = audio
-    self.progressStore = progressStore
-    self.haptics = haptics
-    self.repo = repo
-    self.adaptationPolicy = adaptationPolicy ?? MovingAverageAdaptationPolicy()
+init(_ deps: TracingDependencies = .live) {
+    self.singleTouchCooldownAfterNavigation = deps.singleTouchCooldownAfterNavigation
+    self.audio = deps.audio
+    self.progressStore = deps.progressStore
+    self.haptics = deps.haptics
+    self.repo = deps.repo
+    self.adaptationPolicy = deps.adaptationPolicy ?? MovingAverageAdaptationPolicy()
     haptics.prepare()
     letters = repo.loadLetters()
     guard let first = letters.first else { return }
