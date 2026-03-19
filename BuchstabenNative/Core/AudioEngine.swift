@@ -51,7 +51,9 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     private static var isRunningTests: Bool {
-        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+        // NSClassFromString is the most reliable cross-platform way to detect
+        // XCTest presence in the app host process during test runs.
+        NSClassFromString("XCTestCase") != nil
     }
 
     deinit {
