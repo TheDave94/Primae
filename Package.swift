@@ -14,7 +14,7 @@ let package = Package(
         .target(
             name: "BuchstabenNative",
             path: "BuchstabenNative",
-            resources: [.process("Resources")]
+            resources: [.copy("Resources")]
         ),
         .testTarget(
             name: "BuchstabenNativeTests",
