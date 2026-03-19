@@ -44,10 +44,14 @@ final class AudioEngineTests: XCTestCase {
         // XCTestCase" and without `try await` triggers "call can throw/is async". The
         // default implementation is a no-op so omitting the super call is safe.
         continueAfterFailure = false
-        // Guard: skip entire suite if audio session unavailable (headless CI without audio HW)
+        // Guard: skip on headless CI — AVAudioEngine crashes AudioConverterService in simulator
+        #if targetEnvironment(simulator)
+        throw XCTSkip("AudioEngine tests require real hardware — skipped in simulator")
+        #else
         guard AVAudioSession.sharedInstance().isOtherAudioPlaying || !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty else {
             throw XCTSkip("AVAudioSession has no viable route on this runner")
         }
+        #endif
         // setUp is async throws so @MainActor isolation is preserved for this @MainActor class.
         engine = AudioEngine()
         // Ensure AVAudioEngine is in a known running state before any test that checks isRunning.
