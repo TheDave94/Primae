@@ -22,6 +22,7 @@ let package = Package(
                 "Core/LetterSoundLibrary.swift",
                 "Core/LocalNotificationScheduler.swift",
                 "Core/PBMLoader.swift",
+                "Core/DifficultyAdaptation.swift",
                 "Features/Tracing"
             ]
         ),
