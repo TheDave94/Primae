@@ -13,6 +13,10 @@ private final class StubAudio: AudioControlling {
     func resumeAfterLifecycle() {}
     func cancelPendingLifecycleWork() {}
 }
+private final class StubHaptics: HapticEngineProviding {
+    func prepare() {}
+    func fire(_ event: HapticEvent) {}
+}
 
 /// P1–P10: Apple Pencil pressure, azimuth, and state-reset tests.
 @MainActor
@@ -23,7 +27,7 @@ final class ApplePencilPressureTests: XCTestCase {
     // the 10 sequential makeVM() calls in this suite, which manifests as an
     // uncaught ObjC exception on the 10th init (testP10) in headless CI.
     private func makeVM() -> TracingViewModel {
-        TracingViewModel(audio: StubAudio())
+        TracingViewModel(audio: StubAudio(), haptics: StubHaptics())
     }
 
     // P1: pencilPressure defaults to nil (no pencil contact)
