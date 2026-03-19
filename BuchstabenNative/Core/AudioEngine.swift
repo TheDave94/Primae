@@ -47,12 +47,6 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         startIfNeeded()
     }
 
-    private static var isRunningTests: Bool {
-        // NSClassFromString is the most reliable cross-platform way to detect
-        // XCTest presence in the app host process during test runs.
-        NSClassFromString("XCTestCase") != nil
-    }
-
     deinit {
         engine.stop()
         if let observer = interruptionObserver { NotificationCenter.default.removeObserver(observer) }

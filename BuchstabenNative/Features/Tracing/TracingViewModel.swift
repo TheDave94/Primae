@@ -62,7 +62,7 @@ public convenience init() {
 
 // Not public: Parameter types are internal.
 @MainActor
-public init(
+init(
     singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
     audio: AudioControlling = AudioEngine(),
     progressStore: ProgressStoring = JSONProgressStore(),
