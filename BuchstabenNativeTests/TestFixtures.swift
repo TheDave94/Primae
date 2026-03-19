@@ -28,8 +28,18 @@ final class StubResourceProvider: LetterResourceProviding {
     func resourceURL(for relativePath: String) -> URL? { nil }
 }
 
+// MARK: - No-op progress store (avoids FileManager.applicationSupportDirectory hang in CI)
+final class StubProgressStore: ProgressStoring {
+    func progress(for letter: String) -> LetterProgress { LetterProgress() }
+    func recordCompletion(for letter: String, accuracy: Double) {}
+    func resetAll() {}
+    var allProgress: [String: LetterProgress] { [:] }
+    var currentStreakDays: Int { 0 }
+    var totalCompletions: Int { 0 }
+}
+
 // MARK: - Shared VM factory
-// Injects stubs for audio, haptics, and repo to avoid hangs in headless CI.
+// Injects stubs for audio, haptics, repo, and progressStore to avoid hangs in headless CI.
 @MainActor
 func makeTestVM(
     cooldown: CFTimeInterval = 0,
@@ -39,6 +49,7 @@ func makeTestVM(
     TracingViewModel(
         singleTouchCooldownAfterNavigation: cooldown,
         audio: audio ?? StubAudio(),
+        progressStore: StubProgressStore(),
         haptics: haptics ?? StubHaptics(),
         repo: LetterRepository(resources: StubResourceProvider())
     )
