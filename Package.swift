@@ -13,7 +13,8 @@ let package = Package(
     targets: [
         .target(
             name: "BuchstabenNative",
-            path: "BuchstabenNative"
+            path: "BuchstabenNative",
+            resources: [.process("Resources")]
         ),
         .testTarget(
             name: "BuchstabenNativeTests",
