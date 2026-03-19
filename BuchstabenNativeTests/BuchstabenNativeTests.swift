@@ -127,7 +127,7 @@ final class BuchstabenNativeTests: XCTestCase {
     }
 
     @MainActor
-    func testMultiTouchNavigationClearsAndSuppressesSingleTouchBriefly() {
+    func testMultiTouchNavigationClearsAndSuppressesSingleTouchBriefly() async {
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         let size = CGSize(width: 320, height: 480)
 
@@ -153,7 +153,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
 
     @MainActor
-    func testTracingViewModelUsesInjectedAudioControllerAcrossLifecycle() {
+    func testTracingViewModelUsesInjectedAudioControllerAcrossLifecycle() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -173,7 +173,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
 
     @MainActor
-    func testBackgroundCancelsPendingPlaybackAndAvoidsResumeUntilNewIntent() {
+    func testBackgroundCancelsPendingPlaybackAndAvoidsResumeUntilNewIntent() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -199,7 +199,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
 
     @MainActor
-    func testLongSessionLifecycleRegressionMatrix() {
+    func testLongSessionLifecycleRegressionMatrix() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -228,7 +228,7 @@ final class BuchstabenNativeTests: XCTestCase {
     }
 
     @MainActor
-    func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() {
+    func testRepeatedBeginMultiTouchDoesNotLeaveStuckState() async {
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
 
         vm.beginMultiTouchNavigation()
@@ -244,7 +244,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Rapid background/foreground churn (50 cycles) must not corrupt audio or touch state.
     @MainActor
-    func testRapidBackgroundForegroundChurn_50Cycles() {
+    func testRapidBackgroundForegroundChurn_50Cycles() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -269,7 +269,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// AVAudioSession interruption simulation: .ended with shouldResume = false must NOT resume playback.
     @MainActor
-    func testAVAudioSessionInterruption_shouldResumeFalse_doesNotPlay() {
+    func testAVAudioSessionInterruption_shouldResumeFalse_doesNotPlay() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -295,7 +295,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// AVAudioSession interruption simulation: .ended with shouldResume = true + fresh touch SHOULD resume playback.
     @MainActor
-    func testAVAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() {
+    func testAVAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -316,7 +316,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Route change: oldDeviceUnavailable fires while app is active — playback must pause immediately.
     @MainActor
-    func testAudioRouteChange_oldDeviceUnavailable_stopsPlayback() {
+    func testAudioRouteChange_oldDeviceUnavailable_stopsPlayback() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -335,7 +335,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Route change: multiple rapid oldDeviceUnavailable events must be idempotent (no double-stop or crash).
     @MainActor
-    func testAudioRouteChange_oldDeviceUnavailable_isIdempotent() {
+    func testAudioRouteChange_oldDeviceUnavailable_isIdempotent() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -357,7 +357,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Debounce window: 20 rapid touch events within < debounce window must not trigger multiple playback starts.
     @MainActor
-    func testDebounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() {
+    func testDebounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -379,7 +379,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Debounce window: after debounce expires, playback does eventually trigger.
     @MainActor
-    func testDebounceWindow_afterExpiry_playbackIsAllowed() {
+    func testDebounceWindow_afterExpiry_playbackIsAllowed() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -395,7 +395,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Interruption during background/foreground churn: interleaved events must not corrupt state.
     @MainActor
-    func testInterruptionDuringBackgroundForegroundChurn_stateRemainsConsistent() {
+    func testInterruptionDuringBackgroundForegroundChurn_stateRemainsConsistent() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
@@ -421,7 +421,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// Touch burst overlapping with navigation: mid-burst multi-touch must suppress subsequent single touches.
     @MainActor
-    func testTouchBurstInterruptedByMultiTouchNav_suppressionApplied() {
+    func testTouchBurstInterruptedByMultiTouchNav_suppressionApplied() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0.05, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         let size = CGSize(width: 320, height: 480)
@@ -448,7 +448,7 @@ final class BuchstabenNativeTests: XCTestCase {
 
     /// AVAudioSession interruption handler idempotency: double-interrupt-began must not corrupt state.
     @MainActor
-    func testAVAudioSessionInterruptionIdempotency_doubleBegan() {
+    func testAVAudioSessionInterruptionIdempotency_doubleBegan() async {
         let audio = MockAudioController()
         let vm = TracingViewModel(singleTouchCooldownAfterNavigation: 0, audio: audio, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
         vm.strokeEnforced = false
