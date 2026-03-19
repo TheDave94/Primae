@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 import Foundation
+import OSLog
 
 @MainActor
 final class AudioEngine: @unchecked Sendable, AudioControlling {
@@ -48,7 +49,6 @@ final class AudioEngine: @unchecked Sendable, AudioControlling {
     }
 
     deinit {
-        cancelPendingLifecycleWork()
         engine.stop()
         if let observer = interruptionObserver { NotificationCenter.default.removeObserver(observer) }
         if let observer = routeChangeObserver { NotificationCenter.default.removeObserver(observer) }
