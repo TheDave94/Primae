@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		DBDE4FBA2F6330730052F95D /* BuchstabenNative in Frameworks */ = {isa = PBXBuildFile; productRef = DBDE4FB92F6330730052F95D /* BuchstabenNative */; };
 
-		F58E6EA8C93BF4B59A2341BA /* BuchstabenNativeTests in Frameworks */ = {isa = PBXBuildFile; productRef = 71EEE4F7084503E680A21AAA /* BuchstabenNativeTests */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -469,10 +468,6 @@
 			productName = BuchstabenNative;
 		};
 
-		71EEE4F7084503E680A21AAA /* BuchstabenNativeTests */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = BuchstabenNativeTests;
-		};
 /* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = DBDE4FA22F632FC30052F95D /* Project object */;
