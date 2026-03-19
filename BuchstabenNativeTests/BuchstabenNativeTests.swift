@@ -48,7 +48,7 @@ final class BuchstabenNativeTests: XCTestCase {
         }
     }
 
-    func testLetterRepositoryFallsBackFromInvalidJsonToFolderScan() throws {
+    func testLetterRepositoryFallsBackFromInvalidJsonToFolderScan() async throws {
         let fs = try TempResourceFS()
         defer { fs.cleanup() }
 
@@ -75,7 +75,7 @@ final class BuchstabenNativeTests: XCTestCase {
         XCTAssertEqual(letters[0].audioFiles, ["A.mp3"])
     }
 
-    func testLetterRepositoryPrefersCleanCuratedAudioForAtoM() throws {
+    func testLetterRepositoryPrefersCleanCuratedAudioForAtoM() async throws {
         let fs = try TempResourceFS()
         defer { fs.cleanup() }
 
