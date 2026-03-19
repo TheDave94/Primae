@@ -299,7 +299,7 @@ private extension AudioEngine {
             break
         }
     }
-    public nonisolated var description: String { "<AudioEngine: isPlaying=\(isPlaying)>" }
+    public nonisolated var description: String { "<AudioEngine>" }
 
 }
 
