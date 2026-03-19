@@ -5,46 +5,85 @@ on:
   pull_request:
     branches: ["main", "ux/**"]
   workflow_dispatch:
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build_test:
-    name: "Build & Test (GitHub-hosted)"
-    runs-on: macos-15
+  # ── Job 1: Swift Package tests on Ubuntu ─────────────────────────────────
+  # Fast (~2min), no simulator, catches type/concurrency/logic errors.
+  # Uses swift test directly — no Xcode needed.
+  spm_test:
+    name: "SPM Unit Tests (Ubuntu / Swift 6)"
+    runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.2.app
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            .build
+            ~/.cache/org.swift.swiftpm
+          key: ${{ runner.os }}-spm-${{ hashFiles('BuchstabenNative/Package.swift', 'BuchstabenNative/Package.resolved') }}
+          restore-keys: ${{ runner.os }}-spm-
 
-      - name: Resolve Swift Package dependencies
+      - name: Build & Test (Swift Package)
+        working-directory: BuchstabenNative
         run: |
-          xcodebuild -resolvePackageDependencies \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp \
-            -disablePackageRepositoryCache
+          swift build --build-tests -Xswiftc -strict-concurrency=complete
+          swift test --parallel 2>&1 | tee /tmp/spm-test.log
+          echo "Exit: ${PIPESTATUS[0]}"
 
-      - name: Build & Test (iOS Simulator)
+      - name: Upload SPM test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spm-test-log
+          if-no-files-found: warn
+          path: /tmp/spm-test.log
+
+  # ── Job 2: Xcode build & test on GitHub-hosted macOS 15 ──────────────────
+  # Uses Xcode 16.4 (runner default — no xcode-select override).
+  # Tests on iPad (10th generation) — confirmed pre-installed on macos-15.
+  xcode_test:
+    name: "Xcode Test — iPad Simulator (macos-15)"
+    runs-on: macos-15
+    needs: spm_test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Cache SPM dependencies (Xcode)
+        uses: irgaly/xcode-cache@v1
+        with:
+          key: xcode-spm-${{ hashFiles('BuchstabenApp/BuchstabenApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved') }}
+          restore-keys: xcode-spm-
+
+      - name: Build & Test — iPad (10th generation)
         run: |
           set -o pipefail
           xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'platform=iOS Simulator,name=iPad (10th generation),OS=latest' \
             -configuration Debug \
+            -enableCodeCoverage YES \
             CODE_SIGNING_ALLOWED=NO \
-            -disablePackageRepositoryCache \
-            2>&1 | tee /tmp/test.log
+            -resultBundlePath /tmp/TestResults.xcresult \
+            2>&1 | xcbeautify --renderer github-actions | tee /tmp/xcode-test.log
 
       - name: Extract failure summary
         if: failure()
         run: |
-          ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log 2>/dev/null \
+          ERRORS=$(grep -E "error:|XCTAssert.*failed|#expect.*failed|Test.*failed|FAILED" \
+            /tmp/xcode-test.log 2>/dev/null \
             | grep -v "^Binary" | head -15 \
             || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           printf '%s' "$ERRORS" > /tmp/ci_errors.txt
+          cat /tmp/ci_errors.txt
 
       - name: Inject priority task into council queue
         if: failure()
@@ -73,23 +112,55 @@ jobs:
             git push
           fi
 
-      - name: Upload test log
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-test-log
+          name: xcode-test-results
           if-no-files-found: warn
-          path: /tmp/test.log
+          path: |
+            /tmp/xcode-test.log
+            /tmp/TestResults.xcresult
 
+  # ── Job 3: Forward-compat test on macOS 26 / Xcode 26 ────────────────────
+  # Non-blocking (continue-on-error). Catches API deprecations early.
+  # April 2026: App Store requires Xcode 26. This job tracks that migration.
+  xcode26_compat:
+    name: "Xcode 26 Forward-Compat (non-blocking)"
+    runs-on: macos-26
+    needs: spm_test
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show Xcode version
+        run: xcodebuild -version
+
+      - name: Build only (no test — compat check)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project BuchstabenApp/BuchstabenApp.xcodeproj \
+            -scheme BuchstabenApp \
+            -destination 'platform=iOS Simulator,name=iPad (10th generation),OS=latest' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | xcbeautify --renderer github-actions
+
+  # ── Job 4: Self-hosted MacBook — device-specific validation ──────────────
+  # Only runs if both spm_test and xcode_test pass.
+  # Validates on your exact local iPad simulator configuration.
   device_test:
     name: "Device Test (MacBook self-hosted)"
     runs-on: self-hosted
-    needs: build_test
+    needs: [spm_test, xcode_test]
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: List available simulators
+        run: xcrun simctl list devices available | grep -i ipad
 
       - name: Build & Test (local iPad simulator)
         run: |
@@ -97,7 +168,7 @@ jobs:
           xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
-            -destination 'platform=iOS,name=iPad' \
+            -destination 'platform=iOS Simulator,name=iPad (10th generation)' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee /tmp/test-device.log
