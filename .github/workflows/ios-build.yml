@@ -108,7 +108,7 @@ jobs:
           xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
-            -destination 'platform=iOS Simulator,name=iPad (10th generation)' \
+            -destination 'platform=iOS Simulator,name=iPad (A16)' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee /tmp/test-device.log
