@@ -8,7 +8,8 @@ let package = Package(
         .macOS(.v15)
     ],
     products: [
-        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"])
+        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"]),
+        .library(name: "BuchstabenNativeTests", targets: ["BuchstabenNativeTests"]),
     ],
     targets: [
         .target(
@@ -23,6 +24,10 @@ let package = Package(
                 "Core/LocalNotificationScheduler.swift",
                 "Core/PBMLoader.swift",
                 "Core/DifficultyAdaptation.swift",
+                "Core/LetterAnimationGuide.swift",
+                "Core/Models.swift",
+                "Core/StrokeRecognizer.swift",
+                "Core/StrokeTracker.swift",
                 "Features/Tracing"
             ]
         ),
