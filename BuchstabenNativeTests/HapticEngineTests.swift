@@ -162,8 +162,11 @@ final class TracingViewModelHapticTests: XCTestCase {
             vm.updateTouch(at: pt, t: t, canvasSize: canvasSize)
         }
 
+        let progress = vm.progress
+        XCTAssertGreaterThan(Double(progress), 0.0,
+            "Progress=0 means no checkpoints hit. Events: \(haptics.firedEvents)")
         XCTAssertTrue(haptics.firedEvents.contains(.letterCompleted),
-                      "Expected letterCompleted in \(haptics.firedEvents)")
+                      "Expected letterCompleted. progress=\(progress) events=\(haptics.firedEvents)")
     }
 
     func testNoHapticOnMultiTouchNavigation() async {
