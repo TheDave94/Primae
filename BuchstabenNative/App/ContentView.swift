@@ -2,7 +2,7 @@ import SwiftUI
 
 // 1. Added 'public' to the struct
 public struct ContentView: View {
-    @EnvironmentObject private var vm: TracingViewModel
+    @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // 2. Added a public initializer

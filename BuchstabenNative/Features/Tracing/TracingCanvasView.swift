@@ -2,7 +2,7 @@ import SwiftUI
 import UIKit
 
 struct TracingCanvasView: View {
-    @EnvironmentObject private var vm: TracingViewModel
+    @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     @ViewBuilder
@@ -98,7 +98,7 @@ struct TracingCanvasView: View {
 // MARK: - Accessibility modifier
 
 private struct TracingCanvasAccessibility: ViewModifier {
-    @ObservedObject var vm: TracingViewModel
+    var vm: TracingViewModel
 
     func body(content: Content) -> some View {
         content

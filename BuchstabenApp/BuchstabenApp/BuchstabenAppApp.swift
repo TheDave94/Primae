@@ -4,12 +4,12 @@ import BuchstabenNative
 @main
 struct BuchstabenAppApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var vm = TracingViewModel()
+    @State private var vm = TracingViewModel()
 
     var body: some Scene {
         WindowGroup {
             BuchstabenNative.ContentView()
-                .environmentObject(vm)
+                .environment(vm)
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {

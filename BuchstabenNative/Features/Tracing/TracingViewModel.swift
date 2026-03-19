@@ -1,4 +1,3 @@
-import Combine
 import UIKit
 import CoreGraphics
 import QuartzCore
@@ -6,24 +5,25 @@ import Foundation
 
 // 1. Added 'public' to the class
 @MainActor
-public final class TracingViewModel: ObservableObject {
-    @Published var showGhost = false
+@Observable
+public final class TracingViewModel {
+    var showGhost = false
     /// Non-nil while an Apple Pencil is in contact; nil for finger/mouse. Range 0–1.
-    @Published var pencilPressure: CGFloat? = nil
+    var pencilPressure: CGFloat? = nil
     /// Azimuth angle (radians) of the Apple Pencil; 0 when no pencil.
-    @Published var pencilAzimuth: CGFloat = 0
-    @Published var strokeEnforced = true
-    @Published var showDebug = false
-    @Published var toastMessage: String?
-    @Published var currentLetterName = "A"
-    @Published var currentLetterImageName = ""
-    @Published var currentLetterImage: UIImage? = nil
+    var pencilAzimuth: CGFloat = 0
+    var strokeEnforced = true
+    var showDebug = false
+    var toastMessage: String?
+    var currentLetterName = "A"
+    var currentLetterImageName = ""
+    var currentLetterImage: UIImage? = nil
     var canvasSize: CGSize = CGSize(width: 1024, height: 1024)
-    @Published var progress: CGFloat = 0
-    @Published var isPlaying = false
-    @Published var activePath: [CGPoint] = []
-    @Published var completionMessage: String?
-    @Published private(set) var currentDifficultyTier: DifficultyTier = .standard
+    var progress: CGFloat = 0
+    var isPlaying = false
+    var activePath: [CGPoint] = []
+    var completionMessage: String?
+    private(set) var currentDifficultyTier: DifficultyTier = .standard
 
     private let repo: LetterRepository
     private let strokeTracker = StrokeTracker()
