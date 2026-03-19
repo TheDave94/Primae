@@ -82,7 +82,7 @@ private final class TrackingMockAudio: AudioControlling {
 
 @MainActor
 private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
-    TracingViewModel(audio: TrackingMockAudio(), haptics: haptics, progressStore: StubProgressStore(), repo: LetterRepository(resources: StubResourceProvider()))
+    TracingViewModel(audio: TrackingMockAudio(), progressStore: StubProgressStore(), haptics: haptics, repo: LetterRepository(resources: StubResourceProvider()))
 }
 
 @MainActor
