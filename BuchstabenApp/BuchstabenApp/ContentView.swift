@@ -2,7 +2,7 @@ import SwiftUI
 import BuchstabenNative
 
 struct ContentView: View {
-    @EnvironmentObject private var vm: TracingViewModel
+    @Environment(TracingViewModel.self) private var vm
 
     var body: some View {
         BuchstabenNative.ContentView()
