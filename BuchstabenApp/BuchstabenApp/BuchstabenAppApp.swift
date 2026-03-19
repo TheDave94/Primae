@@ -4,7 +4,14 @@ import BuchstabenNative
 @main
 struct BuchstabenAppApp: App {
     @Environment(\.scenePhase) private var scenePhase
-    @StateObject private var vm = TracingViewModel()
+    // When running under XCTest, avoid initialising real AVAudioEngine/AVAudioSession
+    // which crashes in headless simulator. Tests inject their own stubs via DI anyway.
+    @StateObject private var vm: TracingViewModel = {
+        if NSClassFromString("XCTestCase") != nil {
+            return TracingViewModel(audio: NullAudio())
+        }
+        return TracingViewModel()
+    }()
 
     var body: some Scene {
         WindowGroup {

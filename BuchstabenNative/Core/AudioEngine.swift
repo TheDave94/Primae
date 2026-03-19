@@ -31,9 +31,6 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     #endif
 
     public init() {
-        // Skip AVAudioEngine setup entirely in test environments — the audio
-        // subsystem is unavailable in headless simulators and causes SIGABRT.
-        guard !AudioEngine.isRunningTests else { return }
         // Configure AVAudioSession for playback so audio isn't silenced by the
         // mute switch or default ambient category.
         do {
