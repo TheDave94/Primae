@@ -77,9 +77,9 @@ public final class TracingViewModel: ObservableObject {
         toast("Ready")
     }
 
-    func toggleGhost() { showGhost.toggle(); toast(showGhost ? "Ghost ON" : "Ghost OFF") }
-    func toggleStrokeEnforcement() { strokeEnforced.toggle(); resetLetter(); toast(strokeEnforced ? "Order ON" : "Order OFF") }
-    func toggleDebug() { showDebug.toggle(); toast(showDebug ? "Debug ON" : "Debug OFF") }
+    func toggleGhost() { showGhost.toggle(); toast("Ghost \(showGhost ? "ON" : "OFF")") }
+    func toggleStrokeEnforcement() { strokeEnforced.toggle(); resetLetter(); toast("Order \(strokeEnforced ? "ON" : "OFF")") }
+    func toggleDebug() { showDebug.toggle(); toast("Debug \(showDebug ? "ON" : "OFF")") }
 
     // MARK: - Accessibility
 
