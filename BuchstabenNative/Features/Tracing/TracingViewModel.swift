@@ -66,7 +66,7 @@ init(
     singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
     audio: AudioControlling = AudioEngine(),
     progressStore: ProgressStoring = JSONProgressStore(),
-    haptics: HapticEngineProviding = NSClassFromString("XCTestCase") != nil ? NullHapticEngine() : CoreHapticsEngine(),
+    haptics: HapticEngineProviding = CoreHapticsEngine(),
     adaptationPolicy: (any AdaptationPolicy)? = nil
 ) {
     self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation

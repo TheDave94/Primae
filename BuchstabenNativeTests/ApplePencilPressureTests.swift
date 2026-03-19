@@ -1,18 +1,6 @@
 import XCTest
 @testable import BuchstabenNative
 
-// MARK: - Minimal no-op audio stub (avoids real AVAudioEngine in unit tests)
-
-private final class StubAudio: AudioControlling {
-    func loadAudioFile(named: String, autoplay: Bool) {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func play() {}
-    func stop() {}
-    func restart() {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-}
 private final class StubHaptics: HapticEngineProviding {
     func prepare() {}
     func fire(_ event: HapticEvent) {}
@@ -26,9 +14,7 @@ final class ApplePencilPressureTests: XCTestCase {
     // Using the real AudioEngine causes AVAudioSession state pollution across
     // the 10 sequential makeVM() calls in this suite, which manifests as an
     // uncaught ObjC exception on the 10th init (testP10) in headless CI.
-    private func makeVM() -> TracingViewModel {
-        TracingViewModel(audio: StubAudio(), haptics: StubHaptics())
-    }
+    private func makeVM() -> TracingViewModel { makeTestVM() }
 
     // P1: pencilPressure defaults to nil (no pencil contact)
     func testP1_pencilPressureDefaultsToNil() {
