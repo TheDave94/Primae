@@ -125,14 +125,27 @@ final class TracingViewModelHapticTests: XCTestCase {
         // the grid-sweep fallback below covers it.
         let canvasSize = CGSize(width: 400, height: 400)
         let w = canvasSize.width, h = canvasSize.height
+        // Coordinates match defaultStrokes("A") in LetterRepository:
+        // stroke 1 (left leg): apex→mid→bottom-left
+        // stroke 2 (right leg): apex→mid→bottom-right
+        // stroke 3 (crossbar): left→right
         let checkpointSequence: [CGPoint] = [
             // stroke 1
-            CGPoint(x: 0.3 * w, y: 0.8 * h),
-            CGPoint(x: 0.5 * w, y: 0.2 * h),
-            CGPoint(x: 0.7 * w, y: 0.8 * h),
+            CGPoint(x: 0.515 * w, y: 0.170 * h),
+            CGPoint(x: 0.514 * w, y: 0.319 * h),
+            CGPoint(x: 0.514 * w, y: 0.469 * h),
+            CGPoint(x: 0.400 * w, y: 0.668 * h),
+            CGPoint(x: 0.296 * w, y: 0.817 * h),
             // stroke 2
-            CGPoint(x: 0.38 * w, y: 0.55 * h),
-            CGPoint(x: 0.62 * w, y: 0.55 * h),
+            CGPoint(x: 0.515 * w, y: 0.170 * h),
+            CGPoint(x: 0.514 * w, y: 0.319 * h),
+            CGPoint(x: 0.514 * w, y: 0.494 * h),
+            CGPoint(x: 0.762 * w, y: 0.668 * h),
+            CGPoint(x: 0.695 * w, y: 0.817 * h),
+            // stroke 3
+            CGPoint(x: 0.399 * w, y: 0.597 * h),
+            CGPoint(x: 0.512 * w, y: 0.597 * h),
+            CGPoint(x: 0.624 * w, y: 0.597 * h),
         ]
 
         var t = CACurrentMediaTime()
