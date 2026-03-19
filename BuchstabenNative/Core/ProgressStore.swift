@@ -41,7 +41,7 @@ public final class JSONProgressStore: ProgressStoring {
 
     // MARK: Init
 
-    init(fileURL: URL? = nil) {
+    public init(fileURL: URL? = nil) {
         if let url = fileURL {
             self.fileURL = url
         } else {

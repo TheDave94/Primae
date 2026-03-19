@@ -31,7 +31,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling {
     var debugInterruptionResumeGateRequired: Bool { interruptionResumeGateRequired }
     #endif
 
-    init() {
+    public init() {
         // Configure AVAudioSession for playback so audio isn't silenced by the
         // mute switch or default ambient category.
         do {
