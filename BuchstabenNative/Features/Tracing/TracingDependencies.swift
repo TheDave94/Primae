@@ -11,13 +11,23 @@ struct TracingDependencies {
     var adaptationPolicy: (any AdaptationPolicy)?
     var repo: LetterRepository
 
+    // Explicit @MainActor init allows @MainActor default values (AudioEngine etc.)
+    init(
+        singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+        audio: AudioControlling = AudioEngine(),
+        progressStore: ProgressStoring = JSONProgressStore(),
+        haptics: HapticEngineProviding = CoreHapticsEngine(),
+        adaptationPolicy: (any AdaptationPolicy)? = nil,
+        repo: LetterRepository = LetterRepository()
+    ) {
+        self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
+        self.audio = audio
+        self.progressStore = progressStore
+        self.haptics = haptics
+        self.adaptationPolicy = adaptationPolicy
+        self.repo = repo
+    }
+
     /// The default production configuration.
-    static let live = TracingDependencies(
-        singleTouchCooldownAfterNavigation: 0.18,
-        audio: AudioEngine(),
-        progressStore: JSONProgressStore(),
-        haptics: CoreHapticsEngine(),
-        adaptationPolicy: nil,
-        repo: LetterRepository()
-    )
+    static let live = TracingDependencies()
 }

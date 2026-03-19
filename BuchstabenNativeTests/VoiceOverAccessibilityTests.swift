@@ -21,7 +21,12 @@ final class VoiceOverAccessibilityTests: XCTestCase {
         // calling with `try await` triggers "sending non-Sendable XCTestCase", without
         // `try await` triggers "call can throw/is async". Default impl is a no-op.
         audioController = LocalMockAudioController()
-        vm = TracingViewModel(audio: audioController, progressStore: StubProgressStore(), haptics: StubHaptics(), repo: LetterRepository(resources: StubResourceProvider()))
+        vm = TracingViewModel(TracingDependencies(
+            singleTouchCooldownAfterNavigation: 0,
+            audio: audioController,
+            progressStore: StubProgressStore(),
+            haptics: StubHaptics(),
+            repo: LetterRepository(resources: StubResourceProvider())))
     }
 
     // MARK: - accessibilityCanvasLabel
