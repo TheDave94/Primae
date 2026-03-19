@@ -20,8 +20,16 @@ final class StubHaptics: HapticEngineProviding {
     func fire(_ event: HapticEvent) {}
 }
 
+// MARK: - No-op resource provider (avoids FileManager bundle scan hang in CI)
+final class StubResourceProvider: LetterResourceProviding {
+    var bundle: Bundle = .main
+    var searchBundles: [Bundle] { [bundle] }
+    func allResourceURLs() -> [URL] { [] }
+    func resourceURL(for relativePath: String) -> URL? { nil }
+}
+
 // MARK: - Shared VM factory
-// Always injects stubs to avoid AVAudioEngine and CHHapticEngine in headless CI.
+// Injects stubs for audio, haptics, and repo to avoid hangs in headless CI.
 @MainActor
 func makeTestVM(
     cooldown: CFTimeInterval = 0,
@@ -31,6 +39,7 @@ func makeTestVM(
     TracingViewModel(
         singleTouchCooldownAfterNavigation: cooldown,
         audio: audio ?? StubAudio(),
-        haptics: haptics ?? StubHaptics()
+        haptics: haptics ?? StubHaptics(),
+        repo: LetterRepository(resources: StubResourceProvider())
     )
 }
