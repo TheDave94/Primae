@@ -2,7 +2,7 @@
 import Foundation
 
 @MainActor
-public final class AudioEngine: @unchecked Sendable, AudioControlling {
+public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
