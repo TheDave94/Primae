@@ -8,7 +8,7 @@ import UIKit
 /// Provides haptic feedback for stroke lifecycle events.
 /// Conforming types are responsible for determining device capability.
 @MainActor
-protocol HapticEngineProviding {
+public protocol HapticEngineProviding {
     /// Prepare the engine for use (call once, idempotent).
     func prepare()
     /// Fire feedback for a stroke lifecycle event.
