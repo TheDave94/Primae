@@ -1,24 +1,23 @@
 name: "iOS Build & Test"
-
 on:
   push:
     branches: ["main", "ux/**"]
   pull_request:
     branches: ["main", "ux/**"]
   workflow_dispatch:
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-jobs:
-  ios_native:
-    name: "Build & Test (ios-native / BuchstabenNativeTests)"
-    runs-on: self-hosted
 
+jobs:
+  build_test:
+    name: "Build & Test (GitHub-hosted)"
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.2.app
 
       - name: Build & Test (iOS Simulator)
         id: test
@@ -27,18 +26,18 @@ jobs:
           xcodebuild test \
             -project BuchstabenApp/BuchstabenApp.xcodeproj \
             -scheme BuchstabenApp \
-            -destination 'platform=iOS,name=iPad' \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO \
             2>&1 | tee /tmp/test.log
-          echo "test_status=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
 
       - name: Extract failure summary
         id: failure
         if: failure()
         run: |
           ERRORS=$(grep -E "error:|XCTAssert.*failed|Test.*failed|FAILED" /tmp/test.log 2>/dev/null \
-            | grep -v "^Binary" | head -15 || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+            | grep -v "^Binary" | head -15 \
+            || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
           printf '%s' "$ERRORS" > /tmp/ci_errors.txt
 
       - name: Inject priority task into council queue
@@ -61,14 +60,46 @@ jobs:
                   out.append(f'- [ios] {task}\n')
           with open(path, 'w') as f: f.writelines(out)
           PY
-            git config user.email "ci@github-actions" && git config user.name "GitHub Actions"
-            git add task-queue.md && git commit -m "ci: inject P1 fix task for failing build" && git push
+            git config user.email "ci@github-actions"
+            git config user.name "GitHub Actions"
+            git add task-queue.md
+            git commit -m "ci: inject P1 fix task for failing build"
+            git push
           fi
 
-      - name: Upload test artifacts
+      - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-native-test-artifacts
+          name: ios-test-log
           if-no-files-found: warn
           path: /tmp/test.log
+
+  device_test:
+    name: "Device Test (MacBook self-hosted)"
+    runs-on: self-hosted
+    needs: build_test
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & Test (local iPad simulator)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project BuchstabenApp/BuchstabenApp.xcodeproj \
+            -scheme BuchstabenApp \
+            -destination 'platform=iOS,name=iPad' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee /tmp/test-device.log
+
+      - name: Upload device test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-device-test-log
+          if-no-files-found: warn
+          path: /tmp/test-device.log
