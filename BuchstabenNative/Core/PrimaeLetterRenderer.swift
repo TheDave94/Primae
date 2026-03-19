@@ -39,7 +39,7 @@ public enum PrimaeLetterRenderer {
         let bundles: [Bundle] = [.module, .main]
         for bundle in bundles {
             if let url = bundle.url(forResource: "Primae-Regular", withExtension: "otf"),
-               let descriptor = CTFontManagerCreateFontDescriptorFromURL(url as CFURL) {
+               let descriptor = CTFontDescriptorCreateWithURL(url as CFURL) {
                 return CTFontCreateWithFontDescriptor(descriptor, size, nil)
             }
         }
