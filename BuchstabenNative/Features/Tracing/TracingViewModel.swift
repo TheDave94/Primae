@@ -59,7 +59,7 @@ internal convenience init() {
     self.init(singleTouchCooldownAfterNavigation: 0.18)
 }
 
-@MainActor init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+@MainActor public init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
      audio: AudioControlling = AudioEngine(),
      progressStore: ProgressStoring = JSONProgressStore(),
      haptics: HapticEngineProviding = CoreHapticsEngine(),

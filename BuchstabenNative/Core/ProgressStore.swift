@@ -27,7 +27,7 @@ protocol ProgressStoring {
 /// Lightweight JSON progress store backed by a file in the app's
 /// Application Support directory. No SwiftData / CoreData dependency —
 /// keeps CI fully on Linux-compatible Swift and avoids schema migrations.
-final class JSONProgressStore: ProgressStoring {
+public final class JSONProgressStore: ProgressStoring {
 
     // MARK: Storage
 
