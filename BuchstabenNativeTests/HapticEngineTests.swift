@@ -82,7 +82,14 @@ private final class TrackingMockAudio: AudioControlling {
 
 @MainActor
 private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
-    TracingViewModel(audio: TrackingMockAudio(), progressStore: StubProgressStore(), haptics: haptics, repo: LetterRepository(resources: StubResourceProvider()))
+    // Use NullLetterCache to avoid stale disk cache interfering with stroke definitions
+    TracingViewModel(audio: TrackingMockAudio(), progressStore: StubProgressStore(), haptics: haptics, repo: LetterRepository(resources: StubResourceProvider(), cache: NullLetterCache()))
+}
+
+private struct NullLetterCache: LetterCacheStoring {
+    func save(_ letters: [LetterAsset]) throws {}
+    func load() throws -> [LetterAsset] { throw LetterRepositoryError.cacheReadFailed(path: "") }
+    func clear() {}
 }
 
 @MainActor
