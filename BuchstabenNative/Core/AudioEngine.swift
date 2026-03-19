@@ -3,9 +3,9 @@ import Foundation
 
 @MainActor
 public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
-    private lazy var engine = AVAudioEngine()
-    private lazy var player = AVAudioPlayerNode()
-    private lazy var timePitch = AVAudioUnitTimePitch()
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private let timePitch = AVAudioUnitTimePitch()
     private var currentFile: AVAudioFile?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
