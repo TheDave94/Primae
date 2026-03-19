@@ -1,0 +1,3 @@
+module BuchstabenNative {
+    header "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/include/BuchstabenNative-Swift.h"
+}

@@ -54,29 +54,28 @@ public final class TracingViewModel: ObservableObject {
     // 2. NEW PUBLIC INITIALIZER
     // This allows your Host App to create the ViewModel without needing to know
     // about all the internal tools like AudioEngine or JSONProgressStore.
-    @MainActor
-    public convenience init() {
-        self.init(singleTouchCooldownAfterNavigation: 0.18)
-    }
+@MainActor
+internal convenience init() {
+    self.init(singleTouchCooldownAfterNavigation: 0.18)
+}
 
-    // ORIGINAL INITIALIZER
-    @MainActor public init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
-         audio: AudioControlling = AudioEngine(),
-         progressStore: ProgressStoring = JSONProgressStore(),
-         haptics: HapticEngineProviding = CoreHapticsEngine(),
-         adaptationPolicy: (any AdaptationPolicy)? = nil) {
-        self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
-        self.audio = audio
-        self.progressStore = progressStore
-        self.haptics = haptics
-        self.adaptationPolicy = adaptationPolicy ?? MovingAverageAdaptationPolicy()
-        haptics.prepare()
-        letters = repo.loadLetters()
-        guard let first = letters.first else { return }
-        load(letter: first)
-        toast("Ready")
-    }
-
+// ORIGINAL INITIALIZER
+@MainActor internal init(singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+     audio: AudioControlling = AudioEngine(),
+     progressStore: ProgressStoring = JSONProgressStore(),
+     haptics: HapticEngineProviding = CoreHapticsEngine(),
+     adaptationPolicy: (any AdaptationPolicy)? = nil) {
+    self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
+    self.audio = audio
+    self.progressStore = progressStore
+    self.haptics = haptics
+    self.adaptationPolicy = adaptationPolicy ?? MovingAverageAdaptationPolicy()
+    haptics.prepare()
+    letters = repo.loadLetters()
+    guard let first = letters.first else { return }
+    load(letter: first)
+    toast("Ready")
+}
     func toggleGhost() { showGhost.toggle(); toast("Ghost \(showGhost ? "ON" : "OFF")") }
     func toggleStrokeEnforcement() { strokeEnforced.toggle(); resetLetter(); toast("Order \(strokeEnforced ? "ON" : "OFF")") }
     func toggleDebug() { showDebug.toggle(); toast("Debug \(showDebug ? "ON" : "OFF")") }

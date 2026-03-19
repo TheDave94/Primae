@@ -1,0 +1,3 @@
+module BuchstabenNativePackageDiscoveredTests {
+    header "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageDiscoveredTests.build/include/BuchstabenNativePackageDiscoveredTests-Swift.h"
+}

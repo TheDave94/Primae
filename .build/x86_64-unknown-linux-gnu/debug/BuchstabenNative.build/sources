@@ -1,0 +1,13 @@
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/AudioControlling.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/LetterAnimationGuide.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/Models.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/OnboardingCoordinator.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/ParentDashboardExporter.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/ParentDashboardStore.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/PlaybackStateMachine.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/ProgressStore.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/StreakStore.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/StrokeRecognizer.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/StrokeTracker.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Features/Library/LetterCache.swift
+/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Features/Library/LetterRepository.swift

@@ -1,0 +1,96 @@
+{
+  "": {
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/master.swiftdeps"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/AudioControlling.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/AudioControlling.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/AudioControlling.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/AudioControlling~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/AudioControlling.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/AudioControlling.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/LetterAnimationGuide.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterAnimationGuide.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterAnimationGuide.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterAnimationGuide~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterAnimationGuide.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterAnimationGuide.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/Models.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/Models.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/Models.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/Models~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/Models.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/Models.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/OnboardingCoordinator.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/OnboardingCoordinator.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/OnboardingCoordinator.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/OnboardingCoordinator~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/OnboardingCoordinator.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/OnboardingCoordinator.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/ParentDashboardExporter.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardExporter.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardExporter.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardExporter~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardExporter.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardExporter.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/ParentDashboardStore.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardStore.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardStore.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardStore~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardStore.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ParentDashboardStore.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/PlaybackStateMachine.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/PlaybackStateMachine.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/PlaybackStateMachine.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/PlaybackStateMachine~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/PlaybackStateMachine.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/PlaybackStateMachine.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/ProgressStore.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ProgressStore.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ProgressStore.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ProgressStore~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ProgressStore.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/ProgressStore.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/StreakStore.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StreakStore.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StreakStore.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StreakStore~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StreakStore.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StreakStore.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/StrokeRecognizer.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeRecognizer.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeRecognizer.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeRecognizer~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeRecognizer.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeRecognizer.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Core/StrokeTracker.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeTracker.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeTracker.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeTracker~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeTracker.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/StrokeTracker.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Features/Library/LetterCache.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterCache.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterCache.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterCache~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterCache.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterCache.dia"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/BuchstabenNative/Features/Library/LetterRepository.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterRepository.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterRepository.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterRepository~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterRepository.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNative.build/LetterRepository.dia"
+  }
+}

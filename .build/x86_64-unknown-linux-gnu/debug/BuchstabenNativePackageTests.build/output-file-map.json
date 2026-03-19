@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.build/master.swiftdeps"
+  },
+  "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.derived/runner.swift": {
+    "dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.build/runner.d",
+    "object": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.build/runner.swift.o",
+    "swiftmodule": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.build/runner~partial.swiftmodule",
+    "swift-dependencies": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.build/runner.swiftdeps",
+    "diagnostics": "/opt/repos/Buchstaben-Lernen-App/.build/x86_64-unknown-linux-gnu/debug/BuchstabenNativePackageTests.build/runner.dia"
+  }
+}
