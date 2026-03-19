@@ -38,10 +38,10 @@ public enum PrimaeLetterRenderer {
     private static func makeFont(size: CGFloat) -> CTFont? {
         let bundles: [Bundle] = [.module, .main]
         for bundle in bundles {
-            if let url = bundle.url(forResource: "Primae-Regular", withExtension: "otf"),
-               let descriptor = CTFontDescriptorCreateWithURL(url as CFURL) {
-                return CTFontCreateWithFontDescriptor(descriptor, size, nil)
-            }
+            guard let url = bundle.url(forResource: "Primae-Regular", withExtension: "otf"),
+                  let dataProvider = CGDataProvider(url: url as CFURL),
+                  let cgFont = CGFont(dataProvider) else { continue }
+            return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
         }
         return nil
     }
