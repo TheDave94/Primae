@@ -578,8 +578,6 @@ private struct MockResourceProvider: LetterResourceProviding {
 
 /// An in-memory no-op cache that always appears empty — used to isolate
 /// LetterRepository tests from real disk cache state in CI.
-private struct NullLetterCache: LetterCacheStoring {
-    func save(_ letters: [LetterAsset]) throws { }
     func load() throws -> [LetterAsset] { [] }
     func clear() { }
 }

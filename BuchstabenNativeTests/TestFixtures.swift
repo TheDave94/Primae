@@ -38,6 +38,13 @@ final class StubProgressStore: ProgressStoring {
     var totalCompletions: Int { 0 }
 }
 
+// MARK: - Null letter cache (throws on load — forces fresh parse, prevents cross-test pollution)
+struct NullLetterCache: LetterCacheStoring {
+    func save(_ letters: [LetterAsset]) throws {}
+    func load() throws -> [LetterAsset] { throw LetterRepositoryError.cacheReadFailed(path: "") }
+    func clear() {}
+}
+
 // MARK: - Shared VM factory
 // Injects stubs for audio, haptics, repo, and progressStore to avoid hangs in headless CI.
 @MainActor

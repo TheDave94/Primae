@@ -91,8 +91,6 @@ private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
             repo: LetterRepository(resources: StubResourceProvider(), cache: NullLetterCache())))
 }
 
-private struct NullLetterCache: LetterCacheStoring {
-    func save(_ letters: [LetterAsset]) throws {}
     func load() throws -> [LetterAsset] { throw LetterRepositoryError.cacheReadFailed(path: "") }
     func clear() {}
 }
