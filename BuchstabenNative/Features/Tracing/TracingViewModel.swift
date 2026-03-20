@@ -47,8 +47,8 @@ public final class TracingViewModel {
     private var completionDismissTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat = 0
     private let velocitySmoothingAlpha: CGFloat = 0.22
-    private let activeDebounceSeconds: TimeInterval
-    private let idleDebounceSeconds: TimeInterval
+    private let activeDebounceSeconds: TimeInterval = 0.03
+    private let idleDebounceSeconds: TimeInterval = 0.12
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
@@ -62,8 +62,6 @@ public convenience init() {
 @MainActor
 init(_ deps: TracingDependencies = .live) {
     self.singleTouchCooldownAfterNavigation = deps.singleTouchCooldownAfterNavigation
-    self.activeDebounceSeconds = deps.activeDebounceSeconds
-    self.idleDebounceSeconds = deps.idleDebounceSeconds
     self.audio = deps.audio
     self.progressStore = deps.progressStore
     self.haptics = deps.haptics
@@ -385,12 +383,6 @@ init(_ deps: TracingDependencies = .live) {
         guard wouldChange else { return }
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
-        // When delay is zero (e.g. in tests), apply immediately to avoid Task scheduling latency.
-        if delay == 0 {
-            let cmd = playbackMachine.transition(to: target)
-            applyCommand(cmd)
-            return
-        }
         let task = Task { @MainActor [weak self] in
             try await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
