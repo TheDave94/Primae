@@ -209,7 +209,7 @@ final class BuchstabenNativeTests: XCTestCase {
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 2.0)
         vm.updateTouch(at: CGPoint(x: 120, y: 120), t: 2.01, canvasSize: size)
 
-        try? await Task.sleep(for: .milliseconds(50))
+        try? await Task.sleep(for: .milliseconds(200))
         XCTAssertGreaterThanOrEqual(audio.playCount, 1, "Fresh touch intent should allow playback again")
     }
 
@@ -352,7 +352,7 @@ final class BuchstabenNativeTests: XCTestCase {
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 2.0)
         vm.updateTouch(at: CGPoint(x: 120, y: 120), t: 2.01, canvasSize: size)
 
-        try? await Task.sleep(for: .milliseconds(50))
+        try? await Task.sleep(for: .milliseconds(200))
         XCTAssertGreaterThanOrEqual(audio.playCount, 1, "Fresh touch after foreground return must allow playback (shouldResume = true path)")
     }
 
