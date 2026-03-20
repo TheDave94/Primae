@@ -5,6 +5,8 @@ import Foundation
 @MainActor
 struct TracingDependencies {
     var singleTouchCooldownAfterNavigation: CFTimeInterval
+    var activeDebounceSeconds: TimeInterval
+    var idleDebounceSeconds: TimeInterval
     var audio: AudioControlling
     var progressStore: ProgressStoring
     var haptics: HapticEngineProviding
@@ -14,6 +16,8 @@ struct TracingDependencies {
     // Explicit @MainActor init allows @MainActor default values (AudioEngine etc.)
     init(
         singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
+        activeDebounceSeconds: TimeInterval = 0.03,
+        idleDebounceSeconds: TimeInterval = 0.12,
         audio: AudioControlling = AudioEngine(),
         progressStore: ProgressStoring = JSONProgressStore(),
         haptics: HapticEngineProviding = CoreHapticsEngine(),
@@ -21,6 +25,8 @@ struct TracingDependencies {
         repo: LetterRepository = LetterRepository()
     ) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
+        self.activeDebounceSeconds = activeDebounceSeconds
+        self.idleDebounceSeconds = idleDebounceSeconds
         self.audio = audio
         self.progressStore = progressStore
         self.haptics = haptics

@@ -70,6 +70,8 @@ extension TracingDependencies {
     static var stub: TracingDependencies {
         TracingDependencies(
             singleTouchCooldownAfterNavigation: 0,
+            activeDebounceSeconds: 0,
+            idleDebounceSeconds: 0,
             audio: StubAudio(),
             progressStore: StubProgressStore(),
             haptics: StubHaptics(),
@@ -77,6 +79,12 @@ extension TracingDependencies {
         )
     }
 
+    func with(activeDebounce: TimeInterval) -> TracingDependencies {
+        var copy = self; copy.activeDebounceSeconds = activeDebounce; return copy
+    }
+    func with(idleDebounce: TimeInterval) -> TracingDependencies {
+        var copy = self; copy.idleDebounceSeconds = idleDebounce; return copy
+    }
     func with(cooldown: CFTimeInterval) -> TracingDependencies {
         var copy = self; copy.singleTouchCooldownAfterNavigation = cooldown; return copy
     }

@@ -62,6 +62,8 @@ public convenience init() {
 @MainActor
 init(_ deps: TracingDependencies = .live) {
     self.singleTouchCooldownAfterNavigation = deps.singleTouchCooldownAfterNavigation
+    self.activeDebounceSeconds = deps.activeDebounceSeconds
+    self.idleDebounceSeconds = deps.idleDebounceSeconds
     self.audio = deps.audio
     self.progressStore = deps.progressStore
     self.haptics = deps.haptics

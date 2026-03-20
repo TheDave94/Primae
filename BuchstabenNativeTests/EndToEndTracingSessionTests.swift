@@ -140,7 +140,6 @@ final class EndToEndTracingSessionTests: XCTestCase {
         let didComplete = gridScanUntilComplete()
         guard didComplete else { throw XCTSkip("Not completable via grid scan") }
 
-        try? await Task.sleep(for: .milliseconds(200))
 
         XCTAssertFalse(vm.isPlaying, "After completion, playback must be forced idle")
     }
