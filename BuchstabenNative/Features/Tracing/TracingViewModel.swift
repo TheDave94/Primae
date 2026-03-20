@@ -385,6 +385,12 @@ init(_ deps: TracingDependencies = .live) {
         guard wouldChange else { return }
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
+        // When delay is zero (e.g. in tests), apply immediately to avoid Task scheduling latency.
+        if delay == 0 {
+            let cmd = playbackMachine.transition(to: target)
+            applyCommand(cmd)
+            return
+        }
         let task = Task { @MainActor [weak self] in
             try await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
