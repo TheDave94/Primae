@@ -293,32 +293,32 @@ init(_ deps: TracingDependencies = .live) {
         cancelPendingPlaybackWork()
         setPlaybackState(.idle, immediate: true)
     }
-private func load(letter: LetterAsset) {
-    showGhost = false
-    currentLetterName = letter.name
-    currentLetterImageName = letter.imageName
-    currentLetterImage = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize)
-    strokeTracker.load(letter.strokes)
-    progress = 0
-    audioIndex = 0
-    didCompleteCurrentLetter = false
-    completionDismissTask?.cancel()
-    completionMessage = nil
-    activePath.removeAll(keepingCapacity: true)
-    isSingleTouchInteractionActive = false
-    smoothedVelocity = 0
-    playbackMachine.resumeIntent = true
-    cancelPendingPlaybackWork()
-    // Ghost guide is scoped to a single letter. Reset here prevents a ghost enabled on
-    // letter N from unexpectedly persisting when the user navigates to letter N+1.
-    showGhost = false
-    if let firstAudio = letter.audioFiles.first {
-        Task { @MainActor in
-            audio.loadAudioFile(named: firstAudio, autoplay: false)
-            setPlaybackState(.idle, immediate: true)
+    private func load(letter: LetterAsset) {
+        showGhost = false
+        currentLetterName = letter.name
+        currentLetterImageName = letter.imageName
+        currentLetterImage = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize)
+        strokeTracker.load(letter.strokes)
+        progress = 0
+        audioIndex = 0
+        didCompleteCurrentLetter = false
+        completionDismissTask?.cancel()
+        completionMessage = nil
+        activePath.removeAll(keepingCapacity: true)
+        isSingleTouchInteractionActive = false
+        smoothedVelocity = 0
+        playbackMachine.resumeIntent = true
+        cancelPendingPlaybackWork()
+        // Ghost guide is scoped to a single letter. Reset here prevents a ghost enabled on
+        // letter N from unexpectedly persisting when the user navigates to letter N+1.
+        showGhost = false
+        if let firstAudio = letter.audioFiles.first {
+            Task { @MainActor in
+                audio.loadAudioFile(named: firstAudio, autoplay: false)
+                setPlaybackState(.idle, immediate: true)
+            }
         }
     }
-}
 
     private func randomAudioVariant() {
         let files = letters[letterIndex].audioFiles
