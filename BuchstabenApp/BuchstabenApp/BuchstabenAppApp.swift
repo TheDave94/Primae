@@ -9,11 +9,8 @@ struct BuchstabenAppApp: App {
     init() {
         // Use NullAudio when running under XCTest to prevent AVAudioEngine
         // from crashing in headless simulators (RPC timeout → SIGABRT).
-        // Tests inject their own stubs via TracingDependencies — NullAudio
-        // is only used for the host app shell that XCTest bootstraps.
         if NSClassFromString("XCTestCase") != nil {
-            _vm = State(initialValue: TracingViewModel(
-                TracingDependencies(audio: NullAudio())))
+            _vm = State(initialValue: TracingViewModel(audio: NullAudio()))
         } else {
             _vm = State(initialValue: TracingViewModel())
         }

@@ -58,8 +58,17 @@ public convenience init() {
     self.init(.live)
 }
 
+    // Public convenience init for injecting a custom AudioControlling only.
+    // Used by the app entry point to swap in NullAudio during XCTest runs.
 @MainActor
-public init(_ deps: TracingDependencies = .live) {
+public convenience init(audio: AudioControlling) {
+    var deps = TracingDependencies.live
+    deps.audio = audio
+    self.init(deps)
+}
+
+@MainActor
+init(_ deps: TracingDependencies = .live) {
     self.singleTouchCooldownAfterNavigation = deps.singleTouchCooldownAfterNavigation
     self.audio = deps.audio
     self.progressStore = deps.progressStore
