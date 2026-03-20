@@ -53,7 +53,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         if let observer = routeChangeObserver { NotificationCenter.default.removeObserver(observer) }
     }
 
-    public func loadAudioFile(named fileName: String, autoplay: Bool = false) {
+    func loadAudioFile(named fileName: String, autoplay: Bool = false) {
         guard let url = resourceURL(for: fileName) else {
             print("Missing audio file: \(fileName) [stack: \(Thread.callStackSymbols.prefix(4))]")
             return
@@ -71,7 +71,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         }
     }
 
-    public func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
         let clampedSpeed = max(0.5, min(2.0, speed))
         // AVAudioUnitTimePitch.rate is a playback-rate multiplier (1.0 = normal speed,
         // valid range 1/32…32). The branch erroneously multiplied by 100, producing
@@ -80,21 +80,21 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         player.pan = max(-1.0, min(1.0, horizontalBias))
     }
 
-    public func play() {
+    func play() {
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
         attemptResumePlayback()
     }
 
-    public func stop() {
+    func stop() {
         shouldResumePlayback = false
         cancelPendingLifecycleWork()
         player.pause()
         isPlaying = false
     }
 
-    public func restart() {
+    func restart() {
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
@@ -102,7 +102,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         attemptResumePlayback()
     }
 
-    public func suspendForLifecycle() {
+    func suspendForLifecycle() {
         appIsForeground = false
         cancelPendingLifecycleWork()
         player.pause()
@@ -110,7 +110,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         pendingSafeEnginePause()
     }
 
-    public func resumeAfterLifecycle() {
+    func resumeAfterLifecycle() {
         appIsForeground = true
         // Cancel any pending engine-pause task scheduled by suspendForLifecycle
         // before attempting resume. Without this cancellation, the 0.2-second
@@ -132,7 +132,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         }
     }
 
-    public func cancelPendingLifecycleWork() {
+    func cancelPendingLifecycleWork() {
         pendingLifecyclePauseTask?.cancel()
         pendingLifecyclePauseTask = nil
     }
