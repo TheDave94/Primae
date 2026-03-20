@@ -47,8 +47,8 @@ public final class TracingViewModel {
     private var completionDismissTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat = 0
     private let velocitySmoothingAlpha: CGFloat = 0.22
-    private let activeDebounceSeconds: TimeInterval = 0.03
-    private let idleDebounceSeconds: TimeInterval = 0.12
+    private let activeDebounceSeconds: TimeInterval
+    private let idleDebounceSeconds: TimeInterval
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
