@@ -167,6 +167,8 @@ final class BuchstabenNativeTests: XCTestCase {
                     haptics: StubHaptics(),
                     repo: LetterRepository(resources: StubResourceProvider())))
         vm.strokeEnforced = false
+        // Allow the Task in load(letter:) to complete before asserting
+        try? await Task.sleep(for: .milliseconds(50))
 
         XCTAssertGreaterThanOrEqual(audio.loadedFiles.count, 1)
 
