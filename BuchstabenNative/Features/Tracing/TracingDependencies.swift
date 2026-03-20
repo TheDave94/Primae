@@ -4,12 +4,12 @@ import Foundation
 /// Use `.live` for production, or construct a custom instance in tests.
 @MainActor
 public struct TracingDependencies {
-    var singleTouchCooldownAfterNavigation: CFTimeInterval
-    var audio: AudioControlling
-    var progressStore: ProgressStoring
-    var haptics: HapticEngineProviding
-    var adaptationPolicy: (any AdaptationPolicy)?
-    var repo: LetterRepository
+    public var singleTouchCooldownAfterNavigation: CFTimeInterval
+    public var audio: AudioControlling
+    public var progressStore: ProgressStoring
+    public var haptics: HapticEngineProviding
+    public var adaptationPolicy: (any AdaptationPolicy)?
+    public var repo: LetterRepository
 
     // Explicit @MainActor init allows @MainActor default values (AudioEngine etc.)
     public init(
