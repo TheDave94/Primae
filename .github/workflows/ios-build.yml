@@ -96,6 +96,8 @@ jobs:
     needs: xcode_test
     continue-on-error: true  # self-hosted runner infrastructure issues (log file conflicts)
     steps:
+      - name: Clean runner diagnostics
+        run: rm -f ~/actions-runner/_diag/pages/*.log ~/actions-runner/_diag/*.log || true
       - uses: actions/checkout@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
