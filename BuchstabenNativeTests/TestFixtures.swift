@@ -73,7 +73,7 @@ extension TracingDependencies {
             audio: StubAudio(),
             progressStore: StubProgressStore(),
             haptics: StubHaptics(),
-            repo: LetterRepository(resources: StubResourceProvider())
+            repo: LetterRepository(resources: StubResourceProvider(), cache: NullLetterCache())
         )
     }
 
