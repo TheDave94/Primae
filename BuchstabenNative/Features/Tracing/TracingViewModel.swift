@@ -313,10 +313,8 @@ init(_ deps: TracingDependencies = .live) {
         // letter N from unexpectedly persisting when the user navigates to letter N+1.
         showGhost = false
         if let firstAudio = letter.audioFiles.first {
-            Task { @MainActor in
-                audio.loadAudioFile(named: firstAudio, autoplay: false)
-                setPlaybackState(.idle, immediate: true)
-            }
+            audio.loadAudioFile(named: firstAudio, autoplay: false)
+            setPlaybackState(.idle, immediate: true)
         }
     }
 
