@@ -318,7 +318,7 @@ private func load(letter: LetterAsset) {
             setPlaybackState(.idle, immediate: true)
         }
     }
-}    }
+}
 
     private func randomAudioVariant() {
         let files = letters[letterIndex].audioFiles
