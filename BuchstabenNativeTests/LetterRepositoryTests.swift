@@ -9,11 +9,6 @@ import XCTest
 
 // MARK: - NullLetterCache (empty, never persists — isolates tests from real cache)
 
-private struct NullLetterCache: LetterCacheStoring {
-    func save(_ letters: [LetterAsset]) throws { /* no-op */ }
-    func load() throws -> [LetterAsset] { [] }
-    func clear() { /* no-op */ }
-}
 
 // MARK: - MockResourceProvider
 

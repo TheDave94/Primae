@@ -86,11 +86,6 @@ private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
     TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
 }
 
-private struct NullLetterCache: LetterCacheStoring {
-    func save(_ letters: [LetterAsset]) throws {}
-    func load() throws -> [LetterAsset] { throw LetterRepositoryError.cacheReadFailed(path: "") }
-    func clear() {}
-}
 
 @MainActor
 final class TracingViewModelHapticTests: XCTestCase {
