@@ -94,9 +94,7 @@ jobs:
     name: "Device Test (MacBook self-hosted)"
     runs-on: self-hosted
     needs: xcode_test
-    # TODO: remove continue-on-error once TracingViewModel has injectable init
-    # that avoids AVAudioEngine construction in test host process (Session 2 refactor)
-    continue-on-error: true
+    continue-on-error: true  # self-hosted runner infrastructure issues (log file conflicts)
     steps:
       - uses: actions/checkout@v6
         with:
