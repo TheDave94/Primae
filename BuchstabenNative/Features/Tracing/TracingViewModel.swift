@@ -58,9 +58,8 @@ public convenience init() {
     self.init(.live)
 }
 
-// Not public: Parameter types are internal.
 @MainActor
-init(_ deps: TracingDependencies = .live) {
+public init(_ deps: TracingDependencies = .live) {
     self.singleTouchCooldownAfterNavigation = deps.singleTouchCooldownAfterNavigation
     self.audio = deps.audio
     self.progressStore = deps.progressStore

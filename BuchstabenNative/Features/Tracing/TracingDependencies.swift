@@ -3,7 +3,7 @@ import Foundation
 /// All injectable dependencies for TracingViewModel, bundled into one struct.
 /// Use `.live` for production, or construct a custom instance in tests.
 @MainActor
-struct TracingDependencies {
+public struct TracingDependencies {
     var singleTouchCooldownAfterNavigation: CFTimeInterval
     var audio: AudioControlling
     var progressStore: ProgressStoring
@@ -12,7 +12,7 @@ struct TracingDependencies {
     var repo: LetterRepository
 
     // Explicit @MainActor init allows @MainActor default values (AudioEngine etc.)
-    init(
+    public init(
         singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
         audio: AudioControlling = AudioEngine(),
         progressStore: ProgressStoring = JSONProgressStore(),
@@ -29,5 +29,5 @@ struct TracingDependencies {
     }
 
     /// The default production configuration.
-    static let live = TracingDependencies()
+    public static let live = TracingDependencies()
 }
