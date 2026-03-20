@@ -23,12 +23,7 @@ final class AccessibilityContractTests: XCTestCase {
         audio = MockAccessibilityAudio()
         // strokeEnforced=false allows audio/isPlaying state to be driven by velocity
         // alone — these tests verify accessibility string contracts, not stroke recognition.
-        vm = TracingViewModel(TracingDependencies(
-                    singleTouchCooldownAfterNavigation: 0,
-                    audio: audio,
-                    progressStore: StubProgressStore(),
-                    haptics: StubHaptics(),
-                    repo: LetterRepository(resources: StubResourceProvider())))
+        vm = TracingViewModel(.stub.with(audio: audio))
         vm.strokeEnforced = false
     }
 

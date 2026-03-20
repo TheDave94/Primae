@@ -65,12 +65,7 @@ final class EndToEndTracingSessionTests: XCTestCase {
         // strokeEnforced=false allows velocity-based audio playback without requiring
         // actual stroke checkpoints to be hit — these tests cover the audio/lifecycle
         // pipeline, not stroke recognition accuracy.
-        vm = TracingViewModel(TracingDependencies(
-                    singleTouchCooldownAfterNavigation: 0,
-                    audio: audio,
-                    progressStore: StubProgressStore(),
-                    haptics: StubHaptics(),
-                    repo: LetterRepository(resources: StubResourceProvider())))
+        vm = TracingViewModel(.stub.with(audio: audio))
         vm.strokeEnforced = false
     }
 

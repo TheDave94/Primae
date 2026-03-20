@@ -53,12 +53,43 @@ func makeTestVM(
     audio: AudioControlling? = nil,
     haptics: HapticEngineProviding? = nil
 ) -> TracingViewModel {
-    let deps = TracingDependencies(
-        singleTouchCooldownAfterNavigation: cooldown,
-        audio: audio ?? StubAudio(),
-        progressStore: StubProgressStore(),
-        haptics: haptics ?? StubHaptics(),
-        repo: LetterRepository(resources: StubResourceProvider())
-    )
+    var deps = TracingDependencies.stub
+    if cooldown != 0 { deps = deps.with(cooldown: cooldown) }
+    if let audio { deps = deps.with(audio: audio) }
+    if let haptics { deps = deps.with(haptics: haptics) }
     return TracingViewModel(deps)
+}
+
+// MARK: - TracingDependencies test builder
+// Usage: TracingViewModel(.stub)
+//        TracingViewModel(.stub.with(audio: myAudio))
+//        TracingViewModel(.stub.with(cooldown: 0.05).with(haptics: myHaptics))
+extension TracingDependencies {
+    /// A fully-stubbed configuration safe for headless CI — no FileManager, no AVAudioEngine.
+    @MainActor
+    static var stub: TracingDependencies {
+        TracingDependencies(
+            singleTouchCooldownAfterNavigation: 0,
+            audio: StubAudio(),
+            progressStore: StubProgressStore(),
+            haptics: StubHaptics(),
+            repo: LetterRepository(resources: StubResourceProvider())
+        )
+    }
+
+    func with(cooldown: CFTimeInterval) -> TracingDependencies {
+        var copy = self; copy.singleTouchCooldownAfterNavigation = cooldown; return copy
+    }
+    func with(audio: AudioControlling) -> TracingDependencies {
+        var copy = self; copy.audio = audio; return copy
+    }
+    func with(progressStore: ProgressStoring) -> TracingDependencies {
+        var copy = self; copy.progressStore = progressStore; return copy
+    }
+    func with(haptics: HapticEngineProviding) -> TracingDependencies {
+        var copy = self; copy.haptics = haptics; return copy
+    }
+    func with(repo: LetterRepository) -> TracingDependencies {
+        var copy = self; copy.repo = repo; return copy
+    }
 }
