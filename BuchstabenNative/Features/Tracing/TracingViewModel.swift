@@ -312,12 +312,11 @@ init(_ deps: TracingDependencies = .live) {
         // Ghost guide is scoped to a single letter. Reset here prevents a ghost enabled on
         // letter N from unexpectedly persisting when the user navigates to letter N+1.
         showGhost = false
-if let firstAudio = letter.audioFiles.first {
-    Task { @MainActor in
-        audio.loadAudioFile(named: firstAudio, autoplay: false)
-        setPlaybackState(.idle, immediate: true)
+        if let firstAudio = letter.audioFiles.first {
+            audio.loadAudioFile(named: firstAudio, autoplay: false)
+            setPlaybackState(.idle, immediate: true)
+        }
     }
-}    }
 
     private func randomAudioVariant() {
         let files = letters[letterIndex].audioFiles
