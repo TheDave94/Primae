@@ -1,97 +1,71 @@
 //  LetterGuideSnapshotTests.swift
 //  BuchstabenNativeTests
-//
-//  Lightweight golden-image tests for LetterGuideRenderer.
-//  No external snapshot framework needed — we render to CGPath geometry
-//  and verify structural invariants that would catch visual regressions:
-//  path element counts, segment types, bounding box ratios, and
-//  pixel-level rendering stability via CRC32 of a CGContext bitmap.
-//
-//  Note: UIGraphicsImageRenderer requires a device/simulator, so the
-//  pixel tests are guarded with #if canImport(UIKit).
 
-import XCTest
+import Testing
 import CoreGraphics
-import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
 @testable import BuchstabenNative
 
 @MainActor
-final class LetterGuideSnapshotTests: XCTestCase {
+struct LetterGuideSnapshotTests {
 
     private let rect = CGRect(x: 0, y: 0, width: 200, height: 200)
 
     // MARK: - Structural snapshot: path element counts per letter
 
-    /// Known element counts for curated letters (move + line/arc).
-    /// If geometry changes, this test will fail and catch the regression.
     private let expectedMinElements: [String: Int] = [
-        "A": 6,  // 3 lines × (moveto + lineto)
-        "F": 6,  // 3 lines
-        "I": 6,  // 3 lines
-        "K": 6,  // 3 lines
-        "L": 4,  // 2 lines
-        "M": 5,  // 1 polyline with 5 points = 1 move + 4 lines
-        "O": 1,  // 1 arc element
+        "A": 6, "F": 6, "I": 6, "K": 6, "L": 4, "M": 5, "O": 1,
     ]
 
-    func testCuratedLetters_pathElementCount_isStable() async {
+    @Test func curatedLetters_pathElementCount_isStable() {
         for (letter, minCount) in expectedMinElements {
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             var count = 0
             path.forEach { _ in count += 1 }
-            XCTAssertGreaterThanOrEqual(count, minCount,
-                "'\(letter)' path element count \(count) is below expected minimum \(minCount) — geometry may have regressed")
+            #expect(count >= minCount,
+                "'\(letter)' path element count \(count) is below expected minimum \(minCount)")
         }
     }
 
     // MARK: - Bounding box ratio snapshot
 
-    /// Aspect ratios that define each letter's visual identity.
-    /// Tolerances are generous (±25%) to survive minor coordinate tweaks.
-    func testCuratedLetters_boundingBoxRatios_areStable() async {
+    @Test func curatedLetters_boundingBoxRatios_areStable() {
         let expectations: [(String, CGFloat, CGFloat)] = [
-            // letter, minAspect (w/h), maxAspect (w/h)
-            ("A", 0.4, 1.2),   // tall triangle shape
-            ("F", 0.3, 1.2),   // vertical with horizontals
-            ("I", 0.5, 2.0),   // wide top/bottom serifs
-            ("K", 0.3, 1.2),   // vertical + diagonals
-            ("L", 0.3, 1.2),   // L-shape
-            ("M", 0.5, 1.5),   // wide M shape
-            ("O", 0.6, 1.4),   // roughly circular
+            ("A", 0.4, 1.2), ("F", 0.3, 1.2), ("I", 0.5, 2.0),
+            ("K", 0.3, 1.2), ("L", 0.3, 1.2), ("M", 0.5, 1.5), ("O", 0.6, 1.4),
         ]
         for (letter, minA, maxA) in expectations {
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             let b = path.boundingRect
-            guard b.height > 0 else { XCTFail("\(letter) path has zero height"); continue }
+            guard b.height > 0 else { Issue.record("\(letter) path has zero height"); continue }
             let aspect = b.width / b.height
-            XCTAssertGreaterThanOrEqual(Double(aspect), Double(minA),
+            #expect(Double(aspect) >= Double(minA),
                 "'\(letter)' aspect ratio \(aspect) below minimum \(minA)")
-            XCTAssertLessThanOrEqual(Double(aspect), Double(maxA),
+            #expect(Double(aspect) <= Double(maxA),
                 "'\(letter)' aspect ratio \(aspect) above maximum \(maxA)")
         }
     }
 
-    // MARK: - Determinism snapshot: same path on repeated calls
+    // MARK: - Determinism snapshot
 
-    func testAllCuratedLetters_pathIsDeterministic() async {
+    @Test func allCuratedLetters_pathIsDeterministic() {
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             let p1 = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             let p2 = LetterGuideRenderer.guidePath(for: letter, in: rect)!
-            XCTAssertEqual(p1.boundingRect, p2.boundingRect,
+            #expect(p1.boundingRect == p2.boundingRect,
                 "'\(letter)' path bounding rect is non-deterministic")
             var c1 = 0, c2 = 0
             p1.forEach { _ in c1 += 1 }
             p2.forEach { _ in c2 += 1 }
-            XCTAssertEqual(c1, c2, "'\(letter)' path element count is non-deterministic")
+            #expect(c1 == c2, "'\(letter)' path element count is non-deterministic")
         }
     }
 
-    // MARK: - Scale invariance: element count must not change with rect size
+    // MARK: - Scale invariance
 
-    func testPathElementCount_invariantUnderScaling() async {
+    @Test func pathElementCount_invariantUnderScaling() {
         let rects: [CGRect] = [
             CGRect(x: 0, y: 0, width: 50,  height: 50),
             CGRect(x: 0, y: 0, width: 200, height: 200),
@@ -104,7 +78,7 @@ final class LetterGuideSnapshotTests: XCTestCase {
                 LetterGuideRenderer.guidePath(for: letter, in: r)!.forEach { _ in c += 1 }
                 counts.append(c)
             }
-            XCTAssertTrue(counts.allSatisfy { $0 == counts[0] },
+            #expect(counts.allSatisfy { $0 == counts[0] },
                 "'\(letter)' element count changes with rect size: \(counts)")
         }
     }
@@ -112,50 +86,35 @@ final class LetterGuideSnapshotTests: XCTestCase {
     // MARK: - Pixel rendering snapshot (UIKit only)
 
 #if canImport(UIKit)
-    /// Render each curated letter to a 100×100 bitmap and verify:
-    /// 1. The image is non-empty (has drawn pixels)
-    /// 2. CRC32 is stable across two renders (deterministic rendering)
-    func testRendering_isNonEmptyAndDeterministic() async {
+    @Test func rendering_isNonEmptyAndDeterministic() {
         for letter in ["A", "F", "I", "K", "L", "M", "O"] {
             let size = CGSize(width: 100, height: 100)
             let r1 = renderLetter(letter, size: size)
             let r2 = renderLetter(letter, size: size)
-
-            XCTAssertNotNil(r1, "'\(letter)' render returned nil")
-            XCTAssertNotNil(r2, "'\(letter)' render returned nil on second call")
-
+            #expect(r1 != nil, "'\(letter)' render returned nil")
+            #expect(r2 != nil, "'\(letter)' render returned nil on second call")
             guard let d1 = r1, let d2 = r2 else { continue }
-
-            // Verify non-empty: not all pixels are white/transparent
-            let hasDrawnPixels = d1.contains(where: { $0 != 255 })
-            XCTAssertTrue(hasDrawnPixels, "'\(letter)' render produced blank image")
-
-            // Verify deterministic
-            XCTAssertEqual(crc32(d1), crc32(d2),
-                "'\(letter)' render CRC32 differs between calls — non-deterministic rendering")
+            #expect(d1.contains(where: { $0 != 255 }), "'\(letter)' render produced blank image")
+            #expect(crc32(d1) == crc32(d2), "'\(letter)' render CRC32 differs — non-deterministic")
         }
     }
 
     private func renderLetter(_ letter: String, size: CGSize) -> [UInt8]? {
         let rect = CGRect(origin: .zero, size: size)
         guard let path = LetterGuideRenderer.guidePath(for: letter, in: rect) else { return nil }
-
         let renderer = UIGraphicsImageRenderer(size: size)
         let image = renderer.image { ctx in
             UIColor.white.setFill()
             ctx.fill(rect)
             UIColor.black.setStroke()
-            let cgPath = path.cgPath
-            ctx.cgContext.addPath(cgPath)
+            ctx.cgContext.addPath(path.cgPath)
             ctx.cgContext.setLineWidth(3.0)
             ctx.cgContext.strokePath()
         }
-
         guard let cgImage = image.cgImage,
               let data = cgImage.dataProvider?.data,
               let ptr = CFDataGetBytePtr(data) else { return nil }
-        let len = CFDataGetLength(data)
-        return Array(UnsafeBufferPointer(start: ptr, count: len))
+        return Array(UnsafeBufferPointer(start: ptr, count: CFDataGetLength(data)))
     }
 
     private func crc32(_ bytes: [UInt8]) -> UInt32 {
@@ -172,20 +131,19 @@ final class LetterGuideSnapshotTests: XCTestCase {
     }
 #endif
 
-    // MARK: - Fallback letter snapshot: crossbar Y is within expected vertical range
+    // MARK: - Fallback letter snapshot
 
-    func testFallbackLetters_crossbarY_isInRange() async {
+    @Test func fallbackLetters_crossbarY_isInRange() {
         let knownLetters: Set<String> = ["A","F","I","K","L","M","O"]
         for ascii in 65...90 {
             let letter = String(UnicodeScalar(ascii)!)
             if knownLetters.contains(letter) { continue }
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             let b = path.boundingRect
-            // Crossbar should be between 30% and 70% of rect height
             let crossbarNorm = (b.midY - rect.minY) / rect.height
-            XCTAssertGreaterThan(Double(crossbarNorm), 0.30,
+            #expect(Double(crossbarNorm) > 0.30,
                 "'\(letter)' fallback crossbar too high: \(crossbarNorm)")
-            XCTAssertLessThan(Double(crossbarNorm), 0.80,
+            #expect(Double(crossbarNorm) < 0.80,
                 "'\(letter)' fallback crossbar too low: \(crossbarNorm)")
         }
     }
