@@ -2,6 +2,7 @@
 //  BuchstabenNativeTests
 
 import Testing
+import Foundation
 @testable import BuchstabenNative
 
 private final class MockResourceProvider: LetterResourceProviding {

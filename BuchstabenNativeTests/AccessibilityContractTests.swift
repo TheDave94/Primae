@@ -6,7 +6,7 @@ import CoreGraphics
 @testable import BuchstabenNative
 
 @MainActor
-private final class MockAccessibilityAudio: AudioControlling {
+fileprivate final class MockAccessibilityAudio: AudioControlling {
     func loadAudioFile(named: String, autoplay: Bool) {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
     func play() {}

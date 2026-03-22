@@ -6,7 +6,7 @@ import CoreGraphics
 @testable import BuchstabenNative
 
 @MainActor
-private final class RecordingAudio: AudioControlling {
+fileprivate final class RecordingAudio: AudioControlling {
     enum Event: Equatable {
         case load(String), play, stop, suspend, resume, cancelPending, setAdaptive(speed: Float)
     }

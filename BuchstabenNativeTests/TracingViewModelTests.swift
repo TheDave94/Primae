@@ -6,7 +6,7 @@ import CoreGraphics
 @testable import BuchstabenNative
 
 @MainActor
-private final class MockAudio: AudioControlling {
+fileprivate final class MockAudio: AudioControlling {
     private(set) var loadedFiles: [String] = []
     private(set) var playCount  = 0
     private(set) var stopCount  = 0

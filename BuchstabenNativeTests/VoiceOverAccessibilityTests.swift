@@ -5,7 +5,7 @@ import Testing
 @testable import BuchstabenNative
 
 @MainActor
-private final class LocalMockAudioController: AudioControlling {
+fileprivate final class LocalMockAudioController: AudioControlling {
     var stopCount = 0
     var playCount = 0
     func loadAudioFile(named: String, autoplay: Bool) {}
