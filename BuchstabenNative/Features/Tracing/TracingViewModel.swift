@@ -395,6 +395,10 @@ init(_ deps: TracingDependencies = .live) {
             audio.cancelPendingLifecycleWork()
             return
         }
+        if c.isCancelled {
+            audio.cancelPendingLifecycleWork()
+            return
+        }
         c.cancel()
         pendingPlaybackStateTask = nil
         audio.cancelPendingLifecycleWork()
@@ -415,6 +419,7 @@ init(_ deps: TracingDependencies = .live) {
 
     private func cancelToastTask() {
         guard let c = toastTask else { return }
+        if c.isCancelled { return }
         c.cancel()
         toastTask = nil
     }
