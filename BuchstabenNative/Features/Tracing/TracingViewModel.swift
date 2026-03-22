@@ -412,10 +412,14 @@ init(_ deps: TracingDependencies = .live) {
     private func toast(_ text: String) {
         toastMessage = text
         toastTask?.cancel()
-        toastTask = nil
-        let message = text
-        toastTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(1.3))
+
+        toastTask = Task { @MainActor [weak self, message = text] in
+            do {
+                try await Task.sleep(for: .seconds(1.3))
+            } catch {
+                return
+            }
+
             guard let self, !Task.isCancelled else { return }
             guard self.toastMessage == message else { return }
             self.toastMessage = nil
