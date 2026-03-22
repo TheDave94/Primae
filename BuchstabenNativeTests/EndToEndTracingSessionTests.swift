@@ -26,8 +26,8 @@ fileprivate final class RecordingAudio: AudioControlling {
 
 @Suite @MainActor struct EndToEndTracingSessionTests {
 
-    let audio: RecordingAudio
-    let vm: TracingViewModel
+    fileprivate let audio: RecordingAudio
+    fileprivate let vm: TracingViewModel
     let canvas = CGSize(width: 400, height: 400)
 
     init() {

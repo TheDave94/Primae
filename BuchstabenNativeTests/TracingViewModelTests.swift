@@ -50,8 +50,8 @@ private func slowDrag(vm: TracingViewModel,
 
 @Suite @MainActor struct TracingViewModelTests {
 
-    let audio: MockAudio
-    let vm: TracingViewModel
+    fileprivate let audio: MockAudio
+    fileprivate let vm: TracingViewModel
 
     init() {
         audio = MockAudio()

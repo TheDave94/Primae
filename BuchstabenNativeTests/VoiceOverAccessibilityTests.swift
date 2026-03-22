@@ -20,8 +20,8 @@ fileprivate final class LocalMockAudioController: AudioControlling {
 
 @Suite @MainActor struct VoiceOverAccessibilityTests {
 
-    let vm: TracingViewModel
-    let audioController: LocalMockAudioController
+    fileprivate let vm: TracingViewModel
+    fileprivate let audioController: LocalMockAudioController
 
     init() {
         audioController = LocalMockAudioController()

@@ -19,8 +19,8 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
 
 @Suite @MainActor struct AccessibilityContractTests {
 
-    let audio: MockAccessibilityAudio
-    let vm: TracingViewModel
+    fileprivate let audio: MockAccessibilityAudio
+    fileprivate let vm: TracingViewModel
 
     init() {
         audio = MockAccessibilityAudio()
