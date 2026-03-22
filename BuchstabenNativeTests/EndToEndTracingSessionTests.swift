@@ -1,229 +1,162 @@
 //  EndToEndTracingSessionTests.swift
 //  BuchstabenNativeTests
-//
-//  End-to-end simulation of a full letter-tracing session.
-//  Covers the integration layer: LetterRepository → TracingViewModel →
-//  PlaybackStateMachine → AudioControlling, verifying:
-//  - Audio cue sequencing (load → play → stop on complete)
-//  - Progress reaches 1.0 on completion
-//  - isPlaying=false after completion (forced idle)
-//  - resetLetter restores initial state
-//  - Accessibility strings remain valid throughout session
-//  - Full bg/fg lifecycle around a session
-//
-//  Note: XCUITest would cover the actual SwiftUI layer; this covers
-//  everything beneath it. A future UITest target can wrap these flows.
 
-import XCTest
+import Testing
 import CoreGraphics
 @testable import BuchstabenNative
-
-// MARK: - Recording MockAudio
 
 @MainActor
 private final class RecordingAudio: AudioControlling {
     enum Event: Equatable {
-        case load(String)
-        case play
-        case stop
-        case suspend
-        case resume
-        case cancelPending
-        case setAdaptive(speed: Float)
+        case load(String), play, stop, suspend, resume, cancelPending, setAdaptive(speed: Float)
     }
-
     private(set) var events: [Event] = []
     private(set) var isPlaying = false
-
     func loadAudioFile(named: String, autoplay: Bool) { events.append(.load(named)) }
-    func play()    { events.append(.play);  isPlaying = true  }
-    func stop()    { events.append(.stop);  isPlaying = false }
+    func play()    { events.append(.play);    isPlaying = true  }
+    func stop()    { events.append(.stop);    isPlaying = false }
     func restart() { events.append(.play) }
     func suspendForLifecycle()        { events.append(.suspend);       isPlaying = false }
     func resumeAfterLifecycle()       { events.append(.resume) }
     func cancelPendingLifecycleWork() { events.append(.cancelPending) }
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
-        events.append(.setAdaptive(speed: speed))
-    }
-
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) { events.append(.setAdaptive(speed: speed)) }
     func hasEvent(_ e: Event) -> Bool { events.contains(e) }
-    func eventCount(_ e: Event) -> Int { events.filter { $0 == e }.count }
     func reset() { events.removeAll(); isPlaying = false }
 }
 
-// MARK: - EndToEndTracingSessionTests
+@Suite @MainActor struct EndToEndTracingSessionTests {
 
-@MainActor
-final class EndToEndTracingSessionTests: XCTestCase {
+    let audio: RecordingAudio
+    let vm: TracingViewModel
+    let canvas = CGSize(width: 400, height: 400)
 
-    private var audio: RecordingAudio!
-    private var vm: TracingViewModel!
-    private let canvas = CGSize(width: 400, height: 400)
-
-    override func setUp() async throws {
+    init() {
         audio = RecordingAudio()
-        // strokeEnforced=false allows velocity-based audio playback without requiring
-        // actual stroke checkpoints to be hit — these tests cover the audio/lifecycle
-        // pipeline, not stroke recognition accuracy.
         vm = TracingViewModel(.stub.with(audio: audio))
         vm.strokeEnforced = false
     }
 
-    override func tearDown() async throws {
-        vm = nil
-        audio = nil
+    // MARK: 1 — Initial state
+
+    @Test func initialState() {
+        #expect(!vm.isPlaying)
+        #expect(vm.progress == 0.0)
+        #expect(!vm.currentLetterName.isEmpty)
+        #expect(vm.currentLetterName == vm.currentLetterName.uppercased())
     }
 
-    // MARK: 1 — Initial state is correct before any touch
+    // MARK: 2 — Audio load called on init
 
-    func testInitialState() async {
-        XCTAssertFalse(vm.isPlaying, "Initial: not playing")
-        XCTAssertEqual(vm.progress, 0.0, accuracy: 1e-9, "Initial: progress = 0")
-        XCTAssertFalse(vm.currentLetterName.isEmpty, "Initial: letter name set")
-        XCTAssertEqual(vm.currentLetterName, vm.currentLetterName.uppercased(), "Initial: letter name uppercase")
-    }
-
-    // MARK: 2 — Audio load called on init (first letter loaded)
-
-    func testAudioLoaded_onInit() async {
-        XCTAssertFalse(audio.events.filter { if case .load = $0 { return true }; return false }.isEmpty,
-                       "Audio loadAudioFile must be called during init")
+    @Test func audioLoaded_onInit() {
+        let loadEvents = audio.events.filter { if case .load = $0 { return true }; return false }
+        #expect(!loadEvents.isEmpty, "Audio loadAudioFile must be called during init")
     }
 
     // MARK: 3 — Fast touch → play fires after debounce
 
-    func testFastTouch_triggersPlay() async throws {
+    @Test func fastTouch_triggersPlay() async {
         simulateFastTouch(t0: 1000)
         try? await Task.sleep(for: .milliseconds(80))
-        XCTAssertTrue(audio.hasEvent(.play), "Fast touch must trigger audio.play()")
-        XCTAssertTrue(vm.isPlaying)
+        #expect(audio.hasEvent(.play), "Fast touch must trigger audio.play()")
+        #expect(vm.isPlaying)
     }
 
     // MARK: 4 — endTouch stops audio
 
-    func testEndTouch_stopsAudio() async throws {
+    @Test func endTouch_stopsAudio() async {
         simulateFastTouch(t0: 1000)
         try? await Task.sleep(for: .milliseconds(80))
         audio.reset()
         vm.endTouch()
-        XCTAssertTrue(audio.hasEvent(.stop), "endTouch must call audio.stop()")
-        XCTAssertFalse(vm.isPlaying)
+        #expect(audio.hasEvent(.stop))
+        #expect(!vm.isPlaying)
     }
 
-    // MARK: 5 — setAdaptivePlayback called during touch (speed clamped to valid range)
+    // MARK: 5 — setAdaptivePlayback called during touch
 
-    func testAdaptivePlayback_calledDuringTouch() async {
+    @Test func adaptivePlayback_calledDuringTouch() {
         simulateFastTouch(t0: 1000)
-        let adaptiveEvents = audio.events.compactMap { e -> Float? in
+        let speeds = audio.events.compactMap { e -> Float? in
             if case .setAdaptive(let s) = e { return s }; return nil
         }
-        XCTAssertFalse(adaptiveEvents.isEmpty, "setAdaptivePlayback must be called during touch")
-        for speed in adaptiveEvents {
-            XCTAssertGreaterThanOrEqual(speed, 0.5, "speed must be >= 0.5")
-            XCTAssertLessThanOrEqual(speed, 2.0,    "speed must be <= 2.0")
+        #expect(!speeds.isEmpty, "setAdaptivePlayback must be called during touch")
+        for speed in speeds {
+            #expect(speed >= 0.5)
+            #expect(speed <= 2.0)
         }
     }
 
-    // MARK: 6 — Full session: progress reaches 1.0 via grid scan
+    // MARK: 6 — Full session: progress reaches 1.0
 
-    func testFullSession_progressReachesOne() async throws {
-        let didComplete = gridScanUntilComplete()
-        guard didComplete else {
-            throw XCTSkip("Letter not completable via grid scan")
-        }
-        XCTAssertEqual(vm.progress, 1.0, accuracy: 1e-9)
+    @Test func fullSession_progressReachesOne() {
+        guard gridScanUntilComplete() else { return }
+        #expect(vm.progress == 1.0)
     }
 
-    // MARK: 7 — After completion, isPlaying forced to false
+    // MARK: 7 — After completion, isPlaying = false
 
-    func testFullSession_isPlayingFalseAfterCompletion() async throws {
-        let didComplete = gridScanUntilComplete()
-        guard didComplete else { throw XCTSkip("Not completable via grid scan") }
-
-
-        XCTAssertFalse(vm.isPlaying, "After completion, playback must be forced idle")
+    @Test func fullSession_isPlayingFalseAfterCompletion() {
+        guard gridScanUntilComplete() else { return }
+        #expect(!vm.isPlaying)
     }
 
     // MARK: 8 — resetLetter restores initial state
 
-    func testResetLetter_restoresInitialState() async throws {
+    @Test func resetLetter_restoresInitialState() {
         gridScanUntilComplete()
         vm.resetLetter()
-        XCTAssertEqual(vm.progress, 0.0, accuracy: 1e-9, "Progress must be 0 after reset")
-        XCTAssertFalse(vm.isPlaying, "isPlaying must be false after reset")
-        XCTAssertTrue(audio.hasEvent(.stop), "reset must call stop")
+        #expect(vm.progress == 0.0)
+        #expect(!vm.isPlaying)
+        #expect(audio.hasEvent(.stop))
     }
 
     // MARK: 9 — Accessibility strings valid throughout session
 
-    func testAccessibilityStrings_validThroughoutSession() async throws {
-        // Initial
+    @Test func accessibilityStrings_validThroughoutSession() {
         assertAccessibilityStringsValid(label: "initial")
-
-        // During touch
         simulateFastTouch(t0: 1000)
         assertAccessibilityStringsValid(label: "during touch")
-
-        // After end
         vm.endTouch()
         assertAccessibilityStringsValid(label: "after endTouch")
-
-        // After reset
         vm.resetLetter()
         assertAccessibilityStringsValid(label: "after reset")
     }
 
     // MARK: 10 — Full bg/fg lifecycle around a session
 
-    func testLifecycleAroundSession() async throws {
+    @Test func lifecycleAroundSession() async {
         simulateFastTouch(t0: 1000)
         try? await Task.sleep(for: .milliseconds(80))
-
-        // Enter background mid-session
         vm.appDidEnterBackground()
-        XCTAssertTrue(audio.hasEvent(.suspend), "background must suspend audio")
-        XCTAssertFalse(vm.isPlaying, "isPlaying must be false in background")
-
-        // Return to foreground
+        #expect(audio.hasEvent(.suspend))
+        #expect(!vm.isPlaying)
         audio.reset()
         vm.appDidBecomeActive()
-        XCTAssertTrue(audio.hasEvent(.resume), "foreground must resume audio")
-
-        // Session still usable
+        #expect(audio.hasEvent(.resume))
         assertAccessibilityStringsValid(label: "after foreground return")
     }
 
-    // MARK: 11 — Multiple letters: selectLetter changes currentLetterName
+    // MARK: 11 — nextLetter changes state cleanly
 
-    func testSelectLetter_changesCurrentLetter() async throws {
-        let initial = vm.currentLetterName
-        // Try rotating to a different letter
+    @Test func selectLetter_changesCurrentLetter() {
         vm.nextLetter()
-        // Either changes or wraps (if only 1 letter loaded in test bundle)
-        // Just assert non-crash and valid state
-        XCTAssertFalse(vm.currentLetterName.isEmpty)
-        XCTAssertEqual(vm.currentLetterName, vm.currentLetterName.uppercased())
-        XCTAssertEqual(vm.progress, 0.0, accuracy: 1e-9, "Progress resets on letter change")
-        _ = initial  // suppress unused warning
+        #expect(!vm.currentLetterName.isEmpty)
+        #expect(vm.currentLetterName == vm.currentLetterName.uppercased())
+        #expect(vm.progress == 0.0)
     }
 
     // MARK: - Helpers
 
     private func simulateFastTouch(t0: CFTimeInterval) {
         vm.beginTouch(at: CGPoint(x: 50, y: 200), t: t0)
-        var t = t0
-        var p = CGPoint(x: 50, y: 200)
-        for _ in 0..<15 {
-            t += 0.001; p.x += 10
-            vm.updateTouch(at: p, t: t, canvasSize: canvas)
-        }
+        var t = t0; var p = CGPoint(x: 50, y: 200)
+        for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
     }
 
     @discardableResult
     private func gridScanUntilComplete() -> Bool {
         let t0: CFTimeInterval = 2000.0
-        vm.beginTouch(at: .zero, t: t0)
-        var t = t0
+        vm.beginTouch(at: .zero, t: t0); var t = t0
         for row in stride(from: 0.0, through: 1.0, by: 0.04) {
             for col in stride(from: 0.0, through: 1.0, by: 0.04) {
                 t += 0.001
@@ -236,12 +169,11 @@ final class EndToEndTracingSessionTests: XCTestCase {
 
     private func assertAccessibilityStringsValid(label: String) {
         let pct = Int(vm.progress * 100)
-        XCTAssertGreaterThanOrEqual(pct, 0,   "[\(label)] pct < 0")
-        XCTAssertLessThanOrEqual(pct,    100, "[\(label)] pct > 100")
-        XCTAssertFalse(vm.currentLetterName.isEmpty, "[\(label)] letter name empty")
-        XCTAssertFalse(vm.progress.isNaN,            "[\(label)] progress NaN")
-        XCTAssertFalse(vm.progress.isInfinite,        "[\(label)] progress infinite")
-        let hint = vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused"
-        XCTAssertFalse(hint.isEmpty, "[\(label)] hint empty")
+        #expect(pct >= 0,   "[\(label)] pct < 0")
+        #expect(pct <= 100, "[\(label)] pct > 100")
+        #expect(!vm.currentLetterName.isEmpty, "[\(label)] letter name empty")
+        #expect(!vm.progress.isNaN,            "[\(label)] progress NaN")
+        #expect(!vm.progress.isInfinite,        "[\(label)] progress infinite")
+        #expect(!(vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused").isEmpty)
     }
 }
