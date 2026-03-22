@@ -2,6 +2,8 @@
 //  BuchstabenNativeTests
 
 import Testing
+import Foundation
+import QuartzCore
 import CoreGraphics
 @testable import BuchstabenNative
 

@@ -2,6 +2,7 @@
 //  BuchstabenNativeTests
 
 import Testing
+import Foundation
 import CoreGraphics
 import QuartzCore
 import AVFoundation
