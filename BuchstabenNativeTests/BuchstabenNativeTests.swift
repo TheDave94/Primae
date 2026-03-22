@@ -3,6 +3,7 @@
 
 import Testing
 import CoreGraphics
+import QuartzCore
 import AVFoundation
 @testable import BuchstabenNative
 
