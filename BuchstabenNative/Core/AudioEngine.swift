@@ -38,7 +38,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            Logger.shared.error("AudioEngine: AVAudioSession setup error: \(error)")
+            Logger(subsystem: "BuchstabenNative", category: "AudioEngine").error("AudioEngine: AVAudioSession setup error: \(error)")
         }
         engine.attach(player)
         engine.attach(timePitch)
