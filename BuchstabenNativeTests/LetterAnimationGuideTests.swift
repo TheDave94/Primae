@@ -63,7 +63,8 @@ private func makeGuide(stepCount: Int = 4, duration: TimeInterval = 0.3) -> Lett
     }
     @Test func advanceStep_returnsTrueWhenNotAtEnd() {
         var g = makeGuide(stepCount: 4); g.start()
-        #expect(g.advanceStep())
+        let stepped = g.advanceStep()
+        #expect(stepped)
     }
     @Test func hasNextStep_trueWhenNotAtLast() { #expect(makeGuide(stepCount: 4).hasNextStep) }
     @Test func hasNextStep_falseAtLastStep() {

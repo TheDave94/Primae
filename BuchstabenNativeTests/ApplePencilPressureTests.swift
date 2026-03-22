@@ -2,6 +2,7 @@
 //  BuchstabenNativeTests
 
 import Testing
+import CoreGraphics
 @testable import BuchstabenNative
 
 @Suite @MainActor struct ApplePencilPressureTests {
