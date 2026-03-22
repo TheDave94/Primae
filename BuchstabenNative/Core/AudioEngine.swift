@@ -1,6 +1,5 @@
 @preconcurrency import AVFoundation
 import Foundation
-import Logger
 
 @MainActor
 public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
