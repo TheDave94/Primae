@@ -1,3 +1,4 @@
+// NOTE: Intentionally uses XCTest — Swift Testing has no measure()/XCTMetric equivalent. Do not migrate.
 //  PerformanceBenchmarkTests.swift
 //  BuchstabenNativeTests
 //
