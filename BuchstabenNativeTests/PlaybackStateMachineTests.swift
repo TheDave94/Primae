@@ -4,241 +4,229 @@
 //  Unit tests for PlaybackStateMachine value type.
 //  Pure logic — no audio, no dispatch, no UIKit.
 
-import XCTest
+import Testing
 @testable import BuchstabenNative
 
-@MainActor
-final class PlaybackStateMachineTests: XCTestCase {
+struct PlaybackStateMachineTests {
 
     // MARK: - Initial state
 
-    func testInitialState_isIdle() async {
+    @Test func initialState_isIdle() {
         let m = PlaybackStateMachine()
-        XCTAssertEqual(m.state, .idle)
-        XCTAssertFalse(m.isPlaying)
-        XCTAssertTrue(m.appIsForeground)
-        XCTAssertTrue(m.resumeIntent)
+        #expect(m.state == .idle)
+        #expect(!m.isPlaying)
+        #expect(m.appIsForeground)
+        #expect(m.resumeIntent)
     }
 
     // MARK: - Happy-path transitions
 
-    func testTransition_idleToActive_returnsPlay() async {
+    @Test func transition_idleToActive_returnsPlay() {
         var m = PlaybackStateMachine()
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .play)
-        XCTAssertEqual(m.state, .active)
-        XCTAssertTrue(m.isPlaying)
+        #expect(cmd == .play)
+        #expect(m.state == .active)
+        #expect(m.isPlaying)
     }
 
-    func testTransition_activeToIdle_returnsStop() async {
+    @Test func transition_activeToIdle_returnsStop() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         let cmd = m.transition(to: .idle)
-        XCTAssertEqual(cmd, .stop)
-        XCTAssertEqual(m.state, .idle)
-        XCTAssertFalse(m.isPlaying)
+        #expect(cmd == .stop)
+        #expect(m.state == .idle)
+        #expect(!m.isPlaying)
     }
 
     // MARK: - No-op transitions (same state)
 
-    func testTransition_idleToIdle_returnsNone() async {
+    @Test func transition_idleToIdle_returnsNone() {
         var m = PlaybackStateMachine()
         let cmd = m.transition(to: .idle)
-        XCTAssertEqual(cmd, .none)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .none)
+        #expect(m.state == .idle)
     }
 
-    func testTransition_activeToActive_returnsNone() async {
+    @Test func transition_activeToActive_returnsNone() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .none)
-        XCTAssertEqual(m.state, .active)
+        #expect(cmd == .none)
+        #expect(m.state == .active)
     }
 
     // MARK: - Guard: appIsForeground == false blocks .active
 
-    func testGuard_appNotForeground_blocksActive_fromIdle() async {
+    @Test func guard_appNotForeground_blocksActive_fromIdle() {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .none,  "Should be .none: already idle and resolved to idle")
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .none, "Should be .none: already idle and resolved to idle")
+        #expect(m.state == .idle)
     }
 
-    func testGuard_appNotForeground_blocksActive_fromActive() async {
+    @Test func guard_appNotForeground_blocksActive_fromActive() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.appIsForeground = false
-        // Requesting .active while in background — should resolve to .idle → stop
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .stop, "Machine was active; guard resolves to idle → stop")
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .stop, "Machine was active; guard resolves to idle → stop")
+        #expect(m.state == .idle)
     }
 
-    func testGuard_appNotForeground_idleToIdle_returnsNone() async {
+    @Test func guard_appNotForeground_idleToIdle_returnsNone() {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
-        // idle→active blocked, resolved to idle; already idle → none
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .none)
+        #expect(cmd == .none)
     }
 
-    func testGuard_appNotForeground_transitionToIdle_works() async {
+    @Test func guard_appNotForeground_transitionToIdle_works() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.appIsForeground = false
         let cmd = m.transition(to: .idle)
-        XCTAssertEqual(cmd, .stop)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .stop)
+        #expect(m.state == .idle)
     }
 
     // MARK: - Guard: resumeIntent == false blocks .active
 
-    func testGuard_noResumeIntent_blocksActive() async {
+    @Test func guard_noResumeIntent_blocksActive() {
         var m = PlaybackStateMachine()
         m.resumeIntent = false
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .none)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .none)
+        #expect(m.state == .idle)
     }
 
-    func testGuard_noResumeIntent_activeToActive_stopsEngine() async {
+    @Test func guard_noResumeIntent_activeToActive_stopsEngine() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.resumeIntent = false
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .stop)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .stop)
+        #expect(m.state == .idle)
     }
 
-    func testGuard_bothFalse_blocksActive() async {
+    @Test func guard_bothFalse_blocksActive() {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         m.resumeIntent = false
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .none)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .none)
+        #expect(m.state == .idle)
     }
 
     // MARK: - Guard restores: re-enabling allows .active
 
-    func testGuard_restored_allowsActive() async {
+    @Test func guard_restored_allowsActive() {
         var m = PlaybackStateMachine()
         m.appIsForeground = false
         m.transition(to: .active) // blocked
-        XCTAssertEqual(m.state, .idle)
+        #expect(m.state == .idle)
 
         m.appIsForeground = true
         let cmd = m.transition(to: .active)
-        XCTAssertEqual(cmd, .play)
-        XCTAssertEqual(m.state, .active)
+        #expect(cmd == .play)
+        #expect(m.state == .active)
     }
 
     // MARK: - forceIdle
 
-    func testForceIdle_fromActive_returnsStop() async {
+    @Test func forceIdle_fromActive_returnsStop() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         let cmd = m.forceIdle()
-        XCTAssertEqual(cmd, .stop)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .stop)
+        #expect(m.state == .idle)
     }
 
-    func testForceIdle_fromIdle_returnsNone() async {
+    @Test func forceIdle_fromIdle_returnsNone() {
         var m = PlaybackStateMachine()
         let cmd = m.forceIdle()
-        XCTAssertEqual(cmd, .none)
-        XCTAssertEqual(m.state, .idle)
+        #expect(cmd == .none)
+        #expect(m.state == .idle)
     }
 
-    func testForceIdle_bypassesGuards() async {
-        // forceIdle must work even when guards would normally block
+    @Test func forceIdle_bypassesGuards() {
         var m = PlaybackStateMachine()
         m.transition(to: .active)
         m.appIsForeground = false
         m.resumeIntent = false
-        // State is currently idle (guard blocked re-entry). Force from active:
-        // Set up manually — machine is idle after guard, need to force from active state
-        // Let's do: active state → disable fg → forceIdle should still stop
-        var m2 = PlaybackStateMachine()
-        m2.transition(to: .active) // active
-        m2.appIsForeground = false  // guard set but state still active
-        // Note: guard only fires on transition(to:), not on state mutation
-        // So m2.state is still .active here
-        XCTAssertEqual(m2.state, .active)
-        let cmd = m2.forceIdle()
-        XCTAssertEqual(cmd, .stop)
-        XCTAssertEqual(m2.state, .idle)
+        // State is still .active — guard only fires on transition(to:)
+        #expect(m.state == .active)
+        let cmd = m.forceIdle()
+        #expect(cmd == .stop)
+        #expect(m.state == .idle)
     }
 
     // MARK: - isPlaying mirrors state
 
-    func testIsPlaying_mirorsState() async {
+    @Test func isPlaying_mirrorsState() {
         var m = PlaybackStateMachine()
-        XCTAssertFalse(m.isPlaying)
+        #expect(!m.isPlaying)
         m.transition(to: .active)
-        XCTAssertTrue(m.isPlaying)
+        #expect(m.isPlaying)
         m.transition(to: .idle)
-        XCTAssertFalse(m.isPlaying)
+        #expect(!m.isPlaying)
     }
 
     // MARK: - Value semantics
 
-    func testValueSemantics_copyIsIndependent() async {
+    @Test func valueSemantics_copyIsIndependent() {
         var original = PlaybackStateMachine()
         original.transition(to: .active)
 
         var copy = original
         copy.transition(to: .idle)
 
-        XCTAssertEqual(original.state, .active, "Original must not be affected by copy mutation")
-        XCTAssertEqual(copy.state, .idle)
+        #expect(original.state == .active, "Original must not be affected by copy mutation")
+        #expect(copy.state == .idle)
     }
 
     // MARK: - Rapid churn
 
-    func testRapidChurn_multipleTransitions_consistentState() async {
+    @Test func rapidChurn_multipleTransitions_consistentState() {
         var m = PlaybackStateMachine()
         for i in 0..<100 {
             let target: PlaybackStateMachine.State = i % 2 == 0 ? .active : .idle
             m.transition(to: target)
         }
-        // After 100 transitions (0-indexed, last is i=99 → .idle)
-        XCTAssertEqual(m.state, .idle)
-        XCTAssertFalse(m.isPlaying)
+        #expect(m.state == .idle)
+        #expect(!m.isPlaying)
     }
 
     // MARK: - Command sequence correctness
 
-    func testCommandSequence_noSpuriousCommands() async {
+    @Test func commandSequence_noSpuriousCommands() {
         var m = PlaybackStateMachine()
         var commands: [PlaybackStateMachine.Command] = []
 
         commands.append(m.transition(to: .active)) // play
-        commands.append(m.transition(to: .active)) // none (already active)
+        commands.append(m.transition(to: .active)) // none
         commands.append(m.transition(to: .idle))   // stop
-        commands.append(m.transition(to: .idle))   // none (already idle)
+        commands.append(m.transition(to: .idle))   // none
         commands.append(m.transition(to: .active)) // play
         commands.append(m.forceIdle())             // stop
 
-        XCTAssertEqual(commands, [.play, .none, .stop, .none, .play, .stop])
+        #expect(commands == [.play, .none, .stop, .none, .play, .stop])
     }
 
     // MARK: - Equatable conformance
 
-    func testEquatable_sameState_areEqual() async {
+    @Test func equatable_sameState_areEqual() {
         let m1 = PlaybackStateMachine()
         let m2 = PlaybackStateMachine()
-        XCTAssertEqual(m1, m2)
+        #expect(m1 == m2)
     }
 
-    func testEquatable_differentState_notEqual() async {
+    @Test func equatable_differentState_notEqual() {
         var m1 = PlaybackStateMachine()
         var m2 = PlaybackStateMachine()
         m1.transition(to: .active)
-        XCTAssertNotEqual(m1, m2)
+        #expect(m1 != m2)
         m2.transition(to: .active)
-        XCTAssertEqual(m1, m2)
+        #expect(m1 == m2)
     }
 }
