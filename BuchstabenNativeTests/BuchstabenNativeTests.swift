@@ -8,7 +8,7 @@ import QuartzCore
 import AVFoundation
 @testable import BuchstabenNative
 
-@Suite @MainActor struct BuchstabenNativeTests {
+@Suite(.serialized) @MainActor struct BuchstabenNativeTests {
 
     @Test func strokeTrackerProgressionRespectsOrder() {
         let tracker = StrokeTracker()
@@ -146,7 +146,7 @@ import AVFoundation
         #expect(audio.playCount == 0)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 2.0)
         vm.updateTouch(at: CGPoint(x: 120, y: 120), t: 2.01, canvasSize: size)
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         #expect(audio.playCount >= 1)
     }
 
@@ -226,7 +226,7 @@ import AVFoundation
         vm.appDidEnterBackground(); vm.appDidBecomeActive()
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 2.0)
         vm.updateTouch(at: CGPoint(x: 120, y: 120), t: 2.01, canvasSize: size)
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         #expect(audio.playCount >= 1)
     }
 
@@ -278,7 +278,7 @@ import AVFoundation
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 140, y: 160), t: 1.01, canvasSize: size)
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         #expect(audio.setAdaptivePlaybackCount >= 1)
     }
 

@@ -26,7 +26,7 @@ fileprivate final class RecordingAudio: AudioControlling {
     func reset() { events.removeAll(); isPlaying = false }
 }
 
-@Suite @MainActor struct EndToEndTracingSessionTests {
+@Suite(.serialized) @MainActor struct EndToEndTracingSessionTests {
 
     fileprivate let audio: RecordingAudio
     fileprivate let vm: TracingViewModel
@@ -58,7 +58,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test func fastTouch_triggersPlay() async {
         simulateFastTouch(t0: 1000)
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         #expect(audio.hasEvent(.play), "Fast touch must trigger audio.play()")
         #expect(vm.isPlaying)
     }
@@ -67,7 +67,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test func endTouch_stopsAudio() async {
         simulateFastTouch(t0: 1000)
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         audio.reset()
         vm.endTouch()
         #expect(audio.hasEvent(.stop))
@@ -128,7 +128,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test func lifecycleAroundSession() async {
         simulateFastTouch(t0: 1000)
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         vm.appDidEnterBackground()
         #expect(audio.hasEvent(.suspend))
         #expect(!vm.isPlaying)

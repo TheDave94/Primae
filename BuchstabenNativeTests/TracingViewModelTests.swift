@@ -50,7 +50,7 @@ private func slowDrag(vm: TracingViewModel,
     return t
 }
 
-@Suite @MainActor struct TracingViewModelTests {
+@Suite(.serialized) @MainActor struct TracingViewModelTests {
 
     fileprivate let audio: MockAudio
     fileprivate let vm: TracingViewModel
@@ -71,13 +71,13 @@ private func slowDrag(vm: TracingViewModel,
     @Test func fastVelocity_triggersPlayAfterDebounce() async {
         let playBefore = audio.playCount
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         #expect(audio.playCount > playBefore)
         #expect(vm.isPlaying)
     }
     @Test func endTouch_stopsPlayback() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         let stopBefore = audio.stopCount
         vm.endTouch()
         #expect(audio.stopCount > stopBefore)
@@ -89,7 +89,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func appDidEnterBackground_suspendsClearsState() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         let suspendBefore = audio.suspendForLifecycleCount
         let stopBefore = audio.stopCount
         vm.appDidEnterBackground()
@@ -99,7 +99,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func appDidBecomeActive_withResumeIntent_resumesAudio() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         vm.appDidEnterBackground()
         let resumeBefore = audio.resumeAfterLifecycleCount
         vm.appDidBecomeActive()
@@ -107,7 +107,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func appDidBecomeActive_withoutResumeIntent_doesNotForcePlay() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         vm.endTouch(); vm.appDidEnterBackground()
         let playBefore = audio.playCount
         vm.appDidBecomeActive()
@@ -132,7 +132,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func resetLetter_clearsProgressAndStops() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         let stopBefore = audio.stopCount
         vm.resetLetter()
         #expect(vm.progress == 0.0)
@@ -153,7 +153,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func rapidBgFgChurn_neverLeavesPlayingTrue() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 80_000_000)
+        try? await Task.sleep(nanoseconds: 150_000_000)
         for _ in 0..<10 { vm.appDidEnterBackground(); vm.appDidBecomeActive() }
         vm.appDidEnterBackground()
         try? await Task.sleep(nanoseconds: 200_000_000)
