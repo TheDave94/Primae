@@ -9,8 +9,11 @@ Every class with @Published properties must be @MainActor.
 Forgetting this causes Swift 6 compile failures.
 
 ### Bare Task { } closures
-Task { } closures are non-isolated by default. Any access to @MainActor state
-requires Task { @MainActor in ... }. Most common compile error in this codebase.
+Task { } closures are non-isolated by default. For @MainActor-isolated classes,
+direct calls are already safe — do NOT wrap them in Task { @MainActor in }.
+Only use Task { @MainActor in } for truly non-isolated contexts (e.g. callbacks
+from background threads). Adding it to already-@MainActor functions causes race
+conditions with debounce logic.
 
 ### showGhost regression
 showGhost must reset to false when currentLetterName changes via nextLetter()/
@@ -41,3 +44,11 @@ The council does not have permission to change CI configuration.
 - CI workflows are infrastructure, not application code
 - Invalid actions syntax (upload-artifact@v3 → v3) breaks all future runs
 - Deprecations are handled by Dependabot PRs, not manual edits
+
+### CRITICAL: load(letter:) must be synchronous
+load(letter:) in TracingViewModel MUST call audio.loadAudioFile and setPlaybackState
+synchronously — NEVER inside a Task { } or Task { @MainActor in } wrapper.
+The function is already @MainActor isolated. Adding a Task wrapper creates a race
+condition where the async Task fires after updateTouch queues a 30ms debounce,
+resetting playback state and causing playCount == 0 in tests.
+Any proposal that wraps calls in load(letter:) inside a Task must be REJECTED.
