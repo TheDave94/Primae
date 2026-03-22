@@ -2,6 +2,7 @@
 //  BuchstabenNativeTests
 
 import Testing
+import Foundation
 @testable import BuchstabenNative
 
 private func makeCoordinator(steps: [OnboardingStep] = OnboardingStep.allCases) -> OnboardingCoordinator {
@@ -26,11 +27,13 @@ private func makeStore() -> JSONOnboardingStore {
     }
     @Test func advance_returnsTrue_whenNotAtEnd() {
         var c = makeCoordinator()
-        #expect(c.advance())
+        let r = c.advance()
+        #expect(r)
     }
     @Test func advance_returnsFalse_atLastStep() {
         var c = makeCoordinator(steps: [.welcome, .complete]); c.advance()
-        #expect(!c.advance())
+        let r = c.advance()
+        #expect(!r)
     }
     @Test func fullAdvance_setsIsComplete() {
         var c = makeCoordinator()
@@ -44,7 +47,8 @@ private func makeStore() -> JSONOnboardingStore {
     }
     @Test func back_returnsFalse_atFirstStep() {
         var c = makeCoordinator()
-        #expect(!c.back())
+        let rb = c.back()
+        #expect(!rb)
     }
     @Test func canGoBack_falseAtStart() { #expect(!makeCoordinator().canGoBack) }
     @Test func canGoBack_trueAfterAdvance() {
