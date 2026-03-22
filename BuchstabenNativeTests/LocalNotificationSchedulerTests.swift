@@ -1,11 +1,9 @@
 //  LocalNotificationSchedulerTests.swift
 //  BuchstabenNativeTests
 
-import XCTest
+import Testing
 import UserNotifications
 @testable import BuchstabenNative
-
-// MARK: - Mock notification center
 
 final class MockNotificationCenter: UserNotificationCenterProtocol {
     var authorizationGranted = true
@@ -13,128 +11,77 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
     private(set) var removedIdentifiers: [String] = []
     private(set) var removeAllCalled = false
 
-    func requestAuthorization(options: UNAuthorizationOptions,
-                               completionHandler: @escaping (Bool, Error?) -> Void) {
+    func requestAuthorization(options: UNAuthorizationOptions, completionHandler: @escaping (Bool, Error?) -> Void) {
         completionHandler(authorizationGranted, nil)
     }
-
     func add(_ request: UNNotificationRequest, withCompletionHandler completionHandler: ((Error?) -> Void)?) {
-        addedRequests.append(request)
-        completionHandler?(nil)
+        addedRequests.append(request); completionHandler?(nil)
     }
-
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {
         removedIdentifiers.append(contentsOf: identifiers)
     }
+    func removeAllPendingNotificationRequests() { removeAllCalled = true }
+    func reset() { addedRequests = []; removedIdentifiers = []; removeAllCalled = false }
+}
 
-    func removeAllPendingNotificationRequests() {
-        removeAllCalled = true
+@Suite @MainActor struct QuietHoursTests {
+    @Test func nonWrapping_inRange() {
+        let qh = QuietHours(startHour: 22, endHour: 8)
+        #expect(qh.isQuiet(hour: 23)); #expect(qh.isQuiet(hour: 0)); #expect(qh.isQuiet(hour: 7))
     }
-
-    func reset() {
-        addedRequests = []
-        removedIdentifiers = []
-        removeAllCalled = false
+    @Test func nonWrapping_outOfRange() {
+        let qh = QuietHours(startHour: 22, endHour: 8)
+        #expect(!qh.isQuiet(hour: 9)); #expect(!qh.isQuiet(hour: 17)); #expect(!qh.isQuiet(hour: 21))
+    }
+    @Test func simpleRange_inRange() {
+        let qh = QuietHours(startHour: 13, endHour: 15)
+        #expect(qh.isQuiet(hour: 13)); #expect(qh.isQuiet(hour: 14))
+    }
+    @Test func simpleRange_outOfRange() {
+        let qh = QuietHours(startHour: 13, endHour: 15)
+        #expect(!qh.isQuiet(hour: 15)); #expect(!qh.isQuiet(hour: 12))
     }
 }
 
-// MARK: - QuietHours tests
-
-@MainActor
-final class QuietHoursTests: XCTestCase {
-
-    func testNonWrapping_inRange() async {
-        let qh = QuietHours(startHour: 22, endHour: 8)
-        XCTAssertTrue(qh.isQuiet(hour: 23))
-        XCTAssertTrue(qh.isQuiet(hour: 0))
-        XCTAssertTrue(qh.isQuiet(hour: 7))
-    }
-
-    func testNonWrapping_outOfRange() async {
-        let qh = QuietHours(startHour: 22, endHour: 8)
-        XCTAssertFalse(qh.isQuiet(hour: 9))
-        XCTAssertFalse(qh.isQuiet(hour: 17))
-        XCTAssertFalse(qh.isQuiet(hour: 21))
-    }
-
-    func testSimpleRange_inRange() async {
-        let qh = QuietHours(startHour: 13, endHour: 15)
-        XCTAssertTrue(qh.isQuiet(hour: 13))
-        XCTAssertTrue(qh.isQuiet(hour: 14))
-    }
-
-    func testSimpleRange_outOfRange() async {
-        let qh = QuietHours(startHour: 13, endHour: 15)
-        XCTAssertFalse(qh.isQuiet(hour: 15))
-        XCTAssertFalse(qh.isQuiet(hour: 12))
-    }
-}
-
-// MARK: - DefaultDailyReminderPolicy tests
-
-final class DefaultDailyReminderPolicyTests: XCTestCase {
-
-    private let quietHours = QuietHours(startHour: 21, endHour: 8)
-
-    private func makePolicy(hour: Int = 17) -> DefaultDailyReminderPolicy {
+@Suite struct DefaultDailyReminderPolicyTests {
+    let quietHours = QuietHours(startHour: 21, endHour: 8)
+    func makePolicy(hour: Int = 17) -> DefaultDailyReminderPolicy {
         DefaultDailyReminderPolicy(defaultHour: hour, defaultMinute: 0, quietHours: quietHours)
     }
 
-    func testOnboardingIncomplete_returnsNil() async {
-        let p = makePolicy()
-        XCTAssertNil(p.content(currentStreak: 0, onboardingComplete: false, calendar: .current))
+    @Test func onboardingIncomplete_returnsNil() {
+        #expect(makePolicy().content(currentStreak: 0, onboardingComplete: false, calendar: .current) == nil)
     }
-
-    func testQuietHour_returnsNil() async {
-        let p = makePolicy(hour: 22) // 22 is quiet
-        XCTAssertNil(p.content(currentStreak: 5, onboardingComplete: true, calendar: .current))
+    @Test func quietHour_returnsNil() {
+        #expect(makePolicy(hour: 22).content(currentStreak: 5, onboardingComplete: true, calendar: .current) == nil)
     }
-
-    func testStreak0_defaultMessage() async {
-        let p = makePolicy()
-        let c = p.content(currentStreak: 0, onboardingComplete: true, calendar: .current)
-        XCTAssertNotNil(c)
-        XCTAssertTrue(c!.body.contains("Time to practice"))
+    @Test func streak0_defaultMessage() {
+        let c = makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)
+        #expect(c != nil); #expect(c!.body.contains("Time to practice"))
     }
-
-    func testStreak1_day2Message() async {
-        let p = makePolicy()
-        let c = p.content(currentStreak: 1, onboardingComplete: true, calendar: .current)
-        XCTAssertTrue(c!.body.contains("day 2"))
+    @Test func streak1_day2Message() {
+        let c = makePolicy().content(currentStreak: 1, onboardingComplete: true, calendar: .current)
+        #expect(c!.body.contains("day 2"))
     }
-
-    func testStreak3_fireEmoji() async {
-        let p = makePolicy()
-        let c = p.content(currentStreak: 3, onboardingComplete: true, calendar: .current)
-        XCTAssertTrue(c!.body.contains("3-day streak"))
+    @Test func streak3_fireEmoji() {
+        let c = makePolicy().content(currentStreak: 3, onboardingComplete: true, calendar: .current)
+        #expect(c!.body.contains("3-day streak"))
     }
-
-    func testStreak7_trophyMessage() async {
-        let p = makePolicy()
-        let c = p.content(currentStreak: 7, onboardingComplete: true, calendar: .current)
-        XCTAssertTrue(c!.body.contains("7-day streak") || c!.body.contains("master"))
+    @Test func streak7_trophyMessage() {
+        let c = makePolicy().content(currentStreak: 7, onboardingComplete: true, calendar: .current)
+        #expect(c!.body.contains("7-day streak") || c!.body.contains("master"))
     }
-
-    func testContent_identifier_isDailyPractice() async {
-        let p = makePolicy()
-        let c = p.content(currentStreak: 0, onboardingComplete: true, calendar: .current)
-        XCTAssertEqual(c?.identifier, "daily_practice_reminder")
+    @Test func content_identifier_isDailyPractice() {
+        #expect(makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)?.identifier == "daily_practice_reminder")
     }
-
-    func testContent_titleIsBuchstabenLernen() async {
-        let p = makePolicy()
-        let c = p.content(currentStreak: 0, onboardingComplete: true, calendar: .current)
-        XCTAssertEqual(c?.title, "Buchstaben Lernen")
+    @Test func content_titleIsBuchstabenLernen() {
+        #expect(makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)?.title == "Buchstaben Lernen")
     }
 }
 
-// MARK: - LocalNotificationScheduler tests
+@Suite @MainActor struct LocalNotificationSchedulerTests {
 
-@MainActor
-final class LocalNotificationSchedulerTests: XCTestCase {
-
-    private func makeScheduler(mock: MockNotificationCenter,
-                                policy: DailyReminderPolicy? = nil) -> LocalNotificationScheduler {
+    func makeScheduler(mock: MockNotificationCenter, policy: DailyReminderPolicy? = nil) -> LocalNotificationScheduler {
         LocalNotificationScheduler(
             center: mock,
             policy: policy ?? DefaultDailyReminderPolicy(defaultHour: 17, defaultMinute: 0,
@@ -143,74 +90,55 @@ final class LocalNotificationSchedulerTests: XCTestCase {
         )
     }
 
-    func testRequestPermission_granted_returnsAuthorized() async {
-        let mock = MockNotificationCenter()
-        mock.authorizationGranted = true
+    @Test func requestPermission_granted_returnsAuthorized() async {
+        let mock = MockNotificationCenter(); mock.authorizationGranted = true
         let scheduler = makeScheduler(mock: mock)
-        let status = await withCheckedContinuation { continuation in
-            scheduler.requestPermission { status in
-                continuation.resume(returning: status)
-            }
+        let status = await withCheckedContinuation { cont in
+            scheduler.requestPermission { cont.resume(returning: $0) }
         }
-        XCTAssertEqual(status, .authorized)
+        #expect(status == .authorized)
     }
-
-    func testRequestPermission_denied_returnsDenied() async {
-        let mock = MockNotificationCenter()
-        mock.authorizationGranted = false
+    @Test func requestPermission_denied_returnsDenied() async {
+        let mock = MockNotificationCenter(); mock.authorizationGranted = false
         let scheduler = makeScheduler(mock: mock)
-        let status = await withCheckedContinuation { continuation in
-            scheduler.requestPermission { status in
-                continuation.resume(returning: status)
-            }
+        let status = await withCheckedContinuation { cont in
+            scheduler.requestPermission { cont.resume(returning: $0) }
         }
-        XCTAssertEqual(status, .denied)
+        #expect(status == .denied)
     }
-
-    func testScheduleDailyReminder_addsRequest() async {
+    @Test func scheduleDailyReminder_addsRequest() {
         let mock = MockNotificationCenter()
-        let scheduler = makeScheduler(mock: mock)
-        scheduler.scheduleDailyReminder(currentStreak: 3, onboardingComplete: true)
-        XCTAssertEqual(mock.addedRequests.count, 1)
-        XCTAssertEqual(mock.addedRequests.first?.identifier, "daily_practice_reminder")
+        makeScheduler(mock: mock).scheduleDailyReminder(currentStreak: 3, onboardingComplete: true)
+        #expect(mock.addedRequests.count == 1)
+        #expect(mock.addedRequests.first?.identifier == "daily_practice_reminder")
     }
-
-    func testScheduleDailyReminder_removesExistingFirst() async {
+    @Test func scheduleDailyReminder_removesExistingFirst() {
         let mock = MockNotificationCenter()
-        let scheduler = makeScheduler(mock: mock)
-        scheduler.scheduleDailyReminder(currentStreak: 0, onboardingComplete: true)
-        XCTAssertTrue(mock.removedIdentifiers.contains("daily_practice_reminder"))
+        makeScheduler(mock: mock).scheduleDailyReminder(currentStreak: 0, onboardingComplete: true)
+        #expect(mock.removedIdentifiers.contains("daily_practice_reminder"))
     }
-
-    func testScheduleDailyReminder_onboardingIncomplete_doesNotAdd() async {
+    @Test func scheduleDailyReminder_onboardingIncomplete_doesNotAdd() {
         let mock = MockNotificationCenter()
-        let scheduler = makeScheduler(mock: mock)
-        scheduler.scheduleDailyReminder(currentStreak: 5, onboardingComplete: false)
-        XCTAssertTrue(mock.addedRequests.isEmpty)
+        makeScheduler(mock: mock).scheduleDailyReminder(currentStreak: 5, onboardingComplete: false)
+        #expect(mock.addedRequests.isEmpty)
     }
-
-    func testCancelAllReminders_callsRemoveAll() async {
+    @Test func cancelAllReminders_callsRemoveAll() {
         let mock = MockNotificationCenter()
-        let scheduler = makeScheduler(mock: mock)
-        scheduler.cancelAllReminders()
-        XCTAssertTrue(mock.removeAllCalled)
+        makeScheduler(mock: mock).cancelAllReminders()
+        #expect(mock.removeAllCalled)
     }
-
-    func testCancelReminder_specificIdentifier() async {
+    @Test func cancelReminder_specificIdentifier() {
         let mock = MockNotificationCenter()
-        let scheduler = makeScheduler(mock: mock)
-        scheduler.cancelReminder(identifier: "some_id")
-        XCTAssertTrue(mock.removedIdentifiers.contains("some_id"))
+        makeScheduler(mock: mock).cancelReminder(identifier: "some_id")
+        #expect(mock.removedIdentifiers.contains("some_id"))
     }
-
-    func testPermissionStatus_updatesAfterRequest() async {
-        let mock = MockNotificationCenter()
-        mock.authorizationGranted = true
+    @Test func permissionStatus_updatesAfterRequest() async {
+        let mock = MockNotificationCenter(); mock.authorizationGranted = true
         let scheduler = makeScheduler(mock: mock)
-        XCTAssertEqual(scheduler.permissionStatus, .notDetermined)
-        await withCheckedContinuation { continuation in
-            scheduler.requestPermission { _ in continuation.resume() }
+        #expect(scheduler.permissionStatus == .notDetermined)
+        await withCheckedContinuation { cont in
+            scheduler.requestPermission { _ in cont.resume() }
         }
-        XCTAssertEqual(scheduler.permissionStatus, .authorized)
+        #expect(scheduler.permissionStatus == .authorized)
     }
 }
