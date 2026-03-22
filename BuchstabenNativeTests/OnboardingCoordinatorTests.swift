@@ -1,203 +1,127 @@
 //  OnboardingCoordinatorTests.swift
 //  BuchstabenNativeTests
 
-import XCTest
+import Testing
 @testable import BuchstabenNative
 
 private func makeCoordinator(steps: [OnboardingStep] = OnboardingStep.allCases) -> OnboardingCoordinator {
     OnboardingCoordinator(steps: steps)
 }
-
 private func makeStore() -> JSONOnboardingStore {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("Onboarding-\(UUID().uuidString).json")
-    return JSONOnboardingStore(fileURL: url)
+    JSONOnboardingStore(fileURL: FileManager.default.temporaryDirectory
+        .appendingPathComponent("Onboarding-\(UUID().uuidString).json"))
 }
 
-// MARK: - Coordinator state machine tests
-
-@MainActor
-final class OnboardingCoordinatorTests: XCTestCase {
-
-    func testInitialStep_isWelcome() async {
-        let c = makeCoordinator()
-        XCTAssertEqual(c.currentStep, .welcome)
+@Suite @MainActor struct OnboardingCoordinatorTests {
+    @Test func initialStep_isWelcome() { #expect(makeCoordinator().currentStep == .welcome) }
+    @Test func initialCompletedSteps_empty() { #expect(makeCoordinator().completedSteps.isEmpty) }
+    @Test func isComplete_falseInitially() { #expect(!makeCoordinator().isComplete) }
+    @Test func advance_movesToNextStep() {
+        var c = makeCoordinator(); c.advance()
+        #expect(c.currentStep == .traceDemo)
     }
-
-    func testInitialCompletedSteps_empty() async {
-        let c = makeCoordinator()
-        XCTAssertTrue(c.completedSteps.isEmpty)
+    @Test func advance_marksCurrentAsCompleted() {
+        var c = makeCoordinator(); c.advance()
+        #expect(c.completedSteps.contains(.welcome))
     }
-
-    func testIsComplete_falseInitially() async {
-        let c = makeCoordinator()
-        XCTAssertFalse(c.isComplete)
-    }
-
-    func testAdvance_movesToNextStep() async {
+    @Test func advance_returnsTrue_whenNotAtEnd() {
         var c = makeCoordinator()
-        c.advance()
-        XCTAssertEqual(c.currentStep, .traceDemo)
+        #expect(c.advance())
     }
-
-    func testAdvance_marksCurrentAsCompleted() async {
-        var c = makeCoordinator()
-        c.advance()
-        XCTAssertTrue(c.completedSteps.contains(.welcome))
+    @Test func advance_returnsFalse_atLastStep() {
+        var c = makeCoordinator(steps: [.welcome, .complete]); c.advance()
+        #expect(!c.advance())
     }
-
-    func testAdvance_returnsTrue_whenNotAtEnd() async {
-        var c = makeCoordinator()
-        XCTAssertTrue(c.advance())
-    }
-
-    func testAdvance_returnsFalse_atLastStep() async {
-        var c = makeCoordinator(steps: [.welcome, .complete])
-        c.advance()
-        XCTAssertFalse(c.advance())
-    }
-
-    func testFullAdvance_setsIsComplete() async {
+    @Test func fullAdvance_setsIsComplete() {
         var c = makeCoordinator()
         while !c.isComplete { c.advance() }
-        XCTAssertTrue(c.isComplete)
-        XCTAssertEqual(c.currentStep, .complete)
+        #expect(c.isComplete)
+        #expect(c.currentStep == .complete)
     }
-
-    func testBack_returnsToPreviousStep() async {
+    @Test func back_returnsToPreviousStep() {
+        var c = makeCoordinator(); c.advance(); c.back()
+        #expect(c.currentStep == .welcome)
+    }
+    @Test func back_returnsFalse_atFirstStep() {
         var c = makeCoordinator()
-        c.advance()
-        c.back()
-        XCTAssertEqual(c.currentStep, .welcome)
+        #expect(!c.back())
     }
-
-    func testBack_returnsFalse_atFirstStep() async {
-        var c = makeCoordinator()
-        XCTAssertFalse(c.back())
+    @Test func canGoBack_falseAtStart() { #expect(!makeCoordinator().canGoBack) }
+    @Test func canGoBack_trueAfterAdvance() {
+        var c = makeCoordinator(); c.advance()
+        #expect(c.canGoBack)
     }
-
-    func testCanGoBack_falseAtStart() async {
-        let c = makeCoordinator()
-        XCTAssertFalse(c.canGoBack)
+    @Test func skip_jumpsToComplete() {
+        var c = makeCoordinator(); c.skip()
+        #expect(c.currentStep == .complete)
+        #expect(c.isComplete)
     }
-
-    func testCanGoBack_trueAfterAdvance() async {
-        var c = makeCoordinator()
-        c.advance()
-        XCTAssertTrue(c.canGoBack)
+    @Test func skip_marksAllNonCompleteStepsAsCompleted() {
+        var c = makeCoordinator(); c.skip()
+        let expected = Set(OnboardingStep.allCases.filter { $0 != .complete })
+        #expect(c.completedSteps == expected)
     }
-
-    func testSkip_jumpsToComplete() async {
-        var c = makeCoordinator()
-        c.skip()
-        XCTAssertEqual(c.currentStep, .complete)
-        XCTAssertTrue(c.isComplete)
+    @Test func resume_jumpsToSpecifiedStep() {
+        var c = makeCoordinator(); c.resume(at: .firstTrace)
+        #expect(c.currentStep == .firstTrace)
     }
-
-    func testSkip_marksAllNonCompleteStepsAsCompleted() async {
-        var c = makeCoordinator()
-        c.skip()
-        let expectedCompleted = Set(OnboardingStep.allCases.filter { $0 != .complete })
-        XCTAssertEqual(c.completedSteps, expectedCompleted)
+    @Test func resume_invalidStep_ignored() {
+        var c = makeCoordinator(steps: [.welcome, .complete]); c.resume(at: .rewardIntro)
+        #expect(c.currentStep == .welcome)
     }
-
-    func testResume_jumpsToSpecifiedStep() async {
-        var c = makeCoordinator()
-        c.resume(at: .firstTrace)
-        XCTAssertEqual(c.currentStep, .firstTrace)
-    }
-
-    func testResume_invalidStep_ignored() async {
-        var c = makeCoordinator(steps: [.welcome, .complete])
-        c.resume(at: .rewardIntro)  // not in custom steps
-        XCTAssertEqual(c.currentStep, .welcome) // unchanged
-    }
-
-    func testProgress_zeroAtStart() async {
-        let c = makeCoordinator()
-        XCTAssertEqual(c.progress, 0.0, accuracy: 1e-9)
-    }
-
-    func testProgress_oneAtComplete() async {
+    @Test func progress_zeroAtStart() { #expect(abs(makeCoordinator().progress) < 1e-9) }
+    @Test func progress_oneAtComplete() {
         var c = makeCoordinator()
         while !c.isComplete { c.advance() }
-        XCTAssertEqual(c.progress, 1.0, accuracy: 1e-9)
+        #expect(abs(c.progress - 1.0) < 1e-9)
     }
-
-    func testProgress_intermediateStep() async {
-        var c = makeCoordinator()
-        c.advance() // step 1 of 5 (index 1/4 = 0.25)
-        XCTAssertEqual(c.progress, 0.25, accuracy: 1e-9)
+    @Test func progress_intermediateStep() {
+        var c = makeCoordinator(); c.advance()
+        #expect(abs(c.progress - 0.25) < 1e-9)
     }
-
-    func testCustomSteps_subset() async {
+    @Test func customSteps_subset() {
         var c = makeCoordinator(steps: [.welcome, .complete])
-        XCTAssertEqual(c.currentStep, .welcome)
-        c.advance()
-        XCTAssertEqual(c.currentStep, .complete)
+        #expect(c.currentStep == .welcome); c.advance()
+        #expect(c.currentStep == .complete)
     }
 }
 
-// MARK: - OnboardingStore tests
-
-final class JSONOnboardingStoreTests: XCTestCase {
-
-    func testInitial_notCompleted() async {
-        let store = makeStore()
-        XCTAssertFalse(store.hasCompletedOnboarding)
+@Suite struct JSONOnboardingStoreTests {
+    @Test func initial_notCompleted() { #expect(!makeStore().hasCompletedOnboarding) }
+    @Test func initial_noSavedStep() { #expect(makeStore().savedStep == nil) }
+    @Test func markComplete_setsFlag() {
+        let s = makeStore(); s.markComplete()
+        #expect(s.hasCompletedOnboarding)
     }
-
-    func testInitial_noSavedStep() async {
-        let store = makeStore()
-        XCTAssertNil(store.savedStep)
+    @Test func markComplete_clearsSavedStep() {
+        let s = makeStore(); s.saveProgress(step: .traceDemo); s.markComplete()
+        #expect(s.savedStep == nil)
     }
-
-    func testMarkComplete_setsFlag() async {
-        let store = makeStore()
-        store.markComplete()
-        XCTAssertTrue(store.hasCompletedOnboarding)
+    @Test func saveProgress_storesSavedStep() {
+        let s = makeStore(); s.saveProgress(step: .firstTrace)
+        #expect(s.savedStep == .firstTrace)
     }
-
-    func testMarkComplete_clearsSavedStep() async {
-        let store = makeStore()
-        store.saveProgress(step: .traceDemo)
-        store.markComplete()
-        XCTAssertNil(store.savedStep)
+    @Test func reset_clearsAll() {
+        let s = makeStore(); s.markComplete(); s.reset()
+        #expect(!s.hasCompletedOnboarding)
+        #expect(s.savedStep == nil)
     }
-
-    func testSaveProgress_storesSavedStep() async {
-        let store = makeStore()
-        store.saveProgress(step: .firstTrace)
-        XCTAssertEqual(store.savedStep, .firstTrace)
-    }
-
-    func testReset_clearsAll() async {
-        let store = makeStore()
-        store.markComplete()
-        store.reset()
-        XCTAssertFalse(store.hasCompletedOnboarding)
-        XCTAssertNil(store.savedStep)
-    }
-
-    func testPersistence_roundtrip() async {
+    @Test func persistence_roundtrip() {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("OnboardingPersist-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-
         JSONOnboardingStore(fileURL: url).saveProgress(step: .rewardIntro)
-        let store2 = JSONOnboardingStore(fileURL: url)
-        XCTAssertEqual(store2.savedStep, .rewardIntro)
-        XCTAssertFalse(store2.hasCompletedOnboarding)
+        let s2 = JSONOnboardingStore(fileURL: url)
+        #expect(s2.savedStep == .rewardIntro)
+        #expect(!s2.hasCompletedOnboarding)
     }
-
-    func testPersistence_completedRoundtrip() async {
+    @Test func persistence_completedRoundtrip() {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("OnboardingComplete-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-
         JSONOnboardingStore(fileURL: url).markComplete()
-        let store2 = JSONOnboardingStore(fileURL: url)
-        XCTAssertTrue(store2.hasCompletedOnboarding)
-        XCTAssertNil(store2.savedStep)
+        let s2 = JSONOnboardingStore(fileURL: url)
+        #expect(s2.hasCompletedOnboarding)
+        #expect(s2.savedStep == nil)
     }
 }
