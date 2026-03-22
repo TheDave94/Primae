@@ -1,7 +1,7 @@
 //  DifficultyAdaptationTests.swift
 //  BuchstabenNativeTests
 
-import XCTest
+import Testing
 import CoreGraphics
 @testable import BuchstabenNative
 
@@ -10,171 +10,117 @@ private func sample(_ accuracy: CGFloat, letter: String = "A") -> AdaptationSamp
 }
 
 private func makePolicy(
-    windowSize: Int = 5,
-    hysteresisCount: Int = 2,
-    promotionThreshold: CGFloat = 0.85,
-    demotionThreshold: CGFloat = 0.55,
+    windowSize: Int = 5, hysteresisCount: Int = 2,
+    promotionThreshold: CGFloat = 0.85, demotionThreshold: CGFloat = 0.55,
     initial: DifficultyTier = .standard
 ) -> MovingAverageAdaptationPolicy {
     MovingAverageAdaptationPolicy(
-        windowSize: windowSize,
-        hysteresisCount: hysteresisCount,
+        windowSize: windowSize, hysteresisCount: hysteresisCount,
         promotionAccuracyThreshold: promotionThreshold,
         demotionAccuracyThreshold: demotionThreshold,
         initialTier: initial
     )
 }
 
-@MainActor
-final class DifficultyTierTests: XCTestCase {
-
-    func testTierOrdering() async {
-        XCTAssertLessThan(DifficultyTier.easy, .standard)
-        XCTAssertLessThan(DifficultyTier.standard, .strict)
-        XCTAssertGreaterThan(DifficultyTier.strict, .easy)
+@Suite @MainActor struct DifficultyTierTests {
+    @Test func tierOrdering() {
+        #expect(DifficultyTier.easy < .standard)
+        #expect(DifficultyTier.standard < .strict)
+        #expect(DifficultyTier.strict > .easy)
     }
-
-    func testRadiusMultiplier_easyLargest() async {
-        XCTAssertGreaterThan(DifficultyTier.easy.radiusMultiplier, DifficultyTier.standard.radiusMultiplier)
-        XCTAssertGreaterThan(DifficultyTier.standard.radiusMultiplier, DifficultyTier.strict.radiusMultiplier)
+    @Test func radiusMultiplier_easyLargest() {
+        #expect(DifficultyTier.easy.radiusMultiplier > DifficultyTier.standard.radiusMultiplier)
+        #expect(DifficultyTier.standard.radiusMultiplier > DifficultyTier.strict.radiusMultiplier)
     }
-
-    func testRadiusMultiplier_standardIsOne() async {
-        XCTAssertEqual(DifficultyTier.standard.radiusMultiplier, 1.0, accuracy: 1e-9)
+    @Test func radiusMultiplier_standardIsOne() {
+        #expect(abs(DifficultyTier.standard.radiusMultiplier - 1.0) < 1e-9)
     }
-
-    func testAllCases_count() async {
-        XCTAssertEqual(DifficultyTier.allCases.count, 3)
+    @Test func allCases_count() {
+        #expect(DifficultyTier.allCases.count == 3)
     }
 }
 
-final class FixedAdaptationPolicyTests: XCTestCase {
-
-    func testFixed_alwaysReturnsSameTier() async {
+@Suite struct FixedAdaptationPolicyTests {
+    @Test func fixed_alwaysReturnsSameTier() {
         var policy = FixedAdaptationPolicy(currentTier: .easy)
-        policy.record(sample(1.0))
-        policy.record(sample(1.0))
-        XCTAssertEqual(policy.currentTier, .easy)
+        policy.record(sample(1.0)); policy.record(sample(1.0))
+        #expect(policy.currentTier == .easy)
     }
-
-    func testFixed_resetNoOp() async {
+    @Test func fixed_resetNoOp() {
         var policy = FixedAdaptationPolicy(currentTier: .strict)
         policy.reset()
-        XCTAssertEqual(policy.currentTier, .strict)
+        #expect(policy.currentTier == .strict)
     }
 }
 
-final class MovingAverageAdaptationPolicyTests: XCTestCase {
-
-    // MARK: Initial state
-
-    func testInitialTier_isStandard() async {
-        let policy = makePolicy()
-        XCTAssertEqual(policy.currentTier, .standard)
+@Suite struct MovingAverageAdaptationPolicyTests {
+    @Test func initialTier_isStandard() {
+        #expect(makePolicy().currentTier == .standard)
     }
-
-    func testInitialWindowAccuracy_isZero() async {
-        let policy = makePolicy()
-        XCTAssertEqual(policy.windowAccuracy, 0, accuracy: 1e-9)
+    @Test func initialWindowAccuracy_isZero() {
+        #expect(abs(makePolicy().windowAccuracy) < 1e-9)
     }
-
-    // MARK: No change before window fills
-
-    func testNoPromotion_beforeWindowFills() async {
+    @Test func noPromotion_beforeWindowFills() {
         var policy = makePolicy(windowSize: 5, hysteresisCount: 2)
-        // Add 4 perfect samples — window not yet full
         for _ in 0..<4 { policy.record(sample(1.0)) }
-        XCTAssertEqual(policy.currentTier, .standard)
+        #expect(policy.currentTier == .standard)
     }
-
-    // MARK: Promotion
-
-    func testPromotion_afterWindowAndHysteresis() async {
+    @Test func promotion_afterWindowAndHysteresis() {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 2, promotionThreshold: 0.85)
-        // Fill window with high accuracy, then 2 more evaluations above threshold
-        for _ in 0..<3 { policy.record(sample(0.9)) }  // window fills, eval 1
-        XCTAssertEqual(policy.currentTier, .standard)  // only 1 consecutive yet
-        policy.record(sample(0.9))  // eval 2 — should promote
-        XCTAssertEqual(policy.currentTier, .strict)
+        for _ in 0..<3 { policy.record(sample(0.9)) }
+        #expect(policy.currentTier == .standard)
+        policy.record(sample(0.9))
+        #expect(policy.currentTier == .strict)
     }
-
-    func testPromotion_capsAtStrict() async {
+    @Test func promotion_capsAtStrict() {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 1, initial: .strict)
         for _ in 0..<10 { policy.record(sample(1.0)) }
-        XCTAssertEqual(policy.currentTier, .strict)
+        #expect(policy.currentTier == .strict)
     }
-
-    // MARK: Demotion
-
-    func testDemotion_afterWindowAndHysteresis() async {
+    @Test func demotion_afterWindowAndHysteresis() {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 2, demotionThreshold: 0.55)
-        for _ in 0..<3 { policy.record(sample(0.4)) }  // eval 1
-        XCTAssertEqual(policy.currentTier, .standard)
-        policy.record(sample(0.4))  // eval 2 — demote
-        XCTAssertEqual(policy.currentTier, .easy)
+        for _ in 0..<3 { policy.record(sample(0.4)) }
+        #expect(policy.currentTier == .standard)
+        policy.record(sample(0.4))
+        #expect(policy.currentTier == .easy)
     }
-
-    func testDemotion_floorAtEasy() async {
+    @Test func demotion_floorAtEasy() {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 1, initial: .easy)
         for _ in 0..<10 { policy.record(sample(0.1)) }
-        XCTAssertEqual(policy.currentTier, .easy)
+        #expect(policy.currentTier == .easy)
     }
-
-    // MARK: Hysteresis prevents rapid flipping
-
-    func testHysteresis_doesNotFlipOnSingleAboveThreshold() async {
+    @Test func hysteresis_doesNotFlipOnSingleAboveThreshold() {
         var policy = makePolicy(windowSize: 5, hysteresisCount: 3, promotionThreshold: 0.85)
-        // Fill window
-        for _ in 0..<5 { policy.record(sample(0.9)) }  // 1 consecutive
-        XCTAssertEqual(policy.currentTier, .standard)   // needs 3 consecutive
-        policy.record(sample(0.4))  // reset consecutive count
-        for _ in 0..<5 { policy.record(sample(0.9)) }  // back to 1
-        XCTAssertEqual(policy.currentTier, .standard)
+        for _ in 0..<5 { policy.record(sample(0.9)) }
+        #expect(policy.currentTier == .standard)
+        policy.record(sample(0.4))
+        for _ in 0..<5 { policy.record(sample(0.9)) }
+        #expect(policy.currentTier == .standard)
     }
-
-    // MARK: Window size — only last N samples counted
-
-    func testWindowAccuracy_onlyLastNSamples() async {
+    @Test func windowAccuracy_onlyLastNSamples() {
         var policy = makePolicy(windowSize: 3)
-        policy.record(sample(0.0))
-        policy.record(sample(0.0))
-        policy.record(sample(1.0))
-        policy.record(sample(1.0))
-        policy.record(sample(1.0))
-        // Window of last 3 = all 1.0 → accuracy = 1.0
-        XCTAssertEqual(policy.windowAccuracy, 1.0, accuracy: 1e-6)
+        policy.record(sample(0.0)); policy.record(sample(0.0))
+        policy.record(sample(1.0)); policy.record(sample(1.0)); policy.record(sample(1.0))
+        #expect(abs(policy.windowAccuracy - 1.0) < 1e-6)
     }
-
-    // MARK: Reset
-
-    func testReset_clearsSamplesAndTier() async {
+    @Test func reset_clearsSamplesAndTier() {
         var policy = makePolicy(windowSize: 3, hysteresisCount: 1)
         for _ in 0..<5 { policy.record(sample(1.0)) }
-        XCTAssertEqual(policy.currentTier, .strict)
+        #expect(policy.currentTier == .strict)
         policy.reset()
-        XCTAssertEqual(policy.currentTier, .standard)
-        XCTAssertTrue(policy.samples.isEmpty)
-        XCTAssertEqual(policy.windowAccuracy, 0, accuracy: 1e-9)
+        #expect(policy.currentTier == .standard)
+        #expect(policy.samples.isEmpty)
+        #expect(abs(policy.windowAccuracy) < 1e-9)
     }
-
-    // MARK: Sparse history (fewer than window)
-
-    func testSparseHistory_noEvaluation() async {
+    @Test func sparseHistory_noEvaluation() {
         var policy = makePolicy(windowSize: 10, hysteresisCount: 2)
-        policy.record(sample(1.0))
-        policy.record(sample(1.0))
-        XCTAssertEqual(policy.currentTier, .standard, "No evaluation until window fills")
+        policy.record(sample(1.0)); policy.record(sample(1.0))
+        #expect(policy.currentTier == .standard)
     }
-
-    // MARK: Mixed accuracy in window
-
-    func testMixedAccuracy_staysInMidZone() async {
+    @Test func mixedAccuracy_staysInMidZone() {
         var policy = makePolicy(windowSize: 4, hysteresisCount: 2,
                                 promotionThreshold: 0.85, demotionThreshold: 0.55)
-        // Average ~0.7 — in the middle band, no change
-        for _ in 0..<6 {
-            policy.record(sample(0.7))
-        }
-        XCTAssertEqual(policy.currentTier, .standard)
+        for _ in 0..<6 { policy.record(sample(0.7)) }
+        #expect(policy.currentTier == .standard)
     }
 }
