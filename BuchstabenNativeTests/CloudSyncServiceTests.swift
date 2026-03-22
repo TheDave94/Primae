@@ -1,10 +1,8 @@
 //  CloudSyncServiceTests.swift
 //  BuchstabenNativeTests
 
-import XCTest
+import Testing
 @testable import BuchstabenNative
-
-// MARK: - Helpers
 
 private enum TestError: Error, LocalizedError {
     case forced
@@ -12,198 +10,147 @@ private enum TestError: Error, LocalizedError {
 }
 
 private func makeProgressStore() -> JSONProgressStore {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("SyncProgress-\(UUID().uuidString).json")
-    return JSONProgressStore(fileURL: url)
+    JSONProgressStore(fileURL: FileManager.default.temporaryDirectory
+        .appendingPathComponent("SyncProgress-\(UUID().uuidString).json"))
 }
 
 private func makeStreakStore() -> JSONStreakStore {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("SyncStreak-\(UUID().uuidString).json")
-    return JSONStreakStore(fileURL: url, calendar: {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(identifier: "UTC")!
-        return c
-    }())
+    var c = Calendar(identifier: .gregorian); c.timeZone = TimeZone(identifier: "UTC")!
+    return JSONStreakStore(fileURL: FileManager.default.temporaryDirectory
+        .appendingPathComponent("SyncStreak-\(UUID().uuidString).json"), calendar: c)
 }
 
-// MARK: - SyncState equality
-
-@MainActor
-final class SyncStateTests: XCTestCase {
-    func testIdle_equalToIdle() async {
-        XCTAssertEqual(SyncState.idle, .idle)
-    }
-    func testSyncing_equalToSyncing() async {
-        XCTAssertEqual(SyncState.syncing, .syncing)
-    }
-    func testError_equalWithSameMessage() async {
-        XCTAssertEqual(SyncState.error("oops"), .error("oops"))
-    }
-    func testError_notEqualWithDifferentMessage() async {
-        XCTAssertNotEqual(SyncState.error("a"), .error("b"))
-    }
-    func testIdle_notEqualToSyncing() async {
-        XCTAssertNotEqual(SyncState.idle, .syncing)
-    }
+@Suite @MainActor struct SyncStateTests {
+    @Test func idle_equalToIdle() { #expect(SyncState.idle == .idle) }
+    @Test func syncing_equalToSyncing() { #expect(SyncState.syncing == .syncing) }
+    @Test func error_equalWithSameMessage() { #expect(SyncState.error("oops") == .error("oops")) }
+    @Test func error_notEqualWithDifferentMessage() { #expect(SyncState.error("a") != .error("b")) }
+    @Test func idle_notEqualToSyncing() { #expect(SyncState.idle != .syncing) }
 }
 
-// MARK: - NullSyncService tests
-
-@MainActor
-final class NullSyncServiceTests: XCTestCase {
-
-    func testInitialState_idle() async {
-        let svc = NullSyncService()
-        XCTAssertEqual(svc.syncState, .idle)
+@Suite @MainActor struct NullSyncServiceTests {
+    @Test func initialState_idle() {
+        #expect(NullSyncService().syncState == .idle)
     }
-
-    func testPush_recordsPayload() async {
+    @Test func push_recordsPayload() async {
         let svc = NullSyncService()
-        let exp = expectation(description: "push")
-        svc.push(recordType: .progress, payload: ["key": "val"]) { _ in exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1)
-        XCTAssertEqual(svc.pushedRecords.count, 1)
-        XCTAssertEqual(svc.pushedRecords.first?.0, .progress)
-    }
-
-    func testPush_storesForFetch() async {
-        let svc = NullSyncService()
-        let exp1 = expectation(description: "push")
-        let exp2 = expectation(description: "fetch")
-        svc.push(recordType: .streak, payload: ["streak": 7]) { _ in exp1.fulfill() }
-        await fulfillment(of: [exp1], timeout: 1)
-        svc.fetch(recordType: .streak) { result in
-            if case .success(let d) = result {
-                XCTAssertEqual(d["streak"] as? Int, 7)
-            } else { XCTFail("Expected success") }
-            exp2.fulfill()
+        await withCheckedContinuation { cont in
+            svc.push(recordType: .progress, payload: ["key": "val"]) { _ in cont.resume() }
         }
-        await fulfillment(of: [exp2], timeout: 1)
+        #expect(svc.pushedRecords.count == 1)
+        #expect(svc.pushedRecords.first?.0 == .progress)
     }
-
-    func testPush_successResult() async {
+    @Test func push_storesForFetch() async {
         let svc = NullSyncService()
-        let exp = expectation(description: "push")
-        svc.push(recordType: .progress, payload: [:]) { result in
-            if case .failure = result { XCTFail("Expected success") }
-            exp.fulfill()
+        await withCheckedContinuation { cont in
+            svc.push(recordType: .streak, payload: ["streak": 7]) { _ in cont.resume() }
         }
-        await fulfillment(of: [exp], timeout: 1)
+        let val: Int? = await withCheckedContinuation { cont in
+            svc.fetch(recordType: .streak) { result in
+                if case .success(let d) = result { cont.resume(returning: d["streak"] as? Int) }
+                else { cont.resume(returning: nil) }
+            }
+        }
+        #expect(val == 7)
     }
-
-    func testFetch_emptyWhenNotSeeded() async {
+    @Test func push_successResult() async {
         let svc = NullSyncService()
-        let exp = expectation(description: "fetch")
-        svc.fetch(recordType: .progress) { result in
-            if case .success(let d) = result { XCTAssertTrue(d.isEmpty) }
-            else { XCTFail() }
-            exp.fulfill()
+        let ok: Bool = await withCheckedContinuation { cont in
+            svc.push(recordType: .progress, payload: [:]) { result in
+                if case .failure = result { cont.resume(returning: false) }
+                else { cont.resume(returning: true) }
+            }
         }
-        await fulfillment(of: [exp], timeout: 1)
+        #expect(ok)
     }
-
-    func testSeedRecord_returnedByFetch() async {
+    @Test func fetch_emptyWhenNotSeeded() async {
+        let svc = NullSyncService()
+        let empty: Bool = await withCheckedContinuation { cont in
+            svc.fetch(recordType: .progress) { result in
+                if case .success(let d) = result { cont.resume(returning: d.isEmpty) }
+                else { cont.resume(returning: false) }
+            }
+        }
+        #expect(empty)
+    }
+    @Test func seedRecord_returnedByFetch() async {
         let svc = NullSyncService()
         svc.seedRecord(type: .progress, payload: ["total": 42])
-        let exp = expectation(description: "fetch")
-        svc.fetch(recordType: .progress) { result in
-            if case .success(let d) = result { XCTAssertEqual(d["total"] as? Int, 42) }
-            else { XCTFail() }
-            exp.fulfill()
+        let val: Int? = await withCheckedContinuation { cont in
+            svc.fetch(recordType: .progress) { result in
+                if case .success(let d) = result { cont.resume(returning: d["total"] as? Int) }
+                else { cont.resume(returning: nil) }
+            }
         }
-        await fulfillment(of: [exp], timeout: 1)
+        #expect(val == 42)
     }
-
-    func testSimulateError_pushFails() async {
-        let svc = NullSyncService()
-        svc.simulateError = TestError.forced
-        let exp = expectation(description: "push")
-        svc.push(recordType: .progress, payload: [:]) { result in
-            if case .success = result { XCTFail("Expected failure") }
-            exp.fulfill()
+    @Test func simulateError_pushFails() async {
+        let svc = NullSyncService(); svc.simulateError = TestError.forced
+        let failed: Bool = await withCheckedContinuation { cont in
+            svc.push(recordType: .progress, payload: [:]) { result in
+                if case .failure = result { cont.resume(returning: true) }
+                else { cont.resume(returning: false) }
+            }
         }
-        await fulfillment(of: [exp], timeout: 1)
-        XCTAssertEqual(svc.syncState, .error("Forced test error"))
+        #expect(failed)
+        #expect(svc.syncState == .error("Forced test error"))
     }
-
-    func testSimulateError_fetchFails() async {
-        let svc = NullSyncService()
-        svc.simulateError = TestError.forced
-        let exp = expectation(description: "fetch")
-        svc.fetch(recordType: .streak) { result in
-            if case .success = result { XCTFail("Expected failure") }
-            exp.fulfill()
+    @Test func simulateError_fetchFails() async {
+        let svc = NullSyncService(); svc.simulateError = TestError.forced
+        let failed: Bool = await withCheckedContinuation { cont in
+            svc.fetch(recordType: .streak) { result in
+                if case .failure = result { cont.resume(returning: true) }
+                else { cont.resume(returning: false) }
+            }
         }
-        await fulfillment(of: [exp], timeout: 1)
+        #expect(failed)
     }
-
-    func testReset_clearsAll() async {
+    @Test func reset_clearsAll() {
         let svc = NullSyncService()
         svc.push(recordType: .progress, payload: ["x": 1]) { _ in }
         svc.simulateError = TestError.forced
         svc.reset()
-        XCTAssertEqual(svc.syncState, .idle)
-        XCTAssertTrue(svc.pushedRecords.isEmpty)
-        XCTAssertNil(svc.simulateError)
+        #expect(svc.syncState == .idle)
+        #expect(svc.pushedRecords.isEmpty)
+        #expect(svc.simulateError == nil)
     }
 }
 
-// MARK: - SyncCoordinator tests
-
-@MainActor
-final class SyncCoordinatorTests: XCTestCase {
-
-    func testPushAll_pushesBothRecordTypes() async {
+@Suite @MainActor struct SyncCoordinatorTests {
+    @Test func pushAll_pushesBothRecordTypes() async {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        let exp = expectation(description: "pushAll")
-        coord.pushAll { _ in exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1)
+        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
         let types = svc.pushedRecords.map(\.0)
-        XCTAssertTrue(types.contains(.progress))
-        XCTAssertTrue(types.contains(.streak))
+        #expect(types.contains(.progress))
+        #expect(types.contains(.streak))
     }
-
-    func testPushAll_setsLastSyncDate() async {
+    @Test func pushAll_setsLastSyncDate() async {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        XCTAssertNil(coord.lastSyncDate)
-        let exp = expectation(description: "pushAll")
-        coord.pushAll { _ in exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1)
-        XCTAssertNotNil(coord.lastSyncDate)
+        #expect(coord.lastSyncDate == nil)
+        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        #expect(coord.lastSyncDate != nil)
     }
-
-    func testPushAll_onError_doesNotSetLastSyncDate() async {
-        let svc = NullSyncService()
-        svc.simulateError = TestError.forced
+    @Test func pushAll_onError_doesNotSetLastSyncDate() async {
+        let svc = NullSyncService(); svc.simulateError = TestError.forced
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        let exp = expectation(description: "pushAll")
-        coord.pushAll { _ in exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1)
-        XCTAssertNil(coord.lastSyncDate)
+        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        #expect(coord.lastSyncDate == nil)
     }
-
-    func testPushAll_progressPayload_containsTimestamp() async {
+    @Test func pushAll_progressPayload_containsTimestamp() async {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        let exp = expectation(description: "pushAll")
-        coord.pushAll { _ in exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1)
-        let progressRecord = svc.pushedRecords.first(where: { $0.0 == .progress })?.1
-        XCTAssertNotNil(progressRecord?["timestamp"] as? String)
+        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        let record = svc.pushedRecords.first(where: { $0.0 == .progress })?.1
+        #expect(record?["timestamp"] as? String != nil)
     }
-
-    func testPushAll_streakPayload_containsStreakFields() async {
+    @Test func pushAll_streakPayload_containsStreakFields() async {
         let svc = NullSyncService()
-        let streakStore = makeStreakStore()
-        let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: streakStore)
-        let exp = expectation(description: "pushAll")
-        coord.pushAll { _ in exp.fulfill() }
-        await fulfillment(of: [exp], timeout: 1)
-        let streakRecord = svc.pushedRecords.first(where: { $0.0 == .streak })?.1
-        XCTAssertNotNil(streakRecord?["currentStreak"])
-        XCTAssertNotNil(streakRecord?["totalCompletions"])
+        let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
+        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        let record = svc.pushedRecords.first(where: { $0.0 == .streak })?.1
+        #expect(record?["currentStreak"] != nil)
+        #expect(record?["totalCompletions"] != nil)
     }
 }

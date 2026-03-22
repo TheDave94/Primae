@@ -1,11 +1,9 @@
 //  LetterAnimationGuideTests.swift
 //  BuchstabenNativeTests
 
-import XCTest
+import Testing
 import CoreGraphics
 @testable import BuchstabenNative
-
-// MARK: - Helpers
 
 private func makeSteps(count: Int, duration: TimeInterval = 0.3) -> [AnimationStep] {
     (0..<count).map {
@@ -14,187 +12,96 @@ private func makeSteps(count: Int, duration: TimeInterval = 0.3) -> [AnimationSt
                       segmentDuration: duration)
     }
 }
-
 private func makeGuide(stepCount: Int = 4, duration: TimeInterval = 0.3) -> LetterAnimationGuide {
     LetterAnimationGuide(steps: makeSteps(count: stepCount, duration: duration))
 }
 
-// MARK: - AnimationSpeed tests
-
-@MainActor
-final class AnimationSpeedTests: XCTestCase {
-
-    func testNormalMultiplier_isOne() async {
-        XCTAssertEqual(AnimationSpeed.normal.multiplier, 1.0, accuracy: 1e-9)
-    }
-
-    func testSlowMultiplier_lessThanOne() async {
-        XCTAssertLessThan(AnimationSpeed.slow.multiplier, 1.0)
-    }
-
-    func testFastMultiplier_greaterThanOne() async {
-        XCTAssertGreaterThan(AnimationSpeed.fast.multiplier, 1.0)
-    }
-
-    func testAllCases_count() async {
-        XCTAssertEqual(AnimationSpeed.allCases.count, 3)
-    }
+@Suite @MainActor struct AnimationSpeedTests {
+    @Test func normalMultiplier_isOne() { #expect(abs(AnimationSpeed.normal.multiplier - 1.0) < 1e-9) }
+    @Test func slowMultiplier_lessThanOne() { #expect(AnimationSpeed.slow.multiplier < 1.0) }
+    @Test func fastMultiplier_greaterThanOne() { #expect(AnimationSpeed.fast.multiplier > 1.0) }
+    @Test func allCases_count() { #expect(AnimationSpeed.allCases.count == 3) }
 }
 
-// MARK: - LetterAnimationGuide state tests
-
-final class LetterAnimationGuideTests: XCTestCase {
-
-    func testInitialState_idle() async {
-        let guide = makeGuide()
-        XCTAssertEqual(guide.playbackState, .idle)
+@Suite struct LetterAnimationGuideTests {
+    @Test func initialState_idle() { #expect(makeGuide().playbackState == .idle) }
+    @Test func initialStepIndex_zero() { #expect(makeGuide().currentStepIndex == 0) }
+    @Test func start_setsPlaying() {
+        var g = makeGuide(); g.start()
+        #expect(g.playbackState == .playing(stepIndex: 0))
     }
-
-    func testInitialStepIndex_zero() async {
-        let guide = makeGuide()
-        XCTAssertEqual(guide.currentStepIndex, 0)
+    @Test func pause_whilePlaying_setsPaused() {
+        var g = makeGuide(); g.start(); g.pause()
+        #expect(g.playbackState == .paused(stepIndex: 0))
     }
-
-    func testStart_setsPlaying() async {
-        var guide = makeGuide()
-        guide.start()
-        XCTAssertEqual(guide.playbackState, .playing(stepIndex: 0))
+    @Test func pause_whenIdle_noChange() {
+        var g = makeGuide(); g.pause()
+        #expect(g.playbackState == .idle)
     }
-
-    func testPause_whilePlaying_setsPaused() async {
-        var guide = makeGuide()
-        guide.start()
-        guide.pause()
-        XCTAssertEqual(guide.playbackState, .paused(stepIndex: 0))
+    @Test func resume_whilePaused_setsPlaying() {
+        var g = makeGuide(); g.start(); g.pause(); g.resume()
+        #expect(g.playbackState == .playing(stepIndex: 0))
     }
-
-    func testPause_whenIdle_noChange() async {
-        var guide = makeGuide()
-        guide.pause()
-        XCTAssertEqual(guide.playbackState, .idle)
+    @Test func skip_setsSkipped() {
+        var g = makeGuide(); g.start(); g.skip()
+        #expect(g.playbackState == .skipped)
     }
-
-    func testResume_whilePaused_setsPlaying() async {
-        var guide = makeGuide()
-        guide.start()
-        guide.pause()
-        guide.resume()
-        XCTAssertEqual(guide.playbackState, .playing(stepIndex: 0))
+    @Test func advanceStep_incrementsIndex() {
+        var g = makeGuide(stepCount: 4); g.start(); g.advanceStep()
+        #expect(g.currentStepIndex == 1)
     }
-
-    func testSkip_setsSkipped() async {
-        var guide = makeGuide()
-        guide.start()
-        guide.skip()
-        XCTAssertEqual(guide.playbackState, .skipped)
+    @Test func advanceStep_updatesPlayingIndex() {
+        var g = makeGuide(stepCount: 4); g.start(); g.advanceStep()
+        #expect(g.playbackState == .playing(stepIndex: 1))
     }
-
-    func testAdvanceStep_incrementsIndex() async {
-        var guide = makeGuide(stepCount: 4)
-        guide.start()
-        guide.advanceStep()
-        XCTAssertEqual(guide.currentStepIndex, 1)
+    @Test func advanceStep_atLastStep_setsComplete() {
+        var g = makeGuide(stepCount: 2); g.start(); g.advanceStep()
+        let result = g.advanceStep()
+        #expect(!result)
+        #expect(g.playbackState == .complete)
     }
-
-    func testAdvanceStep_updatesPlayingIndex() async {
-        var guide = makeGuide(stepCount: 4)
-        guide.start()
-        guide.advanceStep()
-        XCTAssertEqual(guide.playbackState, .playing(stepIndex: 1))
+    @Test func advanceStep_returnsTrueWhenNotAtEnd() {
+        var g = makeGuide(stepCount: 4); g.start()
+        #expect(g.advanceStep())
     }
-
-    func testAdvanceStep_atLastStep_setsComplete() async {
-        var guide = makeGuide(stepCount: 2)
-        guide.start()
-        guide.advanceStep() // move to index 1
-        let result = guide.advanceStep() // at last step
-        XCTAssertFalse(result)
-        XCTAssertEqual(guide.playbackState, .complete)
+    @Test func hasNextStep_trueWhenNotAtLast() { #expect(makeGuide(stepCount: 4).hasNextStep) }
+    @Test func hasNextStep_falseAtLastStep() {
+        var g = makeGuide(stepCount: 1); g.start()
+        #expect(!g.hasNextStep)
     }
-
-    func testAdvanceStep_returnsTrueWhenNotAtEnd() async {
-        var guide = makeGuide(stepCount: 4)
-        guide.start()
-        XCTAssertTrue(guide.advanceStep())
+    @Test func hasPreviousStep_falseAtFirst() { #expect(!makeGuide().hasPreviousStep) }
+    @Test func hasPreviousStep_trueAfterAdvance() {
+        var g = makeGuide(stepCount: 4); g.start(); g.advanceStep()
+        #expect(g.hasPreviousStep)
     }
-
-    func testHasNextStep_trueWhenNotAtLast() async {
-        let guide = makeGuide(stepCount: 4)
-        XCTAssertTrue(guide.hasNextStep)
+    @Test func currentStep_returnsFirstStep() { #expect(makeGuide().currentStep?.checkpointIndex == 0) }
+    @Test func progress_zeroAtStart() { #expect(abs(makeGuide(stepCount: 4).progress) < 1e-9) }
+    @Test func progress_afterAdvance() {
+        var g = makeGuide(stepCount: 4); g.start(); g.advanceStep()
+        #expect(abs(g.progress - 0.25) < 1e-9)
     }
-
-    func testHasNextStep_falseAtLastStep() async {
-        var guide = makeGuide(stepCount: 1)
-        guide.start()
-        XCTAssertFalse(guide.hasNextStep)
+    @Test func setSpeed_changesDuration() {
+        var g = makeGuide(stepCount: 4, duration: 0.3)
+        let normal = g.totalDuration; g.setSpeed(.fast)
+        #expect(g.totalDuration < normal)
     }
-
-    func testHasPreviousStep_falseAtFirst() async {
-        let guide = makeGuide()
-        XCTAssertFalse(guide.hasPreviousStep)
+    @Test func totalDuration_atNormalSpeed() {
+        #expect(abs(makeGuide(stepCount: 4, duration: 0.3).totalDuration - 1.2) < 1e-9)
     }
-
-    func testHasPreviousStep_trueAfterAdvance() async {
-        var guide = makeGuide(stepCount: 4)
-        guide.start()
-        guide.advanceStep()
-        XCTAssertTrue(guide.hasPreviousStep)
+    @Test func totalDuration_atHalfSpeed() {
+        var g = makeGuide(stepCount: 4, duration: 0.3); g.setSpeed(.slow)
+        #expect(abs(g.totalDuration - (0.3 / 0.4 * 4)) < 1e-6)
     }
-
-    func testCurrentStep_returnsFirstStep() async {
-        let guide = makeGuide()
-        XCTAssertEqual(guide.currentStep?.checkpointIndex, 0)
+    @Test func reset_restoresInitialState() {
+        var g = makeGuide(stepCount: 4); g.start(); g.advanceStep(); g.setSpeed(.fast); g.reset()
+        #expect(g.playbackState == .idle)
+        #expect(g.currentStepIndex == 0)
+        #expect(g.speed == .normal)
     }
-
-    func testProgress_zeroAtStart() async {
-        let guide = makeGuide(stepCount: 4)
-        XCTAssertEqual(guide.progress, 0.0, accuracy: 1e-9)
+    @Test func emptySteps_totalDurationZero() {
+        #expect(abs(LetterAnimationGuide(steps: []).totalDuration) < 1e-9)
     }
-
-    func testProgress_afterAdvance() async {
-        var guide = makeGuide(stepCount: 4)
-        guide.start()
-        guide.advanceStep()
-        XCTAssertEqual(guide.progress, 0.25, accuracy: 1e-9)
-    }
-
-    func testSetSpeed_changesDuration() async {
-        var guide = makeGuide(stepCount: 4, duration: 0.3)
-        let normalDuration = guide.totalDuration
-        guide.setSpeed(.fast)
-        XCTAssertLessThan(guide.totalDuration, normalDuration)
-    }
-
-    func testTotalDuration_atNormalSpeed() async {
-        let guide = makeGuide(stepCount: 4, duration: 0.3)
-        XCTAssertEqual(guide.totalDuration, 1.2, accuracy: 1e-9)
-    }
-
-    func testTotalDuration_atHalfSpeed() async {
-        var guide = makeGuide(stepCount: 4, duration: 0.3)
-        guide.setSpeed(.slow)
-        // 0.3 / 0.4 * 4 = 3.0
-        XCTAssertEqual(guide.totalDuration, 0.3 / 0.4 * 4, accuracy: 1e-6)
-    }
-
-    func testReset_restoresInitialState() async {
-        var guide = makeGuide(stepCount: 4)
-        guide.start()
-        guide.advanceStep()
-        guide.setSpeed(.fast)
-        guide.reset()
-        XCTAssertEqual(guide.playbackState, .idle)
-        XCTAssertEqual(guide.currentStepIndex, 0)
-        XCTAssertEqual(guide.speed, .normal)
-    }
-
-    func testEmptySteps_totalDurationZero() async {
-        let guide = LetterAnimationGuide(steps: [])
-        XCTAssertEqual(guide.totalDuration, 0, accuracy: 1e-9)
-    }
-
-    func testEmptySteps_progressZero() async {
-        let guide = LetterAnimationGuide(steps: [])
-        XCTAssertEqual(guide.progress, 0, accuracy: 1e-9)
+    @Test func emptySteps_progressZero() {
+        #expect(abs(LetterAnimationGuide(steps: []).progress) < 1e-9)
     }
 }
