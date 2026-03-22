@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import OSLog
 import Foundation
 
 @MainActor
