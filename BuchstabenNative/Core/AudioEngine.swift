@@ -1,5 +1,4 @@
 @preconcurrency import AVFoundation
-import OSLog
 import Foundation
 
 @MainActor
@@ -38,7 +37,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
-            Logger(subsystem: "BuchstabenNative", category: "AudioEngine").error("AudioEngine: AVAudioSession setup error: \(error)")
+            print("AudioEngine: AVAudioSession setup error: \(error)")
         }
         engine.attach(player)
         engine.attach(timePitch)
@@ -56,7 +55,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
         guard let url = resourceURL(for: fileName) else {
-            Logger.shared.error("Missing audio file: \(fileName) [stack: \(Thread.callStackSymbols.prefix(4))]")
+            print("Missing audio file: \(fileName) [stack: \(Thread.callStackSymbols.prefix(4))]")
             return
         }
 
@@ -68,7 +67,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
                 attemptResumePlayback()
             }
         } catch {
-            Logger.shared.error("Audio load error: \(error)")
+            print("Audio load error: \(error)")
         }
     }
 
@@ -171,7 +170,7 @@ private extension AudioEngine {
         do {
             try engine.start()
         } catch {
-            Logger.shared.error("AudioEngine start error: \(error)")
+            print("AudioEngine start error: \(error)")
         }
     }
 
