@@ -1,3 +1,4 @@
+// NOTE: Intentionally uses XCTest — requires real hardware (XCTSkip in setUp), uses expectation/wait. Do not migrate to Swift Testing.
 // AudioEngineTests.swift
 // BuchstabenNativeTests
 //
