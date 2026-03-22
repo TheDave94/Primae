@@ -52,3 +52,8 @@ The function is already @MainActor isolated. Adding a Task wrapper creates a rac
 condition where the async Task fires after updateTouch queues a 30ms debounce,
 resetting playback state and causing playCount == 0 in tests.
 Any proposal that wraps calls in load(letter:) inside a Task must be REJECTED.
+
+### OSLog-Logger-has-no-shared
+Logger from OSLog does NOT have a `.shared` singleton. Never use `Logger.shared`.
+Always instantiate with `Logger(subsystem: "BuchstabenNative", category: "...")` or
+keep `print()` for debug output. Any proposal using `Logger.shared` must be REJECTED.
