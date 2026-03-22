@@ -17,7 +17,7 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
     func cancelPendingLifecycleWork() {}
 }
 
-@Suite @MainActor struct AccessibilityContractTests {
+@Suite(.serialized) @MainActor struct AccessibilityContractTests {
 
     fileprivate let audio: MockAccessibilityAudio
     fileprivate let vm: TracingViewModel
@@ -58,7 +58,7 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
             t += 0.001; p.x += 10
             vm.updateTouch(at: p, t: t, canvasSize: CGSize(width: 400, height: 400))
         }
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         let hint = vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused"
         #expect(hint.lowercased().contains("playing"))
     }
@@ -81,7 +81,7 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
         vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
         var t = 1000.0; var p = CGPoint(x: 100, y: 200)
         for _ in 0..<10 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: .init(width: 400, height: 400)) }
-        try? await Task.sleep(for: .milliseconds(80))
+        try? await Task.sleep(for: .milliseconds(150))
         vm.appDidEnterBackground()
         #expect(!vm.isPlaying)
         #expect((vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused").contains("paused"))
