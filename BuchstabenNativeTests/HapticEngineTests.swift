@@ -3,6 +3,7 @@
 
 import Testing
 import CoreGraphics
+import QuartzCore
 @testable import BuchstabenNative
 
 // MARK: - NullHapticEngine tests
