@@ -1,68 +1,65 @@
 //  HapticEngineTests.swift
 //  BuchstabenNativeTests
-//
-//  Tests for HapticEngineProviding protocol + NullHapticEngine,
-//  and haptic event integration with TracingViewModel.
 
-import XCTest
+import Testing
 import CoreGraphics
 @testable import BuchstabenNative
 
 // MARK: - NullHapticEngine tests
 
-@MainActor
-final class NullHapticEngineTests: XCTestCase {
+@Suite @MainActor struct NullHapticEngineTests {
 
-    func testPrepare_incrementsCallCount() async {
+    @Test func prepare_incrementsCallCount() {
         let engine = NullHapticEngine()
-        XCTAssertEqual(engine.prepareCallCount, 0)
+        #expect(engine.prepareCallCount == 0)
         engine.prepare()
-        XCTAssertEqual(engine.prepareCallCount, 1)
+        #expect(engine.prepareCallCount == 1)
         engine.prepare()
-        XCTAssertEqual(engine.prepareCallCount, 2)
+        #expect(engine.prepareCallCount == 2)
     }
 
-    func testFire_recordsEvent() async {
+    @Test func fire_recordsEvent() {
         let engine = NullHapticEngine()
         engine.fire(.strokeBegan)
-        XCTAssertEqual(engine.firedEvents, [.strokeBegan])
+        #expect(engine.firedEvents == [.strokeBegan])
     }
 
-    func testFire_allEventTypes_recorded() async {
+    @Test func fire_allEventTypes_recorded() {
         let engine = NullHapticEngine()
         let all: [HapticEvent] = [.strokeBegan, .checkpointHit, .strokeCompleted, .letterCompleted, .offPath]
         all.forEach { engine.fire($0) }
-        XCTAssertEqual(engine.firedEvents, all)
+        #expect(engine.firedEvents == all)
     }
 
-    func testFire_order_preserved() async {
+    @Test func fire_order_preserved() {
         let engine = NullHapticEngine()
         engine.fire(.strokeBegan)
         engine.fire(.checkpointHit)
         engine.fire(.strokeCompleted)
-        XCTAssertEqual(engine.firedEvents[0], .strokeBegan)
-        XCTAssertEqual(engine.firedEvents[1], .checkpointHit)
-        XCTAssertEqual(engine.firedEvents[2], .strokeCompleted)
+        #expect(engine.firedEvents[0] == .strokeBegan)
+        #expect(engine.firedEvents[1] == .checkpointHit)
+        #expect(engine.firedEvents[2] == .strokeCompleted)
     }
 
-    func testFire_multipleCheckpoints_allRecorded() async {
+    @Test func fire_multipleCheckpoints_allRecorded() {
         let engine = NullHapticEngine()
         for _ in 0..<5 { engine.fire(.checkpointHit) }
-        XCTAssertEqual(engine.firedEvents.filter { $0 == .checkpointHit }.count, 5)
+        #expect(engine.firedEvents.filter { $0 == .checkpointHit }.count == 5)
     }
 }
 
 // MARK: - HapticEvent equatability
 
-final class HapticEventEquatabilityTests: XCTestCase {
-    func testAllCases_selfEqual() async {
+@Suite struct HapticEventEquatabilityTests {
+
+    @Test func allCases_selfEqual() {
         let cases: [HapticEvent] = [.strokeBegan, .checkpointHit, .strokeCompleted, .letterCompleted, .offPath]
-        for c in cases { XCTAssertEqual(c, c) }
+        for c in cases { #expect(c == c) }
     }
 
-    func testDifferentCases_notEqual() async {
-        XCTAssertNotEqual(HapticEvent.strokeBegan, .strokeCompleted)
-        XCTAssertNotEqual(HapticEvent.checkpointHit, .letterCompleted)
+    @Test func differentCases_notEqual() {
+        #expect(HapticEvent.strokeBegan != .strokeCompleted)
+        #expect(HapticEvent.checkpointHit != .letterCompleted)
     }
 }
 
@@ -80,71 +77,42 @@ private final class TrackingMockAudio: AudioControlling {
     func cancelPendingLifecycleWork() {}
 }
 
-@MainActor
-private func makeVM(haptics: NullHapticEngine) -> TracingViewModel {
-    // Use NullLetterCache to avoid stale disk cache interfering with stroke definitions
-    TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
-}
+@Suite @MainActor struct TracingViewModelHapticTests {
 
-
-@MainActor
-final class TracingViewModelHapticTests: XCTestCase {
-
-    func testBeginTouch_firesStrokeBegan() async {
+    @Test func beginTouch_firesStrokeBegan() {
         let haptics = NullHapticEngine()
-        let vm = makeVM(haptics: haptics)
-        haptics.reset()  // clear prepare-time events
-
+        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        haptics.reset()
         vm.beginTouch(at: CGPoint(x: 100, y: 100), t: CACurrentMediaTime())
-        XCTAssertTrue(haptics.firedEvents.contains(.strokeBegan),
-                      "Expected strokeBegan, got \(haptics.firedEvents)")
+        #expect(haptics.firedEvents.contains(.strokeBegan),
+                "Expected strokeBegan, got \(haptics.firedEvents)")
     }
 
-    func testPrepare_calledOnInit() async {
+    @Test func prepare_calledOnInit() {
         let haptics = NullHapticEngine()
-        _ = makeVM(haptics: haptics)
-        XCTAssertEqual(haptics.prepareCallCount, 1)
+        _ = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        #expect(haptics.prepareCallCount == 1)
     }
 
-    func testLetterCompleted_firesLetterCompleted() async {
+    @Test func letterCompleted_firesLetterCompleted() {
         let haptics = NullHapticEngine()
-        let vm = makeVM(haptics: haptics)
-        // letters is private; check via public currentLetterName instead
-        guard !vm.currentLetterName.isEmpty else {
-            XCTSkip("No letters loaded in test bundle")
-            return
-        }
+        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        guard !vm.currentLetterName.isEmpty else { return }
         haptics.reset()
 
-        // Drive the fallback "A" letter to completion by tracing through its
-        // known checkpoints in stroke order. The fallback definition in
-        // LetterRepository.defaultStrokes(for:) is:
-        //   stroke 1: (0.3,0.8) → (0.5,0.2) → (0.7,0.8)
-        //   stroke 2: (0.38,0.55) → (0.62,0.55)
-        // checkpointRadius = 0.06 on a 400×400 canvas = 24pt tolerance.
-        // We trace each checkpoint directly to guarantee completion regardless
-        // of which letter is loaded; if no checkpoints match (custom letter),
-        // the grid-sweep fallback below covers it.
         let canvasSize = CGSize(width: 400, height: 400)
         let w = canvasSize.width, h = canvasSize.height
-        // Coordinates match defaultStrokes("A") in LetterRepository:
-        // stroke 1 (left leg): apex→mid→bottom-left
-        // stroke 2 (right leg): apex→mid→bottom-right
-        // stroke 3 (crossbar): left→right
         let checkpointSequence: [CGPoint] = [
-            // stroke 1
             CGPoint(x: 0.515 * w, y: 0.170 * h),
             CGPoint(x: 0.514 * w, y: 0.319 * h),
             CGPoint(x: 0.514 * w, y: 0.469 * h),
             CGPoint(x: 0.400 * w, y: 0.668 * h),
             CGPoint(x: 0.296 * w, y: 0.817 * h),
-            // stroke 2
             CGPoint(x: 0.515 * w, y: 0.170 * h),
             CGPoint(x: 0.514 * w, y: 0.319 * h),
             CGPoint(x: 0.514 * w, y: 0.494 * h),
             CGPoint(x: 0.762 * w, y: 0.668 * h),
             CGPoint(x: 0.695 * w, y: 0.817 * h),
-            // stroke 3
             CGPoint(x: 0.399 * w, y: 0.597 * h),
             CGPoint(x: 0.512 * w, y: 0.597 * h),
             CGPoint(x: 0.624 * w, y: 0.597 * h),
@@ -156,24 +124,20 @@ final class TracingViewModelHapticTests: XCTestCase {
             t += 0.05
             vm.updateTouch(at: pt, t: t, canvasSize: canvasSize)
         }
-
-        let progress = vm.progress
-        XCTAssertGreaterThan(Double(progress), 0.0,
-            "Progress=0 means no checkpoints hit. Events: \(haptics.firedEvents)")
-        XCTAssertTrue(haptics.firedEvents.contains(.letterCompleted),
-                      "Expected letterCompleted. progress=\(progress) events=\(haptics.firedEvents)")
+        #expect(Double(vm.progress) > 0.0,
+                "Progress=0 means no checkpoints hit. Events: \(haptics.firedEvents)")
+        #expect(haptics.firedEvents.contains(.letterCompleted),
+                "Expected letterCompleted. progress=\(vm.progress) events=\(haptics.firedEvents)")
     }
 
-    func testNoHapticOnMultiTouchNavigation() async {
+    @Test func noHapticOnMultiTouchNavigation() {
         let haptics = NullHapticEngine()
-        let vm = makeVM(haptics: haptics)
+        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
         haptics.reset()
-
         vm.beginMultiTouchNavigation()
         vm.beginTouch(at: CGPoint(x: 100, y: 100), t: CACurrentMediaTime())
-        // Multi-touch active — beginTouch guard should block, no haptic
-        XCTAssertFalse(haptics.firedEvents.contains(.strokeBegan),
-                       "strokeBegan should not fire during multi-touch navigation")
+        #expect(!haptics.firedEvents.contains(.strokeBegan),
+                "strokeBegan should not fire during multi-touch navigation")
         vm.endMultiTouchNavigation()
     }
 }
