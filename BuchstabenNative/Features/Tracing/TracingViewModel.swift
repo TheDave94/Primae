@@ -42,7 +42,7 @@ public final class TracingViewModel {
     private var isSingleTouchInteractionActive = false
     private var didCompleteCurrentLetter = false
     private var playbackMachine = PlaybackStateMachine()
-    private var pendingPlaybackStateTask: Task<Void, Error>?
+    private var pendingPlaybackStateTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var completionDismissTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat = 0
@@ -382,7 +382,7 @@ init(_ deps: TracingDependencies = .live) {
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
         let task = Task { @MainActor [weak self] in
-            try await Task.sleep(for: .seconds(delay))
+            try? await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
             let cmd = self.playbackMachine.transition(to: target)
             self.applyCommand(cmd)
