@@ -73,9 +73,6 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
 
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
         let clampedSpeed = max(0.5, min(2.0, speed))
-        // AVAudioUnitTimePitch.rate is a playback-rate multiplier (1.0 = normal speed,
-        // valid range 1/32…32). The branch erroneously multiplied by 100, producing
-        // values of 50–200 which are out of range and cause distortion/crashes.
         timePitch.rate = clampedSpeed
         player.pan = max(-1.0, min(1.0, horizontalBias))
     }
