@@ -1,7 +1,8 @@
 import CoreGraphics
 
+@MainActor
 final class StrokeTracker {
-    struct Progress {
+    struct Progress: Sendable {
         var nextCheckpoint = 0
         var complete = false
     }
