@@ -66,3 +66,10 @@ keep `print()` for debug output. Any proposal using `Logger.shared` must be REJE
 - LESSON: Never allow more than 1 task in `running` state at a time for iOS
 - LESSON: Always match CI run to commit SHA, not just latest run
 - LESSON: ci_fix must stop after MAX_ATTEMPTS even if CI is still failing
+
+## CRITICAL: AudioEngine.swift is fragile (2026-03-23)
+- ci_fix repeatedly broke AudioEngine.swift with malformed Swift (missing `{` after catch, extraneous `}`)
+- This file has complex AVAudioSession/AVAudioEngine setup that is easy to break
+- LESSON: AudioEngine.swift changes must be minimal and surgical — never rewrite catch blocks
+- LESSON: If CI fails on AudioEngine.swift syntax errors, REVERT rather than attempt further fixes
+- LESSON: ci_fix should stop after 2 failed attempts on the same file and alert instead
