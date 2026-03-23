@@ -230,7 +230,7 @@ init(_ deps: TracingDependencies = .live) {
         strokeTracker.update(normalizedPoint: normalized)
         let isNowComplete = strokeTracker.isComplete
         if !wasComplete && isNowComplete {
-            haptics.fire(.success)
+            haptics.fire(.letterCompleted)
         }
         progress = strokeTracker.overallProgress
 
