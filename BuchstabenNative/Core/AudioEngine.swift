@@ -70,6 +70,8 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
             prepareCurrentTrack()
             if autoplay {
                 attemptResumePlayback()
+            } else {
+                isPlaying = false
             }
         } catch {
             print("Audio load error: \(error)")
