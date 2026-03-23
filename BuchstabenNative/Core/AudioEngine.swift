@@ -3,6 +3,7 @@ import Foundation
 
 @MainActor
 public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
+    private nonisolated(unsafe) static var observerStore: [ObjectIdentifier: (interruption: NSObjectProtocol?, routeChange: NSObjectProtocol?)] = [:]
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
@@ -48,9 +49,13 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     deinit {
+        let engine = self.engine
+        let id = ObjectIdentifier(self)
+        let observers = Self.observerStore.removeValue(forKey: id)
+
         engine.stop()
-        if let observer = interruptionObserver { NotificationCenter.default.removeObserver(observer) }
-        if let observer = routeChangeObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = observers?.interruption { NotificationCenter.default.removeObserver(observer) }
+        if let observer = observers?.routeChange { NotificationCenter.default.removeObserver(observer) }
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
@@ -254,6 +259,8 @@ private extension AudioEngine {
             let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             Task { @MainActor [weak self] in self?.handleRouteChangeValue(reason: reasonValue) }
         }
+
+        Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
     }
 
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
