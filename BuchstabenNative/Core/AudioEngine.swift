@@ -62,6 +62,9 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         do {
             do {
                 currentFile = try AVAudioFile(forReading: url)
+                if !engine.isRunning {
+                    startIfNeeded()
+                }
                 prepareCurrentTrack()
             } catch {
                 currentFile = nil
