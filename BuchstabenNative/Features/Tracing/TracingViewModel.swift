@@ -218,7 +218,12 @@ init(_ deps: TracingDependencies = .live) {
         let normalized = CGPoint(x: p.x / max(canvasSize.width, 1), y: p.y / max(canvasSize.height, 1))
         let prevStrokeIndex = strokeTracker.currentStrokeIndex
         let prevNextCheckpoint = strokeTracker.progress.indices.contains(prevStrokeIndex) ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
+        let wasComplete = strokeTracker.isComplete
         strokeTracker.update(normalizedPoint: normalized)
+        let isNowComplete = strokeTracker.isComplete
+        if !wasComplete && isNowComplete {
+            haptics.fire(.success)
+        }
         progress = strokeTracker.overallProgress
 
         // Haptic: checkpoint hit or stroke completed
