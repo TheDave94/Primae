@@ -49,13 +49,13 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     deinit {
-        let engine = self.engine
         let id = ObjectIdentifier(self)
         let observers = Self.observerStore.removeValue(forKey: id)
+        let interruptionObserver = observers?.interruption
+        let routeChangeObserver = observers?.routeChange
 
-        engine.stop()
-        if let observer = observers?.interruption { NotificationCenter.default.removeObserver(observer) }
-        if let observer = observers?.routeChange { NotificationCenter.default.removeObserver(observer) }
+        if let observer = interruptionObserver { NotificationCenter.default.removeObserver(observer) }
+        if let observer = routeChangeObserver { NotificationCenter.default.removeObserver(observer) }
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
