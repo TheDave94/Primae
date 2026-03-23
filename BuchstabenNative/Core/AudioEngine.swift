@@ -65,16 +65,22 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         }
 
         do {
-            currentFile = try AVAudioFile(forReading: url)
+            do {
+                currentFile = try AVAudioFile(forReading: url)
+                prepareCurrentTrack()
+            } catch {
+                currentFile = nil
+                isPlaying = false
+                print("Audio load error: \(error)")
+                return
+            }
+
             shouldResumePlayback = autoplay
-            prepareCurrentTrack()
             if autoplay {
                 attemptResumePlayback()
             } else {
                 isPlaying = false
             }
-        } catch {
-            print("Audio load error: \(error)")
         }
     }
 
