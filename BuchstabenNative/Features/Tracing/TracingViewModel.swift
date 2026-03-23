@@ -190,7 +190,14 @@ init(_ deps: TracingDependencies = .live) {
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
         guard !isMultiTouchNavigationActive else { return }
         guard isSingleTouchInteractionActive else { return }
-        activePath.append(p)
+
+        let isWithinCanvasBounds =
+            p.x >= 0 && p.y >= 0 &&
+            p.x <= canvasSize.width &&
+            p.y <= canvasSize.height
+        if isWithinCanvasBounds {
+            activePath.append(p)
+        }
 
         guard let lastPoint, let lastTimestamp else { return }
         let dt = max(0.001, t - lastTimestamp)
