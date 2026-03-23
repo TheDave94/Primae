@@ -50,6 +50,7 @@ public final class TracingViewModel {
     private let activeDebounceSeconds: TimeInterval = 0.03
     private let idleDebounceSeconds: TimeInterval = 0.12
     private let playbackActivationVelocityThreshold: CGFloat = 22
+    private let minimumTouchMoveDistance: CGFloat = 1.5
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
     // Public no-arg initializer uses .live dependencies (production defaults).
@@ -190,20 +191,23 @@ init(_ deps: TracingDependencies = .live) {
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
         guard !isMultiTouchNavigationActive else { return }
         guard isSingleTouchInteractionActive else { return }
+        guard let lastPoint, let lastTimestamp else { return }
 
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 &&
             p.x <= canvasSize.width &&
             p.y <= canvasSize.height
-        if isWithinCanvasBounds {
+
+        let dx = p.x - lastPoint.x
+        let dy = p.y - lastPoint.y
+        let distance = hypot(dx, dy)
+
+        if isWithinCanvasBounds && distance >= minimumTouchMoveDistance {
             activePath.append(p)
         }
 
-        guard let lastPoint, let lastTimestamp else { return }
         let dt = max(0.001, t - lastTimestamp)
-        let dx = p.x - lastPoint.x
-        let dy = p.y - lastPoint.y
-        let velocity = hypot(dx, dy) / dt
+        let velocity = distance / dt
 
         if smoothedVelocity == 0 {
             smoothedVelocity = velocity
