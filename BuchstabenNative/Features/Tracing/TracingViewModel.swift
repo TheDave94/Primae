@@ -147,6 +147,10 @@ init(_ deps: TracingDependencies = .live) {
         guard !letters.isEmpty else { return }
         let files = letters[letterIndex].audioFiles
         guard !files.isEmpty else { return }
+        guard files.indices.contains(audioIndex) else {
+            audioIndex = 0
+            return
+        }
         audioIndex = (audioIndex + 1) % files.count
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
@@ -157,6 +161,10 @@ init(_ deps: TracingDependencies = .live) {
         guard !letters.isEmpty else { return }
         let files = letters[letterIndex].audioFiles
         guard !files.isEmpty else { return }
+        guard files.indices.contains(audioIndex) else {
+            audioIndex = 0
+            return
+        }
         audioIndex = (audioIndex - 1 + files.count) % files.count
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
