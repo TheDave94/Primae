@@ -47,7 +47,7 @@ final class StrokeTracker {
 
     func load(_ strokes: LetterStrokes) {
         definition = strokes
-        progress = strokes.strokes.map { _ in Progress() }
+        progress = strokes.strokes.indices.map { _ in Progress() }
     }
 
     func reset() {
