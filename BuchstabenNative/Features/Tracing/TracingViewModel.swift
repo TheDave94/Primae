@@ -199,7 +199,7 @@ init(_ deps: TracingDependencies = .live) {
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
         guard !isMultiTouchNavigationActive else { return }
         guard isSingleTouchInteractionActive else { return }
-        guard let lastPoint, let lastTimestamp else { return }
+        guard let lastPoint else { return }
 
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 &&
@@ -214,13 +214,17 @@ init(_ deps: TracingDependencies = .live) {
             activePath.append(p)
         }
 
-        let dt = max(0.001, t - lastTimestamp)
-        let velocity = distance / dt
+        if let lastTimestamp {
+            let dt = max(0.001, t - lastTimestamp)
+            let velocity = distance / dt
 
-        if smoothedVelocity == 0 {
-            smoothedVelocity = velocity
+            if smoothedVelocity == 0 {
+                smoothedVelocity = velocity
+            } else {
+                smoothedVelocity = smoothedVelocity + (velocitySmoothingAlpha * (velocity - smoothedVelocity))
+            }
         } else {
-            smoothedVelocity = smoothedVelocity + (velocitySmoothingAlpha * (velocity - smoothedVelocity))
+            self.lastTimestamp = t
         }
 
         let normalized = CGPoint(x: p.x / max(canvasSize.width, 1), y: p.y / max(canvasSize.height, 1))
