@@ -1,5 +1,7 @@
 # SwiftLint config for BuchstabenNative
 # All violations block commits — enforcing best practices
+strict: true
+
 
 opt_in_rules:
   - force_unwrapping
