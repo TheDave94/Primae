@@ -73,3 +73,9 @@ keep `print()` for debug output. Any proposal using `Logger.shared` must be REJE
 - LESSON: AudioEngine.swift changes must be minimal and surgical — never rewrite catch blocks
 - LESSON: If CI fails on AudioEngine.swift syntax errors, REVERT rather than attempt further fixes
 - LESSON: ci_fix should stop after 2 failed attempts on the same file and alert instead
+
+## AudioEngine.swift — known real bugs (2026-03-23)
+- deinit calls `.invalidate()` on NSObjectProtocol — wrong method, should be NotificationCenter.default.removeObserver()
+- @MainActor class deinit accesses stored properties — Swift 6 actor isolation violation
+- DO NOT propose speculative improvements to AudioEngine.swift until these are fixed
+- DO NOT add conformances, refactor catch blocks, or restructure init/deinit in this file
