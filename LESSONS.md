@@ -79,3 +79,9 @@ keep `print()` for debug output. Any proposal using `Logger.shared` must be REJE
 - @MainActor class deinit accesses stored properties — Swift 6 actor isolation violation
 - DO NOT propose speculative improvements to AudioEngine.swift until these are fixed
 - DO NOT add conformances, refactor catch blocks, or restructure init/deinit in this file
+
+## Tests must match actual implementation behavior (2026-03-23)
+- AutoCoder added a test expecting `.strict` tier after promotion+demotion but the actual policy returns `.standard`
+- LESSON: When adding tests, first READ the implementation to understand what it actually does
+- LESSON: Never write tests that assert a behavior you haven't verified exists in the code
+- LESSON: Test coverage tasks should add tests that PASS against the current implementation, not tests that describe desired future behavior
