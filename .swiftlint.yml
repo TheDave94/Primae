@@ -1,0 +1,41 @@
+# SwiftLint config for BuchstabenNative
+# All violations block commits — enforcing best practices
+
+opt_in_rules:
+  - force_unwrapping
+  - implicitly_unwrapped_optional
+  - explicit_init
+  - closure_spacing
+  - overridden_super_call
+  - redundant_nil_coalescing
+  - private_outlet
+  - first_where
+  - array_init
+  - contains_over_filter_count
+  - contains_over_filter_is_empty
+  - empty_count
+  - empty_string
+  - fatal_error_message
+  - file_header
+
+disabled_rules:
+  - trailing_newline        # minor formatting
+  - vertical_whitespace     # minor formatting  
+  - line_length             # handled by swift-format separately
+  - identifier_name         # too noisy for short vars like x, y, p
+  - type_body_length        # AudioEngine is large by necessity
+  - file_length             # same reason
+  - function_body_length    # some functions are necessarily long
+  - cyclomatic_complexity   # handled by code review
+
+force_cast: error
+force_try: error
+force_unwrapping: error
+
+included:
+  - BuchstabenNative
+
+excluded:
+  - BuchstabenNative/Tests
+  - Pods
+  - .build
