@@ -57,3 +57,12 @@ Any proposal that wraps calls in load(letter:) inside a Task must be REJECTED.
 Logger from OSLog does NOT have a `.shared` singleton. Never use `Logger.shared`.
 Always instantiate with `Logger(subsystem: "BuchstabenNative", category: "...")` or
 keep `print()` for debug output. Any proposal using `Logger.shared` must be REJECTED.
+
+## CRITICAL: ci_fix runaway (2026-03-23)
+- ci_fix pushed 20 bad commits overnight because it kept seeing CI as failing
+- Root cause 1: `_ci_status` returned the latest run regardless of commit SHA — all running tasks saw the same failing run
+- Root cause 2: `check_pending_ci` had multiple tasks in `running` state simultaneously
+- Root cause 3: ci_fix had no limit on how many commits it would push per episode
+- LESSON: Never allow more than 1 task in `running` state at a time for iOS
+- LESSON: Always match CI run to commit SHA, not just latest run
+- LESSON: ci_fix must stop after MAX_ATTEMPTS even if CI is still failing
