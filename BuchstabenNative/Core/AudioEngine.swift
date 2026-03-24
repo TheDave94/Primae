@@ -86,6 +86,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
                 }
                 prepareCurrentTrack()
             } catch {
+                player.stop()
                 currentFile = nil
                 isPlaying = false
                 print("Audio load error: \(error)")
