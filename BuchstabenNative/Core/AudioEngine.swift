@@ -105,6 +105,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
+        guard speed.isFinite && horizontalBias.isFinite else { return }
         let clampedSpeed = max(0.5, min(2.0, speed))
         timePitch.rate = clampedSpeed
         player.pan = max(-1.0, min(1.0, horizontalBias))
