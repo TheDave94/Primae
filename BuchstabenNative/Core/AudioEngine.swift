@@ -310,7 +310,7 @@ private extension AudioEngine {
         Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
     }
 
-    @objc func handleInterruption(_ notification: Notification) {
+    @MainActor @objc func handleInterruption(_ notification: Notification) {
         let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
         let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
         if let typeValue,
