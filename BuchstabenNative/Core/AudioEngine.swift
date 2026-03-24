@@ -186,6 +186,16 @@ private extension AudioEngine {
 
     func startIfNeeded() {
         guard !engine.isRunning else { return }
+
+        let session = AVAudioSession.sharedInstance()
+        let category = session.category
+        let canStartForCategory = category == .playback || category == .playAndRecord || category == .multiRoute
+        let hasRecordPermission = session.recordPermission == .granted
+
+        guard canStartForCategory || hasRecordPermission else {
+            return
+        }
+
         do {
             try engine.start()
         } catch {
