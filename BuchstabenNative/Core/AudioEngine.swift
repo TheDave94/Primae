@@ -51,6 +51,10 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         ) { [weak self] notification in
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            if let typeValue,
+               AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
+                self?.isPlaying = false
+            }
             Task { @MainActor [weak self] in self?.handleInterruptionValues(type: typeValue, options: optionsValue) }
         }
 
@@ -293,6 +297,10 @@ private extension AudioEngine {
         ) { [weak self] notification in
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            if let typeValue,
+               AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
+                self?.isPlaying = false
+            }
             Task { @MainActor [weak self] in self?.handleInterruptionValues(type: typeValue, options: optionsValue) }
         }
 
