@@ -49,10 +49,12 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     deinit {
-        if let obs = interruptionObserver {
+        let key = ObjectIdentifier(self)
+        let observers = Self.observerStore.removeValue(forKey: key)
+        if let obs = observers?.interruption {
             NotificationCenter.default.removeObserver(obs)
         }
-        if let obs = routeChangeObserver {
+        if let obs = observers?.routeChange {
             NotificationCenter.default.removeObserver(obs)
         }
     }
