@@ -215,10 +215,9 @@ private extension AudioEngine {
     }
 
     func prepareCurrentTrack() {
+        guard let currentFile = currentFile else { return }
         player.stop()
-        if let file = currentFile {
-            player.scheduleFile(file, at: nil, completionHandler: nil)
-        }
+        player.scheduleFile(currentFile, at: nil, completionHandler: nil)
         isPlaying = false
     }
 
