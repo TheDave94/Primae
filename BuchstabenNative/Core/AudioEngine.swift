@@ -48,13 +48,19 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         engine.attach(timePitch)
         engine.connect(player, to: timePitch, format: nil)
         engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleInterruption),
-            name: AVAudioSession.interruptionNotification,
-            object: nil
-        )
-        interruptionObserver = nil
+        interruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+            if let typeValue,
+               AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
+                self?.isPlaying = false
+            }
+            Task { @MainActor [weak self] in self?.handleInterruptionValues(type: typeValue, options: optionsValue) }
+        }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
