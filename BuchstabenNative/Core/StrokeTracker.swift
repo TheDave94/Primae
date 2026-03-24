@@ -59,13 +59,18 @@ final class StrokeTracker {
         guard p.x.isFinite && p.y.isFinite else { return }
         guard (0...1).contains(p.x) && (0...1).contains(p.y) else { return }
         guard let definition else { return }
+
         let current = currentStrokeIndex
+        var progress = self.progress
+
         guard current < definition.strokes.count else { return }
+        guard progress.indices.contains(current) else { return }
 
         let stroke = definition.strokes[current]
-        guard progress[current].nextCheckpoint < stroke.checkpoints.count else { return }
+        let checkpointIndex = progress[current].nextCheckpoint
+        guard checkpointIndex < stroke.checkpoints.count else { return }
 
-        let cp = stroke.checkpoints[progress[current].nextCheckpoint]
+        let cp = stroke.checkpoints[checkpointIndex]
         let dx = p.x - cp.x
         let dy = p.y - cp.y
         let dist = hypot(dx, dy)
@@ -75,6 +80,7 @@ final class StrokeTracker {
             if progress[current].nextCheckpoint >= stroke.checkpoints.count {
                 progress[current].complete = true
             }
+            self.progress = progress
         }
     }
 }
