@@ -32,8 +32,13 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     #endif
 
     public init() {
+        engine.attach(player)
+        engine.attach(timePitch)
+        engine.connect(player, to: timePitch, format: nil)
+        engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
+
         // Configure AVAudioSession for playback so audio isn't silenced by the
-        // mute switch or default ambient category.
+        // mute switch or default ambient category, then attempt initial engine start.
         do {
             try AVAudioSession.sharedInstance().setCategory(
                 .playback,
@@ -41,13 +46,10 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
                 options: [.interruptSpokenAudioAndMixWithOthers]
             )
             try AVAudioSession.sharedInstance().setActive(true)
+            try engine.start()
         } catch {
-            print("AudioEngine: AVAudioSession setup error: \(error)")
+            print("AudioEngine init audio configuration/start error: \(error)")
         }
-        engine.attach(player)
-        engine.attach(timePitch)
-        engine.connect(player, to: timePitch, format: nil)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
@@ -72,7 +74,6 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         }
 
         Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
-        startIfNeeded()
     }
 
     deinit {
