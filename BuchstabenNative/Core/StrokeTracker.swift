@@ -51,8 +51,7 @@ final class StrokeTracker {
     }
 
     func reset() {
-        guard let definition else { return }
-        progress = definition.strokes.map { _ in Progress() }
+        guard let definition else { return }; progress = definition.strokes.map { _ in Progress() }; radiusMultiplier = 1.0
     }
 
     func update(normalizedPoint p: CGPoint) {
