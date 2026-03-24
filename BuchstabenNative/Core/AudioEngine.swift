@@ -317,16 +317,16 @@ private extension AudioEngine {
     }
 
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
-        guard let typeValue, let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-        switch type {
-        case .began:
+        guard let typeValue else { return }
+        switch AVAudioSession.InterruptionType(rawValue: typeValue) {
+        case .began?:
             interrupted = true
             interruptionResumeGateRequired = true
             interruptionShouldResume = false
             player.pause()
             isPlaying = false
             pendingSafeEnginePause()
-        case .ended:
+        case .ended?:
             interrupted = false
             if let optionsValue {
                 interruptionShouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue).contains(.shouldResume)
@@ -336,6 +336,8 @@ private extension AudioEngine {
             if interruptionShouldResume {
                 attemptResumePlayback()
             }
+        case nil:
+            return
         @unknown default:
             break
         }
