@@ -61,13 +61,12 @@ final class StrokeTracker {
         guard let definition else { return }
 
         let current = currentStrokeIndex
-        var progress = self.progress
 
         guard current < definition.strokes.count else { return }
-        guard progress.indices.contains(current) else { return }
+        guard self.progress.indices.contains(current) else { return }
 
         let stroke = definition.strokes[current]
-        let checkpointIndex = progress[current].nextCheckpoint
+        let checkpointIndex = self.progress[current].nextCheckpoint
         guard checkpointIndex < stroke.checkpoints.count else { return }
 
         let cp = stroke.checkpoints[checkpointIndex]
@@ -76,11 +75,10 @@ final class StrokeTracker {
         let dist = hypot(dx, dy)
 
         if dist <= definition.checkpointRadius * radiusMultiplier {
-            progress[current].nextCheckpoint += 1
-            if progress[current].nextCheckpoint >= stroke.checkpoints.count {
-                progress[current].complete = true
+            self.progress[current].nextCheckpoint += 1
+            if self.progress[current].nextCheckpoint >= stroke.checkpoints.count {
+                self.progress[current].complete = true
             }
-            self.progress = progress
         }
     }
 }
