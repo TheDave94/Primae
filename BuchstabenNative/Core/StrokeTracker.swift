@@ -57,6 +57,7 @@ final class StrokeTracker {
 
     func update(normalizedPoint p: CGPoint) {
         guard p.x.isFinite && p.y.isFinite else { return }
+        guard (0...1).contains(p.x) && (0...1).contains(p.y) else { return }
         guard let definition else { return }
         let current = currentStrokeIndex
         guard current < definition.strokes.count else { return }
