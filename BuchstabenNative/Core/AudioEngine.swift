@@ -78,11 +78,11 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         do {
             do {
                 currentFile = try AVAudioFile(forReading: url)
+                prepareCurrentTrack()
                 guard engine.isRunning else {
                     startIfNeeded()
                     return
                 }
-                prepareCurrentTrack()
             } catch {
                 player.stop()
                 currentFile = nil
