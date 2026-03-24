@@ -35,7 +35,11 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         // Configure AVAudioSession for playback so audio isn't silenced by the
         // mute switch or default ambient category.
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setCategory(
+                .playback,
+                mode: .default,
+                options: [.interruptSpokenAudioAndMixWithOthers]
+            )
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("AudioEngine: AVAudioSession setup error: \(error)")
