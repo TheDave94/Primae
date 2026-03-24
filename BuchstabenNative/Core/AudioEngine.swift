@@ -49,14 +49,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     deinit {
-        let key = ObjectIdentifier(self)
-        let observers = Self.observerStore.removeValue(forKey: key)
-        if let obs = observers?.interruption {
-            NotificationCenter.default.removeObserver(obs)
-        }
-        if let obs = observers?.routeChange {
-            NotificationCenter.default.removeObserver(obs)
-        }
+        Self.removeObservers(for: self)
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
@@ -154,6 +147,17 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
 }
 
 private extension AudioEngine {
+    nonisolated static func removeObservers(for object: AnyObject) {
+        let key = ObjectIdentifier(object)
+        let observers = observerStore.removeValue(forKey: key)
+        if let obs = observers?.interruption {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        if let obs = observers?.routeChange {
+            NotificationCenter.default.removeObserver(obs)
+        }
+    }
+
     func resourceURL(for fileName: String) -> URL? {
         // Search Bundle.main first (Xcode app target puts resources there via Copy Bundle Resources),
         // then Bundle.module (Swift PM resource bundle). FileManager path construction is most
