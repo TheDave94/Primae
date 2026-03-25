@@ -88,6 +88,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
 
         do {
             do {
+                player.stop()
                 currentFile = try AVAudioFile(forReading: url)
                 prepareCurrentTrack()
                 guard engine.isRunning else {
