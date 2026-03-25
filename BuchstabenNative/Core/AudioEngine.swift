@@ -339,9 +339,18 @@ private extension AudioEngine {
             interrupted = true
             interruptionResumeGateRequired = true
             interruptionShouldResume = false
-            player.pause()
-            isPlaying = false
-            pendingSafeEnginePause()
+            if Thread.isMainThread {
+                player.pause()
+                isPlaying = false
+                pendingSafeEnginePause()
+            } else {
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.player.pause()
+                    self.isPlaying = false
+                    self.pendingSafeEnginePause()
+                }
+            }
         case .ended?:
             interrupted = false
             if let optionsValue {
