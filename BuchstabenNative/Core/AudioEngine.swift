@@ -231,7 +231,8 @@ private extension AudioEngine {
             try engine.start()
         } catch {
             print("AudioEngine start error: \(error)")
-        }    }
+        }
+    }
 
     func canResumePlayback() -> Bool {
         let result = appIsForeground && !interrupted && shouldResumePlayback && (!interruptionResumeGateRequired || interruptionShouldResume)
