@@ -72,7 +72,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         ) { [weak self] notification in
             guard let self else { return }
             let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
-            Task { @MainActor [weak self] in self?.handleRouteChangeValue(reason: reasonValue) }
+            self.handleRouteChangeValue(reason: reasonValue)
         }
 
         Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
