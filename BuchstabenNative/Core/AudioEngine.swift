@@ -133,6 +133,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     func stop() {
         shouldResumePlayback = false
         cancelPendingLifecycleWork()
+        player.stop()
         player.pause()
         isPlaying = false
     }
