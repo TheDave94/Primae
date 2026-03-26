@@ -149,6 +149,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     func suspendForLifecycle() {
         appIsForeground = false
         cancelPendingLifecycleWork()
+        shouldResumePlayback = player.isPlaying
         player.pause()
         isPlaying = false
         pendingSafeEnginePause()
