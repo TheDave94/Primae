@@ -222,7 +222,7 @@ private extension AudioEngine {
         do {
             try engine.start()
         } catch {
-            print("AudioEngine start error: \(error)")
+            assertionFailure("AVAudioEngine failed to start: \(error.localizedDescription)")
         }
     }
 
