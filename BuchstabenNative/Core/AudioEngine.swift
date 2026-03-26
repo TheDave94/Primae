@@ -48,7 +48,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
             try AVAudioSession.sharedInstance().setActive(true)
             try engine.start()
         } catch {
-            assertionFailure("Failed to initialize AudioEngine: \(error.localizedDescription)")
+            print("AudioEngine init audio configuration/start error at \(#fileID):\(#line): \(error)")
         }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
