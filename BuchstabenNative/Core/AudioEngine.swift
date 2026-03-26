@@ -55,13 +55,14 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            guard let self else { return }
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
             if let typeValue,
                AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
-                self?.isPlaying = false
+                self.isPlaying = false
             }
-            self?.handleInterruptionValues(type: typeValue, options: optionsValue)
+            self.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
@@ -69,6 +70,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
             object: nil,
             queue: .main
         ) { [weak self] notification in
+            guard let self else { return }
             let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             Task { @MainActor [weak self] in self?.handleRouteChangeValue(reason: reasonValue) }
         }
