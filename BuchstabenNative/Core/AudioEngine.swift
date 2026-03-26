@@ -79,7 +79,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     nonisolated deinit {
-        let observers = Self.observerStore.removeValue(forKey: ObjectIdentifier(self))
+        let key = ObjectIdentifier(self)
+        let observers = Self.observerStore[key]
+        Self.observerStore[key] = nil
         if let obs = observers?.interruption { NotificationCenter.default.removeObserver(obs) }
         if let obs = observers?.routeChange { NotificationCenter.default.removeObserver(obs) }
     }
