@@ -42,7 +42,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         do {
             try AVAudioSession.sharedInstance().setCategory(
                 .playback,
-                mode: .default,
+                mode: .spokenAudio,
                 options: [.interruptSpokenAudioAndMixWithOthers]
             )
             try AVAudioSession.sharedInstance().setActive(true)
