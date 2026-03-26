@@ -79,6 +79,12 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
     }
 
     nonisolated deinit {
+        if let interruptionObserver {
+            NotificationCenter.default.removeObserver(interruptionObserver)
+        }
+        if let routeChangeObserver {
+            NotificationCenter.default.removeObserver(routeChangeObserver)
+        }
         Self.removeObservers(for: self)
         Task.detached { @MainActor [weak self] in
             guard let self else { return }
