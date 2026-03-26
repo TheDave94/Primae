@@ -80,6 +80,11 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
 
     nonisolated deinit {
         Self.removeObservers(for: self)
+        Task.detached { @MainActor [weak self] in
+            guard let self else { return }
+            self.player.stop()
+            self.engine.stop()
+        }
     }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
