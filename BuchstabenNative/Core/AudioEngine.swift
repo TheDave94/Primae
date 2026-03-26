@@ -101,7 +101,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
                 player.stop()
                 currentFile = nil
                 isPlaying = false
-                print("Audio load error: \(error)")
+                assertionFailure("Failed to load audio file \(fileName): \(error.localizedDescription)")
                 return
             }
 
