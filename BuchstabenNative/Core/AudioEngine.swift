@@ -78,7 +78,7 @@ public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStr
         Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
     }
 
-    deinit {
+    nonisolated deinit {
         Self.removeObservers(for: self)
     }
 
