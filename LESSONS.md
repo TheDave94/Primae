@@ -85,3 +85,8 @@ keep `print()` for debug output. Any proposal using `Logger.shared` must be REJE
 - LESSON: When adding tests, first READ the implementation to understand what it actually does
 - LESSON: Never write tests that assert a behavior you haven't verified exists in the code
 - LESSON: Test coverage tasks should add tests that PASS against the current implementation, not tests that describe desired future behavior
+
+### No-op SEARCH/REPLACE blocks waste apply attempts
+- AutoCoder generated blocks 4+5 that were identical SEARCH and REPLACE (no actual change)
+- LESSON: Never generate a SEARCH/REPLACE block where the content is identical — if nothing changes, omit the block entirely
+- LESSON: The deep-dive audit blocks for StrokeTracker were unnecessary since Progress: Sendable and @MainActor were already correct
