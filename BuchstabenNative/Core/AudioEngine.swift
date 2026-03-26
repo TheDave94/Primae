@@ -2,7 +2,7 @@
 import Foundation
 
 @MainActor
-public final class AudioEngine: @unchecked Sendable, AudioControlling, CustomStringConvertible {
+public final class AudioEngine: AudioControlling, CustomStringConvertible {
     private nonisolated(unsafe) static var observerStore: [ObjectIdentifier: (interruption: NSObjectProtocol?, routeChange: NSObjectProtocol?)] = [:]
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
