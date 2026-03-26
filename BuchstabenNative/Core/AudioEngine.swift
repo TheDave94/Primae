@@ -306,7 +306,7 @@ private extension AudioEngine {
                AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
                 self?.isPlaying = false
             }
-            Task { @MainActor [weak self] in self?.handleInterruptionValues(type: typeValue, options: optionsValue) }
+            self?.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
 
         routeChangeObserver = NotificationCenter.default.addObserver(
