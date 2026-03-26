@@ -192,27 +192,11 @@ private extension AudioEngine {
     }
 
     func resourceURL(for fileName: String) -> URL? {
-        // Search Bundle.main first (Xcode app target puts resources there via Copy Bundle Resources),
-        // then Bundle.module (Swift PM resource bundle). FileManager path construction is most
-        // reliable for subdirectory assets on device.
         let bundles: [Bundle] = [.main, .module]
-        let ns = fileName as NSString
-        let resource = ns.lastPathComponent
-        let subdir = ns.deletingLastPathComponent
-
         for bundle in bundles {
-            // FileManager path -- works for both flat and subdirectory paths
-            if let root = bundle.resourceURL {
-                let candidate = root.appendingPathComponent(fileName)
-                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
-            }
-            // Bundle API subdirectory lookup
-            if !subdir.isEmpty,
-               let url = bundle.url(forResource: resource, withExtension: nil, subdirectory: subdir) {
+            if let url = bundle.url(forResource: fileName, withExtension: nil) {
                 return url
             }
-            // Bundle API flat lookup
-            if let url = bundle.url(forResource: fileName, withExtension: nil) { return url }
         }
         return nil
     }
