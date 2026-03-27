@@ -1,12 +1,10 @@
-# Buchstaben Lernen App
+# Buchstaben-Lernen-App
 
 An iPadOS app for children to learn letter writing with adaptive audio feedback.
 
 ## How it works
 
-A child traces a letter outline with one finger. Writing speed controls sound playback in real-time via pitch-preserving time-stretching:
-- **Slow strokes** → sound plays faster (encourages slowing down)
-- **Fast strokes** → sound plays slower (stretches with the movement)
+A child traces a letter outline with their finger or Apple Pencil. Writing speed controls sound playback in real-time — audio plays while tracing and pauses when the finger lifts. Difficulty adapts automatically based on accuracy over recent sessions.
 
 ## Gestures
 
@@ -15,41 +13,50 @@ A child traces a letter outline with one finger. Writing speed controls sound pl
 | 1 finger — trace | Play audio, speed adapts to writing velocity |
 | 2 fingers — swipe left/right | Next / previous letter |
 | 2 fingers — swipe up/down | Next / previous sound variant |
-| 2 fingers — tap (no swipe) | Random letter + sound |
+| 2 fingers — tap | Random letter |
 | 3 fingers — tap | Toggle ghost tracing overlay |
+| Apple Pencil | Full pressure + azimuth tracking |
 
 ## Tech Stack
 
-- **SDL3** 3.2.28 — window, touch input, rendering
-- **RubberBand** 4.0.0 — real-time time-stretch & pitch shift
-- **libsndfile** 1.2.2 — audio decoding (mp3/wav/flac/ogg)
-- **fftw3**, **libFLAC**, **libvorbis**, **mpg123**, **opus** — audio codec support
+- **Swift 6** with strict concurrency
+- **SwiftUI** + **UIKit** (canvas rendering)
+- **AVAudioEngine** + **AVAudioUnitTimePitch** — real-time time-stretching
+- **CoreHaptics** — haptic feedback on stroke checkpoints
 
 ## Building
 
 ### Requirements
-- macOS with Xcode 16+
-- iOS 18 SDK
+- macOS with Xcode 26+
+- iOS 26 SDK
 
 ### Open in Xcode
-```bash
-open Timestretch/Timestretch.xcodeproj
-```
+````bash
+open BuchstabenApp/BuchstabenApp.xcodeproj
+````
 
 Set your development team in project settings and build to a simulator or device.
 
 ### CI
 
-Every push to `main` or `develop` triggers a GitHub Actions build for the iOS Simulator.
+Every push to `main` triggers a GitHub Actions build + test on an iPad Simulator (macos-26/Xcode 26) and a self-hosted Mac runner.
+
 See `.github/workflows/ios-build.yml`.
 
 ## Project Structure
+````
+BuchstabenNative/          Swift Package (library)
+├── App/                   App entry point + root view
+├── Core/                  Audio, progress, strokes, haptics, difficulty
+└── Features/
+    ├── Library/           Letter loading + caching
+    └── Tracing/           Canvas, ViewModel, guide rendering
 
-```
-ios-build/
-  SDL3.xcframework/          SDL3 prebuilt framework
-  vcpkg/installed/arm64-ios/ Prebuilt static libraries
-  Timestretch/               Xcode project
-    Timestretch/main.mm      Main source file (all logic here)
-    A/ F/ I/ K/ L/ M/ O/     Letter assets (PBM masks + MP3 audio)
-```
+BuchstabenApp/             Xcode host app target (imports BuchstabenNative)
+BuchstabenNativeTests/     Swift Testing test suite
+scripts/                   PBM + stroke generation utilities
+````
+
+## Developer Reference
+
+See `APP_REFERENCE.md` for detailed architecture, asset conventions, and common change locations.
