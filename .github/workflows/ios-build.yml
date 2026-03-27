@@ -53,32 +53,8 @@ jobs:
           printf '%s' "$ERRORS" > /tmp/ci_errors.txt
           cat /tmp/ci_errors.txt
 
-      - name: Inject priority task into council queue
-        if: failure()
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CI_ERRORS=$(cat /tmp/ci_errors.txt 2>/dev/null || echo "unknown")
-          TASK="[P1-ci-fix] Fix CI failure on ${{ github.ref_name }}: $(echo "$CI_ERRORS" | head -3 | tr '\n' ' ') — ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          QUEUE_FILE="task-queue.md"
-          if [ -f "$QUEUE_FILE" ]; then
-            python3 - "$QUEUE_FILE" "$TASK" << 'PY'
-          import sys
-          path, task = sys.argv[1], sys.argv[2]
-          with open(path) as f: lines = f.readlines()
-          out = []
-          for l in lines:
-              out.append(l)
-              if l.strip() == '## Pending':
-                  out.append(f'- [ios] {task}\n')
-          with open(path, 'w') as f: f.writelines(out)
-          PY
-            git config user.email "ci@github-actions"
-            git config user.name "GitHub Actions"
-            git add task-queue.md
-            git commit -m "ci: inject P1 fix task for failing build"
-            git push
-          fi
+      # NOTE: P1 fix tasks are now injected automatically by AutoCoder ci_fix.py
+      # via polling GitHub CI — no workflow step needed
 
       - name: Upload test results
         if: always()
