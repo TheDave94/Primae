@@ -384,18 +384,14 @@ BuchstabenNative bundle resources/
 
 ## App Entry Points
 
-**Standalone app:** `BuchstabenNative/App/BuchstabenNativeApp.swift`
-```swift
-@main struct BuchstabenNativeApp: App {
-    @StateObject var vm = TracingViewModel()
-    var body: some Scene {
-        WindowGroup { ContentView().environmentObject(vm) }
-    }
-}
-```
+**Host app entry point:** `BuchstabenApp/BuchstabenApp/BuchstabenAppApp.swift`
+The `@main` attribute lives in the host app target, not in the `BuchstabenNative` library (library targets cannot have `@main`).
+
+**Library app struct** (no `@main`): `BuchstabenNative/App/BuchstabenNativeApp.swift`
+Used when running the package standalone. Does not carry `@main`.
 
 **Host app target:** `BuchstabenApp/BuchstabenAppApp.swift` + `BuchstabenApp/ContentView.swift`
-This is a thin wrapper that imports `BuchstabenNative` as a Swift package and embeds the tracing view.
+A thin wrapper that imports `BuchstabenNative` as a Swift package and embeds the tracing view.
 
 ---
 
