@@ -82,7 +82,8 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             self.handleRouteChangeValue(reason: reasonValue)
         }
 
-        Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
+        let key = ObjectIdentifier(self)
+        Self.observerStore[key] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
     }
 
     nonisolated deinit { Self.removeObservers(for: self) }
