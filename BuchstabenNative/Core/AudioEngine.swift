@@ -46,7 +46,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 options: [.interruptSpokenAudioAndMixWithOthers]
             )
             try AVAudioSession.sharedInstance().setActive(true)
-            try engine.start()
+            if !engine.isRunning {
+                try engine.start()
+            }
         } catch {
             assertionFailure("AudioEngine startup failed: \(error.localizedDescription)")
         }
