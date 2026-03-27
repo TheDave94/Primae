@@ -78,13 +78,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
     }
 
-    nonisolated deinit {
-        let key = ObjectIdentifier(self)
-        let observers = Self.observerStore[key]
-        Self.observerStore[key] = nil
-        if let obs = observers?.interruption { NotificationCenter.default.removeObserver(obs) }
-        if let obs = observers?.routeChange { NotificationCenter.default.removeObserver(obs) }
-    }
+    nonisolated deinit { Self.removeObservers(for: self) }
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
         guard let url = resourceURL(for: fileName) else {
