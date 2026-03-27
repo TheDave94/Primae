@@ -48,7 +48,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             try AVAudioSession.sharedInstance().setActive(true)
             try engine.start()
         } catch {
-            print("AudioEngine init audio configuration/start error at \(#fileID):\(#line): \(error)")
+            assertionFailure("AudioEngine startup failed: \(error.localizedDescription)")
         }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
