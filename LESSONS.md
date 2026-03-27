@@ -39,11 +39,7 @@ New types should use @Observable, but never migrate existing ones unprompted.
 CI workflow files are infrastructure, not application code.
 Any proposal that modifies .github/workflows/ must be rejected.
 The council does not have permission to change CI configuration.
-
-### Never modify .github/workflows/ files
-- CI workflows are infrastructure, not application code
-- Invalid actions syntax (upload-artifact@v3 → v3) breaks all future runs
-- Deprecations are handled by Dependabot PRs, not manual edits
+Invalid actions syntax changes break all future runs — deprecations are handled by Dependabot PRs.
 
 ### CRITICAL: load(letter:) must be synchronous
 load(letter:) in TracingViewModel MUST call audio.loadAudioFile and setPlaybackState
@@ -74,10 +70,9 @@ keep `print()` for debug output. Any proposal using `Logger.shared` must be REJE
 - LESSON: If CI fails on AudioEngine.swift syntax errors, REVERT rather than attempt further fixes
 - LESSON: ci_fix should stop after 2 failed attempts on the same file and alert instead
 
-## AudioEngine.swift — known real bugs (2026-03-23)
-- deinit calls `.invalidate()` on NSObjectProtocol — wrong method, should be NotificationCenter.default.removeObserver()
-- @MainActor class deinit accesses stored properties — Swift 6 actor isolation violation
-- DO NOT propose speculative improvements to AudioEngine.swift until these are fixed
+## AudioEngine.swift — deinit (2026-03-23, fixed 2026-03-27)
+- ✅ FIXED: deinit now uses `nonisolated deinit { Self.removeObservers(for: self) }` — correct Swift 6 pattern
+- ✅ FIXED: observer store uses static dict keyed by ObjectIdentifier — avoids @MainActor isolation in deinit
 - DO NOT add conformances, refactor catch blocks, or restructure init/deinit in this file
 
 ## Tests must match actual implementation behavior (2026-03-23)
