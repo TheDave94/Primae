@@ -285,37 +285,6 @@ private extension AudioEngine {
         isPlaying = false
     }
 
-    func installObservers() {
-        // Both observers use queue: .main, so the closure body already runs on the
-        // main thread. Calling handlers directly (no Task, no MainActor.assumeIsolated)
-        // avoids sending the non-Sendable notification/userInfo across an isolation
-        // boundary, which is the Swift 6 data-race error at the call site.
-        interruptionObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
-            if let typeValue,
-               AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
-                self?.isPlaying = false
-            }
-            self?.handleInterruptionValues(type: typeValue, options: optionsValue)
-        }
-
-        routeChangeObserver = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
-            Task { @MainActor [weak self] in self?.handleRouteChangeValue(reason: reasonValue) }
-        }
-
-        Self.observerStore[ObjectIdentifier(self)] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
-    }
-
     @MainActor @objc func handleInterruption(_ notification: Notification) {
         let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
         let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
