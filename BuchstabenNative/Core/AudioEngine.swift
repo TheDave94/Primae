@@ -61,8 +61,12 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
             if let typeValue,
-               AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
-                self.isPlaying = false
+               let type = AVAudioSession.InterruptionType(rawValue: typeValue) {
+                if type == .began {
+                    self.isPlaying = false
+                } else if type == .ended, self.shouldResumePlayback {
+                    self.attemptResumePlayback()
+                }
             }
             self.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
