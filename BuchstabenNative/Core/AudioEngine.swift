@@ -235,7 +235,10 @@ private extension AudioEngine {
     }
 
     func attemptResumePlayback() {
-        startIfNeeded()
+        guard engine.isRunning else {
+            startIfNeeded()
+            return
+        }
         // No file loaded — record intent (shouldResumePlayback set by caller) but do not
         // attempt to play. Calling player.play() with nothing scheduled is a no-op at best
         // and raises an AVAudioEngine "not running" assertion at worst (headless CI). The
