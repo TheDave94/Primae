@@ -34,8 +34,8 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     public init() {
         engine.attach(player)
         engine.attach(timePitch)
-        engine.connect(player, to: timePitch, format: nil)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: nil)
+        engine.connect(player, to: timePitch, format: engine.mainMixerNode.outputFormat(forBus: 0))
+        engine.connect(timePitch, to: engine.mainMixerNode, format: engine.mainMixerNode.outputFormat(forBus: 0))
 
         // Configure AVAudioSession for playback so audio isn't silenced by the
         // mute switch or default ambient category, then attempt initial engine start.
