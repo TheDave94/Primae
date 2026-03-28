@@ -52,6 +52,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         } catch {
             assertionFailure("AudioEngine startup failed: \(error.localizedDescription)")
             engine.stop()
+            self.isPlaying = false
         }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
