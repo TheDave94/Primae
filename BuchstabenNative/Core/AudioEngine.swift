@@ -50,7 +50,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 try engine.start()
             }
         } catch {
-            print("AudioEngine session config failed: \(error.localizedDescription)")
+            assertionFailure("AudioEngine session config failed: \(error.localizedDescription)")
             self.isPlaying = false
         }
         interruptionObserver = NotificationCenter.default.addObserver(
