@@ -228,6 +228,7 @@ private extension AudioEngine {
             return
         }
 
+        try? AVAudioSession.sharedInstance().setActive(true)
         do {
             try engine.start()
         } catch {
