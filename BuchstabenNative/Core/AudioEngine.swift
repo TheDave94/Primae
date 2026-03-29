@@ -58,8 +58,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
-            queue: .main
-        ) { [weak self] notification in
+            queue: .main        ) { [weak self] notification in
             guard let self else { return }
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
