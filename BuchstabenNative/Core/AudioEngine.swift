@@ -137,6 +137,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
+        startIfNeeded()
         attemptResumePlayback()
     }
 
