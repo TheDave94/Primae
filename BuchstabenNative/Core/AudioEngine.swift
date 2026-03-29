@@ -146,6 +146,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         player.stop()
         player.pause()
         isPlaying = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
     func restart() {
