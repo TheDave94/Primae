@@ -52,7 +52,9 @@ final class StrokeTracker {
     }
 
     func reset() {
-        definition = nil; progress = []; radiusMultiplier = 1.0
+        definition = nil
+        progress = []
+        radiusMultiplier = 1.0
     }
 
     func update(normalizedPoint p: CGPoint) {
