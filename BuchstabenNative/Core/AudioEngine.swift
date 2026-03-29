@@ -51,8 +51,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 try engine.start()
             }
         } catch {
-            assertionFailure("AudioEngine session config failed: \(error.localizedDescription)")
+            player.stop()
             self.isPlaying = false
+            assertionFailure("AudioEngine session config failed: \(error.localizedDescription)")
         }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
