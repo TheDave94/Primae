@@ -48,7 +48,11 @@ final class StrokeTracker {
     func load(_ strokes: LetterStrokes) {
         radiusMultiplier = 1.0
         definition = strokes
-        progress = strokes.strokes.indices.map { _ in Progress() }
+        progress.removeAll(keepingCapacity: true)
+        progress.reserveCapacity(strokes.strokes.count)
+        for _ in strokes.strokes.indices {
+            progress.append(Progress())
+        }
     }
 
     func reset() {
