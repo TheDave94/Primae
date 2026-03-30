@@ -139,6 +139,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
+        try? AVAudioSession.sharedInstance().setActive(true)
         if !engine.isRunning {
             startIfNeeded()
         }
