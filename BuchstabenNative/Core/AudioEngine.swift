@@ -309,7 +309,7 @@ private extension AudioEngine {
         let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
         let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
         if let typeValue,
-           AVAudioSession.InterruptionType(rawValue: typeValue) == .began {
+           Interruption(rawValue: typeValue) == .began {
             isPlaying = false
         }
         handleInterruptionValues(type: typeValue, options: optionsValue)
