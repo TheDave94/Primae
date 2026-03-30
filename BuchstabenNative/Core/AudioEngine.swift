@@ -3,6 +3,7 @@ import Foundation
 
 @MainActor
 public final class AudioEngine: AudioControlling, CustomStringConvertible {
+    typealias Interruption = AVAudioSession.InterruptionType
     private nonisolated(unsafe) static var observerStore: [ObjectIdentifier: (interruption: NSObjectProtocol?, routeChange: NSObjectProtocol?)] = [:]
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
@@ -69,7 +70,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
             if let typeValue,
-               let type = AVAudioSession.InterruptionType(rawValue: typeValue) {
+               let type = Interruption(rawValue: typeValue) {
                 if type == .began {
                     self.stop()
                 } else if type == .ended, self.shouldResumePlayback {
