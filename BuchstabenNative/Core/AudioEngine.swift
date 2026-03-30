@@ -72,7 +72,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             if let typeValue,
                let type = Interruption(rawValue: typeValue) {
                 if type == .began {
-                    self.stop()
+                    self.handleInterruptionBegan()
                 } else if type == .ended, self.shouldResumePlayback {
                     self.attemptResumePlayback()
                 }
@@ -303,6 +303,11 @@ private extension AudioEngine {
         interruptionResumeGateRequired = false
         cancelPendingLifecycleWork()
         isPlaying = false
+    }
+
+    func handleInterruptionBegan() {
+        shouldResumePlayback = player.isPlaying
+        stop()
     }
 
     @MainActor @objc func handleInterruption(_ notification: Notification) {
