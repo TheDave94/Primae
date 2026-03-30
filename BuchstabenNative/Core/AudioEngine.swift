@@ -97,7 +97,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
         guard let url = resourceURL(for: fileName) else {
-            assertionFailure("Missing audio file: \(fileName)")
+            print("Missing audio file: \(fileName)")
             return
         }
 
