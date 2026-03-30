@@ -317,7 +317,7 @@ private extension AudioEngine {
 
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
         guard let typeValue else { return }
-        switch AVAudioSession.InterruptionType(rawValue: typeValue) {
+        switch Interruption(rawValue: typeValue) {
         case .began?:
             interrupted = true
             interruptionResumeGateRequired = true
