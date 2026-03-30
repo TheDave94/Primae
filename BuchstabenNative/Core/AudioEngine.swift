@@ -309,10 +309,6 @@ private extension AudioEngine {
         stop()
     }
 
-    func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {        shouldResumePlayback = player.isPlaying
-        stop()
-    }
-
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
         guard let typeValue else { return }
         switch Interruption(rawValue: typeValue) {
