@@ -74,7 +74,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 if type == .began {
                     self.handleInterruptionBegan()
                 } else if type == .ended, self.shouldResumePlayback {
-                    self.attemptResumePlayback()
+                    if self.canResumePlayback() { self.attemptResumePlayback() }
                 }
             }
             self.handleInterruptionValues(type: typeValue, options: optionsValue)
