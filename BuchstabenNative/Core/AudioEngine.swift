@@ -79,7 +79,6 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
             self.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
-
         routeChangeObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
@@ -307,6 +306,10 @@ private extension AudioEngine {
 
     func handleInterruptionBegan() {
         shouldResumePlayback = player.isPlaying
+        stop()
+    }
+
+    func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {        shouldResumePlayback = player.isPlaying
         stop()
     }
 
