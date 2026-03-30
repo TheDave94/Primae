@@ -115,7 +115,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 currentFile = nil
                 isPlaying = false
                 shouldResumePlayback = false
-                assertionFailure("Failed to load audio file \(fileName): \(error.localizedDescription)")
+                print("Failed to load audio file \(fileName): \(error.localizedDescription)")
                 return
             }
 
