@@ -310,16 +310,6 @@ private extension AudioEngine {
         stop()
     }
 
-    @MainActor @objc func handleInterruption(_ notification: Notification) {
-        let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-        let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
-        if let typeValue,
-           Interruption(rawValue: typeValue) == .began {
-            isPlaying = false
-        }
-        handleInterruptionValues(type: typeValue, options: optionsValue)
-    }
-
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
         guard let typeValue else { return }
         switch Interruption(rawValue: typeValue) {
