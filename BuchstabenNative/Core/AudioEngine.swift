@@ -54,15 +54,13 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                     try engine.start()
                 } catch {
                     player.stop()
+                    self.isPlaying = false
                     print("AudioEngine initial start failed: \(error)")
                 }
             }
         } catch {
             player.stop()
             print("AudioEngine session config failed: \(error)")
-        }
-        if !player.isPlaying {
-            self.isPlaying = false
         }
         interruptionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
