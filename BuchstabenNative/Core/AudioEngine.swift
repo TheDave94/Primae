@@ -48,6 +48,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             )
             try AVAudioSession.sharedInstance().setActive(true)
             if !engine.isRunning {
+                self.engine.prepare()
                 do {
                     try engine.start()
                 } catch {
