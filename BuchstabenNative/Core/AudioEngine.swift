@@ -159,7 +159,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
-        prepareCurrentTrack()
+        if let file = currentFile { player.stop(); player.scheduleFile(file, at: nil, completionHandler: nil) }
         attemptResumePlayback()
     }
 
