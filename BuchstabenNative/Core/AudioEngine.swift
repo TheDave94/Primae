@@ -148,10 +148,10 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 
     func stop() {
         shouldResumePlayback = false
+        isPlaying = false
         cancelPendingLifecycleWork()
         player.stop()
         player.pause()
-        isPlaying = false
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
