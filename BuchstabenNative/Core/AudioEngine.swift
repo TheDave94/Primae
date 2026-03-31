@@ -239,6 +239,7 @@ private extension AudioEngine {
         do {
             try engine.start()
         } catch {
+            player.stop()
             isPlaying = false
             assertionFailure("AVAudioEngine failed to start: \(error.localizedDescription)")
         }
