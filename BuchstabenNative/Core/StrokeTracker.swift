@@ -69,7 +69,7 @@ final class StrokeTracker {
         let current = currentStrokeIndex
 
         guard current < definition.strokes.count else { return }
-        guard self.progress.indices.contains(current) else { return }
+        guard progress.indices.contains(current) else { return }
 
         let stroke = definition.strokes[current]
         let checkpointIndex = self.progress[current].nextCheckpoint
