@@ -47,7 +47,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 mode: .default,
                 options: [.interruptSpokenAudioAndMixWithOthers]
             )
-            try AVAudioSession.sharedInstance().setActive(true)
+            try? AVAudioSession.sharedInstance().setActive(true)
             if !engine.isRunning {
                 self.engine.prepare()
                 do {
