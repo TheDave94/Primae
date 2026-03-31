@@ -307,7 +307,7 @@ private extension AudioEngine {
     }
 
     func handleInterruptionBegan() {
-        shouldResumePlayback = player.isPlaying
+        shouldResumePlayback = isPlaying
         isPlaying = false
         stop()
     }
