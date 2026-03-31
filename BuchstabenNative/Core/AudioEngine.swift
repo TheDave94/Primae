@@ -186,7 +186,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // engine.isRunning == true after suspend+resume with no pending pause.
         startIfNeeded()
         if canResumePlayback() {
-            prepareCurrentTrack()
+            if let file = currentFile { player.scheduleFile(file, at: nil, completionHandler: nil) }
             if !player.isPlaying {
                 player.play()
             }
