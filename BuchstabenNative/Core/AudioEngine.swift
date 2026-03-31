@@ -62,7 +62,8 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             player.stop()
             print("AudioEngine session config failed: \(error)")
         }
-        interruptionObserver = NotificationCenter.default.addObserver(
+        let center = NotificationCenter.default
+        interruptionObserver = center.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
             queue: .main        ) { [weak self] notification in
@@ -79,7 +80,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
             self.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
-        routeChangeObserver = NotificationCenter.default.addObserver(
+        routeChangeObserver = center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
             queue: .main
