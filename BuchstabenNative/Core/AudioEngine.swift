@@ -73,6 +73,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             if let typeValue,
                let type = Interruption(rawValue: typeValue) {
                 if type == .began {
+                    self.isPlaying = false
                     self.handleInterruptionBegan()
                 } else if type == .ended, self.shouldResumePlayback {
                     if self.canResumePlayback() { self.attemptResumePlayback() }
