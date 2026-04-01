@@ -188,9 +188,12 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         startIfNeeded()
         if canResumePlayback() {
             if let file = currentFile, !player.isPlaying { player.scheduleFile(file, at: nil, completionHandler: nil) }
-            player.play()
-            isPlaying = true
-        }    }
+            if engine.isRunning {
+                player.play()
+                isPlaying = true
+            }
+        }
+    }
     func cancelPendingLifecycleWork() {
         pendingLifecyclePauseTask?.cancel()
         pendingLifecyclePauseTask = nil
