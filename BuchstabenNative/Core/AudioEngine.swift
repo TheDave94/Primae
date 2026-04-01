@@ -315,7 +315,6 @@ private extension AudioEngine {
         self.isPlaying = false
         stop()
     }
-
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
         guard let typeValue else { return }
         switch Interruption(rawValue: typeValue) {
