@@ -47,11 +47,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 mode: .default,
                 options: [.interruptSpokenAudioAndMixWithOthers]
             )
-            do {
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {
-                print("Failed to activate session: \(error)")
-            }
+            try? AVAudioSession.sharedInstance().setActive(true)
             engine.prepare()
             if !engine.isRunning {
                 do {
