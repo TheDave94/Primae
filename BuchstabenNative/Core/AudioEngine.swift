@@ -196,8 +196,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 player.play()
             }
             isPlaying = true
-        }
-    }
+        }    }
 
     func cancelPendingLifecycleWork() {
         pendingLifecyclePauseTask?.cancel()
