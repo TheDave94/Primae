@@ -10,6 +10,6 @@ struct LetterGuideRenderer {
         guard let cgPath = LetterGuideGeometry.cgPath(for: letter, in: rect) else {
             return nil
         }
-        return Path(cgPath)
+        return Path(cgPath.copy(using: nil) ?? cgPath)
     }
 }
