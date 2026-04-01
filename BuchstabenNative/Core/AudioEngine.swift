@@ -157,7 +157,6 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback = false; isPlaying = false
         cancelPendingLifecycleWork()
         player.stop()
-        player.pause()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
