@@ -87,8 +87,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
             queue: .main
-        ) { [weak self] notification in
-            guard let self else { return }
+        ) { [weak self] notification in            guard let self else { return }
             let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
             self.handleRouteChangeValue(reason: reasonValue)
         }
