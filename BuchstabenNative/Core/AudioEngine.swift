@@ -151,8 +151,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func stop() {
-        shouldResumePlayback = false
-        isPlaying = false
+        shouldResumePlayback = false; isPlaying = false
         cancelPendingLifecycleWork()
         player.stop()
         player.pause()
