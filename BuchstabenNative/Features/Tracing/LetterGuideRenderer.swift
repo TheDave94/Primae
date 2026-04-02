@@ -11,5 +11,4 @@ struct LetterGuideRenderer {
             return nil
         }
         return Path(cgPath)
-    }
-}
+    }}
