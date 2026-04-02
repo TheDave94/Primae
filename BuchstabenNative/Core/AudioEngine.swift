@@ -55,7 +55,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 } catch {
                     player.stop()
                     self.isPlaying = false
-                    print("AudioEngine initial start failed: \(error)")
+                    print("AudioEngine initial start failed: \(error.localizedDescription)")
                 }
             }
         } catch {
