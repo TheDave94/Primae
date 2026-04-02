@@ -77,10 +77,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 if type == .began {
                     self.isPlaying = false
                     self.handleInterruptionBegan()
-                } else if type == .ended, self.shouldResumePlayback {
+                } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
                     if self.canResumePlayback() { self.attemptResumePlayback() }
-                }
-            }
+                }            }
             self.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
         routeChangeObserver = center.addObserver(
