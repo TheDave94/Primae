@@ -60,7 +60,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
         } catch {
             player.stop()
-            print("AudioEngine session config failed: \(error)")
+            print("AudioEngine session config failed: \(error.localizedDescription)")
         }
 
         let center = NotificationCenter.default
