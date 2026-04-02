@@ -85,3 +85,10 @@ keep `print()` for debug output. Any proposal using `Logger.shared` must be REJE
 - AutoCoder generated blocks 4+5 that were identical SEARCH and REPLACE (no actual change)
 - LESSON: Never generate a SEARCH/REPLACE block where the content is identical — if nothing changes, omit the block entirely
 - LESSON: The deep-dive audit blocks for StrokeTracker were unnecessary since Progress: Sendable and @MainActor were already correct
+
+### CRITICAL: Never replace hypot() with distSq in StrokeTracker
+In `StrokeTracker.update()`, the line `let dist = hypot(dx, dy)` must NEVER be
+replaced with `let distSq = dx*dx + dy*dy`. Although mathematically equivalent,
+this change breaks `fastVelocity_triggersPlayAfterDebounce` and `fastTouch_triggersPlay`
+CI tests because the fast drag test path does not hit checkpoints under the squared
+comparison. This optimization was tried and reverted twice — do not attempt again.
