@@ -64,7 +64,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         }
 
         let center = NotificationCenter.default
-        interruptionObserver = center.addObserver(
+        self.interruptionObserver = center.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: nil,
             queue: .main
@@ -82,7 +82,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 }            }
             self.handleInterruptionValues(type: typeValue, options: optionsValue)
         }
-        routeChangeObserver = center.addObserver(
+        self.routeChangeObserver = center.addObserver(
             forName: AVAudioSession.routeChangeNotification,
             object: nil,
             queue: .main
