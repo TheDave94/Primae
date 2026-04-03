@@ -241,6 +241,7 @@ private extension AudioEngine {
         } catch {
             player.stop()
             isPlaying = false
+            shouldResumePlayback = false
             print("AudioEngine failed to start: \(error.localizedDescription)")
         }
     }
