@@ -4,13 +4,11 @@ import Foundation
 @MainActor
 public final class AudioEngine: AudioControlling, CustomStringConvertible {
     typealias Interruption = AVAudioSession.InterruptionType
-    private nonisolated(unsafe) static var observerStore: [ObjectIdentifier: (interruption: NSObjectProtocol?, routeChange: NSObjectProtocol?)] = [:]
+    private nonisolated(unsafe) static var observerStore: [ObjectIdentifier: (interruption: Task<Void, Never>, routeChange: Task<Void, Never>)] = [:]
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let timePitch = AVAudioUnitTimePitch()
     private var currentFile: AVAudioFile?
-    private var interruptionObserver: NSObjectProtocol?
-    private var routeChangeObserver: NSObjectProtocol?
 
     private var shouldResumePlayback = false
     private var appIsForeground = true
@@ -63,37 +61,39 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             print("AudioEngine session config failed: \(error.localizedDescription)")
         }
 
-        let center = NotificationCenter.default
-        self.interruptionObserver = center.addObserver(
-            forName: AVAudioSession.interruptionNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self else { return }
-            let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
-            if let typeValue,
-               let type = Interruption(rawValue: typeValue) {
-                if type == .began {
-                    self.isPlaying = false
-                    self.handleInterruptionBegan()
-                } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
-                    if self.canResumePlayback() { self.attemptResumePlayback() }
-                }            }
-            self.handleInterruptionValues(type: typeValue, options: optionsValue)
-        }
-        self.routeChangeObserver = center.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in            guard let self else { return }
-            let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
-            self.handleRouteChangeValue(reason: reasonValue)
-        }
-
         let key = ObjectIdentifier(self)
+        let interruptionTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(
+                named: AVAudioSession.interruptionNotification,
+                object: nil
+            ) {
+                guard let self else { return }
+                let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
+                let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
+                if let typeValue,
+                   let type = Interruption(rawValue: typeValue) {
+                    if type == .began {
+                        self.isPlaying = false
+                        self.handleInterruptionBegan()
+                    } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
+                        if self.canResumePlayback() { self.attemptResumePlayback() }
+                    }
+                }
+                self.handleInterruptionValues(type: typeValue, options: optionsValue)
+            }
+        }
+        let routeChangeTask = Task { @MainActor [weak self] in
+            for await notification in NotificationCenter.default.notifications(
+                named: AVAudioSession.routeChangeNotification,
+                object: nil
+            ) {
+                guard let self else { return }
+                let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                self.handleRouteChangeValue(reason: reasonValue)
+            }
+        }
         MainActor.assumeIsolated {
-            Self.observerStore[key] = (interruption: interruptionObserver, routeChange: routeChangeObserver)
+            Self.observerStore[key] = (interruption: interruptionTask, routeChange: routeChangeTask)
         }
     }
 
@@ -204,13 +204,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 private extension AudioEngine {
     nonisolated static func removeObservers(for object: AnyObject) {
         let key = ObjectIdentifier(object)
-        let observers = observerStore.removeValue(forKey: key)
-        if let obs = observers?.interruption {
-            NotificationCenter.default.removeObserver(obs)
-        }
-        if let obs = observers?.routeChange {
-            NotificationCenter.default.removeObserver(obs)
-        }
+        let tasks = observerStore.removeValue(forKey: key)
+        tasks?.interruption.cancel()
+        tasks?.routeChange.cancel()
     }
 
     func resourceURL(for fileName: String) -> URL? {
