@@ -354,9 +354,7 @@ private extension AudioEngine {
 
         switch reason {
         case .oldDeviceUnavailable:
-            player.pause()
-            isPlaying = false
-            pendingSafeEnginePause()
+            stop()
         case .newDeviceAvailable, .categoryChange, .override, .routeConfigurationChange, .wakeFromSleep, .noSuitableRouteForCategory:
             if appIsForeground && !interrupted {
                 attemptResumePlayback()
