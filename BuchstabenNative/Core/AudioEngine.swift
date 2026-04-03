@@ -143,6 +143,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func play() {
+        guard currentFile != nil else { return }
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
