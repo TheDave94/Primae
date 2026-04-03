@@ -181,6 +181,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func resumeAfterLifecycle() {
+        guard currentFile != nil else { return }
         appIsForeground = true
         // Cancel any pending engine-pause task scheduled by suspendForLifecycle
         // before attempting resume. Without this cancellation, the 0.2-second
