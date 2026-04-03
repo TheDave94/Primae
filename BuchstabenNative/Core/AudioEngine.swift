@@ -143,7 +143,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback = true
         interruptionResumeGateRequired = false
         interruptionShouldResume = true
-        try? AVAudioSession.sharedInstance().setActive(true)
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            print("Failed to activate session: \(error)")
+        }
         if !engine.isRunning {
             startIfNeeded()
         }
