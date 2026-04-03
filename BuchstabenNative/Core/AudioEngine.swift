@@ -191,12 +191,10 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // the engine stays running and ready — matching the test assertion that
         // engine.isRunning == true after suspend+resume with no pending pause.
         startIfNeeded()
-        if canResumePlayback() {
-            if let file = currentFile, !player.isPlaying { player.scheduleFile(file, at: nil, completionHandler: nil) }
-            if engine.isRunning && currentFile != nil && canResumePlayback() {
-                player.play()
-                isPlaying = true
-            }
+        if let file = currentFile, !player.isPlaying { player.scheduleFile(file, at: nil, completionHandler: nil) }
+        if engine.isRunning && currentFile != nil && canResumePlayback() {
+            player.play()
+            isPlaying = true
         }
     }
     func cancelPendingLifecycleWork() {
