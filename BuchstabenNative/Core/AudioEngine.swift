@@ -58,6 +58,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
         } catch {
             self.isPlaying = false
+            self.shouldResumePlayback = false
             print("AudioEngine session config failed: \(error.localizedDescription)")
         }
 
