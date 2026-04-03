@@ -56,7 +56,6 @@ final class StrokeTracker {
         progress = []
         radiusMultiplier = 1.0
     }
-
     func update(normalizedPoint p: CGPoint) {
         guard p.x.isFinite && p.y.isFinite else { return }
         guard (0...1).contains(p.x) && (0...1).contains(p.y) else { return }
@@ -83,5 +82,4 @@ final class StrokeTracker {
                 self.progress[current].complete = true
             }
         }
-    }
-}
+    }}
