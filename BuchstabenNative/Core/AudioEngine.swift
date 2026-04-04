@@ -92,7 +92,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 object: nil
             ) {
                 guard let self else { return }
-                let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt
+                let reasonValue = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
                 self.handleRouteChangeValue(reason: reasonValue)
             }
         }
