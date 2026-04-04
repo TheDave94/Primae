@@ -87,11 +87,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
         }
         let routeChangeTask = Task { @MainActor [weak self] in
+            guard let self else { return }
             for await notification in NotificationCenter.default.notifications(
                 named: AVAudioSession.routeChangeNotification,
                 object: nil
             ) {
-                guard let self else { return }
                 let reasonValue = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
                 self.handleRouteChangeValue(reason: reasonValue)
             }
