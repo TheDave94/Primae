@@ -163,6 +163,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         isPlaying = false
         cancelPendingLifecycleWork()
         player.stop()
+        currentFile = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
 
