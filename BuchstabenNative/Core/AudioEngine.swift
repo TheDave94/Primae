@@ -73,7 +73,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 guard notification.name == AVAudioSession.interruptionNotification else { continue }
                 guard let self else { return }
                 let typeValue = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
-                let optionsValue = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue
+                let optionsValue = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
                 if let typeValue,
                    let type = Interruption(rawValue: typeValue) {
                     if type == .began {
