@@ -166,7 +166,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         cancelPendingLifecycleWork()
         player.stop()
         currentFile = nil
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            print("AudioEngine failed to deactivate session: \(error.localizedDescription)")
+        }
     }
 
     func restart() {
