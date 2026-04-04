@@ -70,6 +70,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 named: AVAudioSession.interruptionNotification,
                 object: nil
             ) {
+                guard notification.name == AVAudioSession.interruptionNotification else { continue }
                 guard let self else { return }
                 let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
                 let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt
