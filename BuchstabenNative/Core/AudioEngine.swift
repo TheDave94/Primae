@@ -166,12 +166,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         player.reset()
         player.stop()
         currentFile = nil
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            print("AudioEngine failed to deactivate session: \(error.localizedDescription)")
-        }
-    }
+    do {
+        try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    } catch {
+        print("AudioEngine stop failed to deactivate audio session: \(error.localizedDescription)")
+    }    }
 
     func restart() {
         shouldResumePlayback = true
