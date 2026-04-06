@@ -163,6 +163,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         isPlaying = false
         interruptionResumeGateRequired = false
         cancelPendingLifecycleWork()
+        player.reset()
         player.stop()
         currentFile = nil
         do {
