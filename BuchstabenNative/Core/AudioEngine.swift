@@ -84,7 +84,8 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 }
                 self.handleInterruptionValues(type: typeValue, options: optionsValue)
             }
-        }        let routeChangeTask = Task { @MainActor [weak self] in
+        }
+        let routeChangeTask = Task { @MainActor [weak self] in
             for await notification in NotificationCenter.default.notifications(
                 named: AVAudioSession.routeChangeNotification,
                 object: nil
