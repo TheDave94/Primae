@@ -79,7 +79,6 @@ final class StrokeTracker {
         let dy = p.y - cp.y
         let dist = hypot(dx, dy)
 
-        guard !self.progress[current].complete else { return }
         let threshold = definition.checkpointRadius * radiusMultiplier
         if dist <= threshold {
             self.progress[current].nextCheckpoint += 1
