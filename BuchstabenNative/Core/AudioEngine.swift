@@ -65,11 +65,10 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 
         let key = ObjectIdentifier(self)
         let interruptionTask = Task { @MainActor [weak self] in
-            let interruptionNotifications = NotificationCenter.default.notifications(
+            for await notification in NotificationCenter.default.notifications(
                 named: AVAudioSession.interruptionNotification,
                 object: nil
-            )
-            for await notification in interruptionNotifications {
+            ) {
                 guard notification.name == AVAudioSession.interruptionNotification else { continue }
                 guard let self else { break }
                 let typeValue = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
@@ -87,11 +86,10 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
         }
         let routeChangeTask = Task { @MainActor [weak self] in
-            let routeChangeNotifications = NotificationCenter.default.notifications(
+            for await notification in NotificationCenter.default.notifications(
                 named: AVAudioSession.routeChangeNotification,
                 object: nil
-            )
-            for await notification in routeChangeNotifications {
+            ) {
                 guard let self else { return }
                 let reasonValue = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
                 self.handleRouteChangeValue(reason: reasonValue)
@@ -161,23 +159,18 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func stop() {
+        shouldResumePlayback = false
+        isPlaying = false
         interruptionResumeGateRequired = false
         cancelPendingLifecycleWork()
         player.reset()
         player.stop()
         currentFile = nil
-        self.shouldResumePlayback = false
-        self.isPlaying = false
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            self.shouldResumePlayback = false
-            self.isPlaying = false
-        } catch {
-            self.shouldResumePlayback = false
-            self.isPlaying = false
-            print("AudioEngine stop failed to deactivate audio session: \(error.localizedDescription)")
-        }
-    }
+    do {
+        try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    } catch {
+        print("AudioEngine stop failed to deactivate audio session: \(error.localizedDescription)")
+    }    }
 
     func restart() {
         shouldResumePlayback = true

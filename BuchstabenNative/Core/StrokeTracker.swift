@@ -15,7 +15,7 @@ final class StrokeTracker {
     var radiusMultiplier: CGFloat = 1.0
 
     /// Closure called when a stroke is completed. The integer parameter is the completed stroke index.
-    var onStrokeCompleted: (@MainActor (Int) -> Void)?
+    var onStrokeCompleted: ((Int) -> Void)?
 
     var soundEnabled: Bool {
         guard let definition else { return false }
