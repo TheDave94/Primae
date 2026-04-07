@@ -159,8 +159,6 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func stop() {
-        shouldResumePlayback = false
-        isPlaying = false
         interruptionResumeGateRequired = false
         cancelPendingLifecycleWork()
         player.reset()
@@ -168,7 +166,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         currentFile = nil
     do {
         try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        self.shouldResumePlayback = false
+        self.isPlaying = false
     } catch {
+        self.shouldResumePlayback = false
+        self.isPlaying = false
         print("AudioEngine stop failed to deactivate audio session: \(error.localizedDescription)")
     }    }
 
