@@ -92,3 +92,12 @@ replaced with `let distSq = dx*dx + dy*dy`. Although mathematically equivalent,
 this change breaks `fastVelocity_triggersPlayAfterDebounce` and `fastTouch_triggersPlay`
 CI tests because the fast drag test path does not hit checkpoints under the squared
 comparison. This optimization was tried and reverted twice — do not attempt again.
+
+### CRITICAL: git revert can truncate files — always verify closing braces
+A `git revert --no-commit` of multiple commits that touched the same file
+(StrokeTracker.swift) left the file missing its closing `}` class brace.
+The SWIFT_TYPECHECK_FAIL gate caught syntax errors but not missing EOF braces
+because the file was syntactically ambiguous (missing `}` is only caught at build time).
+LESSON: After any revert operation, verify Swift files end with `}` before pushing.
+LESSON: The ci_fix job must check for truncated files (file ends mid-class) before committing.
+LESSON: Never chain multiple reverts on the same file in one `git revert --no-commit` call.
