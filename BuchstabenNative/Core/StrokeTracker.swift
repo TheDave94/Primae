@@ -67,7 +67,6 @@ final class StrokeTracker {
         guard let definition else { return }
 
         let current = currentStrokeIndex
-
         guard current < definition.strokes.count else { return }
 
         let stroke = definition.strokes[current]
@@ -87,4 +86,4 @@ final class StrokeTracker {
                 onStrokeCompleted?(current)
             }
         }
-    }}
+    }
