@@ -65,10 +65,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 
         let key = ObjectIdentifier(self)
         let interruptionTask = Task { @MainActor [weak self] in
-            for await notification in NotificationCenter.default.notifications(
+            let interruptionNotifications = NotificationCenter.default.notifications(
                 named: AVAudioSession.interruptionNotification,
                 object: nil
-            ) {
+            )
+            for await notification in interruptionNotifications {
                 guard notification.name == AVAudioSession.interruptionNotification else { continue }
                 guard let self else { break }
                 let typeValue = (notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
@@ -86,10 +87,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             }
         }
         let routeChangeTask = Task { @MainActor [weak self] in
-            for await notification in NotificationCenter.default.notifications(
+            let routeChangeNotifications = NotificationCenter.default.notifications(
                 named: AVAudioSession.routeChangeNotification,
                 object: nil
-            ) {
+            )
+            for await notification in routeChangeNotifications {
                 guard let self else { return }
                 let reasonValue = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
                 self.handleRouteChangeValue(reason: reasonValue)
