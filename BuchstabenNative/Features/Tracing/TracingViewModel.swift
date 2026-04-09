@@ -69,6 +69,7 @@ init(_ deps: TracingDependencies = .live) {
     self.haptics = deps.haptics
     self.repo = deps.repo
     self.adaptationPolicy = deps.adaptationPolicy ?? MovingAverageAdaptationPolicy()
+    self.streakStore = deps.streakStore
     haptics.prepare()
     letters = repo.loadLetters()
     guard let first = letters.first else { return }
