@@ -30,6 +30,7 @@ public final class TracingViewModel {
     private let audio: AudioControlling
     private let haptics: HapticEngineProviding
     let progressStore: ProgressStoring
+    private let streakStore: StreakStoring
     private var adaptationPolicy: any AdaptationPolicy
 
     private var letters: [LetterAsset] = []
@@ -263,6 +264,7 @@ init(_ deps: TracingDependencies = .live) {
             haptics.fire(.letterCompleted)
             let accuracy = Double(strokeTracker.overallProgress)
             progressStore.recordCompletion(for: currentLetterName, accuracy: accuracy)
+            streakStore.recordSession(date: Date(), lettersCompleted: [currentLetterName], accuracy: Double(strokeTracker.overallProgress))
             let adaptSample = AdaptationSample(letter: currentLetterName, accuracy: CGFloat(accuracy), completionTime: 0)
             adaptationPolicy.record(adaptSample)
             currentDifficultyTier = adaptationPolicy.currentTier

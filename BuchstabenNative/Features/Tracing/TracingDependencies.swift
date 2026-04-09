@@ -10,6 +10,7 @@ struct TracingDependencies {
     var haptics: HapticEngineProviding
     var adaptationPolicy: (any AdaptationPolicy)?
     var repo: LetterRepository
+    var streakStore: StreakStoring
 
     // Explicit @MainActor init allows @MainActor default values (AudioEngine etc.)
     init(
@@ -18,7 +19,8 @@ struct TracingDependencies {
         progressStore: ProgressStoring = JSONProgressStore(),
         haptics: HapticEngineProviding = CoreHapticsEngine(),
         adaptationPolicy: (any AdaptationPolicy)? = nil,
-        repo: LetterRepository = LetterRepository()
+        repo: LetterRepository = LetterRepository(),
+        streakStore: StreakStoring = JSONStreakStore()
     ) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
@@ -26,6 +28,7 @@ struct TracingDependencies {
         self.haptics = haptics
         self.adaptationPolicy = adaptationPolicy
         self.repo = repo
+        self.streakStore = streakStore
     }
 
     /// The default production configuration.
