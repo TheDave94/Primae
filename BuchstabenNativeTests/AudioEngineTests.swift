@@ -292,7 +292,7 @@ final class AudioEngineTests: XCTestCase {
                            "AVAudioEngine must be paused after pendingSafeEnginePause fires")
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.0)
+        await fulfillment(of: [exp], timeout: 1.0)
     }
 
     func testPendingSafeEnginePause_cancelledByResume() async throws {
@@ -309,7 +309,7 @@ final class AudioEngineTests: XCTestCase {
                           "AVAudioEngine must not be paused when resume cancelled the pending pause work item")
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 1.5)
+        await fulfillment(of: [exp], timeout: 1.5)
     }
 
     // MARK: - setAdaptivePlayback clamping
@@ -372,7 +372,7 @@ final class AudioEngineTests: XCTestCase {
             XCTAssertFalse(engine.isPlaying)
             exp.fulfill()
         }
-        wait(for: [exp], timeout: 2.0)
+        await fulfillment(of: [exp], timeout: 2.0)
     }
 
     // MARK: - deinit: observer removal and retain cycle

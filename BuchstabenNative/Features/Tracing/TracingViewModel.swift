@@ -319,6 +319,7 @@ init(_ deps: TracingDependencies = .live) {
         pencilAzimuth = 0
         playbackMachine.resumeIntent = false
         cancelPendingPlaybackWork()
+        audio.stop()
         setPlaybackState(.idle, immediate: true)
     }
     private func load(letter: LetterAsset) {
@@ -400,7 +401,10 @@ init(_ deps: TracingDependencies = .live) {
             wouldChange = playbackMachine.state != target
         }
 
-        if immediate {
+        // Transitioning from idle → active: apply immediately for snappy initial playback.
+        // The debounce is only needed to prevent rapid active→idle cycling.
+        let immediateActivation = target == .active && playbackMachine.state == .idle
+        if immediate || immediateActivation {
             let cmd = playbackMachine.transition(to: target)
             applyCommand(cmd)
             return
