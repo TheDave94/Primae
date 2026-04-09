@@ -401,10 +401,7 @@ init(_ deps: TracingDependencies = .live) {
             wouldChange = playbackMachine.state != target
         }
 
-        // Transitioning from idle → active: apply immediately for snappy initial playback.
-        // The debounce is only needed to prevent rapid active→idle cycling.
-        let immediateActivation = target == .active && playbackMachine.state == .idle
-        if immediate || immediateActivation {
+        if immediate {
             let cmd = playbackMachine.transition(to: target)
             applyCommand(cmd)
             return
