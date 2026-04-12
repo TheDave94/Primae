@@ -101,3 +101,7 @@ because the file was syntactically ambiguous (missing `}` is only caught at buil
 LESSON: After any revert operation, verify Swift files end with `}` before pushing.
 LESSON: The ci_fix job must check for truncated files (file ends mid-class) before committing.
 LESSON: Never chain multiple reverts on the same file in one `git revert --no-commit` call.
+
+### identical-search-replace-no-op
+<!-- added by lessons-agent 2026-04-12 -->
+Do not propose SEARCH/REPLACE blocks where SEARCH and REPLACE content are identical. This occurs repeatedly in AudioEngine.swift and StrokeTracker.swift when the AI misreads existing code or tries to 'fix' already-correct lines. Each such proposal wastes apply attempts and creates noise. Always verify the SEARCH content differs from REPLACE before proposing.
