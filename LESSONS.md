@@ -113,3 +113,7 @@ When tasked to modify a specific method (e.g., setPlaybackState(_:immediate:) in
 ### audioengine-init-cast-typo-fixes
 <!-- added by lessons-agent 2026-04-12 -->
 Stop attempting to 'fix' optional casts in AudioEngine.swift's interruptionTask/routeChangeTask. Tasks requesting replacements like `(as? UInt)` vs `as? UInt` or adding `self.` prefixes to already-correct lines have failed repeatedly because the code is already correct. AudioEngine.swift's notification handlers are stable; do not propose syntactic tweaks to these lines unless there is a clear compile error.
+
+### speculative-ci-fix-without-logs
+<!-- added by lessons-agent 2026-04-12 -->
+When tasked to 'Fix CI build failure', never propose changes without analyzing actual error logs. Multiple proposals guessed at missing braces or added redundant showGhost resets, failing because they didn't address the root cause. If logs are unavailable, state that analysis is impossible rather than guessing. Only propose fixes when you can see the specific error message.
