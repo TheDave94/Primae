@@ -105,3 +105,7 @@ LESSON: Never chain multiple reverts on the same file in one `git revert --no-co
 ### identical-search-replace-no-op
 <!-- added by lessons-agent 2026-04-12 -->
 Do not propose SEARCH/REPLACE blocks where SEARCH and REPLACE content are identical. This occurs repeatedly in AudioEngine.swift and StrokeTracker.swift when the AI misreads existing code or tries to 'fix' already-correct lines. Each such proposal wastes apply attempts and creates noise. Always verify the SEARCH content differs from REPLACE before proposing.
+
+### wrong-method-modification
+<!-- added by lessons-agent 2026-04-12 -->
+When tasked to modify a specific method (e.g., setPlaybackState(_:immediate:) in TracingViewModel), ensure changes are made to that exact method, not a different one. Multiple proposals incorrectly modified unrelated methods because the AI mislocated the target. Always double-check the method signature matches the task description before writing SEARCH/REPLACE blocks.
