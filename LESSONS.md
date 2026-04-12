@@ -109,3 +109,7 @@ Do not propose SEARCH/REPLACE blocks where SEARCH and REPLACE content are identi
 ### wrong-method-modification
 <!-- added by lessons-agent 2026-04-12 -->
 When tasked to modify a specific method (e.g., setPlaybackState(_:immediate:) in TracingViewModel), ensure changes are made to that exact method, not a different one. Multiple proposals incorrectly modified unrelated methods because the AI mislocated the target. Always double-check the method signature matches the task description before writing SEARCH/REPLACE blocks.
+
+### audioengine-init-cast-typo-fixes
+<!-- added by lessons-agent 2026-04-12 -->
+Stop attempting to 'fix' optional casts in AudioEngine.swift's interruptionTask/routeChangeTask. Tasks requesting replacements like `(as? UInt)` vs `as? UInt` or adding `self.` prefixes to already-correct lines have failed repeatedly because the code is already correct. AudioEngine.swift's notification handlers are stable; do not propose syntactic tweaks to these lines unless there is a clear compile error.
