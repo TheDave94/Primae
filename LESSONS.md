@@ -117,3 +117,7 @@ Stop attempting to 'fix' optional casts in AudioEngine.swift's interruptionTask/
 ### speculative-ci-fix-without-logs
 <!-- added by lessons-agent 2026-04-12 -->
 When tasked to 'Fix CI build failure', never propose changes without analyzing actual error logs. Multiple proposals guessed at missing braces or added redundant showGhost resets, failing because they didn't address the root cause. If logs are unavailable, state that analysis is impossible rather than guessing. Only propose fixes when you can see the specific error message.
+
+### streakstore-json-wiring-failures
+<!-- added by lessons-agent 2026-04-12 -->
+Wiring JSONStreakStore into TracingDependencies has repeatedly caused SWIFT_TYPECHECK_FAIL due to extraneous braces or mismatched SEARCH blocks. This is an architectural integration that requires careful coordination across files. Future attempts must be preceded by a manual audit of TracingDependencies.swift and StreakStore.swift to understand the correct injection pattern.
