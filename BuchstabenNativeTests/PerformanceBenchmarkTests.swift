@@ -9,16 +9,13 @@ import XCTest
 import CoreGraphics
 @testable import BuchstabenNative
 
-@MainActor
 final class PerformanceBenchmarkTests: XCTestCase {
 
-    nonisolated override init() { super.init() }
-    nonisolated override init(selector: Selector) { super.init(selector: selector) }
 
     // MARK: - StrokeTracker hit-test performance
 
     /// 1000 update() calls on a 5-stroke, 10-checkpoint-per-stroke letter.
-    func testStrokeTrackerHitTest_performance() async {
+    @MainActor func testStrokeTrackerHitTest_performance() async {
         let definition = LetterStrokes(
             letter: "PERF",
             checkpointRadius: 0.05,
@@ -60,7 +57,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     }
 
     /// Rapid reset+load cycle — 500 iterations.
-    func testStrokeTrackerResetLoad_performance() async {
+    @MainActor func testStrokeTrackerResetLoad_performance() async {
         let definition = LetterStrokes(
             letter: "RESET",
             checkpointRadius: 0.06,
@@ -82,7 +79,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     // MARK: - LetterRepository load performance
 
     /// loadLetters() on empty provider (fallback path) should be <1ms.
-    func testLetterRepository_emptyProvider_loadPerformance() async {
+    @MainActor func testLetterRepository_emptyProvider_loadPerformance() async {
         let repo = LetterRepository(resources: EmptyProvider())
         measure {
             _ = repo.loadLetters()
@@ -90,7 +87,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     }
 
     /// loadLetters() is called many times (e.g., view refreshes) — must be fast.
-    func testLetterRepository_repeatedLoad_performance() async {
+    @MainActor func testLetterRepository_repeatedLoad_performance() async {
         let repo = LetterRepository(resources: EmptyProvider())
         measure {
             for _ in 0..<100 {
@@ -102,7 +99,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     // MARK: - LetterGuideRenderer performance
 
     /// guidePath generation for all 7 curated letters + 3 fallbacks, 1000 iterations.
-    func testLetterGuideRenderer_performance() async {
+    @MainActor func testLetterGuideRenderer_performance() async {
         let rect = CGRect(x: 0, y: 0, width: 400, height: 400)
         let letters = ["A", "F", "I", "K", "L", "M", "O", "Z", "Q", "B"]
         measure {
@@ -117,7 +114,7 @@ final class PerformanceBenchmarkTests: XCTestCase {
     // MARK: - PlaybackStateMachine performance
 
     /// 10,000 rapid transition() calls — must complete in <50ms.
-    func testPlaybackStateMachine_rapidTransitions_performance() async {
+    @MainActor func testPlaybackStateMachine_rapidTransitions_performance() async {
         measure {
             var machine = PlaybackStateMachine()
             machine.appIsForeground = true
