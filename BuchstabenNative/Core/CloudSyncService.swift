@@ -20,7 +20,7 @@ enum SyncRecordType: String {
 
 // MARK: - Protocol (async/throws — Swift 6.3)
 
-protocol CloudSyncService: AnyObject {
+protocol CloudSyncService: AnyObject, Sendable {
     var syncState: SyncState { get }
     /// Upload local data. Throws on network or CloudKit failure.
     func push(recordType: SyncRecordType, payload: [String: Any]) async throws
@@ -30,7 +30,7 @@ protocol CloudSyncService: AnyObject {
 
 // MARK: - Null (test / pre-CloudKit) implementation
 
-final class NullSyncService: CloudSyncService {
+final class NullSyncService: CloudSyncService, @unchecked Sendable {
     private(set) var syncState: SyncState = .idle
     private(set) var pushedRecords: [(SyncRecordType, [String: Any])] = []
     private var storedRecords: [SyncRecordType: [String: Any]] = [:]
