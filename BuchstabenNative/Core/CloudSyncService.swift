@@ -18,17 +18,17 @@ enum SyncRecordType: String {
     case streak   = "StreakRecord"
 }
 
-// MARK: - Protocol
+// MARK: - Protocol (async/throws — Swift 6.3)
 
 protocol CloudSyncService: AnyObject {
     var syncState: SyncState { get }
-    /// Upload local data to CloudKit. Calls completion with success/failure.
-    func push(recordType: SyncRecordType, payload: [String: Any], completion: @escaping (Result<Void, Error>) -> Void)
-    /// Fetch latest record from CloudKit for a given type.
-    func fetch(recordType: SyncRecordType, completion: @escaping (Result<[String: Any], Error>) -> Void)
+    /// Upload local data. Throws on network or CloudKit failure.
+    func push(recordType: SyncRecordType, payload: [String: Any]) async throws
+    /// Fetch latest record. Returns empty dict when no record exists yet.
+    func fetch(recordType: SyncRecordType) async throws -> [String: Any]
 }
 
-// MARK: - Null (test/simulator) implementation
+// MARK: - Null (test / pre-CloudKit) implementation
 
 final class NullSyncService: CloudSyncService {
     private(set) var syncState: SyncState = .idle
@@ -40,32 +40,29 @@ final class NullSyncService: CloudSyncService {
         storedRecords[type] = payload
     }
 
-    /// Simulate an error on next push/fetch (for resilience tests).
+    /// Set to simulate a network/auth failure on next push or fetch.
     var simulateError: Error? = nil
 
-    func push(recordType: SyncRecordType, payload: [String: Any], completion: @escaping (Result<Void, Error>) -> Void) {
+    func push(recordType: SyncRecordType, payload: [String: Any]) async throws {
         if let error = simulateError {
             syncState = .error(error.localizedDescription)
-            completion(.failure(error))
-            return
+            throw error
         }
         syncState = .syncing
         pushedRecords.append((recordType, payload))
         storedRecords[recordType] = payload
         syncState = .idle
-        completion(.success(()))
     }
 
-    func fetch(recordType: SyncRecordType, completion: @escaping (Result<[String: Any], Error>) -> Void) {
+    func fetch(recordType: SyncRecordType) async throws -> [String: Any] {
         if let error = simulateError {
             syncState = .error(error.localizedDescription)
-            completion(.failure(error))
-            return
+            throw error
         }
         syncState = .syncing
         let result = storedRecords[recordType] ?? [:]
         syncState = .idle
-        completion(.success(result))
+        return result
     }
 
     func reset() {
@@ -82,12 +79,12 @@ final class NullSyncService: CloudSyncService {
 /// Uses last-write-wins merge: remote timestamp beats local if newer.
 final class SyncCoordinator {
 
-    private let sync: CloudSyncService
+    private let sync: any CloudSyncService
     private let progressStore: ProgressStoring
     private let streakStore: StreakStoring
     private(set) var lastSyncDate: Date?
 
-    init(sync: CloudSyncService, progressStore: ProgressStoring, streakStore: StreakStoring) {
+    init(sync: any CloudSyncService, progressStore: ProgressStoring, streakStore: StreakStoring) {
         self.sync = sync
         self.progressStore = progressStore
         self.streakStore = streakStore
@@ -95,37 +92,32 @@ final class SyncCoordinator {
 
     var syncState: SyncState { sync.syncState }
 
-    /// Push all local state to CloudKit.
-    func pushAll(completion: @escaping (Result<Void, Error>) -> Void) {
-        let progressPayload = buildProgressPayload()
-        sync.push(recordType: .progress, payload: progressPayload) { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .failure(let err):
-                completion(.failure(err))
-            case .success:
-                let streakPayload = self.buildStreakPayload()
-                self.sync.push(recordType: .streak, payload: streakPayload) { [weak self] r in
-                    if case .success = r { self?.lastSyncDate = Date() }
-                    completion(r)
-                }
-            }
-        }
+    /// Push all local state to CloudKit. Throws on first failure.
+    func pushAll() async throws {
+        try await sync.push(recordType: .progress, payload: buildProgressPayload())
+        try await sync.push(recordType: .streak,   payload: buildStreakPayload())
+        lastSyncDate = Date()
     }
 
     // MARK: Private
 
     private func buildProgressPayload() -> [String: Any] {
         let entries = progressStore.allProgress
-        let mapped = entries.map { k, v in ["letter": k, "completions": v.completionCount, "bestAccuracy": v.bestAccuracy] }
-        return ["entries": mapped,
-                "timestamp": ISO8601DateFormatter().string(from: Date())]
+        let mapped = entries.map { k, v in
+            ["letter": k, "completions": v.completionCount, "bestAccuracy": v.bestAccuracy]
+        }
+        return [
+            "entries":   mapped,
+            "timestamp": ISO8601DateFormatter().string(from: Date())
+        ]
     }
 
     private func buildStreakPayload() -> [String: Any] {
-        ["currentStreak": streakStore.currentStreak,
-         "longestStreak": streakStore.longestStreak,
-         "totalCompletions": streakStore.totalCompletions,
-         "timestamp": ISO8601DateFormatter().string(from: Date())]
+        [
+            "currentStreak":    streakStore.currentStreak,
+            "longestStreak":    streakStore.longestStreak,
+            "totalCompletions": streakStore.totalCompletions,
+            "timestamp":        ISO8601DateFormatter().string(from: Date())
+        ]
     }
 }

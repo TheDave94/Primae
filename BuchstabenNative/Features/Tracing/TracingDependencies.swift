@@ -11,8 +11,11 @@ struct TracingDependencies {
     var adaptationPolicy: (any AdaptationPolicy)?
     var repo: LetterRepository
     var streakStore: StreakStoring
+    var dashboardStore: ParentDashboardStoring
+    var onboardingStore: OnboardingStoring
+    var notificationScheduler: LocalNotificationScheduler
+    var syncCoordinator: SyncCoordinator
 
-    // Explicit @MainActor init allows @MainActor default values (AudioEngine etc.)
     init(
         singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
         audio: AudioControlling = AudioEngine(),
@@ -20,7 +23,11 @@ struct TracingDependencies {
         haptics: HapticEngineProviding = CoreHapticsEngine(),
         adaptationPolicy: (any AdaptationPolicy)? = nil,
         repo: LetterRepository = LetterRepository(),
-        streakStore: StreakStoring = JSONStreakStore()
+        streakStore: StreakStoring = JSONStreakStore(),
+        dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(),
+        onboardingStore: OnboardingStoring = JSONOnboardingStore(),
+        notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
+        syncCoordinator: SyncCoordinator? = nil
     ) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
@@ -29,6 +36,20 @@ struct TracingDependencies {
         self.adaptationPolicy = adaptationPolicy
         self.repo = repo
         self.streakStore = streakStore
+        self.dashboardStore = dashboardStore
+        self.onboardingStore = onboardingStore
+        self.notificationScheduler = notificationScheduler
+        // Default: NullSyncService (no-op) until real CloudKit is configured.
+        // Swap in a real CloudKitSyncService here when ready.
+        if let coordinator = syncCoordinator {
+            self.syncCoordinator = coordinator
+        } else {
+            self.syncCoordinator = SyncCoordinator(
+                sync: NullSyncService(),
+                progressStore: progressStore,
+                streakStore: streakStore
+            )
+        }
     }
 
     /// The default production configuration.

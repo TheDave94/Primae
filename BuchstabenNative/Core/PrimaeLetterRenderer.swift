@@ -5,6 +5,8 @@ import CoreGraphics
 /// Renders a single letter using the Primae-Regular OTF font into a UIImage.
 /// Produces the same dark-gray-on-transparent style as PBMLoader.
 /// Results are cached by letter+size to avoid redundant renders.
+/// Cache is capped at 52 entries (26 letters × 2 common display sizes) to
+/// prevent unbounded memory growth across letter/layout changes.
 @MainActor
 public enum PrimaeLetterRenderer {
 
@@ -12,11 +14,12 @@ public enum PrimaeLetterRenderer {
 
     private struct CacheKey: Hashable {
         let letter: String
-        let width: Int
+        let width:  Int
         let height: Int
     }
 
     private static var cache: [CacheKey: UIImage] = [:]
+    private static let cacheLimit = 52
 
     // MARK: - Public API
 
@@ -27,6 +30,9 @@ public enum PrimaeLetterRenderer {
         let key = CacheKey(letter: letter, width: Int(size.width), height: Int(size.height))
         if let cached = cache[key] { return cached }
         guard let image = draw(letter: letter, size: size) else { return nil }
+        // Evict entire cache when full rather than an LRU walk — letters rarely
+        // change and the next render repopulates the one entry that matters.
+        if cache.count >= cacheLimit { cache.removeAll(keepingCapacity: true) }
         cache[key] = image
         return image
     }
@@ -44,9 +50,9 @@ public enum PrimaeLetterRenderer {
     private static func makeFont(size: CGFloat) -> CTFont? {
         let bundles: [Bundle] = [.module, .main]
         for bundle in bundles {
-            guard let url = bundle.url(forResource: "Primae-Regular", withExtension: "otf"),
+            guard let url          = bundle.url(forResource: "Primae-Regular", withExtension: "otf"),
                   let dataProvider = CGDataProvider(url: url as CFURL),
-                  let cgFont = CGFont(dataProvider) else { continue }
+                  let cgFont       = CGFont(dataProvider) else { continue }
             return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
         }
         return nil
@@ -73,8 +79,8 @@ public enum PrimaeLetterRenderer {
         guard probeBBox.width > 0, probeBBox.height > 0 else { return nil }
 
         let pad: CGFloat = 0.10
-        let availW = px.width  * (1 - 2 * pad)
-        let availH = px.height * (1 - 2 * pad)
+        let availW    = px.width  * (1 - 2 * pad)
+        let availH    = px.height * (1 - 2 * pad)
         let finalSize = probe * min(availW / probeBBox.width, availH / probeBBox.height)
 
         guard let font = makeFont(size: finalSize),
