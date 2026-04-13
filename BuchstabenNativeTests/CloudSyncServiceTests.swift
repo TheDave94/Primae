@@ -22,93 +22,76 @@ private func makeStreakStore() -> JSONStreakStore {
 }
 
 @Suite @MainActor struct SyncStateTests {
-    @Test func idle_equalToIdle() { #expect(SyncState.idle == .idle) }
-    @Test func syncing_equalToSyncing() { #expect(SyncState.syncing == .syncing) }
-    @Test func error_equalWithSameMessage() { #expect(SyncState.error("oops") == .error("oops")) }
+    @Test func idle_equalToIdle()             { #expect(SyncState.idle == .idle) }
+    @Test func syncing_equalToSyncing()       { #expect(SyncState.syncing == .syncing) }
+    @Test func error_equalWithSameMessage()   { #expect(SyncState.error("oops") == .error("oops")) }
     @Test func error_notEqualWithDifferentMessage() { #expect(SyncState.error("a") != .error("b")) }
-    @Test func idle_notEqualToSyncing() { #expect(SyncState.idle != .syncing) }
+    @Test func idle_notEqualToSyncing()       { #expect(SyncState.idle != .syncing) }
 }
 
 @Suite @MainActor struct NullSyncServiceTests {
+
     @Test func initialState_idle() {
         #expect(NullSyncService().syncState == .idle)
     }
-    @Test func push_recordsPayload() async {
+
+    @Test func push_recordsPayload() async throws {
         let svc = NullSyncService()
-        await withCheckedContinuation { cont in
-            svc.push(recordType: .progress, payload: ["key": "val"]) { _ in cont.resume() }
-        }
+        try await svc.push(recordType: .progress, payload: ["key": "val"])
         #expect(svc.pushedRecords.count == 1)
         #expect(svc.pushedRecords.first?.0 == .progress)
     }
-    @Test func push_storesForFetch() async {
+
+    @Test func push_storesForFetch() async throws {
         let svc = NullSyncService()
-        await withCheckedContinuation { cont in
-            svc.push(recordType: .streak, payload: ["streak": 7]) { _ in cont.resume() }
-        }
-        let val: Int? = await withCheckedContinuation { cont in
-            svc.fetch(recordType: .streak) { result in
-                if case .success(let d) = result { cont.resume(returning: d["streak"] as? Int) }
-                else { cont.resume(returning: nil) }
-            }
-        }
-        #expect(val == 7)
+        try await svc.push(recordType: .streak, payload: ["streak": 7])
+        let result = try await svc.fetch(recordType: .streak)
+        #expect(result["streak"] as? Int == 7)
     }
-    @Test func push_successResult() async {
+
+    @Test func push_doesNotThrowOnSuccess() async {
         let svc = NullSyncService()
-        let ok: Bool = await withCheckedContinuation { cont in
-            svc.push(recordType: .progress, payload: [:]) { result in
-                if case .failure = result { cont.resume(returning: false) }
-                else { cont.resume(returning: true) }
-            }
+        await #expect(throws: Never.self) {
+            try await svc.push(recordType: .progress, payload: [:])
         }
-        #expect(ok)
     }
-    @Test func fetch_emptyWhenNotSeeded() async {
+
+    @Test func fetch_emptyWhenNotSeeded() async throws {
         let svc = NullSyncService()
-        let empty: Bool = await withCheckedContinuation { cont in
-            svc.fetch(recordType: .progress) { result in
-                if case .success(let d) = result { cont.resume(returning: d.isEmpty) }
-                else { cont.resume(returning: false) }
-            }
-        }
-        #expect(empty)
+        let result = try await svc.fetch(recordType: .progress)
+        #expect(result.isEmpty)
     }
-    @Test func seedRecord_returnedByFetch() async {
+
+    @Test func seedRecord_returnedByFetch() async throws {
         let svc = NullSyncService()
         svc.seedRecord(type: .progress, payload: ["total": 42])
-        let val: Int? = await withCheckedContinuation { cont in
-            svc.fetch(recordType: .progress) { result in
-                if case .success(let d) = result { cont.resume(returning: d["total"] as? Int) }
-                else { cont.resume(returning: nil) }
-            }
-        }
-        #expect(val == 42)
+        let result = try await svc.fetch(recordType: .progress)
+        #expect(result["total"] as? Int == 42)
     }
+
     @Test func simulateError_pushFails() async {
         let svc = NullSyncService(); svc.simulateError = TestError.forced
-        let failed: Bool = await withCheckedContinuation { cont in
-            svc.push(recordType: .progress, payload: [:]) { result in
-                if case .failure = result { cont.resume(returning: true) }
-                else { cont.resume(returning: false) }
-            }
+        do {
+            try await svc.push(recordType: .progress, payload: [:])
+            Issue.record("Expected push to throw")
+        } catch {
+            #expect(svc.syncState == .error("Forced test error"))
         }
-        #expect(failed)
-        #expect(svc.syncState == .error("Forced test error"))
     }
+
     @Test func simulateError_fetchFails() async {
         let svc = NullSyncService(); svc.simulateError = TestError.forced
-        let failed: Bool = await withCheckedContinuation { cont in
-            svc.fetch(recordType: .streak) { result in
-                if case .failure = result { cont.resume(returning: true) }
-                else { cont.resume(returning: false) }
-            }
+        do {
+            _ = try await svc.fetch(recordType: .streak)
+            Issue.record("Expected fetch to throw")
+        } catch {
+            #expect(svc.syncState == .error("Forced test error"))
         }
-        #expect(failed)
     }
-    @Test func reset_clearsAll() {
+
+    @Test func reset_clearsAll() async throws {
         let svc = NullSyncService()
-        svc.push(recordType: .progress, payload: ["x": 1]) { _ in }
+        try await svc.push(recordType: .progress, payload: ["x": 1])
         svc.simulateError = TestError.forced
         svc.reset()
         #expect(svc.syncState == .idle)
@@ -118,38 +101,43 @@ private func makeStreakStore() -> JSONStreakStore {
 }
 
 @Suite @MainActor struct SyncCoordinatorTests {
-    @Test func pushAll_pushesBothRecordTypes() async {
+
+    @Test func pushAll_pushesBothRecordTypes() async throws {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        try await coord.pushAll()
         let types = svc.pushedRecords.map(\.0)
         #expect(types.contains(.progress))
         #expect(types.contains(.streak))
     }
-    @Test func pushAll_setsLastSyncDate() async {
+
+    @Test func pushAll_setsLastSyncDate() async throws {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
         #expect(coord.lastSyncDate == nil)
-        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        try await coord.pushAll()
         #expect(coord.lastSyncDate != nil)
     }
+
     @Test func pushAll_onError_doesNotSetLastSyncDate() async {
         let svc = NullSyncService(); svc.simulateError = TestError.forced
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        try? await coord.pushAll()
         #expect(coord.lastSyncDate == nil)
     }
-    @Test func pushAll_progressPayload_containsTimestamp() async {
+
+    @Test func pushAll_progressPayload_containsTimestamp() async throws {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        try await coord.pushAll()
         let record = svc.pushedRecords.first(where: { $0.0 == .progress })?.1
         #expect(record?["timestamp"] as? String != nil)
     }
-    @Test func pushAll_streakPayload_containsStreakFields() async {
+
+    @Test func pushAll_streakPayload_containsStreakFields() async throws {
         let svc = NullSyncService()
         let coord = SyncCoordinator(sync: svc, progressStore: makeProgressStore(), streakStore: makeStreakStore())
-        await withCheckedContinuation { cont in coord.pushAll { _ in cont.resume() } }
+        try await coord.pushAll()
         let record = svc.pushedRecords.first(where: { $0.0 == .streak })?.1
         #expect(record?["currentStreak"] != nil)
         #expect(record?["totalCompletions"] != nil)

@@ -93,19 +93,17 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
     @Test func requestPermission_granted_returnsAuthorized() async {
         let mock = MockNotificationCenter(); mock.authorizationGranted = true
         let scheduler = makeScheduler(mock: mock)
-        let status = await withCheckedContinuation { cont in
-            scheduler.requestPermission { cont.resume(returning: $0) }
-        }
+        let status = await scheduler.requestPermission()
         #expect(status == .authorized)
     }
+
     @Test func requestPermission_denied_returnsDenied() async {
         let mock = MockNotificationCenter(); mock.authorizationGranted = false
         let scheduler = makeScheduler(mock: mock)
-        let status = await withCheckedContinuation { cont in
-            scheduler.requestPermission { cont.resume(returning: $0) }
-        }
+        let status = await scheduler.requestPermission()
         #expect(status == .denied)
     }
+
     @Test func scheduleDailyReminder_addsRequest() {
         let mock = MockNotificationCenter()
         makeScheduler(mock: mock).scheduleDailyReminder(currentStreak: 3, onboardingComplete: true)
@@ -132,13 +130,12 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
         makeScheduler(mock: mock).cancelReminder(identifier: "some_id")
         #expect(mock.removedIdentifiers.contains("some_id"))
     }
+
     @Test func permissionStatus_updatesAfterRequest() async {
         let mock = MockNotificationCenter(); mock.authorizationGranted = true
         let scheduler = makeScheduler(mock: mock)
         #expect(scheduler.permissionStatus == .notDetermined)
-        await withCheckedContinuation { cont in
-            scheduler.requestPermission { _ in cont.resume() }
-        }
+        _ = await scheduler.requestPermission()
         #expect(scheduler.permissionStatus == .authorized)
     }
 }

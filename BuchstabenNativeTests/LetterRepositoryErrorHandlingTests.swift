@@ -21,15 +21,19 @@ private final class InMemoryCache: LetterCacheStoring {
 
     init(storedLetters: [LetterAsset]? = nil) { self.storedLetters = storedLetters }
 
-    func save(_ letters: [LetterAsset]) throws {
+    func save(_ letters: [LetterAsset]) throws(LetterRepositoryError) {
         savedLetters = letters; storedLetters = letters; saveCallCount += 1
     }
-    func load() throws -> [LetterAsset] {
+
+    func load() throws(LetterRepositoryError) -> [LetterAsset] {
         loadCallCount += 1
         if shouldThrowOnLoad { throw LetterRepositoryError.cacheReadFailed(path: "/tmp/test") }
-        guard let letters = storedLetters else { throw LetterRepositoryError.cacheReadFailed(path: "/tmp/test") }
+        guard let letters = storedLetters else {
+            throw LetterRepositoryError.cacheReadFailed(path: "/tmp/test")
+        }
         return letters
     }
+
     func clear() { storedLetters = nil; savedLetters = nil }
 }
 
