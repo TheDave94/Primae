@@ -80,12 +80,17 @@ final class NullSyncService: CloudSyncService, @unchecked Sendable {
 @MainActor
 final class SyncCoordinator {
 
-    private let sync: any CloudSyncService
+    // `any CloudSyncService & Sendable` is required in Swift 6:
+    // existentials over Sendable protocols are only Sendable when explicitly
+    // composed with Sendable in the type annotation.
+    private let sync: any CloudSyncService & Sendable
     private let progressStore: ProgressStoring
     private let streakStore: StreakStoring
     private(set) var lastSyncDate: Date?
 
-    init(sync: any CloudSyncService, progressStore: ProgressStoring, streakStore: StreakStoring) {
+    init(sync: any CloudSyncService & Sendable,
+         progressStore: ProgressStoring,
+         streakStore: StreakStoring) {
         self.sync = sync
         self.progressStore = progressStore
         self.streakStore = streakStore
@@ -95,8 +100,13 @@ final class SyncCoordinator {
 
     /// Push all local state to CloudKit. Throws on first failure.
     func pushAll() async throws {
-        try await sync.push(recordType: .progress, payload: buildProgressPayload())
-        try await sync.push(recordType: .streak,   payload: buildStreakPayload())
+        // Materialise both payloads on the MainActor before any async suspension.
+        // Swift 6 region-based isolation requires values to be fully owned by the
+        // caller's region before they can be `sending`-transferred to an async call.
+        let progressPayload = buildProgressPayload()
+        let streakPayload   = buildStreakPayload()
+        try await sync.push(recordType: .progress, payload: progressPayload)
+        try await sync.push(recordType: .streak,   payload: streakPayload)
         lastSyncDate = Date()
     }
 
@@ -104,7 +114,7 @@ final class SyncCoordinator {
 
     private func buildProgressPayload() -> [String: any Sendable] {
         let entries = progressStore.allProgress
-        let mapped = entries.map { k, v in
+        let mapped: [[String: any Sendable]] = entries.map { k, v in
             ["letter": k, "completions": v.completionCount, "bestAccuracy": v.bestAccuracy]
         }
         return [
