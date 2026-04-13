@@ -81,7 +81,6 @@ public final class UIKitHapticEngine: HapticEngineProviding {
 
 /// Production implementation using CoreHaptics for richer, customisable patterns.
 /// Falls back gracefully to `UIKitHapticEngine` when CHHapticEngine is unavailable.
-@available(iOS 13.0, *)
 public final class CoreHapticsEngine: HapticEngineProviding {
 
     private var engine: CHHapticEngine?
