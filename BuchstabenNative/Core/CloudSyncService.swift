@@ -23,7 +23,7 @@ enum SyncRecordType: String {
 protocol CloudSyncService: AnyObject, Sendable {
     var syncState: SyncState { get }
     /// Upload local data. Throws on network or CloudKit failure.
-    func push(recordType: SyncRecordType, payload: [String: Any]) async throws
+    func push(recordType: SyncRecordType, payload: sending [String: Any]) async throws
     /// Fetch latest record. Returns empty dict when no record exists yet.
     func fetch(recordType: SyncRecordType) async throws -> [String: Any]
 }
@@ -43,7 +43,7 @@ final class NullSyncService: CloudSyncService, @unchecked Sendable {
     /// Set to simulate a network/auth failure on next push or fetch.
     var simulateError: Error? = nil
 
-    func push(recordType: SyncRecordType, payload: [String: Any]) async throws {
+    func push(recordType: SyncRecordType, payload: sending [String: Any]) async throws {
         if let error = simulateError {
             syncState = .error(error.localizedDescription)
             throw error
