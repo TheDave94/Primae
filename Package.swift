@@ -19,7 +19,14 @@ let package = Package(
         .testTarget(
             name: "BuchstabenNativeTests",
             dependencies: ["BuchstabenNative"],
-            path: "BuchstabenNativeTests"
+            path: "BuchstabenNativeTests",
+            swiftSettings: [
+                // XCTest subclasses with @MainActor members hit a Swift 6 limitation:
+                // inherited nonisolated initialisers (init(invocation:) etc.) conflict
+                // with the inferred @MainActor isolation. Minimal concurrency checking
+                // in the test target avoids this without affecting production code.
+                .swiftLanguageMode(.v5)
+            ]
         )
     ]
 )
