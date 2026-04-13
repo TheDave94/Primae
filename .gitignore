@@ -27,3 +27,4 @@ vcpkg/*.log
 new-sounds/
 ios-build/
 .build/
+vcpkg/
