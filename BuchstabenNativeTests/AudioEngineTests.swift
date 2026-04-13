@@ -15,7 +15,7 @@ import AVFoundation
 
 final class AudioEngineTests: XCTestCase {
 
-    @MainActor private var engine: AudioEngine?
+    private var engine: AudioEngine?
 
     // MARK: - Class-level session setup
     // Activate once per suite to avoid interrupting the shared session on every test setUp.
