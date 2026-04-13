@@ -19,7 +19,6 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
 
     nonisolated override init() { super.init() }
     nonisolated override init(selector: Selector) { super.init(selector: selector) }
-    nonisolated override init(invocation: NSInvocation?) { super.init(invocation: invocation) }
 
     // MARK: - Fixtures
 

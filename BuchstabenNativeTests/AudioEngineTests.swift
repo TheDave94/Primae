@@ -20,7 +20,6 @@ final class AudioEngineTests: XCTestCase {
     // conflicting with XCTestCase's nonisolated designated initialisers.
     nonisolated override init() { super.init() }
     nonisolated override init(selector: Selector) { super.init(selector: selector) }
-    nonisolated override init(invocation: NSInvocation?) { super.init(invocation: invocation) }
 
     private var engine: AudioEngine?
 
