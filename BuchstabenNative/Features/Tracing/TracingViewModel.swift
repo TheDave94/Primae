@@ -477,10 +477,10 @@ public final class TracingViewModel {
         completionDismissTask?.cancel()
         let letter = currentLetterName
         completionMessage = "🎉 \(letter) geschafft!"
-        completionDismissTask = Task { [self] in
+        completionDismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.8))
-            guard !Task.isCancelled else { return }
-            if completionMessage == "🎉 \(letter) geschafft!" { completionMessage = nil }
+            guard let self, !Task.isCancelled else { return }
+            if self.completionMessage == "🎉 \(letter) geschafft!" { self.completionMessage = nil }
         }
     }
 
@@ -536,11 +536,11 @@ public final class TracingViewModel {
     private func toast(_ text: String) {
         toastMessage = text
         toastTask?.cancel()
-        toastTask = Task { [self] in
+        toastTask = Task { [weak self] in
             do { try await Task.sleep(for: .seconds(1.3)) } catch { return }
-            guard !Task.isCancelled, toastMessage == text else { return }
-            toastMessage = nil
-            toastTask    = nil
+            guard let self, !Task.isCancelled, self.toastMessage == text else { return }
+            self.toastMessage = nil
+            self.toastTask    = nil
         }
     }
 }
