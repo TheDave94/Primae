@@ -78,7 +78,6 @@ final class NullSyncService: CloudSyncService {
 /// Coordinates sync between local stores and CloudKit.
 /// Uses last-write-wins merge: remote timestamp beats local if newer.
 @MainActor
-@MainActor
 final class SyncCoordinator {
 
     private let sync: any CloudSyncService
