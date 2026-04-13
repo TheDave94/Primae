@@ -16,12 +16,18 @@ import AVFoundation
 @MainActor
 final class AudioEngineTests: XCTestCase {
 
+    // Swift 6: @MainActor class inherits @MainActor isolation on all initialisers,
+    // conflicting with XCTestCase's nonisolated designated initialisers.
+    nonisolated override init() { super.init() }
+    nonisolated override init(selector: Selector) { super.init(selector: selector) }
+    nonisolated override init(invocation: NSInvocation?) { super.init(invocation: invocation) }
+
     private var engine: AudioEngine?
 
     // MARK: - Class-level session setup
     // Activate once per suite to avoid interrupting the shared session on every test setUp.
 
-    override class func setUp() {
+    nonisolated override class func setUp() {
         super.setUp()
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
@@ -32,7 +38,7 @@ final class AudioEngineTests: XCTestCase {
         }
     }
 
-    override class func tearDown() {
+    nonisolated override class func tearDown() {
         try? AVAudioSession.sharedInstance().setActive(false)
         super.tearDown()
     }
