@@ -9,7 +9,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     // MARK: - Observer store (Mutex-protected for nonisolated deinit access)
 
     private typealias ObserverTasks = (interruption: Task<Void, Never>, routeChange: Task<Void, Never>)
-    private static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
+    private nonisolated(unsafe) static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
 
     // MARK: - Private state
 
