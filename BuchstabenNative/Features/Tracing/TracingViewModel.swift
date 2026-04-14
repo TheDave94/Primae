@@ -241,10 +241,14 @@ public final class TracingViewModel {
         lastTimestamp                    = t
         activePath                       = [p]
         haptics.fire(.strokeBegan)
-        // Start audio immediately on touch — adaptive speed is updated in updateTouch.
-        // The velocity/debounce path was unreliable (debounce cancelled by endTouch).
-        audio.play()
-        isPlaying = true
+        // Reload audio file — stop() in endTouch clears currentFile, so play() would
+        // silently fail on subsequent touches without reloading first.
+        if letters.indices.contains(letterIndex) {
+            let files = letters[letterIndex].audioFiles
+            if files.indices.contains(audioIndex) {
+                audio.loadAudioFile(named: files[audioIndex], autoplay: false)
+            }
+        }
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
@@ -303,7 +307,16 @@ public final class TracingViewModel {
         let hBias        = Float(max(-1.0, min(1.0, dx / 20.0 + azimuthBias)))
         audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
-        // Audio started in beginTouch. Adaptive speed is updated above via setAdaptivePlayback.
+        // Play while finger is moving, stop when stationary.
+        // strokeEnforced=false means sound plays on any movement, not just on correct stroke.
+        let shouldBeActive = smoothedVelocity > 0
+        if shouldBeActive && !isPlaying {
+            audio.play()
+            isPlaying = true
+        } else if !shouldBeActive && isPlaying {
+            audio.stop()
+            isPlaying = false
+        }
 
         if strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
