@@ -9,6 +9,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     // MARK: - Observer store (Mutex-protected for nonisolated deinit access)
 
     private typealias ObserverTasks = (interruption: Task<Void, Never>, routeChange: Task<Void, Never>)
+    // nonisolated(unsafe) is load-bearing: nonisolated deinit needs actor-isolation escape. Xcode warning is a false positive — Mutex<> being Sendable is unrelated.
     private nonisolated(unsafe) static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
 
     // MARK: - Private state
