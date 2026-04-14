@@ -45,7 +45,6 @@ struct TracingDependencies {
         // Swap in a real CloudKitSyncService here when ready.
         if let coordinator = syncCoordinator {
             self.syncCoordinator = coordinator
-            self.thesisCondition = thesisCondition
         } else {
             self.syncCoordinator = SyncCoordinator(
                 sync: NullSyncService(),
@@ -53,6 +52,7 @@ struct TracingDependencies {
                 streakStore: streakStore
             )
         }
+        self.thesisCondition = thesisCondition
     }
 
     /// The default production configuration.
