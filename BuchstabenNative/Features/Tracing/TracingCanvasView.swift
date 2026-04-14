@@ -24,6 +24,22 @@ struct TracingCanvasView: View {
                 }
             }
 
+            // Stroke start dots (visible in observe and guided phases)
+            if vm.learningPhase != .freeWrite,
+               let def = vm.strokeDefinition {
+                for (idx, stroke) in def.strokes.enumerated() {
+                    guard let first = stroke.checkpoints.first else { continue }
+                    let isComplete = vm.isStrokeCompleted(idx)
+                    let isActive = vm.activeStrokeIndex == idx
+                    let pt = CGPoint(x: first.x * size.width, y: first.y * size.height)
+                    let r: CGFloat = isActive ? 18 : 14
+                    let dotRect = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
+                    let dot = Path(ellipseIn: dotRect)
+                    let color: Color = isComplete ? .green : (isActive ? .blue : .gray)
+                    context.fill(dot, with: .color(color.opacity(0.75)))
+                }
+            }
+
             if vm.activePath.count > 1 {
                 var path = Path()
                 path.addLines(vm.activePath)

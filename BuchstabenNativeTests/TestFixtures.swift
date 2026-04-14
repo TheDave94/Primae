@@ -155,4 +155,7 @@ extension TracingDependencies {
     func with(syncCoordinator: SyncCoordinator) -> TracingDependencies {
         var copy = self; copy.syncCoordinator = syncCoordinator; return copy
     }
+    func with(thesisCondition: ThesisCondition) -> TracingDependencies {
+        var copy = self; copy.thesisCondition = thesisCondition; return copy
+    }
 }

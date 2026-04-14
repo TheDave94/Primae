@@ -38,6 +38,21 @@ public final class TracingViewModel {
     var completionMessage: String?
     private(set) var currentDifficultyTier: DifficultyTier = .standard
 
+    // MARK: - Learning phase state
+
+    /// Current learning phase (observe / guided / freeWrite).
+    var learningPhase: LearningPhase { phaseController.currentPhase }
+    /// Per-phase scores for the current letter session.
+    var phaseScores: [LearningPhase: CGFloat] { phaseController.phaseScores }
+    /// Whether the current letter session (all phases) is complete.
+    var isPhaseSessionComplete: Bool { phaseController.isLetterSessionComplete }
+    /// Stars earned in current letter session (0-3).
+    var starsEarned: Int { phaseController.starsEarned }
+    /// Accumulated normalised touch points for free-write scoring.
+    private(set) var freeWritePoints: [CGPoint] = []
+    /// Last computed Frechet distance (for debug overlay).
+    private(set) var lastFreeWriteDistance: CGFloat = 0
+
     // MARK: - Animation guide state (ready for onboarding / demo UI)
 
     /// Normalized (0–1) point for the animated tracing guide dot.
@@ -120,6 +135,7 @@ public final class TracingViewModel {
         }
         self.onboardingCoordinator = coordinator
         self.onboardingStep        = coordinator.currentStep
+        self.phaseController = LearningPhaseController(condition: deps.thesisCondition)
 
         haptics.prepare()
         letters = repo.loadLetters()
@@ -234,6 +250,7 @@ public final class TracingViewModel {
     // MARK: - Touch handling
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+        guard phaseController.isTouchEnabled       else { return }
         guard !isMultiTouchNavigationActive       else { return }
         guard t >= singleTouchSuppressedUntil     else { return }
         guard !isSingleTouchInteractionActive     else { return }
@@ -270,6 +287,10 @@ public final class TracingViewModel {
 
         if isWithinCanvasBounds && distance >= minimumTouchMoveDistance {
             activePath.append(p)
+            // Accumulate for free-write scoring
+            if phaseController.currentPhase == .freeWrite {
+                freeWritePoints.append(p)
+            }
         }
 
         if let lastTimestamp {
@@ -466,6 +487,112 @@ public final class TracingViewModel {
         onboardingStore.markComplete()
     }
 
+    // MARK: - Learning phase control
+
+    /// Advance to the next learning phase for the current letter.
+    func advanceLearningPhase() {
+        let score: CGFloat
+        switch phaseController.currentPhase {
+        case .observe:
+            score = 1.0
+        case .guided:
+            score = progress
+        case .freeWrite:
+            guard let def = strokeTracker.definition else { score = 0; break }
+            let normalised = freeWritePoints.map { pt in
+                CGPoint(x: pt.x / max(canvasSize.width, 1),
+                        y: pt.y / max(canvasSize.height, 1))
+            }
+            score = FreeWriteScorer.score(tracedPoints: normalised, reference: def)
+            lastFreeWriteDistance = FreeWriteScorer.rawDistance(
+                tracedPoints: normalised, reference: def)
+        }
+
+        if phaseController.advance(score: score) {
+            resetForPhaseTransition()
+            if phaseController.currentPhase == .observe {
+                startGuideAnimation()
+            }
+            toast(phaseController.currentPhase.displayName)
+        } else {
+            recordPhaseSessionCompletion()
+        }
+    }
+
+    /// Manually complete observe phase (tap to continue).
+    func completeObservePhase() {
+        guard phaseController.currentPhase == .observe else { return }
+        stopGuideAnimation()
+        advanceLearningPhase()
+    }
+
+    /// Load the letter recommended by spaced repetition.
+    func loadRecommendedLetter() {
+        let available = visibleLetterNames
+        guard let rec = letterScheduler.recommendNext(
+            available: available,
+            progress: progressStore.allProgress
+        ), let idx = letters.firstIndex(where: { $0.name == rec }) else { return }
+        letterIndex = idx
+        load(letter: letters[idx])
+        toast("Empfohlen: \(currentLetterName)")
+    }
+
+    /// The 7 demo letters for thesis scope.
+    private let demoBaseLetters: Set<String> = ["A", "F", "I", "K", "L", "M", "O"]
+
+    /// Letter names visible in the thesis demo.
+    var visibleLetterNames: [String] {
+        letters.filter { demoBaseLetters.contains($0.baseLetter) }.map(\.name)
+    }
+
+    /// Expose stroke definition for canvas rendering.
+    var strokeDefinition: LetterStrokes? { strokeTracker.definition }
+    /// Current active stroke index.
+    var activeStrokeIndex: Int { strokeTracker.currentStrokeIndex }
+    /// Check if a stroke is completed.
+    func isStrokeCompleted(_ index: Int) -> Bool {
+        strokeTracker.progress.indices.contains(index) && strokeTracker.progress[index].complete
+    }
+
+    private func resetForPhaseTransition() {
+        strokeTracker.reset()
+        guard letters.indices.contains(letterIndex) else { return }
+        reloadStrokeCheckpoints(for: letters[letterIndex])
+        progress = 0
+        activePath.removeAll(keepingCapacity: true)
+        freeWritePoints.removeAll(keepingCapacity: true)
+        smoothedVelocity = 0
+        playbackMachine.resumeIntent = false
+        endTouchGraceTask?.cancel()
+        endTouchGraceTask = nil
+        cancelPendingPlaybackWork()
+        audio.stop()
+        playbackMachine.forceIdle()
+        isPlaying = false
+    }
+
+    private func recordPhaseSessionCompletion() {
+        let accuracy = Double(phaseController.overallScore)
+        let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
+        let letter = currentLetterName
+
+        progressStore.recordCompletion(for: letter, accuracy: accuracy)
+        streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
+        dashboardStore.recordSession(letter: letter, accuracy: accuracy,
+                                      durationSeconds: duration, date: Date())
+        Task { [self] in try? await syncCoordinator.pushAll() }
+
+        let adaptSample = AdaptationSample(letter: letter,
+                                           accuracy: CGFloat(accuracy),
+                                           completionTime: duration)
+        adaptationPolicy.record(adaptSample)
+        currentDifficultyTier = adaptationPolicy.currentTier
+        strokeTracker.radiusMultiplier = currentDifficultyTier.radiusMultiplier
+
+        showCompletionHUD()
+    }
+
     // MARK: - Debug
 
     #if DEBUG
@@ -476,6 +603,9 @@ public final class TracingViewModel {
     // MARK: - Private helpers
 
     private func load(letter: LetterAsset) {
+        phaseController.reset()
+        freeWritePoints.removeAll(keepingCapacity: true)
+        lastFreeWriteDistance = 0
         showGhost                      = false
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName

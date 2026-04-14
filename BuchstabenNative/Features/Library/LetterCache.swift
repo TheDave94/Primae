@@ -71,6 +71,8 @@ struct JSONLetterCache: LetterCacheStoring {
 private struct CodableLetterAsset: Codable {
     let id: String
     let name: String
+    let baseLetter: String?
+    let letterCase: LetterAsset.LetterCase?
     let imageName: String
     let audioFiles: [String]
     let strokes: LetterStrokes
@@ -78,13 +80,22 @@ private struct CodableLetterAsset: Codable {
     init(_ asset: LetterAsset) {
         id         = asset.id
         name       = asset.name
+        baseLetter = asset.baseLetter
+        letterCase = asset.letterCase
         imageName  = asset.imageName
         audioFiles = asset.audioFiles
         strokes    = asset.strokes
     }
 
     var asset: LetterAsset {
-        LetterAsset(id: id, name: name, imageName: imageName,
-                    audioFiles: audioFiles, strokes: strokes)
+        LetterAsset(
+            id: id,
+            name: name,
+            baseLetter: baseLetter ?? name.uppercased(),
+            letterCase: letterCase ?? .upper,
+            imageName: imageName,
+            audioFiles: audioFiles,
+            strokes: strokes
+        )
     }
 }

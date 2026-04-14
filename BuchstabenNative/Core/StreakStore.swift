@@ -104,7 +104,8 @@ final class JSONStreakStore: StreakStoring {
         newRewards += checkReward(.streakMonth, condition: state.currentStreak >= 30)
         newRewards += checkReward(.centuryClub, condition: state.totalCompletions >= 100)
         // allLettersComplete: all 26 uppercase letters A-Z
-        let allAlphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ".map { String($0) })
+        let allAlphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ".map { String($0) }
+            + ["Ä", "Ö", "Ü", "ß"])
         newRewards += checkReward(.allLettersComplete, condition: allAlphabet.isSubset(of: state.completedLetters))
 
         persist()

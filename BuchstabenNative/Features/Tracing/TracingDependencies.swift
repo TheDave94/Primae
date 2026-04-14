@@ -15,6 +15,7 @@ struct TracingDependencies {
     var onboardingStore: OnboardingStoring
     var notificationScheduler: LocalNotificationScheduler
     var syncCoordinator: SyncCoordinator
+    var thesisCondition: ThesisCondition
 
     init(
         singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
@@ -27,7 +28,8 @@ struct TracingDependencies {
         dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
-        syncCoordinator: SyncCoordinator? = nil
+        syncCoordinator: SyncCoordinator? = nil,
+        thesisCondition: ThesisCondition = .threePhase
     ) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
@@ -43,6 +45,7 @@ struct TracingDependencies {
         // Swap in a real CloudKitSyncService here when ready.
         if let coordinator = syncCoordinator {
             self.syncCoordinator = coordinator
+            self.thesisCondition = thesisCondition
         } else {
             self.syncCoordinator = SyncCoordinator(
                 sync: NullSyncService(),

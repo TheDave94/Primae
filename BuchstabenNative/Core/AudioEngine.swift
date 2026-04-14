@@ -323,10 +323,13 @@ private extension AudioEngine {
     }
 
     func handleInterruptionBegan() {
-        shouldResumePlayback = isPlaying
+        let savedResumeIntent = isPlaying
         player.pause()
         isPlaying = false
         stop()
+        // Restore resume intent — stop() clears shouldResumePlayback,
+        // but we need it preserved so playback resumes after interruption ends.
+        shouldResumePlayback = savedResumeIntent
     }
 
     func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {

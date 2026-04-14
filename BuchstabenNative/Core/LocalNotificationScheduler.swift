@@ -74,11 +74,11 @@ struct DefaultDailyReminderPolicy: DailyReminderPolicy {
 
         let body: String
         switch currentStreak {
-        case 0:        body = "Time to practice your letters today! 🔤"
-        case 1:        body = "Great start! Keep going — day 2 awaits! ⭐"
-        case 2:        body = "2 days in a row! Can you make it 3? 🌟"
-        case 3...6:    body = "You're on a \(currentStreak)-day streak — keep it going! 🔥"
-        case 7...:     body = "Incredible \(currentStreak)-day streak! You're a letter master! 🏆"
+        case 0:        body = "Zeit zum Buchstaben üben! 🔤"
+        case 1:        body = "Toller Start! Weiter so — Tag 2 wartet! ⭐"
+        case 2:        body = "2 Tage am Stück! Schaffst du 3? 🌟"
+        case 3...6:    body = "\(currentStreak) Tage am Stück — weiter so! 🔥"
+        case 7...:     body = "Unglaublich: \(currentStreak) Tage am Stück! Du bist ein Buchstaben-Meister! 🏆"
         default:       body = "Time to practice your letters today! 🔤"
         }
 

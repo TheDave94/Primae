@@ -10,6 +10,14 @@ public struct ContentView: View {
 
     // 3. Added 'public' to the body
     public var body: some View {
+        if !vm.isOnboardingComplete {
+            OnboardingFlowView()
+        } else {
+            mainContent
+        }
+    }
+
+    private var mainContent: some View {
         ZStack(alignment: .top) {
             TracingCanvasView()
                 .background(Color.white)
@@ -56,6 +64,12 @@ public struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .accessibilityLabel("Reset current letter")
                 .accessibilityHint("Clears current stroke progress")
+
+            PhaseIndicator(phase: vm.learningPhase, scores: vm.phaseScores)
+
+            Button("📚") { vm.loadRecommendedLetter() }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Empfohlener Buchstabe")
 
             Spacer(minLength: 6)
 
