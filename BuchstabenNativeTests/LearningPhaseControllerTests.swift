@@ -4,6 +4,7 @@
 // Uses Swift Testing (@Test, #expect) — the modern framework stable in Swift 6.3.
 
 import Testing
+import CoreGraphics
 @testable import BuchstabenNative
 
 struct LearningPhaseControllerTests {
