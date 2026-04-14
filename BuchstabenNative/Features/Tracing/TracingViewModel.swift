@@ -263,22 +263,7 @@ public final class TracingViewModel {
             ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
         let wasComplete       = strokeTracker.isComplete
 
-        // Checkpoints in strokes.json are in PBM calibration space.
-        // PrimaeLetterRenderer places the glyph at glyphRect, which differs from the PBM
-        // ink rect. Inverse-transform the touch point back to PBM space so hit-detection
-        // works regardless of which renderer is active.
-        let trackerPoint: CGPoint
-        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: currentLetterName, canvasSize: canvasSize),
-           let pr = LetterGuideGeometry.pbmRects[currentLetterName.uppercased()],
-           gr.width > 0, gr.height > 0 {
-            let rx = (normalized.x - gr.minX) / gr.width
-            let ry = (normalized.y - gr.minY) / gr.height
-            trackerPoint = CGPoint(x: pr.minX + rx * pr.width,
-                                   y: pr.minY + ry * pr.height)
-        } else {
-            trackerPoint = normalized
-        }
-        strokeTracker.update(normalizedPoint: trackerPoint)
+        strokeTracker.update(normalizedPoint: normalized)
 
         let isNowComplete = strokeTracker.isComplete
         if !wasComplete && isNowComplete { haptics.fire(.letterCompleted) }
@@ -461,7 +446,27 @@ public final class TracingViewModel {
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName
         currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize) ?? PBMLoader.load(named: letter.imageName)
-        strokeTracker.load(letter.strokes)
+        // Transform stroke checkpoints from PBM-calibrated space into the
+        // PrimaeLetterRenderer canvas space so hit-detection matches the visible letter.
+        let strokesForTracker: LetterStrokes
+        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize),
+           let pr = LetterGuideGeometry.pbmRects[letter.name.uppercased()],
+           pr.width > 0, pr.height > 0 {
+            let mapped = letter.strokes.strokes.map { stroke in
+                StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
+                    let rx = (cp.x - pr.minX) / pr.width
+                    let ry = (cp.y - pr.minY) / pr.height
+                    return Checkpoint(x: gr.minX + rx * gr.width,
+                                      y: gr.minY + ry * gr.height)
+                })
+            }
+            strokesForTracker = LetterStrokes(letter: letter.strokes.letter,
+                                               checkpointRadius: letter.strokes.checkpointRadius,
+                                               strokes: mapped)
+        } else {
+            strokesForTracker = letter.strokes
+        }
+        strokeTracker.load(strokesForTracker)
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
