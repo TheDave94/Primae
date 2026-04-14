@@ -263,7 +263,22 @@ public final class TracingViewModel {
             ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
         let wasComplete       = strokeTracker.isComplete
 
-        strokeTracker.update(normalizedPoint: normalized)
+        // Checkpoints in strokes.json are in PBM calibration space.
+        // PrimaeLetterRenderer places the glyph at glyphRect, which differs from the PBM
+        // ink rect. Inverse-transform the touch point back to PBM space so hit-detection
+        // works regardless of which renderer is active.
+        let trackerPoint: CGPoint
+        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: currentLetterName, canvasSize: canvasSize),
+           let pr = LetterGuideGeometry.pbmRects[currentLetterName.uppercased()],
+           gr.width > 0, gr.height > 0 {
+            let rx = (normalized.x - gr.minX) / gr.width
+            let ry = (normalized.y - gr.minY) / gr.height
+            trackerPoint = CGPoint(x: pr.minX + rx * pr.width,
+                                   y: pr.minY + ry * pr.height)
+        } else {
+            trackerPoint = normalized
+        }
+        strokeTracker.update(normalizedPoint: trackerPoint)
 
         let isNowComplete = strokeTracker.isComplete
         if !wasComplete && isNowComplete { haptics.fire(.letterCompleted) }
