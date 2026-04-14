@@ -82,6 +82,8 @@ public final class TracingViewModel {
     private let syncCoordinator: SyncCoordinator
     private var adaptationPolicy: any AdaptationPolicy
     private var onboardingCoordinator: OnboardingCoordinator
+    private var phaseController: LearningPhaseController
+    private let letterScheduler = LetterScheduler.standard
 
     // MARK: - Private playback / touch state
 
