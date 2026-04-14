@@ -18,7 +18,20 @@ public final class TracingViewModel {
     var currentLetterName   = "A"
     var currentLetterImageName = ""
     var currentLetterImage: UIImage? = nil
-    var canvasSize: CGSize  = CGSize(width: 1024, height: 1024)
+    var canvasSize: CGSize  = CGSize(width: 1024, height: 1024) {
+        didSet {
+            guard oldValue != canvasSize,
+                  !letters.isEmpty, letterIndex < letters.count else { return }
+            // Recompute stroke checkpoints now that we know the real canvas dimensions.
+            // load(letter:) was called at init with the default 1024×1024 size; the
+            // view updates canvasSize to the actual device size on first layout.
+            reloadStrokeCheckpoints(for: letters[letterIndex])
+            // Also re-render the letter image at the correct canvas size.
+            currentLetterImage = PrimaeLetterRenderer.render(
+                letter: currentLetterName, size: canvasSize)
+                ?? PBMLoader.load(named: currentLetterImageName)
+        }
+    }
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
@@ -446,27 +459,7 @@ public final class TracingViewModel {
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName
         currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize) ?? PBMLoader.load(named: letter.imageName)
-        // Transform stroke checkpoints from PBM-calibrated space into the
-        // PrimaeLetterRenderer canvas space so hit-detection matches the visible letter.
-        let strokesForTracker: LetterStrokes
-        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize),
-           let pr = LetterGuideGeometry.pbmRects[letter.name.uppercased()],
-           pr.width > 0, pr.height > 0 {
-            let mapped = letter.strokes.strokes.map { stroke in
-                StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
-                    let rx = (cp.x - pr.minX) / pr.width
-                    let ry = (cp.y - pr.minY) / pr.height
-                    return Checkpoint(x: gr.minX + rx * gr.width,
-                                      y: gr.minY + ry * gr.height)
-                })
-            }
-            strokesForTracker = LetterStrokes(letter: letter.strokes.letter,
-                                               checkpointRadius: letter.strokes.checkpointRadius,
-                                               strokes: mapped)
-        } else {
-            strokesForTracker = letter.strokes
-        }
-        strokeTracker.load(strokesForTracker)
+        reloadStrokeCheckpoints(for: letter)
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
@@ -551,6 +544,28 @@ public final class TracingViewModel {
         case .stop:  audio.stop();  isPlaying = false
         case .none:  break
         }
+    }
+
+    private func reloadStrokeCheckpoints(for letter: LetterAsset) {
+        let strokesForTracker: LetterStrokes
+        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize),
+           let pr = LetterGuideGeometry.pbmRects[letter.name.uppercased()],
+           pr.width > 0, pr.height > 0 {
+            let mapped = letter.strokes.strokes.map { stroke in
+                StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
+                    let rx = (cp.x - pr.minX) / pr.width
+                    let ry = (cp.y - pr.minY) / pr.height
+                    return Checkpoint(x: gr.minX + rx * gr.width,
+                                      y: gr.minY + ry * gr.height)
+                })
+            }
+            strokesForTracker = LetterStrokes(letter: letter.strokes.letter,
+                                               checkpointRadius: letter.strokes.checkpointRadius,
+                                               strokes: mapped)
+        } else {
+            strokesForTracker = letter.strokes
+        }
+        strokeTracker.load(strokesForTracker)
     }
 
     private func toast(_ text: String) {
