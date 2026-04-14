@@ -120,12 +120,12 @@ extension TracingDependencies {
             dashboardStore:       StubDashboardStore(),
             onboardingStore:      StubOnboardingStore(),
             notificationScheduler: LocalNotificationScheduler(center: StubNotificationCenter()),
-            thesisCondition:      .guidedOnly,
             syncCoordinator:      SyncCoordinator(
                 sync:          NullSyncService(),
                 progressStore: progressStore,
                 streakStore:   streakStore
-            )
+            ),
+            thesisCondition:      .guidedOnly
         )
     }
 
