@@ -267,12 +267,11 @@ private extension LetterRepository {
             return nil
         }
 
-        let unique    = Array(Set(audio)).sorted()
+        // Filter stale references before any downstream matching so they can never
+        // accidentally satisfy a letter lookup (e.g. hmmm.wav matching H via hasPrefix).
+        let unique = Array(Set(audio)).sorted().filter { !isLikelyStaleAudioReference($0) }
         let preferred = preferredAudioFiles(for: base, available: unique)
         if !preferred.isEmpty { return preferred }
-
-        let cleaned = unique.filter { !isLikelyStaleAudioReference($0) }
-        if !cleaned.isEmpty { return cleaned }
 
         if ["I", "O"].contains(base.uppercased()), let first = unique.first { return [first] }
         return unique
