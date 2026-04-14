@@ -82,7 +82,7 @@ private final class TrackingMockAudio: AudioControlling {
 
     @Test func beginTouch_firesStrokeBegan() {
         let haptics = NullHapticEngine()
-        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics).with(thesisCondition: .guidedOnly))
         haptics.reset()
         vm.beginTouch(at: CGPoint(x: 100, y: 100), t: CACurrentMediaTime())
         #expect(haptics.firedEvents.contains(.strokeBegan),
@@ -91,13 +91,13 @@ private final class TrackingMockAudio: AudioControlling {
 
     @Test func prepare_calledOnInit() {
         let haptics = NullHapticEngine()
-        _ = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        _ = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics).with(thesisCondition: .guidedOnly))
         #expect(haptics.prepareCallCount == 1)
     }
 
     @Test func letterCompleted_firesLetterCompleted() {
         let haptics = NullHapticEngine()
-        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics).with(thesisCondition: .guidedOnly))
         guard !vm.currentLetterName.isEmpty else { return }
         haptics.reset()
 
@@ -133,7 +133,7 @@ private final class TrackingMockAudio: AudioControlling {
 
     @Test func noHapticOnMultiTouchNavigation() {
         let haptics = NullHapticEngine()
-        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics))
+        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics).with(thesisCondition: .guidedOnly))
         haptics.reset()
         vm.beginMultiTouchNavigation()
         vm.beginTouch(at: CGPoint(x: 100, y: 100), t: CACurrentMediaTime())

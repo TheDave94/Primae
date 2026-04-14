@@ -9,45 +9,45 @@ struct VelocityMappingTests {
 
     // MARK: 1 — v=0 returns max speed (2.0)
     @Test func zeroVelocity_returnsMaxSpeed() {
-        #expect(TracingViewModel.mapVelocityToSpeed(0) == 2.0)
+        #expect(TracingViewModel.mapVelocityToSpeed(0) == 0.5)
     }
 
     // MARK: 2 — v at low boundary returns 2.0
     @Test func lowBoundary_returnsMaxSpeed() {
-        #expect(TracingViewModel.mapVelocityToSpeed(120) == 2.0)
+        #expect(TracingViewModel.mapVelocityToSpeed(50) == 0.5)
     }
 
     // MARK: 3 — v at high boundary returns 0.5
     @Test func highBoundary_returnsMinSpeed() {
-        #expect(TracingViewModel.mapVelocityToSpeed(1300) == 0.5)
+        #expect(TracingViewModel.mapVelocityToSpeed(800) == 2.0)
     }
 
     // MARK: 4 — v > high clamps to 0.5
     @Test func aboveHigh_clampsToMinSpeed() {
-        #expect(TracingViewModel.mapVelocityToSpeed(5000) == 0.5)
-        #expect(TracingViewModel.mapVelocityToSpeed(.greatestFiniteMagnitude) == 0.5)
+        #expect(TracingViewModel.mapVelocityToSpeed(5000) == 2.0)
+        #expect(TracingViewModel.mapVelocityToSpeed(.greatestFiniteMagnitude) == 2.0)
     }
 
     // MARK: 5 — v < low (but > 0) returns 2.0
     @Test func belowLow_returnsMaxSpeed() {
-        #expect(TracingViewModel.mapVelocityToSpeed(50)  == 2.0)
-        #expect(TracingViewModel.mapVelocityToSpeed(119) == 2.0)
+        #expect(TracingViewModel.mapVelocityToSpeed(30)  == 0.5)
+        #expect(TracingViewModel.mapVelocityToSpeed(49)  == 0.5)
     }
 
     // MARK: 6 — Midpoint v=710 is halfway → speed = 1.25
     @Test func midpoint_returnsLinearInterpolation() {
-        let mid: CGFloat = (120 + 1300) / 2.0
-        let expected: Float = 2.0 - (1.5 * 0.5)
+        let mid: CGFloat = (50 + 800) / 2.0
+        let expected: Float = 0.5 + (1.5 * 0.5)
         #expect(abs(TracingViewModel.mapVelocityToSpeed(mid) - expected) < 1e-5)
     }
 
     // MARK: 7 — Result is monotonically non-increasing
-    @Test func monotonicallyNonIncreasing() {
+    @Test func monotonicallyNonDecreasing() {
         var prev: Float = 2.0
         for v in stride(from: CGFloat(0), through: 2000, by: 10) {
             let speed = TracingViewModel.mapVelocityToSpeed(v)
-            #expect(speed <= prev + 1e-6,
-                "Speed must be non-increasing: v=\(v) gave \(speed) > prev \(prev)")
+            #expect(speed >= prev - 1e-6,
+                "Speed must be non-decreasing: v=\(v) gave \(speed) < prev \(prev)")
             prev = speed
         }
     }
@@ -67,7 +67,7 @@ struct VelocityMappingTests {
 
     // MARK: 9 — Negative velocity treated like zero
     @Test func negativeVelocity_treatedLikeZero() {
-        #expect(TracingViewModel.mapVelocityToSpeed(-100) == 2.0)
+        #expect(TracingViewModel.mapVelocityToSpeed(-100) == 0.5)
     }
 
     // MARK: 10 — Return type is Float
