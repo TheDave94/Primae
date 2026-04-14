@@ -9,7 +9,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     // MARK: - Observer store (Mutex-protected for nonisolated deinit access)
 
     private typealias ObserverTasks = (interruption: Task<Void, Never>, routeChange: Task<Void, Never>)
-    private nonisolated(unsafe) static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
+    private static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
 
     // MARK: - Private state
 
@@ -235,7 +235,7 @@ private extension AudioEngine {
         let session  = AVAudioSession.sharedInstance()
         let category = session.category
         let canStart = category == .playback || category == .playAndRecord || category == .multiRoute
-        guard canStart || session.recordPermission == .granted else { return }
+        guard canStart || AVAudioApplication.shared.recordPermission == .granted else { return }
         try? AVAudioSession.sharedInstance().setActive(true)
         do {
             try engine.start()
