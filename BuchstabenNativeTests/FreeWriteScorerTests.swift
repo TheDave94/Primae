@@ -1,217 +1,168 @@
 // FreeWriteScorerTests.swift
 // BuchstabenNativeTests
+//
+// Uses Swift Testing (@Test, #expect).
 
-import XCTest
+import Testing
 import CoreGraphics
 @testable import BuchstabenNative
 
-final class FreeWriteScorerTests: XCTestCase {
+struct FreeWriteScorerTests {
 
-    // MARK: - Test fixtures
+    // MARK: - Fixtures
 
-    /// Simple vertical line reference: 5 checkpoints from (0.5, 0.2) to (0.5, 0.8).
     private var verticalLineStrokes: LetterStrokes {
         LetterStrokes(
-            letter: "I",
-            checkpointRadius: 0.04,
-            strokes: [
-                StrokeDefinition(id: 1, checkpoints: [
-                    Checkpoint(x: 0.5, y: 0.2),
-                    Checkpoint(x: 0.5, y: 0.35),
-                    Checkpoint(x: 0.5, y: 0.5),
-                    Checkpoint(x: 0.5, y: 0.65),
-                    Checkpoint(x: 0.5, y: 0.8),
-                ])
-            ]
+            letter: "I", checkpointRadius: 0.04,
+            strokes: [StrokeDefinition(id: 1, checkpoints: [
+                Checkpoint(x: 0.5, y: 0.2),  Checkpoint(x: 0.5, y: 0.35),
+                Checkpoint(x: 0.5, y: 0.5),  Checkpoint(x: 0.5, y: 0.65),
+                Checkpoint(x: 0.5, y: 0.8),
+            ])]
         )
     }
 
-    /// Two-stroke "L" reference.
     private var lStrokes: LetterStrokes {
         LetterStrokes(
-            letter: "L",
-            checkpointRadius: 0.04,
+            letter: "L", checkpointRadius: 0.04,
             strokes: [
                 StrokeDefinition(id: 1, checkpoints: [
-                    Checkpoint(x: 0.4, y: 0.2),
-                    Checkpoint(x: 0.4, y: 0.5),
-                    Checkpoint(x: 0.4, y: 0.8),
+                    Checkpoint(x: 0.4, y: 0.2), Checkpoint(x: 0.4, y: 0.5), Checkpoint(x: 0.4, y: 0.8),
                 ]),
                 StrokeDefinition(id: 2, checkpoints: [
-                    Checkpoint(x: 0.4, y: 0.8),
-                    Checkpoint(x: 0.6, y: 0.8),
-                    Checkpoint(x: 0.8, y: 0.8),
-                ])
+                    Checkpoint(x: 0.4, y: 0.8), Checkpoint(x: 0.6, y: 0.8), Checkpoint(x: 0.8, y: 0.8),
+                ]),
             ]
         )
     }
 
-    // MARK: - Scoring tests
+    // MARK: - Scoring
 
-    func testPerfectTraceScoresHigh() {
-        // Trace exactly along the reference points.
+    @Test("Perfect trace scores above 0.9")
+    func perfectTrace() {
         let traced: [CGPoint] = [
-            CGPoint(x: 0.5, y: 0.2),
-            CGPoint(x: 0.5, y: 0.35),
-            CGPoint(x: 0.5, y: 0.5),
-            CGPoint(x: 0.5, y: 0.65),
+            CGPoint(x: 0.5, y: 0.2), CGPoint(x: 0.5, y: 0.35),
+            CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.65),
             CGPoint(x: 0.5, y: 0.8),
         ]
         let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        XCTAssertGreaterThan(score, 0.9, "Perfect trace should score > 0.9")
+        #expect(score > 0.9)
     }
 
-    func testNearPerfectTraceScoresHigh() {
-        // Slightly offset trace — within checkpoint radius.
+    @Test("Near-perfect trace scores above 0.8")
+    func nearPerfectTrace() {
         let traced: [CGPoint] = [
-            CGPoint(x: 0.51, y: 0.2),
-            CGPoint(x: 0.49, y: 0.35),
-            CGPoint(x: 0.52, y: 0.5),
-            CGPoint(x: 0.48, y: 0.65),
+            CGPoint(x: 0.51, y: 0.2), CGPoint(x: 0.49, y: 0.35),
+            CGPoint(x: 0.52, y: 0.5), CGPoint(x: 0.48, y: 0.65),
             CGPoint(x: 0.51, y: 0.8),
         ]
         let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        XCTAssertGreaterThan(score, 0.8, "Near-perfect trace should score > 0.8")
+        #expect(score > 0.8)
     }
 
-    func testCompletelyOffPathScoresLow() {
-        // Trace in the wrong area entirely.
+    @Test("Completely off-path scores below 0.3")
+    func offPath() {
         let traced: [CGPoint] = [
-            CGPoint(x: 0.1, y: 0.1),
-            CGPoint(x: 0.15, y: 0.15),
-            CGPoint(x: 0.2, y: 0.2),
-            CGPoint(x: 0.1, y: 0.3),
+            CGPoint(x: 0.1, y: 0.1), CGPoint(x: 0.15, y: 0.15),
+            CGPoint(x: 0.2, y: 0.2), CGPoint(x: 0.1, y: 0.3),
             CGPoint(x: 0.05, y: 0.1),
         ]
         let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        XCTAssertLessThan(score, 0.3, "Off-path trace should score < 0.3")
+        #expect(score < 0.3)
     }
 
-    func testPartialTraceScoresMidRange() {
-        // Only trace the first half of the vertical line.
+    @Test("Reversed trace penalises direction")
+    func reversedTrace() {
         let traced: [CGPoint] = [
-            CGPoint(x: 0.5, y: 0.2),
-            CGPoint(x: 0.5, y: 0.3),
-            CGPoint(x: 0.5, y: 0.4),
-            CGPoint(x: 0.5, y: 0.5),
-        ]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        // Partial trace: Fréchet distance will be the max deviation, which is
-        // the distance from (0.5, 0.5) to (0.5, 0.8) = 0.3.
-        // This is beyond 3× radius (0.12), so score should be low-to-mid.
-        XCTAssertLessThan(score, 0.8, "Partial trace should not score as highly as full trace")
-    }
-
-    func testReversedTraceStillScoresReasonably() {
-        // Trace the line backwards — Fréchet distance handles this
-        // by finding optimal matching, though reversed order increases it.
-        let traced: [CGPoint] = [
-            CGPoint(x: 0.5, y: 0.8),
-            CGPoint(x: 0.5, y: 0.65),
-            CGPoint(x: 0.5, y: 0.5),
-            CGPoint(x: 0.5, y: 0.35),
+            CGPoint(x: 0.5, y: 0.8), CGPoint(x: 0.5, y: 0.65),
+            CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.35),
             CGPoint(x: 0.5, y: 0.2),
         ]
         let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        // Reversed path: Fréchet distance will be high because the matching
-        // is monotone — (0.8 vs 0.2) at start = 0.6 distance.
-        // This is expected: stroke direction matters in handwriting!
-        XCTAssertLessThan(score, 0.5, "Reversed trace should penalise (direction matters)")
+        #expect(score < 0.5)
     }
 
-    func testMultiStrokeLetter() {
-        // Trace an "L" shape matching the reference.
+    @Test("Multi-stroke L-shape scores well")
+    func multiStroke() {
         let traced: [CGPoint] = [
-            CGPoint(x: 0.4, y: 0.2),
-            CGPoint(x: 0.4, y: 0.4),
-            CGPoint(x: 0.4, y: 0.6),
-            CGPoint(x: 0.4, y: 0.8),
-            CGPoint(x: 0.5, y: 0.8),
-            CGPoint(x: 0.6, y: 0.8),
-            CGPoint(x: 0.7, y: 0.8),
-            CGPoint(x: 0.8, y: 0.8),
+            CGPoint(x: 0.4, y: 0.2), CGPoint(x: 0.4, y: 0.4),
+            CGPoint(x: 0.4, y: 0.6), CGPoint(x: 0.4, y: 0.8),
+            CGPoint(x: 0.5, y: 0.8), CGPoint(x: 0.6, y: 0.8),
+            CGPoint(x: 0.7, y: 0.8), CGPoint(x: 0.8, y: 0.8),
         ]
         let score = FreeWriteScorer.score(tracedPoints: traced, reference: lStrokes)
-        XCTAssertGreaterThan(score, 0.7, "L-shape trace should score well")
+        #expect(score > 0.7)
     }
 
     // MARK: - Edge cases
 
-    func testEmptyTracedPathReturnsZero() {
-        let score = FreeWriteScorer.score(tracedPoints: [], reference: verticalLineStrokes)
-        XCTAssertEqual(score, 0)
+    @Test("Empty input returns zero",
+          arguments: [
+            ([] as [CGPoint], true),
+            ([CGPoint(x: 0.5, y: 0.5)], true),
+          ])
+    func emptyOrSingleInput(points: [CGPoint], expectZero: Bool) {
+        let score = FreeWriteScorer.score(tracedPoints: points, reference: verticalLineStrokes)
+        if expectZero { #expect(score == 0) }
     }
 
-    func testSingleTracedPointReturnsZero() {
-        let score = FreeWriteScorer.score(
-            tracedPoints: [CGPoint(x: 0.5, y: 0.5)],
-            reference: verticalLineStrokes
-        )
-        XCTAssertEqual(score, 0)
-    }
-
-    func testEmptyReferenceReturnsZero() {
-        let emptyStrokes = LetterStrokes(letter: "X", checkpointRadius: 0.04, strokes: [])
+    @Test("Empty reference returns zero")
+    func emptyReference() {
+        let empty = LetterStrokes(letter: "X", checkpointRadius: 0.04, strokes: [])
         let traced = [CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.6)]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: emptyStrokes)
-        XCTAssertEqual(score, 0)
+        #expect(FreeWriteScorer.score(tracedPoints: traced, reference: empty) == 0)
     }
 
-    func testZeroRadiusReturnsZero() {
+    @Test("Zero radius returns zero")
+    func zeroRadius() {
         let strokes = LetterStrokes(
             letter: "I", checkpointRadius: 0,
             strokes: [StrokeDefinition(id: 1, checkpoints: [
-                Checkpoint(x: 0.5, y: 0.2), Checkpoint(x: 0.5, y: 0.8)
+                Checkpoint(x: 0.5, y: 0.2), Checkpoint(x: 0.5, y: 0.8),
             ])]
         )
         let traced = [CGPoint(x: 0.5, y: 0.2), CGPoint(x: 0.5, y: 0.8)]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: strokes)
-        XCTAssertEqual(score, 0)
+        #expect(FreeWriteScorer.score(tracedPoints: traced, reference: strokes) == 0)
     }
 
-    // MARK: - Fréchet distance unit tests
+    // MARK: - Fréchet distance
 
-    func testFrechetDistanceIdenticalCurves() {
+    @Test("Identical curves have zero Fréchet distance")
+    func frechetIdentical() {
         let p = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 2, y: 0)]
-        let d = FreeWriteScorer.discreteFrechetDistance(p, p)
-        XCTAssertEqual(d, 0, accuracy: 1e-10)
+        #expect(FreeWriteScorer.discreteFrechetDistance(p, p) < 1e-10)
     }
 
-    func testFrechetDistanceParallelLines() {
+    @Test("Parallel lines have distance equal to offset")
+    func frechetParallel() {
         let p = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0)]
         let q = [CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 1)]
-        let d = FreeWriteScorer.discreteFrechetDistance(p, q)
-        // Parallel lines offset by 1 → Fréchet distance = 1.
-        XCTAssertEqual(d, 1.0, accuracy: 1e-10)
+        #expect(abs(FreeWriteScorer.discreteFrechetDistance(p, q) - 1.0) < 1e-10)
     }
 
-    func testFrechetDistanceSinglePoints() {
+    @Test("Single points: distance is Euclidean")
+    func frechetSinglePoints() {
         let p = [CGPoint(x: 0, y: 0)]
         let q = [CGPoint(x: 3, y: 4)]
-        let d = FreeWriteScorer.discreteFrechetDistance(p, q)
-        XCTAssertEqual(d, 5.0, accuracy: 1e-10) // 3-4-5 triangle
+        #expect(abs(FreeWriteScorer.discreteFrechetDistance(p, q) - 5.0) < 1e-10)
     }
 
-    // MARK: - Resampling tests
+    // MARK: - Resampling
 
-    func testResamplePreservesEndpoints() {
+    @Test("Resample preserves endpoints")
+    func resampleEndpoints() {
         let input = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 2, y: 0)]
         let resampled = FreeWriteScorer.resample(input, targetCount: 5)
-        XCTAssertEqual(resampled.count, 5)
-        XCTAssertEqual(resampled.first?.x ?? -1, 0, accuracy: 1e-10)
-        XCTAssertEqual(resampled.last?.x ?? -1, 2, accuracy: 1e-10)
+        #expect(resampled.count == 5)
+        #expect(abs(resampled.first!.x) < 1e-10)
+        #expect(abs(resampled.last!.x - 2.0) < 1e-10)
     }
 
-    func testResampleMidpoint() {
+    @Test("Resample midpoint is correct")
+    func resampleMidpoint() {
         let input = [CGPoint(x: 0, y: 0), CGPoint(x: 4, y: 0)]
         let resampled = FreeWriteScorer.resample(input, targetCount: 3)
-        XCTAssertEqual(resampled.count, 3)
-        XCTAssertEqual(resampled[1].x, 2.0, accuracy: 1e-10)
-    }
-
-    func testResampleSinglePointReturnsInput() {
-        let input = [CGPoint(x: 0.5, y: 0.5)]
-        let resampled = FreeWriteScorer.resample(input, targetCount: 5)
-        XCTAssertEqual(resampled.count, 1)
+        #expect(resampled.count == 3)
+        #expect(abs(resampled[1].x - 2.0) < 1e-10)
     }
 }

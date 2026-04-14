@@ -1,4 +1,4 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 6.3
 import PackageDescription
 
 let package = Package(
@@ -14,7 +14,11 @@ let package = Package(
         .target(
             name: "BuchstabenNative",
             path: "BuchstabenNative",
-            resources: [.copy("Resources")]
+            resources: [.copy("Resources")],
+            swiftSettings: [
+                .defaultIsolation(MainActor.self),
+                .enableUpcomingFeature("InferSendableFromCaptures"),
+            ]
         ),
         .testTarget(
             name: "BuchstabenNativeTests",

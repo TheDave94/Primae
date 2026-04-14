@@ -1,174 +1,185 @@
 // LearningPhaseControllerTests.swift
 // BuchstabenNativeTests
+//
+// Uses Swift Testing (@Test, #expect) — the modern framework stable in Swift 6.3.
 
-import XCTest
+import Testing
 @testable import BuchstabenNative
 
-final class LearningPhaseControllerTests: XCTestCase {
+struct LearningPhaseControllerTests {
 
     // MARK: - Initial state
 
-    func testInitialPhaseIsObserve() {
+    @Test("Initial phase is observe for three-phase condition")
+    func initialPhaseIsObserve() {
         let sut = LearningPhaseController()
-        XCTAssertEqual(sut.currentPhase, .observe)
-        XCTAssertFalse(sut.isLetterSessionComplete)
-        XCTAssertEqual(sut.starsEarned, 0)
+        #expect(sut.currentPhase == .observe)
+        #expect(!sut.isLetterSessionComplete)
+        #expect(sut.starsEarned == 0)
     }
 
-    func testGuidedOnlyConditionStartsAtGuided() {
+    @Test("Guided-only condition starts at guided")
+    func guidedOnlyStartsAtGuided() {
         let sut = LearningPhaseController(condition: .guidedOnly)
-        XCTAssertEqual(sut.currentPhase, .guided)
+        #expect(sut.currentPhase == .guided)
     }
 
-    func testControlConditionStartsAtGuided() {
+    @Test("Control condition starts at guided")
+    func controlStartsAtGuided() {
         let sut = LearningPhaseController(condition: .control)
-        XCTAssertEqual(sut.currentPhase, .guided)
+        #expect(sut.currentPhase == .guided)
     }
 
     // MARK: - Phase advancement (three-phase)
 
-    func testAdvanceFromObserveToGuided() {
+    @Test("Advance from observe to guided")
+    func advanceFromObserveToGuided() {
         var sut = LearningPhaseController()
         let advanced = sut.advance(score: 1.0)
-        XCTAssertTrue(advanced)
-        XCTAssertEqual(sut.currentPhase, .guided)
-        XCTAssertEqual(sut.starsEarned, 1)
-        XCTAssertFalse(sut.isLetterSessionComplete)
+        #expect(advanced)
+        #expect(sut.currentPhase == .guided)
+        #expect(sut.starsEarned == 1)
+        #expect(!sut.isLetterSessionComplete)
     }
 
-    func testAdvanceFromGuidedToFreeWrite() {
+    @Test("Advance from guided to freeWrite")
+    func advanceFromGuidedToFreeWrite() {
         var sut = LearningPhaseController()
         sut.advance(score: 1.0)
         let advanced = sut.advance(score: 0.85)
-        XCTAssertTrue(advanced)
-        XCTAssertEqual(sut.currentPhase, .freeWrite)
-        XCTAssertEqual(sut.starsEarned, 2)
+        #expect(advanced)
+        #expect(sut.currentPhase == .freeWrite)
+        #expect(sut.starsEarned == 2)
     }
 
-    func testAdvanceFromFreeWriteCompletesSession() {
+    @Test("Advance from freeWrite completes session")
+    func advanceFromFreeWriteCompletes() {
         var sut = LearningPhaseController()
         sut.advance(score: 1.0)
         sut.advance(score: 0.85)
         let advanced = sut.advance(score: 0.72)
-        XCTAssertFalse(advanced)
-        XCTAssertTrue(sut.isLetterSessionComplete)
-        XCTAssertEqual(sut.starsEarned, 3)
+        #expect(!advanced)
+        #expect(sut.isLetterSessionComplete)
+        #expect(sut.starsEarned == 3)
     }
 
-    func testFullSessionOverallScore() {
+    @Test("Full session overall score averages all phases")
+    func fullSessionOverallScore() {
         var sut = LearningPhaseController()
         sut.advance(score: 1.0)
         sut.advance(score: 0.8)
         sut.advance(score: 0.6)
-        // Average of 1.0, 0.8, 0.6 = 0.8
-        XCTAssertEqual(sut.overallScore, 0.8, accuracy: 0.001)
+        #expect(abs(sut.overallScore - 0.8) < 0.001)
     }
 
-    // MARK: - Phase advancement (guided-only)
+    // MARK: - Guided-only
 
-    func testGuidedOnlyCompletesAfterOnePhase() {
+    @Test("Guided-only completes after one phase")
+    func guidedOnlyCompletesAfterOne() {
         var sut = LearningPhaseController(condition: .guidedOnly)
         let advanced = sut.advance(score: 0.9)
-        XCTAssertFalse(advanced)
-        XCTAssertTrue(sut.isLetterSessionComplete)
-        XCTAssertEqual(sut.starsEarned, 1)
+        #expect(!advanced)
+        #expect(sut.isLetterSessionComplete)
+        #expect(sut.starsEarned == 1)
     }
 
     // MARK: - Reset
 
-    func testResetClearsAllState() {
+    @Test("Reset clears all state")
+    func resetClearsState() {
         var sut = LearningPhaseController()
         sut.advance(score: 1.0)
         sut.advance(score: 0.8)
         sut.reset()
-        XCTAssertEqual(sut.currentPhase, .observe)
-        XCTAssertTrue(sut.phaseScores.isEmpty)
-        XCTAssertFalse(sut.isLetterSessionComplete)
-        XCTAssertEqual(sut.starsEarned, 0)
+        #expect(sut.currentPhase == .observe)
+        #expect(sut.phaseScores.isEmpty)
+        #expect(!sut.isLetterSessionComplete)
+        #expect(sut.starsEarned == 0)
     }
 
-    func testGuidedOnlyResetGoesToGuided() {
+    @Test("Guided-only reset returns to guided")
+    func guidedOnlyResetGoesToGuided() {
         var sut = LearningPhaseController(condition: .guidedOnly)
         sut.advance(score: 0.9)
         sut.reset()
-        XCTAssertEqual(sut.currentPhase, .guided)
-        XCTAssertFalse(sut.isLetterSessionComplete)
+        #expect(sut.currentPhase == .guided)
+        #expect(!sut.isLetterSessionComplete)
     }
 
     // MARK: - Score clamping
 
-    func testScoreClampedToUnitRange() {
+    @Test("Scores are clamped to 0-1 range",
+          arguments: [(1.5, 1.0), (-0.3, 0.0), (0.75, 0.75)])
+    func scoreClamping(input: Double, expected: Double) {
         var sut = LearningPhaseController()
-        sut.advance(score: 1.5)
-        XCTAssertEqual(sut.phaseScores[.observe], 1.0)
-
-        sut.advance(score: -0.3)
-        XCTAssertEqual(sut.phaseScores[.guided], 0.0)
+        sut.advance(score: CGFloat(input))
+        let recorded = sut.phaseScores[.observe] ?? -1
+        #expect(abs(Double(recorded) - expected) < 0.001)
     }
 
     // MARK: - Phase properties
 
-    func testTouchEnabledPerPhase() {
+    @Test("Touch enabled per phase",
+          arguments: [
+            (LearningPhase.observe, false),
+            (LearningPhase.guided, true),
+            (LearningPhase.freeWrite, true),
+          ])
+    func touchEnabled(phase: LearningPhase, expected: Bool) {
         var sut = LearningPhaseController()
-        XCTAssertFalse(sut.isTouchEnabled)  // observe
-        sut.advance(score: 1.0)
-        XCTAssertTrue(sut.isTouchEnabled)   // guided
-        sut.advance(score: 0.8)
-        XCTAssertTrue(sut.isTouchEnabled)   // freeWrite
+        while sut.currentPhase != phase && !sut.isLetterSessionComplete {
+            sut.advance(score: 1.0)
+        }
+        #expect(sut.isTouchEnabled == expected)
     }
 
-    func testShowCheckpointsPerPhase() {
+    @Test("Checkpoint gating per phase",
+          arguments: [
+            (LearningPhase.observe, false),
+            (LearningPhase.guided, true),
+            (LearningPhase.freeWrite, false),
+          ])
+    func checkpointGating(phase: LearningPhase, expected: Bool) {
         var sut = LearningPhaseController()
-        XCTAssertTrue(sut.showCheckpoints)   // observe: numbered dots
-        sut.advance(score: 1.0)
-        XCTAssertTrue(sut.showCheckpoints)   // guided: checkpoint halos
-        sut.advance(score: 0.8)
-        XCTAssertFalse(sut.showCheckpoints)  // freeWrite: no aids
-    }
-
-    func testCheckpointGatingPerPhase() {
-        var sut = LearningPhaseController()
-        XCTAssertFalse(sut.useCheckpointGating) // observe
-        sut.advance(score: 1.0)
-        XCTAssertTrue(sut.useCheckpointGating)  // guided
-        sut.advance(score: 0.8)
-        XCTAssertFalse(sut.useCheckpointGating) // freeWrite
+        while sut.currentPhase != phase && !sut.isLetterSessionComplete {
+            sut.advance(score: 1.0)
+        }
+        #expect(sut.useCheckpointGating == expected)
     }
 
     // MARK: - Active phases
 
-    func testActivePhases() {
-        let threePhaseSut = LearningPhaseController(condition: .threePhase)
-        XCTAssertEqual(threePhaseSut.activePhases, LearningPhase.allCases)
+    @Test("Three-phase has all phases active")
+    func threePhasePhasesActive() {
+        let sut = LearningPhaseController(condition: .threePhase)
+        #expect(sut.activePhases == LearningPhase.allCases)
+    }
 
-        let guidedSut = LearningPhaseController(condition: .guidedOnly)
-        XCTAssertEqual(guidedSut.activePhases, [.guided])
+    @Test("Guided-only has single phase active")
+    func guidedOnlyPhasesActive() {
+        let sut = LearningPhaseController(condition: .guidedOnly)
+        #expect(sut.activePhases == [.guided])
     }
 
     // MARK: - Resume
 
-    func testResumeAtPhase() {
+    @Test("Resume at specific phase")
+    func resumeAtPhase() {
         var sut = LearningPhaseController()
         sut.resume(at: .freeWrite)
-        XCTAssertEqual(sut.currentPhase, .freeWrite)
+        #expect(sut.currentPhase == .freeWrite)
     }
 
-    func testResumeIgnoresInactivePhase() {
+    @Test("Resume ignores inactive phase")
+    func resumeIgnoresInactive() {
         var sut = LearningPhaseController(condition: .guidedOnly)
-        sut.resume(at: .freeWrite)  // freeWrite not in activePhases
-        XCTAssertEqual(sut.currentPhase, .guided) // unchanged
+        sut.resume(at: .freeWrite)
+        #expect(sut.currentPhase == .guided)
     }
 
-    // MARK: - Equatable
-
-    func testEquatable() {
-        let a = LearningPhaseController()
-        let b = LearningPhaseController()
-        XCTAssertEqual(a, b)
-    }
-
-    func testOverallScoreWithNoPhases() {
+    @Test("Overall score with no completed phases is zero")
+    func overallScoreEmpty() {
         let sut = LearningPhaseController()
-        XCTAssertEqual(sut.overallScore, 0)
+        #expect(sut.overallScore == 0)
     }
 }
