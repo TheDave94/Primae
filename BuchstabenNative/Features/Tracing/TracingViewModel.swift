@@ -309,12 +309,14 @@ public final class TracingViewModel {
 
         // Play while finger is moving, stop when stationary.
         // strokeEnforced=false means sound plays on any movement, not just on correct stroke.
-        let shouldBeActive = smoothedVelocity > 0
+        let shouldBeActive = smoothedVelocity > playbackActivationVelocityThreshold
         if shouldBeActive && !isPlaying {
             audio.play()
             isPlaying = true
         } else if !shouldBeActive && isPlaying {
-            audio.stop()
+            // suspendForLifecycle pauses without clearing currentFile,
+            // so audio.play() can resume if velocity picks up again on this touch.
+            audio.suspendForLifecycle()
             isPlaying = false
         }
 
@@ -394,7 +396,7 @@ public final class TracingViewModel {
         pencilAzimuth                  = 0
         playbackMachine.resumeIntent   = false
         cancelPendingPlaybackWork()
-        audio.stop()
+        audio.suspendForLifecycle()
         isPlaying = false
         setPlaybackState(.idle, immediate: true)
     }
