@@ -445,7 +445,7 @@ public final class TracingViewModel {
         showGhost                      = false
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName
-        currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize) ?? PBMLoader.load(named: letter.imageName)
+        currentLetterImage             = PBMLoader.load(named: letter.imageName) ?? PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize)
         strokeTracker.load(letter.strokes)
         progress                       = 0
         audioIndex                     = 0
