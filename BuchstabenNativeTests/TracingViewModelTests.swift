@@ -57,7 +57,7 @@ private func slowDrag(vm: TracingViewModel,
 
     init() {
         audio = MockAudio()
-        vm = TracingViewModel(.stub.with(audio: audio))
+        vm = TracingViewModel(.stub.with(audio: audio).with(thesisCondition: .guidedOnly))
         vm.strokeEnforced = false
     }
 

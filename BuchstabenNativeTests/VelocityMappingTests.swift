@@ -43,7 +43,7 @@ struct VelocityMappingTests {
 
     // MARK: 7 — Result is monotonically non-increasing
     @Test func monotonicallyNonDecreasing() {
-        var prev: Float = 2.0
+        var prev: Float = 0.5
         for v in stride(from: CGFloat(0), through: 2000, by: 10) {
             let speed = TracingViewModel.mapVelocityToSpeed(v)
             #expect(speed >= prev - 1e-6,

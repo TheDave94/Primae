@@ -57,19 +57,19 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
     }
     @Test func streak0_defaultMessage() {
         let c = makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)
-        #expect(c != nil); #expect(c!.body.contains("Time to practice"))
+        #expect(c != nil); #expect(c!.body.contains("Buchstaben üben"))
     }
     @Test func streak1_day2Message() {
         let c = makePolicy().content(currentStreak: 1, onboardingComplete: true, calendar: .current)
-        #expect(c!.body.contains("day 2"))
+        #expect(c!.body.contains("Tag 2"))
     }
     @Test func streak3_fireEmoji() {
         let c = makePolicy().content(currentStreak: 3, onboardingComplete: true, calendar: .current)
-        #expect(c!.body.contains("3-day streak"))
+        #expect(c!.body.contains("3 Tage"))
     }
     @Test func streak7_trophyMessage() {
         let c = makePolicy().content(currentStreak: 7, onboardingComplete: true, calendar: .current)
-        #expect(c!.body.contains("7-day streak") || c!.body.contains("master"))
+        #expect(c!.body.contains("7 Tage") || c!.body.contains("Meister"))
     }
     @Test func content_identifier_isDailyPractice() {
         #expect(makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)?.identifier == "daily_practice_reminder")

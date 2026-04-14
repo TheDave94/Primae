@@ -33,10 +33,10 @@ import AVFoundation
     @Test func mapVelocityToSpeedIsMonotonicAndBounded() {
         let sample: [CGFloat] = [0, 60, 120, 240, 500, 900, 1300, 3000]
         let mapped = sample.map(TracingViewModel.mapVelocityToSpeed)
-        #expect(abs((mapped.first ?? 0) - Float(2.0)) < 0.0001)
-        #expect(abs((mapped.last ?? 0) - Float(0.5)) < 0.0001)
+        #expect(abs((mapped.first ?? 0) - Float(0.5)) < 0.0001)
+        #expect(abs((mapped.last ?? 0) - Float(2.0)) < 0.0001)
         mapped.forEach { #expect($0 >= 0.5); #expect($0 <= 2.0) }
-        for i in 1..<mapped.count { #expect(mapped[i] <= mapped[i-1]) }
+        for i in 1..<mapped.count { #expect(mapped[i] >= mapped[i-1]) }
     }
 
     @Test func letterRepositoryFallsBackFromInvalidJsonToFolderScan() throws {
