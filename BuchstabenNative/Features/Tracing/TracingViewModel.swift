@@ -307,18 +307,9 @@ public final class TracingViewModel {
         let hBias        = Float(max(-1.0, min(1.0, dx / 20.0 + azimuthBias)))
         audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
-        // Play while finger is moving, stop when stationary.
-        // strokeEnforced=false means sound plays on any movement, not just on correct stroke.
-        let shouldBeActive = smoothedVelocity > playbackActivationVelocityThreshold
-        if shouldBeActive && !isPlaying {
-            audio.play()
-            isPlaying = true
-        } else if !shouldBeActive && isPlaying {
-            // suspendForLifecycle pauses without clearing currentFile,
-            // so audio.play() can resume if velocity picks up again on this touch.
-            audio.suspendForLifecycle()
-            isPlaying = false
-        }
+        let shouldPlayForStroke = strokeEnforced ? strokeTracker.soundEnabled : true
+        let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
+        setPlaybackState(shouldBeActive ? .active : .idle, immediate: false)
 
         if strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
@@ -396,9 +387,9 @@ public final class TracingViewModel {
         pencilAzimuth                  = 0
         playbackMachine.resumeIntent   = false
         cancelPendingPlaybackWork()
-        audio.suspendForLifecycle()
+        audio.stop()
         isPlaying = false
-        setPlaybackState(.idle, immediate: true)
+        playbackMachine.forceIdle()
     }
 
     // MARK: - Completion HUD
