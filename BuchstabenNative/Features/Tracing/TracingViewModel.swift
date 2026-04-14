@@ -303,13 +303,13 @@ public final class TracingViewModel {
         }
 
         let speed        = Self.mapVelocityToSpeed(smoothedVelocity)
-        let azimuthBias  = pencilPressure != nil ? cos(pencilAzimuth) * 0.5 : 0
-        let hBias        = Float(max(-1.0, min(1.0, dx / 20.0 + azimuthBias)))
+        let azimuthBias  = pencilPressure != nil ? cos(pencilAzimuth) * 0.2 : 0
+        let hBias        = Float(max(-1.0, min(1.0, (normalized.x * 2.0 - 1.0) + azimuthBias)))
         audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
         let shouldPlayForStroke = strokeEnforced ? strokeTracker.soundEnabled : true
         let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
-        setPlaybackState(shouldBeActive ? .active : .idle, immediate: false)
+        setPlaybackState(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 
         if strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
