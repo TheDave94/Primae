@@ -225,8 +225,24 @@ private extension AudioEngine {
     }
 
     func resourceURL(for fileName: String) -> URL? {
+        let ns    = fileName as NSString
+        let name  = (ns.lastPathComponent as NSString).deletingPathExtension
+        let ext   = ns.pathExtension
+        let dir   = ns.deletingLastPathComponent as String
         for bundle in [Bundle.main, Bundle.module] {
-            if let url = bundle.url(forResource: fileName, withExtension: nil) { return url }
+            // FileManager path construction — reliable for nested SPM bundle paths
+            if let root = bundle.resourceURL {
+                let candidate = root.appendingPathComponent(fileName)
+                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            }
+            // Bundle API with subdirectory
+            if !dir.isEmpty,
+               let url = bundle.url(forResource: name,
+                                    withExtension: ext.isEmpty ? nil : ext,
+                                    subdirectory: dir) { return url }
+            // Flat fallback
+            if let url = bundle.url(forResource: name,
+                                    withExtension: ext.isEmpty ? nil : ext) { return url }
         }
         return nil
     }
