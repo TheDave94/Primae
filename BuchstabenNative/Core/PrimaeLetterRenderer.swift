@@ -49,11 +49,21 @@ public enum PrimaeLetterRenderer {
 
     private static func makeFont(size: CGFloat) -> CTFont? {
         let bundles: [Bundle] = [.module, .main]
+        // Try root, then SPM .copy("Resources") nested paths, then flat Fonts/
+        let subdirs: [String?] = [nil, "Resources/Fonts", "Fonts"]
         for bundle in bundles {
-            guard let url          = bundle.url(forResource: "Primae-Regular", withExtension: "otf"),
-                  let dataProvider = CGDataProvider(url: url as CFURL),
-                  let cgFont       = CGFont(dataProvider) else { continue }
-            return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
+            for subdir in subdirs {
+                let url: URL?
+                if let subdir {
+                    url = bundle.url(forResource: "Primae-Regular", withExtension: "otf", subdirectory: subdir)
+                } else {
+                    url = bundle.url(forResource: "Primae-Regular", withExtension: "otf")
+                }
+                guard let url,
+                      let dataProvider = CGDataProvider(url: url as CFURL),
+                      let cgFont       = CGFont(dataProvider) else { continue }
+                return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
+            }
         }
         return nil
     }
