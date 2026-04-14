@@ -3,6 +3,7 @@
 //
 // Uses Swift Testing (@Test, #expect).
 
+import Foundation
 import Testing
 @testable import BuchstabenNative
 
