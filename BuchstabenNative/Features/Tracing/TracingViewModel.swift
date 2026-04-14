@@ -382,6 +382,7 @@ public final class TracingViewModel {
         playbackMachine.resumeIntent   = false
         cancelPendingPlaybackWork()
         audio.stop()
+        isPlaying = false
         setPlaybackState(.idle, immediate: true)
     }
 
