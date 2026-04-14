@@ -75,101 +75,65 @@ public struct LetterGuideGeometry {
     }
 
     // MARK: - Letter definitions
-    // Coordinates computed from PBM pixel centerlines (2732×2048 bitmaps).
-    // Each stroke traces the exact center of the ink at measured sample points.
-    // Stroke order and direction match strokes.json exactly.
+    // Coordinates hand-calibrated against PBM bitmaps using the ghost calibration tool.
+    // Only A, F, I, K, L, M, O are active (the only letters with audio assets).
     static let guides: [String: [Segment]] = [
         "A": [
-            // Stroke 1: left leg — apex DOWN to bottom-left
-            .polyline([
-                CGPoint(x: 0.515, y: 0.170), CGPoint(x: 0.514, y: 0.319),
-                CGPoint(x: 0.514, y: 0.469), CGPoint(x: 0.400, y: 0.668),
-                CGPoint(x: 0.296, y: 0.817)
-            ]),
-            // Stroke 2: right leg — apex DOWN to bottom-right
-            .polyline([
-                CGPoint(x: 0.515, y: 0.170), CGPoint(x: 0.514, y: 0.319),
-                CGPoint(x: 0.514, y: 0.494), CGPoint(x: 0.762, y: 0.668),
-                CGPoint(x: 0.695, y: 0.817)
-            ]),
-            // Stroke 3: crossbar — left to right
-            .line(CGPoint(x: 0.399, y: 0.597), CGPoint(x: 0.624, y: 0.597))
+            .line(CGPoint(x: 0.225, y: 0.875), CGPoint(x: 0.523, y: 0.127)),
+            .line(CGPoint(x: 0.525, y: 0.131), CGPoint(x: 0.727, y: 0.875)),
+            .line(CGPoint(x: 0.348, y: 0.575), CGPoint(x: 0.646, y: 0.577)),
         ],
         "F": [
-            // Stroke 1: vertical spine — top to bottom
-            .line(CGPoint(x: 0.421, y: 0.180), CGPoint(x: 0.421, y: 0.811)),
-            // Stroke 2: top crossbar — left to right
-            .line(CGPoint(x: 0.397, y: 0.200), CGPoint(x: 0.664, y: 0.200)),
-            // Stroke 3: mid crossbar — left to right
-            .line(CGPoint(x: 0.397, y: 0.500), CGPoint(x: 0.630, y: 0.500))
+            .line(CGPoint(x: 0.396, y: 0.135), CGPoint(x: 0.346, y: 0.892)),
+            .line(CGPoint(x: 0.396, y: 0.138), CGPoint(x: 0.740, y: 0.138)),
+            .line(CGPoint(x: 0.379, y: 0.483), CGPoint(x: 0.656, y: 0.483)),
         ],
         "I": [
-            // Stroke 1: top serif — left to right (widened for aspect ratio ≥ 0.5)
-            .line(CGPoint(x: 0.300, y: 0.237), CGPoint(x: 0.700, y: 0.237)),
-            // Stroke 2: stem — straight down
-            .line(CGPoint(x: 0.500, y: 0.237), CGPoint(x: 0.500, y: 0.771)),
-            // Stroke 3: bottom serif — left to right
-            .line(CGPoint(x: 0.300, y: 0.771), CGPoint(x: 0.700, y: 0.771))
+            .line(CGPoint(x: 0.527, y: 0.119), CGPoint(x: 0.475, y: 0.890)),
         ],
         "K": [
-            // Stroke 1: vertical spine — top to bottom
-            .line(CGPoint(x: 0.417, y: 0.170), CGPoint(x: 0.413, y: 0.801)),
-            // Stroke 2: upper arm — top-right DOWN-LEFT to junction
-            .polyline([
-                CGPoint(x: 0.685, y: 0.170), CGPoint(x: 0.618, y: 0.270),
-                CGPoint(x: 0.567, y: 0.419), CGPoint(x: 0.517, y: 0.519)
-            ]),
-            // Stroke 3: lower arm — junction DOWN-RIGHT to bottom-right
-            .polyline([
-                CGPoint(x: 0.503, y: 0.480), CGPoint(x: 0.587, y: 0.580),
-                CGPoint(x: 0.675, y: 0.729), CGPoint(x: 0.691, y: 0.829)
-            ])
+            .line(CGPoint(x: 0.352, y: 0.115), CGPoint(x: 0.300, y: 0.892)),
+            .line(CGPoint(x: 0.404, y: 0.477), CGPoint(x: 0.769, y: 0.123)),
+            .line(CGPoint(x: 0.404, y: 0.483), CGPoint(x: 0.721, y: 0.877)),
         ],
         "L": [
-            // Stroke 1: vertical stroke — top to bottom
-            .line(CGPoint(x: 0.425, y: 0.170), CGPoint(x: 0.425, y: 0.763)),
-            // Stroke 2: baseline foot — left to right
-            .line(CGPoint(x: 0.293, y: 0.780), CGPoint(x: 0.657, y: 0.780))
+            .line(CGPoint(x: 0.394, y: 0.123), CGPoint(x: 0.346, y: 0.856)),
+            .line(CGPoint(x: 0.348, y: 0.860), CGPoint(x: 0.717, y: 0.860)),
         ],
         "M": [
-            // Stroke 1: left spine — top-left down to bottom-left
-            .polyline([
-                CGPoint(x: 0.384, y: 0.170), CGPoint(x: 0.364, y: 0.340),
-                CGPoint(x: 0.324, y: 0.510), CGPoint(x: 0.185, y: 0.668),
-                CGPoint(x: 0.209, y: 0.821)
-            ]),
-            // Stroke 2: left diagonal — top-left DOWN-RIGHT to valley
-            .polyline([
-                CGPoint(x: 0.384, y: 0.170), CGPoint(x: 0.396, y: 0.319),
-                CGPoint(x: 0.413, y: 0.419), CGPoint(x: 0.431, y: 0.519),
-                CGPoint(x: 0.450, y: 0.595)
-            ]),
-            // Stroke 3: right diagonal — valley UP-RIGHT to top-right
-            .polyline([
-                CGPoint(x: 0.569, y: 0.595), CGPoint(x: 0.601, y: 0.481),
-                CGPoint(x: 0.625, y: 0.381), CGPoint(x: 0.645, y: 0.270),
-                CGPoint(x: 0.658, y: 0.170)
-            ]),
-            // Stroke 4: right spine — top-right down to bottom-right
-            .polyline([
-                CGPoint(x: 0.658, y: 0.170), CGPoint(x: 0.658, y: 0.340),
-                CGPoint(x: 0.672, y: 0.510), CGPoint(x: 0.836, y: 0.668),
-                CGPoint(x: 0.777, y: 0.821)
-            ])
+            .line(CGPoint(x: 0.267, y: 0.156), CGPoint(x: 0.169, y: 0.850)),
+            .line(CGPoint(x: 0.277, y: 0.160), CGPoint(x: 0.467, y: 0.804)),
+            .line(CGPoint(x: 0.471, y: 0.806), CGPoint(x: 0.748, y: 0.154)),
+            .line(CGPoint(x: 0.750, y: 0.154), CGPoint(x: 0.779, y: 0.846)),
         ],
         "O": [
-            // Stroke 1: clockwise oval from top — x widened to match y extent (~0.60) for aspect ratio ~1
             .polyline([
-                CGPoint(x: 0.500, y: 0.197), CGPoint(x: 0.650, y: 0.244),
-                CGPoint(x: 0.750, y: 0.339), CGPoint(x: 0.795, y: 0.425),
-                CGPoint(x: 0.800, y: 0.500), CGPoint(x: 0.795, y: 0.575),
-                CGPoint(x: 0.750, y: 0.661), CGPoint(x: 0.650, y: 0.756),
-                CGPoint(x: 0.500, y: 0.802), CGPoint(x: 0.350, y: 0.756),
-                CGPoint(x: 0.250, y: 0.661), CGPoint(x: 0.205, y: 0.575),
-                CGPoint(x: 0.200, y: 0.500), CGPoint(x: 0.205, y: 0.425),
-                CGPoint(x: 0.250, y: 0.339), CGPoint(x: 0.350, y: 0.244),
-                CGPoint(x: 0.500, y: 0.197)
-            ])
-        ]
+                CGPoint(x: 0.538, y: 0.131), CGPoint(x: 0.583, y: 0.140),
+                CGPoint(x: 0.629, y: 0.167), CGPoint(x: 0.667, y: 0.200),
+                CGPoint(x: 0.696, y: 0.235), CGPoint(x: 0.715, y: 0.275),
+                CGPoint(x: 0.729, y: 0.317), CGPoint(x: 0.738, y: 0.367),
+                CGPoint(x: 0.746, y: 0.413), CGPoint(x: 0.746, y: 0.452),
+                CGPoint(x: 0.746, y: 0.492), CGPoint(x: 0.742, y: 0.533),
+                CGPoint(x: 0.738, y: 0.575), CGPoint(x: 0.729, y: 0.608),
+                CGPoint(x: 0.723, y: 0.635), CGPoint(x: 0.715, y: 0.667),
+                CGPoint(x: 0.698, y: 0.700), CGPoint(x: 0.685, y: 0.725),
+                CGPoint(x: 0.671, y: 0.750), CGPoint(x: 0.654, y: 0.769),
+                CGPoint(x: 0.629, y: 0.798), CGPoint(x: 0.604, y: 0.821),
+                CGPoint(x: 0.577, y: 0.844), CGPoint(x: 0.540, y: 0.863),
+                CGPoint(x: 0.510, y: 0.869), CGPoint(x: 0.479, y: 0.871),
+                CGPoint(x: 0.450, y: 0.871), CGPoint(x: 0.413, y: 0.860),
+                CGPoint(x: 0.373, y: 0.848), CGPoint(x: 0.352, y: 0.829),
+                CGPoint(x: 0.325, y: 0.804), CGPoint(x: 0.308, y: 0.775),
+                CGPoint(x: 0.298, y: 0.744), CGPoint(x: 0.283, y: 0.708),
+                CGPoint(x: 0.271, y: 0.667), CGPoint(x: 0.263, y: 0.615),
+                CGPoint(x: 0.256, y: 0.560), CGPoint(x: 0.258, y: 0.508),
+                CGPoint(x: 0.263, y: 0.460), CGPoint(x: 0.273, y: 0.413),
+                CGPoint(x: 0.285, y: 0.369), CGPoint(x: 0.298, y: 0.325),
+                CGPoint(x: 0.319, y: 0.288), CGPoint(x: 0.342, y: 0.246),
+                CGPoint(x: 0.377, y: 0.206), CGPoint(x: 0.408, y: 0.183),
+                CGPoint(x: 0.448, y: 0.158), CGPoint(x: 0.481, y: 0.142),
+                CGPoint(x: 0.508, y: 0.135), CGPoint(x: 0.542, y: 0.133),
+            ]),
+        ],
     ]
 }
