@@ -312,7 +312,7 @@ public final class TracingViewModel {
         let hBias        = Float(max(-1.0, min(1.0, (normalized.x * 2.0 - 1.0) + azimuthBias)))
         audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
-        let shouldPlayForStroke = strokeEnforced ? strokeTracker.soundEnabled : true
+        let shouldPlayForStroke = strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
         setPlaybackState(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 
@@ -396,7 +396,7 @@ public final class TracingViewModel {
         // cut off abruptly between strokes. Cancelled immediately if a new touch begins.
         endTouchGraceTask?.cancel()
         endTouchGraceTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(0.4))
+            try? await Task.sleep(for: .seconds(1.0))
             guard let self, !Task.isCancelled else { return }
             self.audio.stop()
             self.isPlaying = false

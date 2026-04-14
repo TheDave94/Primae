@@ -17,6 +17,8 @@ final class StrokeTracker {
     /// Closure called when a stroke is completed. The integer parameter is the completed stroke index.
     var onStrokeCompleted: ((Int) -> Void)?
 
+    private(set) var isNearStroke: Bool = false
+
     var soundEnabled: Bool {
         guard let definition else { return false }
         let current = currentStrokeIndex
@@ -53,6 +55,7 @@ final class StrokeTracker {
         definition = strokes
         progress = strokes.strokes.map { _ in Progress() }
         onStrokeCompleted = nil
+        isNearStroke = false
     }
 
     func reset() {
@@ -60,6 +63,7 @@ final class StrokeTracker {
         progress = []
         radiusMultiplier = 1.0
         onStrokeCompleted = nil
+        isNearStroke = false
     }
     func update(normalizedPoint p: CGPoint) {
         guard p.x.isFinite && p.y.isFinite else { return }
@@ -79,6 +83,7 @@ final class StrokeTracker {
         let dist = hypot(dx, dy)
 
         let threshold = definition.checkpointRadius * radiusMultiplier
+        isNearStroke = dist <= threshold * 3.0
         if dist <= threshold {
             self.progress[current].nextCheckpoint += 1
             if self.progress[current].nextCheckpoint >= stroke.checkpoints.count {
