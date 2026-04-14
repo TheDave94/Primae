@@ -14,8 +14,11 @@ struct TracingCanvasView: View {
             }
 
             if vm.showGhost {
-                let guideRect = CGRect(origin: .zero, size: size)
-                if let ghost = LetterGuideRenderer.guidePath(for: vm.currentLetterName, in: guideRect) {
+                let guideRect  = CGRect(origin: .zero, size: size)
+                let glyphRect  = PrimaeLetterRenderer.normalizedGlyphRect(
+                    for: vm.currentLetterName, canvasSize: size)
+                if let ghost = LetterGuideRenderer.guidePath(
+                    for: vm.currentLetterName, in: guideRect, glyphRect: glyphRect) {
                     context.stroke(ghost, with: .color(.blue.opacity(0.22)),
                                    style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
                 }

@@ -40,6 +40,32 @@ public enum PrimaeLetterRenderer {
     public static func clearCache() {
         cache.removeAll()
     }
+    /// Returns the normalized ink bounding rect (0–1 in each axis) for the given letter
+    /// as rendered by PrimaeLetterRenderer at the given canvas size.
+    /// Used by LetterGuideGeometry to transform ghost coordinates from calibrated (PBM)
+    /// space to actual rendered space.
+    public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize) -> CGRect? {
+        guard !isRunningTests, !letter.isEmpty,
+              canvasSize.width > 0, canvasSize.height > 0 else { return nil }
+        let probe: CGFloat = 800
+        guard let font = makeFont(size: probe),
+              var glyph = getGlyph(for: letter, in: font) else { return nil }
+        let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
+        guard bbox.width > 0, bbox.height > 0 else { return nil }
+        let pad: CGFloat = 0.10
+        let px = CGSize(width: canvasSize.width * 2, height: canvasSize.height * 2)
+        let availW = px.width  * (1 - 2 * pad)
+        let availH = px.height * (1 - 2 * pad)
+        let ratio  = min(availW / bbox.width, availH / bbox.height)
+        let scaledW = bbox.width  * ratio
+        let scaledH = bbox.height * ratio
+        return CGRect(
+            x:      0.5 - scaledW / (2 * px.width),
+            y:      0.5 - scaledH / (2 * px.height),
+            width:  scaledW / px.width,
+            height: scaledH / px.height
+        )
+    }
 
     // MARK: - Private
 
