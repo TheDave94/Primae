@@ -12,7 +12,7 @@ public final class TracingViewModel {
     var showGhost           = false
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
-    var strokeEnforced      = true
+    var strokeEnforced      = false
     var showDebug           = false
     var toastMessage: String?
     var currentLetterName   = "A"
@@ -473,12 +473,8 @@ public final class TracingViewModel {
         cancelPendingPlaybackWork()
         stopGuideAnimation()
         if let firstAudio = letter.audioFiles.first {
-            // DEBUG: show audio path on screen so we can diagnose loading
-            toast("🔊 \(firstAudio.split(separator: "/").suffix(2).joined(separator: "/"))")
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
-        } else {
-            toast("❌ audioFiles empty for \(letter.name)")
         }
     }
 
