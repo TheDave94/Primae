@@ -12,7 +12,7 @@ public final class TracingViewModel {
     var showGhost           = false
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
-    var strokeEnforced      = false
+    var strokeEnforced      = true
     var showDebug           = false
     var toastMessage: String?
     var currentLetterName   = "A"
