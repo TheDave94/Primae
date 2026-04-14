@@ -84,6 +84,7 @@ public final class TracingViewModel {
     private var pendingPlaybackStateTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
     private var completionDismissTask: Task<Void, Never>?
+    private var endTouchGraceTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
@@ -159,6 +160,8 @@ public final class TracingViewModel {
         activePath.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
         playbackMachine.resumeIntent = false
+        endTouchGraceTask?.cancel()
+        endTouchGraceTask = nil
         cancelPendingPlaybackWork()
         audio.stop()
         playbackMachine.forceIdle()
@@ -237,6 +240,8 @@ public final class TracingViewModel {
 
         isSingleTouchInteractionActive   = true
         playbackMachine.resumeIntent     = true
+        endTouchGraceTask?.cancel()
+        endTouchGraceTask = nil
         lastPoint                        = p
         lastTimestamp                    = t
         activePath                       = [p]
@@ -387,9 +392,16 @@ public final class TracingViewModel {
         pencilAzimuth                  = 0
         playbackMachine.resumeIntent   = false
         cancelPendingPlaybackWork()
-        audio.stop()
-        isPlaying = false
-        playbackMachine.forceIdle()
+        // Grace period: keep audio playing for 400ms after finger lift so it doesn't
+        // cut off abruptly between strokes. Cancelled immediately if a new touch begins.
+        endTouchGraceTask?.cancel()
+        endTouchGraceTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(0.4))
+            guard let self, !Task.isCancelled else { return }
+            self.audio.stop()
+            self.isPlaying = false
+            self.playbackMachine.forceIdle()
+        }
     }
 
     // MARK: - Completion HUD
@@ -507,10 +519,13 @@ public final class TracingViewModel {
     }
 
     static func mapVelocityToSpeed(_ v: CGFloat) -> Float {
-        let low: CGFloat = 120, high: CGFloat = 1300
-        if v <= low  { return 2.0 }
-        if v >= high { return 0.5 }
-        return Float(2.0 - 1.5 * ((v - low) / (high - low)))
+        // Map writing velocity to playback rate: slow tracing = slow audio, fast = fast.
+        // Range calibrated to iPad finger writing: ~50 pt/s (careful) to ~800 pt/s (quick).
+        // Rate 1.0 at ~300 pt/s (normal writing pace).
+        let low: CGFloat = 50, high: CGFloat = 800
+        if v <= low  { return 0.5 }
+        if v >= high { return 2.0 }
+        return Float(0.5 + 1.5 * ((v - low) / (high - low)))
     }
 
     private func setPlaybackState(_ target: PlaybackStateMachine.State, immediate: Bool) {

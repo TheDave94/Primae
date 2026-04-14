@@ -286,8 +286,18 @@ private extension AudioEngine {
     func prepareCurrentTrack() {
         guard let currentFile else { return }
         player.stop()
-        player.scheduleFile(currentFile, at: nil, completionHandler: nil)
+        scheduleLooping(file: currentFile)
         isPlaying = false
+    }
+
+    private func scheduleLooping(file: AVAudioFile) {
+        player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.shouldResumePlayback, let f = self.currentFile else { return }
+                f.framePosition = 0
+                self.scheduleLooping(file: f)
+            }
+        }
     }
 
     func pendingSafeEnginePause() {
