@@ -24,14 +24,19 @@ struct TracingCanvasView: View {
                 }
             }
 
-            // Stroke start dots (visible in observe and guided phases)
+            // Stroke start dots — computed from glyph-relative JSON data mapped
+            // to this canvas's size, so they align exactly with the ghost lines.
             if vm.learningPhase != .freeWrite,
-               let def = vm.strokeDefinition {
-                for (idx, stroke) in def.strokes.enumerated() {
+               let rawStrokes = vm.rawGlyphStrokes,
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                   for: vm.currentLetterName, canvasSize: size) {
+                for (idx, stroke) in rawStrokes.strokes.enumerated() {
                     guard let first = stroke.checkpoints.first else { continue }
                     let isComplete = vm.isStrokeCompleted(idx)
                     let isActive = vm.activeStrokeIndex == idx
-                    let pt = CGPoint(x: first.x * size.width, y: first.y * size.height)
+                    let screenX = (gr.minX + first.x * gr.width) * size.width
+                    let screenY = (gr.minY + first.y * gr.height) * size.height
+                    let pt = CGPoint(x: screenX, y: screenY)
                     let r: CGFloat = isActive ? 18 : 14
                     let dotRect = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
                     let dot = Path(ellipseIn: dotRect)

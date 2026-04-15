@@ -47,8 +47,15 @@ public final class TracingViewModel {
     /// Whether the current letter session (all phases) is complete.
     var isPhaseSessionComplete: Bool { phaseController.isLetterSessionComplete }
 
-    /// Expose stroke data for calibration overlay.
+    /// Expose stroke data for calibration overlay (canvas-mapped coordinates).
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
+
+    /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
+    /// Used by TracingCanvasView to render dots aligned with the ghost at any canvas size.
+    var rawGlyphStrokes: LetterStrokes? {
+        guard !letters.isEmpty, letterIndex < letters.count else { return nil }
+        return letters[letterIndex].strokes
+    }
     /// Stars earned in current letter session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
     /// Accumulated normalised touch points for free-write scoring.
