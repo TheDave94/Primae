@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import CoreText
 
 struct TracingCanvasView: View {
     @Environment(TracingViewModel.self) private var vm
@@ -13,25 +14,24 @@ struct TracingCanvasView: View {
                 context.draw(Image(uiImage: img), in: CGRect(origin: .zero, size: size))
             }
 
-            if vm.showGhost,
-               let rawStrokes = vm.glyphRelativeStrokes,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
-                // Ghost lines rendered from the same stroke JSON as checkpoints —
-                // one source of truth, guaranteed alignment.
-                for stroke in rawStrokes.strokes {
-                    guard stroke.checkpoints.count >= 2 else { continue }
-                    var ghostPath = Path()
-                    let first = stroke.checkpoints[0]
-                    ghostPath.move(to: CGPoint(
-                        x: (gr.minX + first.x * gr.width) * size.width,
-                        y: (gr.minY + first.y * gr.height) * size.height))
-                    for cp in stroke.checkpoints.dropFirst() {
-                        ghostPath.addLine(to: CGPoint(
-                            x: (gr.minX + cp.x * gr.width) * size.width,
-                            y: (gr.minY + cp.y * gr.height) * size.height))
+            if vm.showGhost {
+                // Use the font's actual glyph outline as ghost guide — follows real curves.
+                if let font = PrimaeLetterRenderer.makeFont(size: 800),
+                   let glyph = PrimaeLetterRenderer.getGlyph(for: vm.currentLetterName, in: font),
+                   let glyphPath = CTFontCreatePathForGlyph(font, glyph, nil),
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
+                    // The glyph path is in font coordinates — transform to screen
+                    let bbox = glyphPath.boundingBox
+                    if bbox.width > 0, bbox.height > 0 {
+                        let sx = gr.width * size.width / bbox.width
+                        let sy = gr.height * size.height / bbox.height
+                        let tx = gr.minX * size.width - bbox.minX * sx
+                        let ty = (gr.minY + gr.height) * size.height + bbox.minY * sy
+                        let screenTransform = CGAffineTransform(a: sx, b: 0, c: 0, d: -sy, tx: tx, ty: ty)
+                        let ghostPath = Path(glyphPath).applying(screenTransform)
+                        context.stroke(ghostPath, with: .color(.blue.opacity(0.22)),
+                                       style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
                     }
-                    context.stroke(ghostPath, with: .color(.blue.opacity(0.22)),
-                                   style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
                 }
             }
 
