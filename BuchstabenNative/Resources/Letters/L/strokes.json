@@ -1,11 +1,11 @@
 {
   "letter": "L",
   "checkpointRadius": 0.05,
-  "comment": "Font-extracted centerlines. 2 strokes: spine, foot.",
+  "comment": "Font-derived. 2 strokes: spine down, foot right.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Spine: top to bottom (italic slant)",
+      "comment": "Spine: top to bottom (stroke 1)",
       "checkpoints": [
         {
           "x": 0.2,
@@ -17,41 +17,37 @@
         },
         {
           "x": 0.17,
-          "y": 0.35
+          "y": 0.4
         },
         {
           "x": 0.15,
-          "y": 0.5
+          "y": 0.6
         },
         {
-          "x": 0.13,
-          "y": 0.65
-        },
-        {
-          "x": 0.11,
+          "x": 0.12,
           "y": 0.8
         },
         {
-          "x": 0.09,
+          "x": 0.1,
           "y": 0.92
         }
       ]
     },
     {
       "id": 2,
-      "comment": "Foot: left to right at baseline",
+      "comment": "Foot: left to right (stroke 2)",
       "checkpoints": [
         {
-          "x": 0.09,
+          "x": 0.1,
+          "y": 0.92
+        },
+        {
+          "x": 0.4,
           "y": 0.93
         },
         {
-          "x": 0.5,
-          "y": 0.94
-        },
-        {
-          "x": 0.93,
-          "y": 0.95
+          "x": 0.7,
+          "y": 0.93
         }
       ]
     }

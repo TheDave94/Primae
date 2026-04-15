@@ -719,28 +719,21 @@ public final class TracingViewModel {
     }
 
     private func reloadStrokeCheckpoints(for letter: LetterAsset) {
-        // Prefer runtime extraction from font glyph — guarantees alignment on any screen.
-        // Fall back to bundled strokes.json if extraction fails (e.g. in tests).
-        let glyphRelative: LetterStrokes
-        if let extracted = GlyphStrokeExtractor.extractStrokes(for: letter.name) {
-            glyphRelative = extracted
-        } else {
-            glyphRelative = letter.strokes
-        }
-        // Map glyph-relative (0–1) to canvas-normalised coordinates.
+        // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
+        // Map to canvas-normalised coordinates using the actual rendered glyph rect.
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize) {
-            let mapped = glyphRelative.strokes.map { stroke in
+            let mapped = letter.strokes.strokes.map { stroke in
                 StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
                     Checkpoint(x: gr.minX + cp.x * gr.width,
                                y: gr.minY + cp.y * gr.height)
                 })
             }
-            strokesForTracker = LetterStrokes(letter: glyphRelative.letter,
-                                               checkpointRadius: glyphRelative.checkpointRadius,
+            strokesForTracker = LetterStrokes(letter: letter.strokes.letter,
+                                               checkpointRadius: letter.strokes.checkpointRadius,
                                                strokes: mapped)
         } else {
-            strokesForTracker = glyphRelative
+            strokesForTracker = letter.strokes
         }
         strokeTracker.load(strokesForTracker)
     }

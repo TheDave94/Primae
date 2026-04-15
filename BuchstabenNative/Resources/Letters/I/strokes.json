@@ -1,11 +1,11 @@
 {
   "letter": "I",
   "checkpointRadius": 0.05,
-  "comment": "Font-extracted centerlines. 1 stroke: italic diagonal stem.",
+  "comment": "Font-derived. 1 stroke: diagonal stem (italic font).",
   "strokes": [
     {
       "id": 1,
-      "comment": "Stem: top-right to bottom-left (italic)",
+      "comment": "Stem: top to bottom",
       "checkpoints": [
         {
           "x": 0.7,

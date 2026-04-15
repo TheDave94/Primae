@@ -1,11 +1,11 @@
 {
   "letter": "F",
   "checkpointRadius": 0.05,
-  "comment": "Font-extracted centerlines. 3 strokes: spine, top bar, mid bar.",
+  "comment": "Font-derived. 3 strokes: spine down, top bar R, mid bar R.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Vertical spine: top to bottom (italic slant)",
+      "comment": "Spine: top to bottom (stroke 1)",
       "checkpoints": [
         {
           "x": 0.17,
@@ -17,19 +17,15 @@
         },
         {
           "x": 0.15,
-          "y": 0.35
+          "y": 0.4
         },
         {
           "x": 0.13,
-          "y": 0.55
+          "y": 0.6
         },
         {
-          "x": 0.12,
-          "y": 0.7
-        },
-        {
-          "x": 0.1,
-          "y": 0.85
+          "x": 0.11,
+          "y": 0.8
         },
         {
           "x": 0.09,
@@ -39,36 +35,36 @@
     },
     {
       "id": 2,
-      "comment": "Top bar: left to right at y\u22480.05",
+      "comment": "Top bar: left to right (stroke 2)",
       "checkpoints": [
         {
           "x": 0.17,
-          "y": 0.08
+          "y": 0.07
         },
         {
-          "x": 0.55,
+          "x": 0.45,
           "y": 0.06
         },
         {
-          "x": 0.92,
+          "x": 0.75,
           "y": 0.05
         }
       ]
     },
     {
       "id": 3,
-      "comment": "Mid bar: left to right at y\u22480.48",
+      "comment": "Mid bar: left to right (stroke 3)",
       "checkpoints": [
         {
           "x": 0.14,
           "y": 0.48
         },
         {
-          "x": 0.44,
+          "x": 0.4,
           "y": 0.47
         },
         {
-          "x": 0.75,
+          "x": 0.65,
           "y": 0.46
         }
       ]
