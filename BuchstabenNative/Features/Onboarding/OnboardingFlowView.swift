@@ -120,7 +120,6 @@ private struct WelcomeStepView: View {
 
 private struct TraceDemoStepView: View {
     let onNext: () -> Void
-    @State private var strokeProgress: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 24) {
@@ -136,24 +135,23 @@ private struct TraceDemoStepView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            // Animated "A" stroke demo
-            ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.white.opacity(0.6))
-                    .frame(width: 200, height: 200)
+            // Timer-driven animated "A" stroke demo
+            TimelineView(.animation) { timeline in
+                let elapsed = timeline.date.timeIntervalSinceReferenceDate
+                let cycle = 2.5 // seconds per loop
+                let progress = CGFloat((elapsed.truncatingRemainder(dividingBy: cycle)) / cycle)
 
-                // Ghost letter
-                Text("A")
-                    .font(.system(size: 100, weight: .bold, design: .rounded))
-                    .foregroundStyle(.gray.opacity(0.15))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.white.opacity(0.6))
+                        .frame(width: 200, height: 200)
 
-                // Animated stroke overlay
-                AnimatedStrokePath(progress: strokeProgress)
-                    .frame(width: 160, height: 160)
-            }
-            .onAppear {
-                withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: false)) {
-                    strokeProgress = 1.0
+                    Text("A")
+                        .font(.system(size: 100, weight: .bold, design: .rounded))
+                        .foregroundStyle(.gray.opacity(0.15))
+
+                    AnimatedStrokePath(progress: progress)
+                        .frame(width: 160, height: 160)
                 }
             }
 

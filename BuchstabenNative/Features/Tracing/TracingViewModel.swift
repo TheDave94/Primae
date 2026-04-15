@@ -627,6 +627,13 @@ public final class TracingViewModel {
         playbackMachine.resumeIntent   = true
         cancelPendingPlaybackWork()
         stopGuideAnimation()
+        // Auto-start stroke animation in observe phase
+        if phaseController.currentPhase == .observe {
+            Task { [self] in
+                try? await Task.sleep(for: .milliseconds(300))
+                startGuideAnimation()
+            }
+        }
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
