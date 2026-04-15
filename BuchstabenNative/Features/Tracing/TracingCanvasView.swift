@@ -53,9 +53,12 @@ struct TracingCanvasView: View {
                                style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
             }
 
-            // Animation guide dot — normalized (0-1) point scaled to canvas
-            if let point = vm.animationGuidePoint {
-                let screenPt = CGPoint(x: point.x * size.width, y: point.y * size.height)
+            // Animation guide dot — glyph-relative coords mapped to screen
+            if let point = vm.animationGuidePoint,
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
+                let screenPt = CGPoint(
+                    x: (gr.minX + point.x * gr.width) * size.width,
+                    y: (gr.minY + point.y * gr.height) * size.height)
                 let r: CGFloat = 22
                 let dotRect   = CGRect(x: screenPt.x - r, y: screenPt.y - r, width: r * 2, height: r * 2)
                 let dot       = Path(ellipseIn: dotRect)

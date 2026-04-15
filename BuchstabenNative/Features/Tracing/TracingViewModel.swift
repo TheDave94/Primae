@@ -457,9 +457,13 @@ public final class TracingViewModel {
     // Call startGuideAnimation() to show the demo; stopGuideAnimation() to cancel.
 
     func startGuideAnimation() {
-        guard let definition = strokeTracker.definition else { return }
+        // Use raw glyph-relative strokes — NOT the canvas-mapped tracker definition.
+        // The Canvas maps these to screen coords at render time using normalizedGlyphRect.
+        guard !letters.isEmpty, letterIndex < letters.count else { return }
+        let rawStrokes = letters[letterIndex].strokes
+        guard !rawStrokes.strokes.isEmpty else { return }
         stopGuideAnimation()
-        let guide = LetterAnimationGuide.build(from: definition)
+        let guide = LetterAnimationGuide.build(from: rawStrokes)
         guard !guide.steps.isEmpty else { return }
 
         animationTask = Task { [self] in
