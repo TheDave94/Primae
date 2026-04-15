@@ -1,67 +1,75 @@
 {
   "letter": "F",
-  "checkpointRadius": 0.04,
-  "comment": "Glyph-relative coords. 3 strokes: spine, top bar, mid bar.",
+  "checkpointRadius": 0.05,
+  "comment": "Font-extracted centerlines. 3 strokes: spine, top bar, mid bar.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Vertical spine: top to bottom",
+      "comment": "Vertical spine: top to bottom (italic slant)",
       "checkpoints": [
         {
-          "x": 0.1,
-          "y": 0.0
+          "x": 0.17,
+          "y": 0.05
+        },
+        {
+          "x": 0.16,
+          "y": 0.2
+        },
+        {
+          "x": 0.15,
+          "y": 0.35
+        },
+        {
+          "x": 0.13,
+          "y": 0.55
+        },
+        {
+          "x": 0.12,
+          "y": 0.7
         },
         {
           "x": 0.1,
-          "y": 0.25
+          "y": 0.85
         },
         {
-          "x": 0.1,
-          "y": 0.5
-        },
-        {
-          "x": 0.1,
-          "y": 0.75
-        },
-        {
-          "x": 0.1,
-          "y": 1.0
+          "x": 0.09,
+          "y": 0.95
         }
       ]
     },
     {
       "id": 2,
-      "comment": "Top bar: left to right",
+      "comment": "Top bar: left to right at y\u22480.05",
       "checkpoints": [
         {
-          "x": 0.1,
-          "y": 0.0
+          "x": 0.17,
+          "y": 0.08
         },
         {
           "x": 0.55,
-          "y": 0.0
+          "y": 0.06
         },
         {
-          "x": 1.0,
-          "y": 0.0
+          "x": 0.92,
+          "y": 0.05
         }
       ]
     },
     {
       "id": 3,
-      "comment": "Mid bar: left to right",
+      "comment": "Mid bar: left to right at y\u22480.48",
       "checkpoints": [
         {
-          "x": 0.1,
+          "x": 0.14,
           "y": 0.48
         },
         {
-          "x": 0.5,
-          "y": 0.48
+          "x": 0.44,
+          "y": 0.47
         },
         {
-          "x": 0.85,
-          "y": 0.48
+          "x": 0.75,
+          "y": 0.46
         }
       ]
     }
