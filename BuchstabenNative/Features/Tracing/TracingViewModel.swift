@@ -50,6 +50,13 @@ public final class TracingViewModel {
     /// Expose stroke data for calibration overlay (canvas-mapped coordinates).
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
+    /// Raw glyph-relative stroke data (0-1 within bounding box) for rendering.
+    /// Use this with normalizedGlyphRect to map to any canvas size at render time.
+    var glyphRelativeStrokes: LetterStrokes? {
+        guard !letters.isEmpty, letterIndex < letters.count else { return nil }
+        return letters[letterIndex].strokes
+    }
+
     /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
     /// Used by TracingCanvasView to render dots aligned with the ghost at any canvas size.
     var rawGlyphStrokes: LetterStrokes? {
