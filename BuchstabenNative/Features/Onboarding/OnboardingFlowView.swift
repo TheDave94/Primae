@@ -1,10 +1,8 @@
 // OnboardingFlowView.swift
 // BuchstabenNative
 //
-// Provides the first-run onboarding experience, wiring up the existing
-// OnboardingCoordinator state machine (welcome → traceDemo → firstTrace
-// → rewardIntro → complete). Kept minimal for the thesis — the focus
-// is demonstrating the pedagogical flow, not production-grade polish.
+// First-run onboarding experience with child-friendly colors,
+// animated stroke demo, and proper dark-mode support.
 
 import SwiftUI
 
@@ -15,7 +13,13 @@ struct OnboardingFlowView: View {
 
     var body: some View {
         ZStack {
-            Color.white.ignoresSafeArea()
+            // Use a gradient background that works in both light/dark mode
+            LinearGradient(
+                colors: [Color(red: 0.93, green: 0.95, blue: 1.0),
+                         Color(red: 0.98, green: 0.94, blue: 0.96)],
+                startPoint: .topLeading, endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Progress bar
@@ -35,10 +39,11 @@ struct OnboardingFlowView: View {
                     vm.skipOnboarding()
                 }
                 .font(.subheadline)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .padding(.bottom, 24)
             }
         }
+        .preferredColorScheme(.light)
     }
 
     @ViewBuilder
@@ -53,7 +58,6 @@ struct OnboardingFlowView: View {
         case .rewardIntro:
             RewardIntroStepView(onNext: { vm.advanceOnboarding() })
         case .complete:
-            // Should not render — ContentView gates on isOnboardingComplete.
             EmptyView()
         }
     }
@@ -68,11 +72,12 @@ private struct OnboardingProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.gray.opacity(0.15))
+                    .fill(Color.black.opacity(0.08))
                     .frame(height: 6)
                 Capsule()
                     .fill(Color.blue)
                     .frame(width: geo.size.width * max(0, min(1, progress)), height: 6)
+                    .animation(.easeInOut(duration: 0.3), value: progress)
             }
         }
         .frame(height: 6)
@@ -92,10 +97,11 @@ private struct WelcomeStepView: View {
 
             Text("Willkommen!")
                 .font(.largeTitle.bold())
+                .foregroundStyle(.primary)
 
             Text("Lerne Schritt für Schritt\nBuchstaben zu schreiben")
                 .font(.title3)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             Button(action: onNext) {
@@ -110,10 +116,11 @@ private struct WelcomeStepView: View {
     }
 }
 
-// MARK: - Step 2: Trace Demo
+// MARK: - Step 2: Trace Demo (with animated stroke)
 
 private struct TraceDemoStepView: View {
     let onNext: () -> Void
+    @State private var strokeProgress: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 24) {
@@ -122,29 +129,104 @@ private struct TraceDemoStepView: View {
 
             Text("Erst anschauen")
                 .font(.title.bold())
+                .foregroundStyle(.primary)
 
             Text("Schau dir an, wie der Buchstabe\ngeschrieben wird.")
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            // Placeholder for animation preview.
-            // In a full implementation this would embed a miniature
-            // TracingCanvasView playing the animation guide for "A".
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color.gray.opacity(0.1))
-                .frame(width: 200, height: 200)
-                .overlay {
-                    Text("A")
-                        .font(.system(size: 100, weight: .bold, design: .rounded))
-                        .foregroundColor(.gray.opacity(0.3))
+            // Animated "A" stroke demo
+            ZStack {
+                RoundedRectangle(cornerRadius: 20)
+                    .fill(Color.white.opacity(0.6))
+                    .frame(width: 200, height: 200)
+
+                // Ghost letter
+                Text("A")
+                    .font(.system(size: 100, weight: .bold, design: .rounded))
+                    .foregroundStyle(.gray.opacity(0.15))
+
+                // Animated stroke overlay
+                AnimatedStrokePath(progress: strokeProgress)
+                    .frame(width: 160, height: 160)
+            }
+            .onAppear {
+                withAnimation(.easeInOut(duration: 2.5).repeatForever(autoreverses: false)) {
+                    strokeProgress = 1.0
                 }
+            }
 
             Button("Weiter", action: onNext)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
         }
         .padding(32)
+    }
+}
+
+/// Simple animated path that draws an "A" shape progressively
+private struct AnimatedStrokePath: View {
+    let progress: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            let w = size.width, h = size.height
+            // Left leg
+            var left = Path()
+            left.move(to: CGPoint(x: w * 0.5, y: h * 0.1))
+            left.addLine(to: CGPoint(x: w * 0.15, y: h * 0.9))
+            // Right leg
+            var right = Path()
+            right.move(to: CGPoint(x: w * 0.5, y: h * 0.1))
+            right.addLine(to: CGPoint(x: w * 0.85, y: h * 0.9))
+            // Crossbar
+            var cross = Path()
+            cross.move(to: CGPoint(x: w * 0.28, y: h * 0.6))
+            cross.addLine(to: CGPoint(x: w * 0.72, y: h * 0.6))
+
+            // Draw ghost
+            context.stroke(left, with: .color(.gray.opacity(0.15)), lineWidth: 4)
+            context.stroke(right, with: .color(.gray.opacity(0.15)), lineWidth: 4)
+            context.stroke(cross, with: .color(.gray.opacity(0.15)), lineWidth: 4)
+
+            // Animated trim — each stroke gets 1/3 of progress
+            let seg = progress * 3.0
+            if seg > 0 {
+                let p1 = min(seg, 1.0)
+                context.stroke(left.trimmedPath(from: 0, to: p1),
+                    with: .color(.blue), lineWidth: 5)
+            }
+            if seg > 1 {
+                let p2 = min(seg - 1.0, 1.0)
+                context.stroke(right.trimmedPath(from: 0, to: p2),
+                    with: .color(.blue), lineWidth: 5)
+            }
+            if seg > 2 {
+                let p3 = min(seg - 2.0, 1.0)
+                context.stroke(cross.trimmedPath(from: 0, to: p3),
+                    with: .color(.blue), lineWidth: 5)
+            }
+
+            // Moving dot at current position
+            let dot: CGPoint
+            if seg <= 1 {
+                let t = min(seg, 1.0)
+                dot = CGPoint(x: w * (0.5 + (0.15 - 0.5) * t),
+                              y: h * (0.1 + (0.9 - 0.1) * t))
+            } else if seg <= 2 {
+                let t = min(seg - 1.0, 1.0)
+                dot = CGPoint(x: w * (0.5 + (0.85 - 0.5) * t),
+                              y: h * (0.1 + (0.9 - 0.1) * t))
+            } else {
+                let t = min(seg - 2.0, 1.0)
+                dot = CGPoint(x: w * (0.28 + (0.72 - 0.28) * t),
+                              y: h * 0.6)
+            }
+            context.fill(Circle().path(in: CGRect(x: dot.x - 6, y: dot.y - 6,
+                                                   width: 12, height: 12)),
+                         with: .color(.orange))
+        }
     }
 }
 
@@ -160,22 +242,20 @@ private struct FirstTraceStepView: View {
 
             Text("Jetzt nachspuren")
                 .font(.title.bold())
+                .foregroundStyle(.primary)
 
             Text("Folge den Punkten mit\ndeinem Finger.")
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            // In the full implementation, this step would embed an actual
-            // tracing interaction for the letter "A" and auto-advance
-            // on completion. For the thesis, a manual "Weiter" suffices.
             RoundedRectangle(cornerRadius: 20)
                 .fill(Color.blue.opacity(0.05))
                 .frame(width: 200, height: 200)
                 .overlay {
                     Text("A")
                         .font(.system(size: 100, weight: .bold, design: .rounded))
-                        .foregroundColor(.blue.opacity(0.3))
+                        .foregroundStyle(.blue.opacity(0.3))
                 }
 
             Button("Weiter", action: onNext)
@@ -198,10 +278,11 @@ private struct RewardIntroStepView: View {
 
             Text("Sammle Sterne!")
                 .font(.title.bold())
+                .foregroundStyle(.primary)
 
             Text("Für jeden Buchstaben kannst du\nbis zu 3 Sterne verdienen.")
                 .font(.body)
-                .foregroundColor(.secondary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 12) {
@@ -211,7 +292,7 @@ private struct RewardIntroStepView: View {
                             .font(.title)
                         Text(phase.displayName)
                             .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
                 }
             }

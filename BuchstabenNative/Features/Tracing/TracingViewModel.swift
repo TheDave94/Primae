@@ -62,7 +62,7 @@ public final class TracingViewModel {
     // MARK: - Onboarding state (ready for onboarding UI layer)
 
     /// True once the user has completed onboarding.
-    var isOnboardingComplete: Bool { onboardingStore.hasCompletedOnboarding }
+    var isOnboardingComplete: Bool = false
     /// Current onboarding step for presenting onboarding UI.
     private(set) var onboardingStep: OnboardingStep = .welcome
     /// Progress through onboarding steps (0–1).
@@ -137,6 +137,7 @@ public final class TracingViewModel {
         }
         self.onboardingCoordinator = coordinator
         self.onboardingStep        = coordinator.currentStep
+        self.isOnboardingComplete  = deps.onboardingStore.hasCompletedOnboarding
         self.phaseController = LearningPhaseController(condition: deps.thesisCondition)
 
         haptics.prepare()
@@ -469,6 +470,7 @@ public final class TracingViewModel {
         onboardingStep = onboardingCoordinator.currentStep
         if onboardingCoordinator.isComplete {
             onboardingStore.markComplete()
+            isOnboardingComplete = true
             // Request notification permission and schedule reminder on onboarding completion
             Task { [self] in
                 _ = await notificationScheduler.requestPermission()

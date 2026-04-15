@@ -23,6 +23,13 @@ public struct ContentView: View {
                 .background(Color.white)
                 .ignoresSafeArea()
 
+            // Observe phase: touch is disabled, show tap-to-continue overlay
+            if vm.learningPhase == .observe {
+                ObservePhaseOverlay {
+                    vm.completeObservePhase()
+                }
+            }
+
             VStack(spacing: 10) {
                 topBar
                 if let toast = vm.toastMessage {
@@ -91,6 +98,34 @@ public struct ContentView: View {
             .accessibilityValue(vm.currentLetterName)
             .accessibilityHint(vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused")
         }
+    }
+}
+
+private struct ObservePhaseOverlay: View {
+    let onContinue: () -> Void
+
+    var body: some View {
+        VStack {
+            Spacer()
+            VStack(spacing: 12) {
+                Text("👁️ Beobachte den Buchstaben")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Text("Tippe hier um fortzufahren")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 18)
+            .background(.blue.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
+            .shadow(radius: 8)
+            .padding(.bottom, 60)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onContinue)
+        .accessibilityLabel("Beobachtungsphase")
+        .accessibilityHint("Tippe um zur nächsten Phase zu wechseln")
     }
 }
 
