@@ -73,7 +73,7 @@ public enum PrimaeLetterRenderer {
         NSClassFromString("XCTestCase") != nil
     }
 
-    private static func makeFont(size: CGFloat) -> CTFont? {
+    static func makeFont(size: CGFloat) -> CTFont? {
         let bundles: [Bundle] = [.module, .main]
         // Try root, then SPM .copy("Resources") nested paths, then flat Fonts/
         let subdirs: [String?] = [nil, "Resources/Fonts", "Fonts"]
@@ -94,7 +94,7 @@ public enum PrimaeLetterRenderer {
         return nil
     }
 
-    private static func getGlyph(for letter: String, in font: CTFont) -> CGGlyph? {
+    static func getGlyph(for letter: String, in font: CTFont) -> CGGlyph? {
         guard let first = letter.unicodeScalars.first else { return nil }
         var c = UniChar(first.value & 0xFFFF)
         var g = CGGlyph(0)
