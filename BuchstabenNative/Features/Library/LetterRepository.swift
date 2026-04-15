@@ -309,15 +309,15 @@ private extension LetterRepository {
         case "A":
             strokes = [
                 .init(id: 1, checkpoints: [
-                    .init(x: 0.58, y: 0.05), .init(x: 0.51, y: 0.15),
-                    .init(x: 0.43, y: 0.30), .init(x: 0.34, y: 0.45),
-                    .init(x: 0.26, y: 0.60), .init(x: 0.18, y: 0.75), .init(x: 0.10, y: 0.90)]),
+                    .init(x: 0.601, y: 0.01), .init(x: 0.52, y: 0.13),
+                    .init(x: 0.42, y: 0.30), .init(x: 0.34, y: 0.44),
+                    .init(x: 0.25, y: 0.60), .init(x: 0.15, y: 0.78), .init(x: 0.03, y: 0.99)]),
                 .init(id: 2, checkpoints: [
-                    .init(x: 0.58, y: 0.05), .init(x: 0.63, y: 0.15),
-                    .init(x: 0.69, y: 0.30), .init(x: 0.73, y: 0.45),
-                    .init(x: 0.78, y: 0.60), .init(x: 0.84, y: 0.75), .init(x: 0.90, y: 0.90)]),
+                    .init(x: 0.601, y: 0.01), .init(x: 0.66, y: 0.17),
+                    .init(x: 0.73, y: 0.35), .init(x: 0.78, y: 0.48),
+                    .init(x: 0.82, y: 0.60), .init(x: 0.90, y: 0.79), .init(x: 0.97, y: 0.98)]),
                 .init(id: 3, checkpoints: [
-                    .init(x: 0.30, y: 0.64), .init(x: 0.53, y: 0.64), .init(x: 0.75, y: 0.64)])
+                    .init(x: 0.26, y: 0.60), .init(x: 0.553, y: 0.60), .init(x: 0.82, y: 0.60)])
             ]
         case "F":
             strokes = [

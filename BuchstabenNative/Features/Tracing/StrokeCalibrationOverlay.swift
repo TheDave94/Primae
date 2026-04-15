@@ -230,7 +230,7 @@ struct StrokeCalibrationOverlay: View {
     // MARK: - Data
 
     private func loadFromVM() {
-        guard let def = vm.strokeTrackerDefinition else { return }
+        guard let def = vm.strokeDefinition else { return }
         let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: canvasSize)
             ?? CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)
 

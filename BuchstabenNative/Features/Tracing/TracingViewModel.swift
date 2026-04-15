@@ -48,7 +48,7 @@ public final class TracingViewModel {
     var isPhaseSessionComplete: Bool { phaseController.isLetterSessionComplete }
 
     /// Expose stroke data for calibration overlay.
-    var strokeTrackerDefinition: LetterStrokes? { strokeTracker.definition }
+    var strokeDefinition: LetterStrokes? { strokeTracker.definition }
     /// Stars earned in current letter session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
     /// Accumulated normalised touch points for free-write scoring.
@@ -574,7 +574,6 @@ public final class TracingViewModel {
     }
 
     /// Expose stroke definition for canvas rendering.
-    var strokeDefinition: LetterStrokes? { strokeTracker.definition }
     /// Current active stroke index.
     var activeStrokeIndex: Int { strokeTracker.currentStrokeIndex }
     /// Check if a stroke is completed.
