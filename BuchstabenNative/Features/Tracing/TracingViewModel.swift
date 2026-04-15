@@ -46,6 +46,9 @@ public final class TracingViewModel {
     var phaseScores: [LearningPhase: CGFloat] { phaseController.phaseScores }
     /// Whether the current letter session (all phases) is complete.
     var isPhaseSessionComplete: Bool { phaseController.isLetterSessionComplete }
+
+    /// Expose stroke data for calibration overlay.
+    var strokeTrackerDefinition: LetterStrokes? { strokeTracker.definition }
     /// Stars earned in current letter session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
     /// Accumulated normalised touch points for free-write scoring.
@@ -535,6 +538,19 @@ public final class TracingViewModel {
         guard phaseController.currentPhase == .observe else { return }
         stopGuideAnimation()
         advanceLearningPhase()
+    }
+
+    /// Apply calibrated glyph-relative checkpoints from the debug overlay.
+    func applyCalibration(_ strokes: [[CGPoint]]) {
+        guard let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: currentLetterName, canvasSize: canvasSize) else { return }
+        let defs = strokes.enumerated().map { (i, pts) in
+            StrokeDefinition(id: i + 1, checkpoints: pts.map { cp in
+                Checkpoint(x: gr.minX + cp.x * gr.width,
+                           y: gr.minY + cp.y * gr.height)
+            })
+        }
+        let letterStrokes = LetterStrokes(letter: currentLetterName, checkpointRadius: 0.05, strokes: defs)
+        strokeTracker.load(letterStrokes)
     }
 
     /// Load the letter recommended by spaced repetition.

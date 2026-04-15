@@ -30,6 +30,13 @@ public struct ContentView: View {
                 }
             }
 
+            // Debug calibration overlay — drag dots to align with strokes
+            if vm.showDebug {
+                GeometryReader { geo in
+                    StrokeCalibrationOverlay(canvasSize: geo.size)
+                }
+            }
+
             VStack(spacing: 10) {
                 topBar
                 if let toast = vm.toastMessage {
