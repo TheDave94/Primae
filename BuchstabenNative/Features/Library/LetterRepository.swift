@@ -309,11 +309,11 @@ private extension LetterRepository {
         case "A":
             strokes = [
                 .init(id: 1, checkpoints: [
-                    .init(x: 0.601, y: 0.01), .init(x: 0.52, y: 0.13),
+                    .init(x: 0.58, y: 0.04), .init(x: 0.52, y: 0.13),
                     .init(x: 0.42, y: 0.30), .init(x: 0.34, y: 0.44),
                     .init(x: 0.25, y: 0.60), .init(x: 0.15, y: 0.78), .init(x: 0.03, y: 0.99)]),
                 .init(id: 2, checkpoints: [
-                    .init(x: 0.601, y: 0.01), .init(x: 0.66, y: 0.17),
+                    .init(x: 0.58, y: 0.04), .init(x: 0.66, y: 0.17),
                     .init(x: 0.73, y: 0.35), .init(x: 0.78, y: 0.48),
                     .init(x: 0.82, y: 0.60), .init(x: 0.90, y: 0.79), .init(x: 0.97, y: 0.98)]),
                 .init(id: 3, checkpoints: [
