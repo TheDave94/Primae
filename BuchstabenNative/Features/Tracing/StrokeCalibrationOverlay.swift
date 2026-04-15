@@ -230,16 +230,12 @@ struct StrokeCalibrationOverlay: View {
     // MARK: - Data
 
     private func loadFromVM() {
-        guard let def = vm.strokeDefinition else { return }
-        let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: canvasSize)
-            ?? CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)
-
-        editableStrokes = def.strokes.map { stroke in
+        // Load directly from raw glyph-relative JSON — no round-trip through
+        // the canvas-mapped tracker, which would corrupt coords if sizes differ.
+        guard let raw = vm.glyphRelativeStrokes else { return }
+        editableStrokes = raw.strokes.map { stroke in
             stroke.checkpoints.map { cp in
-                CGPoint(
-                    x: gr.width > 0 ? (cp.x - gr.minX) / gr.width : cp.x,
-                    y: gr.height > 0 ? (cp.y - gr.minY) / gr.height : cp.y
-                )
+                CGPoint(x: CGFloat(cp.x), y: CGFloat(cp.y))
             }
         }
         activeStroke = 0
