@@ -51,7 +51,7 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
         #expect(hint.lowercased().contains("paused"))
     }
 
-    @Test(.disabled("Requires stroke proximity data — pre-existing since fd42654")) func audioHintString_isPlaying_containsPlaying() async {
+    @Test func audioHintString_isPlaying_containsPlaying() async {
         vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
         var t = 1000.0; var p = CGPoint(x: 100, y: 200)
         for _ in 0..<10 {

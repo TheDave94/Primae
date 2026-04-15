@@ -25,8 +25,58 @@ final class StubHaptics: HapticEngineProviding {
 final class StubResourceProvider: LetterResourceProviding {
     var bundle: Bundle = .main
     var searchBundles: [Bundle] { [bundle] }
-    func allResourceURLs() -> [URL] { [] }
-    func resourceURL(for relativePath: String) -> URL? { nil }
+
+    /// Temporary directory containing a test letter whose stroke checkpoints
+    /// align with the standard test drag helpers (from (0.25,0.5) → (0.5,0.5)
+    /// in normalised coordinates on a 400×400 canvas).
+    private static let testLetterDir: URL = {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StubLetterResources", isDirectory: true)
+        let letterDir = dir.appendingPathComponent("Letters/A", isDirectory: true)
+        try? FileManager.default.createDirectory(at: letterDir, withIntermediateDirectories: true)
+
+        // Single horizontal stroke matching the test drag path
+        let strokes: [String: Any] = [
+            "letter": "A",
+            "checkpointRadius": 0.06,
+            "strokes": [
+                [
+                    "id": 1,
+                    "checkpoints": [
+                        ["x": 0.25, "y": 0.50],
+                        ["x": 0.31, "y": 0.50],
+                        ["x": 0.37, "y": 0.50],
+                        ["x": 0.44, "y": 0.50],
+                        ["x": 0.50, "y": 0.50],
+                    ]
+                ]
+            ]
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: strokes, options: .prettyPrinted)
+        try? data.write(to: letterDir.appendingPathComponent("strokes.json"))
+
+        // Dummy audio file (zero bytes — StubAudio ignores it)
+        try? Data().write(to: letterDir.appendingPathComponent("A.mp3"))
+
+        return dir
+    }()
+
+    func allResourceURLs() -> [URL] {
+        let fm = FileManager.default
+        guard let enumerator = fm.enumerator(
+            at: Self.testLetterDir,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        return enumerator.compactMap { $0 as? URL }.filter {
+            (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }
+    }
+
+    func resourceURL(for relativePath: String) -> URL? {
+        let url = Self.testLetterDir.appendingPathComponent(relativePath)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
 }
 
 // MARK: - No-op progress store (avoids FileManager.applicationSupportDirectory hang in CI)
