@@ -1,22 +1,21 @@
 {
   "letter": "I",
   "checkpointRadius": 0.05,
-  "comment": "Font-derived. 1 stroke: diagonal stem (italic font).",
   "strokes": [
     {
       "id": 1,
-      "comment": "Stem: top to bottom",
+      "comment": "Stem: top to bottom (italic)",
       "checkpoints": [
         {
-          "x": 0.7,
-          "y": 0.05
+          "x": 0.72,
+          "y": 0.02
         },
         {
-          "x": 0.63,
+          "x": 0.638,
           "y": 0.2
         },
         {
-          "x": 0.57,
+          "x": 0.574,
           "y": 0.35
         },
         {
@@ -24,16 +23,16 @@
           "y": 0.5
         },
         {
-          "x": 0.43,
+          "x": 0.426,
           "y": 0.65
         },
         {
-          "x": 0.37,
+          "x": 0.362,
           "y": 0.8
         },
         {
           "x": 0.3,
-          "y": 0.95
+          "y": 0.99
         }
       ]
     }
