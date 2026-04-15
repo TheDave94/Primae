@@ -1,49 +1,49 @@
 {
   "letter": "L",
   "checkpointRadius": 0.04,
-  "comment": "PBM centerline skeleton. 2 strokes: spine top\u2192bot, foot L\u2192R.",
+  "comment": "Glyph-relative coords. 2 strokes: spine, foot.",
   "strokes": [
     {
       "id": 1,
-      "comment": "Vertical stroke: top to bottom",
+      "comment": "Spine: top to bottom",
       "checkpoints": [
         {
-          "x": 0.425,
-          "y": 0.17
+          "x": 0.08,
+          "y": 0.0
         },
         {
-          "x": 0.425,
-          "y": 0.328
+          "x": 0.08,
+          "y": 0.25
         },
         {
-          "x": 0.425,
-          "y": 0.486
+          "x": 0.08,
+          "y": 0.5
         },
         {
-          "x": 0.425,
-          "y": 0.605
+          "x": 0.08,
+          "y": 0.75
         },
         {
-          "x": 0.425,
-          "y": 0.763
+          "x": 0.08,
+          "y": 1.0
         }
       ]
     },
     {
       "id": 2,
-      "comment": "Baseline foot: left to right",
+      "comment": "Foot: left to right",
       "checkpoints": [
         {
-          "x": 0.293,
-          "y": 0.78
+          "x": 0.08,
+          "y": 1.0
         },
         {
-          "x": 0.476,
-          "y": 0.78
+          "x": 0.5,
+          "y": 1.0
         },
         {
-          "x": 0.657,
-          "y": 0.78
+          "x": 0.95,
+          "y": 1.0
         }
       ]
     }

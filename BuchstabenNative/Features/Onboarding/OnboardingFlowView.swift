@@ -170,18 +170,18 @@ private struct AnimatedStrokePath: View {
     var body: some View {
         Canvas { context, size in
             let w = size.width, h = size.height
-            // Left leg
+            // Left leg — matches glyph-relative stroke data
             var left = Path()
-            left.move(to: CGPoint(x: w * 0.5, y: h * 0.1))
-            left.addLine(to: CGPoint(x: w * 0.15, y: h * 0.9))
+            left.move(to: CGPoint(x: w * 0.50, y: h * 0.00))
+            left.addLine(to: CGPoint(x: w * 0.05, y: h * 1.00))
             // Right leg
             var right = Path()
-            right.move(to: CGPoint(x: w * 0.5, y: h * 0.1))
-            right.addLine(to: CGPoint(x: w * 0.85, y: h * 0.9))
+            right.move(to: CGPoint(x: w * 0.50, y: h * 0.00))
+            right.addLine(to: CGPoint(x: w * 0.95, y: h * 1.00))
             // Crossbar
             var cross = Path()
-            cross.move(to: CGPoint(x: w * 0.28, y: h * 0.6))
-            cross.addLine(to: CGPoint(x: w * 0.72, y: h * 0.6))
+            cross.move(to: CGPoint(x: w * 0.22, y: h * 0.62))
+            cross.addLine(to: CGPoint(x: w * 0.78, y: h * 0.62))
 
             // Draw ghost
             context.stroke(left, with: .color(.gray.opacity(0.15)), lineWidth: 4)
@@ -210,16 +210,16 @@ private struct AnimatedStrokePath: View {
             let dot: CGPoint
             if seg <= 1 {
                 let t = min(seg, 1.0)
-                dot = CGPoint(x: w * (0.5 + (0.15 - 0.5) * t),
-                              y: h * (0.1 + (0.9 - 0.1) * t))
+                dot = CGPoint(x: w * (0.50 + (0.05 - 0.50) * t),
+                              y: h * (0.00 + 1.00 * t))
             } else if seg <= 2 {
                 let t = min(seg - 1.0, 1.0)
-                dot = CGPoint(x: w * (0.5 + (0.85 - 0.5) * t),
-                              y: h * (0.1 + (0.9 - 0.1) * t))
+                dot = CGPoint(x: w * (0.50 + (0.95 - 0.50) * t),
+                              y: h * (0.00 + 1.00 * t))
             } else {
                 let t = min(seg - 2.0, 1.0)
-                dot = CGPoint(x: w * (0.28 + (0.72 - 0.28) * t),
-                              y: h * 0.6)
+                dot = CGPoint(x: w * (0.22 + (0.78 - 0.22) * t),
+                              y: h * 0.62)
             }
             context.fill(Circle().path(in: CGRect(x: dot.x - 6, y: dot.y - 6,
                                                    width: 12, height: 12)),

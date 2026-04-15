@@ -712,16 +712,14 @@ public final class TracingViewModel {
     }
 
     private func reloadStrokeCheckpoints(for letter: LetterAsset) {
+        // Stroke coordinates are glyph-relative (0–1 within the letter bounding box).
+        // Map them to canvas-normalised coordinates using the actual rendered glyph rect.
         let strokesForTracker: LetterStrokes
-        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize),
-           let pr = LetterGuideGeometry.pbmRects[letter.name.uppercased()],
-           pr.width > 0, pr.height > 0 {
+        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize) {
             let mapped = letter.strokes.strokes.map { stroke in
                 StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
-                    let rx = (cp.x - pr.minX) / pr.width
-                    let ry = (cp.y - pr.minY) / pr.height
-                    return Checkpoint(x: gr.minX + rx * gr.width,
-                                      y: gr.minY + ry * gr.height)
+                    Checkpoint(x: gr.minX + cp.x * gr.width,
+                               y: gr.minY + cp.y * gr.height)
                 })
             }
             strokesForTracker = LetterStrokes(letter: letter.strokes.letter,

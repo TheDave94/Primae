@@ -309,23 +309,23 @@ private extension LetterRepository {
         case "A":
             strokes = [
                 .init(id: 1, checkpoints: [
-                    .init(x: 0.515, y: 0.170), .init(x: 0.514, y: 0.319),
-                    .init(x: 0.514, y: 0.469), .init(x: 0.400, y: 0.668), .init(x: 0.296, y: 0.817)]),
+                    .init(x: 0.50, y: 0.00), .init(x: 0.40, y: 0.25),
+                    .init(x: 0.30, y: 0.50), .init(x: 0.18, y: 0.75), .init(x: 0.05, y: 1.00)]),
                 .init(id: 2, checkpoints: [
-                    .init(x: 0.515, y: 0.170), .init(x: 0.514, y: 0.319),
-                    .init(x: 0.514, y: 0.494), .init(x: 0.762, y: 0.668), .init(x: 0.695, y: 0.817)]),
+                    .init(x: 0.50, y: 0.00), .init(x: 0.60, y: 0.25),
+                    .init(x: 0.70, y: 0.50), .init(x: 0.82, y: 0.75), .init(x: 0.95, y: 1.00)]),
                 .init(id: 3, checkpoints: [
-                    .init(x: 0.399, y: 0.597), .init(x: 0.512, y: 0.597), .init(x: 0.624, y: 0.597)])
+                    .init(x: 0.22, y: 0.62), .init(x: 0.50, y: 0.62), .init(x: 0.78, y: 0.62)])
             ]
         case "F":
             strokes = [
                 .init(id: 1, checkpoints: [
-                    .init(x: 0.421, y: 0.180), .init(x: 0.421, y: 0.346),
-                    .init(x: 0.421, y: 0.512), .init(x: 0.421, y: 0.645), .init(x: 0.421, y: 0.811)]),
+                    .init(x: 0.10, y: 0.00), .init(x: 0.10, y: 0.25),
+                    .init(x: 0.10, y: 0.50), .init(x: 0.10, y: 0.75), .init(x: 0.10, y: 1.00)]),
                 .init(id: 2, checkpoints: [
-                    .init(x: 0.397, y: 0.200), .init(x: 0.531, y: 0.200), .init(x: 0.664, y: 0.200)]),
+                    .init(x: 0.10, y: 0.00), .init(x: 0.55, y: 0.00), .init(x: 1.00, y: 0.00)]),
                 .init(id: 3, checkpoints: [
-                    .init(x: 0.397, y: 0.500), .init(x: 0.513, y: 0.500), .init(x: 0.630, y: 0.500)])
+                    .init(x: 0.10, y: 0.48), .init(x: 0.50, y: 0.48), .init(x: 0.85, y: 0.48)])
             ]
         case "I":
             strokes = [
