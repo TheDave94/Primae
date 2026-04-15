@@ -446,12 +446,19 @@ public final class TracingViewModel {
         guard !guide.steps.isEmpty else { return }
 
         animationTask = Task { [self] in
-            for step in guide.steps {
-                guard !Task.isCancelled else { break }
-                animationGuidePoint = step.point
-                try? await Task.sleep(for: .seconds(guide.duration(for: step)))
+            while !Task.isCancelled {
+                for step in guide.steps {
+                    guard !Task.isCancelled else { break }
+                    animationGuidePoint = step.point
+                    try? await Task.sleep(for: .seconds(guide.duration(for: step)))
+                }
+                // Brief pause between loops
+                if !Task.isCancelled {
+                    animationGuidePoint = nil
+                    try? await Task.sleep(for: .seconds(0.5))
+                }
             }
-            if !Task.isCancelled { animationGuidePoint = nil }
+            animationGuidePoint = nil
         }
     }
 
