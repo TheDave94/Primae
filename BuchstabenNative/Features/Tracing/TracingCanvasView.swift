@@ -13,13 +13,24 @@ struct TracingCanvasView: View {
                 context.draw(Image(uiImage: img), in: CGRect(origin: .zero, size: size))
             }
 
-            if vm.showGhost {
-                let guideRect  = CGRect(origin: .zero, size: size)
-                let glyphRect  = PrimaeLetterRenderer.normalizedGlyphRect(
-                    for: vm.currentLetterName, canvasSize: size)
-                if let ghost = LetterGuideRenderer.guidePath(
-                    for: vm.currentLetterName, in: guideRect, glyphRect: glyphRect) {
-                    context.stroke(ghost, with: .color(.blue.opacity(0.22)),
+            if vm.showGhost,
+               let rawStrokes = vm.glyphRelativeStrokes,
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
+                // Ghost lines rendered from the same stroke JSON as checkpoints —
+                // one source of truth, guaranteed alignment.
+                for stroke in rawStrokes.strokes {
+                    guard stroke.checkpoints.count >= 2 else { continue }
+                    var ghostPath = Path()
+                    let first = stroke.checkpoints[0]
+                    ghostPath.move(to: CGPoint(
+                        x: (gr.minX + first.x * gr.width) * size.width,
+                        y: (gr.minY + first.y * gr.height) * size.height))
+                    for cp in stroke.checkpoints.dropFirst() {
+                        ghostPath.addLine(to: CGPoint(
+                            x: (gr.minX + cp.x * gr.width) * size.width,
+                            y: (gr.minY + cp.y * gr.height) * size.height))
+                    }
+                    context.stroke(ghostPath, with: .color(.blue.opacity(0.22)),
                                    style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round))
                 }
             }
