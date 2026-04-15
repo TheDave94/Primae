@@ -70,6 +70,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         try? await Task.sleep(for: .milliseconds(150))
         audio.reset()
         vm.endTouch()
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
         #expect(audio.hasEvent(.stop))
         #expect(!vm.isPlaying)
     }

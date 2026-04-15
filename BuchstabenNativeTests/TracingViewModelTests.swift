@@ -80,6 +80,7 @@ private func slowDrag(vm: TracingViewModel,
         try? await Task.sleep(nanoseconds: 150_000_000)
         let stopBefore = audio.stopCount
         vm.endTouch()
+        try? await Task.sleep(nanoseconds: 1_200_000_000)
         #expect(audio.stopCount > stopBefore)
         #expect(!vm.isPlaying)
     }

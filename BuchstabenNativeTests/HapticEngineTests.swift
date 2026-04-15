@@ -103,21 +103,11 @@ private final class TrackingMockAudio: AudioControlling {
 
         let canvasSize = CGSize(width: 400, height: 400)
         let w = canvasSize.width, h = canvasSize.height
-        let checkpointSequence: [CGPoint] = [
-            CGPoint(x: 0.515 * w, y: 0.170 * h),
-            CGPoint(x: 0.514 * w, y: 0.319 * h),
-            CGPoint(x: 0.514 * w, y: 0.469 * h),
-            CGPoint(x: 0.400 * w, y: 0.668 * h),
-            CGPoint(x: 0.296 * w, y: 0.817 * h),
-            CGPoint(x: 0.515 * w, y: 0.170 * h),
-            CGPoint(x: 0.514 * w, y: 0.319 * h),
-            CGPoint(x: 0.514 * w, y: 0.494 * h),
-            CGPoint(x: 0.762 * w, y: 0.668 * h),
-            CGPoint(x: 0.695 * w, y: 0.817 * h),
-            CGPoint(x: 0.399 * w, y: 0.597 * h),
-            CGPoint(x: 0.512 * w, y: 0.597 * h),
-            CGPoint(x: 0.624 * w, y: 0.597 * h),
-        ]
+        // Trace along the stub letter's horizontal stroke at y=0.5,
+        // hitting all 50 checkpoints from x=0.0 to x=0.98.
+        let checkpointSequence: [CGPoint] = (0..<50).map { i in
+            CGPoint(x: CGFloat(i) * 0.02 * w, y: 0.50 * h)
+        }
 
         var t = CACurrentMediaTime()
         vm.beginTouch(at: checkpointSequence[0], t: t)
