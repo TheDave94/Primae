@@ -35,6 +35,7 @@ public struct ContentView: View {
                 GeometryReader { geo in
                     StrokeCalibrationOverlay(canvasSize: geo.size)
                 }
+                .ignoresSafeArea()
             }
 
             VStack(spacing: 10) {
