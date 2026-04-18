@@ -31,7 +31,13 @@ struct TracingDependencies {
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         syncCoordinator: SyncCoordinator? = nil,
         thesisCondition: ThesisCondition = .threePhase,
-        schriftArt: SchriftArt = .druckschrift
+        schriftArt: SchriftArt = {
+            if let raw = UserDefaults.standard.string(forKey: "selectedSchriftArt"),
+               let art = SchriftArt(rawValue: raw) {
+                return art
+            }
+            return .druckschrift
+        }()
     ) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio

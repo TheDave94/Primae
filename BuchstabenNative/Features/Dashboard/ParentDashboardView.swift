@@ -7,6 +7,7 @@ struct ParentDashboardView: View {
     @Environment(TracingViewModel.self) private var vm
     @State private var shareURL: URL?
     @State private var showExportError = false
+    @State private var showSettings = false
 
     private var snapshot: DashboardSnapshot { vm.dashboardSnapshot }
 
@@ -23,6 +24,14 @@ struct ParentDashboardView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     exportButton
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Einstellungen") {
+                        showSettings = true
+                    }
+                }
+            }
+            .navigationDestination(isPresented: $showSettings) {
+                SettingsView()
             }
         }
         .sheet(isPresented: Binding(
