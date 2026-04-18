@@ -471,16 +471,12 @@ public final class TracingViewModel {
         pencilAzimuth                  = 0
         playbackMachine.resumeIntent   = false
         cancelPendingPlaybackWork()
-        // Grace period: keep audio playing for 400ms after finger lift so it doesn't
-        // cut off abruptly between strokes. Cancelled immediately if a new touch begins.
         endTouchGraceTask?.cancel()
-        endTouchGraceTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.0))
-            guard let self, !Task.isCancelled else { return }
-            self.audio.stop()
-            self.isPlaying = false
-            self.playbackMachine.forceIdle()
-        }
+        endTouchGraceTask = nil
+        let cmd = playbackMachine.transition(to: .idle)
+        applyCommand(cmd)
+        if cmd == .none { audio.stop(); isPlaying = false }
+        playbackMachine.forceIdle()
     }
 
     // MARK: - Completion HUD
