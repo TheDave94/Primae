@@ -43,7 +43,7 @@ struct SettingsView: View {
                 Spacer()
                 if selectedSchriftArt == art {
                     Image(systemName: "checkmark")
-                        .foregroundStyle(.accentColor)
+                        .foregroundStyle(.tint)
                 }
             }
         }
