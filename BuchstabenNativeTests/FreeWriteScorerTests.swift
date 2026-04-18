@@ -165,4 +165,32 @@ struct FreeWriteScorerTests {
         #expect(resampled.count == 3)
         #expect(abs(resampled[1].x - 2.0) < 1e-10)
     }
+
+    // MARK: - Symmetry (Eiter & Mannila 1994 — discrete Fréchet is symmetric)
+
+    @Test("Discrete Fréchet distance is symmetric")
+    func frechetSymmetric() {
+        let p: [CGPoint] = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 1), CGPoint(x: 2, y: 0)]
+        let q: [CGPoint] = [CGPoint(x: 0, y: 1), CGPoint(x: 1, y: 0),
+                            CGPoint(x: 2, y: 1), CGPoint(x: 3, y: 0)]
+        let d1 = FreeWriteScorer.discreteFrechetDistance(p, q)
+        let d2 = FreeWriteScorer.discreteFrechetDistance(q, p)
+        #expect(abs(d1 - d2) < 1e-10,
+                "discreteFrechetDistance(p,q) = \(d1) but (q,p) = \(d2) — must be symmetric")
+    }
+
+    @Test("Identical curves produce zero distance")
+    func frechetZeroForIdentical() {
+        let p: [CGPoint] = [CGPoint(x: 0, y: 0), CGPoint(x: 1, y: 0), CGPoint(x: 2, y: 0)]
+        #expect(FreeWriteScorer.discreteFrechetDistance(p, p) == 0)
+    }
+
+    @Test("Single-point curves produce Euclidean distance")
+    func frechetSinglePoint() {
+        let a: [CGPoint] = [CGPoint(x: 0, y: 0)]
+        let b: [CGPoint] = [CGPoint(x: 3, y: 4)]
+        let d = FreeWriteScorer.discreteFrechetDistance(a, b)
+        #expect(abs(d - 5.0) < 1e-10,
+                "Single-point discrete Fréchet should equal Euclidean (3-4-5), got \(d)")
+    }
 }

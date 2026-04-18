@@ -48,6 +48,30 @@ struct LetterSchedulerTests {
         #expect(result.first?.letter == "A")
     }
 
+    @Test("Recency urgency saturates (Ebbinghaus-exponential, not linear)")
+    func recencySaturates() {
+        // 60 days vs 15 days: linear would give 4x urgency; exponential saturates
+        // (both values are close to 1 when memoryStability=7d).
+        let fifteenDaysAgo = now.addingTimeInterval(-15 * 86400)
+        let sixtyDaysAgo   = now.addingTimeInterval(-60 * 86400)
+        let progressShort: [String: LetterProgress] = [
+            "A": LetterProgress(completionCount: 5, bestAccuracy: 0.9,
+                                 lastCompletedAt: fifteenDaysAgo),
+        ]
+        let progressLong: [String: LetterProgress] = [
+            "A": LetterProgress(completionCount: 5, bestAccuracy: 0.9,
+                                 lastCompletedAt: sixtyDaysAgo),
+        ]
+        let pShort = scheduler.prioritized(available: ["A"], progress: progressShort, now: now).first!.priority
+        let pLong  = scheduler.prioritized(available: ["A"], progress: progressLong,  now: now).first!.priority
+        // 60-day urgency must be greater than 15-day urgency, but strictly less
+        // than 2× the 15-day value (what linear would produce).
+        #expect(pLong > pShort,
+                "Longer absence must not be less urgent: 60d=\(pLong) vs 15d=\(pShort)")
+        #expect(pLong < 2 * pShort,
+                "Recency must saturate (Ebbinghaus), not scale linearly: 60d=\(pLong), 2x15d=\(2 * pShort)")
+    }
+
     @Test("Never-practised ranks higher than recently practised")
     func neverPractisedRanksHigher() {
         let progress: [String: LetterProgress] = [
