@@ -48,6 +48,13 @@ public struct ContentView: View {
 
             VStack(spacing: 10) {
                 topBar
+                if vm.showDebug {
+                    HStack {
+                        DebugInfoPanel()
+                        Spacer()
+                    }
+                    .allowsHitTesting(false)
+                }
                 if let toast = vm.toastMessage {
                     Text(toast)
                         .font(.headline)
@@ -163,6 +170,34 @@ private struct ToggleChip: View {
         .accessibilityLabel(title)
         .accessibilityValue(isOn ? "On" : "Off")
         .accessibilityHint(hint)
+    }
+}
+
+private struct DebugInfoPanel: View {
+    @Environment(TracingViewModel.self) private var vm
+
+    var body: some View {
+        let letterProg = vm.progressStore.progress(for: vm.currentLetterName)
+        let priority = LetterScheduler.standard
+            .prioritized(available: vm.visibleLetterNames, progress: vm.progressStore.allProgress)
+            .first(where: { $0.letter == vm.currentLetterName })?.priority ?? 0
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Phase: \(vm.learningPhase.displayName)")
+            Text("Scores:")
+            ForEach(LearningPhase.allCases, id: \.self) { phase in
+                Text("  \(phase.rawName): \(String(format: "%.2f", vm.phaseScores[phase] ?? 0))")
+            }
+            Text("Fréchet: \(String(format: "%.4f", vm.lastFreeWriteDistance))")
+            Text("Tier: \(String(describing: vm.currentDifficultyTier))")
+            Text("Completions: \(letterProg.completionCount)")
+            Text("Best acc: \(String(format: "%.2f", letterProg.bestAccuracy))")
+            Text("Priority: \(String(format: "%.2f", priority))")
+        }
+        .font(.caption.monospaced())
+        .foregroundStyle(.white)
+        .padding(8)
+        .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 6))
+        .allowsHitTesting(false)
     }
 }
 
