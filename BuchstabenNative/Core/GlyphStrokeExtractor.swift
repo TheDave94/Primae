@@ -215,11 +215,13 @@ struct GlyphStrokeExtractor {
         guard path.count >= 2, count >= 2 else { return path }
         var lengths: [CGFloat] = [0]
         for i in 1..<path.count {
-            lengths.append(lengths.last! + hypot(path[i].x - path[i-1].x,
-                                                   path[i].y - path[i-1].y))
+            let prev = lengths.last ?? 0
+            lengths.append(prev + hypot(path[i].x - path[i-1].x,
+                                         path[i].y - path[i-1].y))
         }
-        let total = lengths.last!
-        guard total > 0 else { return [path[0]] }
+        guard let total = lengths.last, total > 0 else {
+            return path.first.map { [$0] } ?? []
+        }
 
         var result: [CGPoint] = []
         for i in 0..<count {

@@ -891,7 +891,7 @@ public final class TracingViewModel {
               let data = try? JSONEncoder().encode(ls) else { return }
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: url)
+        try? data.write(to: url, options: .atomic)
         // Apply immediately so the tracker reflects the new calibration without navigation.
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])

@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(swift --version)",
-      "Bash(swift build *)"
+      "Bash(swift build *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git add *)",
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(git revert *)"
     ]
   }
 }
