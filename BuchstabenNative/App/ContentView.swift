@@ -11,7 +11,7 @@ public struct ContentView: View {
     // 3. Added 'public' to the body
     public var body: some View {
         if !vm.isOnboardingComplete {
-            OnboardingFlowView()
+            OnboardingView()
         } else {
             mainContent
         }
