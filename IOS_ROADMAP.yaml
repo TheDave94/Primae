@@ -1,0 +1,51 @@
+# IOS_ROADMAP.yaml — Goal-driven task queue for the iOS autocoder
+#
+# Each item defines WHAT to build, HOW to validate it, and WHERE to change.
+# The autocoder picks up "pending" items and the council evaluates proposals
+# against the acceptance_criteria.
+#
+# Status values: pending, in_progress, done, deferred, blocked
+# Priority: 1-10 (10 = highest)
+#
+# Usage:
+#   - Add items here when you know what you want built
+#   - The autocoder picks them up when the queue is empty
+#   - When done, set status: done and commit
+#   - Use "deferred" to pause an item
+
+# ── Example items (uncomment and modify) ─────────────────────────────────────
+
+# - id: ios-001
+#   title: "Improve stroke accuracy feedback"
+#   description: |
+#     When a user traces a letter with low accuracy, show a subtle visual
+#     hint (e.g., the ghost line pulses red briefly) before allowing retry.
+#     Currently there's no visual feedback for inaccurate strokes.
+#   acceptance_criteria:
+#     - "StrokeTracker reports accuracy below DifficultyAdaptation threshold"
+#     - "TracingCanvasView shows a brief red pulse animation on the ghost line"
+#     - "Animation completes in under 500ms"
+#     - "Does not block the next stroke attempt"
+#     - "No changes to AudioEngine or haptic feedback"
+#   target_files:
+#     - "TracingCanvasView.swift"
+#     - "StrokeTracker.swift"
+#   priority: 7
+#   status: pending
+
+# - id: ios-002
+#   title: "Add parent dashboard export button"
+#   description: |
+#     Add a share/export button to the parent dashboard that exports
+#     session history as a CSV file via the iOS share sheet.
+#   acceptance_criteria:
+#     - "Button appears in ParentDashboardView navigation bar"
+#     - "Tapping opens iOS share sheet with a .csv attachment"
+#     - "CSV contains: date, letter, accuracy, duration, difficulty_tier"
+#     - "Uses ParentDashboardExporter.swift (already exists)"
+#     - "Works on iPad and iPhone"
+#   target_files:
+#     - "ParentDashboardStore.swift"
+#     - "ParentDashboardExporter.swift"
+#   priority: 5
+#   status: pending
