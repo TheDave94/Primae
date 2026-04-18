@@ -35,7 +35,7 @@
   target_files:
     - "TracingViewModel.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-002
   title: "Re-enable 9 disabled audio proximity tests with proper stub stroke data"
@@ -59,7 +59,7 @@
     - "AccessibilityContractTests.swift"
     - "BuchstabenNativeTests.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-003
   title: "Add completion celebration overlay with star display"
@@ -82,7 +82,7 @@
     - "CompletionCelebrationOverlay.swift"
     - "ContentView.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-004
   title: "Fix observe phase animation not auto-starting on letter change"
@@ -104,7 +104,7 @@
   target_files:
     - "TracingViewModel.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-005
   title: "Increase checkpointRadius for more forgiving tracing"
@@ -131,7 +131,7 @@
     - "Resources/Letters/M/strokes.json"
     - "Resources/Letters/O/strokes.json"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-006
   title: "Add letter name audio playback on observe phase entry"
@@ -153,7 +153,7 @@
   target_files:
     - "TracingViewModel.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-007
   title: "Remove dead PBM-based ghost line rendering code"
@@ -179,7 +179,7 @@
     - "LetterGuideRendererTests.swift"
     - "LetterGuideSnapshotTests.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-008
   title: "Add phase-aware progress persistence"
@@ -201,7 +201,7 @@
     - "TracingViewModel.swift"
     - "ProgressStoreTests.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-009
   title: "Add thesis debug info overlay showing phase and scoring data"
@@ -221,7 +221,7 @@
   target_files:
     - "ContentView.swift"
   priority: 2
-  status: pending
+  status: done
 
 - id: ios-010
   title: "Fix fallback letter 'A.mp3' reference to match actual filename 'A1.mp3'"
@@ -240,7 +240,7 @@
   target_files:
     - "LetterRepository.swift"
   priority: 2
-  status: pending
+  status: done
 
 # ============================================================
 # PHASE 2: Infrastructure for full alphabet (items 011-018)
@@ -274,7 +274,7 @@
     - "TracingViewModel.swift"
     - "ContentView.swift"
   priority: 9
-  status: pending
+  status: done
 
 - id: ios-012
   title: "Fix LetterRepository case-preserving display names for lowercase and ß"
@@ -295,7 +295,7 @@
   target_files:
     - "LetterRepository.swift"
   priority: 8
-  status: pending
+  status: done
 
 - id: ios-013
   title: "Create empty resource folders for lowercase a-z with placeholder strokes.json"
@@ -318,7 +318,7 @@
     - "Resources/Letters/b/strokes.json"
     - "Resources/Letters/c/strokes.json"
   priority: 6
-  status: pending
+  status: done
 
 - id: ios-014
   title: "Create empty resource folders for umlauts Ä, Ö, Ü, ß with placeholder strokes.json"
@@ -340,7 +340,7 @@
     - "Resources/Letters/Ü/strokes.json"
     - "Resources/Letters/ß/strokes.json"
   priority: 5
-  status: pending
+  status: done
 
 - id: ios-015
   title: "Add SchriftArt font selection enum and extend PrimaeLetterRenderer"
@@ -367,7 +367,7 @@
     - "PrimaeLetterRenderer.swift"
     - "TracingDependencies.swift"
   priority: 4
-  status: pending
+  status: done
 
 - id: ios-016
   title: "Enhanced debug calibration overlay with stroke creation workflow"
@@ -396,7 +396,7 @@
     - "StrokeCalibrationOverlay.swift"
     - "TracingViewModel.swift"
   priority: 7
-  status: pending
+  status: done
 
 - id: ios-017
   title: "Wire SchriftArt through VM to renderer and stroke loading"
@@ -421,7 +421,7 @@
     - "TracingCanvasView.swift"
     - "StrokeCalibrationOverlay.swift"
   priority: 3
-  status: pending
+  status: done
   depends_on: ios-015
 
 - id: ios-018
@@ -447,4 +447,4 @@
     - "TracingViewModel.swift"
     - "TracingCanvasView.swift"
   priority: 10
-  status: pending
+  status: done
