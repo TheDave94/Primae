@@ -60,6 +60,10 @@ struct ParentDashboardView: View {
                 Text(formattedDuration(snapshot.totalPracticeTime(recentDays: 7)))
                     .monospacedDigit()
             }
+            LabeledContent("Schreibqualität") {
+                Text("\(Int(snapshot.averageFreeWriteScore * 100)) %")
+                    .monospacedDigit()
+            }
         }
     }
 

@@ -2,6 +2,17 @@ import Foundation
 
 // MARK: - Data models
 
+struct PhaseSessionRecord: Codable, Equatable {
+    let letter: String
+    /// LearningPhase.rawName: "observe", "guided", or "freeWrite"
+    let phase: String
+    let completed: Bool
+    /// Phase accuracy score (0–1).
+    let score: Double
+    /// Spaced-repetition priority assigned when this session was scheduled.
+    let schedulerPriority: Double
+}
+
 struct LetterAccuracyStat: Codable, Equatable {
     let letter: String
     /// Per-session accuracy samples (0–1), chronological order.
@@ -49,6 +60,24 @@ struct SessionDurationRecord: Codable, Equatable {
 struct DashboardSnapshot: Codable, Equatable {
     var letterStats: [String: LetterAccuracyStat] = [:]
     var sessionDurations: [SessionDurationRecord] = []
+    var phaseSessionRecords: [PhaseSessionRecord] = []
+
+    init(letterStats: [String: LetterAccuracyStat] = [:],
+         sessionDurations: [SessionDurationRecord] = [],
+         phaseSessionRecords: [PhaseSessionRecord] = []) {
+        self.letterStats = letterStats
+        self.sessionDurations = sessionDurations
+        self.phaseSessionRecords = phaseSessionRecords
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        letterStats = try c.decode([String: LetterAccuracyStat].self, forKey: .letterStats)
+        sessionDurations = try c.decode([SessionDurationRecord].self, forKey: .sessionDurations)
+        // phaseSessionRecords was added after initial release; default to empty for old JSON files.
+        phaseSessionRecords = (try? c.decode([PhaseSessionRecord].self, forKey: .phaseSessionRecords)) ?? []
+    }
+
     /// Convenience: top 5 letters by average accuracy descending.
     var topLetters: [LetterAccuracyStat] {
         Array(letterStats.values
@@ -70,6 +99,53 @@ struct DashboardSnapshot: Codable, Equatable {
             .filter { $0.dateString >= cutoffString }
             .reduce(0) { $0 + $1.durationSeconds }
     }
+
+    /// Fraction of sessions that completed each phase (keyed by LearningPhase.rawName).
+    var phaseCompletionRates: [String: Double] {
+        let phases = ["observe", "guided", "freeWrite"]
+        var result: [String: Double] = [:]
+        for phase in phases {
+            let records = phaseSessionRecords.filter { $0.phase == phase }
+            guard !records.isEmpty else { continue }
+            result[phase] = Double(records.filter { $0.completed }.count) / Double(records.count)
+        }
+        return result
+    }
+
+    /// Mean Fréchet-based score across all completed freeWrite phase sessions.
+    var averageFreeWriteScore: Double {
+        let scores = phaseSessionRecords
+            .filter { $0.phase == "freeWrite" && $0.completed }
+            .map { $0.score }
+        guard !scores.isEmpty else { return 0 }
+        return scores.reduce(0, +) / Double(scores.count)
+    }
+
+    /// Pearson correlation between scheduler priority and subsequent accuracy improvement.
+    /// Positive values indicate the scheduler is correctly prioritising struggling letters.
+    var schedulerEffectivenessProxy: Double {
+        var pairs: [(priority: Double, delta: Double)] = []
+        let letters = Set(phaseSessionRecords.map { $0.letter })
+        for letter in letters {
+            let records = phaseSessionRecords.filter { $0.letter == letter && $0.completed }
+            guard records.count >= 2 else { continue }
+            for i in 0..<(records.count - 1) {
+                pairs.append((priority: records[i].schedulerPriority,
+                               delta: records[i + 1].score - records[i].score))
+            }
+        }
+        guard pairs.count >= 2 else { return 0 }
+        let n = Double(pairs.count)
+        let xs = pairs.map { $0.priority }
+        let ys = pairs.map { $0.delta }
+        let xMean = xs.reduce(0, +) / n
+        let yMean = ys.reduce(0, +) / n
+        let numerator = zip(xs, ys).reduce(0.0) { $0 + ($1.0 - xMean) * ($1.1 - yMean) }
+        let xVar = xs.reduce(0.0) { $0 + ($1 - xMean) * ($1 - xMean) }
+        let yVar = ys.reduce(0.0) { $0 + ($1 - yMean) * ($1 - yMean) }
+        guard xVar > 0, yVar > 0 else { return 0 }
+        return numerator / sqrt(xVar * yVar)
+    }
 }
 
 // MARK: - Protocol
@@ -77,6 +153,7 @@ struct DashboardSnapshot: Codable, Equatable {
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double)
     func reset()
 }
 
@@ -119,6 +196,18 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                 SessionDurationRecord(dateString: day, durationSeconds: durationSeconds, condition: condition)
             )
         }
+        persist()
+    }
+
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double) {
+        let record = PhaseSessionRecord(
+            letter: letter.uppercased(),
+            phase: phase,
+            completed: completed,
+            score: max(0, min(1, score)),
+            schedulerPriority: schedulerPriority
+        )
+        snapshot.phaseSessionRecords.append(record)
         persist()
     }
 
