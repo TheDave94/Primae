@@ -173,3 +173,45 @@ To https://github.com/TheDave94/Buchstaben-Lernen-App.git
 
 [14/18] 🚀 ios-006: Add letter name audio playback on observe phase entry
   Started: Sat Apr 18 14:37:20 UTC 2026
+Done. In `load(letter:)`, after `loadAudioFile`, I added a check: if `phaseController.currentPhase == .observe` (which is false for empty-stroke letters that already advanced past observe), call `audio.play()` once. This plays the letter name on every observe phase entry without affecting guided-phase proximity-triggered playback.
+  ✅ ios-006 committed: 547c821 ios-006: Add letter name audio playback on observe phase entry
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   bfb60a5..547c821  main -> main
+  Finished: Sat Apr 18 14:38:16 UTC 2026
+
+[15/18] 🚀 ios-007: Remove dead PBM-based ghost line rendering code
+  Started: Sat Apr 18 14:38:22 UTC 2026
+Done. Removed `pbmRects` dictionary and `mapWithTransform` from `LetterGuideGeometry.swift`. The `apply` method now uses the simple `map` function directly, and the public `cgPath`/`guidePath` APIs are unchanged (keeping `glyphRect` for future font-outline work). No test files needed changes since none referenced the removed items directly.
+  ✅ ios-007 committed: f73b14f ios-007: Remove dead PBM-based ghost line rendering code
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   547c821..f73b14f  main -> main
+  Finished: Sat Apr 18 14:42:16 UTC 2026
+
+[16/18] 🚀 ios-008: Add phase-aware progress persistence
+  Started: Sat Apr 18 14:42:21 UTC 2026
+Committed. Here's a summary of what changed across 5 files:
+
+- **`ProgressStore.swift`**: `LetterProgress` gains `phaseScores: [String: Double]?` (nil by default, backward-compatible Codable). Protocol requirement updated to `recordCompletion(for:accuracy:phaseScores:)` with a protocol extension providing the old 2-arg overload so existing callers need no changes. `JSONProgressStore` stores phaseScores when non-nil.
+
+- **`LearningPhase.swift`**: Added `rawName` computed property returning the stable string keys `"observe"`, `"guided"`, `"freeWrite"` used as dictionary keys.
+
+- **`TracingViewModel.swift`**: `recordPhaseSessionCompletion()` now converts `phaseController.phaseScores` (`[LearningPhase: CGFloat]`) to `[String: Double]` and passes it through.
+
+- **`TestFixtures.swift`**: `StubProgressStore.recordCompletion` updated to match the new protocol requirement signature.
+
+- **`ProgressStoreTests.swift`**: Two new tests — one verifying phaseScores persist and reload correctly, one verifying nil when phaseScores are omitted.
+  ✅ ios-008 committed: 32e877f ios-008: Add phase-aware progress persistence
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   f73b14f..32e877f  main -> main
+  Finished: Sat Apr 18 14:45:29 UTC 2026
+
+[17/18] 🚀 ios-009: Add thesis debug info overlay showing phase and scoring data
+  Started: Sat Apr 18 14:45:34 UTC 2026
+Committed. The changes add a `DebugInfoPanel` private struct to `ContentView.swift` that appears below the button bar when `vm.showDebug` is true. It displays: current phase display name, per-phase scores, Fréchet distance, adaptation tier, completion count, best accuracy, and scheduler priority for the current letter — all read from existing published VM properties. The panel has `allowsHitTesting(false)` on both the panel and its wrapping `HStack` to avoid intercepting canvas touches.
+  ✅ ios-009 committed: a5d3796 ios-009: Add thesis debug info overlay showing phase and scoring data
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   32e877f..a5d3796  main -> main
+  Finished: Sat Apr 18 14:47:51 UTC 2026
+
+[18/18] 🚀 ios-010: Fix fallback letter 'A.mp3' reference to match actual filename 'A1.mp3'
+  Started: Sat Apr 18 14:47:56 UTC 2026

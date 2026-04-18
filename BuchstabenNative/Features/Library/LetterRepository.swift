@@ -401,7 +401,7 @@ private extension LetterRepository {
 
     func fallbackSampleLetter() -> LetterAsset {
         LetterAsset(id: "A", name: "A", imageName: "A.pbm",
-                    audioFiles: ["A.mp3"], strokes: defaultStrokes(for: "A"))
+                    audioFiles: ["A1.mp3"], strokes: defaultStrokes(for: "A"))
     }
 
     func logValidationIssues(_ issues: [ValidationIssue]) {
