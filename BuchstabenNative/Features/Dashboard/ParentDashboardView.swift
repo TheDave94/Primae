@@ -57,11 +57,11 @@ struct ParentDashboardView: View {
                 Text("\(snapshot.letterStats.filter { !$0.value.accuracySamples.isEmpty }.count)")
                     .monospacedDigit()
             }
-            LabeledContent("Aktueller Streak") {
+            LabeledContent("Tage in Folge") {
                 Text("\(vm.currentStreak) \(vm.currentStreak == 1 ? "Tag" : "Tage")")
                     .monospacedDigit()
             }
-            LabeledContent("Längster Streak") {
+            LabeledContent("Beste Serie") {
                 Text("\(vm.longestStreak) \(vm.longestStreak == 1 ? "Tag" : "Tage")")
                     .monospacedDigit()
             }
@@ -91,7 +91,7 @@ struct ParentDashboardView: View {
     }
 
     private var ubungNoetigSection: some View {
-        Section("Übung nötig") {
+        Section("Noch zu üben") {
             let weak = snapshot.lettersBelow(accuracy: 0.70)
             if weak.isEmpty {
                 Text("Alle Buchstaben über 70 % – weiter so!")
@@ -170,12 +170,15 @@ private struct LetterStatRow: View {
         if stat.trend > 0.02 {
             Image(systemName: "arrow.up")
                 .foregroundStyle(.green)
+                .accessibilityLabel("steigend")
         } else if stat.trend < -0.02 {
             Image(systemName: "arrow.down")
                 .foregroundStyle(.red)
+                .accessibilityLabel("fallend")
         } else {
             Image(systemName: "arrow.right")
                 .foregroundStyle(.secondary)
+                .accessibilityLabel("stabil")
         }
     }
 }

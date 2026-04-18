@@ -21,6 +21,8 @@ struct CompletionCelebrationOverlay: View {
                             .foregroundStyle(index <= starsEarned ? .yellow : .white.opacity(0.4))
                     }
                 }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(starsEarned) von 3 Sternen")
 
                 Button(action: onWeiter) {
                     Text("Weiter")

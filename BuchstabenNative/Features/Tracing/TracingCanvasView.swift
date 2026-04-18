@@ -156,14 +156,14 @@ private struct TracingCanvasAccessibility: ViewModifier {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(vm.accessibilityCanvasLabel)
             .accessibilityValue(vm.accessibilityCanvasValue)
-            .accessibilityHint("Double-tap and drag to trace. Use custom actions to navigate letters or replay audio.")
+            .accessibilityHint("Tippe doppelt und ziehe zum Nachspuren. Nutze Aktionen, um Buchstaben zu wechseln oder Ton abzuspielen.")
             .accessibilityActions {
-                Button("Play letter sound")    { vm.replayAudio() }
-                Button("Next letter")          { vm.nextLetter() }
-                Button("Previous letter")      { vm.previousLetter() }
-                Button("Random letter")        { vm.randomLetter() }
-                Button("Reset tracing")        { vm.resetLetter() }
-                Button("Toggle guide overlay") { vm.toggleGhost() }
+                Button("Buchstaben-Ton abspielen") { vm.replayAudio() }
+                Button("Nächster Buchstabe")      { vm.nextLetter() }
+                Button("Vorheriger Buchstabe")    { vm.previousLetter() }
+                Button("Zufälliger Buchstabe")    { vm.randomLetter() }
+                Button("Zurücksetzen")            { vm.resetLetter() }
+                Button("Hilfslinien umschalten")  { vm.toggleGhost() }
             }
     }
 }

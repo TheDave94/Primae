@@ -9,9 +9,13 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Schriftart") {
-                ForEach(SchriftArt.allCases, id: \.self) { art in
+                ForEach(SchriftArt.allCases.filter { $0 == .druckschrift }, id: \.self) { art in
                     schriftArtRow(art)
                 }
+            }
+            Section("Hilfe") {
+                Button("Einführung wiederholen") { vm.restartOnboarding() }
+                    .accessibilityHint("Startet die Einführung beim nächsten App-Start neu")
             }
         }
         .navigationTitle("Einstellungen")

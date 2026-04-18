@@ -23,6 +23,8 @@ struct OnboardingView: View {
                 OnboardingProgressBar(progress: vm.onboardingProgress)
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
+                    .accessibilityLabel("Einführung")
+                    .accessibilityValue("\(Int((vm.onboardingProgress * 100).rounded())) Prozent")
 
                 Spacer()
 
@@ -30,10 +32,14 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                Button("Überspringen") { vm.skipOnboarding() }
-                    .font(.subheadline)
+                Text("Für Eltern: lange drücken zum Überspringen")
+                    .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 24)
+                    .contentShape(Rectangle())
+                    .onLongPressGesture(minimumDuration: 1.5) { vm.skipOnboarding() }
+                    .accessibilityLabel("Einführung überspringen")
+                    .accessibilityHint("Lange drücken, nur für Erwachsene")
             }
         }
         .preferredColorScheme(.light)
@@ -119,11 +125,11 @@ private struct TraceDemoStepView: View {
             Text("👁️")
                 .font(.system(size: 64))
 
-            Text("Erst anschauen")
+            Text("Erst gucken")
                 .font(.title.bold())
                 .foregroundStyle(.primary)
 
-            Text("Schau dir an, wie der Buchstabe\ngeschrieben wird.")
+            Text("Schau, wie der Buchstabe\ngeschrieben wird!")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -217,11 +223,11 @@ private struct FirstTraceStepView: View {
             Text("✏️")
                 .font(.system(size: 64))
 
-            Text("Jetzt nachspuren")
+            Text("Jetzt nachmalen")
                 .font(.title.bold())
                 .foregroundStyle(.primary)
 
-            Text("Folge den Punkten mit\ndeinem Finger.")
+            Text("Tippe die blauen Punkte\nmit dem Finger an!")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -257,7 +263,7 @@ private struct RewardIntroStepView: View {
                 .font(.title.bold())
                 .foregroundStyle(.primary)
 
-            Text("Für jeden Buchstaben kannst du\nbis zu 3 Sterne verdienen.")
+            Text("Für jeden Buchstaben bekommst du\nbis zu 3 Sterne!")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

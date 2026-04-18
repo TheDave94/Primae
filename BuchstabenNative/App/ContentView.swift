@@ -139,9 +139,9 @@ public struct ContentView: View {
 
     private var debugToggleBar: some View {
         HStack(spacing: 8) {
-            ToggleChip(title: "Ghost", isOn: vm.showGhost, hint: "Show or hide guide lines") { vm.toggleGhost() }
-            ToggleChip(title: "Order", isOn: vm.strokeEnforced, hint: "Require stroke order for sound playback") { vm.toggleStrokeEnforcement() }
-            ToggleChip(title: "Alle", isOn: vm.showAllLetters, hint: "Alle Buchstaben oder nur Demo-Buchstaben anzeigen") { vm.showAllLetters.toggle() }
+            ToggleChip(title: "Hilfslinien",  isOn: vm.showGhost,       hint: "Hilfslinien ein- oder ausblenden")         { vm.toggleGhost() }
+            ToggleChip(title: "Reihenfolge", isOn: vm.strokeEnforced,   hint: "Strichreihenfolge für Ton erzwingen")      { vm.toggleStrokeEnforcement() }
+            ToggleChip(title: "Alle",        isOn: vm.showAllLetters,   hint: "Alle Buchstaben oder nur Demo-Buchstaben") { vm.showAllLetters.toggle() }
             Spacer()
         }
     }
@@ -154,12 +154,12 @@ private struct ObservePhaseOverlay: View {
         VStack {
             Spacer()
             VStack(spacing: 12) {
-                Text("👁️ Beobachte den Buchstaben")
-                    .font(.headline)
+                Text("👁️  Schau zu!")
+                    .font(.title2.bold())
                     .foregroundStyle(.white)
-                Text("Tippe hier um fortzufahren")
-                    .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.8))
+                Text("👆  Tippen")
+                    .font(.title3)
+                    .foregroundStyle(.white.opacity(0.9))
             }
             .padding(.horizontal, 28)
             .padding(.vertical, 18)
@@ -171,7 +171,8 @@ private struct ObservePhaseOverlay: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: onContinue)
         .accessibilityLabel("Beobachtungsphase")
-        .accessibilityHint("Tippe um zur nächsten Phase zu wechseln")
+        .accessibilityHint("Tippe, um zur nächsten Phase zu wechseln")
+        .accessibilityAddTraits(.isButton)
     }
 }
 
@@ -189,7 +190,7 @@ private struct ToggleChip: View {
         .buttonStyle(.borderedProminent)
         .tint(isOn ? .blue : .gray)
         .accessibilityLabel(title)
-        .accessibilityValue(isOn ? "On" : "Off")
+        .accessibilityValue(isOn ? "Ein" : "Aus")
         .accessibilityHint(hint)
     }
 }
@@ -244,7 +245,7 @@ private struct CompletionHUD: View {
                     .background(.thinMaterial, in: Circle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Dismiss completion message")
+            .accessibilityLabel("Erfolgsmeldung schließen")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)

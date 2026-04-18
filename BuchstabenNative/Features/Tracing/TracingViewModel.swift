@@ -188,26 +188,25 @@ public final class TracingViewModel {
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
         load(letter: first)
-        toast("Ready")
     }
 
     // MARK: - Toggles
 
-    func toggleGhost()             { showGhost.toggle();         toast("Ghost \(showGhost ? "ON" : "OFF")") }
-    func toggleStrokeEnforcement() { strokeEnforced.toggle();    resetLetter(); toast("Order \(strokeEnforced ? "ON" : "OFF")") }
-    func toggleDebug()             { showDebug.toggle();         toast("Debug \(showDebug ? "ON" : "OFF")") }
+    func toggleGhost()             { showGhost.toggle();         toast("Hilfslinien \(showGhost ? "an" : "aus")") }
+    func toggleStrokeEnforcement() { strokeEnforced.toggle();    resetLetter(); toast("Reihenfolge \(strokeEnforced ? "an" : "aus")") }
+    func toggleDebug()             { showDebug.toggle();         toast("Debug \(showDebug ? "an" : "aus")") }
 
     // MARK: - Accessibility
 
     var accessibilityCanvasLabel: String {
-        "Tracing canvas — Letter \(currentLetterName)"
+        "Schreibfläche — Buchstabe \(currentLetterName)"
     }
 
     var accessibilityCanvasValue: String {
         let pct = Int(max(0, min(1, progress)) * 100)
-        if pct == 0   { return "Not started" }
-        if pct == 100 { return "Complete" }
-        return "\(pct) percent complete"
+        if pct == 0   { return "Nicht begonnen" }
+        if pct == 100 { return "Fertig" }
+        return "\(pct) Prozent fertig"
     }
 
     func replayAudio() {
@@ -233,7 +232,7 @@ public final class TracingViewModel {
         completionDismissTask?.cancel()
         completionMessage = nil
         stopGuideAnimation()
-        toast("Reset")
+        toast("Zurückgesetzt")
     }
 
     func loadLetter(name: String) {
@@ -253,7 +252,7 @@ public final class TracingViewModel {
         guard let idx = letters.firstIndex(where: { $0.name == nextName }) else { return }
         letterIndex = idx
         load(letter: letters[idx])
-        toast("Letter: \(currentLetterName)")
+        toast("Buchstabe: \(currentLetterName)")
     }
 
     func previousLetter() {
@@ -264,7 +263,7 @@ public final class TracingViewModel {
         guard let idx = letters.firstIndex(where: { $0.name == prevName }) else { return }
         letterIndex = idx
         load(letter: letters[idx])
-        toast("Letter: \(currentLetterName)")
+        toast("Buchstabe: \(currentLetterName)")
     }
 
     func randomLetter() {
@@ -275,7 +274,7 @@ public final class TracingViewModel {
         letterIndex = idx
         load(letter: letters[idx])
         randomAudioVariant()
-        toast("Random: \(currentLetterName)")
+        toast("Zufall: \(currentLetterName)")
     }
 
     func nextAudioVariant() {
@@ -286,7 +285,7 @@ public final class TracingViewModel {
         audioIndex = (audioIndex + 1) % files.count
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
-        toast("Sound \(audioIndex + 1)/\(files.count)")
+        toast("Ton \(audioIndex + 1) von \(files.count)")
     }
 
     func previousAudioVariant() {
@@ -297,7 +296,7 @@ public final class TracingViewModel {
         audioIndex = (audioIndex - 1 + files.count) % files.count
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
         setPlaybackState(.idle, immediate: true)
-        toast("Sound \(audioIndex + 1)/\(files.count)")
+        toast("Ton \(audioIndex + 1) von \(files.count)")
     }
 
     // MARK: - Multi-touch navigation
@@ -447,7 +446,7 @@ public final class TracingViewModel {
             strokeTracker.radiusMultiplier        = currentDifficultyTier.radiusMultiplier
 
             showCompletionHUD()
-            toast("Great! Completed")
+            toast("Super gemacht!")
             setPlaybackState(.idle, immediate: true)
         }
 
@@ -576,6 +575,15 @@ public final class TracingViewModel {
         onboardingCoordinator.skip()
         onboardingStep = onboardingCoordinator.currentStep
         onboardingStore.markComplete()
+        isOnboardingComplete = true
+    }
+
+    /// Reset onboarding so the intro flow replays on next launch / app foreground.
+    func restartOnboarding() {
+        onboardingStore.reset()
+        onboardingCoordinator = OnboardingCoordinator()
+        onboardingStep = onboardingCoordinator.currentStep
+        isOnboardingComplete = false
     }
 
     // MARK: - Learning phase control
