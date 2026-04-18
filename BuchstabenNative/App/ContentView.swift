@@ -1,15 +1,12 @@
 import SwiftUI
 
-// 1. Added 'public' to the struct
 public struct ContentView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showDashboard = false
 
-    // 2. Added a public initializer
     public init() {}
 
-    // 3. Added 'public' to the body
     public var body: some View {
         if !vm.isOnboardingComplete {
             OnboardingView()
@@ -24,11 +21,8 @@ public struct ContentView: View {
                 .background(Color.white)
                 .ignoresSafeArea()
 
-            // Observe phase: touch is disabled, show tap-to-continue overlay
             if vm.learningPhase == .observe {
-                ObservePhaseOverlay {
-                    vm.completeObservePhase()
-                }
+                ObservePhaseOverlay { vm.completeObservePhase() }
             }
 
             if vm.isPhaseSessionComplete {
@@ -39,7 +33,6 @@ public struct ContentView: View {
                 .zIndex(10)
             }
 
-            // Debug calibration overlay — drag dots to align with strokes
             if vm.showDebug {
                 GeometryReader { geo in
                     StrokeCalibrationOverlay(canvasSize: geo.size)
@@ -48,12 +41,8 @@ public struct ContentView: View {
             }
 
             VStack(spacing: 0) {
-                // Letter picker bar at top
                 LetterPickerBar()
                     .background(.ultraThinMaterial)
-
-                // Child-friendly control bar with phase indicator
-                childControlBar
 
                 if vm.showDebug {
                     HStack {
@@ -92,6 +81,17 @@ public struct ContentView: View {
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
+
+            VStack(alignment: .trailing, spacing: 10) {
+                Spacer()
+                PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
+                    .onLongPressGesture { vm.toggleDebug() }
+                    .accessibilityHint("Halte gedrückt für Entwickleroptionen")
+                controlDock
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .padding(.trailing, 16)
+            .padding(.bottom, 24)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
@@ -103,47 +103,32 @@ public struct ContentView: View {
         }
     }
 
-    private var childControlBar: some View {
-        HStack(spacing: 12) {
-            PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
-                .onLongPressGesture { vm.toggleDebug() }
-                .accessibilityHint("Halte gedrückt für Entwickleroptionen")
-
-            Spacer()
-
-            Button {
-                vm.resetLetter()
-            } label: {
-                Image(systemName: "arrow.counterclockwise.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.orange)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Buchstabe wiederholen")
-
-            Button {
-                vm.loadRecommendedLetter()
-            } label: {
-                Image(systemName: "star.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.yellow)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Empfohlener Buchstabe")
-
-            Button {
-                showDashboard = true
-            } label: {
-                Image(systemName: "gear.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.gray)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Einstellungen")
+    private var controlDock: some View {
+        HStack(spacing: 14) {
+            dockButton("arrow.counterclockwise.circle.fill", .orange, "Buchstabe wiederholen") { vm.resetLetter() }
+            dockButton("shuffle.circle.fill",                .purple, "Zufälliger Buchstabe")  { vm.randomLetter() }
+            dockButton("speaker.wave.2.circle.fill",         .blue,   "Ton abspielen")         { vm.replayAudio() }
+            dockButton("star.circle.fill",                   .yellow, "Empfohlener Buchstabe") { vm.loadRecommendedLetter() }
+            dockButton("gear.circle.fill",                   .gray,   "Einstellungen")         { showDashboard = true }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(Capsule().stroke(.white.opacity(0.25), lineWidth: 1))
+        .shadow(color: .black.opacity(0.1), radius: 8, y: 2)
+    }
+
+    private func dockButton(_ systemName: String,
+                            _ color: Color,
+                            _ label: String,
+                            action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 32))
+                .foregroundStyle(color)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
     }
 
     private var debugToggleBar: some View {
