@@ -449,6 +449,7 @@ public final class TracingViewModel {
         applyCommand(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
         audio.suspendForLifecycle()
+        lastPlayIntentWallTime = 0
     }
 
     public func appDidBecomeActive() {
