@@ -96,29 +96,29 @@ private func makeStore() -> JSONParentDashboardStore {
     }
     @Test func recordSession_updatesLetterStats() {
         let store = makeStore()
-        store.recordSession(letter: "A", accuracy: 0.8, durationSeconds: 60, date: date(2025, 1, 1))
+        store.recordSession(letter: "A", accuracy: 0.8, durationSeconds: 60, date: date(2025, 1, 1), condition: .threePhase)
         #expect(store.snapshot.letterStats["A"]?.accuracySamples == [0.8])
     }
     @Test func recordSession_accumulates() {
         let store = makeStore()
-        store.recordSession(letter: "A", accuracy: 0.6, durationSeconds: 30, date: date(2025, 1, 1))
-        store.recordSession(letter: "A", accuracy: 0.9, durationSeconds: 40, date: date(2025, 1, 2))
+        store.recordSession(letter: "A", accuracy: 0.6, durationSeconds: 30, date: date(2025, 1, 1), condition: .threePhase)
+        store.recordSession(letter: "A", accuracy: 0.9, durationSeconds: 40, date: date(2025, 1, 2), condition: .threePhase)
         #expect(store.snapshot.letterStats["A"]?.accuracySamples.count == 2)
     }
     @Test func recordSession_normalizesLetterToUppercase() {
         let store = makeStore()
-        store.recordSession(letter: "a", accuracy: 0.7, durationSeconds: 20, date: date(2025, 1, 1))
+        store.recordSession(letter: "a", accuracy: 0.7, durationSeconds: 20, date: date(2025, 1, 1), condition: .threePhase)
         #expect(store.snapshot.letterStats["A"] != nil)
         #expect(store.snapshot.letterStats["a"] == nil)
     }
     @Test func recordSession_zeroDuration_notRecorded() {
         let store = makeStore()
-        store.recordSession(letter: "B", accuracy: 0.5, durationSeconds: 0, date: date(2025, 1, 1))
+        store.recordSession(letter: "B", accuracy: 0.5, durationSeconds: 0, date: date(2025, 1, 1), condition: .threePhase)
         #expect(store.snapshot.sessionDurations.isEmpty)
     }
     @Test func reset_clearsAll() {
         let store = makeStore()
-        store.recordSession(letter: "A", accuracy: 0.9, durationSeconds: 120, date: date(2025, 1, 1))
+        store.recordSession(letter: "A", accuracy: 0.9, durationSeconds: 120, date: date(2025, 1, 1), condition: .threePhase)
         store.reset()
         #expect(store.snapshot.letterStats.isEmpty)
         #expect(store.snapshot.sessionDurations.isEmpty)
@@ -129,7 +129,7 @@ private func makeStore() -> JSONParentDashboardStore {
         defer { try? FileManager.default.removeItem(at: url) }
         do {
             let store = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
-            store.recordSession(letter: "Z", accuracy: 0.75, durationSeconds: 90, date: date(2025, 6, 1))
+            store.recordSession(letter: "Z", accuracy: 0.75, durationSeconds: 90, date: date(2025, 6, 1), condition: .threePhase)
         }
         let store2 = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
         #expect(store2.snapshot.letterStats["Z"]?.accuracySamples == [0.75])
@@ -137,8 +137,8 @@ private func makeStore() -> JSONParentDashboardStore {
     }
     @Test func multipleLetters_independent() {
         let store = makeStore()
-        store.recordSession(letter: "A", accuracy: 1.0, durationSeconds: 10, date: date(2025, 1, 1))
-        store.recordSession(letter: "B", accuracy: 0.5, durationSeconds: 10, date: date(2025, 1, 1))
+        store.recordSession(letter: "A", accuracy: 1.0, durationSeconds: 10, date: date(2025, 1, 1), condition: .threePhase)
+        store.recordSession(letter: "B", accuracy: 0.5, durationSeconds: 10, date: date(2025, 1, 1), condition: .threePhase)
         #expect(abs((store.snapshot.letterStats["A"]?.averageAccuracy ?? 0) - 1.0) < 1e-9)
         #expect(abs((store.snapshot.letterStats["B"]?.averageAccuracy ?? 0) - 0.5) < 1e-9)
     }

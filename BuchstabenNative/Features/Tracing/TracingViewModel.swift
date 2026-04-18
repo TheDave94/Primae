@@ -107,6 +107,7 @@ public final class TracingViewModel {
     let progressStore: ProgressStoring
     private let streakStore: StreakStoring
     private let dashboardStore: ParentDashboardStoring
+    private let thesisCondition: ThesisCondition
     private let onboardingStore: OnboardingStoring
     private let notificationScheduler: LocalNotificationScheduler
     private let syncCoordinator: SyncCoordinator
@@ -164,7 +165,13 @@ public final class TracingViewModel {
         self.onboardingStore        = deps.onboardingStore
         self.notificationScheduler  = deps.notificationScheduler
         self.syncCoordinator        = deps.syncCoordinator
-        self.adaptationPolicy       = deps.adaptationPolicy ?? MovingAverageAdaptationPolicy()
+        self.thesisCondition        = deps.thesisCondition
+        // Control condition uses fixed difficulty — no moving-average adaptation.
+        self.adaptationPolicy       = deps.adaptationPolicy ?? (
+            deps.thesisCondition == .control
+                ? FixedAdaptationPolicy(currentTier: .standard)
+                : MovingAverageAdaptationPolicy()
+        )
 
         // Resume onboarding from saved step if available
         var coordinator = OnboardingCoordinator()
@@ -416,7 +423,8 @@ public final class TracingViewModel {
 
             // — Parent dashboard —
             dashboardStore.recordSession(letter: letter, accuracy: accuracy,
-                                          durationSeconds: duration, date: Date())
+                                          durationSeconds: duration, date: Date(),
+                                          condition: thesisCondition)
 
             // — Background cloud sync —
             Task { [self] in try? await syncCoordinator.pushAll() }
@@ -670,7 +678,8 @@ public final class TracingViewModel {
         progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: scores)
         streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
         dashboardStore.recordSession(letter: letter, accuracy: accuracy,
-                                      durationSeconds: duration, date: Date())
+                                      durationSeconds: duration, date: Date(),
+                                      condition: thesisCondition)
         Task { [self] in try? await syncCoordinator.pushAll() }
 
         let adaptSample = AdaptationSample(letter: letter,

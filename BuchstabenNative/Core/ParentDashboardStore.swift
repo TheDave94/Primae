@@ -29,6 +29,21 @@ struct SessionDurationRecord: Codable, Equatable {
     let dateString: String
     /// Duration in seconds.
     let durationSeconds: TimeInterval
+    /// Thesis condition active during this session.
+    let condition: ThesisCondition
+
+    init(dateString: String, durationSeconds: TimeInterval, condition: ThesisCondition = .threePhase) {
+        self.dateString = dateString
+        self.durationSeconds = durationSeconds
+        self.condition = condition
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        dateString = try c.decode(String.self, forKey: .dateString)
+        durationSeconds = try c.decode(TimeInterval.self, forKey: .durationSeconds)
+        condition = (try? c.decode(ThesisCondition.self, forKey: .condition)) ?? .threePhase
+    }
 }
 
 struct DashboardSnapshot: Codable, Equatable {
@@ -61,7 +76,7 @@ struct DashboardSnapshot: Codable, Equatable {
 
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
-    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date)
+    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
     func reset()
 }
 
@@ -89,7 +104,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         self.snapshot = Self.load(from: self.fileURL) ?? DashboardSnapshot()
     }
 
-    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date) {
+    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {
         let key = letter.uppercased()
         let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
         let updated = LetterAccuracyStat(
@@ -101,7 +116,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         if durationSeconds > 0 {
             let day = dayKey(for: date, calendar: calendar)
             snapshot.sessionDurations.append(
-                SessionDurationRecord(dateString: day, durationSeconds: durationSeconds)
+                SessionDurationRecord(dateString: day, durationSeconds: durationSeconds, condition: condition)
             )
         }
         persist()

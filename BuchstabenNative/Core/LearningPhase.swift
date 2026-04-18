@@ -68,18 +68,3 @@ enum LearningPhase: Int, Codable, CaseIterable, Comparable, Equatable, Sendable 
         }
     }
 }
-
-// MARK: - Thesis evaluation condition
-
-/// Allows comparing learning outcomes across different pedagogical modes.
-/// The thesis can evaluate three-phase vs. guided-only vs. no-adaptation.
-enum ThesisCondition: String, Codable, CaseIterable, Sendable {
-    /// Full three-phase model: observe → guided → freeWrite.
-    case threePhase
-
-    /// Guided tracing only (current behaviour, no observe/freeWrite phases).
-    case guidedOnly
-
-    /// Control: guided tracing with fixed difficulty (no adaptive policy).
-    case control
-}
