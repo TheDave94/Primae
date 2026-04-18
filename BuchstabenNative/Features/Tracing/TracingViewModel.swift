@@ -683,6 +683,12 @@ public final class TracingViewModel {
         showCompletionHUD()
     }
 
+    // MARK: - Parent dashboard access
+
+    var dashboardSnapshot: DashboardSnapshot { dashboardStore.snapshot }
+    var currentStreak: Int { streakStore.currentStreak }
+    var longestStreak: Int { streakStore.longestStreak }
+
     // MARK: - Debug
 
     #if DEBUG

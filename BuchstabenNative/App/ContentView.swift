@@ -4,6 +4,7 @@ import SwiftUI
 public struct ContentView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var showDashboard = false
 
     // 2. Added a public initializer
     public init() {}
@@ -83,6 +84,10 @@ public struct ContentView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78), value: vm.isPhaseSessionComplete)
         .sensoryFeedback(.success, trigger: vm.completionMessage != nil)
+        .sheet(isPresented: $showDashboard) {
+            ParentDashboardView()
+                .environment(vm)
+        }
     }
 
     private var topBar: some View {
@@ -102,6 +107,14 @@ public struct ContentView: View {
             Button("📚") { vm.loadRecommendedLetter() }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Empfohlener Buchstabe")
+
+            Button {
+                showDashboard = true
+            } label: {
+                Image(systemName: "gear")
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Lernfortschritt anzeigen")
 
             Spacer(minLength: 6)
 
