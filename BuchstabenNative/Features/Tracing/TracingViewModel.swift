@@ -136,6 +136,10 @@ public final class TracingViewModel {
     private var letters: [LetterAsset]          = []
     private var letterIndex                      = 0
     private var audioIndex                       = 0
+    /// Decoded user-calibrated strokes keyed by letter. Prevents the ghost-render
+    /// path from hitting disk + JSON-decode on every frame. Populated lazily on
+    /// first read; invalidated on calibration save.
+    private var calibratedStrokesCache: [String: LetterStrokes?] = [:]
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
     private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
@@ -895,9 +899,18 @@ public final class TracingViewModel {
     }
 
     private func loadCalibratedStrokes(for letter: String) -> LetterStrokes? {
+        if let cached = calibratedStrokesCache[letter] { return cached }
         guard let url = calibratedStrokesURL(for: letter),
-              let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(LetterStrokes.self, from: data)
+              let data = try? Data(contentsOf: url) else {
+            // Memoize the negative result so the per-frame ghost render path
+            // doesn't re-hit FileManager. `updateValue(_:forKey:)` is required
+            // because `dict[key] = nil` on an Optional-valued dict removes the key.
+            calibratedStrokesCache.updateValue(nil, forKey: letter)
+            return nil
+        }
+        let decoded = try? JSONDecoder().decode(LetterStrokes.self, from: data)
+        calibratedStrokesCache[letter] = decoded
+        return decoded
     }
 
     /// Persist calibrated glyph-relative checkpoints to Application Support so they
@@ -916,6 +929,8 @@ public final class TracingViewModel {
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         try? data.write(to: url, options: .atomic)
+        // Invalidate the calibration cache so the next read picks up the new file.
+        calibratedStrokesCache.removeValue(forKey: letter)
         // Apply immediately so the tracker reflects the new calibration without navigation.
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])

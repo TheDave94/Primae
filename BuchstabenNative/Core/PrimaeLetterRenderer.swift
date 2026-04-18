@@ -18,7 +18,15 @@ public enum PrimaeLetterRenderer {
         let height: Int
     }
 
+    private struct RectCacheKey: Hashable {
+        let letter:     String
+        let width:      Int
+        let height:     Int
+        let schriftArt: SchriftArt
+    }
+
     private static var cache: [CacheKey: UIImage] = [:]
+    private static var rectCache: [RectCacheKey: CGRect] = [:]
     private static let cacheLimit = 52
 
     // MARK: - Public API
@@ -39,14 +47,24 @@ public enum PrimaeLetterRenderer {
 
     public static func clearCache() {
         cache.removeAll()
+        rectCache.removeAll()
     }
     /// Returns the normalized ink bounding rect (0–1 in each axis) for the given letter
     /// as rendered by PrimaeLetterRenderer at the given canvas size.
     /// Used by LetterGuideGeometry to transform ghost coordinates from calibrated (PBM)
     /// space to actual rendered space.
+    ///
+    /// Memoized by (letter, canvasSize, schriftArt) — TracingCanvasView calls this
+    /// up to 3× per frame on the 60 fps render loop, and each call previously ran a
+    /// CTFontGetBoundingRectsForGlyphs CoreText roundtrip.
     public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) -> CGRect? {
         guard !isRunningTests, !letter.isEmpty,
               canvasSize.width > 0, canvasSize.height > 0 else { return nil }
+        let key = RectCacheKey(letter: letter,
+                               width: Int(canvasSize.width),
+                               height: Int(canvasSize.height),
+                               schriftArt: schriftArt)
+        if let cached = rectCache[key] { return cached }
         let probe: CGFloat = 800
         guard let font = makeFont(size: probe),
               var glyph = getGlyph(for: letter, in: font) else { return nil }
@@ -59,12 +77,15 @@ public enum PrimaeLetterRenderer {
         let ratio  = min(availW / bbox.width, availH / bbox.height)
         let scaledW = bbox.width  * ratio
         let scaledH = bbox.height * ratio
-        return CGRect(
+        let rect = CGRect(
             x:      0.5 - scaledW / (2 * px.width),
             y:      0.5 - scaledH / (2 * px.height),
             width:  scaledW / px.width,
             height: scaledH / px.height
         )
+        if rectCache.count >= cacheLimit { rectCache.removeAll(keepingCapacity: true) }
+        rectCache[key] = rect
+        return rect
     }
 
     // MARK: - Private
