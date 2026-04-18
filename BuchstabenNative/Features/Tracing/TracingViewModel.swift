@@ -10,6 +10,7 @@ public final class TracingViewModel {
     // MARK: - Public observable state
 
     var showGhost           = false
+    var showAllLetters      = false
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
     var strokeEnforced      = true
@@ -210,23 +211,34 @@ public final class TracingViewModel {
     }
 
     func nextLetter() {
-        guard !letters.isEmpty else { return }
-        letterIndex = (letterIndex + 1) % letters.count
-        load(letter: letters[letterIndex])
+        let visible = visibleLetterNames
+        guard !visible.isEmpty else { return }
+        let currentIdx = visible.firstIndex(of: currentLetterName) ?? -1
+        let nextName = visible[(currentIdx + 1) % visible.count]
+        guard let idx = letters.firstIndex(where: { $0.name == nextName }) else { return }
+        letterIndex = idx
+        load(letter: letters[idx])
         toast("Letter: \(currentLetterName)")
     }
 
     func previousLetter() {
-        guard !letters.isEmpty else { return }
-        letterIndex = (letterIndex - 1 + letters.count) % letters.count
-        load(letter: letters[letterIndex])
+        let visible = visibleLetterNames
+        guard !visible.isEmpty else { return }
+        let currentIdx = visible.firstIndex(of: currentLetterName) ?? 0
+        let prevName = visible[(currentIdx - 1 + visible.count) % visible.count]
+        guard let idx = letters.firstIndex(where: { $0.name == prevName }) else { return }
+        letterIndex = idx
+        load(letter: letters[idx])
         toast("Letter: \(currentLetterName)")
     }
 
     func randomLetter() {
-        guard !letters.isEmpty else { return }
-        letterIndex = Int.random(in: 0..<letters.count)
-        load(letter: letters[letterIndex])
+        let visible = visibleLetterNames
+        guard !visible.isEmpty else { return }
+        let randomName = visible[Int.random(in: 0..<visible.count)]
+        guard let idx = letters.firstIndex(where: { $0.name == randomName }) else { return }
+        letterIndex = idx
+        load(letter: letters[idx])
         randomAudioVariant()
         toast("Random: \(currentLetterName)")
     }
@@ -589,9 +601,10 @@ public final class TracingViewModel {
     /// The 7 demo letters for thesis scope.
     private let demoBaseLetters: Set<String> = ["A", "F", "I", "K", "L", "M", "O"]
 
-    /// Letter names visible in the thesis demo.
+    /// Letter names visible based on the showAllLetters toggle.
     var visibleLetterNames: [String] {
-        letters.filter { demoBaseLetters.contains($0.baseLetter) }.map(\.name)
+        if showAllLetters { return letters.map(\.name) }
+        return letters.filter { demoBaseLetters.contains($0.baseLetter) }.map(\.name)
     }
 
     /// Expose stroke definition for canvas rendering.

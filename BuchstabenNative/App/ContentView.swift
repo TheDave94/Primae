@@ -74,6 +74,7 @@ public struct ContentView: View {
             ToggleChip(title: "Ghost", isOn: vm.showGhost, hint: "Show or hide guide lines") { vm.toggleGhost() }
             ToggleChip(title: "Order", isOn: vm.strokeEnforced, hint: "Require stroke order for sound playback") { vm.toggleStrokeEnforcement() }
             ToggleChip(title: "Debug", isOn: vm.showDebug, hint: "Show debug overlays") { vm.toggleDebug() }
+            ToggleChip(title: "Alle", isOn: vm.showAllLetters, hint: "Alle Buchstaben oder nur Demo-Buchstaben anzeigen") { vm.showAllLetters.toggle() }
 
             Button("Reset") { vm.resetLetter() }
                 .buttonStyle(.borderedProminent)
