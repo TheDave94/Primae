@@ -754,10 +754,9 @@ public final class TracingViewModel {
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
-            if phaseController.currentPhase == .observe {
-                audio.play()
-                isPlaying = true
-            }
+            // Audio plays in response to touches via the playback state machine;
+            // no observe-phase auto-play (it would loop silently behind onboarding
+            // and start immediately on letter switch without any user action).
         }
     }
 

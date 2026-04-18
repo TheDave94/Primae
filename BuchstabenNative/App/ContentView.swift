@@ -20,9 +20,10 @@ public struct ContentView: View {
 
     private var mainContent: some View {
         ZStack(alignment: .top) {
+            // Canvas respects the top safe area inset (applied below) so the
+            // always-visible UI bars no longer overlap the rendered letter.
             TracingCanvasView()
                 .background(Color.white)
-                .ignoresSafeArea()
 
             // Observe phase: touch is disabled, show tap-to-continue overlay
             if vm.learningPhase == .observe {
@@ -44,17 +45,9 @@ public struct ContentView: View {
                 GeometryReader { geo in
                     StrokeCalibrationOverlay(canvasSize: geo.size)
                 }
-                .ignoresSafeArea()
             }
 
             VStack(spacing: 0) {
-                // Letter picker bar at top
-                LetterPickerBar()
-                    .background(.ultraThinMaterial)
-
-                // Child-friendly control bar with phase indicator
-                childControlBar
-
                 if vm.showDebug {
                     HStack {
                         DebugInfoPanel()
@@ -91,6 +84,13 @@ public struct ContentView: View {
                     .padding(.horizontal, 12)
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 0) {
+                LetterPickerBar()
+                    .background(.ultraThinMaterial)
+                childControlBar
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
