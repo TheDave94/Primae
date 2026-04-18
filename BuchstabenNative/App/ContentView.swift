@@ -19,34 +19,7 @@ public struct ContentView: View {
     }
 
     private var mainContent: some View {
-        ZStack(alignment: .top) {
-            TracingCanvasView()
-                .background(Color.white)
-                .ignoresSafeArea()
-
-            // Observe phase: touch is disabled, show tap-to-continue overlay
-            if vm.learningPhase == .observe {
-                ObservePhaseOverlay {
-                    vm.completeObservePhase()
-                }
-            }
-
-            if vm.isPhaseSessionComplete {
-                CompletionCelebrationOverlay(starsEarned: vm.starsEarned) {
-                    vm.loadRecommendedLetter()
-                }
-                .transition(.scale.combined(with: .opacity))
-                .zIndex(10)
-            }
-
-            // Debug calibration overlay — drag dots to align with strokes
-            if vm.showDebug {
-                GeometryReader { geo in
-                    StrokeCalibrationOverlay(canvasSize: geo.size)
-                }
-                .ignoresSafeArea()
-            }
-
+        ZStack {
             VStack(spacing: 0) {
                 // Letter picker bar at top
                 LetterPickerBar()
@@ -81,7 +54,28 @@ public struct ContentView: View {
                         .padding(.top, 4)
                 }
 
-                Spacer()
+                // Canvas takes the remaining vertical space so UI chrome above
+                // does not overlap the rendered letter.
+                ZStack(alignment: .top) {
+                    TracingCanvasView()
+                        .background(Color.white)
+
+                    // Observe phase: touch is disabled, show tap-to-continue overlay
+                    if vm.learningPhase == .observe {
+                        ObservePhaseOverlay {
+                            vm.completeObservePhase()
+                        }
+                    }
+
+                    // Debug calibration overlay — drag dots to align with strokes
+                    if vm.showDebug {
+                        GeometryReader { geo in
+                            StrokeCalibrationOverlay(canvasSize: geo.size)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
 
                 if let completion = vm.completionMessage {
                     CompletionHUD(message: completion) {
@@ -91,6 +85,14 @@ public struct ContentView: View {
                     .padding(.horizontal, 12)
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
+            }
+
+            if vm.isPhaseSessionComplete {
+                CompletionCelebrationOverlay(starsEarned: vm.starsEarned) {
+                    vm.loadRecommendedLetter()
+                }
+                .transition(.scale.combined(with: .opacity))
+                .zIndex(10)
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)

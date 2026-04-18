@@ -558,6 +558,11 @@ public final class TracingViewModel {
         if onboardingCoordinator.isComplete {
             onboardingStore.markComplete()
             isOnboardingComplete = true
+            // Reload the current letter now that onboarding is done so observe-phase
+            // audio kicks in — the initial load() during init suppressed it.
+            if letters.indices.contains(letterIndex) {
+                load(letter: letters[letterIndex])
+            }
             // Request notification permission and schedule reminder on onboarding completion
             Task { [self] in
                 _ = await notificationScheduler.requestPermission()
@@ -576,6 +581,10 @@ public final class TracingViewModel {
         onboardingCoordinator.skip()
         onboardingStep = onboardingCoordinator.currentStep
         onboardingStore.markComplete()
+        isOnboardingComplete = true
+        if letters.indices.contains(letterIndex) {
+            load(letter: letters[letterIndex])
+        }
     }
 
     // MARK: - Learning phase control
@@ -754,7 +763,7 @@ public final class TracingViewModel {
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
-            if phaseController.currentPhase == .observe {
+            if phaseController.currentPhase == .observe, isOnboardingComplete {
                 audio.play()
                 isPlaying = true
             }
