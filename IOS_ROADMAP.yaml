@@ -1,51 +1,239 @@
-# IOS_ROADMAP.yaml — Goal-driven task queue for the iOS autocoder
+# IOS_ROADMAP.yaml — Buchstaben-Lernen-App
+# Goal-driven task file for autocoder council pipeline.
+# Each item is scoped to 1-3 files, with concrete acceptance criteria.
 #
-# Each item defines WHAT to build, HOW to validate it, and WHERE to change.
-# The autocoder picks up "pending" items and the council evaluates proposals
-# against the acceptance_criteria.
-#
-# Status values: pending, in_progress, done, deferred, blocked
-# Priority: 1-10 (10 = highest)
-#
-# Usage:
-#   - Add items here when you know what you want built
-#   - The autocoder picks them up when the queue is empty
-#   - When done, set status: done and commit
-#   - Use "deferred" to pause an item
+# CRITICAL CONSTRAINTS (apply to ALL items):
+# - Does NOT modify AudioEngine.swift — it is stable and fragile
+# - Does NOT introduce new dependencies or frameworks
+# - Must compile without warnings under Swift 6.3 strict concurrency
+# - Must pass CI on macos-26 runner with Xcode 26.4
+# - Test target uses .swiftLanguageMode(.v5) — do not change this
+# - Main target uses .defaultIsolation(MainActor.self) — all types are implicitly @MainActor
 
-# ── Example items (uncomment and modify) ─────────────────────────────────────
+- id: ios-001
+  title: "Fix stroke tracker coordinate mismatch with Canvas render size"
+  description: |
+    The StrokeTracker receives checkpoint coordinates pre-mapped using vm.canvasSize
+    (set to 1024x1024 at init, then updated via didSet). But touch input is normalized
+    by the actual canvas size passed to updateTouch(). If canvasSize differs from the
+    Canvas GeometryReader size at any point, isNearStroke returns false and audio never
+    plays. The fix: reloadStrokeCheckpoints should also be called from inside the Canvas
+    render closure (or the canvasSize didSet must guarantee it fires before any touch),
+    and the mapping must use the same size as normalizeTouch.
+  acceptance_criteria:
+    - "In TracingViewModel.swift, reloadStrokeCheckpoints(for:) is called whenever canvasSize changes via the existing didSet — verify this path produces correct normalized coordinates"
+    - "In TracingViewModel.swift updateTouch(at:t:canvasSize:), the canvasSize parameter passed for normalization is the same value used in reloadStrokeCheckpoints"
+    - "When tracing along calibrated stroke checkpoints on device, strokeTracker.isNearStroke becomes true within checkpointRadius * 3 distance"
+    - "The green/red audio indicator dot in the top-right turns green during active tracing on the letter centerline"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify StrokeTracker.swift — only TracingViewModel.swift"
+    - "Does NOT change the strokes.json coordinate format"
+  target_files:
+    - "TracingViewModel.swift"
+  priority: 10
+  status: pending
 
-# - id: ios-001
-#   title: "Improve stroke accuracy feedback"
-#   description: |
-#     When a user traces a letter with low accuracy, show a subtle visual
-#     hint (e.g., the ghost line pulses red briefly) before allowing retry.
-#     Currently there's no visual feedback for inaccurate strokes.
-#   acceptance_criteria:
-#     - "StrokeTracker reports accuracy below DifficultyAdaptation threshold"
-#     - "TracingCanvasView shows a brief red pulse animation on the ghost line"
-#     - "Animation completes in under 500ms"
-#     - "Does not block the next stroke attempt"
-#     - "No changes to AudioEngine or haptic feedback"
-#   target_files:
-#     - "TracingCanvasView.swift"
-#     - "StrokeTracker.swift"
-#   priority: 7
-#   status: pending
+- id: ios-002
+  title: "Re-enable 9 disabled audio proximity tests with proper stub stroke data"
+  description: |
+    Nine tests in TracingViewModelTests, EndToEndTracingSessionTests, AccessibilityContractTests,
+    and BuchstabenNativeTests are disabled with .disabled("Requires stroke proximity data").
+    The test fixture StubResourceProvider now provides a test letter with 50 checkpoints at
+    y=0.50 and checkpointRadius 0.5. The tests should be re-enabled and verified to pass.
+    The test drags go from (100,200)→(200,200) in a 400×400 canvas, normalizing to
+    (0.25,0.5)→(0.5,0.5), which should hit the stub checkpoints.
+  acceptance_criteria:
+    - "All 9 tests marked .disabled('Requires stroke proximity data') in TracingViewModelTests.swift, EndToEndTracingSessionTests.swift, AccessibilityContractTests.swift, and BuchstabenNativeTests.swift are re-enabled by removing the .disabled trait"
+    - "Each re-enabled test passes on CI without flakiness (allow up to 1.5s sleep for endTouch grace period tests)"
+    - "The StubResourceProvider in TestFixtures.swift continues to provide a test letter with checkpoints along y=0.50 with checkpointRadius 0.5"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify any production source files — only test files"
+    - "Does NOT change the stub letter's checkpoint format or StubResourceProvider interface"
+  target_files:
+    - "TracingViewModelTests.swift"
+    - "EndToEndTracingSessionTests.swift"
+    - "AccessibilityContractTests.swift"
+    - "BuchstabenNativeTests.swift"
+  priority: 8
+  status: pending
 
-# - id: ios-002
-#   title: "Add parent dashboard export button"
-#   description: |
-#     Add a share/export button to the parent dashboard that exports
-#     session history as a CSV file via the iOS share sheet.
-#   acceptance_criteria:
-#     - "Button appears in ParentDashboardView navigation bar"
-#     - "Tapping opens iOS share sheet with a .csv attachment"
-#     - "CSV contains: date, letter, accuracy, duration, difficulty_tier"
-#     - "Uses ParentDashboardExporter.swift (already exists)"
-#     - "Works on iPad and iPhone"
-#   target_files:
-#     - "ParentDashboardStore.swift"
-#     - "ParentDashboardExporter.swift"
-#   priority: 5
-#   status: pending
+- id: ios-003
+  title: "Add completion celebration overlay with star display"
+  description: |
+    When a child completes all three learning phases (observe → guided → freeWrite) for a
+    letter, the app should show a celebration overlay with the number of stars earned (1-3)
+    and a "Weiter" button to advance to the next letter. Currently completionMessage is set
+    as a text string in CompletionHUD but there is no star/reward visual. The phaseController
+    already tracks starsEarned and isLetterSessionComplete.
+  acceptance_criteria:
+    - "A new SwiftUI view CompletionCelebrationOverlay is created in a new file Features/Tracing/CompletionCelebrationOverlay.swift"
+    - "The overlay displays 1-3 star icons based on vm.starsEarned when vm.isPhaseSessionComplete becomes true"
+    - "The overlay includes a 'Weiter' button that calls vm.loadRecommendedLetter() and dismisses the overlay"
+    - "The overlay is shown in ContentView.swift inside the mainContent ZStack, gated on vm.isPhaseSessionComplete"
+    - "The overlay uses .transition(.scale.combined(with: .opacity)) for appearance animation"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify TracingViewModel.swift — reads existing published properties only"
+    - "Does NOT introduce new dependencies"
+  target_files:
+    - "CompletionCelebrationOverlay.swift"
+    - "ContentView.swift"
+  priority: 7
+  status: pending
+
+- id: ios-004
+  title: "Fix observe phase animation not auto-starting on letter change"
+  description: |
+    When switching letters (via two-finger swipe or recommended letter button), if the
+    phaseController resets to .observe, startGuideAnimation() should fire automatically.
+    Currently load(letter:) calls stopGuideAnimation() then conditionally starts it via a
+    Task with 300ms delay, but this sometimes fails if the letter loads before the stroke
+    tracker has data. The animation should reliably start for every letter transition into
+    observe phase.
+  acceptance_criteria:
+    - "In TracingViewModel.swift load(letter:), after reloadStrokeCheckpoints(), if phaseController.currentPhase == .observe, startGuideAnimation() is called (inside a Task with short delay is acceptable)"
+    - "The animation dot (animationGuidePoint) is visible and moving within 500ms of any letter load that starts in observe phase"
+    - "Switching letters via nextLetter()/previousLetter()/randomLetter()/loadRecommendedLetter() all trigger the animation if the new letter starts in observe phase"
+    - "The animation loops continuously until the user taps the observe overlay to advance"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify TracingCanvasView.swift"
+    - "Does NOT change the LetterAnimationGuide.swift structure"
+  target_files:
+    - "TracingViewModel.swift"
+  priority: 7
+  status: pending
+
+- id: ios-005
+  title: "Increase checkpointRadius for more forgiving tracing"
+  description: |
+    The current checkpointRadius of 0.05 in all strokes.json files is too tight for young
+    children using fingers on iPad. Children's fine motor control at age 5-6 has typical
+    deviation of 5-8mm, which on a 1024pt canvas is ~0.005-0.008 in normalized coords.
+    With the 3x multiplier for isNearStroke (0.15 effective), the audio trigger zone is
+    still narrow. Increase to 0.08 so the effective isNearStroke zone is 0.24 — much
+    more forgiving while still requiring the child to trace approximately on the letter.
+  acceptance_criteria:
+    - "All 7 strokes.json files (A, F, I, K, L, M, O) have checkpointRadius set to 0.08"
+    - "The checkpoint hit radius (used for progress advancement) uses the base 0.08 value"
+    - "The isNearStroke proximity check uses 0.08 * 3 = 0.24, meaning audio plays when finger is within ~24% of glyph width from centerline"
+    - "Does NOT modify any Swift source files"
+    - "Does NOT change checkpoint x,y coordinates — only checkpointRadius"
+    - "Each JSON file remains valid and parseable by LetterStrokes Codable decoder"
+  target_files:
+    - "Resources/Letters/A/strokes.json"
+    - "Resources/Letters/F/strokes.json"
+    - "Resources/Letters/I/strokes.json"
+    - "Resources/Letters/K/strokes.json"
+    - "Resources/Letters/L/strokes.json"
+    - "Resources/Letters/M/strokes.json"
+    - "Resources/Letters/O/strokes.json"
+  priority: 9
+  status: pending
+
+- id: ios-006
+  title: "Add letter name audio playback on observe phase entry"
+  description: |
+    When entering the observe phase for a letter (either on first load or after switching),
+    the app should speak the letter name once before the animation starts. The audio files
+    already exist (e.g., A1.mp3, Ffffff.mp3). Currently audio.loadAudioFile is called in
+    load(letter:) but play() is never called during observe phase because touch is disabled
+    and isNearStroke gates playback. Add a one-shot play of the letter's first audio file
+    when entering observe phase.
+  acceptance_criteria:
+    - "In TracingViewModel.swift, when phaseController.currentPhase == .observe after a letter loads, audio.play() is called once after loadAudioFile"
+    - "The audio plays before or simultaneously with the animation guide starting"
+    - "The audio does NOT loop — it plays once per observe phase entry"
+    - "Switching to guided phase does NOT auto-play audio (guided phase uses proximity-triggered playback)"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify AudioControlling.swift protocol"
+    - "Does NOT change the PlaybackStateMachine — uses existing play()/stop() interface"
+  target_files:
+    - "TracingViewModel.swift"
+  priority: 6
+  status: pending
+
+- id: ios-007
+  title: "Remove dead PBM-based ghost line rendering code"
+  description: |
+    The ghost lines now render from stroke JSON data in TracingCanvasView.swift. The old
+    PBM-based rendering system in LetterGuideGeometry.swift and LetterGuideRenderer.swift
+    is no longer used by any production code path. The pbmRects dictionary, the
+    mapWithTransform function, and the hand-calibrated PBM guide segments are dead code.
+    Remove references to keep the codebase clean for the thesis.
+  acceptance_criteria:
+    - "LetterGuideGeometry.swift has its pbmRects dictionary removed"
+    - "LetterGuideGeometry.swift has the mapWithTransform function removed"
+    - "LetterGuideRenderer.swift guidePath(for:in:glyphRect:) no longer passes pbmRect"
+    - "TracingCanvasView.swift does NOT reference LetterGuideRenderer or LetterGuideGeometry"
+    - "The LetterGuideRendererTests.swift and LetterGuideSnapshotTests.swift are updated or disabled to reflect the removal"
+    - "All remaining tests pass — no compilation errors"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify TracingViewModel.swift"
+    - "Does NOT remove the LetterGuideGeometry.swift or LetterGuideRenderer.swift files entirely — they may be needed for future font-outline ghost rendering"
+  target_files:
+    - "LetterGuideGeometry.swift"
+    - "LetterGuideRenderer.swift"
+    - "LetterGuideRendererTests.swift"
+    - "LetterGuideSnapshotTests.swift"
+  priority: 3
+  status: pending
+
+- id: ios-008
+  title: "Add phase-aware progress persistence"
+  description: |
+    Currently recordCompletion(for:accuracy:) in ProgressStore is called once per letter
+    completion, but it doesn't distinguish which phase was completed or what the per-phase
+    scores were. For the thesis, we need to record phase-level data so the parent dashboard
+    and research export can show observe/guided/freeWrite completion rates.
+  acceptance_criteria:
+    - "In TracingViewModel.swift recordPhaseSessionCompletion() or equivalent, the phaseScores dictionary is included when calling progressStore.recordCompletion"
+    - "LetterProgress in ProgressStore.swift gains an optional phaseScores: [String: Double] field (String keys for Codable: 'observe', 'guided', 'freeWrite')"
+    - "The phaseScores field defaults to nil for backward compatibility with existing persisted data"
+    - "Existing JSONProgressStore serialization/deserialization still works with old data files (nil phaseScores is acceptable)"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT change the ProgressStoring protocol signature — add phaseScores as an optional parameter with default nil"
+    - "A test in ProgressStoreTests.swift verifies that recording with phaseScores persists and loads correctly"
+  target_files:
+    - "ProgressStore.swift"
+    - "TracingViewModel.swift"
+    - "ProgressStoreTests.swift"
+  priority: 5
+  status: pending
+
+- id: ios-009
+  title: "Add thesis debug info overlay showing phase and scoring data"
+  description: |
+    The debug mode currently shows the stroke calibration overlay. For the thesis defense,
+    it should also display real-time metrics: current phase, phase scores, free-write
+    Fréchet distance, scheduler priority for current letter, and adaptation tier. This
+    data is already computed in TracingViewModel — it just needs a visible readout.
+  acceptance_criteria:
+    - "In ContentView.swift, when vm.showDebug is true, a semi-transparent debug info panel is shown in the top-left area below the button bar"
+    - "The panel displays: current learningPhase displayName, phaseScores dictionary, lastFreeWriteDistance, current letter's streakStore data"
+    - "The panel uses .font(.caption.monospaced()) and .background(.black.opacity(0.7)) with white text"
+    - "The panel does NOT interfere with touch input on the canvas — it has allowsHitTesting(false)"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify TracingViewModel.swift — reads existing published properties"
+    - "Does NOT modify TracingCanvasView.swift"
+  target_files:
+    - "ContentView.swift"
+  priority: 4
+  status: pending
+
+- id: ios-010
+  title: "Fix fallback letter 'A.mp3' reference to match actual filename 'A1.mp3'"
+  description: |
+    In LetterRepository.swift fallbackSampleLetter(), the audioFiles array contains
+    "A.mp3" but the actual file on disk is "A1.mp3". When the bundle resource scan
+    fails and the fallback is used, audio loading fails silently because the file
+    doesn't exist.
+  acceptance_criteria:
+    - "In LetterRepository.swift fallbackSampleLetter(), audioFiles is changed from ['A.mp3'] to ['A1.mp3']"
+    - "The fallback letter can successfully load its audio file when the normal bundle scan path fails"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify any other function in LetterRepository.swift"
+    - "Does NOT change the strokes data in fallbackSampleLetter"
+    - "Existing LetterRepositoryTests and LetterRepositoryErrorHandlingTests still pass"
+  target_files:
+    - "LetterRepository.swift"
+  priority: 8
+  status: pending
