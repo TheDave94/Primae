@@ -33,17 +33,20 @@ public struct ContentView: View {
                 .zIndex(10)
             }
 
+            #if DEBUG
             if vm.showDebug {
                 GeometryReader { geo in
                     StrokeCalibrationOverlay(canvasSize: geo.size)
                 }
                 .ignoresSafeArea()
             }
+            #endif
 
             VStack(spacing: 0) {
                 LetterPickerBar()
                     .background(.ultraThinMaterial)
 
+                #if DEBUG
                 if vm.showDebug {
                     HStack {
                         DebugInfoPanel()
@@ -57,6 +60,7 @@ public struct ContentView: View {
                         .padding(.horizontal, 12)
                         .padding(.bottom, 4)
                 }
+                #endif
 
                 if let toast = vm.toastMessage {
                     Text(toast)
@@ -85,8 +89,10 @@ public struct ContentView: View {
             VStack(alignment: .trailing, spacing: 10) {
                 Spacer()
                 PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
+                #if DEBUG
                     .onLongPressGesture { vm.toggleDebug() }
                     .accessibilityHint("Halte gedrückt für Entwickleroptionen")
+                #endif
                 controlDock
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
