@@ -17,7 +17,7 @@ struct TracingCanvasView: View {
             if vm.showGhost,
                let rawStrokes = vm.glyphRelativeStrokes,
                !rawStrokes.strokes.isEmpty,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
                 // Ghost lines from stroke JSON — same data as dots, guaranteed alignment.
                 for stroke in rawStrokes.strokes {
                     guard stroke.checkpoints.count >= 2 else { continue }
@@ -42,7 +42,7 @@ struct TracingCanvasView: View {
                let rawStrokes = vm.rawGlyphStrokes,
                !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                   for: vm.currentLetterName, canvasSize: size) {
+                   for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
                 for (idx, stroke) in rawStrokes.strokes.enumerated() {
                     guard let first = stroke.checkpoints.first else { continue }
                     let isComplete = vm.isStrokeCompleted(idx)
@@ -68,7 +68,7 @@ struct TracingCanvasView: View {
 
             // Animation guide dot — glyph-relative coords mapped to screen
             if let point = vm.animationGuidePoint,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
                 let screenPt = CGPoint(
                     x: (gr.minX + point.x * gr.width) * size.width,
                     y: (gr.minY + point.y * gr.height) * size.height)

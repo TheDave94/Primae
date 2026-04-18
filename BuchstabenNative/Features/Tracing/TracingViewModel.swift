@@ -15,6 +15,17 @@ public final class TracingViewModel {
     var pencilAzimuth: CGFloat   = 0
     var strokeEnforced      = true
     var showDebug           = false
+    var schriftArt: SchriftArt = .druckschrift {
+        didSet {
+            guard oldValue != schriftArt,
+                  !letters.isEmpty, letterIndex < letters.count else { return }
+            PrimaeLetterRenderer.clearCache()
+            currentLetterImage = PrimaeLetterRenderer.render(
+                letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
+                ?? PBMLoader.load(named: currentLetterImageName)
+            reloadStrokeCheckpoints(for: letters[letterIndex])
+        }
+    }
     var toastMessage: String?
     var currentLetterName   = "A"
     var currentLetterImageName = ""
@@ -29,7 +40,7 @@ public final class TracingViewModel {
             reloadStrokeCheckpoints(for: letters[letterIndex])
             // Also re-render the letter image at the correct canvas size.
             currentLetterImage = PrimaeLetterRenderer.render(
-                letter: currentLetterName, size: canvasSize)
+                letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
                 ?? PBMLoader.load(named: currentLetterImageName)
         }
     }
@@ -158,6 +169,7 @@ public final class TracingViewModel {
         self.onboardingStep        = coordinator.currentStep
         self.isOnboardingComplete  = deps.onboardingStore.hasCompletedOnboarding
         self.phaseController = LearningPhaseController(condition: deps.thesisCondition)
+        self.schriftArt = deps.schriftArt
 
         haptics.prepare()
         letters = repo.loadLetters()
@@ -576,7 +588,7 @@ public final class TracingViewModel {
 
     /// Apply calibrated glyph-relative checkpoints from the debug overlay.
     func applyCalibration(_ strokes: [[CGPoint]]) {
-        guard let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: currentLetterName, canvasSize: canvasSize) else { return }
+        guard let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: currentLetterName, canvasSize: canvasSize, schriftArt: schriftArt) else { return }
         let defs = strokes.enumerated().map { (i, pts) in
             StrokeDefinition(id: i + 1, checkpoints: pts.map { cp in
                 Checkpoint(x: gr.minX + cp.x * gr.width,
@@ -670,7 +682,7 @@ public final class TracingViewModel {
         showGhost                      = false
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName
-        currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize) ?? PBMLoader.load(named: letter.imageName)
+        currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize, schriftArt: schriftArt) ?? PBMLoader.load(named: letter.imageName)
         reloadStrokeCheckpoints(for: letter)
         progress                       = 0
         audioIndex                     = 0
@@ -780,7 +792,7 @@ public final class TracingViewModel {
         // User-calibrated file in Application Support takes priority over bundle strokes.json.
         let source = loadCalibratedStrokes(for: letter.name) ?? letter.strokes
         let strokesForTracker: LetterStrokes
-        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize) {
+        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize, schriftArt: schriftArt) {
             let mapped = source.strokes.map { stroke in
                 StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
                     Checkpoint(x: gr.minX + cp.x * gr.width,

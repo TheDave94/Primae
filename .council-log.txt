@@ -1,0 +1,121 @@
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 15:38:05 CEST 2026
+═══════════════════════════════════════════════════════
+
+[1/219] 🚀 ios-018: Guard against empty strokes in all rendering and tracking paths
+  Started: Sat Apr 18 15:38:05 CEST 2026
+--dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 13:38:31 UTC 2026
+═══════════════════════════════════════════════════════
+
+[1/219] 🚀 ios-018: Guard against empty strokes in all rendering and tracking paths
+  Started: Sat Apr 18 13:38:31 UTC 2026
+Not logged in · Please run /login
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 13:39:18 UTC 2026
+═══════════════════════════════════════════════════════
+
+[1/219] 🚀 ios-018: Guard against empty strokes in all rendering and tracking paths
+  Started: Sat Apr 18 13:39:18 UTC 2026
+Not logged in · Please run /login
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 13:41:01 UTC 2026
+═══════════════════════════════════════════════════════
+
+[1/219] 🚀 ios-018: Guard against empty strokes in all rendering and tracking paths
+  Started: Sat Apr 18 13:41:01 UTC 2026
+Committed. All acceptance criteria are met:
+
+- **Ghost lines** (`TracingCanvasView:19`): `!rawStrokes.strokes.isEmpty` guard prevents rendering on empty-stroke letters
+- **Start dots** (`TracingCanvasView:43`): same guard, no dots drawn when no strokes
+- **`startGuideAnimation()`** (`TracingViewModel:467`): already had the empty guard
+- **Observe phase auto-skip** (`TracingViewModel:677`): `load()` calls `phaseController.advance(score: 1.0)` immediately when strokes are empty
+- **No vacuous completion** (`TracingViewModel:362`): `hasStrokes` guard prevents `isComplete` from firing on empty-stroke letters during tracing
+  ✅ ios-018 committed: bbf6905 ios-018: Guard against empty strokes in all rendering and tracking paths
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/TheDave94/Buchstaben-Lernen-App.git/'
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 13:44:24 UTC 2026
+═══════════════════════════════════════════════════════
+[1/18] ⏭️  ios-018: already done, skipping
+
+[2/18] 🚀 ios-011: Add letter visibility filter with demo/all toggle
+  Started: Sat Apr 18 13:44:25 UTC 2026
+Committed. Summary of changes:
+
+- **TracingViewModel.swift**: Added `var showAllLetters = false`, updated `visibleLetterNames` to return all letters when true, and refactored `nextLetter()`/`previousLetter()`/`randomLetter()` to navigate within `visibleLetterNames` rather than the raw `letters` array.
+- **ContentView.swift**: Added `ToggleChip(title: "Alle", ...)` to the top bar that toggles `vm.showAllLetters`.
+
+Letters without audio already handle gracefully — `load()` only calls `audio.loadAudioFile` when `letter.audioFiles.first` is non-nil.
+  ✅ ios-011 committed: 01c9009 ios-011: Add letter visibility filter with demo/all toggle
+fatal: could not read Username for 'https://github.com': No such device or address
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 13:49:17 UTC 2026
+═══════════════════════════════════════════════════════
+[1/18] ⏭️  ios-018: already done, skipping
+[2/18] ⏭️  ios-011: already done, skipping
+
+[3/18] 🚀 ios-012: Fix LetterRepository case-preserving display names for lowercase and ß
+  Started: Sat Apr 18 13:49:17 UTC 2026
+Done. The fix in `LetterRepository.swift:199-201` now:
+- Sets `name` to `base` (preserving folder case: `"a"` stays `"a"`, `"ß"` stays `"ß"`)
+- Sets `baseLetter` to `base.uppercased()` normally, but keeps `"ß"` as `"ß"` (not `"SS"`)
+- Sets `letterCase` to `.lower` when the character is lowercase (e.g. `"a"`), `.upper` otherwise
+  ✅ ios-012 committed: e1b586b ios-012: Fix LetterRepository case-preserving display names for lowercase and ß
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   01c9009..e1b586b  main -> main
+  Finished: Sat Apr 18 13:50:01 UTC 2026
+
+[4/18] 🚀 ios-016: Enhanced debug calibration overlay with stroke creation workflow
+  Started: Sat Apr 18 13:50:07 UTC 2026
+Committed. Here's what was implemented:
+
+**`TracingViewModel.swift`:**
+- `persistCalibratedStrokes(_:for:)` — encodes `[[CGPoint]]` to strokes.json format and writes to `Application Support/BuchstabenNative/CalibratedStrokes/{letter}.json`, then immediately reloads the stroke tracker
+- `loadCalibratedStrokes(for:)` / `calibratedStrokesURL(for:)` — private helpers for reading from Application Support
+- `reloadStrokeCheckpoints(for:)` now prefers the calibrated file over bundle strokes.json
+- `glyphRelativeStrokes` likewise prefers calibrated file (so the overlay's Reset reloads calibrated data)
+
+**`StrokeCalibrationOverlay.swift`:**
+- "Tippe um Punkt zu setzen" instruction text appears below the mode picker when `mode == .add`
+- Undo button in the bottom bar (disabled when nothing to undo) removes the last checkpoint from the active stroke
+- Export sheet gains a "Speichern" button that calls `vm.persistCalibratedStrokes`
+- `+Stroke` already auto-switched to `.add` mode (was already there)
+  ✅ ios-016 committed: 2096c26 ios-016: Enhanced debug calibration overlay with stroke creation workflow
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   e1b586b..2096c26  main -> main
+  Finished: Sat Apr 18 13:53:25 UTC 2026
+
+[5/18] 🚀 ios-013: Create empty resource folders for lowercase a-z with placeholder strokes.json
+  Started: Sat Apr 18 13:53:30 UTC 2026
+Done. Created 26 folders (`a`–`z`) under `BuchstabenNative/Resources/Letters/`, each with `{"letter": "x", "checkpointRadius": 0.08, "strokes": []}`. Committed as ios-013.
+
+Note: `LetterRepository` currently filters out letters without audio files, so these won't appear in `loadLetters()` until audio is added or the filter is relaxed in a future task — but the calibration overlay can reference them directly for stroke authoring.
+  ✅ ios-013 committed: 58807c2 ios-013: Create empty resource folders for lowercase a-z with placeholder strokes.json
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   2096c26..58807c2  main -> main
+  Finished: Sat Apr 18 13:56:33 UTC 2026
+
+[6/18] 🚀 ios-014: Create empty resource folders for umlauts Ä, Ö, Ü, ß with placeholder strokes.json
+  Started: Sat Apr 18 13:56:39 UTC 2026
+Done. Created `Resources/Letters/Ä/`, `Ö/`, `Ü/`, `ß/` each with a placeholder `strokes.json` matching the existing format (`{"letter": "X", "checkpointRadius": 0.08, "strokes": []}`). Committed as ios-014.
+  ✅ ios-014 committed: 5e8f225 ios-014: Create empty resource folders for umlauts Ä, Ö, Ü, ß with placeholder strokes.json
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   58807c2..5e8f225  main -> main
+  Finished: Sat Apr 18 13:57:32 UTC 2026
+
+[7/18] 🚀 ios-015: Add SchriftArt font selection enum and extend PrimaeLetterRenderer
+  Started: Sat Apr 18 13:57:37 UTC 2026
+Committed. Three files changed:
+
+- **`Core/SchriftArt.swift`** (new) — `enum SchriftArt: String, Codable, CaseIterable` with four cases, `fontFileName`, and `displayName` computed properties.
+- **`Core/PrimaeLetterRenderer.swift`** — `makeFont` gains `fontName: String = "Primae-Regular"`, `render` and `normalizedGlyphRect` each gain `schriftArt: SchriftArt = .druckschrift`. All call sites are unaffected by defaults.
+- **`Features/Tracing/TracingDependencies.swift`** — `var schriftArt: SchriftArt` added as stored property with default `.druckschrift` in the initializer.
+  ✅ ios-015 committed: 9356a18 ios-015: Add SchriftArt font selection enum and extend PrimaeLetterRenderer
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   5e8f225..9356a18  main -> main
+  Finished: Sat Apr 18 13:59:03 UTC 2026
+
+[8/18] 🚀 ios-017: Wire SchriftArt through VM to renderer and stroke loading
+  Started: Sat Apr 18 13:59:08 UTC 2026
