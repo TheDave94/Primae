@@ -16,6 +16,7 @@ struct TracingDependencies {
     var notificationScheduler: LocalNotificationScheduler
     var syncCoordinator: SyncCoordinator
     var thesisCondition: ThesisCondition
+    var schriftArt: SchriftArt
 
     init(
         singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
@@ -29,7 +30,8 @@ struct TracingDependencies {
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         syncCoordinator: SyncCoordinator? = nil,
-        thesisCondition: ThesisCondition = .threePhase
+        thesisCondition: ThesisCondition = .threePhase,
+        schriftArt: SchriftArt = .druckschrift
     ) {
         self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
@@ -53,6 +55,7 @@ struct TracingDependencies {
             )
         }
         self.thesisCondition = thesisCondition
+        self.schriftArt = schriftArt
     }
 
     /// The default production configuration.

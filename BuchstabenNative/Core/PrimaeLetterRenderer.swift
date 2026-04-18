@@ -23,7 +23,7 @@ public enum PrimaeLetterRenderer {
 
     // MARK: - Public API
 
-    public static func render(letter: String, size: CGSize) -> UIImage? {
+    public static func render(letter: String, size: CGSize, schriftArt: SchriftArt = .druckschrift) -> UIImage? {
         guard size.width > 0, size.height > 0, !letter.isEmpty else { return nil }
         // Skip font rendering in test environments to avoid CGDataProvider hangs
         guard !isRunningTests else { return nil }
@@ -44,7 +44,7 @@ public enum PrimaeLetterRenderer {
     /// as rendered by PrimaeLetterRenderer at the given canvas size.
     /// Used by LetterGuideGeometry to transform ghost coordinates from calibrated (PBM)
     /// space to actual rendered space.
-    public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize) -> CGRect? {
+    public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) -> CGRect? {
         guard !isRunningTests, !letter.isEmpty,
               canvasSize.width > 0, canvasSize.height > 0 else { return nil }
         let probe: CGFloat = 800
@@ -73,7 +73,7 @@ public enum PrimaeLetterRenderer {
         NSClassFromString("XCTestCase") != nil
     }
 
-    static func makeFont(size: CGFloat) -> CTFont? {
+    static func makeFont(size: CGFloat, fontName: String = "Primae-Regular") -> CTFont? {
         let bundles: [Bundle] = [.module, .main]
         // Try root, then SPM .copy("Resources") nested paths, then flat Fonts/
         let subdirs: [String?] = [nil, "Resources/Fonts", "Fonts"]
@@ -81,9 +81,9 @@ public enum PrimaeLetterRenderer {
             for subdir in subdirs {
                 let url: URL?
                 if let subdir {
-                    url = bundle.url(forResource: "Primae-Regular", withExtension: "otf", subdirectory: subdir)
+                    url = bundle.url(forResource: fontName, withExtension: "otf", subdirectory: subdir)
                 } else {
-                    url = bundle.url(forResource: "Primae-Regular", withExtension: "otf")
+                    url = bundle.url(forResource: fontName, withExtension: "otf")
                 }
                 guard let url,
                       let dataProvider = CGDataProvider(url: url as CFURL),
