@@ -725,6 +725,10 @@ public final class TracingViewModel {
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
+            if phaseController.currentPhase == .observe {
+                audio.play()
+                isPlaying = true
+            }
         }
     }
 

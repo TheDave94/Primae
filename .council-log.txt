@@ -165,3 +165,11 @@ The implementation was committed at `7b0fe3d` and subsequent commits (ios-001 th
 
 [13/18] 🚀 ios-005: Increase checkpointRadius for more forgiving tracing
   Started: Sat Apr 18 14:36:05 UTC 2026
+Done. All 7 strokes.json files (A, F, I, K, L, M, O) have `checkpointRadius` updated from `0.05` to `0.08`. The effective `isNearStroke` zone is now `0.08 * 3 = 0.24`, giving young children much more forgiving audio feedback while tracing.
+  ✅ ios-005 committed: bfb60a5 ios-005: Increase checkpointRadius for more forgiving tracing
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   79816fc..bfb60a5  main -> main
+  Finished: Sat Apr 18 14:37:15 UTC 2026
+
+[14/18] 🚀 ios-006: Add letter name audio playback on observe phase entry
+  Started: Sat Apr 18 14:37:20 UTC 2026
