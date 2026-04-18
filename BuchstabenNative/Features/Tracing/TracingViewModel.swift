@@ -187,7 +187,12 @@ public final class TracingViewModel {
         haptics.prepare()
         letters = repo.loadLetters()
         guard let first = letters.first else { return }
-        load(letter: first)
+        // Defer the initial load until onboarding completes; otherwise the observe-phase
+        // audio auto-play would loop behind the welcome screen. Returning users (onboarding
+        // already complete) load immediately so the main view is ready on first render.
+        if isOnboardingComplete {
+            load(letter: first)
+        }
         toast("Ready")
     }
 
@@ -558,8 +563,8 @@ public final class TracingViewModel {
         if onboardingCoordinator.isComplete {
             onboardingStore.markComplete()
             isOnboardingComplete = true
-            // Reload the current letter now that onboarding is done so observe-phase
-            // audio kicks in — the initial load() during init suppressed it.
+            // Now that onboarding is done, run the deferred initial letter load so the
+            // main view has state and observe-phase audio plays.
             if letters.indices.contains(letterIndex) {
                 load(letter: letters[letterIndex])
             }
@@ -763,7 +768,7 @@ public final class TracingViewModel {
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
-            if phaseController.currentPhase == .observe, isOnboardingComplete {
+            if phaseController.currentPhase == .observe {
                 audio.play()
                 isPlaying = true
             }

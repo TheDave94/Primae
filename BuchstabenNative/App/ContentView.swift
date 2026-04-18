@@ -20,42 +20,14 @@ public struct ContentView: View {
 
     private var mainContent: some View {
         ZStack {
+            // Stable layout: only the always-visible bars occupy VStack space so the
+            // canvas does not resize when transient UI (toast / HUD / debug) appears.
             VStack(spacing: 0) {
-                // Letter picker bar at top
                 LetterPickerBar()
                     .background(.ultraThinMaterial)
 
-                // Child-friendly control bar with phase indicator
                 childControlBar
 
-                if vm.showDebug {
-                    HStack {
-                        DebugInfoPanel()
-                        Spacer()
-                    }
-                    .allowsHitTesting(false)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
-
-                    debugToggleBar
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 4)
-                }
-
-                if let toast = vm.toastMessage {
-                    Text(toast)
-                        .font(.headline)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial)
-                        .clipShape(Capsule())
-                        .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
-                        .accessibilityAddTraits(.isStaticText)
-                        .padding(.top, 4)
-                }
-
-                // Canvas takes the remaining vertical space so UI chrome above
-                // does not overlap the rendered letter.
                 ZStack(alignment: .top) {
                     TracingCanvasView()
                         .background(Color.white)
@@ -73,18 +45,54 @@ public struct ContentView: View {
                             StrokeCalibrationOverlay(canvasSize: geo.size)
                         }
                     }
+
+                    // Floating debug panels on top of the canvas (no layout impact).
+                    if vm.showDebug {
+                        VStack(spacing: 4) {
+                            HStack {
+                                DebugInfoPanel()
+                                Spacer()
+                            }
+                            debugToggleBar
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                        .allowsHitTesting(true)
+                    }
+
+                    // Floating toast, pinned near the top of the canvas.
+                    if let toast = vm.toastMessage {
+                        VStack {
+                            Text(toast)
+                                .font(.headline)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(.ultraThinMaterial)
+                                .clipShape(Capsule())
+                                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
+                                .accessibilityAddTraits(.isStaticText)
+                                .padding(.top, 8)
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                    }
+
+                    // Floating completion HUD, pinned near the bottom of the canvas.
+                    if let completion = vm.completionMessage {
+                        VStack {
+                            Spacer()
+                            CompletionHUD(message: completion) {
+                                vm.dismissCompletionHUD()
+                            }
+                            .padding(.bottom, 26)
+                            .padding(.horizontal, 12)
+                            .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
-
-                if let completion = vm.completionMessage {
-                    CompletionHUD(message: completion) {
-                        vm.dismissCompletionHUD()
-                    }
-                    .padding(.bottom, 26)
-                    .padding(.horizontal, 12)
-                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
-                }
             }
 
             if vm.isPhaseSessionComplete {
