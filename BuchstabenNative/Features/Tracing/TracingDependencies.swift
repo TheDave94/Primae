@@ -30,9 +30,12 @@ struct TracingDependencies {
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         syncCoordinator: SyncCoordinator? = nil,
-        thesisCondition: ThesisCondition = .threePhase,
+        thesisCondition: ThesisCondition = ThesisCondition.assign(
+            participantId: ParticipantStore.participantId
+        ),
         schriftArt: SchriftArt = {
-            if let raw = UserDefaults.standard.string(forKey: "selectedSchriftArt"),
+            if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.buchstaben.selectedSchriftArt")
+                ?? UserDefaults.standard.string(forKey: "selectedSchriftArt"),
                let art = SchriftArt(rawValue: raw) {
                 return art
             }

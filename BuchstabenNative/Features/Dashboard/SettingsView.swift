@@ -4,7 +4,7 @@ struct SettingsView: View {
     @Environment(TracingViewModel.self) private var vm
     @State private var selectedSchriftArt: SchriftArt = .druckschrift
 
-    private static let defaultsKey = "selectedSchriftArt"
+    private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
 
     var body: some View {
         Form {

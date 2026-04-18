@@ -7,14 +7,14 @@
 //
 // The algorithm prioritises letters the child:
 //   1. Has never practised (highest priority)
-//   2. Hasn't practised recently (recency decay)
+//   2. Hasn't practised recently (recency urgency, Ebbinghaus-style decay)
 //   3. Struggles with (low accuracy)
 //   4. Has practised least (low completion count)
 //
 // References:
-// - Ebbinghaus (1885) forgetting curve
+// - Pearson & Gallagher (1983) Gradual Release of Responsibility
+// - Ebbinghaus (1885) forgetting curve: R(t) = e^(-t/S)
 // - Cepeda et al. (2006) spacing effect meta-analysis
-// - Joan Ganz Cooney Center: 27% improvement with adaptive scheduling
 
 import Foundation
 
@@ -34,7 +34,7 @@ struct LetterScheduler {
 
     // MARK: - Tuning weights
 
-    /// How much recency (days since last practice) affects priority.
+    /// How much recency urgency (Ebbinghaus-style forgetting) affects priority.
     var recencyWeight: Double = 0.40
 
     /// How much accuracy deficit affects priority.
@@ -42,6 +42,11 @@ struct LetterScheduler {
 
     /// How much novelty (low completion count) affects priority.
     var noveltyWeight: Double = 0.25
+
+    /// Ebbinghaus memory stability in days. Controls how fast urgency saturates —
+    /// shorter stability → faster rise toward 1.0. 7 days approximates the
+    /// half-decay observed in word-list memory for typical learners.
+    var memoryStabilityDays: Double = 7.0
 
     /// Days assigned to letters never practised (treated as "very stale").
     var neverPracticedDays: Double = 30.0
@@ -103,11 +108,17 @@ struct LetterScheduler {
         // reduce priority quickly, then it levels off.
         let novelty = 1.0 / (1.0 + Double(p.completionCount))
 
-        // Weighted sum. Each factor is scaled to roughly [0, 100] range
-        // before weighting so the weights are interpretable as percentages.
-        let priority = daysSince * recencyWeight
+        // Ebbinghaus recency urgency: 1 - e^(-t/S). Saturates toward 1 as memory
+        // decays, matching the forgetting curve's exponential shape. Two letters
+        // both long-untouched are treated as similarly urgent, rather than one
+        // being twice as urgent as the other (which linear days would imply).
+        let recencyUrgency = 1.0 - exp(-daysSince / memoryStabilityDays)
+
+        // Weighted sum. All three factors are in [0, 1], scaled to [0, 100]
+        // so the weights act as interpretable percentages.
+        let priority = recencyUrgency  * 100 * recencyWeight
                      + accuracyDeficit * 100 * accuracyWeight
-                     + novelty * 100 * noveltyWeight
+                     + novelty         * 100 * noveltyWeight
 
         return ScoredLetter(letter: letter, priority: priority)
     }
