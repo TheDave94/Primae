@@ -11,18 +11,15 @@ public struct LetterGuideGeometry {
     // MARK: - Public API
 
     /// Returns a `CGPath` for the given letter, scaled to fit `rect`.
-    /// When `glyphRect` is provided (PrimaeLetterRenderer output) the ghost coordinates —
-    /// which were hand-calibrated against the PBM bitmaps — are linearly transformed from
-    /// PBM space into the actual rendered glyph space so the overlay stays aligned.
+    /// The `glyphRect` parameter is reserved for future font-outline ghost rendering alignment.
     public static func cgPath(for letter: String, in rect: CGRect,
                                glyphRect: CGRect? = nil) -> CGPath? {
         guard !rect.isEmpty else { return nil }
         let key = letter.uppercased()
         let segments = guides[key].flatMap { $0.isEmpty ? nil : $0 } ?? fallbackSegments(for: key)
         let path = CGMutablePath()
-        let pbm  = pbmRects[key]
         for segment in segments {
-            apply(segment, to: path, in: rect, glyphRect: glyphRect, pbmRect: pbm)
+            apply(segment, to: path, in: rect)
         }
         return path.isEmpty ? nil : path
     }
@@ -42,37 +39,21 @@ public struct LetterGuideGeometry {
                 y: rect.minY + point.y * rect.height)
     }
 
-    /// Maps a calibrated (PBM) point into rendered glyph space, then into screen rect.
-    private static func mapWithTransform(_ point: CGPoint, in rect: CGRect,
-                                          glyphRect: CGRect?, pbmRect: CGRect?) -> CGPoint {
-        guard let gr = glyphRect, let pr = pbmRect,
-              pr.width > 0, pr.height > 0 else {
-            return map(point, in: rect)
-        }
-        let rx = (point.x - pr.minX) / pr.width
-        let ry = (point.y - pr.minY) / pr.height
-        let nx = gr.minX + rx * gr.width
-        let ny = gr.minY + ry * gr.height
-        return CGPoint(x: rect.minX + nx * rect.width,
-                       y: rect.minY + ny * rect.height)
-    }
-
-    private static func apply(_ segment: Segment, to path: CGMutablePath, in rect: CGRect,
-                               glyphRect: CGRect? = nil, pbmRect: CGRect? = nil) {
+    private static func apply(_ segment: Segment, to path: CGMutablePath, in rect: CGRect) {
         switch segment {
         case let .line(a, b):
-            path.move(to: mapWithTransform(a, in: rect, glyphRect: glyphRect, pbmRect: pbmRect))
-            path.addLine(to: mapWithTransform(b, in: rect, glyphRect: glyphRect, pbmRect: pbmRect))
+            path.move(to: map(a, in: rect))
+            path.addLine(to: map(b, in: rect))
 
         case let .polyline(points):
             guard let first = points.first else { return }
-            path.move(to: mapWithTransform(first, in: rect, glyphRect: glyphRect, pbmRect: pbmRect))
+            path.move(to: map(first, in: rect))
             for point in points.dropFirst() {
-                path.addLine(to: mapWithTransform(point, in: rect, glyphRect: glyphRect, pbmRect: pbmRect))
+                path.addLine(to: map(point, in: rect))
             }
 
         case let .arc(center, radius, start, end, clockwise):
-            let mappedCenter = mapWithTransform(center, in: rect, glyphRect: glyphRect, pbmRect: pbmRect)
+            let mappedCenter = map(center, in: rect)
             let scaledRadius = radius * min(rect.width, rect.height)
             let startRad = start * .pi / 180
             let endRad = end * .pi / 180
@@ -93,19 +74,6 @@ public struct LetterGuideGeometry {
             .line(CGPoint(x: 0.30, y: 0.65), CGPoint(x: 0.70, y: 0.65))
         ]
     }
-
-    // MARK: - PBM calibration rects
-    // Ink bounding boxes measured from the 2048×2048 PBM bitmaps that ghost coordinates
-    // were calibrated against. Used to transform ghost paths into PrimaeLetterRenderer space.
-    static let pbmRects: [String: CGRect] = [
-        "A": CGRect(x: 0.1914, y: 0.1016, width: 0.5645, height: 0.7949),
-        "F": CGRect(x: 0.3086, y: 0.1016, width: 0.4375, height: 0.7949),
-        "I": CGRect(x: 0.4375, y: 0.1016, width: 0.1211, height: 0.7949),
-        "K": CGRect(x: 0.2656, y: 0.1016, width: 0.5215, height: 0.7949),
-        "L": CGRect(x: 0.3066, y: 0.1016, width: 0.4160, height: 0.7949),
-        "M": CGRect(x: 0.1426, y: 0.1367, width: 0.6660, height: 0.7227),
-        "O": CGRect(x: 0.2188, y: 0.0996, width: 0.5605, height: 0.7969),
-    ]
 
     // MARK: - Letter definitions
     // Coordinates hand-calibrated against PBM bitmaps using the ghost calibration tool.
