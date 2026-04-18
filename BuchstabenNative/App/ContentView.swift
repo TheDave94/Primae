@@ -30,6 +30,14 @@ public struct ContentView: View {
                 }
             }
 
+            if vm.isPhaseSessionComplete {
+                CompletionCelebrationOverlay(starsEarned: vm.starsEarned) {
+                    vm.loadRecommendedLetter()
+                }
+                .transition(.scale.combined(with: .opacity))
+                .zIndex(10)
+            }
+
             // Debug calibration overlay — drag dots to align with strokes
             if vm.showDebug {
                 GeometryReader { geo in
@@ -66,6 +74,7 @@ public struct ContentView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
+        .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78), value: vm.isPhaseSessionComplete)
         .sensoryFeedback(.success, trigger: vm.completionMessage != nil)
     }
 
