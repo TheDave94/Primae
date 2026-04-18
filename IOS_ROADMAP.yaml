@@ -10,6 +10,10 @@
 # - Test target uses .swiftLanguageMode(.v5) — do not change this
 # - Main target uses .defaultIsolation(MainActor.self) — all types are implicitly @MainActor
 
+# ============================================================
+# PHASE 1: Bug fixes and audio (items 001-010) — priority 2, runs after Phase 2
+# ============================================================
+
 - id: ios-001
   title: "Fix stroke tracker coordinate mismatch with Canvas render size"
   description: |
@@ -30,7 +34,7 @@
     - "Does NOT change the strokes.json coordinate format"
   target_files:
     - "TracingViewModel.swift"
-  priority: 10
+  priority: 2
   status: pending
 
 - id: ios-002
@@ -54,7 +58,7 @@
     - "EndToEndTracingSessionTests.swift"
     - "AccessibilityContractTests.swift"
     - "BuchstabenNativeTests.swift"
-  priority: 8
+  priority: 2
   status: pending
 
 - id: ios-003
@@ -77,7 +81,7 @@
   target_files:
     - "CompletionCelebrationOverlay.swift"
     - "ContentView.swift"
-  priority: 7
+  priority: 2
   status: pending
 
 - id: ios-004
@@ -99,7 +103,7 @@
     - "Does NOT change the LetterAnimationGuide.swift structure"
   target_files:
     - "TracingViewModel.swift"
-  priority: 7
+  priority: 2
   status: pending
 
 - id: ios-005
@@ -126,7 +130,7 @@
     - "Resources/Letters/L/strokes.json"
     - "Resources/Letters/M/strokes.json"
     - "Resources/Letters/O/strokes.json"
-  priority: 9
+  priority: 2
   status: pending
 
 - id: ios-006
@@ -148,7 +152,7 @@
     - "Does NOT change the PlaybackStateMachine — uses existing play()/stop() interface"
   target_files:
     - "TracingViewModel.swift"
-  priority: 6
+  priority: 2
   status: pending
 
 - id: ios-007
@@ -174,7 +178,7 @@
     - "LetterGuideRenderer.swift"
     - "LetterGuideRendererTests.swift"
     - "LetterGuideSnapshotTests.swift"
-  priority: 3
+  priority: 2
   status: pending
 
 - id: ios-008
@@ -196,7 +200,7 @@
     - "ProgressStore.swift"
     - "TracingViewModel.swift"
     - "ProgressStoreTests.swift"
-  priority: 5
+  priority: 2
   status: pending
 
 - id: ios-009
@@ -216,7 +220,7 @@
     - "Does NOT modify TracingCanvasView.swift"
   target_files:
     - "ContentView.swift"
-  priority: 4
+  priority: 2
   status: pending
 
 - id: ios-010
@@ -235,5 +239,212 @@
     - "Existing LetterRepositoryTests and LetterRepositoryErrorHandlingTests still pass"
   target_files:
     - "LetterRepository.swift"
+  priority: 2
+  status: pending
+
+# ============================================================
+# PHASE 2: Infrastructure for full alphabet (items 011-018)
+# EXECUTION ORDER: ios-018 → ios-011 → ios-012 → ios-016 → ios-013 → ios-014 → ios-015 → ios-017
+# Priorities are set to enforce this order. Phase 1 items run after Phase 2.
+# These build the scaffolding for all letters. The UI continues
+# to show only the 7 demo letters until audio/strokes are added.
+# ============================================================
+
+- id: ios-011
+  title: "Add letter visibility filter with demo/all toggle"
+  description: |
+    The app currently shows only the 7 letters that have audio files (A, F, I, K, L, M, O).
+    Add a property to TracingViewModel that controls whether to show all letters or just
+    the demo set. The toggle should be accessible from the top bar UI. When set to "all",
+    letters without audio load but audio simply doesn't play. When set to "demo" (default),
+    only the 7 calibrated letters with audio are navigable. This lets developers work on
+    new letters without exposing them to end users.
+  acceptance_criteria:
+    - "TracingViewModel.swift gains a published var showAllLetters: Bool = false property"
+    - "TracingViewModel.swift gains a computed var visibleLetterNames: [String] that returns either all loaded letter names or only ['A','F','I','K','L','M','O'] based on showAllLetters"
+    - "nextLetter(), previousLetter(), randomLetter() navigate only within visibleLetterNames"
+    - "loadRecommendedLetter() passes visibleLetterNames to the LetterScheduler"
+    - "ContentView.swift adds a ToggleChip in the top bar labeled 'Alle' that toggles vm.showAllLetters"
+    - "Default value is false — only the 7 demo letters show on launch"
+    - "When showAllLetters is true, swiping through letters includes all loaded letters (those with strokes.json)"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify LetterRepository.swift — filtering happens in the VM"
+    - "Does NOT crash when navigating to a letter without audio files"
+  target_files:
+    - "TracingViewModel.swift"
+    - "ContentView.swift"
+  priority: 9
+  status: pending
+
+- id: ios-012
+  title: "Fix LetterRepository case-preserving display names for lowercase and ß"
+  description: |
+    LetterRepository.loadBundledStrokeLettersWithValidation() calls base.uppercased() for
+    the display name. This breaks lowercase letters (folder "a" becomes display "A") and ß
+    (Swift uppercases "ß" to "SS"). Fix to preserve the folder name as the display name,
+    and set baseLetter to the uppercase grouping key separately.
+  acceptance_criteria:
+    - "In LetterRepository.swift loadBundledStrokeLettersWithValidation(), the LetterAsset name field preserves the original folder case: folder 'a' → name 'a', folder 'A' → name 'A'"
+    - "The baseLetter field is set to base.uppercased() for grouping, EXCEPT when base == 'ß' where baseLetter is set to 'ß'"
+    - "The letterCase field is set to .lower when base == base.lowercased() and base != base.uppercased(), otherwise .upper"
+    - "LetterAsset(id: 'a', name: 'a', baseLetter: 'A', letterCase: .lower, ...) is a valid constructed asset"
+    - "LetterAsset(id: 'ß', name: 'ß', baseLetter: 'ß', letterCase: .lower, ...) does NOT become name 'SS'"
+    - "Existing LetterRepositoryTests still pass — uppercase letters are unaffected"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT change the LetterAsset struct fields — uses existing baseLetter, letterCase properties"
+  target_files:
+    - "LetterRepository.swift"
   priority: 8
+  status: pending
+
+- id: ios-013
+  title: "Create empty resource folders for lowercase a-z with placeholder strokes.json"
+  description: |
+    Create 26 lowercase letter resource folders under BuchstabenNative/Resources/Letters/
+    (a, b, c, ..., z) each containing a minimal strokes.json with the letter name and an
+    empty strokes array. This lets the LetterRepository discover them and the calibration
+    overlay can then be used to create real stroke data interactively. No audio files are
+    included — these letters will only be visible when the "Alle" toggle is on.
+  acceptance_criteria:
+    - "26 folders exist: Resources/Letters/a/ through Resources/Letters/z/"
+    - "Each folder contains a strokes.json with format: {\"letter\": \"x\", \"checkpointRadius\": 0.08, \"strokes\": []}"
+    - "LetterRepository.loadLetters() returns these as LetterAsset entries with empty strokes and empty audioFiles"
+    - "The app does NOT crash when loading or navigating to a letter with zero strokes and zero audio"
+    - "Letters with empty strokes array show the Primae-rendered letter image but no ghost lines, no start dots, and no animation"
+    - "Does NOT modify any Swift source files"
+    - "Does NOT create audio files — only strokes.json placeholders"
+  target_files:
+    - "Resources/Letters/a/strokes.json"
+    - "Resources/Letters/b/strokes.json"
+    - "Resources/Letters/c/strokes.json"
+  priority: 6
+  status: pending
+
+- id: ios-014
+  title: "Create empty resource folders for umlauts Ä, Ö, Ü, ß with placeholder strokes.json"
+  description: |
+    Create 4 umlaut/special character resource folders under BuchstabenNative/Resources/Letters/
+    each containing a minimal strokes.json. The Primae font contains glyphs for all four
+    characters. These will only be visible with the "Alle" toggle and can be calibrated
+    via the debug overlay.
+  acceptance_criteria:
+    - "4 folders exist: Resources/Letters/Ä/, Resources/Letters/Ö/, Resources/Letters/Ü/, Resources/Letters/ß/"
+    - "Each folder contains a strokes.json with format: {\"letter\": \"X\", \"checkpointRadius\": 0.08, \"strokes\": []}"
+    - "PrimaeLetterRenderer.render(letter:size:) successfully renders each character (Ä, Ö, Ü, ß) — verify the Primae font has these glyphs"
+    - "LetterRepository.loadLetters() includes these as LetterAsset entries"
+    - "The app does NOT crash when navigating to ß — the uppercased() → 'SS' issue is handled by ios-012"
+    - "Does NOT modify any Swift source files"
+  target_files:
+    - "Resources/Letters/Ä/strokes.json"
+    - "Resources/Letters/Ö/strokes.json"
+    - "Resources/Letters/Ü/strokes.json"
+    - "Resources/Letters/ß/strokes.json"
+  priority: 5
+  status: pending
+
+- id: ios-015
+  title: "Add SchriftArt font selection enum and extend PrimaeLetterRenderer"
+  description: |
+    German schools use different handwriting scripts by Bundesland. Add a SchriftArt enum
+    representing the four standard scripts and extend PrimaeLetterRenderer to accept a font
+    selection. For now only .druckschrift (Primae-Regular) is functional — the others are
+    defined but return nil until fonts are added. The font selection is stored in
+    TracingDependencies so it can be persisted and tested.
+  acceptance_criteria:
+    - "A new file Core/SchriftArt.swift defines enum SchriftArt: String, Codable, CaseIterable with cases: druckschrift, grundschrift, vereinfachteAusgangschrift, schulausgangsschrift"
+    - "SchriftArt has a var fontFileName: String computed property returning the OTF filename (druckschrift → 'Primae-Regular', others → placeholder names)"
+    - "SchriftArt has a var displayName: String with German labels ('Druckschrift', 'Grundschrift', 'Vereinfachte Ausgangsschrift', 'Schulausgangsschrift')"
+    - "PrimaeLetterRenderer.makeFont(size:) gains an optional fontName: String parameter defaulting to 'Primae-Regular'"
+    - "PrimaeLetterRenderer.render(letter:size:) gains an optional schriftArt: SchriftArt parameter defaulting to .druckschrift"
+    - "PrimaeLetterRenderer.normalizedGlyphRect(for:canvasSize:) gains an optional schriftArt: SchriftArt parameter defaulting to .druckschrift"
+    - "All existing call sites continue to work without changes (default parameters)"
+    - "TracingDependencies.swift gains a var schriftArt: SchriftArt = .druckschrift field"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT add new font files — only the enum and parameter plumbing"
+    - "All existing tests pass without changes due to default parameter values"
+  target_files:
+    - "SchriftArt.swift"
+    - "PrimaeLetterRenderer.swift"
+    - "TracingDependencies.swift"
+  priority: 4
+  status: pending
+
+- id: ios-016
+  title: "Enhanced debug calibration overlay with stroke creation workflow"
+  description: |
+    The current StrokeCalibrationOverlay supports drag/add/delete for existing dots but
+    the workflow for creating strokes from scratch on a new letter is clunky. Enhance it
+    with: (1) clear visual feedback when in Add mode (instruction text overlay),
+    (2) an undo button for the last placed point, (3) auto-switch to Add mode after
+    pressing +Stroke, (4) a 'Save' button that writes calibrated strokes directly to
+    the app's Application Support directory so calibration persists across launches
+    without needing to manually copy JSON. On next letter load, user-calibrated strokes
+    in Application Support take priority over bundle strokes.json.
+  acceptance_criteria:
+    - "StrokeCalibrationOverlay.swift shows instruction text 'Tippe um Punkt zu setzen' when mode == .add, positioned below the mode picker"
+    - "An 'Undo' button is visible in the bottom bar that removes the last-added checkpoint from the active stroke"
+    - "Pressing '+Stroke' automatically switches mode to .add and sets the new stroke as active"
+    - "A 'Save' button in the export sheet writes the current letter's calibrated strokes to Application Support/BuchstabenNative/CalibratedStrokes/{letter}.json"
+    - "TracingViewModel.swift gains a func persistCalibratedStrokes(_ strokes: [[CGPoint]], for letter: String) that serializes glyph-relative coords to JSON and writes to Application Support"
+    - "In TracingViewModel.swift reloadStrokeCheckpoints(for:), check for a user-calibrated file in Application Support BEFORE using the bundle strokes.json"
+    - "The calibrated file format matches strokes.json exactly: {letter, checkpointRadius, strokes: [{id, checkpoints: [{x, y}]}]}"
+    - "When a calibrated file exists, it is loaded instead of the bundle version — visible immediately after Save + Reset"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify TracingCanvasView.swift"
+    - "Does NOT modify StrokeTracker.swift"
+  target_files:
+    - "StrokeCalibrationOverlay.swift"
+    - "TracingViewModel.swift"
+  priority: 7
+  status: pending
+
+- id: ios-017
+  title: "Wire SchriftArt through VM to renderer and stroke loading"
+  description: |
+    After ios-015 creates the SchriftArt enum and parameter plumbing, this task wires it
+    through TracingViewModel so changing the font selection re-renders all letters with
+    the new font and reloads stroke checkpoints. The font selection should be persisted
+    to UserDefaults. For the thesis, only .druckschrift works — but the architecture
+    supports switching.
+  acceptance_criteria:
+    - "TracingViewModel.swift reads schriftArt from TracingDependencies and stores it as a published property"
+    - "TracingViewModel.swift passes schriftArt to PrimaeLetterRenderer.render() and .normalizedGlyphRect() in all call sites"
+    - "Changing vm.schriftArt triggers re-rendering of currentLetterImage and reloading of stroke checkpoints"
+    - "TracingCanvasView.swift passes vm.schriftArt to normalizedGlyphRect in ghost line and start dot rendering"
+    - "StrokeCalibrationOverlay.swift passes vm.schriftArt to normalizedGlyphRect in its glyphRect() helper"
+    - "A font picker is NOT added to the UI in this task — that's a future item"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT add new font files"
+    - "All existing tests pass — .druckschrift is the default everywhere"
+  target_files:
+    - "TracingViewModel.swift"
+    - "TracingCanvasView.swift"
+    - "StrokeCalibrationOverlay.swift"
+  priority: 3
+  status: pending
+  depends_on: ios-015
+
+- id: ios-018
+  title: "Guard against empty strokes in all rendering and tracking paths"
+  description: |
+    With lowercase/umlaut placeholder letters having empty strokes arrays, several code
+    paths may crash or behave unexpectedly: startGuideAnimation() builds from empty data,
+    ghost line rendering iterates empty array, start dot rendering accesses empty strokes,
+    observe phase overlay appears but animation never starts. Add guards so empty-stroke
+    letters render their glyph image only, with no ghost/dots/animation, and the phase
+    controller auto-advances past observe (since there's nothing to observe).
+  acceptance_criteria:
+    - "TracingViewModel.startGuideAnimation() returns early without crashing when letter.strokes.strokes.isEmpty"
+    - "TracingCanvasView ghost line rendering safely handles rawStrokes with zero strokes (no crash, no rendering)"
+    - "TracingCanvasView start dot rendering safely handles zero strokes"
+    - "When a letter has empty strokes, the observe phase is auto-skipped: phaseController advances directly to guided"
+    - "When a letter has empty strokes, guided phase tracing works (green ink draws) but progress stays at 0 and no completion fires"
+    - "The app does NOT crash when navigating to any letter, even one with no strokes and no audio"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT modify StrokeTracker.swift"
+    - "Does NOT modify LetterRepository.swift"
+  target_files:
+    - "TracingViewModel.swift"
+    - "TracingCanvasView.swift"
+  priority: 10
   status: pending
