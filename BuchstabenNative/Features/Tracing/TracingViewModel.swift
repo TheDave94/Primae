@@ -236,6 +236,15 @@ public final class TracingViewModel {
         toast("Reset")
     }
 
+    func loadLetter(name: String) {
+        guard let idx = letters.firstIndex(where: { $0.name == name }) else { return }
+        letterIndex = idx
+        load(letter: letters[idx])
+        toast("Buchstabe: \(currentLetterName)")
+    }
+
+    var allLetterNames: [String] { letters.map(\.name) }
+
     func nextLetter() {
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }

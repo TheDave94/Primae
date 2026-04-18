@@ -47,15 +47,28 @@ public struct ContentView: View {
                 .ignoresSafeArea()
             }
 
-            VStack(spacing: 10) {
-                topBar
+            VStack(spacing: 0) {
+                // Letter picker bar at top
+                LetterPickerBar()
+                    .background(.ultraThinMaterial)
+
+                // Child-friendly control bar with phase indicator
+                childControlBar
+
                 if vm.showDebug {
                     HStack {
                         DebugInfoPanel()
                         Spacer()
                     }
                     .allowsHitTesting(false)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+
+                    debugToggleBar
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 4)
                 }
+
                 if let toast = vm.toastMessage {
                     Text(toast)
                         .font(.headline)
@@ -65,6 +78,7 @@ public struct ContentView: View {
                         .clipShape(Capsule())
                         .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
                         .accessibilityAddTraits(.isStaticText)
+                        .padding(.top, 4)
                 }
 
                 Spacer()
@@ -74,11 +88,10 @@ public struct ContentView: View {
                         vm.dismissCompletionHUD()
                     }
                     .padding(.bottom, 26)
+                    .padding(.horizontal, 12)
                     .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.top, 12)
-            .padding(.horizontal, 12)
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
@@ -90,51 +103,55 @@ public struct ContentView: View {
         }
     }
 
-    private var topBar: some View {
-        HStack(spacing: 8) {
-            ToggleChip(title: "Ghost", isOn: vm.showGhost, hint: "Show or hide guide lines") { vm.toggleGhost() }
-            ToggleChip(title: "Order", isOn: vm.strokeEnforced, hint: "Require stroke order for sound playback") { vm.toggleStrokeEnforcement() }
-            ToggleChip(title: "Debug", isOn: vm.showDebug, hint: "Show debug overlays") { vm.toggleDebug() }
-            ToggleChip(title: "Alle", isOn: vm.showAllLetters, hint: "Alle Buchstaben oder nur Demo-Buchstaben anzeigen") { vm.showAllLetters.toggle() }
+    private var childControlBar: some View {
+        HStack(spacing: 12) {
+            PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
+                .onLongPressGesture { vm.toggleDebug() }
+                .accessibilityHint("Halte gedrückt für Entwickleroptionen")
 
-            Button("Reset") { vm.resetLetter() }
-                .buttonStyle(.borderedProminent)
-                .accessibilityLabel("Reset current letter")
-                .accessibilityHint("Clears current stroke progress")
+            Spacer()
 
-            PhaseIndicator(phase: vm.learningPhase, scores: vm.phaseScores)
+            Button {
+                vm.resetLetter()
+            } label: {
+                Image(systemName: "arrow.counterclockwise.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.orange)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Buchstabe wiederholen")
 
-            Button("📚") { vm.loadRecommendedLetter() }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Empfohlener Buchstabe")
+            Button {
+                vm.loadRecommendedLetter()
+            } label: {
+                Image(systemName: "star.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.yellow)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Empfohlener Buchstabe")
 
             Button {
                 showDashboard = true
             } label: {
-                Image(systemName: "gear")
+                Image(systemName: "gear.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.gray)
             }
-            .buttonStyle(.bordered)
-            .accessibilityLabel("Lernfortschritt anzeigen")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Einstellungen")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial)
+    }
 
-            Spacer(minLength: 6)
-
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(vm.isPlaying ? .green : .red)
-                    .frame(width: 12, height: 12)
-                    .accessibilityHidden(true)
-
-                Text(vm.currentLetterName)
-                    .font(.headline)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Current letter")
-            .accessibilityValue(vm.currentLetterName)
-            .accessibilityHint(vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused")
+    private var debugToggleBar: some View {
+        HStack(spacing: 8) {
+            ToggleChip(title: "Ghost", isOn: vm.showGhost, hint: "Show or hide guide lines") { vm.toggleGhost() }
+            ToggleChip(title: "Order", isOn: vm.strokeEnforced, hint: "Require stroke order for sound playback") { vm.toggleStrokeEnforcement() }
+            ToggleChip(title: "Alle", isOn: vm.showAllLetters, hint: "Alle Buchstaben oder nur Demo-Buchstaben anzeigen") { vm.showAllLetters.toggle() }
+            Spacer()
         }
     }
 }
