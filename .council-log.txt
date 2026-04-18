@@ -119,3 +119,49 @@ To https://github.com/TheDave94/Buchstaben-Lernen-App.git
 
 [8/18] 🚀 ios-017: Wire SchriftArt through VM to renderer and stroke loading
   Started: Sat Apr 18 13:59:08 UTC 2026
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 14:33:50 UTC 2026
+═══════════════════════════════════════════════════════
+[1/18] ⏭️  ios-018: already done, skipping
+[2/18] ⏭️  ios-011: already done, skipping
+[3/18] ⏭️  ios-012: already done, skipping
+[4/18] ⏭️  ios-016: already done, skipping
+[5/18] ⏭️  ios-013: already done, skipping
+[6/18] ⏭️  ios-014: already done, skipping
+[7/18] ⏭️  ios-015: already done, skipping
+
+[8/18] 🚀 ios-017: Wire SchriftArt through VM to renderer and stroke loading
+  Started: Sat Apr 18 14:33:50 UTC 2026
+This is a Linux environment — `xcodebuild` is only available on the macOS CI runner. However, reviewing the code, **all acceptance criteria for ios-017 are already implemented and committed** (`7b0fe3d`):
+
+| Criterion | Location | Status |
+|---|---|---|
+| `schriftArt` read from `TracingDependencies` | `TracingViewModel.swift:173` | ✅ |
+| `schriftArt` stored as published property | `TracingViewModel.swift:18` | ✅ |
+| `didSet` re-renders image + reloads checkpoints | `TracingViewModel.swift:19-28` | ✅ |
+| `render()` calls pass `schriftArt` | `TracingViewModel.swift:24,43,697` | ✅ |
+| `normalizedGlyphRect()` calls pass `schriftArt` | `TracingViewModel.swift:603,812` | ✅ |
+| `TracingCanvasView` passes `vm.schriftArt` | `TracingCanvasView.swift:20,44,71` | ✅ |
+| `StrokeCalibrationOverlay` passes `vm.schriftArt` | `StrokeCalibrationOverlay.swift:194` | ✅ |
+| No UI font picker added | — | ✅ |
+| `AudioEngine.swift` untouched | — | ✅ |
+
+The implementation was committed at `7b0fe3d` and subsequent commits (ios-001 through ios-004) built on top of it without disturbing this wiring. No changes needed and no re-commit required.
+═══════════════════════════════════════════════════════
+  iOS Council Batch — Sat Apr 18 14:36:05 UTC 2026
+═══════════════════════════════════════════════════════
+[1/18] ⏭️  ios-018: already done, skipping
+[2/18] ⏭️  ios-011: already done, skipping
+[3/18] ⏭️  ios-012: already done, skipping
+[4/18] ⏭️  ios-016: already done, skipping
+[5/18] ⏭️  ios-013: already done, skipping
+[6/18] ⏭️  ios-014: already done, skipping
+[7/18] ⏭️  ios-015: already done, skipping
+[8/18] ⏭️  ios-017: already done, skipping
+[9/18] ⏭️  ios-001: already done, skipping
+[10/18] ⏭️  ios-002: already done, skipping
+[11/18] ⏭️  ios-003: already done, skipping
+[12/18] ⏭️  ios-004: already done, skipping
+
+[13/18] 🚀 ios-005: Increase checkpointRadius for more forgiving tracing
+  Started: Sat Apr 18 14:36:05 UTC 2026
