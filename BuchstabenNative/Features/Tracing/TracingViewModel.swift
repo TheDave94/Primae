@@ -323,6 +323,15 @@ public final class TracingViewModel {
         guard isSingleTouchInteractionActive      else { return }
         guard let lastPoint                       else { return }
 
+        // If the canvas size reported by the touch layer differs from what was used to
+        // map checkpoints (self.canvasSize), resync immediately.  This closes the window
+        // where a rotation/layout update has already fired canvasSize.didSet — reloading
+        // checkpoints for the new size — but the touch overlay coordinator still carries
+        // the previous size, causing normalizedPoint vs checkpoint coordinate mismatch.
+        if canvasSize != self.canvasSize, !letters.isEmpty, letterIndex < letters.count {
+            reloadStrokeCheckpoints(for: letters[letterIndex], usingSize: canvasSize)
+        }
+
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 && p.x <= canvasSize.width && p.y <= canvasSize.height
 
@@ -786,13 +795,17 @@ public final class TracingViewModel {
         }
     }
 
-    private func reloadStrokeCheckpoints(for letter: LetterAsset) {
+    /// Reload stroke checkpoints mapped to canvas-normalised coordinates (0–1).
+    /// Pass `usingSize` to override `self.canvasSize` — used by `updateTouch` to
+    /// guarantee the mapping size equals the size used to normalise the touch point.
+    private func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
         // Map to canvas-normalised coordinates using the actual rendered glyph rect.
         // User-calibrated file in Application Support takes priority over bundle strokes.json.
+        let effectiveSize = size ?? canvasSize
         let source = loadCalibratedStrokes(for: letter.name) ?? letter.strokes
         let strokesForTracker: LetterStrokes
-        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize, schriftArt: schriftArt) {
+        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
             let mapped = source.strokes.map { stroke in
                 StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
                     Checkpoint(x: gr.minX + cp.x * gr.width,
