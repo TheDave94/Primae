@@ -357,7 +357,10 @@ public final class TracingViewModel {
         let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
         setPlaybackState(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 
-        if strokeTracker.isComplete, !didCompleteCurrentLetter {
+        // Guard against vacuous completion: StrokeTracker.isComplete returns true
+        // when the letter has no strokes (empty-progress allSatisfy is trivially true).
+        let hasStrokes = (strokeTracker.definition?.strokes.isEmpty == false)
+        if hasStrokes, strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
             haptics.fire(.letterCompleted)
 
@@ -667,11 +670,17 @@ public final class TracingViewModel {
         playbackMachine.resumeIntent   = true
         cancelPendingPlaybackWork()
         stopGuideAnimation()
-        // Auto-start stroke animation in observe phase
+        // Auto-start stroke animation in observe phase, or skip the phase entirely
+        // when the letter has no strokes (lowercase/umlaut placeholders) — there's
+        // nothing to demonstrate, and isComplete would otherwise report vacuous success.
         if phaseController.currentPhase == .observe {
-            Task { [self] in
-                try? await Task.sleep(for: .milliseconds(300))
-                startGuideAnimation()
+            if letter.strokes.strokes.isEmpty {
+                phaseController.advance(score: 1.0)
+            } else {
+                Task { [self] in
+                    try? await Task.sleep(for: .milliseconds(300))
+                    startGuideAnimation()
+                }
             }
         }
         if let firstAudio = letter.audioFiles.first {

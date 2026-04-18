@@ -16,6 +16,7 @@ struct TracingCanvasView: View {
 
             if vm.showGhost,
                let rawStrokes = vm.glyphRelativeStrokes,
+               !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size) {
                 // Ghost lines from stroke JSON — same data as dots, guaranteed alignment.
                 for stroke in rawStrokes.strokes {
@@ -39,6 +40,7 @@ struct TracingCanvasView: View {
             // to this canvas's size, so they align exactly with the ghost lines.
             if vm.learningPhase != .freeWrite,
                let rawStrokes = vm.rawGlyphStrokes,
+               !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(
                    for: vm.currentLetterName, canvasSize: size) {
                 for (idx, stroke) in rawStrokes.strokes.enumerated() {
