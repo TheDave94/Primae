@@ -132,6 +132,15 @@ struct StrokeCalibrationOverlay: View {
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
                     .padding(.top, 50)
 
+                    if mode == .add {
+                        Text("Tippe um Punkt zu setzen")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 7)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+
                     Spacer()
 
                     // Bottom: actions
@@ -139,6 +148,11 @@ struct StrokeCalibrationOverlay: View {
                         Button("Reset") { loadFromVM() }
                             .buttonStyle(.bordered)
                             .tint(.gray)
+
+                        Button("Undo") { undoLastCheckpoint() }
+                            .buttonStyle(.bordered)
+                            .tint(.indigo)
+                            .disabled(!canUndo)
 
                         Button("Apply") { applyToVM() }
                             .buttonStyle(.borderedProminent)
@@ -168,7 +182,9 @@ struct StrokeCalibrationOverlay: View {
             .onChange(of: vm.currentLetterName) { loadFromVM() }
         }
         .sheet(isPresented: $showExport) {
-            ExportSheet(text: exportText, letterName: vm.currentLetterName)
+            ExportSheet(text: exportText, letterName: vm.currentLetterName) {
+                vm.persistCalibratedStrokes(editableStrokes, for: vm.currentLetterName)
+            }
         }
     }
 
@@ -212,6 +228,19 @@ struct StrokeCalibrationOverlay: View {
         editableStrokes[si].remove(at: ci)
         if editableStrokes[si].isEmpty {
             deleteStroke(si)
+        }
+    }
+
+    private var canUndo: Bool {
+        editableStrokes.indices.contains(activeStroke) && !editableStrokes[activeStroke].isEmpty
+    }
+
+    private func undoLastCheckpoint() {
+        guard editableStrokes.indices.contains(activeStroke),
+              !editableStrokes[activeStroke].isEmpty else { return }
+        editableStrokes[activeStroke].removeLast()
+        if editableStrokes[activeStroke].isEmpty {
+            deleteStroke(activeStroke)
         }
     }
 
@@ -270,8 +299,10 @@ struct StrokeCalibrationOverlay: View {
 private struct ExportSheet: View {
     let text: String
     let letterName: String
+    let onSave: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
+    @State private var saved = false
 
     var body: some View {
         NavigationStack {
@@ -293,12 +324,21 @@ private struct ExportSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
-                Button(copied ? "Copied ✓" : "Copy to Clipboard") {
-                    UIPasteboard.general.string = text
-                    copied = true
+                HStack(spacing: 12) {
+                    Button(copied ? "Copied ✓" : "Copy to Clipboard") {
+                        UIPasteboard.general.string = text
+                        copied = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(copied ? .green : .blue)
+
+                    Button(saved ? "Gespeichert ✓" : "Speichern") {
+                        onSave?()
+                        saved = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(saved ? .green : .purple)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(copied ? .green : .blue)
             }
             .padding()
             .navigationTitle("Stroke JSON")

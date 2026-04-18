@@ -52,10 +52,11 @@ public final class TracingViewModel {
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
     /// Raw glyph-relative stroke data (0-1 within bounding box) for rendering.
-    /// Use this with normalizedGlyphRect to map to any canvas size at render time.
+    /// Prefers user-calibrated file in Application Support over bundle strokes.json.
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
-        return letters[letterIndex].strokes
+        let letter = letters[letterIndex]
+        return loadCalibratedStrokes(for: letter.name) ?? letter.strokes
     }
 
     /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
@@ -776,21 +777,55 @@ public final class TracingViewModel {
     private func reloadStrokeCheckpoints(for letter: LetterAsset) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
         // Map to canvas-normalised coordinates using the actual rendered glyph rect.
+        // User-calibrated file in Application Support takes priority over bundle strokes.json.
+        let source = loadCalibratedStrokes(for: letter.name) ?? letter.strokes
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: canvasSize) {
-            let mapped = letter.strokes.strokes.map { stroke in
+            let mapped = source.strokes.map { stroke in
                 StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
                     Checkpoint(x: gr.minX + cp.x * gr.width,
                                y: gr.minY + cp.y * gr.height)
                 })
             }
-            strokesForTracker = LetterStrokes(letter: letter.strokes.letter,
-                                               checkpointRadius: letter.strokes.checkpointRadius,
+            strokesForTracker = LetterStrokes(letter: source.letter,
+                                               checkpointRadius: source.checkpointRadius,
                                                strokes: mapped)
         } else {
-            strokesForTracker = letter.strokes
+            strokesForTracker = source
         }
         strokeTracker.load(strokesForTracker)
+    }
+
+    private func calibratedStrokesURL(for letter: String) -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("BuchstabenNative/CalibratedStrokes/\(letter).json")
+    }
+
+    private func loadCalibratedStrokes(for letter: String) -> LetterStrokes? {
+        guard let url = calibratedStrokesURL(for: letter),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(LetterStrokes.self, from: data)
+    }
+
+    /// Persist calibrated glyph-relative checkpoints to Application Support so they
+    /// survive app relaunches and take priority over the bundle strokes.json.
+    func persistCalibratedStrokes(_ strokes: [[CGPoint]], for letter: String) {
+        let defs = strokes.enumerated().compactMap { (i, pts) -> StrokeDefinition? in
+            guard !pts.isEmpty else { return nil }
+            return StrokeDefinition(id: i + 1, checkpoints: pts.map {
+                Checkpoint(x: (($0.x * 1000).rounded() / 1000),
+                           y: (($0.y * 1000).rounded() / 1000))
+            })
+        }
+        let ls = LetterStrokes(letter: letter, checkpointRadius: 0.05, strokes: defs)
+        guard let url = calibratedStrokesURL(for: letter),
+              let data = try? JSONEncoder().encode(ls) else { return }
+        let dir = url.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try? data.write(to: url)
+        // Apply immediately so the tracker reflects the new calibration without navigation.
+        guard letters.indices.contains(letterIndex) else { return }
+        reloadStrokeCheckpoints(for: letters[letterIndex])
     }
 
     private func toast(_ text: String) {
