@@ -108,6 +108,20 @@ import Foundation
         for _ in 0..<5 { store.recordCompletion(for: "N", accuracy: 1.0) }
         #expect(store.currentStreakDays == 1)
     }
+    @Test func recordCompletion_withPhaseScores_persistsAndLoads() {
+        let scores: [String: Double] = ["observe": 1.0, "guided": 0.85, "freeWrite": 0.72]
+        store.recordCompletion(for: "Q", accuracy: 0.85, phaseScores: scores)
+        let reloaded = JSONProgressStore(fileURL: tempURL)
+        let p = reloaded.progress(for: "Q")
+        #expect(p.phaseScores != nil)
+        #expect(abs((p.phaseScores?["observe"] ?? 0) - 1.0) < 1e-9)
+        #expect(abs((p.phaseScores?["guided"] ?? 0) - 0.85) < 1e-9)
+        #expect(abs((p.phaseScores?["freeWrite"] ?? 0) - 0.72) < 1e-9)
+    }
+    @Test func recordCompletion_withoutPhaseScores_leavesPhaseScoresNil() {
+        store.recordCompletion(for: "R", accuracy: 0.9)
+        #expect(store.progress(for: "R").phaseScores == nil)
+    }
     @Test func allProgress_containsAllRecordedLetters() {
         store.recordCompletion(for: "O", accuracy: 0.9)
         store.recordCompletion(for: "P", accuracy: 0.5)

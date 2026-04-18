@@ -7,19 +7,28 @@ struct LetterProgress: Codable, Equatable {
     var completionCount: Int = 0
     var bestAccuracy: Double = 0.0   // 0.0 – 1.0
     var lastCompletedAt: Date?
+    /// Per-phase scores keyed by phase name ('observe', 'guided', 'freeWrite').
+    /// nil when recorded before phase-level tracking was introduced.
+    var phaseScores: [String: Double]?
 }
 
 // MARK: - Protocol (testable seam)
 
 protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
-    func recordCompletion(for letter: String, accuracy: Double)
+    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
     /// Current streak: consecutive days with at least one completion.
     var currentStreakDays: Int { get }
     /// Total letters completed across all sessions.
     var totalCompletions: Int { get }
+}
+
+extension ProgressStoring {
+    func recordCompletion(for letter: String, accuracy: Double) {
+        recordCompletion(for: letter, accuracy: accuracy, phaseScores: nil)
+    }
 }
 
 // MARK: - JSON-backed implementation
@@ -62,12 +71,13 @@ public final class JSONProgressStore: ProgressStoring {
         store.letterProgress[letter.uppercased()] ?? LetterProgress()
     }
 
-    func recordCompletion(for letter: String, accuracy: Double) {
+    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?) {
         let key = letter.uppercased()
         var p = store.letterProgress[key] ?? LetterProgress()
         p.completionCount += 1
         p.bestAccuracy = max(p.bestAccuracy, min(1.0, max(0.0, accuracy)))
         p.lastCompletedAt = Date()
+        if let scores = phaseScores { p.phaseScores = scores }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
         save()

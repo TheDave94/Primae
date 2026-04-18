@@ -662,7 +662,10 @@ public final class TracingViewModel {
         let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
         let letter = currentLetterName
 
-        progressStore.recordCompletion(for: letter, accuracy: accuracy)
+        let scores: [String: Double] = Dictionary(
+            uniqueKeysWithValues: phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
+        )
+        progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: scores)
         streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
         dashboardStore.recordSession(letter: letter, accuracy: accuracy,
                                       durationSeconds: duration, date: Date())

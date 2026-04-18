@@ -50,6 +50,15 @@ enum LearningPhase: Int, Codable, CaseIterable, Comparable, Equatable, Sendable 
         }
     }
 
+    /// Stable string key for serialization (matches Codable dictionary keys in ProgressStore).
+    var rawName: String {
+        switch self {
+        case .observe:   return "observe"
+        case .guided:    return "guided"
+        case .freeWrite: return "freeWrite"
+        }
+    }
+
     /// Short icon for compact UI.
     var icon: String {
         switch self {
