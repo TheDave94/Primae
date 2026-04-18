@@ -558,8 +558,6 @@ public final class TracingViewModel {
         if onboardingCoordinator.isComplete {
             onboardingStore.markComplete()
             isOnboardingComplete = true
-            // Start the observe-phase audio that was suppressed during onboarding.
-            startObservePhaseAudioIfNeeded()
             // Request notification permission and schedule reminder on onboarding completion
             Task { [self] in
                 _ = await notificationScheduler.requestPermission()
@@ -578,18 +576,6 @@ public final class TracingViewModel {
         onboardingCoordinator.skip()
         onboardingStep = onboardingCoordinator.currentStep
         onboardingStore.markComplete()
-        isOnboardingComplete = true
-        startObservePhaseAudioIfNeeded()
-    }
-
-    /// Kick off the observe-phase auto-play once onboarding is off screen.
-    /// Matches the play path in `load(letter:)` but skips re-running the full load.
-    private func startObservePhaseAudioIfNeeded() {
-        guard phaseController.currentPhase == .observe else { return }
-        guard letters.indices.contains(letterIndex) else { return }
-        guard !letters[letterIndex].audioFiles.isEmpty else { return }
-        audio.play()
-        isPlaying = true
     }
 
     // MARK: - Learning phase control
@@ -768,10 +754,7 @@ public final class TracingViewModel {
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             setPlaybackState(.idle, immediate: true)
-            // Suppress the observe-phase auto-play while onboarding is still on screen —
-            // the audio would otherwise loop behind the welcome screen. `advanceOnboarding`
-            // / `skipOnboarding` kick off playback once the main view appears.
-            if phaseController.currentPhase == .observe, isOnboardingComplete {
+            if phaseController.currentPhase == .observe {
                 audio.play()
                 isPlaying = true
             }
