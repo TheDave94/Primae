@@ -57,7 +57,7 @@ import AVFoundation
         let letters = repo.loadLetters()
         #expect(letters.count == 1)
         #expect(letters[0].name == "A")
-        #expect(letters[0].audioFiles == ["A.mp3"])
+        #expect(letters[0].audioFiles == ["A1.mp3"])
     }
 
     @Test func letterRepositoryPrefersCleanCuratedAudioForAtoM() throws {

@@ -103,6 +103,10 @@ private final class TrackingMockAudio: AudioControlling {
 
         let canvasSize = CGSize(width: 400, height: 400)
         let w = canvasSize.width, h = canvasSize.height
+        // Align the VM's canvasSize with the size used in updateTouch so the
+        // updateTouch canvas-mismatch guard doesn't reload (and reset) checkpoints
+        // on every call, which would prevent progress from accumulating.
+        vm.canvasSize = canvasSize
         // Trace along the stub letter's horizontal stroke at y=0.5,
         // hitting all 50 checkpoints from x=0.0 to x=0.98.
         let checkpointSequence: [CGPoint] = (0..<50).map { i in

@@ -141,6 +141,11 @@ public final class TracingViewModel {
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let minimumTouchMoveDistance: CGFloat    = 1.5
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
+    // Coalesces rapid tap bursts (begin→update→end in quick succession) into a
+    // single audible playback. Without this, each short cycle produces a fresh
+    // idle→active transition and a new audio.play() call.
+    private var lastPlayIntentWallTime: CFTimeInterval = 0
+    private let playIntentDebounceSeconds: CFTimeInterval = 0.1
 
     // MARK: - Init
 
@@ -796,7 +801,15 @@ public final class TracingViewModel {
 
     private func applyCommand(_ cmd: PlaybackStateMachine.Command) {
         switch cmd {
-        case .play:  audio.play();  isPlaying = true
+        case .play:
+            let now = CACurrentMediaTime()
+            if now - lastPlayIntentWallTime < playIntentDebounceSeconds {
+                isPlaying = true
+                return
+            }
+            lastPlayIntentWallTime = now
+            audio.play()
+            isPlaying = true
         case .stop:  audio.stop();  isPlaying = false
         case .none:  break
         }
