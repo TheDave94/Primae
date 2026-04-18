@@ -196,7 +196,10 @@ private extension LetterRepository {
                 return nil
             }
 
-            return LetterAsset(id: base, name: base.uppercased(),
+            let baseLetter = base == "ß" ? "ß" : base.uppercased()
+            let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
+            return LetterAsset(id: base, name: base,
+                               baseLetter: baseLetter, letterCase: letterCase,
                                imageName: imageName, audioFiles: audio, strokes: strokes)
         }.sorted { $0.name < $1.name }
 
