@@ -14,7 +14,10 @@ struct TracingCanvasView: View {
                 context.draw(Image(uiImage: img), in: CGRect(origin: .zero, size: size))
             }
 
-            if vm.showGhost,
+            // Ghost scaffolding: phase drives default visibility (observe/guided = on,
+            // freeWrite = off). User's showGhost toggle can ADD ghost in observe/guided,
+            // but cannot re-enable it in freeWrite (scaffolding is withdrawn per GRRM).
+            if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
                let rawStrokes = vm.glyphRelativeStrokes,
                !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
@@ -36,9 +39,9 @@ struct TracingCanvasView: View {
                 }
             }
 
-            // Stroke start dots — computed from glyph-relative JSON data mapped
-            // to this canvas's size, so they align exactly with the ghost lines.
-            if vm.learningPhase != .freeWrite,
+            // Stroke start dots — use phaseController.showCheckpoints (single source
+            // of truth for phase scaffolding) instead of duplicating the rule here.
+            if vm.showCheckpoints,
                let rawStrokes = vm.rawGlyphStrokes,
                !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(

@@ -59,6 +59,21 @@ public final class TracingViewModel {
     /// Whether the current letter session (all phases) is complete.
     var isPhaseSessionComplete: Bool { phaseController.isLetterSessionComplete }
 
+    /// Whether stroke-start dots should render in the current phase
+    /// (Pearson & Gallagher 1983 GRRM: observe = full scaffold, guided =
+    /// partial scaffold with halos, freeWrite = scaffolding withdrawn).
+    var showCheckpoints: Bool { phaseController.showCheckpoints }
+
+    /// Whether the ghost guide-line should render because of the current phase.
+    /// Composed with the user's `showGhost` toggle in views: phase-driven
+    /// scaffolding is always on in observe/guided and always off in freeWrite.
+    var showGhostForPhase: Bool {
+        switch phaseController.currentPhase {
+        case .observe, .guided: return true
+        case .freeWrite:        return false
+        }
+    }
+
     /// Expose stroke data for calibration overlay (canvas-mapped coordinates).
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
