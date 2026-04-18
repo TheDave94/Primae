@@ -91,4 +91,21 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
         #expect(!vm.progress.isNaN)
         #expect(!vm.progress.isInfinite)
     }
+
+    // MARK: - Stroke proximity tests
+
+    @Test func afterStdDrag_progressIsPositive() {
+        vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
+        var t = 1000.0; var p = CGPoint(x: 100, y: 200)
+        for _ in 0..<10 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: CGSize(width: 400, height: 400)) }
+        #expect(vm.progress > 0)
+        #expect(Int(vm.progress * 100) > 0)
+    }
+
+    @Test func afterStdDrag_accessibilityValue_reflectsProgress() {
+        vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
+        var t = 1000.0; var p = CGPoint(x: 100, y: 200)
+        for _ in 0..<10 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: CGSize(width: 400, height: 400)) }
+        #expect(vm.accessibilityCanvasValue != "Not started")
+    }
 }

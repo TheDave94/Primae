@@ -330,6 +330,44 @@ import AVFoundation
         #expect(!vm.debugIsMultiTouchNavigationActive)
         #expect(vm.debugActivePathCount == 0)
     }
+
+    // MARK: - Stroke proximity tests
+
+    @Test func strokeTracker_largeRadius_hitsFirstCheckpoint() {
+        let tracker = StrokeTracker()
+        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.5, strokes: [
+            .init(id: 1, checkpoints: [.init(x: 0.0, y: 0.5), .init(x: 0.02, y: 0.5)])
+        ])
+        tracker.load(strokes)
+        tracker.update(normalizedPoint: CGPoint(x: 0.25, y: 0.50))
+        #expect(tracker.progress[0].nextCheckpoint == 1)
+        #expect(tracker.overallProgress > 0)
+    }
+
+    @Test func strokeTracker_tenUpdatesAlongY50_hitsFirstTenCheckpoints() {
+        let tracker = StrokeTracker()
+        let checkpoints = (0..<50).map { i in Checkpoint(x: CGFloat(i) * 0.02, y: 0.5) }
+        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.5, strokes: [
+            .init(id: 1, checkpoints: checkpoints)
+        ])
+        tracker.load(strokes)
+        for i in 0..<10 {
+            tracker.update(normalizedPoint: CGPoint(x: 0.25 + CGFloat(i) * 0.025, y: 0.50))
+        }
+        #expect(tracker.progress[0].nextCheckpoint == 10)
+        #expect(abs(tracker.overallProgress - 10.0 / 50.0) < 0.001)
+    }
+
+    @Test func strokeTracker_checkpointHit_enablesSound() {
+        let tracker = StrokeTracker()
+        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.5, strokes: [
+            .init(id: 1, checkpoints: [.init(x: 0.0, y: 0.5), .init(x: 0.5, y: 0.5)])
+        ])
+        tracker.load(strokes)
+        #expect(!tracker.soundEnabled, "Sound must be disabled before any checkpoint is hit")
+        tracker.update(normalizedPoint: CGPoint(x: 0.25, y: 0.50))
+        #expect(tracker.soundEnabled, "Sound must be enabled after the first checkpoint is hit")
+    }
 }
 
 // MARK: - Private helpers

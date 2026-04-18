@@ -184,4 +184,25 @@ private func slowDrag(vm: TracingViewModel,
         try? await Task.sleep(nanoseconds: 500_000_000)
         #expect(weakVM == nil)
     }
+
+    // MARK: - Stroke proximity tests
+
+    @Test func stdDrag_checkpointProximity_progressGtZero() {
+        fastDrag(vm: vm, audio: audio)
+        #expect(vm.progress > 0, "Standard drag through checkpoint row must advance stroke progress")
+    }
+
+    @Test func stdDrag_checkpointHits_progressNeverDecreases() {
+        let canvas = CGSize(width: 400, height: 400)
+        var last: CGFloat = -1
+        vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)
+        var t = 1000.0; var p = CGPoint(x: 100, y: 200)
+        for _ in 0..<10 {
+            t += 0.001; p.x += 10
+            vm.updateTouch(at: p, t: t, canvasSize: canvas)
+            #expect(vm.progress >= last)
+            last = vm.progress
+        }
+        #expect(last > 0)
+    }
 }

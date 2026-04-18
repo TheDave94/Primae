@@ -148,6 +148,21 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(vm.progress == 0.0)
     }
 
+    // MARK: - Stroke proximity tests
+
+    @Test func stdDrag_checkpointProximity_progressPositive() {
+        simulateFastTouch(t0: 1000)
+        #expect(vm.progress > 0, "Fast touch through checkpoint row must advance stroke progress")
+    }
+
+    @Test func resetThenDrag_strokeProgress_recovers() {
+        simulateFastTouch(t0: 1000)
+        vm.resetLetter()
+        #expect(vm.progress == 0)
+        simulateFastTouch(t0: 2000)
+        #expect(vm.progress > 0, "Progress must recover after reset when drag hits checkpoints")
+    }
+
     // MARK: - Helpers
 
     private func simulateFastTouch(t0: CFTimeInterval) {
