@@ -133,6 +133,7 @@ public final class TracingViewModel {
     private var completionDismissTask: Task<Void, Never>?
     private var endTouchGraceTask: Task<Void, Never>?
     private var animationTask: Task<Void, Never>?
+    private var animationStartTask: Task<Void, Never>?
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
     private let activeDebounceSeconds: TimeInterval  = 0.03
@@ -521,6 +522,8 @@ public final class TracingViewModel {
     }
 
     func stopGuideAnimation() {
+        animationStartTask?.cancel()
+        animationStartTask   = nil
         animationTask?.cancel()
         animationTask        = nil
         animationGuidePoint  = nil
@@ -712,8 +715,9 @@ public final class TracingViewModel {
             if letter.strokes.strokes.isEmpty {
                 phaseController.advance(score: 1.0)
             } else {
-                Task { [self] in
+                animationStartTask = Task { [self] in
                     try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
                     startGuideAnimation()
                 }
             }
