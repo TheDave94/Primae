@@ -30,7 +30,10 @@ protocol CloudSyncService: AnyObject, Sendable {
 
 // MARK: - Null (test / pre-CloudKit) implementation
 
-final class NullSyncService: CloudSyncService, @unchecked Sendable {
+// MainActor-isolated so mutations serialize through the main queue;
+// removes the @unchecked Sendable escape that allowed concurrent push() races.
+@MainActor
+final class NullSyncService: CloudSyncService {
     private(set) var syncState: SyncState = .idle
     private(set) var pushedRecords: [(SyncRecordType, [String: any Sendable])] = []
     private var storedRecords: [SyncRecordType: [String: any Sendable]] = [:]

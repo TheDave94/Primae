@@ -435,7 +435,7 @@ public final class TracingViewModel {
                                           condition: thesisCondition)
 
             // — Background cloud sync —
-            Task { [self] in try? await syncCoordinator.pushAll() }
+            Task { [weak self] in try? await self?.syncCoordinator.pushAll() }
 
             // — Difficulty adaptation —
             let adaptSample = AdaptationSample(letter: letter,
@@ -522,20 +522,20 @@ public final class TracingViewModel {
         let guide = LetterAnimationGuide.build(from: rawStrokes)
         guard !guide.steps.isEmpty else { return }
 
-        animationTask = Task { [self] in
+        animationTask = Task { [weak self] in
             while !Task.isCancelled {
+                guard let self else { return }
                 for step in guide.steps {
                     guard !Task.isCancelled else { break }
-                    animationGuidePoint = step.point
+                    self.animationGuidePoint = step.point
                     try? await Task.sleep(for: .seconds(guide.duration(for: step)))
                 }
-                // Brief pause between loops
                 if !Task.isCancelled {
-                    animationGuidePoint = nil
+                    self.animationGuidePoint = nil
                     try? await Task.sleep(for: .seconds(0.5))
                 }
             }
-            animationGuidePoint = nil
+            self?.animationGuidePoint = nil
         }
     }
 
@@ -558,10 +558,11 @@ public final class TracingViewModel {
             onboardingStore.markComplete()
             isOnboardingComplete = true
             // Request notification permission and schedule reminder on onboarding completion
-            Task { [self] in
-                _ = await notificationScheduler.requestPermission()
-                notificationScheduler.scheduleDailyReminder(
-                    currentStreak: streakStore.currentStreak,
+            Task { [weak self] in
+                guard let self else { return }
+                _ = await self.notificationScheduler.requestPermission()
+                self.notificationScheduler.scheduleDailyReminder(
+                    currentStreak: self.streakStore.currentStreak,
                     onboardingComplete: true
                 )
             }
@@ -697,7 +698,7 @@ public final class TracingViewModel {
         dashboardStore.recordSession(letter: letter, accuracy: accuracy,
                                       durationSeconds: duration, date: Date(),
                                       condition: thesisCondition)
-        Task { [self] in try? await syncCoordinator.pushAll() }
+        Task { [weak self] in try? await self?.syncCoordinator.pushAll() }
 
         let adaptSample = AdaptationSample(letter: letter,
                                            accuracy: CGFloat(accuracy),
@@ -752,10 +753,10 @@ public final class TracingViewModel {
             if letter.strokes.strokes.isEmpty {
                 phaseController.advance(score: 1.0)
             } else {
-                animationStartTask = Task { [self] in
+                animationStartTask = Task { [weak self] in
                     try? await Task.sleep(for: .milliseconds(300))
-                    guard !Task.isCancelled else { return }
-                    startGuideAnimation()
+                    guard !Task.isCancelled, let self else { return }
+                    self.startGuideAnimation()
                 }
             }
         }
@@ -817,11 +818,11 @@ public final class TracingViewModel {
         guard wouldChange else { return }
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
-        pendingPlaybackStateTask = Task { [self] in
+        pendingPlaybackStateTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled else { return }
-            let cmd = playbackMachine.transition(to: target)
-            applyCommand(cmd)
+            guard !Task.isCancelled, let self else { return }
+            let cmd = self.playbackMachine.transition(to: target)
+            self.applyCommand(cmd)
         }
     }
 
