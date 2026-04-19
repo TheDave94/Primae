@@ -54,33 +54,71 @@ private func slowDrag(vm: TracingViewModel,
 
     fileprivate let audio: MockAudio
     fileprivate let vm: TracingViewModel
+    /// Captured during VM init via the deps.makePlaybackController factory.
+    /// Lets each test `await playback.pendingTransition?.value` to drain the
+    /// debounced idle/active transition deterministically — no wall-clock
+    /// sleeps. The injected sleeper resumes immediately so the transition
+    /// task settles on the next runloop tick.
+    fileprivate let playback: PlaybackController
+    /// Same idea for the toast / completion HUD auto-clear timers.
+    fileprivate let messages: TransientMessagePresenter
 
     init() {
-        audio = MockAudio()
-        vm = TracingViewModel(.stub.with(audio: audio).with(thesisCondition: .guidedOnly))
-        vm.strokeEnforced = false
+        let mockAudio = MockAudio()
+        let pcBox = Box<PlaybackController?>(nil)
+        let mpBox = Box<TransientMessagePresenter?>(nil)
+        var deps = TracingDependencies.stub
+            .with(audio: mockAudio)
+            .with(thesisCondition: .guidedOnly)
+        deps.makePlaybackController = { audio, cb in
+            let pc = PlaybackController(audio: audio, sleep: { _ in }, onIsPlayingChanged: cb)
+            pcBox.value = pc
+            return pc
+        }
+        deps.makeMessagePresenter = {
+            let mp = TransientMessagePresenter(sleep: { _ in })
+            mpBox.value = mp
+            return mp
+        }
+        let model = TracingViewModel(deps)
+        model.strokeEnforced = false
+
+        self.audio    = mockAudio
+        self.vm       = model
+        self.playback = pcBox.value!
+        self.messages = mpBox.value!
+    }
+
+    /// Drain every async tail the VM might have spawned in response to the
+    /// last interaction: the playback debounce task, the toast auto-clear
+    /// task, and the completion HUD auto-clear task. Cheap because every
+    /// sleeper here was injected to resume instantly.
+    private func drainAsyncWork() async {
+        await playback.pendingTransition?.value
+        await messages.toastTask?.value
+        await messages.completionTask?.value
     }
 
     @Test func slowVelocity_doesNotTriggerPlay() async {
         let playBefore = audio.playCount
         slowDrag(vm: vm)
-        try? await Task.sleep(nanoseconds: 250_000_000)
+        await drainAsyncWork()
         #expect(audio.playCount == playBefore)
         #expect(!vm.isPlaying)
     }
     @Test func fastVelocity_triggersPlayAfterDebounce() async {
         let playBefore = audio.playCount
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         #expect(audio.playCount > playBefore)
         #expect(vm.isPlaying)
     }
     @Test func endTouch_stopsPlayback() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         let stopBefore = audio.stopCount
         vm.endTouch()
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        await drainAsyncWork()
         #expect(audio.stopCount > stopBefore)
         #expect(!vm.isPlaying)
     }
@@ -90,7 +128,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func appDidEnterBackground_suspendsClearsState() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         let suspendBefore = audio.suspendForLifecycleCount
         let stopBefore = audio.stopCount
         await vm.appDidEnterBackground()
@@ -100,7 +138,7 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func appDidBecomeActive_withResumeIntent_resumesAudio() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         await vm.appDidEnterBackground()
         let resumeBefore = audio.resumeAfterLifecycleCount
         vm.appDidBecomeActive()
@@ -108,11 +146,11 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func appDidBecomeActive_withoutResumeIntent_doesNotForcePlay() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         vm.endTouch(); await vm.appDidEnterBackground()
         let playBefore = audio.playCount
         vm.appDidBecomeActive()
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         #expect(audio.playCount == playBefore)
     }
     @Test func strokeCompletion_forcesIdleAndSetsComplete() async {
@@ -127,13 +165,13 @@ private func slowDrag(vm: TracingViewModel,
             }
         }
         guard didComplete else { return } // not completable via grid scan — silent skip
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await drainAsyncWork()
         #expect(vm.progress == 1.0)
         #expect(!vm.isPlaying)
     }
     @Test func resetLetter_clearsProgressAndStops() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         let stopBefore = audio.stopCount
         vm.resetLetter()
         #expect(vm.progress == 0.0)
@@ -147,10 +185,10 @@ private func slowDrag(vm: TracingViewModel,
     }
     @Test func rapidBgFgChurn_neverLeavesPlayingTrue() async {
         fastDrag(vm: vm, audio: audio)
-        try? await Task.sleep(nanoseconds: 150_000_000)
+        await drainAsyncWork()
         for _ in 0..<10 { await vm.appDidEnterBackground(); vm.appDidBecomeActive() }
         await vm.appDidEnterBackground()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await drainAsyncWork()
         #expect(!vm.isPlaying)
     }
     @Test func nextLetter_resetsShowGhostToFalse() {
@@ -168,6 +206,10 @@ private func slowDrag(vm: TracingViewModel,
         #expect(vm.showGhost)
     }
     @Test func tracingViewModel_doesNotRetainSelf() async {
+        // ARC release timing is independent of the controller debounces — no
+        // injected sleeper helps here. Keep a small wall-clock buffer so any
+        // in-flight Task that briefly retains the VM has time to settle
+        // before we read the weak reference.
         weak var weakVM: TracingViewModel?
         await MainActor.run {
             let localVM = TracingViewModel(.stub)
