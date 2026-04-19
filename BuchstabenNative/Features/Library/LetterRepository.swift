@@ -82,11 +82,14 @@ final class LetterRepository {
 
     private let resources: LetterResourceProviding
     private let cache: LetterCacheStoring
+    private let userDefaults: UserDefaults
 
     init(resources: LetterResourceProviding = BundleLetterResourceProvider(),
-         cache: LetterCacheStoring = JSONLetterCache()) {
-        self.resources = resources
-        self.cache     = cache
+         cache: LetterCacheStoring = JSONLetterCache(),
+         userDefaults: UserDefaults = .standard) {
+        self.resources    = resources
+        self.cache        = cache
+        self.userDefaults = userDefaults
     }
 
     /// Loads letters from bundle with cache fallback.
@@ -130,29 +133,54 @@ final class LetterRepository {
         return .failure(.noAssetsFound)
     }
 
-    /// Warm-launch optimisation: return cached letters immediately if the cache
-    /// holds a full alphabet. Falls back to the canonical bundle path when the
-    /// cache is empty, partial, or invalid. VM calls this for cold/warm-launch
-    /// speed; tests and error-handling callers keep using `loadLetters()` for
-    /// strict bundle-then-cache semantics.
+    /// Warm-launch optimisation: return the cached letters when they were
+    /// written by the same app build the user is now running. Any app update
+    /// (which always bumps CFBundleVersion in App Store builds) invalidates
+    /// the cache automatically — no hardcoded letter count to keep in sync
+    /// when the bundle gains lowercase / umlaut / digit assets.
+    /// Falls back to the canonical bundle path when the cache is missing,
+    /// stale, or its bundle-version sentinel is unavailable.
     func loadLettersFast() -> [LetterAsset] {
-        if let cached = loadFromCache(), cached.count >= fullAlphabetCount {
+        if let bundleVersion = currentBundleVersion,
+           let cachedVersion = userDefaults.string(forKey: Self.cacheBundleVersionKey),
+           cachedVersion == bundleVersion,
+           let cached = loadFromCache(),
+           !cached.isEmpty {
             return cached
         }
         return loadLetters()
     }
 
-    /// Entry count at which the cache is considered "complete" and can be
-    /// returned without re-reading the bundle. 26 = A..Z. An app update that
-    /// adds letters (lowercase, umlauts) still re-reads the bundle because the
-    /// old cache's count will be below the new bundle's, the bundle path
-    /// repopulates the cache, and the next launch sees the fresh set.
-    private var fullAlphabetCount: Int { 26 }
+    /// Storage key for the bundle-version sentinel that pairs with the cache
+    /// file. Versioning the cache by app build is the standard cache-bust idiom
+    /// for resource caches and avoids a hand-maintained "expected count" const.
+    private static let cacheBundleVersionKey = "BuchstabenNative.LetterCache.bundleVersion"
+
+    /// Identifier for the build that produced the cache. Combines marketing
+    /// version and build number so the cache busts on either kind of release.
+    /// Returns nil in environments without a bundle (e.g. unit-test hosts) so
+    /// the fast path defers to the slow path rather than serving stale data.
+    private var currentBundleVersion: String? {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        let parts = [short, build].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: "-")
+    }
 
     // MARK: - Private
 
     private func persistToCache(_ letters: [LetterAsset]) {
-        try? cache.save(letters)
+        do {
+            try cache.save(letters)
+        } catch {
+            // Skip the version stamp when the cache write itself failed — we
+            // must never claim a valid cache exists for a build whose cache
+            // file is missing or corrupt.
+            return
+        }
+        if let version = currentBundleVersion {
+            userDefaults.set(version, forKey: Self.cacheBundleVersionKey)
+        }
     }
 
     private func loadFromCache() -> [LetterAsset]? {
