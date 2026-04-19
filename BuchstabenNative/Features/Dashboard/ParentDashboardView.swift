@@ -80,6 +80,18 @@ struct ParentDashboardView: View {
                 Text("\(Int(snapshot.averageFreeWriteScore * 100)) %")
                     .monospacedDigit()
             }
+            if let trend = vm.writingSpeedTrend {
+                LabeledContent("Schreibflüssigkeit") {
+                    switch trend {
+                    case .improving:
+                        Text("↑ zunehmend").foregroundStyle(.green)
+                    case .stable:
+                        Text("→ stabil").foregroundStyle(.secondary)
+                    case .declining:
+                        Text("↓ abnehmend").foregroundStyle(.orange)
+                    }
+                }
+            }
         }
     }
 

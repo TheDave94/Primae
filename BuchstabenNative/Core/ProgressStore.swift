@@ -10,6 +10,9 @@ struct LetterProgress: Codable, Equatable {
     /// Per-phase scores keyed by phase name ('observe', 'guided', 'freeWrite').
     /// nil when recorded before phase-level tracking was introduced.
     var phaseScores: [String: Double]?
+    /// Last 5 session writing speeds (checkpoints/second) — tracks automatization.
+    /// nil when recorded before speed tracking was introduced.
+    var speedTrend: [Double]?
 }
 
 // MARK: - Protocol (testable seam)
@@ -17,7 +20,7 @@ struct LetterProgress: Codable, Equatable {
 @MainActor
 protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
-    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?)
+    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
     /// Current streak: consecutive days with at least one completion.
@@ -32,7 +35,10 @@ protocol ProgressStoring {
 
 extension ProgressStoring {
     func recordCompletion(for letter: String, accuracy: Double) {
-        recordCompletion(for: letter, accuracy: accuracy, phaseScores: nil)
+        recordCompletion(for: letter, accuracy: accuracy, phaseScores: nil, speed: nil)
+    }
+    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?) {
+        recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: nil)
     }
     func flush() async {}
 }
@@ -82,13 +88,19 @@ public final class JSONProgressStore: ProgressStoring {
         store.letterProgress[letter.uppercased()] ?? LetterProgress()
     }
 
-    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?) {
+    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?) {
         let key = letter.uppercased()
         var p = store.letterProgress[key] ?? LetterProgress()
         p.completionCount += 1
         p.bestAccuracy = max(p.bestAccuracy, min(1.0, max(0.0, accuracy)))
         p.lastCompletedAt = Date()
         if let scores = phaseScores { p.phaseScores = scores }
+        if let s = speed {
+            var trend = p.speedTrend ?? []
+            trend.append(s)
+            if trend.count > 5 { trend.removeFirst(trend.count - 5) }
+            p.speedTrend = trend
+        }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
         save()

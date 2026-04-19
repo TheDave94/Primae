@@ -116,6 +116,12 @@ public final class TracingViewModel {
     private(set) var freeWriteForces: [CGFloat] = []
     /// CACurrentMediaTime when the freeWrite phase began. Used for rhythmScore.
     private var freeWriteSessionStart: CFTimeInterval = 0
+    /// CACurrentMediaTime when the current guided or freeWrite phase began.
+    /// Used to compute writing speed (checkpoints per second).
+    private var activePhaseStartTime: CFTimeInterval = 0
+    /// Checkpoints passed per second in the current guided or freeWrite phase.
+    /// Updated on every touch event; reset on phase transition and letter load.
+    private(set) var strokesPerSecond: CGFloat = 0
     /// Last computed Frechet distance (for debug overlay).
     private(set) var lastFreeWriteDistance: CGFloat = 0
     /// Most recent Schreibmotorik four-dimension assessment from the freeWrite phase.
@@ -457,6 +463,23 @@ public final class TracingViewModel {
         if !wasComplete && isNowComplete, feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
         progress = strokeTracker.overallProgress
 
+        let currentPhase = phaseController.currentPhase
+        if (currentPhase == .guided || currentPhase == .freeWrite) && activePhaseStartTime > 0 {
+            let elapsed = CACurrentMediaTime() - activePhaseStartTime
+            if elapsed > 0.1 {
+                if let def = strokeTracker.definition {
+                    let completedCPs = def.strokes.enumerated().reduce(0) { acc, item in
+                        let (idx, stroke) = item
+                        guard strokeTracker.progress.indices.contains(idx) else { return acc }
+                        return strokeTracker.progress[idx].complete
+                            ? acc + stroke.checkpoints.count
+                            : acc + strokeTracker.progress[idx].nextCheckpoint
+                    }
+                    strokesPerSecond = CGFloat(completedCPs) / CGFloat(elapsed)
+                }
+            }
+        }
+
         let newStrokeIndex     = strokeTracker.currentStrokeIndex
         let newNextCheckpoint  = strokeTracker.progress.indices.contains(prevStrokeIndex)
             ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
@@ -797,6 +820,10 @@ public final class TracingViewModel {
             freeWritePath.removeAll(keepingCapacity: true)
             freeWriteSessionStart = CACurrentMediaTime()
         }
+        if phaseController.currentPhase == .guided || phaseController.currentPhase == .freeWrite {
+            strokesPerSecond = 0
+            activePhaseStartTime = CACurrentMediaTime()
+        }
         directTappedDots.removeAll()
         directPulsingDot = false
         directArrowStrokeIndex = nil
@@ -840,7 +867,8 @@ public final class TracingViewModel {
                                   accuracy: Double,
                                   duration: TimeInterval,
                                   phaseScores: [String: Double]? = nil) {
-        progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores)
+        let speed: Double? = strokesPerSecond > 0 ? Double(strokesPerSecond) : nil
+        progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: speed)
         streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
         dashboardStore.recordSession(letter: letter, accuracy: accuracy,
                                       durationSeconds: duration, date: Date(),
@@ -862,6 +890,32 @@ public final class TracingViewModel {
     var dashboardSnapshot: DashboardSnapshot { dashboardStore.snapshot }
     var currentStreak: Int { streakStore.currentStreak }
     var longestStreak: Int { streakStore.longestStreak }
+
+    enum SpeedTrendDirection { case improving, stable, declining }
+
+    /// Aggregate writing-speed trend across all practiced letters.
+    /// Returns nil when fewer than two speed samples exist for any letter.
+    var writingSpeedTrend: SpeedTrendDirection? {
+        let trends = progressStore.allProgress.values
+            .compactMap(\.speedTrend)
+            .filter { $0.count >= 2 }
+        guard !trends.isEmpty else { return nil }
+        var totalRelGain = 0.0
+        var count = 0
+        for trend in trends {
+            let half = max(1, trend.count / 2)
+            let oldAvg = trend.prefix(half).reduce(0.0, +) / Double(half)
+            let newAvg = trend.suffix(trend.count - half).reduce(0.0, +) / Double(trend.count - half)
+            guard oldAvg > 0 else { continue }
+            totalRelGain += (newAvg - oldAvg) / oldAvg
+            count += 1
+        }
+        guard count > 0 else { return nil }
+        let avg = totalRelGain / Double(count)
+        if avg > 0.10 { return .improving }
+        if avg < -0.10 { return .declining }
+        return .stable
+    }
 
     // MARK: - Debug
 
@@ -939,6 +993,8 @@ public final class TracingViewModel {
         freeWriteTimestamps.removeAll(keepingCapacity: true)
         freeWriteForces.removeAll(keepingCapacity: true)
         freeWriteSessionStart = 0
+        activePhaseStartTime = 0
+        strokesPerSecond = 0
         freeWritePath.removeAll(keepingCapacity: true)
         showFreeWriteOverlay = false
         lastFreeWriteDistance = 0
@@ -974,6 +1030,11 @@ public final class TracingViewModel {
             } else {
                 animation.startAfterDelay(0.3, strokes: letter.strokes)
             }
+        }
+        // If we land directly in guided or freeWrite (e.g. after skipping phases or
+        // for thesis conditions that omit observe/direct), start the speed clock now.
+        if phaseController.currentPhase == .guided || phaseController.currentPhase == .freeWrite {
+            activePhaseStartTime = CACurrentMediaTime()
         }
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)

@@ -114,13 +114,33 @@ struct LetterScheduler {
         // being twice as urgent as the other (which linear days would imply).
         let recencyUrgency = 1.0 - exp(-daysSince / memoryStabilityDays)
 
+        // Automatization adjustment: letters with increasing writing speed are being
+        // automatized (KMK 2024 motor program formation) → lower priority so the
+        // scheduler focuses on stagnant-speed letters that still need consolidation.
+        let speedBonus = automatizationBonus(trend: p.speedTrend)
+
         // Weighted sum. All three factors are in [0, 1], scaled to [0, 100]
         // so the weights act as interpretable percentages.
         let priority = recencyUrgency  * 100 * recencyWeight
                      + accuracyDeficit * 100 * accuracyWeight
                      + novelty         * 100 * noveltyWeight
+                     + speedBonus
 
         return ScoredLetter(letter: letter, priority: priority)
+    }
+
+    /// Returns a priority adjustment based on writing-speed trend.
+    /// Improving speed → negative bonus (deprioritize automatized letters).
+    /// Stagnant/declining speed → zero or small positive boost.
+    /// Range: approximately [-12, +5] points.
+    private func automatizationBonus(trend: [Double]?) -> Double {
+        guard let trend, trend.count >= 2 else { return 0 }
+        let half = max(1, trend.count / 2)
+        let oldAvg = trend.prefix(half).reduce(0.0, +) / Double(half)
+        let newAvg = trend.suffix(trend.count - half).reduce(0.0, +) / Double(trend.count - half)
+        guard oldAvg > 0 else { return 0 }
+        let relativeGain = (newAvg - oldAvg) / oldAvg
+        return -min(12.0, max(-5.0, relativeGain * 20.0))
     }
 }
 
