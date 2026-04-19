@@ -300,10 +300,9 @@ private struct DirectPhaseDotsOverlay: View {
             withAnimation(.easeInOut(duration: 0.25).repeatCount(3, autoreverses: true)) {
                 pulseToggle = true
             }
-            Task { [weak self] in
-                guard let self else { return }
+            Task {
                 try? await Task.sleep(for: .milliseconds(800))
-                self.pulseToggle = false
+                pulseToggle = false
             }
         }
     }
