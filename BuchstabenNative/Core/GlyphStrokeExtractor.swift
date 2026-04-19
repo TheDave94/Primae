@@ -81,13 +81,19 @@ struct GlyphStrokeExtractor {
     }
 
     // MARK: - Path Flattening
+    //
+    // The four helpers below are exposed as `internal` (rather than `private`)
+    // so the test target can drive them with synthetic CGPaths and centers grids
+    // — exercising the algorithmic core without needing the Primae font, which
+    // isn't loaded in the test process. `extractStrokes` itself remains the
+    // sole public entry point.
 
-    private struct Segment {
+    struct Segment: Equatable {
         let x1: CGFloat, y1: CGFloat
         let x2: CGFloat, y2: CGFloat
     }
 
-    private static func flattenPath(_ path: CGPath) -> [Segment] {
+    static func flattenPath(_ path: CGPath) -> [Segment] {
         var segments: [Segment] = []
         var currentPoint = CGPoint.zero
         var subpathStart = CGPoint.zero
@@ -150,7 +156,7 @@ struct GlyphStrokeExtractor {
 
     // MARK: - Horizontal Ray Casting
 
-    private static func findXCrossings(segments: [Segment], y: CGFloat) -> [CGFloat] {
+    static func findXCrossings(segments: [Segment], y: CGFloat) -> [CGFloat] {
         var crossings: [CGFloat] = []
         for seg in segments {
             let y1 = seg.y1, y2 = seg.y2
@@ -167,7 +173,7 @@ struct GlyphStrokeExtractor {
 
     // MARK: - Stroke Path Connection
 
-    private static func connectCenters(
+    static func connectCenters(
         centersByRow: [[CGFloat]],
         numSamples: Int
     ) -> [[CGPoint]] {
@@ -211,7 +217,7 @@ struct GlyphStrokeExtractor {
 
     // MARK: - Resampling
 
-    private static func resample(path: [CGPoint], count: Int) -> [CGPoint] {
+    static func resample(path: [CGPoint], count: Int) -> [CGPoint] {
         guard path.count >= 2, count >= 2 else { return path }
         var lengths: [CGFloat] = [0]
         for i in 1..<path.count {
