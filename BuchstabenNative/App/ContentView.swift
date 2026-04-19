@@ -29,7 +29,7 @@ public struct ContentView: View {
                 CompletionCelebrationOverlay(starsEarned: vm.starsEarned) {
                     vm.loadRecommendedLetter()
                 }
-                .transition(.scale.combined(with: .opacity))
+                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .zIndex(10)
             }
 
