@@ -20,6 +20,13 @@ struct SettingsView: View {
                     orderingRow(strategy)
                 }
             }
+            Section("Forschung") {
+                Toggle("Papier-Übertragung", isOn: Binding(
+                    get: { vm.enablePaperTransfer },
+                    set: { vm.enablePaperTransfer = $0 }
+                ))
+                .accessibilityHint("Nach dem freien Schreiben wird eine Aufgabe zum Schreiben auf Papier angezeigt")
+            }
             Section("Hilfe") {
                 Button("Einführung wiederholen") { vm.restartOnboarding() }
                     .accessibilityHint("Startet die Einführung beim nächsten App-Start neu")

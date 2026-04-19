@@ -33,6 +33,14 @@ public struct ContentView: View {
                 .zIndex(10)
             }
 
+            if vm.showPaperTransfer {
+                PaperTransferView(letter: vm.currentLetterName) { score in
+                    vm.submitPaperTransfer(score: score)
+                }
+                .transition(.opacity)
+                .zIndex(15)
+            }
+
             #if DEBUG
             if vm.showDebug {
                 GeometryReader { geo in

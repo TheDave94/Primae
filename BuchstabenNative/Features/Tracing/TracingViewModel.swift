@@ -131,6 +131,15 @@ public final class TracingViewModel {
     private(set) var freeWritePath: [CGPoint] = []
     /// Shows the KP (Knowledge of Performance) overlay after freeWrite completion.
     var showFreeWriteOverlay: Bool = false
+    /// Shows the paper-transfer self-assessment overlay after freeWrite, when enabled.
+    var showPaperTransfer: Bool = false
+    /// Whether the paper-transfer phase is enabled (thesis setting).
+    var enablePaperTransfer: Bool = false {
+        didSet {
+            UserDefaults.standard.set(enablePaperTransfer,
+                forKey: "de.flamingistan.buchstaben.enablePaperTransfer")
+        }
+    }
 
     // MARK: - Direct phase state
 
@@ -229,6 +238,7 @@ public final class TracingViewModel {
         self.notificationScheduler  = deps.notificationScheduler
         self.syncCoordinator        = deps.syncCoordinator
         self.thesisCondition        = deps.thesisCondition
+        self.enablePaperTransfer    = deps.enablePaperTransfer
         // Control condition uses fixed difficulty — no moving-average adaptation.
         self.adaptationPolicy       = deps.adaptationPolicy ?? (
             deps.thesisCondition == .control
@@ -702,7 +712,16 @@ public final class TracingViewModel {
 
         if wasInFreeWrite {
             showFreeWriteOverlay = true
+            if enablePaperTransfer {
+                showPaperTransfer = true
+            }
         }
+    }
+
+    /// Record the child's paper-transfer self-assessment score and dismiss the overlay.
+    func submitPaperTransfer(score: Double) {
+        progressStore.recordPaperTransferScore(for: currentLetterName, score: score)
+        showPaperTransfer = false
     }
 
     /// Manually complete observe phase (tap to continue).
@@ -997,6 +1016,7 @@ public final class TracingViewModel {
         strokesPerSecond = 0
         freeWritePath.removeAll(keepingCapacity: true)
         showFreeWriteOverlay = false
+        showPaperTransfer = false
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
         directTappedDots.removeAll()

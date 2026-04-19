@@ -13,6 +13,9 @@ struct LetterProgress: Codable, Equatable {
     /// Last 5 session writing speeds (checkpoints/second) — tracks automatization.
     /// nil when recorded before speed tracking was introduced.
     var speedTrend: [Double]?
+    /// Most recent paper-transfer self-assessment score (1.0 super, 0.5 okay, 0.0 nochmal üben).
+    /// nil when paper-transfer mode has not been used for this letter.
+    var paperTransferScore: Double?
 }
 
 // MARK: - Protocol (testable seam)
@@ -21,6 +24,7 @@ struct LetterProgress: Codable, Equatable {
 protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
     func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?)
+    func recordPaperTransferScore(for letter: String, score: Double)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
     /// Current streak: consecutive days with at least one completion.
@@ -40,6 +44,7 @@ extension ProgressStoring {
     func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?) {
         recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: nil)
     }
+    func recordPaperTransferScore(for letter: String, score: Double) {}
     func flush() async {}
 }
 
@@ -103,6 +108,14 @@ public final class JSONProgressStore: ProgressStoring {
         }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
+        save()
+    }
+
+    func recordPaperTransferScore(for letter: String, score: Double) {
+        let key = letter.uppercased()
+        var p = store.letterProgress[key] ?? LetterProgress()
+        p.paperTransferScore = score
+        store.letterProgress[key] = p
         save()
     }
 

@@ -23,6 +23,7 @@ struct TracingDependencies {
     var thesisCondition: ThesisCondition
     var schriftArt: SchriftArt
     var letterOrdering: LetterOrderingStrategy
+    var enablePaperTransfer: Bool
 
     /// Factory for the per-VM playback controller. Receives the audio engine
     /// (so tests can swap a recording stub in via `audio:`) and the
@@ -84,6 +85,9 @@ struct TracingDependencies {
             }
             return .motorSimilarity
         }(),
+        enablePaperTransfer: Bool = UserDefaults.standard.bool(
+            forKey: "de.flamingistan.buchstaben.enablePaperTransfer"
+        ),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
@@ -115,6 +119,7 @@ struct TracingDependencies {
         self.thesisCondition = thesisCondition
         self.schriftArt = schriftArt
         self.letterOrdering = letterOrdering
+        self.enablePaperTransfer = enablePaperTransfer
         self.makePlaybackController = makePlaybackController
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide

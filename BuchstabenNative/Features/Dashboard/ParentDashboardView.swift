@@ -19,6 +19,7 @@ struct ParentDashboardView: View {
                 ubungsverlaufSection
                 starksteBuchstabenSection
                 ubungNoetigSection
+                papierUebertragungSection
                 #if DEBUG
                 if vm.showDebug {
                     forschungsmetrikenSection
@@ -133,6 +134,31 @@ struct ParentDashboardView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private var papierUebertragungSection: some View {
+        let entries = vm.progressStore.allProgress
+            .compactMap { letter, prog -> (String, Double)? in
+                guard let score = prog.paperTransferScore else { return nil }
+                return (letter, score)
+            }
+            .sorted(by: { $0.0 < $1.0 })
+        if !entries.isEmpty {
+            Section("Papier-Übertragung") {
+                ForEach(entries, id: \.0) { letter, score in
+                    LabeledContent(letter) {
+                        Text(paperTransferLabel(score))
+                    }
+                }
+            }
+        }
+    }
+
+    private func paperTransferLabel(_ score: Double) -> String {
+        if score >= 0.9 { return "😊 super" }
+        if score >= 0.4 { return "😐 okay" }
+        return "😟 nochmal üben"
     }
 
     #if DEBUG
