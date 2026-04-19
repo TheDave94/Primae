@@ -92,6 +92,10 @@ struct DebugAudioPanel: View {
     }
 
     // Generic row supporting both Float-typed and CGFloat/TimeInterval-typed knobs.
+    // The `Value.Stride == Value` constraint is required because SwiftUI's
+    // Slider(value:in:step:) wants `step` typed as `V.Stride`. For every
+    // BinaryFloatingPoint we use here (Float, Double, CGFloat, TimeInterval)
+    // Stride == Self, so the constraint is always satisfied at the call site.
     @ViewBuilder
     private func row<Value: BinaryFloatingPoint>(
         _ label: String,
@@ -100,7 +104,7 @@ struct DebugAudioPanel: View {
         unit: String,
         step: Value,
         format: String = "%.2f"
-    ) -> some View where Value.Stride: BinaryFloatingPoint {
+    ) -> some View where Value.Stride == Value {
         HStack(spacing: 8) {
             Text(label)
                 .font(.caption)
