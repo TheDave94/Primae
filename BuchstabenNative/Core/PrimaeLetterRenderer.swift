@@ -96,20 +96,25 @@ public enum PrimaeLetterRenderer {
 
     static func makeFont(size: CGFloat, fontName: String = "Primae-Regular") -> CTFont? {
         let bundles: [Bundle] = [.module, .main]
-        // Try root, then SPM .copy("Resources") nested paths, then flat Fonts/
+        // Try root, then SPM .copy("Resources") nested paths, then flat Fonts/.
         let subdirs: [String?] = [nil, "Resources/Fonts", "Fonts"]
+        // Primae ships as OTF, Playwrite AT ships as a variable TTF — probe both
+        // extensions so schriftArt.fontFileName can stay extension-agnostic.
+        let exts = ["otf", "ttf"]
         for bundle in bundles {
             for subdir in subdirs {
-                let url: URL?
-                if let subdir {
-                    url = bundle.url(forResource: fontName, withExtension: "otf", subdirectory: subdir)
-                } else {
-                    url = bundle.url(forResource: fontName, withExtension: "otf")
+                for ext in exts {
+                    let url: URL?
+                    if let subdir {
+                        url = bundle.url(forResource: fontName, withExtension: ext, subdirectory: subdir)
+                    } else {
+                        url = bundle.url(forResource: fontName, withExtension: ext)
+                    }
+                    guard let url,
+                          let dataProvider = CGDataProvider(url: url as CFURL),
+                          let cgFont       = CGFont(dataProvider) else { continue }
+                    return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
                 }
-                guard let url,
-                      let dataProvider = CGDataProvider(url: url as CFURL),
-                      let cgFont       = CGFont(dataProvider) else { continue }
-                return CTFontCreateWithGraphicsFont(cgFont, size, nil, nil)
             }
         }
         return nil
