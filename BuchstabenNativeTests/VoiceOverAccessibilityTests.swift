@@ -8,7 +8,13 @@ import Testing
 fileprivate final class LocalMockAudioController: AudioControlling {
     var stopCount = 0
     var playCount = 0
-    func loadAudioFile(named: String, autoplay: Bool) {}
+    var loadedFiles: [String] = []
+    var loadedAutoplay: [Bool] = []
+    func loadAudioFile(named: String, autoplay: Bool) {
+        loadedFiles.append(named)
+        loadedAutoplay.append(autoplay)
+        if autoplay { playCount += 1 }
+    }
     func play() { playCount += 1 }
     func stop() { stopCount += 1 }
     func restart() {}
@@ -69,17 +75,19 @@ fileprivate final class LocalMockAudioController: AudioControlling {
         vm.progress = 1.5
         #expect(vm.accessibilityCanvasValue == "Fertig")
     }
-    @Test func replayAudio_callsStopThenPlay() {
-        audioController.stopCount = 0; audioController.playCount = 0
+    @Test func replayAudio_reloadsCurrentFileWithAutoplay() {
+        // The new replayAudio shape (commit f73f71b) reloads the current
+        // letter's audio with autoplay=true instead of the old
+        // stop()-then-play() which was a no-op because stop() nils
+        // currentFile and play() guards on it. Assert the new contract:
+        // loadAudioFile was called with autoplay=true at least once.
+        audioController.loadedFiles.removeAll()
+        audioController.loadedAutoplay.removeAll()
         vm.replayAudio()
-        #expect(audioController.stopCount == 1)
-        #expect(audioController.playCount == 1)
-    }
-    @Test func replayAudio_stopCalledBeforePlay() {
-        audioController.stopCount = 0; audioController.playCount = 0
-        vm.replayAudio()
-        #expect(audioController.stopCount >= 1)
-        #expect(audioController.playCount >= 1)
+        #expect(!audioController.loadedFiles.isEmpty,
+                "replayAudio must call loadAudioFile(named:autoplay:)")
+        #expect(audioController.loadedAutoplay.last == true,
+                "replayAudio must request autoplay so the file actually plays")
     }
     @Test func nextLetter_isCallable() {
         vm.nextLetter()
