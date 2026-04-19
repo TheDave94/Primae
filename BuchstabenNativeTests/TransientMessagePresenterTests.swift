@@ -23,8 +23,9 @@ import Testing
     @Test func showToast_autoClearsAfterDuration() async {
         let p = TransientMessagePresenter()
         p.show(toast: "Kurz")
-        // toastDuration is 1.3 s — allow generous margin for CI slowdown.
-        try? await Task.sleep(for: .milliseconds(1600))
+        // toastDuration is 1.3 s — CI runners can delay Task.sleep resumption
+        // well past its nominal deadline, so give the auto-clear plenty of headroom.
+        try? await Task.sleep(for: .milliseconds(2500))
         #expect(p.toastMessage == nil,
                 "Toast should auto-clear after ~1.3 s; got \(p.toastMessage ?? "nil")")
     }
@@ -64,7 +65,8 @@ import Testing
     @Test func showCompletion_autoClearsAfterDuration() async {
         let p = TransientMessagePresenter()
         p.show(completion: "🎉")
-        try? await Task.sleep(for: .milliseconds(2100))  // completionDuration=1.8s
+        // completionDuration=1.8s; extra margin absorbs CI scheduling jitter.
+        try? await Task.sleep(for: .milliseconds(3000))
         #expect(p.completionMessage == nil)
     }
 }

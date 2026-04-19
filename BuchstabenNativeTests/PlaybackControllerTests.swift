@@ -109,7 +109,9 @@ final class Box<T> {
         c.resumeIntent = true
         c.request(.active, immediate: false)
         #expect(audio.playCount == 0, "Debounced transition must NOT fire synchronously")
-        try? await Task.sleep(for: .milliseconds(100))
+        // Debounce=50ms; headroom for CI scheduling jitter that can delay
+        // Task.sleep and the controller's debounce timer past their deadlines.
+        try? await Task.sleep(for: .milliseconds(400))
         #expect(audio.playCount == 1, "Debounced transition should fire after the delay")
     }
 
