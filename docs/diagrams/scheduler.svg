@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 460" font-family="-apple-system, BlinkMacSystemFont, sans-serif">
+  <text x="450" y="32" text-anchor="middle" font-size="20" font-weight="600" fill="#111">Spaced-Repetition Letter Scheduler</text>
+  <text x="450" y="55" text-anchor="middle" font-size="13" fill="#666">Each candidate letter scored as a weighted sum · highest-priority letter is loaded next</text>
+
+  <!-- Formula -->
+  <rect x="120" y="80" width="660" height="58" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <text x="450" y="118" text-anchor="middle" font-size="16" fill="#111" font-family="monospace">priority = 0.40 · recency + 0.35 · accuracyDeficit + 0.25 · novelty</text>
+
+  <!-- Three component cards -->
+
+  <!-- Recency -->
+  <rect x="40" y="170" width="260" height="240" rx="12" fill="#eff6ff" stroke="#3b82f6"/>
+  <text x="170" y="200" text-anchor="middle" font-size="15" font-weight="700" fill="#1d4ed8">Recency urgency</text>
+  <text x="170" y="220" text-anchor="middle" font-size="11" fill="#666" font-style="italic">weight 0.40</text>
+  <text x="170" y="252" text-anchor="middle" font-size="13" fill="#111" font-family="monospace">1 − e^(−Δd / 7)</text>
+  <text x="170" y="278" text-anchor="middle" font-size="12" fill="#444">Ebbinghaus exponential</text>
+  <text x="170" y="296" text-anchor="middle" font-size="12" fill="#444">forgetting curve (1885)</text>
+  <!-- mini curve -->
+  <g transform="translate(60 320)">
+    <line x1="0" y1="60" x2="220" y2="60" stroke="#94a3b8" stroke-width="1"/>
+    <line x1="0" y1="0" x2="0" y2="60" stroke="#94a3b8" stroke-width="1"/>
+    <path d="M 0 60 Q 50 35 110 18 Q 170 7 220 4" stroke="#1d4ed8" stroke-width="2.5" fill="none"/>
+    <text x="0" y="78" font-size="10" fill="#666">0d</text>
+    <text x="100" y="78" font-size="10" fill="#666">7d</text>
+    <text x="195" y="78" font-size="10" fill="#666">21d</text>
+  </g>
+
+  <!-- Accuracy deficit -->
+  <rect x="320" y="170" width="260" height="240" rx="12" fill="#fef3c7" stroke="#f59e0b"/>
+  <text x="450" y="200" text-anchor="middle" font-size="15" font-weight="700" fill="#b45309">Accuracy deficit</text>
+  <text x="450" y="220" text-anchor="middle" font-size="11" fill="#666" font-style="italic">weight 0.35</text>
+  <text x="450" y="252" text-anchor="middle" font-size="13" fill="#111" font-family="monospace">1 − bestAccuracy</text>
+  <text x="450" y="278" text-anchor="middle" font-size="12" fill="#444">Leitner / SuperMemo style</text>
+  <text x="450" y="296" text-anchor="middle" font-size="12" fill="#444">— prioritise struggle</text>
+  <g transform="translate(340 320)">
+    <line x1="0" y1="60" x2="220" y2="60" stroke="#94a3b8" stroke-width="1"/>
+    <line x1="0" y1="0" x2="0" y2="60" stroke="#94a3b8" stroke-width="1"/>
+    <path d="M 0 5 L 220 60" stroke="#b45309" stroke-width="2.5" fill="none"/>
+    <text x="0" y="78" font-size="10" fill="#666">0%</text>
+    <text x="200" y="78" font-size="10" fill="#666">100% acc</text>
+  </g>
+
+  <!-- Novelty -->
+  <rect x="600" y="170" width="260" height="240" rx="12" fill="#f0fdf4" stroke="#16a34a"/>
+  <text x="730" y="200" text-anchor="middle" font-size="15" font-weight="700" fill="#15803d">Novelty</text>
+  <text x="730" y="220" text-anchor="middle" font-size="11" fill="#666" font-style="italic">weight 0.25</text>
+  <text x="730" y="252" text-anchor="middle" font-size="13" fill="#111" font-family="monospace">1 / (1 + completions)</text>
+  <text x="730" y="278" text-anchor="middle" font-size="12" fill="#444">Logarithmic decay —</text>
+  <text x="730" y="296" text-anchor="middle" font-size="12" fill="#444">unseen letters bubble up</text>
+  <g transform="translate(620 320)">
+    <line x1="0" y1="60" x2="220" y2="60" stroke="#94a3b8" stroke-width="1"/>
+    <line x1="0" y1="0" x2="0" y2="60" stroke="#94a3b8" stroke-width="1"/>
+    <path d="M 0 5 Q 30 30 60 42 Q 110 52 220 56" stroke="#15803d" stroke-width="2.5" fill="none"/>
+    <text x="0" y="78" font-size="10" fill="#666">0×</text>
+    <text x="100" y="78" font-size="10" fill="#666">5×</text>
+    <text x="200" y="78" font-size="10" fill="#666">20× practiced</text>
+  </g>
+
+  <text x="450" y="438" text-anchor="middle" font-size="12" fill="#444"><tspan font-weight="600">Validation:</tspan> Pearson <tspan font-style="italic">r</tspan> between assigned priority and subsequent accuracy delta — exposed in the dashboard's debug section</text>
+</svg>
