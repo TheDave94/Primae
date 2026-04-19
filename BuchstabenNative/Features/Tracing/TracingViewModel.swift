@@ -26,7 +26,8 @@ public final class TracingViewModel {
             reloadStrokeCheckpoints(for: letters[letterIndex])
         }
     }
-    var toastMessage: String?
+    /// Forwarded from `TransientMessagePresenter` so existing views keep binding via `vm.toastMessage`.
+    var toastMessage: String? { messages.toastMessage }
     var currentLetterName   = "A"
     var currentLetterImageName = ""
     var currentLetterImage: UIImage? = nil
@@ -47,7 +48,8 @@ public final class TracingViewModel {
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
-    var completionMessage: String?
+    /// Forwarded from `TransientMessagePresenter` for views bound via `vm.completionMessage`.
+    var completionMessage: String? { messages.completionMessage }
     private(set) var currentDifficultyTier: DifficultyTier = .standard
 
     // MARK: - Learning phase state
@@ -147,8 +149,7 @@ public final class TracingViewModel {
     private var didCompleteCurrentLetter         = false
     private var playbackMachine                  = PlaybackStateMachine()
     private var pendingPlaybackStateTask: Task<Void, Never>?
-    private var toastTask: Task<Void, Never>?
-    private var completionDismissTask: Task<Void, Never>?
+    private let messages = TransientMessagePresenter()
     private var endTouchGraceTask: Task<Void, Never>?
     private let animation = AnimationGuideController()
     private var smoothedVelocity: CGFloat        = 0
@@ -245,8 +246,7 @@ public final class TracingViewModel {
         playbackMachine.forceIdle()
         isPlaying = false
         didCompleteCurrentLetter = false
-        completionDismissTask?.cancel()
-        completionMessage = nil
+        messages.clearCompletionState()
         stopGuideAnimation()
         toast("Zurückgesetzt")
     }
@@ -520,8 +520,7 @@ public final class TracingViewModel {
     // MARK: - Completion HUD
 
     func dismissCompletionHUD() {
-        completionDismissTask?.cancel()
-        completionMessage = nil
+        messages.dismissCompletion()
     }
 
     // MARK: - Animation guide
@@ -733,8 +732,7 @@ public final class TracingViewModel {
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
         letterLoadTime                 = CACurrentMediaTime()
-        completionDismissTask?.cancel()
-        completionMessage              = nil
+        messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
         isSingleTouchInteractionActive = false
         smoothedVelocity               = 0
@@ -769,14 +767,7 @@ public final class TracingViewModel {
     }
 
     private func showCompletionHUD() {
-        completionDismissTask?.cancel()
-        let letter = currentLetterName
-        completionMessage = "🎉 \(letter) geschafft!"
-        completionDismissTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1.8))
-            guard let self, !Task.isCancelled else { return }
-            if self.completionMessage == "🎉 \(letter) geschafft!" { self.completionMessage = nil }
-        }
+        messages.show(completion: "🎉 \(currentLetterName) geschafft!")
     }
 
     static func mapVelocityToSpeed(_ v: CGFloat) -> Float {
@@ -875,13 +866,6 @@ public final class TracingViewModel {
     }
 
     private func toast(_ text: String) {
-        toastMessage = text
-        toastTask?.cancel()
-        toastTask = Task { [weak self] in
-            do { try await Task.sleep(for: .seconds(1.3)) } catch { return }
-            guard let self, !Task.isCancelled, self.toastMessage == text else { return }
-            self.toastMessage = nil
-            self.toastTask    = nil
-        }
+        messages.show(toast: text)
     }
 }
