@@ -82,6 +82,43 @@ struct TracingCanvasView: View {
                 context.stroke(dot, with: .color(.white.opacity(0.60)), lineWidth: 2)
             }
 
+            // Directional arrow — direct phase: shown briefly after a correct dot tap
+            if let arrowIdx = vm.directArrowStrokeIndex,
+               let rawStrokes = vm.rawGlyphStrokes,
+               arrowIdx < rawStrokes.strokes.count,
+               rawStrokes.strokes[arrowIdx].checkpoints.count >= 2,
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                   for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
+                let stroke = rawStrokes.strokes[arrowIdx]
+                let c0 = stroke.checkpoints[0]
+                let c1 = stroke.checkpoints[1]
+                let from = CGPoint(x: (gr.minX + c0.x * gr.width) * size.width,
+                                   y: (gr.minY + c0.y * gr.height) * size.height)
+                let to   = CGPoint(x: (gr.minX + c1.x * gr.width) * size.width,
+                                   y: (gr.minY + c1.y * gr.height) * size.height)
+                var linePath = Path()
+                linePath.move(to: from)
+                linePath.addLine(to: to)
+                context.stroke(linePath, with: .color(.orange.opacity(0.9)),
+                               style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                let dx = to.x - from.x
+                let dy = to.y - from.y
+                let angle = atan2(dy, dx)
+                let tipLen: CGFloat = 18
+                let spread: CGFloat = .pi / 5
+                let b1 = CGPoint(x: to.x - tipLen * cos(angle - spread),
+                                 y: to.y - tipLen * sin(angle - spread))
+                let b2 = CGPoint(x: to.x - tipLen * cos(angle + spread),
+                                 y: to.y - tipLen * sin(angle + spread))
+                var headPath = Path()
+                headPath.move(to: to)
+                headPath.addLine(to: b1)
+                headPath.move(to: to)
+                headPath.addLine(to: b2)
+                context.stroke(headPath, with: .color(.orange.opacity(0.9)),
+                               style: StrokeStyle(lineWidth: 5, lineCap: .round))
+            }
+
             let clampedProgress = max(0, min(1, vm.progress))
             let trackRect = CGRect(x: 0, y: size.height - 8, width: size.width,                    height: 8)
             let fillRect  = CGRect(x: 0, y: size.height - 8, width: size.width * clampedProgress, height: 8)
@@ -176,6 +213,13 @@ struct TracingCanvasView: View {
             )
             .overlay(
                 Group {
+                    if vm.learningPhase == .direct {
+                        DirectPhaseDotsOverlay()
+                    }
+                }
+            )
+            .overlay(
+                Group {
                     if vm.showFreeWriteOverlay {
                         freeWriteKPOverlay()
                     }
@@ -224,6 +268,70 @@ private struct ProgressPill: View {
                     .stroke((differentiateWithoutColor ? Color.blue : Color.green).opacity(0.5), lineWidth: 1)
             )
             .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Direct phase dot overlay
+
+/// Renders numbered start-dot circles for the direct phase and routes taps to the VM.
+/// Sits above the touch overlays so SwiftUI tap gestures win over the tracing handler.
+private struct DirectPhaseDotsOverlay: View {
+    @Environment(TracingViewModel.self) private var vm
+    @State private var pulseToggle = false
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                if let rawStrokes = vm.rawGlyphStrokes,
+                   !rawStrokes.strokes.isEmpty,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                       for: vm.currentLetterName,
+                       canvasSize: geo.size,
+                       schriftArt: vm.schriftArt) {
+                    ForEach(rawStrokes.strokes.indices, id: \.self) { idx in
+                        dotView(idx: idx, stroke: rawStrokes.strokes[idx], gr: gr, size: geo.size)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .onChange(of: vm.directPulsingDot) { _, isPulsing in
+            guard isPulsing else { pulseToggle = false; return }
+            withAnimation(.easeInOut(duration: 0.25).repeatCount(3, autoreverses: true)) {
+                pulseToggle = true
+            }
+            Task { [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .milliseconds(800))
+                self.pulseToggle = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, size: CGSize) -> some View {
+        if let first = stroke.checkpoints.first {
+            let screenX = (gr.minX + first.x * gr.width) * size.width
+            let screenY = (gr.minY + first.y * gr.height) * size.height
+            let isTapped = vm.directTappedDots.contains(idx)
+            let isNext   = !isTapped && idx == vm.directNextExpectedDotIndex
+            let r: CGFloat = isNext ? 22 : 18
+            ZStack {
+                Circle()
+                    .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
+                    .opacity(isTapped ? 0.85 : 0.80)
+                    .frame(width: r * 2, height: r * 2)
+                    .scaleEffect(isNext && pulseToggle ? 1.3 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.5), value: pulseToggle)
+                Text("\(idx + 1)")
+                    .font(.system(size: r * 0.85, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+            .position(x: screenX, y: screenY)
+            .onTapGesture { vm.tapDirectDot(index: idx) }
+            .accessibilityLabel("Startpunkt \(idx + 1)")
+            .accessibilityAddTraits(.isButton)
+        }
     }
 }
 

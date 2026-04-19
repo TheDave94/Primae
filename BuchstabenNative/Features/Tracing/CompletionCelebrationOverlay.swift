@@ -18,14 +18,14 @@ struct CompletionCelebrationOverlay: View {
                     .multilineTextAlignment(.center)
 
                 HStack(spacing: 12) {
-                    ForEach(1...3, id: \.self) { index in
+                    ForEach(1...4, id: \.self) { index in
                         Image(systemName: index <= starsEarned ? "star.fill" : "star")
-                            .font(.system(size: 48))
+                            .font(.system(size: 40))
                             .foregroundStyle(index <= starsEarned ? .yellow : .white.opacity(0.4))
                     }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(starsEarned) von 3 Sternen")
+                .accessibilityLabel("\(starsEarned) von 4 Sternen")
 
                 Button(action: onWeiter) {
                     Text("Weiter")

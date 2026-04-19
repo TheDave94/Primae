@@ -7,16 +7,17 @@
 import CoreGraphics
 import Foundation
 
-/// Coordinates the three-phase learning flow for one letter.
+/// Coordinates the four-phase learning flow for one letter.
 ///
 /// Usage:
 /// ```swift
 /// var controller = LearningPhaseController()
-/// controller.advance(score: 1.0)   // observe → guided
+/// controller.advance(score: 1.0)   // observe → direct
+/// controller.advance(score: 1.0)   // direct → guided
 /// controller.advance(score: 0.85)  // guided → freeWrite
 /// controller.advance(score: 0.72)  // freeWrite → complete
 /// assert(controller.isLetterSessionComplete)
-/// assert(controller.starsEarned == 3)
+/// assert(controller.starsEarned == 4)
 /// ```
 struct LearningPhaseController: Equatable {
 
@@ -72,15 +73,18 @@ struct LearningPhaseController: Equatable {
     var isTouchEnabled: Bool {
         switch currentPhase {
         case .observe:   return false
+        case .direct:    return true   // Tap the numbered start dots
         case .guided:    return true
         case .freeWrite: return true
         }
     }
 
     /// Whether checkpoints should be visually rendered on the canvas.
+    /// Direct phase manages its own dot overlay (DirectPhaseDotsOverlay).
     var showCheckpoints: Bool {
         switch currentPhase {
         case .observe:   return true   // Show numbered dots
+        case .direct:    return false  // Overlay handles rendering
         case .guided:    return true   // Show checkpoint halos
         case .freeWrite: return false  // No visual aid
         }
@@ -90,6 +94,7 @@ struct LearningPhaseController: Equatable {
     var useCheckpointGating: Bool {
         switch currentPhase {
         case .observe:   return false
+        case .direct:    return false  // Tap-based — not stroke-gated
         case .guided:    return true
         case .freeWrite: return false  // Freehand — scored post-hoc
         }

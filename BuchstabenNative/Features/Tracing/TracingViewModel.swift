@@ -69,20 +69,21 @@ public final class TracingViewModel {
 
     /// Whether the ghost guide-line should render because of the current phase.
     /// Composed with the user's `showGhost` toggle in views: phase-driven
-    /// scaffolding is always on in observe/guided and always off in freeWrite.
+    /// scaffolding is always on in observe/direct/guided and always off in freeWrite.
     var showGhostForPhase: Bool {
         switch phaseController.currentPhase {
-        case .observe, .guided: return true
-        case .freeWrite:        return false
+        case .observe, .direct, .guided: return true
+        case .freeWrite:                 return false
         }
     }
 
     /// Guidance-fading intensity (Schmidt & Lee, 2005): reducing feedback over
     /// time improves motor-learning retention.
-    /// observe=1.0 (full), guided=0.6 (moderate), freeWrite=0.0 (post-hoc only).
+    /// observe=1.0, direct=1.0, guided=0.6 (moderate), freeWrite=0.0 (post-hoc only).
     var feedbackIntensity: CGFloat {
         switch phaseController.currentPhase {
         case .observe:   return 1.0
+        case .direct:    return 1.0
         case .guided:    return 0.6
         case .freeWrite: return 0.0
         }
@@ -116,6 +117,22 @@ public final class TracingViewModel {
     private(set) var freeWritePath: [CGPoint] = []
     /// Shows the KP (Knowledge of Performance) overlay after freeWrite completion.
     var showFreeWriteOverlay: Bool = false
+
+    // MARK: - Direct phase state
+
+    /// Stroke indices whose start dot has been tapped in the direct phase.
+    private(set) var directTappedDots: Set<Int> = []
+    /// True while the correct (next expected) dot should pulse to guide after a wrong tap.
+    var directPulsingDot: Bool = false
+    /// Index of the stroke whose directional arrow is briefly shown after a correct tap.
+    var directArrowStrokeIndex: Int? = nil
+
+    /// Index of the next dot the child must tap in the direct phase.
+    var directNextExpectedDotIndex: Int {
+        guard let rawStrokes = rawGlyphStrokes else { return 0 }
+        for i in rawStrokes.strokes.indices where !directTappedDots.contains(i) { return i }
+        return rawStrokes.strokes.count
+    }
 
     // MARK: - Animation guide state (ready for onboarding / demo UI)
 
@@ -358,6 +375,7 @@ public final class TracingViewModel {
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         guard phaseController.isTouchEnabled       else { return }
+        guard phaseController.currentPhase != .direct else { return }  // handled by DirectPhaseDotsOverlay
         guard !isSingleTouchInteractionActive     else { return }
 
         isSingleTouchInteractionActive   = true
@@ -609,6 +627,8 @@ public final class TracingViewModel {
         switch phaseController.currentPhase {
         case .observe:
             score = 1.0
+        case .direct:
+            score = 1.0  // pass/fail
         case .guided:
             score = progress
         case .freeWrite:
@@ -644,6 +664,51 @@ public final class TracingViewModel {
         guard phaseController.currentPhase == .observe else { return }
         stopGuideAnimation()
         advanceLearningPhase()
+    }
+
+    /// Handle a tap on a numbered start dot in the direct phase.
+    /// Correct order tap: plays confirmation audio, shows directional arrow, advances.
+    /// Wrong order tap: gentle haptic, pulses the correct dot.
+    func tapDirectDot(index: Int) {
+        guard phaseController.currentPhase == .direct else { return }
+        guard let rawStrokes = rawGlyphStrokes else { return }
+        let total = rawStrokes.strokes.count
+        guard index < total, !directTappedDots.contains(index) else { return }
+
+        if index == directNextExpectedDotIndex {
+            directTappedDots.insert(index)
+            haptics.fire(.checkpointHit)
+            // Confirmation sound: replay letter name
+            if letters.indices.contains(letterIndex) {
+                let files = letters[letterIndex].audioFiles
+                if files.indices.contains(audioIndex) {
+                    audio.loadAudioFile(named: files[audioIndex], autoplay: true)
+                }
+            }
+            // Show directional arrow briefly along the stroke path
+            directArrowStrokeIndex = index
+            Task { [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .seconds(1.2))
+                if self.directArrowStrokeIndex == index {
+                    self.directArrowStrokeIndex = nil
+                }
+            }
+            // All dots tapped — advance phase
+            if directTappedDots.count >= total {
+                haptics.fire(.letterCompleted)
+                advanceLearningPhase()
+            }
+        } else {
+            // Wrong dot — gentle haptic, pulse the correct one
+            haptics.fire(.offPath)
+            directPulsingDot = true
+            Task { [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(for: .milliseconds(700))
+                self.directPulsingDot = false
+            }
+        }
     }
 
     /// Apply calibrated glyph-relative checkpoints from the debug overlay.
@@ -706,6 +771,9 @@ public final class TracingViewModel {
         if phaseController.currentPhase == .freeWrite {
             freeWritePath.removeAll(keepingCapacity: true)
         }
+        directTappedDots.removeAll()
+        directPulsingDot = false
+        directArrowStrokeIndex = nil
         smoothedVelocity = 0
         playback.resumeIntent = false
         playback.cancelPending()
@@ -834,6 +902,9 @@ public final class TracingViewModel {
         freeWritePath.removeAll(keepingCapacity: true)
         showFreeWriteOverlay = false
         lastFreeWriteDistance = 0
+        directTappedDots.removeAll()
+        directPulsingDot = false
+        directArrowStrokeIndex = nil
         showGhost                      = false
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName
@@ -850,12 +921,15 @@ public final class TracingViewModel {
         playback.resumeIntent   = true
         playback.cancelPending()
         stopGuideAnimation()
-        // Auto-start stroke animation in observe phase, or skip the phase entirely
+        // Auto-start stroke animation in observe phase, or skip phases entirely
         // when the letter has no strokes (lowercase/umlaut placeholders) — there's
         // nothing to demonstrate, and isComplete would otherwise report vacuous success.
         if phaseController.currentPhase == .observe {
             if letter.strokes.strokes.isEmpty {
-                phaseController.advance(score: 1.0)
+                phaseController.advance(score: 1.0)  // skip observe
+                if phaseController.currentPhase == .direct {
+                    phaseController.advance(score: 1.0)  // skip direct (no dots to tap)
+                }
             } else {
                 animation.startAfterDelay(0.3, strokes: letter.strokes)
             }

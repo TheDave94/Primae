@@ -31,37 +31,49 @@ struct LearningPhaseControllerTests {
         #expect(sut.currentPhase == .guided)
     }
 
-    // MARK: - Phase advancement (three-phase)
+    // MARK: - Phase advancement (four-phase)
 
-    @Test("Advance from observe to guided")
-    func advanceFromObserveToGuided() {
+    @Test("Advance from observe to direct")
+    func advanceFromObserveToDirect() {
         var sut = LearningPhaseController()
         let advanced = sut.advance(score: 1.0)
         #expect(advanced)
-        #expect(sut.currentPhase == .guided)
+        #expect(sut.currentPhase == .direct)
         #expect(sut.starsEarned == 1)
         #expect(!sut.isLetterSessionComplete)
+    }
+
+    @Test("Advance from direct to guided")
+    func advanceFromDirectToGuided() {
+        var sut = LearningPhaseController()
+        sut.advance(score: 1.0)
+        let advanced = sut.advance(score: 1.0)
+        #expect(advanced)
+        #expect(sut.currentPhase == .guided)
+        #expect(sut.starsEarned == 2)
     }
 
     @Test("Advance from guided to freeWrite")
     func advanceFromGuidedToFreeWrite() {
         var sut = LearningPhaseController()
         sut.advance(score: 1.0)
+        sut.advance(score: 1.0)
         let advanced = sut.advance(score: 0.85)
         #expect(advanced)
         #expect(sut.currentPhase == .freeWrite)
-        #expect(sut.starsEarned == 2)
+        #expect(sut.starsEarned == 3)
     }
 
     @Test("Advance from freeWrite completes session")
     func advanceFromFreeWriteCompletes() {
         var sut = LearningPhaseController()
         sut.advance(score: 1.0)
+        sut.advance(score: 1.0)
         sut.advance(score: 0.85)
         let advanced = sut.advance(score: 0.72)
         #expect(!advanced)
         #expect(sut.isLetterSessionComplete)
-        #expect(sut.starsEarned == 3)
+        #expect(sut.starsEarned == 4)
     }
 
     @Test("Full session overall score averages all phases")
@@ -70,7 +82,8 @@ struct LearningPhaseControllerTests {
         sut.advance(score: 1.0)
         sut.advance(score: 0.8)
         sut.advance(score: 0.6)
-        #expect(abs(sut.overallScore - 0.8) < 0.001)
+        sut.advance(score: 0.4)
+        #expect(abs(sut.overallScore - 0.7) < 0.001)
     }
 
     // MARK: - Guided-only
@@ -123,6 +136,7 @@ struct LearningPhaseControllerTests {
     @Test("Touch enabled per phase",
           arguments: [
             (LearningPhase.observe, false),
+            (LearningPhase.direct, true),
             (LearningPhase.guided, true),
             (LearningPhase.freeWrite, true),
           ])
@@ -137,6 +151,7 @@ struct LearningPhaseControllerTests {
     @Test("Checkpoint gating per phase",
           arguments: [
             (LearningPhase.observe, false),
+            (LearningPhase.direct, false),
             (LearningPhase.guided, true),
             (LearningPhase.freeWrite, false),
           ])

@@ -1,0 +1,193 @@
+# IOS_ROADMAP_V3.yaml — Scientific principles implementation sprint
+# Based on motor learning theory, Austrian curriculum research, and Schreibmotorik Institut findings.
+
+- id: v3-001
+  title: "Implement fading feedback across learning phases"
+  description: |
+    The guidance hypothesis (Schmidt & Lee, 2005) shows that reducing feedback
+    over time improves motor learning retention. Currently all phases give similar
+    audio/haptic density. Implement phase-dependent feedback intensity:
+    observe=full, guided=moderate, freeWrite=minimal (post-hoc only).
+  acceptance_criteria:
+    - "TracingViewModel gains a computed property feedbackIntensity: CGFloat based on phaseController.currentPhase"
+    - "Observe phase returns feedbackIntensity = 1.0"
+    - "Guided phase returns feedbackIntensity = 0.6"
+    - "FreeWrite phase returns feedbackIntensity = 0.0"
+    - "In updateTouch, the haptic fire call multiplies intensity by feedbackIntensity — if feedbackIntensity is 0, haptics are skipped entirely"
+    - "In updateTouch, audio proximity-triggered playback is gated on feedbackIntensity > 0.3 — so freeWrite has no real-time audio"
+    - "After freeWrite finger lift (endTouch), the Fréchet score IS shown — this is post-hoc KR feedback, which is fine"
+    - "Does NOT modify AudioEngine.swift"
+    - "Does NOT change observe or guided phase behavior beyond intensity scaling"
+  target_files: ["TracingViewModel.swift"]
+  priority: 10
+  status: pending
+
+- id: v3-002
+  title: "Add Knowledge of Performance visual overlay for freeWrite"
+  description: |
+    Research (Danna & Velay, 2015) shows children under 8 benefit more from
+    process feedback (KP — where you deviated) than outcome feedback (KR — your score).
+    After freeWrite completion, show a visual overlay comparing the child's trace
+    against the reference strokes, highlighting deviation areas.
+  acceptance_criteria:
+    - "TracingViewModel accumulates freeWritePath: [CGPoint] during freeWrite phase touches (normalized 0-1 coordinates)"
+    - "freeWritePath is cleared when a new freeWrite phase begins"
+    - "TracingViewModel gains a published var showFreeWriteOverlay: Bool = false"
+    - "When freeWrite phase completes (phaseController advances), showFreeWriteOverlay is set to true"
+    - "TracingCanvasView renders the overlay when vm.showFreeWriteOverlay is true: child's path in green (lineWidth 4), reference strokes in blue with opacity 0.4 (lineWidth 8)"
+    - "Overlay auto-dismisses after 3 seconds or on tap (sets showFreeWriteOverlay = false)"
+    - "Does NOT modify AudioEngine.swift or StrokeTracker.swift"
+  target_files: ["TracingViewModel.swift", "TracingCanvasView.swift"]
+  priority: 9
+  status: pending
+
+- id: v3-003
+  title: "Add letter ordering strategies — motor similarity, word-building, alphabetical"
+  description: |
+    Austrian teaching practice uses varied letter orderings. Motor similarity
+    grouping (Berninger et al., 2006) teaches letters with similar stroke patterns
+    together. Word-building order (M,A,L,E...) lets children form words early.
+    Add configurable ordering that affects letter picker and scheduler.
+  acceptance_criteria:
+    - "New file Core/LetterOrderingStrategy.swift with enum LetterOrderingStrategy: String, Codable, CaseIterable"
+    - "Cases: motorSimilarity, wordBuilding, alphabetical"
+    - "Each case has a displayName: String with German labels ('Motorisch ähnlich', 'Wortbildend', 'Alphabetisch')"
+    - "Each case has a func orderedLetters() -> [String] returning the letter names in the prescribed order"
+    - "motorSimilarity order: I, L, T, F, E, H, A, K, M, N, V, W, X, Y, Z, C, O, G, Q, S, U, J, B, D, P, R"
+    - "wordBuilding order: M, A, L, E, I, O, S, R, N, T, D, U, H, G, K, W, B, P, F, J, V, C, Q, X, Y, Z"
+    - "alphabetical order: A through Z"
+    - "TracingDependencies gains var letterOrdering: LetterOrderingStrategy = .motorSimilarity"
+    - "TracingViewModel.visibleLetterNames sorts letters according to the active ordering strategy"
+    - "SettingsView shows ordering picker in a 'Buchstabenreihenfolge' section"
+    - "Does NOT modify AudioEngine.swift"
+  target_files: ["Core/LetterOrderingStrategy.swift", "TracingDependencies.swift", "TracingViewModel.swift", "Features/Dashboard/SettingsView.swift"]
+  priority: 8
+  status: pending
+
+- id: v3-004
+  title: "Add directionality teaching phase between observe and guided"
+  description: |
+    LetterSchool's 4-step model separates 'tap start points to learn directionality'
+    from tracing. Research (Thibon, Gerber & Kandel, 2018) shows children under 8
+    store motor programs for individual segments. Explicitly teaching where each
+    stroke starts aids segment-by-segment motor program formation.
+  acceptance_criteria:
+    - "LearningPhase gains a new case: direct (rawValue between observe and guided)"
+    - "Phase order becomes: observe → direct → guided → freeWrite"
+    - "LearningPhase.displayName for .direct returns 'Richtung lernen'"
+    - "In direct phase: numbered circles (1, 2, 3...) appear at each stroke's first checkpoint position"
+    - "Child taps the dots in order. Tapping the correct dot plays a confirmation sound via audio and shows a brief directional arrow along the stroke path"
+    - "Tapping the wrong dot gives gentle haptic feedback but no penalty — the correct dot pulses to guide"
+    - "Phase auto-advances to guided after all dots are tapped in correct order"
+    - "LearningPhaseController.starsEarned maximum increases from 3 to 4"
+    - "phaseScores records direct phase score as 1.0 on completion (it's pass/fail)"
+    - "Empty-stroke letters skip direct phase (same as observe skip logic)"
+    - "Does NOT modify AudioEngine.swift or StrokeTracker.swift"
+  target_files: ["Core/LearningPhase.swift", "Core/LearningPhaseController.swift", "TracingViewModel.swift", "TracingCanvasView.swift"]
+  priority: 7
+  status: pending
+
+- id: v3-005
+  title: "Add Schreibmotorik four-dimension writing assessment"
+  description: |
+    The Schreibmotorik Institut (Marquardt & Söhl, 2016) identifies four motor
+    competency dimensions: Druck (pressure), Tempo (speed consistency), Form
+    (form accuracy), and Rhythmus (rhythm/fluency). Currently only Form is scored
+    via Fréchet distance. Adding the other three creates a research-backed
+    multidimensional assessment.
+  acceptance_criteria:
+    - "New struct WritingAssessment: Codable, Equatable in FreeWriteScorer.swift"
+    - "WritingAssessment has four CGFloat properties: formAccuracy, tempoConsistency, pressureControl, rhythmScore"
+    - "WritingAssessment has a computed overallScore: CGFloat = formAccuracy * 0.40 + tempoConsistency * 0.25 + pressureControl * 0.15 + rhythmScore * 0.20"
+    - "formAccuracy: existing Fréchet-based score (0-1)"
+    - "tempoConsistency: 1.0 minus normalized variance of point-to-point time intervals during freeWrite. Low variance = consistent speed = high score"
+    - "pressureControl: if touch.force > 0 (Apple Pencil), 1.0 minus normalized variance of force values. If finger (force == 0): returns 1.0"
+    - "rhythmScore: ratio of active-drawing-time to total-session-time. More drawing vs pausing = higher fluency"
+    - "FreeWriteScorer.score() returns WritingAssessment instead of CGFloat"
+    - "TracingViewModel stores lastWritingAssessment: WritingAssessment?"
+    - "DebugInfoPanel shows all four dimensions when available"
+    - "ParentDashboardStore.recordPhaseSession includes WritingAssessment for freeWrite phases"
+    - "Existing code that reads the old CGFloat score uses .overallScore"
+    - "Does NOT modify AudioEngine.swift"
+  target_files: ["Core/FreeWriteScorer.swift", "TracingViewModel.swift", "Features/Dashboard/ParentDashboardView.swift", "Core/ParentDashboardStore.swift"]
+  priority: 6
+  status: pending
+
+- id: v3-006
+  title: "Track writing speed and automatization progress"
+  description: |
+    The KMK Vereinbarung (2024) emphasizes automatization of writing movement as
+    the prerequisite for functional writing. Speed increase over sessions indicates
+    motor program formation. Track strokes-per-second to measure automatization.
+  acceptance_criteria:
+    - "TracingViewModel calculates strokesPerSecond: CGFloat during guided and freeWrite phases"
+    - "strokesPerSecond is computed as: completed checkpoints / elapsed time in seconds"
+    - "ProgressStore.LetterProgress gains optional property speedTrend: [Double]? — last 5 session speeds"
+    - "ProgressStore.recordCompletion stores the session's strokesPerSecond in speedTrend"
+    - "ParentDashboardView shows a 'Schreibflüssigkeit' row in Übersicht with trend arrow (↑ improving, → stable, ↓ declining)"
+    - "LetterScheduler.recommendNext() gives lower priority to letters with increasing speed trend (they're being automatized) and higher priority to stagnant-speed letters"
+    - "Does NOT modify AudioEngine.swift"
+  target_files: ["TracingViewModel.swift", "Core/ProgressStore.swift", "Features/Dashboard/ParentDashboardView.swift", "Core/LetterScheduler.swift"]
+  priority: 5
+  status: pending
+
+- id: v3-007
+  title: "Add paper-transfer self-assessment mode"
+  description: |
+    Tablet writing has less friction than paper (Alamargot & Morin, 2015), which
+    can disrupt motor control strategies. Add an optional phase where the app
+    shows the letter, the child writes on paper, then self-evaluates. This
+    demonstrates transfer awareness in the thesis.
+  acceptance_criteria:
+    - "TracingDependencies gains var enablePaperTransfer: Bool = false"
+    - "SettingsView shows toggle 'Papier-Übertragung' in thesis settings section"
+    - "When enabled and freeWrite completes, a PaperTransferView overlay appears"
+    - "PaperTransferView shows: large reference letter for 3 seconds, then hides it with message 'Schreibe den Buchstaben jetzt auf Papier!'"
+    - "After 10 seconds, shows self-assessment with 3 emoji buttons: 😊 (super), 😐 (okay), 😟 (nochmal üben)"
+    - "Self-assessment score (1.0, 0.5, 0.0) is stored in ProgressStore alongside app-based score as paperTransferScore"
+    - "ParentDashboardView shows paper transfer scores when available"
+    - "Phase is entirely optional — skipped when enablePaperTransfer is false"
+    - "Does NOT modify AudioEngine.swift"
+  target_files: ["Features/Tracing/PaperTransferView.swift", "TracingViewModel.swift", "TracingDependencies.swift", "Core/ProgressStore.swift", "Features/Dashboard/SettingsView.swift"]
+  priority: 4
+  status: pending
+
+- id: v3-008
+  title: "Add letter variant exploration for Austrian Schulschrift"
+  description: |
+    The Grundschrift model (Grundschulverband, 2024) emphasizes children should
+    explore variant letter forms. Austrian Schulschrift 1995 provides two official
+    variants for uppercase Z, F, H and lowercase r. Implementing variant support
+    develops flexible motor programs.
+  acceptance_criteria:
+    - "LetterAsset gains optional property variants: [String]? — list of variant IDs"
+    - "For letters with variants, Resources/Letters/{letter}/ gains strokes_variant.json alongside strokes.json"
+    - "Implement variants for: uppercase F (two forms), uppercase H (two forms), lowercase r (two forms)"
+    - "TracingViewModel gains var showingVariant: Bool = false and func toggleVariant()"
+    - "In guided and freeWrite phases, a small 'Variante' button appears when the current letter has variants"
+    - "Tapping toggles between standard and variant stroke data (reloads checkpoints)"
+    - "ProgressStore tracks which variant was used per session"
+    - "Does NOT modify AudioEngine.swift"
+  target_files: ["Core/Models.swift", "TracingViewModel.swift", "TracingCanvasView.swift", "Core/ProgressStore.swift"]
+  priority: 3
+  status: pending
+
+- id: v3-009
+  title: "Integrate Österreichische Schulschrift 1995 font rendering"
+  description: |
+    Since 2023/24, Austrian schools exclusively use Schulschrift 1995 (RS 35/2022).
+    No existing handwriting app offers this font for digital learning. The
+    Pesendorfer digital typeface (2020 OpenType version) is the official font.
+    This is the app's unique market differentiator for Austria.
+  acceptance_criteria:
+    - "SchriftArt gains case schulschrift1995 with displayName 'Österreichische Schulschrift 1995'"
+    - "Bundle the Schulschrift 1995 OTF font file (verify educational use licensing with Pesendorfer/BMBWF)"
+    - "PrimaeLetterRenderer.makeFont handles the Schulschrift 1995 font metrics (different x-height, ascender ratio)"
+    - "When SchriftArt is .schulschrift1995, PrimaeLetterRenderer uses the bundled Schulschrift font"
+    - "SettingsView enables the Schulschrift 1995 option (removes 'bald verfügbar' label)"
+    - "Create strokes_schulschrift.json for the 7 demo letters (A, F, I, K, L, M, O) with Schulschrift-specific stroke paths"
+    - "Does NOT modify AudioEngine.swift"
+    - "NOTE: This item requires font licensing verification before implementation"
+  target_files: ["Core/SchriftArt.swift", "Core/PrimaeLetterRenderer.swift", "Features/Dashboard/SettingsView.swift"]
+  priority: 2
+  status: pending

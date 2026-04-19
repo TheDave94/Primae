@@ -1,0 +1,60 @@
+═══════════════════════════════════════════════════════
+  iOS V3 Scientific Principles — Sun Apr 19 17:10:33 UTC 2026
+═══════════════════════════════════════════════════════
+
+[1/9] 🚀 v3-001: Implement fading feedback across learning phases
+  Started: Sun Apr 19 17:10:34 UTC 2026
+Pushed. CI build is queued. The changes made to `TracingViewModel.swift`:
+
+1. **`feedbackIntensity: CGFloat`** computed property — `observe=1.0`, `guided=0.6`, `freeWrite=0.0`
+2. **Haptics gated** in `updateTouch` — all three haptic call sites (`letterCompleted` on isNowComplete, checkpoint/stroke block, and final letter completion) are skipped when `feedbackIntensity == 0` (freeWrite)
+3. **Audio proximity gated** — `shouldBeActive` requires `feedbackIntensity > 0.3`, cutting real-time audio in freeWrite while leaving observe and guided unchanged
+4. `endTouch`/`advanceLearningPhase` (Fréchet scoring + HUD) untouched — post-hoc KR feedback still fires in freeWrite
+  ✅ v3-001 committed: 4b007f2 v3-001: Implement fading feedback across learning phases
+Everything up-to-date
+  Finished: Sun Apr 19 17:12:29 UTC 2026
+
+[2/9] 🚀 v3-002: Add Knowledge of Performance visual overlay for freeWrite
+  Started: Sun Apr 19 17:12:34 UTC 2026
+CI is running. Here's a summary of the changes made:
+
+**TracingViewModel.swift:**
+- Added `freeWritePath: [CGPoint]` — normalized 0–1 touch coordinates accumulated during freeWrite phase
+- Added `showFreeWriteOverlay: Bool` — set to `true` when freeWrite phase completes
+- `updateTouch`: appends normalized point to `freeWritePath` alongside existing `freeWritePoints`
+- `advanceLearningPhase`: captures `wasInFreeWrite` before calling `advance`, then sets `showFreeWriteOverlay = true`
+- `resetForPhaseTransition`: clears `freeWritePath` only when transitioning INTO freeWrite (new phase begins)
+- `load(letter:)`: clears `freeWritePath` and resets `showFreeWriteOverlay` on letter change
+
+**TracingCanvasView.swift:**
+- Added `freeWriteKPOverlay()` — a `Canvas` that draws reference strokes in blue (0.4 opacity, lineWidth 8) and the child's path in green (lineWidth 4), with a semi-transparent background, tap-to-dismiss, and 3-second auto-dismiss via `.task`
+- Added `.overlay(Group { if vm.showFreeWriteOverlay { freeWriteKPOverlay() } })` to the view hierarchy
+  ✅ v3-002 committed: a8defae v3-002: Add Knowledge of Performance visual overlay for freeWrite
+Everything up-to-date
+  Finished: Sun Apr 19 17:16:58 UTC 2026
+
+[3/9] 🚀 v3-003: Add letter ordering strategies — motor similarity, word-building, alphabetical
+  Started: Sun Apr 19 17:17:03 UTC 2026
+═══════════════════════════════════════════════════════
+  iOS V3 Scientific Principles — Sun Apr 19 17:23:12 UTC 2026
+═══════════════════════════════════════════════════════
+[1/9] ⏭️  v3-001: already done, skipping
+[2/9] ⏭️  v3-002: already done, skipping
+
+[3/9] 🚀 v3-003: Add letter ordering strategies — motor similarity, word-building, alphabetical
+  Started: Sun Apr 19 17:23:12 UTC 2026
+The roadmap item **v3-003 is already fully implemented and committed**. The commit `5929001` already contains all four target files with all acceptance criteria met:
+
+- `Core/LetterOrderingStrategy.swift` — enum with `motorSimilarity`, `wordBuilding`, `alphabetical` cases, German display names, correct `orderedLetters()` sequences
+- `TracingDependencies.swift` — `var letterOrdering: LetterOrderingStrategy = .motorSimilarity` with UserDefaults persistence
+- `TracingViewModel.swift` — `visibleLetterNames` sorts by the active ordering strategy
+- `Features/Dashboard/SettingsView.swift` — `Buchstabenreihenfolge` section with ordering picker
+
+Since `xcodebuild` isn't available in this Linux environment (as noted in CLAUDE.md), the full build can be verified by checking CI: `gh run list --repo TheDave94/Buchstaben-Lernen-App --limit 3`.
+  ✅ v3-003 committed: 5929001 v3-003: Add letter ordering strategies — motor similarity, word-building, alphabetical
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   a8defae..5929001  main -> main
+  Finished: Sun Apr 19 17:24:37 UTC 2026
+
+[4/9] 🚀 v3-004: Add directionality teaching phase between observe and guided
+  Started: Sun Apr 19 17:24:42 UTC 2026
