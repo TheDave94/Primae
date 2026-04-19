@@ -136,6 +136,48 @@ struct DashboardSnapshot: Codable, Equatable {
         return result
     }
 
+    /// Mean per-phase score for a single letter, keyed by LearningPhase.rawName.
+    /// Returns only phases the child has actually completed at least one
+    /// session of — letters never traced beyond observe will return a single
+    /// "observe" entry, etc. Used by the per-letter dashboard row to show
+    /// which phase a child masters vs which one they get stuck on.
+    func phaseScores(for letter: String) -> [String: Double] {
+        let key = letter.uppercased()
+        let records = phaseSessionRecords.filter { $0.letter.uppercased() == key && $0.completed }
+        guard !records.isEmpty else { return [:] }
+        var sums: [String: (total: Double, count: Int)] = [:]
+        for r in records {
+            let prior = sums[r.phase] ?? (0, 0)
+            sums[r.phase] = (prior.total + r.score, prior.count + 1)
+        }
+        return sums.mapValues { $0.total / Double($0.count) }
+    }
+
+    /// Daily practice minutes for the most recent `days` days. Missing days
+    /// in `sessionDurations` are filled with 0 so the chart x-axis always
+    /// shows a continuous timeline. Returns oldest-first so the chart reads
+    /// left-to-right as past-to-present.
+    func dailyPracticeMinutes(days: Int = 30,
+                              referenceDate: Date = Date(),
+                              calendar: Calendar = .current) -> [(date: Date, minutes: Double)] {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = calendar.timeZone
+
+        let byKey = Dictionary(grouping: sessionDurations, by: { $0.dateString })
+            .mapValues { $0.reduce(0) { $0 + $1.durationSeconds } }
+
+        var out: [(date: Date, minutes: Double)] = []
+        for offset in (0..<days).reversed() {
+            guard let day = calendar.date(byAdding: .day, value: -offset, to: referenceDate) else { continue }
+            let key = formatter.string(from: day)
+            let minutes = (byKey[key] ?? 0) / 60.0
+            out.append((date: day, minutes: minutes))
+        }
+        return out
+    }
+
     /// Mean Fréchet-based score across all completed freeWrite phase sessions.
     var averageFreeWriteScore: Double {
         let scores = phaseSessionRecords

@@ -86,6 +86,97 @@ private func makeStore() -> JSONParentDashboardStore {
         let total = snap.totalPracticeTime(recentDays: 7, referenceDate: date(2025, 3, 10), calendar: utcCal())
         #expect(abs(total - 1800) < 1e-6)
     }
+
+    // MARK: - phaseScores(for:)
+
+    @Test func phaseScores_emptyForUntracedLetter() {
+        let snap = DashboardSnapshot()
+        #expect(snap.phaseScores(for: "A").isEmpty)
+    }
+
+    @Test func phaseScores_meanAcrossSessionsByPhase() {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords = [
+            PhaseSessionRecord(letter: "A", phase: "observe",   completed: true, score: 0.90, schedulerPriority: 0.5),
+            PhaseSessionRecord(letter: "A", phase: "observe",   completed: true, score: 0.80, schedulerPriority: 0.5),
+            PhaseSessionRecord(letter: "A", phase: "guided",    completed: true, score: 0.70, schedulerPriority: 0.5),
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true, score: 0.60, schedulerPriority: 0.5),
+        ]
+        let scores = snap.phaseScores(for: "A")
+        #expect(abs((scores["observe"]   ?? -1) - 0.85) < 1e-9)
+        #expect(abs((scores["guided"]    ?? -1) - 0.70) < 1e-9)
+        #expect(abs((scores["freeWrite"] ?? -1) - 0.60) < 1e-9)
+    }
+
+    @Test func phaseScores_excludesIncompleteSessions() {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords = [
+            PhaseSessionRecord(letter: "B", phase: "observe", completed: true,  score: 1.00, schedulerPriority: 0.5),
+            PhaseSessionRecord(letter: "B", phase: "observe", completed: false, score: 0.00, schedulerPriority: 0.5),
+        ]
+        // Only the completed sample contributes — incomplete sessions are
+        // pedagogically meaningless for accuracy reporting.
+        #expect(abs((snap.phaseScores(for: "B")["observe"] ?? -1) - 1.0) < 1e-9)
+    }
+
+    @Test func phaseScores_caseInsensitive() {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords = [
+            PhaseSessionRecord(letter: "A", phase: "guided", completed: true, score: 0.5, schedulerPriority: 0.5),
+        ]
+        #expect(snap.phaseScores(for: "a") == snap.phaseScores(for: "A"))
+    }
+
+    // MARK: - dailyPracticeMinutes(days:)
+
+    @Test func dailyPracticeMinutes_returnsExactWindowLength() {
+        let snap = DashboardSnapshot()
+        let series = snap.dailyPracticeMinutes(days: 30,
+                                                referenceDate: date(2025, 3, 10),
+                                                calendar: utcCal())
+        #expect(series.count == 30)
+    }
+
+    @Test func dailyPracticeMinutes_fillsMissingDaysWithZero() {
+        var snap = DashboardSnapshot()
+        snap.sessionDurations = [
+            SessionDurationRecord(dateString: "2025-03-10", durationSeconds: 600),  // 10 min
+        ]
+        let series = snap.dailyPracticeMinutes(days: 7,
+                                                referenceDate: date(2025, 3, 10),
+                                                calendar: utcCal())
+        // The most recent entry is the reference date; older days fill with 0.
+        #expect(series.count == 7)
+        #expect(abs((series.last?.minutes ?? -1) - 10.0) < 1e-9, "today should be 10 min")
+        #expect(series.dropLast().allSatisfy { $0.minutes == 0 },
+                "all earlier days should be filled with 0 minutes")
+    }
+
+    @Test func dailyPracticeMinutes_sumsMultipleSessionsPerDay() {
+        var snap = DashboardSnapshot()
+        snap.sessionDurations = [
+            SessionDurationRecord(dateString: "2025-03-10", durationSeconds: 300),
+            SessionDurationRecord(dateString: "2025-03-10", durationSeconds: 600),
+        ]
+        let series = snap.dailyPracticeMinutes(days: 1,
+                                                referenceDate: date(2025, 3, 10),
+                                                calendar: utcCal())
+        #expect(abs((series.first?.minutes ?? -1) - 15.0) < 1e-9, "two sessions on the same day must sum")
+    }
+
+    @Test func dailyPracticeMinutes_isOldestFirst() {
+        var snap = DashboardSnapshot()
+        snap.sessionDurations = [
+            SessionDurationRecord(dateString: "2025-03-09", durationSeconds: 60),
+            SessionDurationRecord(dateString: "2025-03-10", durationSeconds: 120),
+        ]
+        let series = snap.dailyPracticeMinutes(days: 2,
+                                                referenceDate: date(2025, 3, 10),
+                                                calendar: utcCal())
+        #expect(series.count == 2)
+        #expect(abs(series[0].minutes - 1.0) < 1e-9, "oldest first: index 0 is the older day")
+        #expect(abs(series[1].minutes - 2.0) < 1e-9)
+    }
 }
 
 @Suite struct JSONParentDashboardStoreTests {

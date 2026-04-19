@@ -714,6 +714,10 @@ public final class TracingViewModel {
 
     #if DEBUG
     var debugActivePathCount: Int { activePath.count }
+    /// Raw-name of the participant's assigned A/B condition. Surfaced in the
+    /// dashboard's debug-only Forschungsmetriken section so a researcher can
+    /// confirm at a glance which arm the device is on.
+    var thesisConditionRawName: String { thesisCondition.rawValue }
     #endif
 
     // MARK: - Private helpers

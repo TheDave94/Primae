@@ -15,8 +15,15 @@ struct ParentDashboardView: View {
         NavigationStack {
             List {
                 ubersichtSection
+                phasenSection
+                ubungsverlaufSection
                 starksteBuchstabenSection
                 ubungNoetigSection
+                #if DEBUG
+                if vm.showDebug {
+                    forschungsmetrikenSection
+                }
+                #endif
             }
             .navigationTitle("Lernfortschritt")
             .navigationBarTitleDisplayMode(.large)
@@ -76,6 +83,18 @@ struct ParentDashboardView: View {
         }
     }
 
+    private var phasenSection: some View {
+        Section("Phasen-Erfolgsquote") {
+            PhaseRatesView(rates: snapshot.phaseCompletionRates)
+        }
+    }
+
+    private var ubungsverlaufSection: some View {
+        Section("Übungsverlauf (30 Tage)") {
+            PracticeTrendChart(series: snapshot.dailyPracticeMinutes(days: 30))
+        }
+    }
+
     private var starksteBuchstabenSection: some View {
         Section("Stärkste Buchstaben") {
             let top = snapshot.topLetters
@@ -84,7 +103,7 @@ struct ParentDashboardView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(top, id: \.letter) { stat in
-                    LetterStatRow(stat: stat)
+                    LetterStatRow(stat: stat, phaseScores: snapshot.phaseScores(for: stat.letter))
                 }
             }
         }
@@ -98,11 +117,36 @@ struct ParentDashboardView: View {
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(weak, id: \.letter) { stat in
-                    LetterStatRow(stat: stat)
+                    LetterStatRow(stat: stat, phaseScores: snapshot.phaseScores(for: stat.letter))
                 }
             }
         }
     }
+
+    #if DEBUG
+    private var forschungsmetrikenSection: some View {
+        // Debug-only: research-internal correlations the parent has no use
+        // for. Toggled via vm.showDebug (long-press on the phase indicator).
+        Section("Forschungsmetriken (Debug)") {
+            LabeledContent("Scheduler-Effektivität (r)") {
+                Text(String(format: "%.3f", snapshot.schedulerEffectivenessProxy))
+                    .monospacedDigit()
+            }
+            LabeledContent("Ø Fréchet-Score") {
+                Text(String(format: "%.3f", snapshot.averageFreeWriteScore))
+                    .monospacedDigit()
+            }
+            LabeledContent("Phasensitzungen gesamt") {
+                Text("\(snapshot.phaseSessionRecords.count)")
+                    .monospacedDigit()
+            }
+            LabeledContent("Aktuelle Bedingung") {
+                Text(vm.thesisConditionRawName)
+                    .monospacedDigit()
+            }
+        }
+    }
+    #endif
 
     // MARK: Export
 
@@ -140,21 +184,52 @@ struct ParentDashboardView: View {
 
 private struct LetterStatRow: View {
     let stat: LetterAccuracyStat
+    /// Per-phase mean scores for this letter, keyed by LearningPhase.rawName.
+    /// Empty when the child hasn't completed any phase sessions yet.
+    let phaseScores: [String: Double]
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(stat.letter)
-                .font(.headline)
-                .frame(width: 32, alignment: .leading)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                Text(stat.letter)
+                    .font(.headline)
+                    .frame(width: 32, alignment: .leading)
 
-            Text("\(Int(stat.averageAccuracy * 100)) %")
-                .font(.body.monospacedDigit())
-                .foregroundStyle(accuracyColor)
+                Text("\(Int(stat.averageAccuracy * 100)) %")
+                    .font(.body.monospacedDigit())
+                    .foregroundStyle(accuracyColor)
 
-            Spacer()
+                Spacer()
 
-            trendIcon
-                .font(.subheadline)
+                trendIcon
+                    .font(.subheadline)
+            }
+
+            if !phaseScores.isEmpty {
+                HStack(spacing: 10) {
+                    Spacer().frame(width: 32)  // align under the letter glyph
+                    phaseChip(label: "B", value: phaseScores["observe"],   color: .blue)
+                    phaseChip(label: "G", value: phaseScores["guided"],    color: .teal)
+                    phaseChip(label: "F", value: phaseScores["freeWrite"], color: .purple)
+                    Spacer()
+                }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    @ViewBuilder
+    private func phaseChip(label: String, value: Double?, color: Color) -> some View {
+        if let value {
+            HStack(spacing: 3) {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                Text("\(label) \(Int((value * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            .accessibilityLabel("\(label == "B" ? "Beobachten" : label == "G" ? "Geführt" : "Frei schreiben") \(Int((value * 100).rounded())) Prozent")
         }
     }
 
