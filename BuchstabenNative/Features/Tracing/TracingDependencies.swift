@@ -77,9 +77,14 @@ struct TracingDependencies {
         thesisCondition: ThesisCondition = .defaultForInstall,
         schriftArt: SchriftArt = {
             if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.buchstaben.selectedSchriftArt")
-                ?? UserDefaults.standard.string(forKey: "selectedSchriftArt"),
-               let art = SchriftArt(rawValue: raw) {
-                return art
+                ?? UserDefaults.standard.string(forKey: "selectedSchriftArt") {
+                if let art = SchriftArt(rawValue: raw) { return art }
+                // Migration: the .schulschrift1995 case was renamed to
+                // .schreibschrift when we replaced the Pesendorfer OTF
+                // (official Austrian Schulschrift 1995) with the generic
+                // Playwrite AT cursive. Map persisted selections forward so
+                // existing installs don't silently revert to Druckschrift.
+                if raw == "schulschrift1995" { return .schreibschrift }
             }
             return .druckschrift
         }(),

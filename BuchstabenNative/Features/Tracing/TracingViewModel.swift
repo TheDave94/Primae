@@ -328,9 +328,10 @@ public final class TracingViewModel {
         return repo.loadVariantStrokes(for: letter.name, variantID: variantID)
     }
 
-    /// Returns Schulschrift 1995 strokes for the current letter, loading and caching on first access.
+    /// Returns cursive (Schreibschrift / Playwrite AT) strokes for the current
+    /// letter, loading and caching on first access.
     private var activeSchulschriftStrokes: LetterStrokes? {
-        guard schriftArt == .schulschrift1995,
+        guard schriftArt == .schreibschrift,
               !letters.isEmpty, letterIndex < letters.count else { return nil }
         if schulschriftStrokeCache == nil {
             schulschriftStrokeCache = repo.loadVariantStrokes(

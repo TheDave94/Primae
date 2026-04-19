@@ -12,7 +12,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Schriftart") {
-                ForEach(SchriftArt.allCases.filter { $0 == .druckschrift || $0 == .schulschrift1995 }, id: \.self) { art in
+                ForEach(SchriftArt.allCases.filter { $0 == .druckschrift || $0 == .schreibschrift }, id: \.self) { art in
                     schriftArtRow(art)
                 }
             }

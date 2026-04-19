@@ -1,10 +1,12 @@
 import Foundation
 
-/// The four standard German school handwriting scripts, varying by Bundesland,
-/// plus the Austrian Schulschrift 1995 mandated by BMBWF RS 35/2022.
+/// Handwriting scripts the app can render. `druckschrift` is Primae (print)
+/// and `schreibschrift` is Playwrite AT (cursive); the other three are
+/// Bundesland-specific German school scripts wired up for the future but
+/// not yet bundled as fonts.
 public enum SchriftArt: String, Codable, CaseIterable {
     case druckschrift
-    case schulschrift1995
+    case schreibschrift
     case grundschrift
     case vereinfachteAusgangschrift
     case schulausgangsschrift
@@ -17,10 +19,11 @@ public enum SchriftArt: String, Codable, CaseIterable {
         switch self {
         case .druckschrift:              return "Primae-Regular"
         // Playwrite Österreich (TypeTogether, 2023) — SIL OFL 1.1 licensed
-        // variable TTF mirrored in BuchstabenNative/Resources/Fonts/ as
-        // PlaywriteAT-Regular.ttf. It implements the Austrian primary-school
-        // cursive model that corresponds to Schulschrift 1995.
-        case .schulschrift1995:          return "PlaywriteAT-Regular"
+        // variable TTF bundled as Resources/Fonts/PlaywriteAT-Regular.ttf.
+        // Implements an Austrian primary-school cursive; not an exact clone
+        // of the official Schulschrift 1995, which is why the user-facing
+        // label is the generic "Schreibschrift".
+        case .schreibschrift:            return "PlaywriteAT-Regular"
         case .grundschrift:              return "Grundschrift-Regular"
         case .vereinfachteAusgangschrift: return "VereinfachteAusgangschrift-Regular"
         case .schulausgangsschrift:      return "Schulausgangsschrift-Regular"
@@ -31,7 +34,7 @@ public enum SchriftArt: String, Codable, CaseIterable {
     public var displayName: String {
         switch self {
         case .druckschrift:              return "Druckschrift"
-        case .schulschrift1995:          return "Österreichische Schulschrift 1995"
+        case .schreibschrift:            return "Schreibschrift"
         case .grundschrift:              return "Grundschrift"
         case .vereinfachteAusgangschrift: return "Vereinfachte Ausgangsschrift"
         case .schulausgangsschrift:      return "Schulausgangsschrift"
