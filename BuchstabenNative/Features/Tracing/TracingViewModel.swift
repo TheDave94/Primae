@@ -241,8 +241,14 @@ public final class TracingViewModel {
     }
 
     func replayAudio() {
-        audio.stop()
-        audio.play()
+        // Re-load and autoplay the current letter's audio file. The previous
+        // shape (`audio.stop(); audio.play()`) was a no-op because stop()
+        // nils currentFile and play() guards on it being non-nil — the
+        // speaker button silently did nothing.
+        guard letters.indices.contains(letterIndex) else { return }
+        let files = letters[letterIndex].audioFiles
+        guard files.indices.contains(audioIndex) else { return }
+        audio.loadAudioFile(named: files[audioIndex], autoplay: true)
     }
 
     // MARK: - Letter navigation

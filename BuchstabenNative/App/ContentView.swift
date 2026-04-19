@@ -112,8 +112,6 @@ public struct ContentView: View {
 
     private var controlDock: some View {
         HStack(spacing: 14) {
-            dockButton("chevron.left.circle.fill",           .teal,   "Vorheriger Buchstabe")  { vm.previousLetter() }
-            dockButton("chevron.right.circle.fill",          .teal,   "Nächster Buchstabe")    { vm.nextLetter() }
             dockButton("arrow.counterclockwise.circle.fill", .orange, "Buchstabe wiederholen") { vm.resetLetter() }
             dockButton("shuffle.circle.fill",                .purple, "Zufälliger Buchstabe")  { vm.randomLetter() }
             dockButton("speaker.wave.2.circle.fill",         .blue,   "Ton abspielen")         { vm.replayAudio() }
