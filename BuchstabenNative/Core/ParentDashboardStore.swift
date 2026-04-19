@@ -4,7 +4,7 @@ import Foundation
 
 struct PhaseSessionRecord: Codable, Equatable {
     let letter: String
-    /// LearningPhase.rawName: "observe", "guided", or "freeWrite"
+    /// LearningPhase.rawName: "observe", "direct", "guided", or "freeWrite".
     let phase: String
     let completed: Bool
     /// Phase accuracy score (0–1). For freeWrite equals WritingAssessment.overallScore.
@@ -139,10 +139,12 @@ struct DashboardSnapshot: Codable, Equatable {
     }
 
     /// Fraction of sessions that completed each phase (keyed by LearningPhase.rawName).
+    /// Iterates LearningPhase.allCases so every phase — including `direct` —
+    /// makes it into the thesis export. Previously hard-coded to three phases,
+    /// which silently dropped Richtung-lernen data from every CSV row.
     var phaseCompletionRates: [String: Double] {
-        let phases = ["observe", "guided", "freeWrite"]
         var result: [String: Double] = [:]
-        for phase in phases {
+        for phase in LearningPhase.allCases.map(\.rawName) {
             let records = phaseSessionRecords.filter { $0.phase == phase }
             guard !records.isEmpty else { continue }
             result[phase] = Double(records.filter { $0.completed }.count) / Double(records.count)

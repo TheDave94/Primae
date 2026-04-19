@@ -59,7 +59,9 @@ struct ParentDashboardExporter {
 
         lines.append("metric,value")
         let rates = snapshot.phaseCompletionRates
-        for phase in ["observe", "guided", "freeWrite"] {
+        // Iterate LearningPhase.allCases so Richtung-lernen (direct) is
+        // exported alongside the other three phases — prior versions dropped it.
+        for phase in LearningPhase.allCases.map(\.rawName) {
             if let rate = rates[phase] {
                 lines.append("phaseCompletionRate_\(phase),\(String(format: "%.4f", rate))")
             }
