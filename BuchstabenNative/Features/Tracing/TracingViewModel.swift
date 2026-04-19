@@ -133,7 +133,7 @@ public final class TracingViewModel {
     private var onboardingCoordinator: OnboardingCoordinator
     private var phaseController: LearningPhaseController
     private let letterScheduler = LetterScheduler.standard
-    private let calibrationStore = CalibrationStore()
+    private let calibrationStore: CalibrationStore
 
     // MARK: - Private playback / touch state
 
@@ -146,8 +146,8 @@ public final class TracingViewModel {
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
     private var playback: PlaybackController!
-    private let messages = TransientMessagePresenter()
-    private let animation = AnimationGuideController()
+    private let messages: TransientMessagePresenter
+    private let animation: AnimationGuideController
     /// Full-cycle counter for the observe-phase animation. Used to auto-advance
     /// after the second loop completes.
     private var observeCycleCount: Int = 0
@@ -196,11 +196,18 @@ public final class TracingViewModel {
         self.phaseController = LearningPhaseController(condition: deps.thesisCondition)
         self.schriftArt = deps.schriftArt
 
+        // Build the per-VM controllers from the dependency factories. Doing this
+        // here (not at field init) is what lets tests replace any one of them
+        // with a test-friendly variant (instant sleeper, shorter debounce, etc.)
+        // without having to subclass or poke into the VM's privates.
+        self.messages         = deps.makeMessagePresenter()
+        self.animation        = deps.makeAnimationGuide()
+        self.calibrationStore = deps.makeCalibrationStore()
+
         haptics.prepare()
-        self.playback = PlaybackController(
-            audio: deps.audio,
-            onIsPlayingChanged: { [weak self] in self?.isPlaying = $0 }
-        )
+        self.playback = deps.makePlaybackController(deps.audio) { [weak self] in
+            self?.isPlaying = $0
+        }
         letters = repo.loadLettersFast()
         guard let first = letters.first else { return }
         load(letter: first)

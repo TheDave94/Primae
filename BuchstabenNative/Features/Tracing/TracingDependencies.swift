@@ -2,6 +2,12 @@ import Foundation
 
 /// All injectable dependencies for TracingViewModel, bundled into one struct.
 /// Use `.live` for production, or construct a custom instance in tests.
+///
+/// The four ex-private controllers (PlaybackController, TransientMessagePresenter,
+/// AnimationGuideController, CalibrationStore) are exposed as factories so each
+/// VM instance gets its own fresh controller rather than sharing stateful
+/// singletons across tests, while still letting test code swap in test-friendly
+/// configurations (instant sleepers, shorter debounce timings, etc.).
 @MainActor
 struct TracingDependencies {
     var audio: AudioControlling
@@ -16,6 +22,27 @@ struct TracingDependencies {
     var syncCoordinator: SyncCoordinator
     var thesisCondition: ThesisCondition
     var schriftArt: SchriftArt
+
+    /// Factory for the per-VM playback controller. Receives the audio engine
+    /// (so tests can swap a recording stub in via `audio:`) and the
+    /// `isPlaying`-changed callback the VM closes over with `[weak self]`.
+    /// Override to inject controllers with test-friendly debounce timings or
+    /// instant `Sleeper` schedulers.
+    var makePlaybackController: (AudioControlling, @escaping @MainActor (Bool) -> Void) -> PlaybackController
+
+    /// Factory for the per-VM transient message presenter. Override with
+    /// `{ TransientMessagePresenter(sleep: { _ in }) }` in tests that need
+    /// the auto-clear timers to fire deterministically.
+    var makeMessagePresenter: () -> TransientMessagePresenter
+
+    /// Factory for the per-VM animation guide controller. Each VM gets its
+    /// own so animation Tasks from one test don't leak into the next.
+    var makeAnimationGuide: () -> AnimationGuideController
+
+    /// Factory for the per-VM calibration store. Tests that exercise the
+    /// calibration overlay can inject a store backed by an in-memory file
+    /// or a fake URL so disk I/O is contained.
+    var makeCalibrationStore: () -> CalibrationStore
 
     init(
         audio: AudioControlling = AudioEngine(),
@@ -38,7 +65,13 @@ struct TracingDependencies {
                 return art
             }
             return .druckschrift
-        }()
+        }(),
+        makePlaybackController: @escaping (AudioControlling, @escaping @MainActor (Bool) -> Void) -> PlaybackController = {
+            PlaybackController(audio: $0, onIsPlayingChanged: $1)
+        },
+        makeMessagePresenter: @escaping () -> TransientMessagePresenter = { TransientMessagePresenter() },
+        makeAnimationGuide:   @escaping () -> AnimationGuideController   = { AnimationGuideController() },
+        makeCalibrationStore: @escaping () -> CalibrationStore           = { CalibrationStore() }
     ) {
         self.audio = audio
         self.progressStore = progressStore
@@ -62,6 +95,10 @@ struct TracingDependencies {
         }
         self.thesisCondition = thesisCondition
         self.schriftArt = schriftArt
+        self.makePlaybackController = makePlaybackController
+        self.makeMessagePresenter   = makeMessagePresenter
+        self.makeAnimationGuide     = makeAnimationGuide
+        self.makeCalibrationStore   = makeCalibrationStore
     }
 
     /// The default production configuration.
