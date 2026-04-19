@@ -24,6 +24,12 @@ protocol StreakStoring {
     @discardableResult
     func recordSession(date: Date, lettersCompleted: [String], accuracy: Double) -> [RewardEvent]
     func reset()
+    /// Await any pending background write. See ProgressStoring.flush().
+    func flush() async
+}
+
+extension StreakStoring {
+    func flush() async {}
 }
 
 // MARK: - Persisted model

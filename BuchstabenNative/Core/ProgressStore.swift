@@ -23,12 +23,17 @@ protocol ProgressStoring {
     var currentStreakDays: Int { get }
     /// Total letters completed across all sessions.
     var totalCompletions: Int { get }
+    /// Await any pending background write. Callers that need to guarantee
+    /// disk durability (e.g. before process suspension) must invoke this
+    /// before the tick ends. Default is no-op for in-memory mocks.
+    func flush() async
 }
 
 extension ProgressStoring {
     func recordCompletion(for letter: String, accuracy: Double) {
         recordCompletion(for: letter, accuracy: accuracy, phaseScores: nil)
     }
+    func flush() async {}
 }
 
 // MARK: - JSON-backed implementation

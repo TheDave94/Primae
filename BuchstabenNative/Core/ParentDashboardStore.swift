@@ -155,6 +155,12 @@ protocol ParentDashboardStoring {
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double)
     func reset()
+    /// Await any pending background write. See ProgressStoring.flush().
+    func flush() async
+}
+
+extension ParentDashboardStoring {
+    func flush() async {}
 }
 
 // MARK: - JSON-persisted implementation

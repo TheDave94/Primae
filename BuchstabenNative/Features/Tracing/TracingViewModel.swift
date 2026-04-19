@@ -473,6 +473,14 @@ public final class TracingViewModel {
         if cmd == .none { audio.stop(); isPlaying = false }
         audio.suspendForLifecycle()
         playback.resetPlayIntentClock()
+        // Await any pending async store writes so iOS doesn't suspend the
+        // process while a Task.detached write is mid-flight — without this
+        // a letter completed seconds before backgrounding can be lost.
+        Task { [progressStore, streakStore, dashboardStore] in
+            await progressStore.flush()
+            await streakStore.flush()
+            await dashboardStore.flush()
+        }
     }
 
     public func appDidBecomeActive() {
