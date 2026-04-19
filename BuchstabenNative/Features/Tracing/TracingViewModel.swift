@@ -151,6 +151,11 @@ public final class TracingViewModel {
     /// Full-cycle counter for the observe-phase animation. Used to auto-advance
     /// after the second loop completes.
     private var observeCycleCount: Int = 0
+    /// Idempotency key for the last reloadStrokeCheckpoints rebuild. Caches the
+    /// (letter, size) pair so repeated calls within a rotation safety-net window
+    /// or a fast-touch burst don't re-map the same checkpoints over and over.
+    /// Reset to nil whenever the source data changes (e.g. user calibration).
+    private var lastCheckpointKey: CheckpointBuildKey?
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
     private let playbackActivationVelocityThreshold: CGFloat = 22
@@ -770,11 +775,17 @@ public final class TracingViewModel {
     /// Reload stroke checkpoints mapped to canvas-normalised coordinates (0–1).
     /// Pass `usingSize` to override `self.canvasSize` — used by `updateTouch` to
     /// guarantee the mapping size equals the size used to normalise the touch point.
+    /// Idempotent: a rebuild with the same (letter, size) as the prior successful
+    /// rebuild is skipped, so the rotation safety-net window in `updateTouch` and
+    /// repeated `canvasSize.didSet` triggers at the same dimensions don't burn
+    /// CPU re-mapping unchanged data.
     private func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
         // Map to canvas-normalised coordinates using the actual rendered glyph rect.
         // User-calibrated file in Application Support takes priority over bundle strokes.json.
         let effectiveSize = size ?? canvasSize
+        let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt)
+        if key == lastCheckpointKey { return }
         let source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
@@ -791,6 +802,7 @@ public final class TracingViewModel {
             strokesForTracker = source
         }
         strokeTracker.load(strokesForTracker)
+        lastCheckpointKey = key
     }
 
     /// Persist calibrated glyph-relative checkpoints. Delegates to CalibrationStore
@@ -799,10 +811,25 @@ public final class TracingViewModel {
     func persistCalibratedStrokes(_ strokes: [[CGPoint]], for letter: String) {
         calibrationStore.persist(strokes, for: letter)
         guard letters.indices.contains(letterIndex) else { return }
+        // Calibration replaces the source checkpoint set, so the (letter, size)
+        // idempotency cache no longer reflects what's loaded — invalidate it
+        // before the rebuild call so the cache check doesn't short-circuit us.
+        lastCheckpointKey = nil
         reloadStrokeCheckpoints(for: letters[letterIndex])
     }
 
     private func toast(_ text: String) {
         messages.show(toast: text)
+    }
+
+    /// Idempotency key for `reloadStrokeCheckpoints`. Equal keys mean the cached
+    /// strokeTracker contents are still valid for the requested mapping —
+    /// (letter changes invalidate via name; rotations via size; font swaps via
+    /// schriftArt). Calibration changes invalidate manually since the source
+    /// data is not in this key.
+    private struct CheckpointBuildKey: Equatable {
+        let letter: String
+        let size: CGSize
+        let schriftArt: SchriftArt
     }
 }
