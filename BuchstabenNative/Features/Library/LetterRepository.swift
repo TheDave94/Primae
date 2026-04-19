@@ -129,6 +129,25 @@ final class LetterRepository {
         return .failure(.noAssetsFound)
     }
 
+    /// Warm-launch optimisation: return cached letters immediately if the cache
+    /// holds a full alphabet. Falls back to the canonical bundle path when the
+    /// cache is empty, partial, or invalid. VM calls this for cold/warm-launch
+    /// speed; tests and error-handling callers keep using `loadLetters()` for
+    /// strict bundle-then-cache semantics.
+    func loadLettersFast() -> [LetterAsset] {
+        if let cached = loadFromCache(), cached.count >= fullAlphabetCount {
+            return cached
+        }
+        return loadLetters()
+    }
+
+    /// Entry count at which the cache is considered "complete" and can be
+    /// returned without re-reading the bundle. 26 = A..Z. An app update that
+    /// adds letters (lowercase, umlauts) still re-reads the bundle because the
+    /// old cache's count will be below the new bundle's, the bundle path
+    /// repopulates the cache, and the next launch sees the fresh set.
+    private var fullAlphabetCount: Int { 26 }
+
     // MARK: - Private
 
     private func persistToCache(_ letters: [LetterAsset]) {

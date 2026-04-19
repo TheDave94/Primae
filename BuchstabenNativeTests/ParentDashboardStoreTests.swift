@@ -123,14 +123,14 @@ private func makeStore() -> JSONParentDashboardStore {
         #expect(store.snapshot.letterStats.isEmpty)
         #expect(store.snapshot.sessionDurations.isEmpty)
     }
-    @Test func persistence_roundtrip() {
+    @Test func persistence_roundtrip() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashPersist-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-        do {
-            let store = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
-            store.recordSession(letter: "Z", accuracy: 0.75, durationSeconds: 90, date: date(2025, 6, 1), condition: .threePhase)
-        }
+        let firstStore = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
+        firstStore.recordSession(letter: "Z", accuracy: 0.75, durationSeconds: 90, date: date(2025, 6, 1), condition: .threePhase)
+        await firstStore.flush()
+
         let store2 = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
         #expect(store2.snapshot.letterStats["Z"]?.accuracySamples == [0.75])
         #expect(store2.snapshot.sessionDurations.count == 1)

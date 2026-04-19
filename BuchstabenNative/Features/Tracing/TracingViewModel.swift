@@ -204,7 +204,7 @@ public final class TracingViewModel {
         self.schriftArt = deps.schriftArt
 
         haptics.prepare()
-        letters = repo.loadLetters()
+        letters = repo.loadLettersFast()
         guard let first = letters.first else { return }
         load(letter: first)
     }

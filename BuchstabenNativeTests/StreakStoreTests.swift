@@ -156,15 +156,15 @@ private func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
         #expect(store.completedLetters.isEmpty)
     }
 
-    @Test func persistence_roundtrip() {
+    @Test func persistence_roundtrip() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("StreakPersist-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-        do {
-            let store = JSONStreakStore(fileURL: url, calendar: utcCalendar())
-            store.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A", "B"], accuracy: 0.9)
-            store.recordSession(date: date(2025, 1, 2), lettersCompleted: ["C"], accuracy: 0.9)
-        }
+        let firstStore = JSONStreakStore(fileURL: url, calendar: utcCalendar())
+        firstStore.recordSession(date: date(2025, 1, 1), lettersCompleted: ["A", "B"], accuracy: 0.9)
+        firstStore.recordSession(date: date(2025, 1, 2), lettersCompleted: ["C"], accuracy: 0.9)
+        await firstStore.flush()
+
         let store2 = JSONStreakStore(fileURL: url, calendar: utcCalendar())
         #expect(store2.currentStreak == 2)
         #expect(store2.totalCompletions == 3)

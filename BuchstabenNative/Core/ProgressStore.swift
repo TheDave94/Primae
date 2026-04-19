@@ -42,6 +42,11 @@ public final class JSONProgressStore: ProgressStoring {
 
     private let fileURL: URL
     private var store: Store
+    /// Serialised chain of background disk writes. Lets `save()` return
+    /// immediately (no MainActor hitch at letter completion) while still
+    /// guaranteeing write order. Tests call `await flush()` to wait for
+    /// all pending writes before re-opening the file.
+    private var pendingSave: Task<Void, Never>?
 
     private struct Store: Codable {
         var letterProgress: [String: LetterProgress] = [:]
@@ -131,6 +136,18 @@ public final class JSONProgressStore: ProgressStoring {
 
     private func save() {
         guard let data = try? JSONEncoder().encode(store) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        let url = fileURL
+        let prior = pendingSave
+        pendingSave = Task.detached(priority: .utility) {
+            await prior?.value
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Await any pending background write. Call before re-opening the file
+    /// from another store instance, or before app termination, to avoid
+    /// losing writes that haven't been flushed to disk yet.
+    public func flush() async {
+        await pendingSave?.value
     }
 }

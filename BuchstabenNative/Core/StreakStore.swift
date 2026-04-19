@@ -47,6 +47,7 @@ final class JSONStreakStore: StreakStoring {
     private let fileURL: URL
     private let calendar: Calendar
     private var state: StreakState
+    private var pendingSave: Task<Void, Never>?
 
     init(fileURL: URL? = nil, calendar: Calendar = .current) {
         self.calendar = calendar
@@ -150,7 +151,18 @@ final class JSONStreakStore: StreakStoring {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(state) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        let url = fileURL
+        let prior = pendingSave
+        pendingSave = Task.detached(priority: .utility) {
+            await prior?.value
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    /// Await any pending background write. Required before reading the file
+    /// from another store instance.
+    func flush() async {
+        await pendingSave?.value
     }
 
     private static func load(from url: URL) -> StreakState? {

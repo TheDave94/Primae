@@ -72,16 +72,18 @@ import Foundation
         store.recordCompletion(for: "B", accuracy: 0.8)
         #expect(store.totalCompletions == 3)
     }
-    @Test func persistence_survivesReinit() {
+    @Test func persistence_survivesReinit() async {
         store.recordCompletion(for: "G", accuracy: 0.75)
         store.recordCompletion(for: "G", accuracy: 0.95)
+        await store.flush()
         let reloaded = JSONProgressStore(fileURL: tempURL)
         #expect(reloaded.progress(for: "G").completionCount == 2)
         #expect(abs(reloaded.progress(for: "G").bestAccuracy - 0.95) < 1e-9)
     }
-    @Test func persistence_totalCompletionsSurvivesReinit() {
+    @Test func persistence_totalCompletionsSurvivesReinit() async {
         store.recordCompletion(for: "H", accuracy: 1.0)
         store.recordCompletion(for: "I", accuracy: 0.9)
+        await store.flush()
         #expect(JSONProgressStore(fileURL: tempURL).totalCompletions == 2)
     }
     @Test func resetAll_clearsEverything() {
@@ -92,9 +94,10 @@ import Foundation
         #expect(store.allProgress.isEmpty)
         #expect(store.currentStreakDays == 0)
     }
-    @Test func resetAll_persistsOnDisk() {
+    @Test func resetAll_persistsOnDisk() async {
         store.recordCompletion(for: "L", accuracy: 1.0)
         store.resetAll()
+        await store.flush()
         #expect(JSONProgressStore(fileURL: tempURL).totalCompletions == 0)
     }
     @Test func streak_singleCompletionToday_isOne() {
@@ -108,9 +111,10 @@ import Foundation
         for _ in 0..<5 { store.recordCompletion(for: "N", accuracy: 1.0) }
         #expect(store.currentStreakDays == 1)
     }
-    @Test func recordCompletion_withPhaseScores_persistsAndLoads() {
+    @Test func recordCompletion_withPhaseScores_persistsAndLoads() async {
         let scores: [String: Double] = ["observe": 1.0, "guided": 0.85, "freeWrite": 0.72]
         store.recordCompletion(for: "Q", accuracy: 0.85, phaseScores: scores)
+        await store.flush()
         let reloaded = JSONProgressStore(fileURL: tempURL)
         let p = reloaded.progress(for: "Q")
         #expect(p.phaseScores != nil)
