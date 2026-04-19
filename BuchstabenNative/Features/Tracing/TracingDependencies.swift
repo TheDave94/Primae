@@ -27,8 +27,10 @@ struct TracingDependencies {
     /// (so tests can swap a recording stub in via `audio:`) and the
     /// `isPlaying`-changed callback the VM closes over with `[weak self]`.
     /// Override to inject controllers with test-friendly debounce timings or
-    /// instant `Sleeper` schedulers.
-    var makePlaybackController: (AudioControlling, @escaping @MainActor (Bool) -> Void) -> PlaybackController
+    /// instant `Sleeper` schedulers. The callback type matches
+    /// `PlaybackController.init` exactly — no `@MainActor` annotation —
+    /// because the controller calls it from its own `@MainActor` context.
+    var makePlaybackController: (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController
 
     /// Factory for the per-VM transient message presenter. Override with
     /// `{ TransientMessagePresenter(sleep: { _ in }) }` in tests that need
@@ -66,7 +68,7 @@ struct TracingDependencies {
             }
             return .druckschrift
         }(),
-        makePlaybackController: @escaping (AudioControlling, @escaping @MainActor (Bool) -> Void) -> PlaybackController = {
+        makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
         makeMessagePresenter: @escaping () -> TransientMessagePresenter = { TransientMessagePresenter() },
