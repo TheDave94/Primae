@@ -67,9 +67,15 @@ struct TracingDependencies {
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         syncCoordinator: SyncCoordinator? = nil,
-        thesisCondition: ThesisCondition = ThesisCondition.assign(
-            participantId: ParticipantStore.participantId
-        ),
+        // Pin to `.threePhase` (the full four-phase pedagogical flow) unless the
+        // install has explicitly opted into the thesis A/B study via the
+        // "Studienteilnahme" toggle in Settings. Without this gate every non-
+        // enrolled user had a 2-in-3 chance of being randomly dropped into
+        // `.guidedOnly` / `.control`, silently skipping Anschauen + Richtung
+        // lernen on every letter.
+        thesisCondition: ThesisCondition = ParticipantStore.isEnrolled
+            ? ThesisCondition.assign(participantId: ParticipantStore.participantId)
+            : .threePhase,
         schriftArt: SchriftArt = {
             if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.buchstaben.selectedSchriftArt")
                 ?? UserDefaults.standard.string(forKey: "selectedSchriftArt"),

@@ -55,4 +55,32 @@ import Testing
         let a2 = ThesisCondition.assign(participantId: byteZero)
         #expect(a1 == a2)
     }
+
+    // MARK: - Enrollment gating
+
+    /// The A/B random assignment must not apply to non-enrolled installs —
+    /// otherwise 2 out of 3 casual users would silently have Anschauen and
+    /// Richtung lernen skipped on every letter. These tests lock in the
+    /// enrollment-gated default in `TracingDependencies.init`.
+
+    @MainActor
+    @Test("Default TracingDependencies condition is threePhase when not enrolled")
+    func default_unenrolled_is_threePhase() {
+        let previous = ParticipantStore.isEnrolled
+        defer { ParticipantStore.isEnrolled = previous }
+        ParticipantStore.isEnrolled = false
+        let deps = TracingDependencies()
+        #expect(deps.thesisCondition == .threePhase)
+    }
+
+    @MainActor
+    @Test("Enrolled installs use ThesisCondition.assign for deterministic arm")
+    func enrolled_uses_assign() {
+        let previous = ParticipantStore.isEnrolled
+        defer { ParticipantStore.isEnrolled = previous }
+        ParticipantStore.isEnrolled = true
+        let deps = TracingDependencies()
+        let expected = ThesisCondition.assign(participantId: ParticipantStore.participantId)
+        #expect(deps.thesisCondition == expected)
+    }
 }

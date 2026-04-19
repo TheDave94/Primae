@@ -4,6 +4,7 @@ struct SettingsView: View {
     @Environment(TracingViewModel.self) private var vm
     @State private var selectedSchriftArt: SchriftArt = .druckschrift
     @State private var selectedOrdering: LetterOrderingStrategy = .motorSimilarity
+    @State private var thesisEnrolled: Bool = ParticipantStore.isEnrolled
 
     private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.buchstaben.letterOrdering"
@@ -26,6 +27,15 @@ struct SettingsView: View {
                     set: { vm.enablePaperTransfer = $0 }
                 ))
                 .accessibilityHint("Nach dem freien Schreiben wird eine Aufgabe zum Schreiben auf Papier angezeigt")
+
+                Toggle("Studienteilnahme (A/B-Arm)", isOn: Binding(
+                    get: { thesisEnrolled },
+                    set: {
+                        thesisEnrolled = $0
+                        ParticipantStore.isEnrolled = $0
+                    }
+                ))
+                .accessibilityHint("Nur für Forschung aktivieren. Weist das Gerät stabil einer Studienbedingung zu; andernfalls erhält jedes Kind die volle Vier-Phasen-Lernabfolge. Änderung wird beim nächsten App-Start wirksam.")
             }
             Section("Hilfe") {
                 Button("Einführung wiederholen") { vm.restartOnboarding() }
@@ -37,6 +47,7 @@ struct SettingsView: View {
         .onAppear {
             selectedSchriftArt = vm.schriftArt
             selectedOrdering = vm.letterOrdering
+            thesisEnrolled = ParticipantStore.isEnrolled
         }
     }
 
