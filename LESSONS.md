@@ -125,3 +125,7 @@ Wiring JSONStreakStore into TracingDependencies has repeatedly caused SWIFT_TYPE
 ### identical-search-replace-ci-fix
 <!-- added by lessons-agent 2026-04-19 -->
 Multiple CI fix proposals failed because their SEARCH/REPLACE blocks were identical, meaning no change was actually proposed. This wastes apply attempts and indicates the AI isn't correctly identifying differences or is attempting to 'fix' already correct code. Always ensure SEARCH and REPLACE content are distinct for any proposed change.
+
+### incorrect-test-stub-fixing
+<!-- added by lessons-agent 2026-04-19 -->
+When fixing compiler errors in test files (e.g., StrokeRecognizerTests.swift, EndToEndTracingSessionTests.swift), proposals repeatedly attempt to define missing symbols (like 'EuclideanStrokeRecognizer' or 'PlaybackController') directly within the test file, essentially re-implementing production code as test stubs. This is not a valid fix; test files should import and use existing production types. The AI must learn to distinguish between missing imports/declarations and actual missing production code.
