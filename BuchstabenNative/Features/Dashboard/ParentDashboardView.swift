@@ -260,9 +260,9 @@ private struct LetterStatRow: View {
             if !phaseScores.isEmpty {
                 HStack(spacing: 10) {
                     Spacer().frame(width: 32)  // align under the letter glyph
-                    phaseChip(label: "B", value: phaseScores["observe"],   color: .blue)
-                    phaseChip(label: "G", value: phaseScores["guided"],    color: .teal)
-                    phaseChip(label: "F", value: phaseScores["freeWrite"], color: .purple)
+                    ForEach(LearningPhase.allCases, id: \.self) { phase in
+                        phaseChip(for: phase, value: phaseScores[phase.rawName])
+                    }
                     Spacer()
                 }
             }
@@ -270,18 +270,39 @@ private struct LetterStatRow: View {
         .padding(.vertical, 2)
     }
 
+    /// One-letter abbreviation shown inside a chip. Uppercase initial of the
+    /// phase's `displayName` keeps the chip compact; the full name is in the
+    /// accessibilityLabel so VoiceOver still reads it out.
+    private func abbreviation(for phase: LearningPhase) -> String {
+        switch phase {
+        case .observe:   return "A"   // Anschauen
+        case .direct:    return "R"   // Richtung lernen
+        case .guided:    return "N"   // Nachspuren
+        case .freeWrite: return "S"   // Selbst schreiben
+        }
+    }
+
+    private func chipColor(for phase: LearningPhase) -> Color {
+        switch phase {
+        case .observe:   return .blue
+        case .direct:    return .indigo
+        case .guided:    return .teal
+        case .freeWrite: return .purple
+        }
+    }
+
     @ViewBuilder
-    private func phaseChip(label: String, value: Double?, color: Color) -> some View {
+    private func phaseChip(for phase: LearningPhase, value: Double?) -> some View {
         if let value {
             HStack(spacing: 3) {
                 Circle()
-                    .fill(color)
+                    .fill(chipColor(for: phase))
                     .frame(width: 6, height: 6)
-                Text("\(label) \(Int((value * 100).rounded()))%")
+                Text("\(abbreviation(for: phase)) \(Int((value * 100).rounded()))%")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
-            .accessibilityLabel("\(label == "B" ? "Beobachten" : label == "G" ? "Geführt" : "Frei schreiben") \(Int((value * 100).rounded())) Prozent")
+            .accessibilityLabel("\(phase.displayName) \(Int((value * 100).rounded())) Prozent")
         }
     }
 

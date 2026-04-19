@@ -39,7 +39,7 @@ struct PaperTransferView: View {
 
                 case .assess:
                     VStack(spacing: 24) {
-                        Text("Wie war dein Buchstabe?")
+                        Text("Ist dir der Buchstabe gut gelungen?")
                             .font(.title2.bold())
                             .multilineTextAlignment(.center)
                         HStack(spacing: 20) {
