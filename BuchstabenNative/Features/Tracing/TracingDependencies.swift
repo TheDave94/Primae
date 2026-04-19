@@ -72,10 +72,9 @@ struct TracingDependencies {
         // "Studienteilnahme" toggle in Settings. Without this gate every non-
         // enrolled user had a 2-in-3 chance of being randomly dropped into
         // `.guidedOnly` / `.control`, silently skipping Anschauen + Richtung
-        // lernen on every letter.
-        thesisCondition: ThesisCondition = ParticipantStore.isEnrolled
-            ? ThesisCondition.assign(participantId: ParticipantStore.participantId)
-            : .threePhase,
+        // lernen on every letter. The gate lives on ThesisCondition itself so
+        // it's testable without instantiating the full live dependency graph.
+        thesisCondition: ThesisCondition = .defaultForInstall,
         schriftArt: SchriftArt = {
             if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.buchstaben.selectedSchriftArt")
                 ?? UserDefaults.standard.string(forKey: "selectedSchriftArt"),

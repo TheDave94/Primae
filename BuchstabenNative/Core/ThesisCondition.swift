@@ -35,6 +35,20 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
         }
     }
 
+    /// The default condition for this install.
+    ///
+    /// Non-enrolled installs (`ParticipantStore.isEnrolled == false`, the
+    /// default) always get `.threePhase` so every child gets the full
+    /// four-phase flow. Enrolled installs get the stable UUID-derived arm
+    /// from `assign(participantId:)`. Exposed as a standalone computed
+    /// property so it's testable without instantiating the full
+    /// `TracingDependencies` graph (AudioEngine, JSONProgressStore, etc.).
+    static var defaultForInstall: ThesisCondition {
+        ParticipantStore.isEnrolled
+            ? .assign(participantId: ParticipantStore.participantId)
+            : .threePhase
+    }
+
     /// Deterministically assign a participant to a condition based on a stable UUID.
     /// Same UUID always returns the same condition, so assignment persists across
     /// launches and cannot drift mid-study.
