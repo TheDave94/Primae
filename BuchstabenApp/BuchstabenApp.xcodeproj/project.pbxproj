@@ -11,6 +11,16 @@
 		DBDE4FBA2F6330730052F95D /* BuchstabenNative in Frameworks */ = {isa = PBXBuildFile; productRef = DBDE4FB92F6330730052F95D /* BuchstabenNative */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		D000000000000001000000A2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DBDE4FA22F632FC30052F95D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DBDE4FA92F632FC30052F95D;
+			remoteInfo = BuchstabenApp;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		9FAA85E4814CF09513405571 /* BuchstabenNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BuchstabenNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DBDE4FAA2F632FC30052F95D /* BuchstabenApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BuchstabenApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -118,6 +128,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				D000000000000001000000A1 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				FC232BB4343BDEA478F5E6E5 /* ../BuchstabenNativeTests */,
@@ -198,6 +209,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D000000000000001000000A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DBDE4FA92F632FC30052F95D /* BuchstabenApp */;
+			targetProxy = D000000000000001000000A2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0170380416A87A1278248E94 /* Debug */ = {
