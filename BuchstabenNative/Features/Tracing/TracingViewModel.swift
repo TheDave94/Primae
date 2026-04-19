@@ -149,7 +149,6 @@ public final class TracingViewModel {
     private var didCompleteCurrentLetter         = false
     private var playback: PlaybackController!
     private let messages = TransientMessagePresenter()
-    private var endTouchGraceTask: Task<Void, Never>?
     private let animation = AnimationGuideController()
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
@@ -235,8 +234,6 @@ public final class TracingViewModel {
         activePath.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
         playback.resumeIntent = false
-        endTouchGraceTask?.cancel()
-        endTouchGraceTask = nil
         playback.cancelPending()
         audio.stop()
         playback.forceIdle()
@@ -335,8 +332,6 @@ public final class TracingViewModel {
 
         isSingleTouchInteractionActive   = true
         playback.resumeIntent     = true
-        endTouchGraceTask?.cancel()
-        endTouchGraceTask = nil
         lastPoint                        = p
         lastTimestamp                    = t
         activePath                       = [p]
@@ -505,8 +500,6 @@ public final class TracingViewModel {
         pencilAzimuth                  = 0
         playback.resumeIntent   = false
         playback.cancelPending()
-        endTouchGraceTask?.cancel()
-        endTouchGraceTask = nil
         let cmd = playback.transition(to: .idle)
         playback.apply(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
@@ -667,8 +660,6 @@ public final class TracingViewModel {
         freeWritePoints.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
         playback.resumeIntent = false
-        endTouchGraceTask?.cancel()
-        endTouchGraceTask = nil
         playback.cancelPending()
         audio.stop()
         playback.forceIdle()

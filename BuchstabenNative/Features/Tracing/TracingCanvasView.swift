@@ -142,7 +142,7 @@ private struct TracingCanvasAccessibility: ViewModifier {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(vm.accessibilityCanvasLabel)
             .accessibilityValue(vm.accessibilityCanvasValue)
-            .accessibilityHint("Tippe doppelt und ziehe zum Nachspuren. Nutze Aktionen, um Buchstaben zu wechseln oder Ton abzuspielen.")
+            .accessibilityHint("Ziehe mit einem Finger, um den Buchstaben nachzufahren. Nutze die Aktionen, um Buchstaben zu wechseln oder den Ton abzuspielen.")
             .accessibilityActions {
                 Button("Buchstaben-Ton abspielen") { vm.replayAudio() }
                 Button("Nächster Buchstabe")      { vm.nextLetter() }
