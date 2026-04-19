@@ -117,8 +117,9 @@ final class LetterRepository {
             return .success(folderOnly.letters)
         }
 
-        // Bundle failed — try cache
+        // Bundle failed — try cache as fallback.
         if let cached = loadFromCache() {
+            repoLogger.info("Using cached letters (bundle load failed)")
             return .success(cached)
         }
 
@@ -156,7 +157,9 @@ final class LetterRepository {
 
     private func loadFromCache() -> [LetterAsset]? {
         guard let letters = try? cache.load(), !letters.isEmpty else { return nil }
-        repoLogger.info("Using cached letters (bundle load failed)")
+        // Loggig moved to the slow-path caller so the fast warm-launch path
+        // (loadLettersFast -> cache hit) doesn't emit a misleading "bundle
+        // load failed" message on every launch.
         return letters
     }
 

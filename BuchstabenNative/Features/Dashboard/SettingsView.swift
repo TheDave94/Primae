@@ -27,23 +27,18 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func schriftArtRow(_ art: SchriftArt) -> some View {
-        let isAvailable = art == .druckschrift
+        // Only Druckschrift is currently shipped — the upstream `ForEach` filter
+        // keeps other cases from rendering, so we don't show any "coming soon"
+        // copy here. If we add another schriftArt later, re-enable it in the
+        // filter and surface availability via a non-disabled presentation.
         Button {
-            guard isAvailable else { return }
             selectedSchriftArt = art
             UserDefaults.standard.set(art.rawValue, forKey: Self.defaultsKey)
             vm.schriftArt = art
         } label: {
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(art.displayName)
-                        .foregroundStyle(isAvailable ? .primary : .secondary)
-                    if !isAvailable {
-                        Text("(bald verfügbar)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                Text(art.displayName)
+                    .foregroundStyle(.primary)
                 Spacer()
                 if selectedSchriftArt == art {
                     Image(systemName: "checkmark")
@@ -51,6 +46,5 @@ struct SettingsView: View {
                 }
             }
         }
-        .disabled(!isAvailable)
     }
 }

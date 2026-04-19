@@ -140,13 +140,6 @@ private func slowDrag(vm: TracingViewModel,
         #expect(!vm.isPlaying)
         #expect(audio.stopCount > stopBefore)
     }
-    @Test func multiTouchNavigation_suppressesSingleTouch() async {
-        vm.beginMultiTouchNavigation()
-        vm.beginTouch(at: CGPoint(x: 100, y: 100), t: 1000)
-        fastDrag(vm: vm, audio: audio, startTime: 1000.1)
-        try? await Task.sleep(nanoseconds: 150_000_000)
-        #expect(!vm.isPlaying)
-    }
     @Test func updateTouch_callsSetAdaptivePlayback() {
         let countBefore = audio.setAdaptivePlaybackCount
         fastDrag(vm: vm, audio: audio, count: 5)

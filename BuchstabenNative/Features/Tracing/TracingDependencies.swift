@@ -4,7 +4,6 @@ import Foundation
 /// Use `.live` for production, or construct a custom instance in tests.
 @MainActor
 struct TracingDependencies {
-    var singleTouchCooldownAfterNavigation: CFTimeInterval
     var audio: AudioControlling
     var progressStore: ProgressStoring
     var haptics: HapticEngineProviding
@@ -19,7 +18,6 @@ struct TracingDependencies {
     var schriftArt: SchriftArt
 
     init(
-        singleTouchCooldownAfterNavigation: CFTimeInterval = 0.18,
         audio: AudioControlling = AudioEngine(),
         progressStore: ProgressStoring = JSONProgressStore(),
         haptics: HapticEngineProviding = CoreHapticsEngine(),
@@ -42,7 +40,6 @@ struct TracingDependencies {
             return .druckschrift
         }()
     ) {
-        self.singleTouchCooldownAfterNavigation = singleTouchCooldownAfterNavigation
         self.audio = audio
         self.progressStore = progressStore
         self.haptics = haptics

@@ -143,8 +143,6 @@ public final class TracingViewModel {
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
     private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
-    private var isMultiTouchNavigationActive     = false
-    private var singleTouchSuppressedUntil: CFTimeInterval = 0
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
     private var playback: PlaybackController!
@@ -157,7 +155,6 @@ public final class TracingViewModel {
     private let velocitySmoothingAlpha: CGFloat  = 0.22
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let minimumTouchMoveDistance: CGFloat    = 1.5
-    private let singleTouchCooldownAfterNavigation: CFTimeInterval
 
     // MARK: - Init
 
@@ -166,7 +163,6 @@ public final class TracingViewModel {
 
     @MainActor
     init(_ deps: TracingDependencies = .live) {
-        self.singleTouchCooldownAfterNavigation = deps.singleTouchCooldownAfterNavigation
         self.audio                  = deps.audio
         self.progressStore          = deps.progressStore
         self.haptics                = deps.haptics
@@ -311,26 +307,10 @@ public final class TracingViewModel {
         toast("Ton \(audioIndex + 1) von \(files.count)")
     }
 
-    // MARK: - Multi-touch navigation
-
-    func beginMultiTouchNavigation() {
-        guard !isMultiTouchNavigationActive else { return }
-        isMultiTouchNavigationActive = true
-        endTouch()
-    }
-
-    func endMultiTouchNavigation() {
-        guard isMultiTouchNavigationActive else { return }
-        isMultiTouchNavigationActive = false
-        singleTouchSuppressedUntil   = CACurrentMediaTime() + singleTouchCooldownAfterNavigation
-    }
-
     // MARK: - Touch handling
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         guard phaseController.isTouchEnabled       else { return }
-        guard !isMultiTouchNavigationActive       else { return }
-        guard t >= singleTouchSuppressedUntil     else { return }
         guard !isSingleTouchInteractionActive     else { return }
 
         isSingleTouchInteractionActive   = true
@@ -350,7 +330,6 @@ public final class TracingViewModel {
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
-        guard !isMultiTouchNavigationActive       else { return }
         guard isSingleTouchInteractionActive      else { return }
         guard let lastPoint                       else { return }
 
@@ -722,7 +701,6 @@ public final class TracingViewModel {
     // MARK: - Debug
 
     #if DEBUG
-    var debugIsMultiTouchNavigationActive: Bool { isMultiTouchNavigationActive }
     var debugActivePathCount: Int { activePath.count }
     #endif
 

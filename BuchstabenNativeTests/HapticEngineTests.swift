@@ -125,14 +125,4 @@ private final class TrackingMockAudio: AudioControlling {
                 "Expected letterCompleted. progress=\(vm.progress) events=\(haptics.firedEvents)")
     }
 
-    @Test func noHapticOnMultiTouchNavigation() {
-        let haptics = NullHapticEngine()
-        let vm = TracingViewModel(.stub.with(audio: TrackingMockAudio()).with(haptics: haptics).with(thesisCondition: .guidedOnly))
-        haptics.reset()
-        vm.beginMultiTouchNavigation()
-        vm.beginTouch(at: CGPoint(x: 100, y: 100), t: CACurrentMediaTime())
-        #expect(!haptics.firedEvents.contains(.strokeBegan),
-                "strokeBegan should not fire during multi-touch navigation")
-        vm.endMultiTouchNavigation()
-    }
 }

@@ -117,7 +117,7 @@ struct DashboardSnapshot: Codable, Equatable {
     }
     /// Rolling 7-day total practice time in seconds.
     func totalPracticeTime(recentDays: Int = 7, referenceDate: Date = Date(), calendar: Calendar = .current) -> TimeInterval {
-        let cutoff = calendar.date(byAdding: .day, value: -recentDays, to: referenceDate)!
+        guard let cutoff = calendar.date(byAdding: .day, value: -recentDays, to: referenceDate) else { return 0 }
         let cutoffString = dayKey(for: cutoff, calendar: calendar)
         return sessionDurations
             .filter { $0.dateString >= cutoffString }

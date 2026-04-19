@@ -153,7 +153,8 @@ struct FreeWriteScorer {
             result.append(interp)
         }
 
-        result.append(points.last!)
+        // Safe unwrap: the early guard `points.count >= 2` guarantees last exists.
+        if let last = points.last { result.append(last) }
         return result
     }
 }

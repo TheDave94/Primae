@@ -135,12 +135,10 @@ struct NullLetterCache: LetterCacheStoring {
 // MARK: - Shared VM factory
 @MainActor
 func makeTestVM(
-    cooldown: CFTimeInterval = 0,
     audio: AudioControlling? = nil,
     haptics: HapticEngineProviding? = nil
 ) -> TracingViewModel {
     var deps = TracingDependencies.stub
-    if cooldown != 0 { deps = deps.with(cooldown: cooldown) }
     if let audio    { deps = deps.with(audio: audio) }
     if let haptics  { deps = deps.with(haptics: haptics) }
     return TracingViewModel(deps)
@@ -155,7 +153,6 @@ extension TracingDependencies {
         let progressStore = StubProgressStore()
         let streakStore   = StubStreakStore()
         return TracingDependencies(
-            singleTouchCooldownAfterNavigation: 0,
             audio:                StubAudio(),
             progressStore:        progressStore,
             haptics:              StubHaptics(),
@@ -174,9 +171,6 @@ extension TracingDependencies {
         )
     }
 
-    func with(cooldown: CFTimeInterval) -> TracingDependencies {
-        var copy = self; copy.singleTouchCooldownAfterNavigation = cooldown; return copy
-    }
     func with(audio: AudioControlling) -> TracingDependencies {
         var copy = self; copy.audio = audio; return copy
     }

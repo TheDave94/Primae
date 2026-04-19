@@ -102,24 +102,6 @@ import AVFoundation
         #expect(f1.boundingRect.integral == f3.boundingRect.integral)
     }
 
-    @Test func multiTouchNavigationClearsAndSuppressesSingleTouchBriefly() {
-        let vm = TracingViewModel(.stub.with(cooldown: 0.05))
-        let size = CGSize(width: 320, height: 480)
-        vm.beginTouch(at: CGPoint(x: 20, y: 20), t: 1.0)
-        vm.updateTouch(at: CGPoint(x: 28, y: 28), t: 1.03, canvasSize: size)
-        #expect(vm.debugActivePathCount > 1)
-        vm.beginMultiTouchNavigation()
-        #expect(vm.debugIsMultiTouchNavigationActive)
-        #expect(vm.debugActivePathCount == 0)
-        vm.endMultiTouchNavigation()
-        #expect(!vm.debugIsMultiTouchNavigationActive)
-        vm.beginTouch(at: CGPoint(x: 30, y: 30), t: CACurrentMediaTime())
-        #expect(vm.debugActivePathCount == 0)
-        usleep(70_000)
-        vm.beginTouch(at: CGPoint(x: 32, y: 32), t: CACurrentMediaTime())
-        #expect(vm.debugActivePathCount == 1)
-    }
-
     @Test func tracingViewModelUsesInjectedAudioControllerAcrossLifecycle() {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
@@ -174,14 +156,6 @@ import AVFoundation
         #expect(audio.stopCount >= audio.suspendForLifecycleCount)
     }
 
-    @Test func repeatedBeginMultiTouchDoesNotLeaveStuckState() {
-        let vm = TracingViewModel(.stub)
-        vm.beginMultiTouchNavigation(); vm.beginMultiTouchNavigation()
-        #expect(vm.debugIsMultiTouchNavigationActive)
-        vm.endMultiTouchNavigation(); vm.endMultiTouchNavigation()
-        #expect(!vm.debugIsMultiTouchNavigationActive)
-    }
-
     @Test func rapidBackgroundForegroundChurn_50Cycles() {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
@@ -198,7 +172,6 @@ import AVFoundation
         #expect(audio.cancelPendingLifecycleWorkCount >= 50)
         vm.appDidEnterBackground()
         #expect(vm.debugActivePathCount == 0)
-        #expect(!vm.debugIsMultiTouchNavigationActive)
     }
 
     @Test func avAudioSessionInterruption_shouldResumeFalse_doesNotPlay() {
@@ -252,7 +225,6 @@ import AVFoundation
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
         vm.appDidEnterBackground(); vm.appDidEnterBackground(); vm.appDidEnterBackground()
         #expect(audio.suspendForLifecycleCount >= 1)
-        #expect(!vm.debugIsMultiTouchNavigationActive)
         #expect(vm.debugActivePathCount == 0)
     }
 
@@ -294,26 +266,9 @@ import AVFoundation
             vm.appDidEnterBackground(); vm.appDidBecomeActive()
             vm.appDidEnterBackground(); vm.appDidBecomeActive()
         }
-        #expect(!vm.debugIsMultiTouchNavigationActive)
         #expect(vm.debugActivePathCount == 0)
         #expect(audio.suspendForLifecycleCount >= 10)
         #expect(audio.resumeAfterLifecycleCount >= 10)
-    }
-
-    @Test func touchBurstInterruptedByMultiTouchNav_suppressionApplied() {
-        let audio = LocalMockAudioController()
-        let vm = TracingViewModel(.stub.with(cooldown: 0.05).with(audio: audio))
-        let size = CGSize(width: 320, height: 480)
-        vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
-        vm.updateTouch(at: CGPoint(x: 20, y: 20), t: 1.01, canvasSize: size)
-        vm.beginMultiTouchNavigation()
-        #expect(vm.debugActivePathCount == 0)
-        vm.endMultiTouchNavigation()
-        vm.beginTouch(at: CGPoint(x: 30, y: 30), t: CACurrentMediaTime())
-        #expect(vm.debugActivePathCount == 0)
-        usleep(70_000)
-        vm.beginTouch(at: CGPoint(x: 35, y: 35), t: CACurrentMediaTime())
-        #expect(vm.debugActivePathCount == 1)
     }
 
     @Test func avAudioSessionInterruptionIdempotency_doubleBegan() {
@@ -327,7 +282,6 @@ import AVFoundation
         let suspendAfterFirst = audio.suspendForLifecycleCount
         vm.appDidEnterBackground()
         #expect(audio.suspendForLifecycleCount == suspendAfterFirst)
-        #expect(!vm.debugIsMultiTouchNavigationActive)
         #expect(vm.debugActivePathCount == 0)
     }
 
