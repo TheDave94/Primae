@@ -103,6 +103,7 @@ public struct ContentView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.82), value: vm.completionMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78), value: vm.isPhaseSessionComplete)
         .sensoryFeedback(.success, trigger: vm.completionMessage != nil)
+        .sensoryFeedback(.success, trigger: vm.isPhaseSessionComplete)
         .sheet(isPresented: $showDashboard) {
             ParentDashboardView()
                 .environment(vm)

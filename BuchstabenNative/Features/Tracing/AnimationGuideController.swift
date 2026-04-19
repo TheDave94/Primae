@@ -19,6 +19,11 @@ final class AnimationGuideController {
     /// using `PrimaeLetterRenderer.normalizedGlyphRect`.
     private(set) var guidePoint: CGPoint? = nil
 
+    /// Fires after each full demonstration loop (all steps + the 0.5 s rest).
+    /// The observe phase uses this to auto-advance after N cycles so a child
+    /// who doesn't read the "Tippen" prompt isn't stuck forever.
+    var onCycleComplete: (@MainActor () -> Void)? = nil
+
     /// The active animation loop. Cancelled on `stop()` or when replaced.
     private var task: Task<Void, Never>?
 
@@ -44,6 +49,10 @@ final class AnimationGuideController {
                 if !Task.isCancelled {
                     self.guidePoint = nil
                     try? await Task.sleep(for: .seconds(0.5))
+                    // One full cycle completed — invite the observer to advance.
+                    // The callback reads `self` again because the outer while
+                    // continues until cancelled by the callback site via stop().
+                    if !Task.isCancelled { self.onCycleComplete?() }
                 }
             }
             self?.guidePoint = nil

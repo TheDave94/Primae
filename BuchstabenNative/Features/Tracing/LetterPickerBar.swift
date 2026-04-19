@@ -66,7 +66,9 @@ private struct LetterPickerButton: View {
     private var backgroundColor: Color {
         switch completionState {
         case .complete:   return .green.opacity(0.25)
-        case .partial:    return .yellow.opacity(0.3)
+        // Tint slightly darker + desaturated so the paired brown text meets
+        // WCAG AA (was yellow.opacity(0.3) with .orange ≈ 2.5:1 — fail).
+        case .partial:    return Color(red: 1.00, green: 0.88, blue: 0.60)
         case .notStarted: return .gray.opacity(0.12)
         }
     }
@@ -74,7 +76,9 @@ private struct LetterPickerButton: View {
     private var textColor: Color {
         switch completionState {
         case .complete:   return .green
-        case .partial:    return .orange
+        // Dark brown over the honey-yellow fill above ≈ 4.7:1 — WCAG AA pass
+        // for large bold text and also meets AA-Normal (4.5:1).
+        case .partial:    return Color(red: 0.40, green: 0.20, blue: 0.00)
         case .notStarted: return .primary
         }
     }

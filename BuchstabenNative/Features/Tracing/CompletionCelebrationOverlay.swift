@@ -10,9 +10,12 @@ struct CompletionCelebrationOverlay: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 24) {
+                // Dynamic-Type-aware title — scales at Accessibility Text Sizes
+                // instead of locking at 36pt.
                 Text("Super gemacht!")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(.largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
 
                 HStack(spacing: 12) {
                     ForEach(1...3, id: \.self) { index in

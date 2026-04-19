@@ -150,6 +150,9 @@ public final class TracingViewModel {
     private var playback: PlaybackController!
     private let messages = TransientMessagePresenter()
     private let animation = AnimationGuideController()
+    /// Full-cycle counter for the observe-phase animation. Used to auto-advance
+    /// after the second loop completes.
+    private var observeCycleCount: Int = 0
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
     private let playbackActivationVelocityThreshold: CGFloat = 22
@@ -531,6 +534,17 @@ public final class TracingViewModel {
         guard !letters.isEmpty, letterIndex < letters.count else { return }
         let rawStrokes = letters[letterIndex].strokes
         guard !rawStrokes.strokes.isEmpty else { return }
+        // Auto-advance the observe phase after the second full cycle so a child
+        // who can't read "Tippen" isn't stuck waiting for a parent's prompt.
+        observeCycleCount = 0
+        animation.onCycleComplete = { [weak self] in
+            guard let self else { return }
+            self.observeCycleCount += 1
+            if self.observeCycleCount >= 2,
+               self.phaseController.currentPhase == .observe {
+                self.completeObservePhase()
+            }
+        }
         animation.start(strokes: rawStrokes)
     }
 
