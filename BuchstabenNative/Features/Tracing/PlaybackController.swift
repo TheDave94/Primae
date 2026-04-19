@@ -42,8 +42,15 @@ final class PlaybackController {
     // MARK: - State
 
     private var machine = PlaybackStateMachine()
-    private var pendingTransition: Task<Void, Never>?
+    /// In-flight debounced transition. Exposed read-only so tests can await it
+    /// instead of sleeping past the debounce on the wall clock.
+    private(set) var pendingTransition: Task<Void, Never>?
     private var lastPlayIntentWallTime: CFTimeInterval = 0
+
+    // MARK: - Sleep injection
+
+    typealias Sleeper = @Sendable (Duration) async throws -> Void
+    private let sleep: Sleeper
 
     // MARK: - Init
 
@@ -51,11 +58,13 @@ final class PlaybackController {
          activeDebounceSeconds: TimeInterval = 0.03,
          idleDebounceSeconds: TimeInterval = 0.12,
          playIntentDebounceSeconds: CFTimeInterval = 0.1,
+         sleep: @escaping Sleeper = { try await Task.sleep(for: $0) },
          onIsPlayingChanged: @escaping (Bool) -> Void) {
         self.audio = audio
         self.activeDebounceSeconds = activeDebounceSeconds
         self.idleDebounceSeconds = idleDebounceSeconds
         self.playIntentDebounceSeconds = playIntentDebounceSeconds
+        self.sleep = sleep
         self.onIsPlayingChanged = onIsPlayingChanged
     }
 
@@ -125,8 +134,9 @@ final class PlaybackController {
         guard wouldChange else { return }
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
+        let sleeper = sleep
         pendingTransition = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
+            try? await sleeper(.seconds(delay))
             guard !Task.isCancelled, let self else { return }
             self.apply(self.machine.transition(to: target))
         }

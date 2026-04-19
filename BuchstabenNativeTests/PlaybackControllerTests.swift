@@ -99,20 +99,20 @@ final class Box<T> {
     }
 
     @Test func debouncedActive_firesAfterDelay() async {
+        // Inject an instant sleep so the debounce fires deterministically — no wall clock.
         let audio = PlaybackTestAudio()
         let isPlaying = Box(false)
         let c = PlaybackController(audio: audio,
                                    activeDebounceSeconds: 0.05,
                                    idleDebounceSeconds: 0.10,
+                                   sleep: { _ in },
                                    onIsPlayingChanged: { isPlaying.value = $0 })
         c.appIsForeground = true
         c.resumeIntent = true
         c.request(.active, immediate: false)
         #expect(audio.playCount == 0, "Debounced transition must NOT fire synchronously")
-        // Debounce=50ms; headroom for CI scheduling jitter that can delay
-        // Task.sleep and the controller's debounce timer past their deadlines.
-        try? await Task.sleep(for: .milliseconds(400))
-        #expect(audio.playCount == 1, "Debounced transition should fire after the delay")
+        await c.pendingTransition?.value
+        #expect(audio.playCount == 1, "Debounced transition should fire after sleeper resumes")
     }
 
     @Test func resetPlayIntentClock_allowsImmediateReplay() {
