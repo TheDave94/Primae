@@ -147,23 +147,15 @@ public final class TracingViewModel {
     private var singleTouchSuppressedUntil: CFTimeInterval = 0
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
-    private var playbackMachine                  = PlaybackStateMachine()
-    private var pendingPlaybackStateTask: Task<Void, Never>?
+    private var playback: PlaybackController!
     private let messages = TransientMessagePresenter()
     private var endTouchGraceTask: Task<Void, Never>?
     private let animation = AnimationGuideController()
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
-    private let activeDebounceSeconds: TimeInterval  = 0.03
-    private let idleDebounceSeconds: TimeInterval    = 0.12
     private let playbackActivationVelocityThreshold: CGFloat = 22
     private let minimumTouchMoveDistance: CGFloat    = 1.5
     private let singleTouchCooldownAfterNavigation: CFTimeInterval
-    // Coalesces rapid tap bursts (begin→update→end in quick succession) into a
-    // single audible playback. Without this, each short cycle produces a fresh
-    // idle→active transition and a new audio.play() call.
-    private var lastPlayIntentWallTime: CFTimeInterval = 0
-    private let playIntentDebounceSeconds: CFTimeInterval = 0.1
 
     // MARK: - Init
 
@@ -202,6 +194,10 @@ public final class TracingViewModel {
         self.schriftArt = deps.schriftArt
 
         haptics.prepare()
+        self.playback = PlaybackController(
+            audio: deps.audio,
+            onIsPlayingChanged: { [weak self] in self?.isPlaying = $0 }
+        )
         letters = repo.loadLettersFast()
         guard let first = letters.first else { return }
         load(letter: first)
@@ -238,12 +234,12 @@ public final class TracingViewModel {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
-        playbackMachine.resumeIntent = false
+        playback.resumeIntent = false
         endTouchGraceTask?.cancel()
         endTouchGraceTask = nil
-        cancelPendingPlaybackWork()
+        playback.cancelPending()
         audio.stop()
-        playbackMachine.forceIdle()
+        playback.forceIdle()
         isPlaying = false
         didCompleteCurrentLetter = false
         messages.clearCompletionState()
@@ -300,7 +296,7 @@ public final class TracingViewModel {
         guard files.indices.contains(audioIndex) else { audioIndex = 0; return }
         audioIndex = (audioIndex + 1) % files.count
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
-        setPlaybackState(.idle, immediate: true)
+        playback.request(.idle, immediate: true)
         toast("Ton \(audioIndex + 1) von \(files.count)")
     }
 
@@ -311,7 +307,7 @@ public final class TracingViewModel {
         guard files.indices.contains(audioIndex) else { audioIndex = 0; return }
         audioIndex = (audioIndex - 1 + files.count) % files.count
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
-        setPlaybackState(.idle, immediate: true)
+        playback.request(.idle, immediate: true)
         toast("Ton \(audioIndex + 1) von \(files.count)")
     }
 
@@ -338,7 +334,7 @@ public final class TracingViewModel {
         guard !isSingleTouchInteractionActive     else { return }
 
         isSingleTouchInteractionActive   = true
-        playbackMachine.resumeIntent     = true
+        playback.resumeIntent     = true
         endTouchGraceTask?.cancel()
         endTouchGraceTask = nil
         lastPoint                        = p
@@ -426,7 +422,7 @@ public final class TracingViewModel {
 
         let shouldPlayForStroke = strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
-        setPlaybackState(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
+        playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 
         // Guard against vacuous completion: StrokeTracker.isComplete returns true
         // when the letter has no strokes (empty-progress allSatisfy is trivially true).
@@ -463,7 +459,7 @@ public final class TracingViewModel {
 
             showCompletionHUD()
             toast("Super gemacht!")
-            setPlaybackState(.idle, immediate: true)
+            playback.request(.idle, immediate: true)
         }
 
         self.lastPoint     = p
@@ -473,22 +469,22 @@ public final class TracingViewModel {
     // MARK: - Lifecycle
 
     public func appDidEnterBackground() {
-        guard playbackMachine.appIsForeground else { return }
-        playbackMachine.appIsForeground = false
-        cancelPendingPlaybackWork()
+        guard playback.appIsForeground else { return }
+        playback.appIsForeground = false
+        playback.cancelPending()
         endTouch()
-        let cmd = playbackMachine.transition(to: .idle)
-        applyCommand(cmd)
+        let cmd = playback.transition(to: .idle)
+        playback.apply(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
         audio.suspendForLifecycle()
-        lastPlayIntentWallTime = 0
+        playback.resetPlayIntentClock()
     }
 
     public func appDidBecomeActive() {
-        playbackMachine.appIsForeground = true
+        playback.appIsForeground = true
         audio.resumeAfterLifecycle()
-        if playbackMachine.resumeIntent {
-            setPlaybackState(playbackMachine.state, immediate: true)
+        if playback.resumeIntent {
+            playback.request(playback.state, immediate: true)
         }
         // Refresh daily reminder with current streak
         if isOnboardingComplete {
@@ -507,14 +503,14 @@ public final class TracingViewModel {
         smoothedVelocity               = 0
         pencilPressure                 = nil
         pencilAzimuth                  = 0
-        playbackMachine.resumeIntent   = false
-        cancelPendingPlaybackWork()
+        playback.resumeIntent   = false
+        playback.cancelPending()
         endTouchGraceTask?.cancel()
         endTouchGraceTask = nil
-        let cmd = playbackMachine.transition(to: .idle)
-        applyCommand(cmd)
+        let cmd = playback.transition(to: .idle)
+        playback.apply(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
-        playbackMachine.forceIdle()
+        playback.forceIdle()
     }
 
     // MARK: - Completion HUD
@@ -670,12 +666,12 @@ public final class TracingViewModel {
         activePath.removeAll(keepingCapacity: true)
         freeWritePoints.removeAll(keepingCapacity: true)
         smoothedVelocity = 0
-        playbackMachine.resumeIntent = false
+        playback.resumeIntent = false
         endTouchGraceTask?.cancel()
         endTouchGraceTask = nil
-        cancelPendingPlaybackWork()
+        playback.cancelPending()
         audio.stop()
-        playbackMachine.forceIdle()
+        playback.forceIdle()
         isPlaying = false
     }
 
@@ -736,8 +732,8 @@ public final class TracingViewModel {
         activePath.removeAll(keepingCapacity: true)
         isSingleTouchInteractionActive = false
         smoothedVelocity               = 0
-        playbackMachine.resumeIntent   = true
-        cancelPendingPlaybackWork()
+        playback.resumeIntent   = true
+        playback.cancelPending()
         stopGuideAnimation()
         // Auto-start stroke animation in observe phase, or skip the phase entirely
         // when the letter has no strokes (lowercase/umlaut placeholders) — there's
@@ -751,7 +747,7 @@ public final class TracingViewModel {
         }
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
-            setPlaybackState(.idle, immediate: true)
+            playback.request(.idle, immediate: true)
             // Audio plays in response to touches via the playback state machine;
             // no observe-phase auto-play (it would loop silently behind onboarding
             // and start immediately on letter switch without any user action).
@@ -763,7 +759,7 @@ public final class TracingViewModel {
         guard !files.isEmpty else { return }
         audioIndex = Int.random(in: 0..<files.count)
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
-        setPlaybackState(.idle, immediate: true)
+        playback.request(.idle, immediate: true)
     }
 
     private func showCompletionHUD() {
@@ -778,56 +774,6 @@ public final class TracingViewModel {
         if v <= low  { return 0.5 }
         if v >= high { return 2.0 }
         return Float(0.5 + 1.5 * ((v - low) / (high - low)))
-    }
-
-    private func setPlaybackState(_ target: PlaybackStateMachine.State, immediate: Bool) {
-        pendingPlaybackStateTask?.cancel()
-        pendingPlaybackStateTask = nil
-
-        let wouldChange: Bool
-        if target == .active && (!playbackMachine.appIsForeground || !playbackMachine.resumeIntent) {
-            wouldChange = playbackMachine.state != .idle
-        } else {
-            wouldChange = playbackMachine.state != target
-        }
-
-        if immediate {
-            let cmd = playbackMachine.transition(to: target)
-            applyCommand(cmd)
-            return
-        }
-
-        guard wouldChange else { return }
-
-        let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
-        pendingPlaybackStateTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled, let self else { return }
-            let cmd = self.playbackMachine.transition(to: target)
-            self.applyCommand(cmd)
-        }
-    }
-
-    private func cancelPendingPlaybackWork() {
-        pendingPlaybackStateTask?.cancel()
-        pendingPlaybackStateTask = nil
-        audio.cancelPendingLifecycleWork()
-    }
-
-    private func applyCommand(_ cmd: PlaybackStateMachine.Command) {
-        switch cmd {
-        case .play:
-            let now = CACurrentMediaTime()
-            if now - lastPlayIntentWallTime < playIntentDebounceSeconds {
-                isPlaying = true
-                return
-            }
-            lastPlayIntentWallTime = now
-            audio.play()
-            isPlaying = true
-        case .stop:  audio.stop();  isPlaying = false
-        case .none:  break
-        }
     }
 
     /// Reload stroke checkpoints mapped to canvas-normalised coordinates (0–1).
