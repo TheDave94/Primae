@@ -132,7 +132,7 @@ public final class TracingViewModel {
     private var adaptationPolicy: any AdaptationPolicy
     private var onboardingCoordinator: OnboardingCoordinator
     private var phaseController: LearningPhaseController
-    private let letterScheduler = LetterScheduler.standard
+    private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
 
     // MARK: - Private playback / touch state
@@ -203,6 +203,7 @@ public final class TracingViewModel {
         self.messages         = deps.makeMessagePresenter()
         self.animation        = deps.makeAnimationGuide()
         self.calibrationStore = deps.makeCalibrationStore()
+        self.letterScheduler  = deps.makeLetterScheduler()
 
         haptics.prepare()
         self.playback = deps.makePlaybackController(deps.audio) { [weak self] in

@@ -46,6 +46,14 @@ struct TracingDependencies {
     /// or a fake URL so disk I/O is contained.
     var makeCalibrationStore: () -> CalibrationStore
 
+    /// Factory for the per-VM letter scheduler (Ebbinghaus-style spaced
+    /// repetition). Tests that exercise specific recommendation outcomes
+    /// can inject a scheduler with custom weights or a fixed-letter stub.
+    /// Closing the last hidden-singleton hole flagged by the architecture
+    /// audit (TracingViewModel previously read LetterScheduler.standard
+    /// directly, bypassing this container).
+    var makeLetterScheduler: () -> LetterScheduler
+
     init(
         audio: AudioControlling = AudioEngine(),
         progressStore: ProgressStoring = JSONProgressStore(),
@@ -73,7 +81,8 @@ struct TracingDependencies {
         },
         makeMessagePresenter: @escaping () -> TransientMessagePresenter = { TransientMessagePresenter() },
         makeAnimationGuide:   @escaping () -> AnimationGuideController   = { AnimationGuideController() },
-        makeCalibrationStore: @escaping () -> CalibrationStore           = { CalibrationStore() }
+        makeCalibrationStore: @escaping () -> CalibrationStore           = { CalibrationStore() },
+        makeLetterScheduler:  @escaping () -> LetterScheduler            = { LetterScheduler() }
     ) {
         self.audio = audio
         self.progressStore = progressStore
@@ -101,6 +110,7 @@ struct TracingDependencies {
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide
         self.makeCalibrationStore   = makeCalibrationStore
+        self.makeLetterScheduler    = makeLetterScheduler
     }
 
     /// The default production configuration.
