@@ -1,0 +1,30 @@
+{
+  "letter": "H",
+  "checkpointRadius": 0.06,
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Left leg: top to bottom",
+      "checkpoints": [
+        {"x": 0.3, "y": 0.15},
+        {"x": 0.3, "y": 0.85}
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Right leg: top to bottom (variant draws both legs before crossbar)",
+      "checkpoints": [
+        {"x": 0.7, "y": 0.15},
+        {"x": 0.7, "y": 0.85}
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "Crossbar: left to right",
+      "checkpoints": [
+        {"x": 0.3, "y": 0.5},
+        {"x": 0.7, "y": 0.5}
+      ]
+    }
+  ]
+}

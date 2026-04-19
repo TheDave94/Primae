@@ -76,6 +76,7 @@ private struct CodableLetterAsset: Codable {
     let imageName: String
     let audioFiles: [String]
     let strokes: LetterStrokes
+    let variants: [String]?
 
     init(_ asset: LetterAsset) {
         id         = asset.id
@@ -85,6 +86,7 @@ private struct CodableLetterAsset: Codable {
         imageName  = asset.imageName
         audioFiles = asset.audioFiles
         strokes    = asset.strokes
+        variants   = asset.variants
     }
 
     var asset: LetterAsset {
@@ -95,7 +97,8 @@ private struct CodableLetterAsset: Codable {
             letterCase: letterCase ?? .upper,
             imageName: imageName,
             audioFiles: audioFiles,
-            strokes: strokes
+            strokes: strokes,
+            variants: variants
         )
     }
 }

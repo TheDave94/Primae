@@ -106,6 +106,10 @@ public struct ContentView: View {
                     .onLongPressGesture { vm.toggleDebug() }
                     .accessibilityHint("Halte gedrückt für Entwickleroptionen")
                 #endif
+                if vm.currentLetterHasVariants,
+                   vm.learningPhase == .guided || vm.learningPhase == .freeWrite {
+                    varianteButton
+                }
                 controlDock
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
@@ -121,6 +125,20 @@ public struct ContentView: View {
             ParentDashboardView()
                 .environment(vm)
         }
+    }
+
+    private var varianteButton: some View {
+        Button(action: { vm.toggleVariant() }) {
+            Label(vm.showingVariant ? "Standard" : "Variante",
+                  systemImage: "arrow.2.squarepath")
+                .font(.caption.weight(.semibold))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(vm.showingVariant ? .orange : .teal)
+        .accessibilityLabel(vm.showingVariant ? "Standard-Form" : "Variante zeigen")
+        .accessibilityHint("Wechselt zwischen Standard- und Variante-Schreibweise")
     }
 
     private var controlDock: some View {

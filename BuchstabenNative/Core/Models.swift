@@ -9,12 +9,15 @@ struct LetterAsset: Identifiable, Equatable {
     let imageName: String
     let audioFiles: [String]
     let strokes: LetterStrokes
+    /// Variant IDs for which a strokes_{id}.json exists alongside strokes.json.
+    /// e.g. ["variant"] when strokes_variant.json is present (Austrian Schulschrift 1995).
+    let variants: [String]?
 
     enum LetterCase: String, Codable, Equatable, Sendable {
         case upper, lower
     }
 
-    /// Convenience init preserving backward compatibility (defaults to .upper).
+    /// Convenience init preserving backward compatibility (defaults to .upper, no variants).
     init(id: String, name: String, imageName: String,
          audioFiles: [String], strokes: LetterStrokes) {
         self.id = id
@@ -24,12 +27,14 @@ struct LetterAsset: Identifiable, Equatable {
         self.imageName = imageName
         self.audioFiles = audioFiles
         self.strokes = strokes
+        self.variants = nil
     }
 
-    /// Full init with case specification.
+    /// Full init with case specification and optional variants.
     init(id: String, name: String, baseLetter: String,
          letterCase: LetterCase, imageName: String,
-         audioFiles: [String], strokes: LetterStrokes) {
+         audioFiles: [String], strokes: LetterStrokes,
+         variants: [String]? = nil) {
         self.id = id
         self.name = name
         self.baseLetter = baseLetter
@@ -37,6 +42,7 @@ struct LetterAsset: Identifiable, Equatable {
         self.imageName = imageName
         self.audioFiles = audioFiles
         self.strokes = strokes
+        self.variants = variants
     }
 }
 

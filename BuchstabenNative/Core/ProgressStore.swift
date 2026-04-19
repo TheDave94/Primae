@@ -16,6 +16,9 @@ struct LetterProgress: Codable, Equatable {
     /// Most recent paper-transfer self-assessment score (1.0 super, 0.5 okay, 0.0 nochmal üben).
     /// nil when paper-transfer mode has not been used for this letter.
     var paperTransferScore: Double?
+    /// Variant ID used in the most recent completed session (e.g. "variant").
+    /// nil when the standard form was used or no session has been recorded.
+    var lastVariantUsed: String?
 }
 
 // MARK: - Protocol (testable seam)
@@ -25,6 +28,7 @@ protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
     func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?)
     func recordPaperTransferScore(for letter: String, score: Double)
+    func recordVariantUsed(for letter: String, variantID: String?)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
     /// Current streak: consecutive days with at least one completion.
@@ -45,6 +49,7 @@ extension ProgressStoring {
         recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: nil)
     }
     func recordPaperTransferScore(for letter: String, score: Double) {}
+    func recordVariantUsed(for letter: String, variantID: String?) {}
     func flush() async {}
 }
 
@@ -115,6 +120,14 @@ public final class JSONProgressStore: ProgressStoring {
         let key = letter.uppercased()
         var p = store.letterProgress[key] ?? LetterProgress()
         p.paperTransferScore = score
+        store.letterProgress[key] = p
+        save()
+    }
+
+    func recordVariantUsed(for letter: String, variantID: String?) {
+        let key = letter.uppercased()
+        var p = store.letterProgress[key] ?? LetterProgress()
+        p.lastVariantUsed = variantID
         store.letterProgress[key] = p
         save()
     }

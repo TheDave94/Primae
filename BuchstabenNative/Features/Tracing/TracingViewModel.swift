@@ -93,9 +93,11 @@ public final class TracingViewModel {
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
     /// Raw glyph-relative stroke data (0-1 within bounding box) for rendering.
-    /// Prefers user-calibrated file in Application Support over bundle strokes.json.
+    /// When showingVariant, returns the variant stroke data.
+    /// Otherwise prefers user-calibrated file in Application Support over bundle strokes.json.
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
+        if showingVariant, let vs = variantStrokeCache { return vs }
         let letter = letters[letterIndex]
         return calibrationStore.strokes(for: letter.name) ?? letter.strokes
     }
@@ -104,7 +106,14 @@ public final class TracingViewModel {
     /// Used by TracingCanvasView to render dots aligned with the ghost at any canvas size.
     var rawGlyphStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
+        if showingVariant, let vs = variantStrokeCache { return vs }
         return letters[letterIndex].strokes
+    }
+
+    /// True when the current letter has at least one registered variant form.
+    var currentLetterHasVariants: Bool {
+        guard !letters.isEmpty, letterIndex < letters.count else { return false }
+        return !(letters[letterIndex].variants?.isEmpty ?? true)
     }
     /// Stars earned in current letter session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
@@ -133,6 +142,8 @@ public final class TracingViewModel {
     var showFreeWriteOverlay: Bool = false
     /// Shows the paper-transfer self-assessment overlay after freeWrite, when enabled.
     var showPaperTransfer: Bool = false
+    /// Whether the user is currently tracing the variant stroke form.
+    var showingVariant: Bool = false
     /// Whether the paper-transfer phase is enabled (thesis setting).
     var enablePaperTransfer: Bool = false {
         didSet {
@@ -196,6 +207,7 @@ public final class TracingViewModel {
 
     private var letters: [LetterAsset]          = []
     private var letterIndex                      = 0
+    private var variantStrokeCache: LetterStrokes? = nil
     private var audioIndex                       = 0
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
@@ -288,6 +300,29 @@ public final class TracingViewModel {
     func toggleGhost()             { showGhost.toggle();         toast("Hilfslinien \(showGhost ? "an" : "aus")") }
     func toggleStrokeEnforcement() { strokeEnforced.toggle();    resetLetter(); toast("Reihenfolge \(strokeEnforced ? "an" : "aus")") }
     func toggleDebug()             { showDebug.toggle();         toast("Debug \(showDebug ? "an" : "aus")") }
+
+    /// Switch between the standard and variant stroke form for the current letter.
+    /// Only available when the letter has a registered variant (currentLetterHasVariants).
+    /// Reloads checkpoints and resets tracing progress; does not affect phase state.
+    func toggleVariant() {
+        guard currentLetterHasVariants, letters.indices.contains(letterIndex) else { return }
+        let letter = letters[letterIndex]
+        showingVariant.toggle()
+        if showingVariant && variantStrokeCache == nil {
+            variantStrokeCache = loadVariantStrokesFromBundle(for: letter)
+        }
+        lastCheckpointKey = nil
+        strokeTracker.reset()
+        progress = 0
+        activePath.removeAll(keepingCapacity: true)
+        reloadStrokeCheckpoints(for: letter)
+        toast(showingVariant ? "Variante" : "Standard")
+    }
+
+    private func loadVariantStrokesFromBundle(for letter: LetterAsset) -> LetterStrokes? {
+        guard let variantID = letter.variants?.first else { return nil }
+        return repo.loadVariantStrokes(for: letter.name, variantID: variantID)
+    }
 
     // MARK: - Accessibility
 
@@ -888,6 +923,10 @@ public final class TracingViewModel {
                                   phaseScores: [String: Double]? = nil) {
         let speed: Double? = strokesPerSecond > 0 ? Double(strokesPerSecond) : nil
         progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: speed)
+        if showingVariant, letters.indices.contains(letterIndex),
+           let variantID = letters[letterIndex].variants?.first {
+            progressStore.recordVariantUsed(for: letter, variantID: variantID)
+        }
         streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
         dashboardStore.recordSession(letter: letter, accuracy: accuracy,
                                       durationSeconds: duration, date: Date(),
@@ -1017,6 +1056,8 @@ public final class TracingViewModel {
         freeWritePath.removeAll(keepingCapacity: true)
         showFreeWriteOverlay = false
         showPaperTransfer = false
+        showingVariant = false
+        variantStrokeCache = nil
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
         directTappedDots.removeAll()
@@ -1100,11 +1141,17 @@ public final class TracingViewModel {
     private func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
         // Map to canvas-normalised coordinates using the actual rendered glyph rect.
-        // User-calibrated file in Application Support takes priority over bundle strokes.json.
+        // Variant strokes take precedence when showingVariant; otherwise user-calibrated
+        // file in Application Support takes priority over bundle strokes.json.
         let effectiveSize = size ?? canvasSize
-        let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt)
+        let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt, showingVariant: showingVariant)
         if key == lastCheckpointKey, strokeTracker.definition != nil { return }
-        let source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
+        let source: LetterStrokes
+        if showingVariant, let vs = variantStrokeCache {
+            source = vs
+        } else {
+            source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
+        }
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
             let mapped = source.strokes.map { stroke in
@@ -1149,5 +1196,6 @@ public final class TracingViewModel {
         let letter: String
         let size: CGSize
         let schriftArt: SchriftArt
+        let showingVariant: Bool
     }
 }

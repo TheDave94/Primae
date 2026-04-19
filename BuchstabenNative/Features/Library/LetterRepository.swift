@@ -248,9 +248,12 @@ private extension LetterRepository {
 
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
+            let variantPath = "Letters/\(base)/strokes_variant.json"
+            let variants: [String]? = bundleHasResource(at: variantPath) ? ["variant"] : nil
             return LetterAsset(id: base, name: base,
                                baseLetter: baseLetter, letterCase: letterCase,
-                               imageName: imageName, audioFiles: audio, strokes: strokes)
+                               imageName: imageName, audioFiles: audio, strokes: strokes,
+                               variants: variants)
         }.sorted { $0.name < $1.name }
 
         return (letters, issues)
@@ -458,5 +461,27 @@ private extension LetterRepository {
         for issue in issues {
             repoLogger.warning("Asset validation [\(issue.letter)]: \(issue.message)")
         }
+    }
+}
+
+// MARK: - Variant stroke loading
+
+extension LetterRepository {
+    /// Load alternative stroke data for a given letter and variant ID.
+    /// Reads `Letters/{letter}/strokes_{variantID}.json` from the bundle.
+    func loadVariantStrokes(for letter: String, variantID: String) -> LetterStrokes? {
+        let paths = [
+            "Letters/\(letter)/strokes_\(variantID).json",
+            "\(letter)/strokes_\(variantID).json"
+        ]
+        let decoder = JSONDecoder()
+        for path in paths {
+            guard let url = resources.resourceURL(for: path),
+                  let data = try? Data(contentsOf: url),
+                  let strokes = try? decoder.decode(LetterStrokes.self, from: data)
+            else { continue }
+            return strokes
+        }
+        return nil
     }
 }
