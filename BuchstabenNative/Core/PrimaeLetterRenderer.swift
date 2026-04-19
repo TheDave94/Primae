@@ -37,7 +37,7 @@ public enum PrimaeLetterRenderer {
         guard !isRunningTests else { return nil }
         let key = CacheKey(letter: letter, width: Int(size.width), height: Int(size.height))
         if let cached = cache[key] { return cached }
-        guard let image = draw(letter: letter, size: size) else { return nil }
+        guard let image = draw(letter: letter, size: size, fontName: schriftArt.fontFileName) else { return nil }
         // Evict entire cache when full rather than an LRU walk — letters rarely
         // change and the next render repopulates the one entry that matters.
         if cache.count >= cacheLimit { cache.removeAll(keepingCapacity: true) }
@@ -66,7 +66,7 @@ public enum PrimaeLetterRenderer {
                                schriftArt: schriftArt)
         if let cached = rectCache[key] { return cached }
         let probe: CGFloat = 800
-        guard let font = makeFont(size: probe),
+        guard let font = makeFont(size: probe, fontName: schriftArt.fontFileName),
               var glyph = getGlyph(for: letter, in: font) else { return nil }
         let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
         guard bbox.width > 0, bbox.height > 0 else { return nil }
@@ -123,13 +123,13 @@ public enum PrimaeLetterRenderer {
         return g
     }
 
-    private static func draw(letter: String, size: CGSize) -> UIImage? {
+    private static func draw(letter: String, size: CGSize, fontName: String = "Primae-Regular") -> UIImage? {
         let scale: CGFloat = 2.0
         let px = CGSize(width: size.width * scale, height: size.height * scale)
 
         // Probe at large size to compute scale factor
         let probe: CGFloat = 800
-        guard let probeFont = makeFont(size: probe),
+        guard let probeFont = makeFont(size: probe, fontName: fontName),
               var probeGlyph = getGlyph(for: letter, in: probeFont) else { return nil }
 
         let probeBBox = CTFontGetBoundingRectsForGlyphs(probeFont, .default, &probeGlyph, nil, 1)
@@ -140,7 +140,7 @@ public enum PrimaeLetterRenderer {
         let availH    = px.height * (1 - 2 * pad)
         let finalSize = probe * min(availW / probeBBox.width, availH / probeBBox.height)
 
-        guard let font = makeFont(size: finalSize),
+        guard let font = makeFont(size: finalSize, fontName: fontName),
               var glyph = getGlyph(for: letter, in: font) else { return nil }
 
         let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)

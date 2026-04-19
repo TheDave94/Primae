@@ -1,0 +1,40 @@
+{
+  "letter": "K",
+  "checkpointRadius": 0.08,
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Spine: top to bottom",
+      "checkpoints": [
+        { "x": 0.15, "y": 0.04 },
+        { "x": 0.13, "y": 0.26 },
+        { "x": 0.12, "y": 0.46 },
+        { "x": 0.11, "y": 0.65 },
+        { "x": 0.09, "y": 0.82 },
+        { "x": 0.08, "y": 0.96 }
+      ]
+    },
+    {
+      "id": 2,
+      "comment": "Upper arm: mid-spine to top-right",
+      "checkpoints": [
+        { "x": 0.25, "y": 0.5 },
+        { "x": 0.34, "y": 0.42 },
+        { "x": 0.56, "y": 0.26 },
+        { "x": 0.76, "y": 0.14 },
+        { "x": 0.93, "y": 0.04 }
+      ]
+    },
+    {
+      "id": 3,
+      "comment": "Lower arm: mid-spine to bottom-right",
+      "checkpoints": [
+        { "x": 0.25, "y": 0.5 },
+        { "x": 0.35, "y": 0.57 },
+        { "x": 0.52, "y": 0.7 },
+        { "x": 0.7, "y": 0.83 },
+        { "x": 0.87, "y": 0.96 }
+      ]
+    }
+  ]
+}

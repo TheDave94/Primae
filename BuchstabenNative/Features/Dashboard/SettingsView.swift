@@ -11,7 +11,7 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Schriftart") {
-                ForEach(SchriftArt.allCases.filter { $0 == .druckschrift }, id: \.self) { art in
+                ForEach(SchriftArt.allCases.filter { $0 == .druckschrift || $0 == .schulschrift1995 }, id: \.self) { art in
                     schriftArtRow(art)
                 }
             }
@@ -61,10 +61,6 @@ struct SettingsView: View {
 
     @ViewBuilder
     private func schriftArtRow(_ art: SchriftArt) -> some View {
-        // Only Druckschrift is currently shipped — the upstream `ForEach` filter
-        // keeps other cases from rendering, so we don't show any "coming soon"
-        // copy here. If we add another schriftArt later, re-enable it in the
-        // filter and surface availability via a non-disabled presentation.
         Button {
             selectedSchriftArt = art
             UserDefaults.standard.set(art.rawValue, forKey: Self.defaultsKey)

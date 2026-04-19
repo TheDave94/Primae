@@ -1,0 +1,18 @@
+{
+  "letter": "I",
+  "checkpointRadius": 0.08,
+  "strokes": [
+    {
+      "id": 1,
+      "comment": "Stem: top to bottom (upright Schulschrift 1995)",
+      "checkpoints": [
+        { "x": 0.5, "y": 0.04 },
+        { "x": 0.5, "y": 0.22 },
+        { "x": 0.5, "y": 0.4 },
+        { "x": 0.5, "y": 0.58 },
+        { "x": 0.5, "y": 0.76 },
+        { "x": 0.5, "y": 0.97 }
+      ]
+    }
+  ]
+}

@@ -248,8 +248,10 @@ private extension LetterRepository {
 
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
-            let variantPath = "Letters/\(base)/strokes_variant.json"
-            let variants: [String]? = bundleHasResource(at: variantPath) ? ["variant"] : nil
+            var variantIDs: [String] = []
+            if bundleHasResource(at: "Letters/\(base)/strokes_variant.json") { variantIDs.append("variant") }
+            if bundleHasResource(at: "Letters/\(base)/strokes_schulschrift.json") { variantIDs.append("schulschrift") }
+            let variants: [String]? = variantIDs.isEmpty ? nil : variantIDs
             return LetterAsset(id: base, name: base,
                                baseLetter: baseLetter, letterCase: letterCase,
                                imageName: imageName, audioFiles: audio, strokes: strokes,

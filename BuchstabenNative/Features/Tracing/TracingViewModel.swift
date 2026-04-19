@@ -20,6 +20,7 @@ public final class TracingViewModel {
         didSet {
             guard oldValue != schriftArt,
                   !letters.isEmpty, letterIndex < letters.count else { return }
+            schulschriftStrokeCache = nil
             PrimaeLetterRenderer.clearCache()
             currentLetterImage = PrimaeLetterRenderer.render(
                 letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
@@ -98,6 +99,7 @@ public final class TracingViewModel {
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
+        if let ss = activeSchulschriftStrokes { return ss }
         let letter = letters[letterIndex]
         return calibrationStore.strokes(for: letter.name) ?? letter.strokes
     }
@@ -107,6 +109,7 @@ public final class TracingViewModel {
     var rawGlyphStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
+        if let ss = activeSchulschriftStrokes { return ss }
         return letters[letterIndex].strokes
     }
 
@@ -208,6 +211,7 @@ public final class TracingViewModel {
     private var letters: [LetterAsset]          = []
     private var letterIndex                      = 0
     private var variantStrokeCache: LetterStrokes? = nil
+    private var schulschriftStrokeCache: LetterStrokes? = nil
     private var audioIndex                       = 0
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
@@ -322,6 +326,17 @@ public final class TracingViewModel {
     private func loadVariantStrokesFromBundle(for letter: LetterAsset) -> LetterStrokes? {
         guard let variantID = letter.variants?.first else { return nil }
         return repo.loadVariantStrokes(for: letter.name, variantID: variantID)
+    }
+
+    /// Returns Schulschrift 1995 strokes for the current letter, loading and caching on first access.
+    private var activeSchulschriftStrokes: LetterStrokes? {
+        guard schriftArt == .schulschrift1995,
+              !letters.isEmpty, letterIndex < letters.count else { return nil }
+        if schulschriftStrokeCache == nil {
+            schulschriftStrokeCache = repo.loadVariantStrokes(
+                for: letters[letterIndex].name, variantID: "schulschrift")
+        }
+        return schulschriftStrokeCache
     }
 
     // MARK: - Accessibility
@@ -1058,6 +1073,7 @@ public final class TracingViewModel {
         showPaperTransfer = false
         showingVariant = false
         variantStrokeCache = nil
+        schulschriftStrokeCache = nil
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
         directTappedDots.removeAll()
@@ -1149,6 +1165,8 @@ public final class TracingViewModel {
         let source: LetterStrokes
         if showingVariant, let vs = variantStrokeCache {
             source = vs
+        } else if let ss = activeSchulschriftStrokes {
+            source = ss
         } else {
             source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
         }
