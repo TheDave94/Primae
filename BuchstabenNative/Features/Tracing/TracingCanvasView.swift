@@ -92,6 +92,52 @@ struct TracingCanvasView: View {
         .contentShape(Rectangle())
     }
 
+    @ViewBuilder
+    private func freeWriteKPOverlay() -> some View {
+        Canvas { context, size in
+            // Reference strokes in blue (opacity 0.4, lineWidth 8)
+            if let rawStrokes = vm.glyphRelativeStrokes,
+               !rawStrokes.strokes.isEmpty,
+               let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                   for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
+                for stroke in rawStrokes.strokes {
+                    guard stroke.checkpoints.count >= 2 else { continue }
+                    var refPath = Path()
+                    let first = stroke.checkpoints[0]
+                    refPath.move(to: CGPoint(
+                        x: (gr.minX + first.x * gr.width) * size.width,
+                        y: (gr.minY + first.y * gr.height) * size.height))
+                    for cp in stroke.checkpoints.dropFirst() {
+                        refPath.addLine(to: CGPoint(
+                            x: (gr.minX + cp.x * gr.width) * size.width,
+                            y: (gr.minY + cp.y * gr.height) * size.height))
+                    }
+                    context.stroke(refPath, with: .color(.blue.opacity(0.4)),
+                                   style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+                }
+            }
+
+            // Child's freeWrite path in green (lineWidth 4)
+            let pts = vm.freeWritePath
+            if pts.count > 1 {
+                var childPath = Path()
+                childPath.move(to: CGPoint(x: pts[0].x * size.width, y: pts[0].y * size.height))
+                for pt in pts.dropFirst() {
+                    childPath.addLine(to: CGPoint(x: pt.x * size.width, y: pt.y * size.height))
+                }
+                context.stroke(childPath, with: .color(.green),
+                               style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
+            }
+        }
+        .background(.black.opacity(0.15))
+        .contentShape(Rectangle())
+        .onTapGesture { vm.showFreeWriteOverlay = false }
+        .task {
+            try? await Task.sleep(for: .seconds(3))
+            vm.showFreeWriteOverlay = false
+        }
+    }
+
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .bottomLeading) {
@@ -127,6 +173,13 @@ struct TracingCanvasView: View {
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
                     onSingleTouchEnded:  { vm.endTouch() }
                 )
+            )
+            .overlay(
+                Group {
+                    if vm.showFreeWriteOverlay {
+                        freeWriteKPOverlay()
+                    }
+                }
             )
         }
     }

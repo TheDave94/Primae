@@ -110,6 +110,11 @@ public final class TracingViewModel {
     private(set) var freeWritePoints: [CGPoint] = []
     /// Last computed Frechet distance (for debug overlay).
     private(set) var lastFreeWriteDistance: CGFloat = 0
+    /// Normalised (0–1) touch path accumulated during the freeWrite phase.
+    /// Kept for the KP overlay that shows where the child deviated.
+    private(set) var freeWritePath: [CGPoint] = []
+    /// Shows the KP (Knowledge of Performance) overlay after freeWrite completion.
+    var showFreeWriteOverlay: Bool = false
 
     // MARK: - Animation guide state (ready for onboarding / demo UI)
 
@@ -391,9 +396,11 @@ public final class TracingViewModel {
 
         if isWithinCanvasBounds && distance >= minimumTouchMoveDistance {
             activePath.append(p)
-            // Accumulate for free-write scoring
+            // Accumulate for free-write scoring and KP overlay
             if phaseController.currentPhase == .freeWrite {
                 freeWritePoints.append(p)
+                freeWritePath.append(CGPoint(x: p.x / max(canvasSize.width, 1),
+                                             y: p.y / max(canvasSize.height, 1)))
             }
         }
 
@@ -613,6 +620,8 @@ public final class TracingViewModel {
                 tracedPoints: normalised, reference: def)
         }
 
+        let wasInFreeWrite = phaseController.currentPhase == .freeWrite
+
         if phaseController.advance(score: score) {
             resetForPhaseTransition()
             if phaseController.currentPhase == .observe {
@@ -621,6 +630,10 @@ public final class TracingViewModel {
             toast(phaseController.currentPhase.displayName)
         } else {
             recordPhaseSessionCompletion()
+        }
+
+        if wasInFreeWrite {
+            showFreeWriteOverlay = true
         }
     }
 
@@ -680,6 +693,9 @@ public final class TracingViewModel {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         freeWritePoints.removeAll(keepingCapacity: true)
+        if phaseController.currentPhase == .freeWrite {
+            freeWritePath.removeAll(keepingCapacity: true)
+        }
         smoothedVelocity = 0
         playback.resumeIntent = false
         playback.cancelPending()
@@ -805,6 +821,8 @@ public final class TracingViewModel {
     private func load(letter: LetterAsset) {
         phaseController.reset()
         freeWritePoints.removeAll(keepingCapacity: true)
+        freeWritePath.removeAll(keepingCapacity: true)
+        showFreeWriteOverlay = false
         lastFreeWriteDistance = 0
         showGhost                      = false
         currentLetterName              = letter.name
