@@ -132,9 +132,23 @@ struct ParentDashboardView: View {
                 Text(String(format: "%.3f", snapshot.schedulerEffectivenessProxy))
                     .monospacedDigit()
             }
-            LabeledContent("Ø Fréchet-Score") {
+            LabeledContent("Ø Schreibqualität (gesamt)") {
                 Text(String(format: "%.3f", snapshot.averageFreeWriteScore))
                     .monospacedDigit()
+            }
+            if let dims = snapshot.averageWritingDimensions {
+                LabeledContent("  Ø Form") {
+                    Text(String(format: "%.3f", dims.form)).monospacedDigit()
+                }
+                LabeledContent("  Ø Tempo") {
+                    Text(String(format: "%.3f", dims.tempo)).monospacedDigit()
+                }
+                LabeledContent("  Ø Druck") {
+                    Text(String(format: "%.3f", dims.pressure)).monospacedDigit()
+                }
+                LabeledContent("  Ø Rhythmus") {
+                    Text(String(format: "%.3f", dims.rhythm)).monospacedDigit()
+                }
             }
             LabeledContent("Phasensitzungen gesamt") {
                 Text("\(snapshot.phaseSessionRecords.count)")

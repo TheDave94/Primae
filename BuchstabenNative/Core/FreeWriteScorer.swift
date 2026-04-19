@@ -1,51 +1,69 @@
 // FreeWriteScorer.swift
 // BuchstabenNative
 //
-// Scores a freehand drawn path against a reference letter definition
-// using discrete Fréchet distance. Used in the free-write learning phase
-// where the child draws without checkpoint rails.
-//
-// The Fréchet distance measures the maximum deviation between two curves
-// under optimal reparametrisation — intuitively, the shortest leash needed
-// for a person walking along one curve and a dog walking along the other.
+// Scores a freehand drawn path against a reference letter definition.
+// Returns a WritingAssessment with four Schreibmotorik dimensions
+// (Marquardt & Söhl, 2016): Form, Tempo, Druck, Rhythmus.
 //
 // References:
 // - Eiter & Mannila (1994) "Computing Discrete Fréchet Distance"
 // - Alt & Godau (1995) "Computing the Fréchet Distance Between Two Polygonal Curves"
+// - Marquardt & Söhl (2016) Schreibmotorik Institut four-dimension model
 
 import CoreGraphics
 import Foundation
+
+// MARK: - Assessment result
+
+/// Four-dimension writing assessment per Schreibmotorik Institut (Marquardt & Söhl, 2016).
+struct WritingAssessment: Codable, Equatable {
+    /// Shape accuracy via discrete Fréchet distance (0–1).
+    let formAccuracy: CGFloat
+    /// Speed consistency: 1 – normalised variance of inter-point intervals (0–1).
+    let tempoConsistency: CGFloat
+    /// Pressure control: 1 – normalised force variance if Apple Pencil; 1.0 for finger (0–1).
+    let pressureControl: CGFloat
+    /// Fluency: ratio of active-drawing time to total session time (0–1).
+    let rhythmScore: CGFloat
+
+    /// Weighted overall score: Form 40 %, Tempo 25 %, Druck 15 %, Rhythmus 20 %.
+    var overallScore: CGFloat {
+        formAccuracy * 0.40 + tempoConsistency * 0.25 + pressureControl * 0.15 + rhythmScore * 0.20
+    }
+}
+
+// MARK: - Scorer
 
 struct FreeWriteScorer {
 
     // MARK: - Public API
 
-    /// Scores a traced path against reference strokes.
+    /// Scores a traced path against reference strokes, returning a four-dimension assessment.
     ///
     /// - Parameters:
-    ///   - tracedPoints: The child's freehand path, normalised to 0–1.
-    ///   - reference: The canonical stroke definition for the letter.
-    /// - Returns: A score from 0.0 (no resemblance) to 1.0 (perfect trace).
+    ///   - tracedPoints: Child's freehand path, normalised to 0–1.
+    ///   - reference: Canonical stroke definition for the letter.
+    ///   - timestamps: `CACurrentMediaTime()` value for each point in `tracedPoints`.
+    ///   - forces: Digitizer force at each point (0 = finger / no data).
+    ///   - sessionStart: `CACurrentMediaTime()` when the freeWrite phase began.
+    ///   - sessionEnd: `CACurrentMediaTime()` when the child finished writing.
+    /// - Returns: `WritingAssessment` with all four dimensions scored 0–1.
     static func score(
         tracedPoints: [CGPoint],
-        reference: LetterStrokes
-    ) -> CGFloat {
-        let refPoints = referencePolyline(from: reference)
-        guard refPoints.count >= 2, tracedPoints.count >= 2 else { return 0 }
-
-        // Resample both curves to comparable density for fair comparison.
-        let targetCount = max(refPoints.count, 20)
-        let resampledTrace = resample(tracedPoints, targetCount: targetCount)
-        let resampledRef   = resample(refPoints, targetCount: targetCount)
-
-        let distance = discreteFrechetDistance(resampledTrace, resampledRef)
-
-        // Scale: checkpointRadius is the "on path" tolerance for guided tracing.
-        // Use 3× as the maximum acceptable Fréchet distance for a passing score.
-        let maxAcceptable = reference.checkpointRadius * 3.0
-        guard maxAcceptable > 0 else { return 0 }
-
-        return CGFloat(max(0, min(1, 1.0 - distance / maxAcceptable)))
+        reference: LetterStrokes,
+        timestamps: [CFTimeInterval] = [],
+        forces: [CGFloat] = [],
+        sessionStart: CFTimeInterval = 0,
+        sessionEnd: CFTimeInterval = 0
+    ) -> WritingAssessment {
+        WritingAssessment(
+            formAccuracy:     formAccuracy(tracedPoints: tracedPoints, reference: reference),
+            tempoConsistency: tempoConsistency(timestamps: timestamps),
+            pressureControl:  pressureControl(forces: forces),
+            rhythmScore:      rhythmScore(timestamps: timestamps,
+                                          sessionStart: sessionStart,
+                                          sessionEnd: sessionEnd)
+        )
     }
 
     /// Raw Fréchet distance (exposed for debug overlay and testing).
@@ -60,6 +78,81 @@ struct FreeWriteScorer {
             resample(tracedPoints, targetCount: targetCount),
             resample(refPoints, targetCount: targetCount)
         )
+    }
+
+    // MARK: - Dimension: Form accuracy
+
+    private static func formAccuracy(tracedPoints: [CGPoint], reference: LetterStrokes) -> CGFloat {
+        let refPoints = referencePolyline(from: reference)
+        guard refPoints.count >= 2, tracedPoints.count >= 2 else { return 0 }
+
+        let targetCount = max(refPoints.count, 20)
+        let resampledTrace = resample(tracedPoints, targetCount: targetCount)
+        let resampledRef   = resample(refPoints, targetCount: targetCount)
+
+        let distance = discreteFrechetDistance(resampledTrace, resampledRef)
+        let maxAcceptable = reference.checkpointRadius * 3.0
+        guard maxAcceptable > 0 else { return 0 }
+
+        return CGFloat(max(0, min(1, 1.0 - distance / maxAcceptable)))
+    }
+
+    // MARK: - Dimension: Tempo consistency
+
+    private static func tempoConsistency(timestamps: [CFTimeInterval]) -> CGFloat {
+        guard timestamps.count >= 3 else { return 1.0 }
+
+        // Collect inter-point intervals, excluding gaps > 0.5 s (pen lifts between strokes).
+        var intervals: [Double] = []
+        for i in 1..<timestamps.count {
+            let dt = timestamps[i] - timestamps[i - 1]
+            if dt > 0 && dt < 0.5 { intervals.append(dt) }
+        }
+        guard intervals.count >= 2 else { return 1.0 }
+
+        let mean = intervals.reduce(0, +) / Double(intervals.count)
+        guard mean > 0 else { return 1.0 }
+
+        let variance = intervals.reduce(0.0) { $0 + ($1 - mean) * ($1 - mean) }
+            / Double(intervals.count)
+        // Coefficient of variation squared — scale-free normalisation of variance.
+        let normalised = variance / (mean * mean)
+        return CGFloat(max(0, min(1, 1.0 - normalised)))
+    }
+
+    // MARK: - Dimension: Pressure control
+
+    private static func pressureControl(forces: [CGFloat]) -> CGFloat {
+        guard !forces.isEmpty else { return 1.0 }
+        let active = forces.filter { $0 > 0 }
+        // All-zero forces → finger input → no pressure data → perfect score.
+        guard active.count >= 2 else { return 1.0 }
+
+        let mean = active.reduce(0, +) / CGFloat(active.count)
+        guard mean > 0 else { return 1.0 }
+
+        let variance = active.reduce(0 as CGFloat) { $0 + ($1 - mean) * ($1 - mean) }
+            / CGFloat(active.count)
+        let normalised = variance / (mean * mean)
+        return max(0, min(1, 1.0 - normalised))
+    }
+
+    // MARK: - Dimension: Rhythm / fluency
+
+    private static func rhythmScore(timestamps: [CFTimeInterval],
+                                    sessionStart: CFTimeInterval,
+                                    sessionEnd: CFTimeInterval) -> CGFloat {
+        let totalDuration = sessionEnd - sessionStart
+        guard totalDuration > 0, !timestamps.isEmpty else { return 0 }
+
+        // Sum intervals where the pen was actively moving (gap < 0.5 s = same stroke).
+        var activeTime: CFTimeInterval = 0
+        for i in 1..<timestamps.count {
+            let dt = timestamps[i] - timestamps[i - 1]
+            if dt < 0.5 { activeTime += dt }
+        }
+
+        return CGFloat(max(0, min(1, activeTime / totalDuration)))
     }
 
     // MARK: - Discrete Fréchet Distance

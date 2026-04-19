@@ -216,6 +216,13 @@ private struct DebugInfoPanel: View {
                 Text("  \(phase.rawName): \(String(format: "%.2f", vm.phaseScores[phase] ?? 0))")
             }
             Text("Fréchet: \(String(format: "%.4f", vm.lastFreeWriteDistance))")
+            if let a = vm.lastWritingAssessment {
+                Text("Form:    \(String(format: "%.2f", a.formAccuracy))")
+                Text("Tempo:   \(String(format: "%.2f", a.tempoConsistency))")
+                Text("Druck:   \(String(format: "%.2f", a.pressureControl))")
+                Text("Rhythmus:\(String(format: "%.2f", a.rhythmScore))")
+                Text("Gesamt:  \(String(format: "%.2f", a.overallScore))")
+            }
             Text("Tier: \(String(describing: vm.currentDifficultyTier))")
             Text("Completions: \(letterProg.completionCount)")
             Text("Best acc: \(String(format: "%.2f", letterProg.bestAccuracy))")

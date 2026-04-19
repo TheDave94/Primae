@@ -7,7 +7,7 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// LearningPhase.rawName: "observe", "guided", or "freeWrite"
     let phase: String
     let completed: Bool
-    /// Phase accuracy score (0–1).
+    /// Phase accuracy score (0–1). For freeWrite equals WritingAssessment.overallScore.
     let score: Double
     /// Spaced-repetition priority assigned when this session was scheduled.
     let schedulerPriority: Double
@@ -15,15 +15,25 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// old records may be missing this field — custom decoder defaults to
     /// .threePhase for pre-migration records.
     let condition: ThesisCondition
+    /// Schreibmotorik dimensions (non-nil only for freeWrite sessions).
+    let formAccuracy: Double?
+    let tempoConsistency: Double?
+    let pressureControl: Double?
+    let rhythmScore: Double?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
-         schedulerPriority: Double, condition: ThesisCondition = .threePhase) {
+         schedulerPriority: Double, condition: ThesisCondition = .threePhase,
+         assessment: WritingAssessment? = nil) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
-        self.score = score
+        self.score = max(0, min(1, score))
         self.schedulerPriority = schedulerPriority
         self.condition = condition
+        self.formAccuracy     = assessment.map { Double($0.formAccuracy) }
+        self.tempoConsistency = assessment.map { Double($0.tempoConsistency) }
+        self.pressureControl  = assessment.map { Double($0.pressureControl) }
+        self.rhythmScore      = assessment.map { Double($0.rhythmScore) }
     }
 
     init(from decoder: Decoder) throws {
@@ -34,6 +44,10 @@ struct PhaseSessionRecord: Codable, Equatable {
         score = try c.decode(Double.self, forKey: .score)
         schedulerPriority = try c.decode(Double.self, forKey: .schedulerPriority)
         condition = (try? c.decode(ThesisCondition.self, forKey: .condition)) ?? .threePhase
+        formAccuracy     = try? c.decode(Double.self, forKey: .formAccuracy)
+        tempoConsistency = try? c.decode(Double.self, forKey: .tempoConsistency)
+        pressureControl  = try? c.decode(Double.self, forKey: .pressureControl)
+        rhythmScore      = try? c.decode(Double.self, forKey: .rhythmScore)
     }
 }
 
@@ -178,13 +192,28 @@ struct DashboardSnapshot: Codable, Equatable {
         return out
     }
 
-    /// Mean Fréchet-based score across all completed freeWrite phase sessions.
+    /// Mean overall score across all completed freeWrite phase sessions.
     var averageFreeWriteScore: Double {
         let scores = phaseSessionRecords
             .filter { $0.phase == "freeWrite" && $0.completed }
             .map { $0.score }
         guard !scores.isEmpty else { return 0 }
         return scores.reduce(0, +) / Double(scores.count)
+    }
+
+    /// Average of each Schreibmotorik dimension across completed freeWrite sessions
+    /// that have dimension data. Returns nil when no such sessions exist yet.
+    var averageWritingDimensions: (form: Double, tempo: Double, pressure: Double, rhythm: Double)? {
+        let records = phaseSessionRecords
+            .filter { $0.phase == "freeWrite" && $0.completed && $0.formAccuracy != nil }
+        guard !records.isEmpty else { return nil }
+        let count = Double(records.count)
+        return (
+            form:     records.compactMap(\.formAccuracy).reduce(0, +)     / count,
+            tempo:    records.compactMap(\.tempoConsistency).reduce(0, +) / count,
+            pressure: records.compactMap(\.pressureControl).reduce(0, +)  / count,
+            rhythm:   records.compactMap(\.rhythmScore).reduce(0, +)      / count
+        )
     }
 
     /// Pearson correlation between scheduler priority and subsequent accuracy improvement.
@@ -220,13 +249,18 @@ struct DashboardSnapshot: Codable, Equatable {
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition)
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
 }
 
 extension ParentDashboardStoring {
+    /// Backward-compatible overload for call sites that don't supply an assessment.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, assessment: nil)
+    }
     func flush() async {}
 }
 
@@ -273,14 +307,15 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         persist()
     }
 
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition) {
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?) {
         let record = PhaseSessionRecord(
             letter: letter.uppercased(),
             phase: phase,
             completed: completed,
-            score: max(0, min(1, score)),
+            score: score,
             schedulerPriority: schedulerPriority,
-            condition: condition
+            condition: condition,
+            assessment: assessment
         )
         snapshot.phaseSessionRecords.append(record)
         persist()

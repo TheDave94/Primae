@@ -45,8 +45,8 @@ struct FreeWriteScorerTests {
             CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.65),
             CGPoint(x: 0.5, y: 0.8),
         ]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        #expect(score > 0.9)
+        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
+        #expect(assessment.formAccuracy > 0.9)
     }
 
     @Test("Near-perfect trace scores above 0.8")
@@ -56,8 +56,8 @@ struct FreeWriteScorerTests {
             CGPoint(x: 0.52, y: 0.5), CGPoint(x: 0.48, y: 0.65),
             CGPoint(x: 0.51, y: 0.8),
         ]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        #expect(score > 0.8)
+        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
+        #expect(assessment.formAccuracy > 0.8)
     }
 
     @Test("Completely off-path scores below 0.3")
@@ -67,8 +67,8 @@ struct FreeWriteScorerTests {
             CGPoint(x: 0.2, y: 0.2), CGPoint(x: 0.1, y: 0.3),
             CGPoint(x: 0.05, y: 0.1),
         ]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        #expect(score < 0.3)
+        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
+        #expect(assessment.formAccuracy < 0.3)
     }
 
     @Test("Reversed trace penalises direction")
@@ -78,8 +78,8 @@ struct FreeWriteScorerTests {
             CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.35),
             CGPoint(x: 0.5, y: 0.2),
         ]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        #expect(score < 0.5)
+        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
+        #expect(assessment.formAccuracy < 0.5)
     }
 
     @Test("Multi-stroke L-shape scores well")
@@ -90,8 +90,8 @@ struct FreeWriteScorerTests {
             CGPoint(x: 0.5, y: 0.8), CGPoint(x: 0.6, y: 0.8),
             CGPoint(x: 0.7, y: 0.8), CGPoint(x: 0.8, y: 0.8),
         ]
-        let score = FreeWriteScorer.score(tracedPoints: traced, reference: lStrokes)
-        #expect(score > 0.7)
+        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: lStrokes)
+        #expect(assessment.formAccuracy > 0.7)
     }
 
     // MARK: - Edge cases
@@ -102,15 +102,15 @@ struct FreeWriteScorerTests {
             ([CGPoint(x: 0.5, y: 0.5)], true),
           ])
     func emptyOrSingleInput(points: [CGPoint], expectZero: Bool) {
-        let score = FreeWriteScorer.score(tracedPoints: points, reference: verticalLineStrokes)
-        if expectZero { #expect(score == 0) }
+        let assessment = FreeWriteScorer.score(tracedPoints: points, reference: verticalLineStrokes)
+        if expectZero { #expect(assessment.formAccuracy == 0) }
     }
 
     @Test("Empty reference returns zero")
     func emptyReference() {
         let empty = LetterStrokes(letter: "X", checkpointRadius: 0.04, strokes: [])
         let traced = [CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.6)]
-        #expect(FreeWriteScorer.score(tracedPoints: traced, reference: empty) == 0)
+        #expect(FreeWriteScorer.score(tracedPoints: traced, reference: empty).formAccuracy == 0)
     }
 
     @Test("Zero radius returns zero")
@@ -122,7 +122,7 @@ struct FreeWriteScorerTests {
             ])]
         )
         let traced = [CGPoint(x: 0.5, y: 0.2), CGPoint(x: 0.5, y: 0.8)]
-        #expect(FreeWriteScorer.score(tracedPoints: traced, reference: strokes) == 0)
+        #expect(FreeWriteScorer.score(tracedPoints: traced, reference: strokes).formAccuracy == 0)
     }
 
     // MARK: - Fréchet distance

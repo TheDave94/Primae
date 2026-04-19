@@ -110,8 +110,16 @@ public final class TracingViewModel {
     var starsEarned: Int { phaseController.starsEarned }
     /// Accumulated normalised touch points for free-write scoring.
     private(set) var freeWritePoints: [CGPoint] = []
+    /// CACurrentMediaTime timestamps for each accumulated free-write point.
+    private(set) var freeWriteTimestamps: [CFTimeInterval] = []
+    /// Digitizer force at each accumulated free-write point (0 = finger / no data).
+    private(set) var freeWriteForces: [CGFloat] = []
+    /// CACurrentMediaTime when the freeWrite phase began. Used for rhythmScore.
+    private var freeWriteSessionStart: CFTimeInterval = 0
     /// Last computed Frechet distance (for debug overlay).
     private(set) var lastFreeWriteDistance: CGFloat = 0
+    /// Most recent Schreibmotorik four-dimension assessment from the freeWrite phase.
+    private(set) var lastWritingAssessment: WritingAssessment? = nil
     /// Normalised (0–1) touch path accumulated during the freeWrite phase.
     /// Kept for the KP overlay that shows where the child deviated.
     private(set) var freeWritePath: [CGPoint] = []
@@ -419,6 +427,8 @@ public final class TracingViewModel {
             // Accumulate for free-write scoring and KP overlay
             if phaseController.currentPhase == .freeWrite {
                 freeWritePoints.append(p)
+                freeWriteTimestamps.append(t)
+                freeWriteForces.append(pencilPressure ?? 0)
                 freeWritePath.append(CGPoint(x: p.x / max(canvasSize.width, 1),
                                              y: p.y / max(canvasSize.height, 1)))
             }
@@ -632,12 +642,25 @@ public final class TracingViewModel {
         case .guided:
             score = progress
         case .freeWrite:
-            guard let def = strokeTracker.definition else { score = 0; break }
+            guard let def = strokeTracker.definition else {
+                lastWritingAssessment = nil
+                score = 0
+                break
+            }
             let normalised = freeWritePoints.map { pt in
                 CGPoint(x: pt.x / max(canvasSize.width, 1),
                         y: pt.y / max(canvasSize.height, 1))
             }
-            score = FreeWriteScorer.score(tracedPoints: normalised, reference: def)
+            let assessment = FreeWriteScorer.score(
+                tracedPoints: normalised,
+                reference: def,
+                timestamps: freeWriteTimestamps,
+                forces: freeWriteForces,
+                sessionStart: freeWriteSessionStart,
+                sessionEnd: CACurrentMediaTime()
+            )
+            lastWritingAssessment = assessment
+            score = assessment.overallScore
             lastFreeWriteDistance = FreeWriteScorer.rawDistance(
                 tracedPoints: normalised, reference: def)
         }
@@ -768,8 +791,11 @@ public final class TracingViewModel {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         freeWritePoints.removeAll(keepingCapacity: true)
+        freeWriteTimestamps.removeAll(keepingCapacity: true)
+        freeWriteForces.removeAll(keepingCapacity: true)
         if phaseController.currentPhase == .freeWrite {
             freeWritePath.removeAll(keepingCapacity: true)
+            freeWriteSessionStart = CACurrentMediaTime()
         }
         directTappedDots.removeAll()
         directPulsingDot = false
@@ -788,6 +814,17 @@ public final class TracingViewModel {
         let scores: [String: Double] = Dictionary(
             uniqueKeysWithValues: phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
         )
+        for (phase, phaseScore) in scores {
+            dashboardStore.recordPhaseSession(
+                letter: currentLetterName,
+                phase: phase,
+                completed: true,
+                score: phaseScore,
+                schedulerPriority: 0,
+                condition: thesisCondition,
+                assessment: phase == "freeWrite" ? lastWritingAssessment : nil
+            )
+        }
         commitCompletion(letter: currentLetterName,
                          accuracy: accuracy,
                          duration: duration,
@@ -899,9 +936,13 @@ public final class TracingViewModel {
     private func load(letter: LetterAsset) {
         phaseController.reset()
         freeWritePoints.removeAll(keepingCapacity: true)
+        freeWriteTimestamps.removeAll(keepingCapacity: true)
+        freeWriteForces.removeAll(keepingCapacity: true)
+        freeWriteSessionStart = 0
         freeWritePath.removeAll(keepingCapacity: true)
         showFreeWriteOverlay = false
         lastFreeWriteDistance = 0
+        lastWritingAssessment = nil
         directTappedDots.removeAll()
         directPulsingDot = false
         directArrowStrokeIndex = nil
