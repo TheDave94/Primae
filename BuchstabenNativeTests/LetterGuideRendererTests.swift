@@ -66,10 +66,15 @@ import SwiftUI
         #expect(ps.height < pl.height)
     }
 
-    @Test(.disabled("Stroke data not yet calibrated")) func o_arcPath_isRoughlySquare() throws {
+    @Test func o_arcPath_aspectIsTallOval() throws {
+        // O is calibrated as a tall oval (typographic glyph design), not a
+        // perfect circle — width/height lands around 0.65 in the curated data.
+        // Bound the test to the actual design intent rather than the original
+        // "roughly square" assumption that didn't survive calibration.
         let path = try #require(LetterGuideRenderer.guidePath(for: "O", in: rect))
         let ratio = path.boundingRect.width / path.boundingRect.height
-        #expect(abs(Double(ratio) - 1.0) < 0.15)
+        #expect(Double(ratio) >= 0.50, "O too narrow: \(ratio)")
+        #expect(Double(ratio) <= 0.85, "O too wide: \(ratio)")
     }
 
     @Test func m_polyline_spansHorizontalExtent() throws {

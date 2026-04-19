@@ -16,11 +16,15 @@ struct LetterGuideSnapshotTests {
 
     // MARK: - Structural snapshot: path element counts per letter
 
+    // Per-letter minimum element counts. Originally written assuming I would
+    // have serifs (top + vertical + bottom = ~6 elements); the calibrated
+    // glyph uses a single vertical line, so I gets 2 (move + line). Other
+    // letters keep the original minima — they hold against the curated data.
     private let expectedMinElements: [String: Int] = [
-        "A": 6, "F": 6, "I": 6, "K": 6, "L": 4, "M": 5, "O": 1,
+        "A": 6, "F": 6, "I": 2, "K": 6, "L": 4, "M": 5, "O": 1,
     ]
 
-    @Test(.disabled("Stroke data not yet calibrated for demo letters")) func curatedLetters_pathElementCount_isStable() {
+    @Test func curatedLetters_pathElementCount_isStable() {
         for (letter, minCount) in expectedMinElements {
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
             var count = 0
@@ -32,10 +36,15 @@ struct LetterGuideSnapshotTests {
 
     // MARK: - Bounding box ratio snapshot
 
-    @Test(.disabled("Stroke data not yet calibrated for demo letters")) func curatedLetters_boundingBoxRatios_areStable() {
+    @Test func curatedLetters_boundingBoxRatios_areStable() {
+        // Per-letter aspect (width/height) ranges, derived from the calibrated
+        // segment data in LetterGuideGeometry.guides. I is the narrow outlier
+        // (single vertical stroke, no serifs) so its band is 0.05–0.20; the
+        // other glyphs sit between 0.5 and 0.9 — bands are widened slightly
+        // beyond the curated values to absorb future small calibration nudges.
         let expectations: [(String, CGFloat, CGFloat)] = [
-            ("A", 0.4, 1.2), ("F", 0.3, 1.2), ("I", 0.5, 2.0),
-            ("K", 0.3, 1.2), ("L", 0.3, 1.2), ("M", 0.5, 1.5), ("O", 0.6, 1.4),
+            ("A", 0.4, 1.0), ("F", 0.3, 1.0), ("I", 0.05, 0.20),
+            ("K", 0.3, 1.0), ("L", 0.3, 1.0), ("M", 0.5, 1.2), ("O", 0.5, 0.85),
         ]
         for (letter, minA, maxA) in expectations {
             let path = LetterGuideRenderer.guidePath(for: letter, in: rect)!
