@@ -22,6 +22,7 @@ struct TracingDependencies {
     var syncCoordinator: SyncCoordinator
     var thesisCondition: ThesisCondition
     var schriftArt: SchriftArt
+    var letterOrdering: LetterOrderingStrategy
 
     /// Factory for the per-VM playback controller. Receives the audio engine
     /// (so tests can swap a recording stub in via `audio:`) and the
@@ -76,6 +77,13 @@ struct TracingDependencies {
             }
             return .druckschrift
         }(),
+        letterOrdering: LetterOrderingStrategy = {
+            if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.buchstaben.letterOrdering"),
+               let strategy = LetterOrderingStrategy(rawValue: raw) {
+                return strategy
+            }
+            return .motorSimilarity
+        }(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
@@ -106,6 +114,7 @@ struct TracingDependencies {
         }
         self.thesisCondition = thesisCondition
         self.schriftArt = schriftArt
+        self.letterOrdering = letterOrdering
         self.makePlaybackController = makePlaybackController
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide

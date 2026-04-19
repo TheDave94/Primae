@@ -15,6 +15,7 @@ public final class TracingViewModel {
     var pencilAzimuth: CGFloat   = 0
     var strokeEnforced      = true
     var showDebug           = false
+    var letterOrdering: LetterOrderingStrategy = .motorSimilarity
     var schriftArt: SchriftArt = .druckschrift {
         didSet {
             guard oldValue != schriftArt,
@@ -214,6 +215,7 @@ public final class TracingViewModel {
         self.isOnboardingComplete  = deps.onboardingStore.hasCompletedOnboarding
         self.phaseController = LearningPhaseController(condition: deps.thesisCondition)
         self.schriftArt = deps.schriftArt
+        self.letterOrdering = deps.letterOrdering
 
         // Build the per-VM controllers from the dependency factories. Doing this
         // here (not at field init) is what lets tests replace any one of them
@@ -672,10 +674,18 @@ public final class TracingViewModel {
     /// The 7 demo letters for thesis scope.
     private let demoBaseLetters: Set<String> = ["A", "F", "I", "K", "L", "M", "O"]
 
-    /// Letter names visible based on the showAllLetters toggle.
+    /// Letter names visible based on the showAllLetters toggle, sorted by the active ordering strategy.
     var visibleLetterNames: [String] {
-        if showAllLetters { return letters.map(\.name) }
-        return letters.filter { demoBaseLetters.contains($0.baseLetter) }.map(\.name)
+        let pool = showAllLetters
+            ? letters.map(\.name)
+            : letters.filter { demoBaseLetters.contains($0.baseLetter) }.map(\.name)
+        let order = letterOrdering.orderedLetters()
+        let rankMap = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
+        return pool.sorted { a, b in
+            let ra = rankMap[a.uppercased()] ?? Int.max
+            let rb = rankMap[b.uppercased()] ?? Int.max
+            return ra == rb ? a < b : ra < rb
+        }
     }
 
     /// Expose stroke definition for canvas rendering.

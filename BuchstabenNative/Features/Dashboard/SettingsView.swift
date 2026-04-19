@@ -3,14 +3,21 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(TracingViewModel.self) private var vm
     @State private var selectedSchriftArt: SchriftArt = .druckschrift
+    @State private var selectedOrdering: LetterOrderingStrategy = .motorSimilarity
 
     private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
+    private static let orderingDefaultsKey = "de.flamingistan.buchstaben.letterOrdering"
 
     var body: some View {
         Form {
             Section("Schriftart") {
                 ForEach(SchriftArt.allCases.filter { $0 == .druckschrift }, id: \.self) { art in
                     schriftArtRow(art)
+                }
+            }
+            Section("Buchstabenreihenfolge") {
+                ForEach(LetterOrderingStrategy.allCases, id: \.self) { strategy in
+                    orderingRow(strategy)
                 }
             }
             Section("Hilfe") {
@@ -22,6 +29,26 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             selectedSchriftArt = vm.schriftArt
+            selectedOrdering = vm.letterOrdering
+        }
+    }
+
+    @ViewBuilder
+    private func orderingRow(_ strategy: LetterOrderingStrategy) -> some View {
+        Button {
+            selectedOrdering = strategy
+            UserDefaults.standard.set(strategy.rawValue, forKey: Self.orderingDefaultsKey)
+            vm.letterOrdering = strategy
+        } label: {
+            HStack {
+                Text(strategy.displayName)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if selectedOrdering == strategy {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                }
+            }
         }
     }
 
