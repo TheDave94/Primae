@@ -14,6 +14,7 @@ struct LetterProgress: Codable, Equatable {
 
 // MARK: - Protocol (testable seam)
 
+@MainActor
 protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
     func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?)
@@ -142,9 +143,14 @@ public final class JSONProgressStore: ProgressStoring {
     private func save() {
         guard let data = try? JSONEncoder().encode(store) else { return }
         let url = fileURL
-        let prior = pendingSave
+        // Coalesce: cancel any prior pending task. Since in-memory state is
+        // already up-to-date and `data` is a full snapshot of the current store,
+        // writing only the latest snapshot is equivalent to writing N
+        // back-to-back snapshots. This avoids unbounded chain growth + N×
+        // Data retention under rapid save() bursts.
+        pendingSave?.cancel()
         pendingSave = Task.detached(priority: .utility) {
-            await prior?.value
+            guard !Task.isCancelled else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

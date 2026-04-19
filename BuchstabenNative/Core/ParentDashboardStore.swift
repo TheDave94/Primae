@@ -174,6 +174,7 @@ struct DashboardSnapshot: Codable, Equatable {
 
 // MARK: - Protocol
 
+@MainActor
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
@@ -253,9 +254,10 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     private func persist() {
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = fileURL
-        let prior = pendingSave
+        // Coalesce: see ProgressStore.save() for rationale.
+        pendingSave?.cancel()
         pendingSave = Task.detached(priority: .utility) {
-            await prior?.value
+            guard !Task.isCancelled else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

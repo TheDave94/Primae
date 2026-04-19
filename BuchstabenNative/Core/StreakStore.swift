@@ -15,6 +15,7 @@ enum RewardEvent: String, Codable, CaseIterable, Equatable {
 
 // MARK: - Streak store protocol
 
+@MainActor
 protocol StreakStoring {
     var currentStreak: Int { get }
     var longestStreak: Int { get }
@@ -158,9 +159,10 @@ final class JSONStreakStore: StreakStoring {
     private func persist() {
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = fileURL
-        let prior = pendingSave
+        // Coalesce: see ProgressStore.save() for rationale.
+        pendingSave?.cancel()
         pendingSave = Task.detached(priority: .utility) {
-            await prior?.value
+            guard !Task.isCancelled else { return }
             try? data.write(to: url, options: .atomic)
         }
     }
