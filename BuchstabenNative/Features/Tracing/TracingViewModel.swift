@@ -766,17 +766,20 @@ public final class TracingViewModel {
     /// Reload stroke checkpoints mapped to canvas-normalised coordinates (0–1).
     /// Pass `usingSize` to override `self.canvasSize` — used by `updateTouch` to
     /// guarantee the mapping size equals the size used to normalise the touch point.
-    /// Idempotent: a rebuild with the same (letter, size) as the prior successful
-    /// rebuild is skipped, so the rotation safety-net window in `updateTouch` and
-    /// repeated `canvasSize.didSet` triggers at the same dimensions don't burn
-    /// CPU re-mapping unchanged data.
+    /// Idempotent: a rebuild with the same (letter, size, schriftArt) as the
+    /// prior successful rebuild is skipped, so the rotation safety-net window
+    /// in `updateTouch` and repeated `canvasSize.didSet` triggers at the same
+    /// dimensions don't burn CPU re-mapping unchanged data. The cache hit is
+    /// gated on `strokeTracker.definition != nil` so any path that resets the
+    /// tracker (resetLetter, phase transition) automatically misses and rebuilds
+    /// without each reset site having to remember to invalidate the key.
     private func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
         // Map to canvas-normalised coordinates using the actual rendered glyph rect.
         // User-calibrated file in Application Support takes priority over bundle strokes.json.
         let effectiveSize = size ?? canvasSize
         let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt)
-        if key == lastCheckpointKey { return }
+        if key == lastCheckpointKey, strokeTracker.definition != nil { return }
         let source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
