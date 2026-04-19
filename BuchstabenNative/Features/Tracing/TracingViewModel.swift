@@ -76,6 +76,17 @@ public final class TracingViewModel {
         }
     }
 
+    /// Guidance-fading intensity (Schmidt & Lee, 2005): reducing feedback over
+    /// time improves motor-learning retention.
+    /// observe=1.0 (full), guided=0.6 (moderate), freeWrite=0.0 (post-hoc only).
+    var feedbackIntensity: CGFloat {
+        switch phaseController.currentPhase {
+        case .observe:   return 1.0
+        case .guided:    return 0.6
+        case .freeWrite: return 0.0
+        }
+    }
+
     /// Expose stroke data for calibration overlay (canvas-mapped coordinates).
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
@@ -406,13 +417,14 @@ public final class TracingViewModel {
         strokeTracker.update(normalizedPoint: normalized)
 
         let isNowComplete = strokeTracker.isComplete
-        if !wasComplete && isNowComplete { haptics.fire(.letterCompleted) }
+        if !wasComplete && isNowComplete, feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
         progress = strokeTracker.overallProgress
 
         let newStrokeIndex     = strokeTracker.currentStrokeIndex
         let newNextCheckpoint  = strokeTracker.progress.indices.contains(prevStrokeIndex)
             ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
-        if prevNextCheckpoint != newNextCheckpoint || newStrokeIndex != prevStrokeIndex {
+        if (prevNextCheckpoint != newNextCheckpoint || newStrokeIndex != prevStrokeIndex),
+           feedbackIntensity > 0 {
             if strokeTracker.progress.indices.contains(prevStrokeIndex)
                 && strokeTracker.progress[prevStrokeIndex].complete {
                 haptics.fire(.strokeCompleted)
@@ -428,6 +440,7 @@ public final class TracingViewModel {
 
         let shouldPlayForStroke = strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
+                                  && feedbackIntensity > 0.3
         playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 
         // Guard against vacuous completion: StrokeTracker.isComplete returns true
@@ -435,7 +448,7 @@ public final class TracingViewModel {
         let hasStrokes = (strokeTracker.definition?.strokes.isEmpty == false)
         if hasStrokes, strokeTracker.isComplete, !didCompleteCurrentLetter {
             didCompleteCurrentLetter = true
-            haptics.fire(.letterCompleted)
+            if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
 
             let accuracy = Double(strokeTracker.overallProgress)
             let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
