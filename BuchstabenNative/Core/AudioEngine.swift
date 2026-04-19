@@ -32,6 +32,10 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     )
 
     private(set) var isPlaying = false
+    /// Non-nil when init failed to bring the audio stack up — VM toasts this
+    /// at startup so a parent notices something is wrong instead of seeing
+    /// the child poke a silent device. Stays nil after a healthy init.
+    private(set) var initializationError: String? = nil
 
     // MARK: - Debug accessors
 
@@ -64,12 +68,14 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                     player.stop()
                     isPlaying             = false
                     shouldResumePlayback  = false
+                    initializationError   = "Ton konnte nicht gestartet werden"
                     log.error("Initial engine start failed: \(error.localizedDescription)")
                 }
             }
         } catch {
             isPlaying            = false
             shouldResumePlayback = false
+            initializationError  = "Audio nicht verfügbar"
             log.error("AVAudioSession config failed: \(error.localizedDescription)")
         }
 

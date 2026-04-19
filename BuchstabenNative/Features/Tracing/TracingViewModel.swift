@@ -210,6 +210,13 @@ public final class TracingViewModel {
             self?.isPlaying = $0
         }
         letters = repo.loadLettersFast()
+        // Surface a startup audio failure as a brief German toast so a parent
+        // notices the device is silent on purpose (not because the child got
+        // lost). The toast auto-clears via TransientMessagePresenter's normal
+        // 1.3 s timer; nil under healthy operation.
+        if let audioError = deps.audio.initializationError {
+            messages.show(toast: audioError)
+        }
         guard let first = letters.first else { return }
         load(letter: first)
     }
