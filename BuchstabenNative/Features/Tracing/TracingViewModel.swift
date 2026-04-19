@@ -415,31 +415,9 @@ public final class TracingViewModel {
 
             let accuracy = Double(strokeTracker.overallProgress)
             let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
-            let letter   = currentLetterName
-
-            // — Core progress (existing) —
-            progressStore.recordCompletion(for: letter, accuracy: accuracy)
-
-            // — Streak tracking —
-            streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
-
-            // — Parent dashboard —
-            dashboardStore.recordSession(letter: letter, accuracy: accuracy,
-                                          durationSeconds: duration, date: Date(),
-                                          condition: thesisCondition)
-
-            // — Background cloud sync —
-            Task { [weak self] in try? await self?.syncCoordinator.pushAll() }
-
-            // — Difficulty adaptation —
-            let adaptSample = AdaptationSample(letter: letter,
-                                               accuracy: CGFloat(accuracy),
-                                               completionTime: duration)
-            adaptationPolicy.record(adaptSample)
-            currentDifficultyTier                 = adaptationPolicy.currentTier
-            strokeTracker.radiusMultiplier        = currentDifficultyTier.radiusMultiplier
-
-            showCompletionHUD()
+            commitCompletion(letter: currentLetterName,
+                             accuracy: accuracy,
+                             duration: duration)
             toast("Super gemacht!")
             playback.request(.idle, immediate: true)
         }
@@ -675,12 +653,25 @@ public final class TracingViewModel {
     private func recordPhaseSessionCompletion() {
         let accuracy = Double(phaseController.overallScore)
         let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
-        let letter = currentLetterName
-
         let scores: [String: Double] = Dictionary(
             uniqueKeysWithValues: phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
         )
-        progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: scores)
+        commitCompletion(letter: currentLetterName,
+                         accuracy: accuracy,
+                         duration: duration,
+                         phaseScores: scores)
+    }
+
+    /// Shared completion side-effects: durable progress + streak + dashboard
+    /// row, background cloud sync, difficulty-tier adaptation, completion HUD.
+    /// Both the per-letter stroke-completion path and the multi-phase session
+    /// completion path go through here so the side-effect set can never drift
+    /// between the two — every store-write addition lands in one place.
+    private func commitCompletion(letter: String,
+                                  accuracy: Double,
+                                  duration: TimeInterval,
+                                  phaseScores: [String: Double]? = nil) {
+        progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores)
         streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
         dashboardStore.recordSession(letter: letter, accuracy: accuracy,
                                       durationSeconds: duration, date: Date(),
@@ -691,7 +682,7 @@ public final class TracingViewModel {
                                            accuracy: CGFloat(accuracy),
                                            completionTime: duration)
         adaptationPolicy.record(adaptSample)
-        currentDifficultyTier = adaptationPolicy.currentTier
+        currentDifficultyTier         = adaptationPolicy.currentTier
         strokeTracker.radiusMultiplier = currentDifficultyTier.radiusMultiplier
 
         showCompletionHUD()
