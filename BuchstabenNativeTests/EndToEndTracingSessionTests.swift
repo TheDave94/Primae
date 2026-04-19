@@ -130,7 +130,7 @@ fileprivate final class RecordingAudio: AudioControlling {
     @Test func lifecycleAroundSession() async {
         simulateFastTouch(t0: 1000)
         try? await Task.sleep(for: .milliseconds(150))
-        vm.appDidEnterBackground()
+        await vm.appDidEnterBackground()
         #expect(audio.hasEvent(.suspend))
         #expect(!vm.isPlaying)
         audio.reset()

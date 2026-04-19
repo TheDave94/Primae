@@ -82,7 +82,7 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
         var t = 1000.0; var p = CGPoint(x: 100, y: 200)
         for _ in 0..<10 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: .init(width: 400, height: 400)) }
         try? await Task.sleep(for: .milliseconds(150))
-        vm.appDidEnterBackground()
+        await vm.appDidEnterBackground()
         #expect(!vm.isPlaying)
         #expect((vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused").contains("paused"))
     }

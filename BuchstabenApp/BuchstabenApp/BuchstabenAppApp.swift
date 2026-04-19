@@ -31,9 +31,14 @@ struct BuchstabenAppMain: App {
             case .active:
                 vm.appDidBecomeActive()
             case .background, .inactive:
-                vm.appDidEnterBackground()
+                // appDidEnterBackground is now async — it drains pending JSON
+                // store writes after the synchronous state cleanup. Wrap in a
+                // Task so iOS's scene-suspension grace window holds the process
+                // alive until the awaits resolve, instead of losing a freshly
+                // completed letter to a half-flushed write on suspension.
+                Task { await vm.appDidEnterBackground() }
             @unknown default:
-                vm.appDidEnterBackground()
+                Task { await vm.appDidEnterBackground() }
             }
         }
     }

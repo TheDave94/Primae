@@ -14,9 +14,9 @@ struct BuchstabenNativeApp: App {
             case .active:
                 vm.appDidBecomeActive()
             case .background, .inactive:
-                vm.appDidEnterBackground()
+                Task { await vm.appDidEnterBackground() }
             @unknown default:
-                vm.appDidEnterBackground()
+                Task { await vm.appDidEnterBackground() }
             }
         }
     }

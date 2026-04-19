@@ -435,7 +435,7 @@ public final class TracingViewModel {
 
     // MARK: - Lifecycle
 
-    public func appDidEnterBackground() {
+    public func appDidEnterBackground() async {
         guard playback.appIsForeground else { return }
         playback.appIsForeground = false
         playback.cancelPending()
@@ -445,14 +445,15 @@ public final class TracingViewModel {
         if cmd == .none { audio.stop(); isPlaying = false }
         audio.suspendForLifecycle()
         playback.resetPlayIntentClock()
-        // Await any pending async store writes so iOS doesn't suspend the
-        // process while a Task.detached write is mid-flight — without this
-        // a letter completed seconds before backgrounding can be lost.
-        Task { [progressStore, streakStore, dashboardStore] in
-            await progressStore.flush()
-            await streakStore.flush()
-            await dashboardStore.flush()
-        }
+        // Drain pending disk writes before returning so the SwiftUI scene-phase
+        // wrapper can hold the iOS suspension grace window open until durability
+        // is guaranteed. The prior fire-and-forget `Task { await … }` shape let
+        // iOS race the writes to /dev/null on suspension — losing a letter
+        // completion that happened seconds before backgrounding.
+        await progressStore.flush()
+        await streakStore.flush()
+        await dashboardStore.flush()
+        await onboardingStore.flush()
     }
 
     public func appDidBecomeActive() {
