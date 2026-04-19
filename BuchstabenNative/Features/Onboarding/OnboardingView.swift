@@ -32,14 +32,14 @@ struct OnboardingView: View {
 
                 Spacer()
 
-                Text("Für Eltern: lange drücken zum Überspringen")
+                Text("Für Eltern: gedrückt halten zum Überspringen")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.bottom, 24)
                     .contentShape(Rectangle())
                     .onLongPressGesture(minimumDuration: 1.5) { vm.skipOnboarding() }
                     .accessibilityLabel("Einführung überspringen")
-                    .accessibilityHint("Lange drücken, nur für Erwachsene")
+                    .accessibilityHint("Gedrückt halten, nur für Erwachsene")
             }
         }
         .preferredColorScheme(.light)
@@ -263,7 +263,7 @@ private struct RewardIntroStepView: View {
                 .font(.title.bold())
                 .foregroundStyle(.primary)
 
-            Text("Für jeden Buchstaben bekommst du\nbis zu 3 Sterne!")
+            Text("Für jeden Buchstaben bekommst du\nbis zu 4 Sterne!")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

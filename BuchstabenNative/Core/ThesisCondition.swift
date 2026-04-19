@@ -29,7 +29,7 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
     /// German display label for the parent dashboard and thesis reports.
     var displayName: String {
         switch self {
-        case .threePhase: return "Drei Phasen"
+        case .threePhase: return "Vier Phasen"
         case .guidedOnly: return "Nur Nachspuren"
         case .control:    return "Kontrollgruppe"
         }

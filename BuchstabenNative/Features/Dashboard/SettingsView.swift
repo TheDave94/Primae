@@ -22,11 +22,11 @@ struct SettingsView: View {
                 }
             }
             Section("Forschung") {
-                Toggle("Papier-Übertragung", isOn: Binding(
+                Toggle("Schreiben auf Papier", isOn: Binding(
                     get: { vm.enablePaperTransfer },
                     set: { vm.enablePaperTransfer = $0 }
                 ))
-                .accessibilityHint("Nach dem freien Schreiben wird eine Aufgabe zum Schreiben auf Papier angezeigt")
+                .accessibilityHint("Nach dem freien Schreiben wird das Kind gebeten, den Buchstaben auf Papier zu schreiben")
 
                 Toggle("Studienteilnahme (A/B-Arm)", isOn: Binding(
                     get: { thesisEnrolled },

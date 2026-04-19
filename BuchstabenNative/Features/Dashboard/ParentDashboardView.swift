@@ -145,7 +145,7 @@ struct ParentDashboardView: View {
             }
             .sorted(by: { $0.0 < $1.0 })
         if !entries.isEmpty {
-            Section("Papier-Übertragung") {
+            Section("Schreiben auf Papier") {
                 ForEach(entries, id: \.0) { letter, score in
                     LabeledContent(letter) {
                         Text(paperTransferLabel(score))
