@@ -102,7 +102,8 @@ public final class TracingViewModel {
 
     /// Normalized (0–1) point for the animated tracing guide dot.
     /// TracingCanvasView scales this to screen coordinates.
-    private(set) var animationGuidePoint: CGPoint? = nil
+    /// Forwards to AnimationGuideController so views continue to bind via `vm.animationGuidePoint`.
+    var animationGuidePoint: CGPoint? { animation.guidePoint }
 
     // MARK: - Onboarding state (ready for onboarding UI layer)
 
@@ -149,8 +150,7 @@ public final class TracingViewModel {
     private var toastTask: Task<Void, Never>?
     private var completionDismissTask: Task<Void, Never>?
     private var endTouchGraceTask: Task<Void, Never>?
-    private var animationTask: Task<Void, Never>?
-    private var animationStartTask: Task<Void, Never>?
+    private let animation = AnimationGuideController()
     private var smoothedVelocity: CGFloat        = 0
     private let velocitySmoothingAlpha: CGFloat  = 0.22
     private let activeDebounceSeconds: TimeInterval  = 0.03
@@ -525,8 +525,9 @@ public final class TracingViewModel {
     }
 
     // MARK: - Animation guide
-    // Drives an animated dot along the letter's stroke path.
-    // Call startGuideAnimation() to show the demo; stopGuideAnimation() to cancel.
+    // Delegates the guide-dot animation to `AnimationGuideController`.
+    // The observe-phase canvas binds to `vm.animationGuidePoint` which forwards
+    // to the controller's published point.
 
     func startGuideAnimation() {
         // Use raw glyph-relative strokes — NOT the canvas-mapped tracker definition.
@@ -534,33 +535,11 @@ public final class TracingViewModel {
         guard !letters.isEmpty, letterIndex < letters.count else { return }
         let rawStrokes = letters[letterIndex].strokes
         guard !rawStrokes.strokes.isEmpty else { return }
-        stopGuideAnimation()
-        let guide = LetterAnimationGuide.build(from: rawStrokes)
-        guard !guide.steps.isEmpty else { return }
-
-        animationTask = Task { [weak self] in
-            while !Task.isCancelled {
-                guard let self else { return }
-                for step in guide.steps {
-                    guard !Task.isCancelled else { break }
-                    self.animationGuidePoint = step.point
-                    try? await Task.sleep(for: .seconds(guide.duration(for: step)))
-                }
-                if !Task.isCancelled {
-                    self.animationGuidePoint = nil
-                    try? await Task.sleep(for: .seconds(0.5))
-                }
-            }
-            self?.animationGuidePoint = nil
-        }
+        animation.start(strokes: rawStrokes)
     }
 
     func stopGuideAnimation() {
-        animationStartTask?.cancel()
-        animationStartTask   = nil
-        animationTask?.cancel()
-        animationTask        = nil
-        animationGuidePoint  = nil
+        animation.stop()
     }
 
     // MARK: - Onboarding control
@@ -769,11 +748,7 @@ public final class TracingViewModel {
             if letter.strokes.strokes.isEmpty {
                 phaseController.advance(score: 1.0)
             } else {
-                animationStartTask = Task { [weak self] in
-                    try? await Task.sleep(for: .milliseconds(300))
-                    guard !Task.isCancelled, let self else { return }
-                    self.startGuideAnimation()
-                }
+                animation.startAfterDelay(0.3, strokes: letter.strokes)
             }
         }
         if let firstAudio = letter.audioFiles.first {
