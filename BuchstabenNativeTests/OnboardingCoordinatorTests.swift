@@ -110,20 +110,24 @@ private func makeStore() -> JSONOnboardingStore {
         #expect(!s.hasCompletedOnboarding)
         #expect(s.savedStep == nil)
     }
-    @Test func persistence_roundtrip() {
+    @Test func persistence_roundtrip() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("OnboardingPersist-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-        JSONOnboardingStore(fileURL: url).saveProgress(step: .rewardIntro)
+        let s1 = JSONOnboardingStore(fileURL: url)
+        s1.saveProgress(step: .rewardIntro)
+        await s1.flush()
         let s2 = JSONOnboardingStore(fileURL: url)
         #expect(s2.savedStep == .rewardIntro)
         #expect(!s2.hasCompletedOnboarding)
     }
-    @Test func persistence_completedRoundtrip() {
+    @Test func persistence_completedRoundtrip() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("OnboardingComplete-\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: url) }
-        JSONOnboardingStore(fileURL: url).markComplete()
+        let s1 = JSONOnboardingStore(fileURL: url)
+        s1.markComplete()
+        await s1.flush()
         let s2 = JSONOnboardingStore(fileURL: url)
         #expect(s2.hasCompletedOnboarding)
         #expect(s2.savedStep == nil)
