@@ -30,14 +30,14 @@ final class PlaybackController {
     /// update its @Observable `isPlaying` mirror.
     private let onIsPlayingChanged: (Bool) -> Void
 
-    // MARK: - Tunable timings
+    // MARK: - Tunable timings (live-adjustable from the debug audio panel)
 
-    let activeDebounceSeconds: TimeInterval
-    let idleDebounceSeconds: TimeInterval
+    var activeDebounceSeconds: TimeInterval
+    var idleDebounceSeconds: TimeInterval
     /// Coalesces rapid tap bursts (begin→update→end in quick succession) into
     /// a single audible playback. Without this, each short cycle produces a
     /// fresh idle→active transition and a new audio.play() call.
-    let playIntentDebounceSeconds: CFTimeInterval
+    var playIntentDebounceSeconds: CFTimeInterval
 
     // MARK: - State
 

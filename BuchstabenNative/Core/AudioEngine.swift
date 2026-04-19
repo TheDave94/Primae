@@ -37,6 +37,36 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// the child poke a silent device. Stays nil after a healthy init.
     private(set) var initializationError: String? = nil
 
+    // MARK: - Tunable parameters (live-adjustable from the debug audio panel)
+
+    /// Linear fade-out duration applied by `stop()` before the player is
+    /// halted and the audio session deactivated. 0 reverts to the legacy
+    /// abrupt-stop behaviour. Default ~120 ms keeps the cut from sounding
+    /// like a chop without delaying the perceived stop noticeably.
+    public var fadeOutSeconds: TimeInterval = 0.12
+
+    /// Lower clamp for the time-stretch playback rate set by
+    /// `setAdaptivePlayback(speed:_:)`. Slower than this and the audio
+    /// becomes unintelligible muddy artefacts.
+    public var minPlaybackRate: Float = 0.5
+
+    /// Upper clamp for the time-stretch playback rate. Faster than this and
+    /// the audio sounds like a chipmunk regardless of the AVAudioUnitTimePitch
+    /// formant preservation.
+    public var maxPlaybackRate: Float = 2.0
+
+    /// Pitch shift applied to the time-stretched audio, in cents
+    /// (AVAudioUnitTimePitch.pitch). Default 0 = unshifted.
+    public var pitchCents: Float {
+        get { timePitch.pitch }
+        set { timePitch.pitch = newValue }
+    }
+
+    /// In-flight fade-out task. Cancelled (and player.volume restored) by
+    /// any subsequent `play()` so a quick re-tap during a fade plays at
+    /// full volume instead of resuming mid-ramp.
+    private var fadeOutTask: Task<Void, Never>?
+
     // MARK: - Debug accessors
 
     #if DEBUG
@@ -146,13 +176,19 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
         guard speed.isFinite && horizontalBias.isFinite else { return }
-        let clampedSpeed = max(0.5, min(2.0, speed))
+        let clampedSpeed = max(minPlaybackRate, min(maxPlaybackRate, speed))
         if timePitch.rate != clampedSpeed { timePitch.rate = clampedSpeed }
         player.pan = max(-1.0, min(1.0, horizontalBias))
     }
 
     func play() {
         guard currentFile != nil else { return }
+        // Cancel any in-flight fade-out and restore full volume so a quick
+        // re-tap while the previous stop is fading doesn't play at a half
+        // volume snapshot mid-ramp.
+        fadeOutTask?.cancel()
+        fadeOutTask = nil
+        player.volume = 1.0
         shouldResumePlayback           = true
         interruptionResumeGateRequired = false
         interruptionShouldResume       = true
@@ -166,12 +202,49 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func stop() {
+        // Cancel any prior fade-out so back-to-back stop()s don't pile up
+        // ramp tasks competing on player.volume.
+        fadeOutTask?.cancel()
+        fadeOutTask = nil
+
+        let needsFade = fadeOutSeconds > 0 && isPlaying && engine.isRunning && player.isPlaying
+        let startVolume = player.volume
+
+        guard needsFade else {
+            finishStop(restoreVolume: startVolume)
+            return
+        }
+
+        // Linear fade ramp on player.volume → 0, then complete the existing
+        // stop sequence. ~60 Hz step rate is smooth without saturating the
+        // main actor; minimum 4 steps so very-short fades still ramp.
+        let duration = fadeOutSeconds
+        fadeOutTask = Task { [weak self] in
+            guard let self else { return }
+            let steps = max(4, Int(duration * 60))
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                if Task.isCancelled { return }
+                let progress = Float(i) / Float(steps)
+                self.player.volume = startVolume * (1 - progress)
+                try? await Task.sleep(for: .seconds(interval))
+            }
+            if Task.isCancelled { return }
+            self.finishStop(restoreVolume: startVolume)
+        }
+    }
+
+    /// Synchronous tail of `stop()` — runs after the optional fade ramp
+    /// completes (or immediately when no fade is needed). Restores
+    /// `player.volume` so the next `play()` doesn't start at the faded value.
+    private func finishStop(restoreVolume: Float) {
         shouldResumePlayback           = false
         isPlaying                      = false
         interruptionResumeGateRequired = false
         cancelPendingLifecycleWork()
         player.reset()
         player.stop()
+        player.volume = restoreVolume
         currentFile = nil
         do {
             try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)

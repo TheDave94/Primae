@@ -88,6 +88,11 @@ public struct ContentView: View {
 
             VStack(alignment: .trailing, spacing: 10) {
                 Spacer()
+                #if DEBUG
+                if vm.showDebug {
+                    DebugAudioPanel(vm: vm)
+                }
+                #endif
                 PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
                 #if DEBUG
                     .onLongPressGesture { vm.toggleDebug() }
