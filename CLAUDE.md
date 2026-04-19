@@ -30,6 +30,43 @@ xcodebuild test -project BuchstabenApp.xcodeproj -scheme BuchstabenApp \
   -configuration Debug CODE_SIGNING_ALLOWED=NO
 ```
 
+## Test Infrastructure
+
+> **Note:** `xcodebuild` is NOT available on claudebox (Linux). Only Swift syntax
+> checking works locally. Full build/test runs on the self-hosted MacBook CI runner
+> via GitHub Actions. Always verify CI passes after pushing.
+
+1. **Swift compilation check** (claudebox Linux — basic syntax check only, SwiftUI/QuartzCore won't link):
+   ```bash
+   swift build 2>&1 | head -20
+   ```
+
+2. **Full build** (CI runner or local Mac):
+   ```bash
+   xcodebuild build -project BuchstabenApp/BuchstabenApp.xcodeproj -scheme BuchstabenApp \
+     -destination "platform=iOS Simulator,name=iPad (A16)" \
+     -configuration Debug CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
+     -derivedDataPath /tmp/DerivedData-BuchstabenApp 2>&1 | tail -20
+   ```
+
+3. **Full test suite** (CI runner or local Mac):
+   ```bash
+   xcodebuild test -project BuchstabenApp/BuchstabenApp.xcodeproj -scheme BuchstabenApp \
+     -destination "platform=iOS Simulator,name=iPad (A16)" \
+     -configuration Debug CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
+     -derivedDataPath /tmp/DerivedData-BuchstabenApp 2>&1 | tail -30
+   ```
+
+4. **strokes.json validation** (works anywhere with python3):
+   ```bash
+   python3 -c "import json, pathlib; [json.loads(f.read_text()) for f in pathlib.Path('BuchstabenNative/Resources/Letters').rglob('strokes.json')]; print('All strokes.json valid')"
+   ```
+
+5. **CI status**:
+   ```bash
+   gh run list --repo TheDave94/Buchstaben-Lernen-App --limit 3
+   ```
+
 ## DO NOT
 - Do NOT modify `AudioEngine.swift` — it is stable and fragile
 - Do NOT introduce new dependencies or frameworks
