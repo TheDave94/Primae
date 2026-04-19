@@ -11,6 +11,30 @@ struct PhaseSessionRecord: Codable, Equatable {
     let score: Double
     /// Spaced-repetition priority assigned when this session was scheduled.
     let schedulerPriority: Double
+    /// Thesis A/B condition in effect for this session. Added post-launch so
+    /// old records may be missing this field — custom decoder defaults to
+    /// .threePhase for pre-migration records.
+    let condition: ThesisCondition
+
+    init(letter: String, phase: String, completed: Bool, score: Double,
+         schedulerPriority: Double, condition: ThesisCondition = .threePhase) {
+        self.letter = letter
+        self.phase = phase
+        self.completed = completed
+        self.score = score
+        self.schedulerPriority = schedulerPriority
+        self.condition = condition
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        letter = try c.decode(String.self, forKey: .letter)
+        phase = try c.decode(String.self, forKey: .phase)
+        completed = try c.decode(Bool.self, forKey: .completed)
+        score = try c.decode(Double.self, forKey: .score)
+        schedulerPriority = try c.decode(Double.self, forKey: .schedulerPriority)
+        condition = (try? c.decode(ThesisCondition.self, forKey: .condition)) ?? .threePhase
+    }
 }
 
 struct LetterAccuracyStat: Codable, Equatable {
@@ -153,7 +177,7 @@ struct DashboardSnapshot: Codable, Equatable {
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double)
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
@@ -206,13 +230,14 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         persist()
     }
 
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double) {
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition) {
         let record = PhaseSessionRecord(
             letter: letter.uppercased(),
             phase: phase,
             completed: completed,
             score: max(0, min(1, score)),
-            schedulerPriority: schedulerPriority
+            schedulerPriority: schedulerPriority,
+            condition: condition
         )
         snapshot.phaseSessionRecords.append(record)
         persist()

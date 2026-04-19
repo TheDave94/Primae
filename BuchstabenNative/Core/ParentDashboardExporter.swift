@@ -22,11 +22,18 @@ struct ParentDashboardExporter {
 
     // MARK: CSV
 
-    /// Produces a UTF-8 CSV with one row per letter containing:
-    /// letter, sessionCount, averageAccuracy, trend
-    /// Appended sections: session durations and thesis metrics.
-    static func csvData(from snapshot: DashboardSnapshot) -> Data {
-        var lines: [String] = ["letter,sessionCount,averageAccuracy,trend"]
+    /// Produces a UTF-8 CSV with a `# participantId=...` header, one row per
+    /// letter, per-session durations (with condition), per-phase records
+    /// (with condition), and the aggregate thesis metrics.
+    /// Consumers doing A/B analysis need the participantId header to align
+    /// data across installs and the condition column on every session row.
+    static func csvData(from snapshot: DashboardSnapshot,
+                         participantId: UUID = ParticipantStore.participantId) -> Data {
+        var lines: [String] = []
+        lines.append("# participantId=\(participantId.uuidString)")
+        lines.append("")
+
+        lines.append("letter,sessionCount,averageAccuracy,trend")
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
             let avg = String(format: "%.4f", stat.averageAccuracy)
@@ -35,11 +42,21 @@ struct ParentDashboardExporter {
             lines.append("\(stat.letter),\(cnt),\(avg),\(tnd)")
         }
         lines.append("")
-        lines.append("date,durationSeconds")
+
+        lines.append("date,durationSeconds,condition")
         for rec in snapshot.sessionDurations.sorted(by: { $0.dateString < $1.dateString }) {
-            lines.append("\(rec.dateString),\(rec.durationSeconds)")
+            lines.append("\(rec.dateString),\(rec.durationSeconds),\(rec.condition.rawValue)")
         }
         lines.append("")
+
+        lines.append("letter,phase,completed,score,schedulerPriority,condition")
+        for rec in snapshot.phaseSessionRecords {
+            let score = String(format: "%.4f", rec.score)
+            let prio  = String(format: "%.4f", rec.schedulerPriority)
+            lines.append("\(rec.letter),\(rec.phase),\(rec.completed),\(score),\(prio),\(rec.condition.rawValue)")
+        }
+        lines.append("")
+
         lines.append("metric,value")
         let rates = snapshot.phaseCompletionRates
         for phase in ["observe", "guided", "freeWrite"] {
@@ -54,13 +71,16 @@ struct ParentDashboardExporter {
 
     // MARK: JSON
 
-    /// Produces pretty-printed JSON of the full ``DashboardSnapshot`` plus thesis metrics.
-    static func jsonData(from snapshot: DashboardSnapshot) throws(ExportError) -> Data {
+    /// Produces pretty-printed JSON of the full ``DashboardSnapshot`` plus
+    /// thesis metrics and the stable `participantId` needed for cross-install
+    /// A/B analysis.
+    static func jsonData(from snapshot: DashboardSnapshot,
+                          participantId: UUID = ParticipantStore.participantId) throws(ExportError) -> Data {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let export = SnapshotWithMetrics(snapshot: snapshot)
+            let export = SnapshotWithMetrics(snapshot: snapshot, participantId: participantId)
             return try encoder.encode(export)
         } catch {
             throw ExportError.encodingFailed(error.localizedDescription)
@@ -70,12 +90,14 @@ struct ParentDashboardExporter {
     // MARK: Private types
 
     private struct SnapshotWithMetrics: Encodable {
+        let participantId: String
         let letterStats: [String: LetterAccuracyStat]
         let sessionDurations: [SessionDurationRecord]
         let phaseSessionRecords: [PhaseSessionRecord]
         let thesisMetrics: ThesisMetrics
 
-        init(snapshot: DashboardSnapshot) {
+        init(snapshot: DashboardSnapshot, participantId: UUID) {
+            self.participantId = participantId.uuidString
             letterStats = snapshot.letterStats
             sessionDurations = snapshot.sessionDurations
             phaseSessionRecords = snapshot.phaseSessionRecords

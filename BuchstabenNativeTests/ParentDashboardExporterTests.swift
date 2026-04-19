@@ -25,7 +25,10 @@ struct ParentDashboardExporterTests {
 
     @Test func csvContainsHeader() {
         let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
-        #expect(csv.hasPrefix("letter,sessionCount,averageAccuracy,trend"))
+        // The CSV now starts with a participantId comment line followed by the
+        // letter table header. Both must be present for A/B analysis consumers.
+        #expect(csv.hasPrefix("# participantId="))
+        #expect(csv.contains("letter,sessionCount,averageAccuracy,trend"))
     }
 
     @Test func csvContainsLetterRows() {
@@ -36,13 +39,24 @@ struct ParentDashboardExporterTests {
 
     @Test func csvContainsDurationSection() {
         let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
-        #expect(csv.contains("date,durationSeconds"))
+        #expect(csv.contains("date,durationSeconds,condition"))
         #expect(csv.contains("2026-03-01"))
     }
 
     @Test func csvEmptySnapshotIsValid() {
         let csv = String(data: ParentDashboardExporter.csvData(from: DashboardSnapshot()), encoding: .utf8)!
-        #expect(csv.hasPrefix("letter,sessionCount,averageAccuracy,trend"))
+        #expect(csv.hasPrefix("# participantId="))
+        #expect(csv.contains("letter,sessionCount,averageAccuracy,trend"))
+    }
+
+    @Test func csvIncludesParticipantIdAndConditionColumns() {
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: makeSnapshot(),
+            participantId: UUID(uuidString: "00000000-0000-0000-0000-0000000000AB")!
+        ), encoding: .utf8)!
+        #expect(csv.contains("# participantId=00000000-0000-0000-0000-0000000000AB"))
+        #expect(csv.contains("date,durationSeconds,condition"))
+        #expect(csv.contains("letter,phase,completed,score,schedulerPriority,condition"))
     }
 
     // MARK: JSON
