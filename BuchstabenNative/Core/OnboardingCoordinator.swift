@@ -75,6 +75,15 @@ protocol OnboardingStoring {
     func markComplete()
     func saveProgress(step: OnboardingStep)
     func reset()
+    /// Await any pending background disk write. Mirrors the pattern on the
+    /// other JSON-backed stores so a future awaited app-suspension flush can
+    /// guarantee the onboarding step is durable before the process suspends.
+    /// Default no-op for in-memory mocks.
+    func flush() async
+}
+
+extension OnboardingStoring {
+    func flush() async {}
 }
 
 private struct OnboardingState: Codable {
@@ -86,6 +95,10 @@ final class JSONOnboardingStore: OnboardingStoring {
 
     private let fileURL: URL
     private var state: OnboardingState
+    /// Serialised chain of background disk writes. Lets `persist()` return
+    /// immediately (no MainActor hitch on every onboarding step change) while
+    /// guaranteeing write order. `flush()` awaits any in-flight write.
+    private var pendingSave: Task<Void, Never>?
 
     init(fileURL: URL? = nil) {
         if let url = fileURL {
@@ -126,7 +139,22 @@ final class JSONOnboardingStore: OnboardingStoring {
 
     private func persist() {
         guard let data = try? JSONEncoder().encode(state) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        let url = fileURL
+        // Same coalesce-and-await pattern as the other JSON stores: each call
+        // cancels and supersedes the previous pending write since `data` is
+        // already the full latest snapshot. Ordering is preserved by awaiting
+        // the previous task before this one's write hits the disk.
+        let previous = pendingSave
+        previous?.cancel()
+        pendingSave = Task.detached(priority: .utility) {
+            await previous?.value
+            guard !Task.isCancelled else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+
+    func flush() async {
+        await pendingSave?.value
     }
 
     private static func load(from url: URL) -> OnboardingState? {
