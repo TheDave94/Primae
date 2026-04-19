@@ -159,9 +159,11 @@ final class JSONStreakStore: StreakStoring {
     private func persist() {
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = fileURL
-        // Coalesce: see ProgressStore.save() for rationale.
-        pendingSave?.cancel()
+        // Coalesce + order: see ProgressStore.save() for rationale.
+        let previous = pendingSave
+        previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {
+            await previous?.value
             guard !Task.isCancelled else { return }
             try? data.write(to: url, options: .atomic)
         }

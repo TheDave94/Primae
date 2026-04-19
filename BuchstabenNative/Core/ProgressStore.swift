@@ -148,8 +148,13 @@ public final class JSONProgressStore: ProgressStoring {
         // writing only the latest snapshot is equivalent to writing N
         // back-to-back snapshots. This avoids unbounded chain growth + N×
         // Data retention under rapid save() bursts.
-        pendingSave?.cancel()
+        //
+        // Ordering: await the previous task before writing so two in-flight
+        // writes can't race and leave an older snapshot on disk.
+        let previous = pendingSave
+        previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {
+            await previous?.value
             guard !Task.isCancelled else { return }
             try? data.write(to: url, options: .atomic)
         }
