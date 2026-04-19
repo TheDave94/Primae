@@ -46,7 +46,7 @@ private struct LetterPickerButton: View {
     var body: some View {
         Button(action: action) {
             Text(name)
-                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .font(.system(.title, design: .rounded).weight(.bold))
                 .foregroundStyle(textColor)
                 .frame(width: 54, height: 54)
                 .background(backgroundColor, in: RoundedRectangle(cornerRadius: 14))
