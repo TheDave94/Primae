@@ -121,3 +121,7 @@ When tasked to 'Fix CI build failure', never propose changes without analyzing a
 ### streakstore-json-wiring-failures
 <!-- added by lessons-agent 2026-04-12 -->
 Wiring JSONStreakStore into TracingDependencies has repeatedly caused SWIFT_TYPECHECK_FAIL due to extraneous braces or mismatched SEARCH blocks. This is an architectural integration that requires careful coordination across files. Future attempts must be preceded by a manual audit of TracingDependencies.swift and StreakStore.swift to understand the correct injection pattern.
+
+### identical-search-replace-ci-fix
+<!-- added by lessons-agent 2026-04-19 -->
+Multiple CI fix proposals failed because their SEARCH/REPLACE blocks were identical, meaning no change was actually proposed. This wastes apply attempts and indicates the AI isn't correctly identifying differences or is attempting to 'fix' already correct code. Always ensure SEARCH and REPLACE content are distinct for any proposed change.
