@@ -11,7 +11,7 @@ import Testing
 @testable import BuchstabenNative
 
 @MainActor
-final class RecordingAudio: AudioControlling {
+final class PlaybackTestAudio: AudioControlling {
     private(set) var playCount = 0
     private(set) var stopCount = 0
     private(set) var cancelLifecycleCount = 0
@@ -36,7 +36,11 @@ final class Box<T> {
 @MainActor
 @Suite struct PlaybackControllerTests {
 
-    private func make(audio: RecordingAudio = .init()) -> (PlaybackController, RecordingAudio, Box<Bool>) {
+    /// Build a controller + its spying audio. Default param omitted because
+    /// `@MainActor final class PlaybackTestAudio`'s init is actor-isolated,
+    /// which Swift 6 strict mode forbids in a default-argument expression.
+    private func make() -> (PlaybackController, PlaybackTestAudio, Box<Bool>) {
+        let audio = PlaybackTestAudio()
         let isPlaying = Box(false)
         let controller = PlaybackController(audio: audio,
                                              onIsPlayingChanged: { isPlaying.value = $0 })
@@ -95,7 +99,7 @@ final class Box<T> {
     }
 
     @Test func debouncedActive_firesAfterDelay() async {
-        let audio = RecordingAudio()
+        let audio = PlaybackTestAudio()
         let isPlaying = Box(false)
         let c = PlaybackController(audio: audio,
                                    activeDebounceSeconds: 0.05,
