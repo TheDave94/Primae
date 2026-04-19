@@ -32,40 +32,42 @@ fileprivate final class LocalMockAudioController: AudioControlling {
         #expect(vm.accessibilityCanvasLabel.contains(vm.currentLetterName))
     }
     @Test func canvasLabel_containsCanvasDescriptor() {
-        #expect(vm.accessibilityCanvasLabel.localizedCaseInsensitiveContains("canvas"))
+        // Label is German ("Schreibfläche" = "writing surface"); check for that
+        // descriptor instead of the previous English "canvas".
+        #expect(vm.accessibilityCanvasLabel.localizedCaseInsensitiveContains("schreibfläche"))
     }
     @Test func canvasLabel_updatesWithLetterChange() {
         vm.nextLetter()
-        #expect(vm.accessibilityCanvasLabel.localizedCaseInsensitiveContains("canvas"))
+        #expect(vm.accessibilityCanvasLabel.localizedCaseInsensitiveContains("schreibfläche"))
         #expect(vm.accessibilityCanvasLabel.contains(vm.currentLetterName))
     }
     @Test func canvasValue_atZeroProgress_returnsNotStarted() {
         vm.progress = 0
-        #expect(vm.accessibilityCanvasValue == "Not started")
+        #expect(vm.accessibilityCanvasValue == "Nicht begonnen")
     }
     @Test func canvasValue_atFullProgress_returnsComplete() {
         vm.progress = 1.0
-        #expect(vm.accessibilityCanvasValue == "Complete")
+        #expect(vm.accessibilityCanvasValue == "Fertig")
     }
     @Test func canvasValue_atHalfProgress_returnsPercent() {
         vm.progress = 0.5
-        #expect(vm.accessibilityCanvasValue == "50 percent complete")
+        #expect(vm.accessibilityCanvasValue == "50 Prozent fertig")
     }
     @Test func canvasValue_atOnePercent() {
         vm.progress = 0.01
-        #expect(vm.accessibilityCanvasValue == "1 percent complete")
+        #expect(vm.accessibilityCanvasValue == "1 Prozent fertig")
     }
     @Test func canvasValue_at99Percent() {
         vm.progress = 0.999
-        #expect(vm.accessibilityCanvasValue == "99 percent complete")
+        #expect(vm.accessibilityCanvasValue == "99 Prozent fertig")
     }
     @Test func canvasValue_clampsBelowZero() {
         vm.progress = -0.5
-        #expect(vm.accessibilityCanvasValue == "Not started")
+        #expect(vm.accessibilityCanvasValue == "Nicht begonnen")
     }
     @Test func canvasValue_clampsAboveOne() {
         vm.progress = 1.5
-        #expect(vm.accessibilityCanvasValue == "Complete")
+        #expect(vm.accessibilityCanvasValue == "Fertig")
     }
     @Test func replayAudio_callsStopThenPlay() {
         audioController.stopCount = 0; audioController.playCount = 0
