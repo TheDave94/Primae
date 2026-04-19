@@ -82,7 +82,7 @@ public final class TracingViewModel {
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         let letter = letters[letterIndex]
-        return loadCalibratedStrokes(for: letter.name) ?? letter.strokes
+        return calibrationStore.strokes(for: letter.name) ?? letter.strokes
     }
 
     /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
@@ -130,16 +130,13 @@ public final class TracingViewModel {
     private var onboardingCoordinator: OnboardingCoordinator
     private var phaseController: LearningPhaseController
     private let letterScheduler = LetterScheduler.standard
+    private let calibrationStore = CalibrationStore()
 
     // MARK: - Private playback / touch state
 
     private var letters: [LetterAsset]          = []
     private var letterIndex                      = 0
     private var audioIndex                       = 0
-    /// Decoded user-calibrated strokes keyed by letter. Prevents the ghost-render
-    /// path from hitting disk + JSON-decode on every frame. Populated lazily on
-    /// first read; invalidated on calibration save.
-    private var calibratedStrokesCache: [String: LetterStrokes?] = [:]
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
     private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
@@ -875,7 +872,7 @@ public final class TracingViewModel {
         // Map to canvas-normalised coordinates using the actual rendered glyph rect.
         // User-calibrated file in Application Support takes priority over bundle strokes.json.
         let effectiveSize = size ?? canvasSize
-        let source = loadCalibratedStrokes(for: letter.name) ?? letter.strokes
+        let source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
             let mapped = source.strokes.map { stroke in
@@ -893,45 +890,11 @@ public final class TracingViewModel {
         strokeTracker.load(strokesForTracker)
     }
 
-    private func calibratedStrokesURL(for letter: String) -> URL? {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
-            .appendingPathComponent("BuchstabenNative/CalibratedStrokes/\(letter).json")
-    }
-
-    private func loadCalibratedStrokes(for letter: String) -> LetterStrokes? {
-        if let cached = calibratedStrokesCache[letter] { return cached }
-        guard let url = calibratedStrokesURL(for: letter),
-              let data = try? Data(contentsOf: url) else {
-            // Memoize the negative result so the per-frame ghost render path
-            // doesn't re-hit FileManager. `updateValue(_:forKey:)` is required
-            // because `dict[key] = nil` on an Optional-valued dict removes the key.
-            calibratedStrokesCache.updateValue(nil, forKey: letter)
-            return nil
-        }
-        let decoded = try? JSONDecoder().decode(LetterStrokes.self, from: data)
-        calibratedStrokesCache[letter] = decoded
-        return decoded
-    }
-
-    /// Persist calibrated glyph-relative checkpoints to Application Support so they
-    /// survive app relaunches and take priority over the bundle strokes.json.
+    /// Persist calibrated glyph-relative checkpoints. Delegates to CalibrationStore
+    /// and re-applies the new data to the tracker so the current letter reflects
+    /// the calibration immediately without navigating away and back.
     func persistCalibratedStrokes(_ strokes: [[CGPoint]], for letter: String) {
-        let defs = strokes.enumerated().compactMap { (i, pts) -> StrokeDefinition? in
-            guard !pts.isEmpty else { return nil }
-            return StrokeDefinition(id: i + 1, checkpoints: pts.map {
-                Checkpoint(x: (($0.x * 1000).rounded() / 1000),
-                           y: (($0.y * 1000).rounded() / 1000))
-            })
-        }
-        let ls = LetterStrokes(letter: letter, checkpointRadius: 0.05, strokes: defs)
-        guard let url = calibratedStrokesURL(for: letter),
-              let data = try? JSONEncoder().encode(ls) else { return }
-        let dir = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
-        // Invalidate the calibration cache so the next read picks up the new file.
-        calibratedStrokesCache.removeValue(forKey: letter)
-        // Apply immediately so the tracker reflects the new calibration without navigation.
+        calibrationStore.persist(strokes, for: letter)
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])
     }
