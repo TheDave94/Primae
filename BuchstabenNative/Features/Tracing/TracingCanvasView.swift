@@ -204,12 +204,21 @@ struct TracingCanvasView: View {
                 // Finger tracing only: 1-finger → trace. Letter / audio / ghost
                 // navigation routed through visible dock buttons in ContentView
                 // to avoid accidental palm-rest triggers for 5-year-olds.
+                //
+                // Disabled entirely in the direct phase: the VM's `beginTouch`
+                // already no-ops for .direct, and because this is a
+                // UIViewRepresentable its embedded UIView can swallow taps
+                // before the SwiftUI dots overlay above gets a chance to
+                // recognise them. `.allowsHitTesting(false)` removes it from
+                // hit-testing for the duration of Richtung-lernen so the
+                // numbered-dot tap gestures always win.
                 UnifiedTouchOverlay(
                     canvasSize: geo.size,
                     onSingleTouchBegan:  { pt, t in vm.beginTouch(at: pt, t: t) },
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
                     onSingleTouchEnded:  { vm.endTouch() }
                 )
+                .allowsHitTesting(vm.learningPhase != .direct)
             )
             .overlay(
                 Group {
