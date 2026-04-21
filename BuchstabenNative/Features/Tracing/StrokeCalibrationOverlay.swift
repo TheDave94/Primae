@@ -47,200 +47,10 @@ struct StrokeCalibrationOverlay: View {
         GeometryReader { geo in
             let size = geo.size
             ZStack {
-                // Tap target for adding points
-                if mode == .add {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { location in
-                            let glyph = screenToGlyph(location, in: size)
-                            addCheckpoint(glyph)
-                        }
-                }
-
-                // Stroke path lines
-                ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
-                    Path { path in
-                        let pts = stroke.map { glyphToScreen($0, in: size) }
-                        guard let first = pts.first else { return }
-                        path.move(to: first)
-                        for pt in pts.dropFirst() { path.addLine(to: pt) }
-                    }
-                    .stroke(strokeColors[si % strokeColors.count].opacity(si == activeStroke ? 0.7 : 0.3),
-                            style: StrokeStyle(lineWidth: si == activeStroke ? 3 : 1.5, dash: [6, 3]))
-                }
-
-                // Draggable / tappable checkpoint dots
-                ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
-                    ForEach(Array(stroke.enumerated()), id: \.offset) { ci, pt in
-                        let screenPt = glyphToScreen(pt, in: size)
-                        let color = strokeColors[si % strokeColors.count]
-                        let isActive = si == activeStroke
-
-                        Circle()
-                            .fill(color.opacity(isActive ? 1 : 0.55))
-                            .frame(width: isActive ? 32 : 24, height: isActive ? 32 : 24)
-                            .overlay(
-                                Text("\(ci + 1)")
-                                    .font(.system(size: isActive ? 12 : 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.white)
-                            )
-                            .shadow(color: .black.opacity(0.5), radius: 2)
-                            .position(screenPt)
-                            .gesture(
-                                mode == .drag ?
-                                DragGesture(minimumDistance: 0)
-                                    .onChanged { value in
-                                        // Dragging any dot — active or not — switches the
-                                        // active stroke to the one being edited. Dragging
-                                        // across strokes shouldn't require a separate tap
-                                        // to activate first.
-                                        if activeStroke != si { activeStroke = si }
-                                        let newGlyph = screenToGlyph(value.location, in: size)
-                                        editableStrokes[si][ci] = newGlyph
-                                    } : nil
-                            )
-                            .onTapGesture {
-                                if mode == .delete {
-                                    deleteCheckpoint(si: si, ci: ci)
-                                } else {
-                                    activeStroke = si
-                                }
-                            }
-
-                        // Stroke label on first checkpoint
-                        if ci == 0 {
-                            Text("S\(si + 1)")
-                                .font(.system(size: 14, weight: .heavy, design: .monospaced))
-                                .foregroundStyle(color)
-                                .shadow(color: .black, radius: 2)
-                                .position(x: screenPt.x - 24, y: screenPt.y - 24)
-                        }
-                    }
-                }
-
-                // Controls
-                VStack {
-                    // Top: font label + mode picker + stroke selector
-                    VStack(spacing: 6) {
-                        HStack(spacing: 8) {
-                            Label(vm.schriftArt.displayName, systemImage: "textformat")
-                                .font(.system(size: 12, weight: .semibold))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(.white.opacity(0.12), in: Capsule())
-                                .foregroundStyle(.white)
-                                .accessibilityLabel("Schriftart: \(vm.schriftArt.displayName)")
-
-                            Spacer(minLength: 0)
-
-                            ForEach(CalibrationMode.allCases, id: \.self) { m in
-                                Button(m.rawValue) { mode = m }
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(mode == m ? Color.white.opacity(0.2) : Color.clear)
-                                    .foregroundStyle(mode == m ? .white : .gray)
-                                    .clipShape(Capsule())
-                                    .overlay(Capsule().stroke(mode == m ? Color.white.opacity(0.4) : Color.clear))
-                            }
-                        }
-
-                        HStack(spacing: 8) {
-                            ForEach(Array(editableStrokes.indices), id: \.self) { si in
-                                Button("S\(si + 1)") { activeStroke = si }
-                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 5)
-                                    .background(activeStroke == si
-                                                ? strokeColors[si % strokeColors.count].opacity(0.35)
-                                                : Color.clear)
-                                    .foregroundStyle(strokeColors[si % strokeColors.count])
-                                    .clipShape(Capsule())
-                                    .overlay(
-                                        Capsule().stroke(
-                                            activeStroke == si
-                                                ? strokeColors[si % strokeColors.count]
-                                                : Color.clear,
-                                            lineWidth: 1.5)
-                                    )
-                            }
-
-                            Button {
-                                addStroke()
-                            } label: {
-                                Label("Strich", systemImage: "plus.circle.fill")
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                            .foregroundStyle(.green)
-
-                            Spacer(minLength: 0)
-                        }
-                    }
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                    .padding(.top, 50)
-
-                    if mode == .add {
-                        Text("Tippe um Punkt zu setzen")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 7)
-                            .background(.ultraThinMaterial, in: Capsule())
-                    }
-
-                    Spacer()
-
-                    // Bottom: actions
-                    HStack(spacing: 10) {
-                        Button("Reset") { loadFromVM(force: true) }
-                            .buttonStyle(.bordered)
-                            .tint(.gray)
-
-                        Button("Undo") { undoLastCheckpoint() }
-                            .buttonStyle(.bordered)
-                            .tint(.indigo)
-                            .disabled(!canUndo)
-
-                        if editableStrokes.indices.contains(activeStroke) {
-                            Button {
-                                deleteStroke(activeStroke)
-                            } label: {
-                                Label("Strich \(activeStroke + 1)", systemImage: "trash")
-                                    .font(.system(size: 12, weight: .semibold))
-                            }
-                            .buttonStyle(.bordered)
-                            .tint(.red)
-                        }
-
-                        Spacer(minLength: 0)
-
-                        Button("Apply") { applyToVM() }
-                            .buttonStyle(.bordered)
-                            .tint(.blue)
-
-                        Button {
-                            saveToVM()
-                        } label: {
-                            Label(isSaved ? "Gespeichert ✓" : "Speichern",
-                                  systemImage: isSaved ? "checkmark.circle.fill" : "square.and.arrow.down.fill")
-                                .font(.system(size: 13, weight: .bold))
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(isSaved ? .green : .purple)
-                        .animation(.easeInOut(duration: 0.15), value: isSaved)
-
-                        Button("JSON") {
-                            exportText = generateJSON()
-                            showExport = true
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.orange)
-                    }
-                    .padding(10)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                    .padding(.bottom, 40)
-                }
+                addTapLayer(in: size)
+                strokePathsLayer(in: size)
+                dotsLayer(in: size)
+                controlsLayer
             }
             .onAppear { loadFromVM() }
             .onChange(of: vm.currentLetterName) { loadFromVM() }
@@ -249,6 +59,245 @@ struct StrokeCalibrationOverlay: View {
         .sheet(isPresented: $showExport) {
             ExportSheet(text: exportText, letterName: vm.currentLetterName)
         }
+    }
+
+    // MARK: - Canvas layers
+
+    @ViewBuilder
+    private func addTapLayer(in size: CGSize) -> some View {
+        if mode == .add {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { location in
+                    let glyph = screenToGlyph(location, in: size)
+                    addCheckpoint(glyph)
+                }
+        }
+    }
+
+    @ViewBuilder
+    private func strokePathsLayer(in size: CGSize) -> some View {
+        ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
+            Path { path in
+                let pts = stroke.map { glyphToScreen($0, in: size) }
+                guard let first = pts.first else { return }
+                path.move(to: first)
+                for pt in pts.dropFirst() { path.addLine(to: pt) }
+            }
+            .stroke(
+                strokeColors[si % strokeColors.count].opacity(si == activeStroke ? 0.7 : 0.3),
+                style: StrokeStyle(lineWidth: si == activeStroke ? 3 : 1.5, dash: [6, 3])
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func dotsLayer(in size: CGSize) -> some View {
+        ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
+            ForEach(Array(stroke.enumerated()), id: \.offset) { ci, pt in
+                checkpointDot(si: si, ci: ci, pt: pt, in: size)
+                if ci == 0 {
+                    strokeLabel(si: si, pt: pt, in: size)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func checkpointDot(si: Int, ci: Int, pt: CGPoint, in size: CGSize) -> some View {
+        let screenPt = glyphToScreen(pt, in: size)
+        let color = strokeColors[si % strokeColors.count]
+        let isActive = si == activeStroke
+        let diameter: CGFloat = isActive ? 32 : 24
+        let fontSize: CGFloat = isActive ? 12 : 10
+
+        Circle()
+            .fill(color.opacity(isActive ? 1 : 0.55))
+            .frame(width: diameter, height: diameter)
+            .overlay(
+                Text("\(ci + 1)")
+                    .font(.system(size: fontSize, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+            )
+            .shadow(color: .black.opacity(0.5), radius: 2)
+            .position(screenPt)
+            .gesture(
+                // Dragging any dot — active or not — switches the active
+                // stroke to the one being edited. Cross-stroke editing on the
+                // fly shouldn't require a separate tap to activate first.
+                mode == .drag
+                    ? DragGesture(minimumDistance: 0).onChanged { value in
+                        if activeStroke != si { activeStroke = si }
+                        editableStrokes[si][ci] = screenToGlyph(value.location, in: size)
+                    }
+                    : nil
+            )
+            .onTapGesture {
+                if mode == .delete {
+                    deleteCheckpoint(si: si, ci: ci)
+                } else {
+                    activeStroke = si
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func strokeLabel(si: Int, pt: CGPoint, in size: CGSize) -> some View {
+        let screenPt = glyphToScreen(pt, in: size)
+        let color = strokeColors[si % strokeColors.count]
+        Text("S\(si + 1)")
+            .font(.system(size: 14, weight: .heavy, design: .monospaced))
+            .foregroundStyle(color)
+            .shadow(color: .black, radius: 2)
+            .position(x: screenPt.x - 24, y: screenPt.y - 24)
+    }
+
+    // MARK: - Controls
+
+    @ViewBuilder
+    private var controlsLayer: some View {
+        VStack {
+            topBar
+                .padding(10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.top, 50)
+
+            if mode == .add {
+                Text("Tippe um Punkt zu setzen")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+
+            Spacer()
+
+            bottomBar
+                .padding(10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
+                .padding(.bottom, 40)
+        }
+    }
+
+    @ViewBuilder
+    private var topBar: some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Label(vm.schriftArt.displayName, systemImage: "textformat")
+                    .font(.system(size: 12, weight: .semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.white.opacity(0.12), in: Capsule())
+                    .foregroundStyle(.white)
+                    .accessibilityLabel("Schriftart: \(vm.schriftArt.displayName)")
+
+                Spacer(minLength: 0)
+
+                ForEach(CalibrationMode.allCases, id: \.self) { m in
+                    modeButton(m)
+                }
+            }
+
+            HStack(spacing: 8) {
+                ForEach(Array(editableStrokes.indices), id: \.self) { si in
+                    strokeChip(si: si)
+                }
+
+                Button {
+                    addStroke()
+                } label: {
+                    Label("Strich", systemImage: "plus.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .foregroundStyle(.green)
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func modeButton(_ m: CalibrationMode) -> some View {
+        let selected = mode == m
+        Button(m.rawValue) { mode = m }
+            .font(.system(size: 12, weight: .semibold))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(selected ? Color.white.opacity(0.2) : Color.clear)
+            .foregroundStyle(selected ? Color.white : Color.gray)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(selected ? Color.white.opacity(0.4) : Color.clear))
+    }
+
+    @ViewBuilder
+    private func strokeChip(si: Int) -> some View {
+        let color = strokeColors[si % strokeColors.count]
+        let selected = activeStroke == si
+        Button("S\(si + 1)") { activeStroke = si }
+            .font(.system(size: 12, weight: .bold, design: .monospaced))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(selected ? color.opacity(0.35) : Color.clear)
+            .foregroundStyle(color)
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(selected ? color : Color.clear, lineWidth: 1.5))
+    }
+
+    @ViewBuilder
+    private var bottomBar: some View {
+        HStack(spacing: 10) {
+            Button("Reset") { loadFromVM(force: true) }
+                .buttonStyle(.bordered)
+                .tint(.gray)
+
+            Button("Undo") { undoLastCheckpoint() }
+                .buttonStyle(.bordered)
+                .tint(.indigo)
+                .disabled(!canUndo)
+
+            if editableStrokes.indices.contains(activeStroke) {
+                Button {
+                    deleteStroke(activeStroke)
+                } label: {
+                    Label("Strich \(activeStroke + 1)", systemImage: "trash")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+            }
+
+            Spacer(minLength: 0)
+
+            Button("Apply") { applyToVM() }
+                .buttonStyle(.bordered)
+                .tint(.blue)
+
+            saveButton
+
+            Button("JSON") {
+                exportText = generateJSON()
+                showExport = true
+            }
+            .buttonStyle(.bordered)
+            .tint(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private var saveButton: some View {
+        let saved = isSaved
+        let title = saved ? "Gespeichert ✓" : "Speichern"
+        let icon = saved ? "checkmark.circle.fill" : "square.and.arrow.down.fill"
+        Button {
+            saveToVM()
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.system(size: 13, weight: .bold))
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(saved ? Color.green : Color.purple)
+        .animation(.easeInOut(duration: 0.15), value: saved)
     }
 
     // MARK: - Coordinate conversion
