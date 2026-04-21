@@ -2,8 +2,9 @@
 // BuchstabenNative
 //
 // Interactive overlay for calibrating stroke checkpoint positions.
-// Shown when Debug mode is active. Drag dots, add new ones, delete existing,
-// then tap "Export JSON" to copy updated coordinates.
+// Shown when Debug mode is active. Drag dots, add / delete them, switch
+// between strokes, and persist the result per-script directly — JSON
+// export is still available as a secondary action for backup.
 
 import SwiftUI
 
@@ -18,6 +19,16 @@ struct StrokeCalibrationOverlay: View {
     @State private var loaded = false
     @State private var activeStroke = 0
     @State private var mode: CalibrationMode = .drag
+    @State private var savedFlashUntil: Date? = nil
+    /// (letter, schriftArt) pair used for the last reload. A change in either
+    /// must reload from disk so switching font while calibrating picks up the
+    /// other script's saved strokes instead of keeping stale edit state.
+    @State private var loadedKey: LoadKey? = nil
+
+    private struct LoadKey: Equatable {
+        let letter: String
+        let schriftArt: SchriftArt
+    }
 
     enum CalibrationMode: String, CaseIterable {
         case drag = "Drag"
@@ -26,6 +37,11 @@ struct StrokeCalibrationOverlay: View {
     }
 
     private let strokeColors: [Color] = [.red, .blue, .green, .orange, .purple, .pink, .cyan, .yellow]
+
+    private var isSaved: Bool {
+        guard let until = savedFlashUntil else { return false }
+        return Date() < until
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -53,7 +69,7 @@ struct StrokeCalibrationOverlay: View {
                             style: StrokeStyle(lineWidth: si == activeStroke ? 3 : 1.5, dash: [6, 3]))
                 }
 
-                // Draggable/tappable checkpoint dots
+                // Draggable / tappable checkpoint dots
                 ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
                     ForEach(Array(stroke.enumerated()), id: \.offset) { ci, pt in
                         let screenPt = glyphToScreen(pt, in: size)
@@ -61,11 +77,11 @@ struct StrokeCalibrationOverlay: View {
                         let isActive = si == activeStroke
 
                         Circle()
-                            .fill(color.opacity(isActive ? 1 : 0.4))
-                            .frame(width: isActive ? 32 : 22, height: isActive ? 32 : 22)
+                            .fill(color.opacity(isActive ? 1 : 0.55))
+                            .frame(width: isActive ? 32 : 24, height: isActive ? 32 : 24)
                             .overlay(
                                 Text("\(ci + 1)")
-                                    .font(.system(size: isActive ? 12 : 9, weight: .bold, design: .monospaced))
+                                    .font(.system(size: isActive ? 12 : 10, weight: .bold, design: .monospaced))
                                     .foregroundStyle(.white)
                             )
                             .shadow(color: .black.opacity(0.5), radius: 2)
@@ -74,6 +90,11 @@ struct StrokeCalibrationOverlay: View {
                                 mode == .drag ?
                                 DragGesture(minimumDistance: 0)
                                     .onChanged { value in
+                                        // Dragging any dot — active or not — switches the
+                                        // active stroke to the one being edited. Dragging
+                                        // across strokes shouldn't require a separate tap
+                                        // to activate first.
+                                        if activeStroke != si { activeStroke = si }
                                         let newGlyph = screenToGlyph(value.location, in: size)
                                         editableStrokes[si][ci] = newGlyph
                                     } : nil
@@ -99,36 +120,63 @@ struct StrokeCalibrationOverlay: View {
 
                 // Controls
                 VStack {
-                    // Top: mode picker + stroke selector
-                    HStack(spacing: 8) {
-                        ForEach(CalibrationMode.allCases, id: \.self) { m in
-                            Button(m.rawValue) { mode = m }
+                    // Top: font label + mode picker + stroke selector
+                    VStack(spacing: 6) {
+                        HStack(spacing: 8) {
+                            Label(vm.schriftArt.displayName, systemImage: "textformat")
                                 .font(.system(size: 12, weight: .semibold))
                                 .padding(.horizontal, 10)
                                 .padding(.vertical, 5)
-                                .background(mode == m ? Color.white.opacity(0.2) : Color.clear)
-                                .foregroundStyle(mode == m ? .white : .gray)
-                                .clipShape(Capsule())
-                                .overlay(Capsule().stroke(mode == m ? Color.white.opacity(0.4) : Color.clear))
+                                .background(.white.opacity(0.12), in: Capsule())
+                                .foregroundStyle(.white)
+                                .accessibilityLabel("Schriftart: \(vm.schriftArt.displayName)")
+
+                            Spacer(minLength: 0)
+
+                            ForEach(CalibrationMode.allCases, id: \.self) { m in
+                                Button(m.rawValue) { mode = m }
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(mode == m ? Color.white.opacity(0.2) : Color.clear)
+                                    .foregroundStyle(mode == m ? .white : .gray)
+                                    .clipShape(Capsule())
+                                    .overlay(Capsule().stroke(mode == m ? Color.white.opacity(0.4) : Color.clear))
+                            }
                         }
 
-                        Divider().frame(height: 20)
+                        HStack(spacing: 8) {
+                            ForEach(Array(editableStrokes.indices), id: \.self) { si in
+                                Button("S\(si + 1)") { activeStroke = si }
+                                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(activeStroke == si
+                                                ? strokeColors[si % strokeColors.count].opacity(0.35)
+                                                : Color.clear)
+                                    .foregroundStyle(strokeColors[si % strokeColors.count])
+                                    .clipShape(Capsule())
+                                    .overlay(
+                                        Capsule().stroke(
+                                            activeStroke == si
+                                                ? strokeColors[si % strokeColors.count]
+                                                : Color.clear,
+                                            lineWidth: 1.5)
+                                    )
+                            }
 
-                        ForEach(Array(editableStrokes.indices), id: \.self) { si in
-                            Button("S\(si + 1)") { activeStroke = si }
-                                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(activeStroke == si ? strokeColors[si % strokeColors.count].opacity(0.3) : Color.clear)
-                                .foregroundStyle(strokeColors[si % strokeColors.count])
-                                .clipShape(Capsule())
-                        }
-
-                        Button("+Stroke") { addStroke() }
-                            .font(.system(size: 11, weight: .semibold))
+                            Button {
+                                addStroke()
+                            } label: {
+                                Label("Strich", systemImage: "plus.circle.fill")
+                                    .font(.system(size: 12, weight: .semibold))
+                            }
                             .foregroundStyle(.green)
+
+                            Spacer(minLength: 0)
+                        }
                     }
-                    .padding(8)
+                    .padding(10)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
                     .padding(.top, 50)
 
@@ -144,8 +192,8 @@ struct StrokeCalibrationOverlay: View {
                     Spacer()
 
                     // Bottom: actions
-                    HStack(spacing: 12) {
-                        Button("Reset") { loadFromVM() }
+                    HStack(spacing: 10) {
+                        Button("Reset") { loadFromVM(force: true) }
                             .buttonStyle(.bordered)
                             .tint(.gray)
 
@@ -154,37 +202,52 @@ struct StrokeCalibrationOverlay: View {
                             .tint(.indigo)
                             .disabled(!canUndo)
 
-                        Button("Apply") { applyToVM() }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-
-                        Button("Export JSON") {
-                            exportText = generateJSON()
-                            showExport = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.orange)
-
                         if editableStrokes.indices.contains(activeStroke) {
-                            Button("Del Stroke \(activeStroke + 1)") {
+                            Button {
                                 deleteStroke(activeStroke)
+                            } label: {
+                                Label("Strich \(activeStroke + 1)", systemImage: "trash")
+                                    .font(.system(size: 12, weight: .semibold))
                             }
                             .buttonStyle(.bordered)
                             .tint(.red)
                         }
+
+                        Spacer(minLength: 0)
+
+                        Button("Apply") { applyToVM() }
+                            .buttonStyle(.bordered)
+                            .tint(.blue)
+
+                        Button {
+                            saveToVM()
+                        } label: {
+                            Label(isSaved ? "Gespeichert ✓" : "Speichern",
+                                  systemImage: isSaved ? "checkmark.circle.fill" : "square.and.arrow.down.fill")
+                                .font(.system(size: 13, weight: .bold))
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(isSaved ? .green : .purple)
+                        .animation(.easeInOut(duration: 0.15), value: isSaved)
+
+                        Button("JSON") {
+                            exportText = generateJSON()
+                            showExport = true
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.orange)
                     }
-                    .padding(8)
+                    .padding(10)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
                     .padding(.bottom, 40)
                 }
             }
-            .onAppear { if !loaded { loadFromVM(); loaded = true } }
+            .onAppear { loadFromVM() }
             .onChange(of: vm.currentLetterName) { loadFromVM() }
+            .onChange(of: vm.schriftArt) { loadFromVM(force: true) }
         }
         .sheet(isPresented: $showExport) {
-            ExportSheet(text: exportText, letterName: vm.currentLetterName) {
-                vm.persistCalibratedStrokes(editableStrokes, for: vm.currentLetterName)
-            }
+            ExportSheet(text: exportText, letterName: vm.currentLetterName)
         }
     }
 
@@ -258,9 +321,14 @@ struct StrokeCalibrationOverlay: View {
 
     // MARK: - Data
 
-    private func loadFromVM() {
-        // Load directly from raw glyph-relative JSON — no round-trip through
-        // the canvas-mapped tracker, which would corrupt coords if sizes differ.
+    /// Load the raw glyph-relative JSON for the current (letter, schriftArt)
+    /// pair. `force: true` reloads even if the same pair is already loaded —
+    /// used for Reset and explicit font switches so edits are thrown away
+    /// on-demand. The default call only re-reads when the pair actually
+    /// changed to avoid clobbering in-flight edits on every view update.
+    private func loadFromVM(force: Bool = false) {
+        let key = LoadKey(letter: vm.currentLetterName, schriftArt: vm.schriftArt)
+        if !force, loaded, loadedKey == key { return }
         guard let raw = vm.glyphRelativeStrokes else { return }
         editableStrokes = raw.strokes.map { stroke in
             stroke.checkpoints.map { cp in
@@ -268,10 +336,31 @@ struct StrokeCalibrationOverlay: View {
             }
         }
         activeStroke = 0
+        loadedKey = key
+        loaded = true
+        savedFlashUntil = nil
     }
 
     private func applyToVM() {
         vm.applyCalibration(editableStrokes)
+    }
+
+    /// Apply the current edits to the live tracker AND persist them to the
+    /// per-script calibration file. This is the primary save path — parents
+    /// don't need to visit the JSON export sheet to make their tuning
+    /// survive a relaunch.
+    private func saveToVM() {
+        vm.applyCalibration(editableStrokes)
+        vm.persistCalibratedStrokes(editableStrokes, for: vm.currentLetterName)
+        savedFlashUntil = Date().addingTimeInterval(1.2)
+        // Clear the badge after the flash window so a second save shows the
+        // check again instead of sticking green forever.
+        Task {
+            try? await Task.sleep(for: .milliseconds(1300))
+            if let until = savedFlashUntil, Date() >= until {
+                savedFlashUntil = nil
+            }
+        }
     }
 
     private func generateJSON() -> String {
@@ -299,10 +388,8 @@ struct StrokeCalibrationOverlay: View {
 private struct ExportSheet: View {
     let text: String
     let letterName: String
-    let onSave: (() -> Void)?
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
-    @State private var saved = false
 
     var body: some View {
         NavigationStack {
@@ -324,21 +411,12 @@ private struct ExportSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
-                HStack(spacing: 12) {
-                    Button(copied ? "Copied ✓" : "Copy to Clipboard") {
-                        UIPasteboard.general.string = text
-                        copied = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(copied ? .green : .blue)
-
-                    Button(saved ? "Gespeichert ✓" : "Speichern") {
-                        onSave?()
-                        saved = true
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(saved ? .green : .purple)
+                Button(copied ? "Copied ✓" : "Copy to Clipboard") {
+                    UIPasteboard.general.string = text
+                    copied = true
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(copied ? .green : .blue)
             }
             .padding()
             .navigationTitle("Stroke JSON")

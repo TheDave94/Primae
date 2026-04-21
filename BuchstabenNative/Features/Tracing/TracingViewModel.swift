@@ -101,7 +101,7 @@ public final class TracingViewModel {
         if showingVariant, let vs = variantStrokeCache { return vs }
         if let ss = activeSchulschriftStrokes { return ss }
         let letter = letters[letterIndex]
-        return calibrationStore.strokes(for: letter.name) ?? letter.strokes
+        return calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
     }
 
     /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
@@ -1169,7 +1169,7 @@ public final class TracingViewModel {
         } else if let ss = activeSchulschriftStrokes {
             source = ss
         } else {
-            source = calibrationStore.strokes(for: letter.name) ?? letter.strokes
+            source = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
         }
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
@@ -1193,7 +1193,7 @@ public final class TracingViewModel {
     /// and re-applies the new data to the tracker so the current letter reflects
     /// the calibration immediately without navigating away and back.
     func persistCalibratedStrokes(_ strokes: [[CGPoint]], for letter: String) {
-        calibrationStore.persist(strokes, for: letter)
+        calibrationStore.persist(strokes, for: letter, schriftArt: schriftArt)
         guard letters.indices.contains(letterIndex) else { return }
         // Calibration replaces the source checkpoint set, so the (letter, size)
         // idempotency cache no longer reflects what's loaded — invalidate it
