@@ -291,15 +291,23 @@ private struct DirectPhaseDotsOverlay: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
+                // Render only the next-expected dot. Many letters have two
+                // strokes that start at the same glyph-relative point (e.g. A's
+                // two diagonals share the apex, F's vertical and horizontal
+                // share the top-left), so drawing every stroke's start dot at
+                // once stacks unreadable circles on top of each other. Showing
+                // one at a time also matches the phase's pedagogy: tap the
+                // current start → watch the direction arrow → the next start
+                // appears, possibly at the exact same spot, which is correct.
                 if let rawStrokes = vm.rawGlyphStrokes,
                    !rawStrokes.strokes.isEmpty,
+                   vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
                    let gr = PrimaeLetterRenderer.normalizedGlyphRect(
                        for: vm.currentLetterName,
                        canvasSize: geo.size,
                        schriftArt: vm.schriftArt) {
-                    ForEach(rawStrokes.strokes.indices, id: \.self) { idx in
-                        dotView(idx: idx, stroke: rawStrokes.strokes[idx], gr: gr, size: geo.size)
-                    }
+                    let idx = vm.directNextExpectedDotIndex
+                    dotView(idx: idx, stroke: rawStrokes.strokes[idx], gr: gr, size: geo.size)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
