@@ -315,19 +315,25 @@ private struct DirectPhaseDotsOverlay: View {
             let isTapped = vm.directTappedDots.contains(idx)
             let isNext   = !isTapped && idx == vm.directNextExpectedDotIndex
             let r: CGFloat = isNext ? 22 : 18
+            // `.onTapGesture` must sit BEFORE `.position` — `.position` expands the
+            // modified view to the full parent frame, so a gesture attached after
+            // would hit-test the entire canvas. With multiple dots stacked via
+            // ForEach, only the top-most (last) dot's handler would then fire for
+            // every tap, leaving multi-stroke letters unable to advance.
             ZStack {
                 Circle()
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                     .opacity(isTapped ? 0.85 : 0.80)
-                    .frame(width: r * 2, height: r * 2)
                     .scaleEffect(isNext && pulseToggle ? 1.3 : 1.0)
                     .animation(.spring(response: 0.25, dampingFraction: 0.5), value: pulseToggle)
                 Text("\(idx + 1)")
                     .font(.system(size: r * 0.85, weight: .bold))
                     .foregroundStyle(.white)
             }
-            .position(x: screenX, y: screenY)
+            .frame(width: r * 2, height: r * 2)
+            .contentShape(Circle())
             .onTapGesture { vm.tapDirectDot(index: idx) }
+            .position(x: screenX, y: screenY)
             .accessibilityLabel("Startpunkt \(idx + 1)")
             .accessibilityAddTraits(.isButton)
         }
