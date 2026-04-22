@@ -121,16 +121,24 @@ public struct ContentView: View {
                     DebugAudioPanel(vm: vm)
                 }
                 #endif
-                PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
-                #if DEBUG
-                    .onLongPressGesture { vm.toggleDebug() }
-                    .accessibilityHint("Halte gedrückt für Entwickleroptionen")
-                #endif
-                if vm.currentLetterHasVariants,
-                   vm.learningPhase == .guided || vm.learningPhase == .freeWrite {
-                    varianteButton
+                // Everything in the trailing column — PhaseIndicator, the
+                // Variante button, and the 5-button controlDock — sits over
+                // the right half of the calibrator's bottom bar and hides
+                // Apply / Speichern / JSON. Drop the whole column while the
+                // calibrator owns the screen; long-press on the toggle chip
+                // row still exits debug mode if needed.
+                if !vm.isCalibrating {
+                    PhaseIndicatorView(phase: vm.learningPhase, scores: vm.phaseScores)
+                    #if DEBUG
+                        .onLongPressGesture { vm.toggleDebug() }
+                        .accessibilityHint("Halte gedrückt für Entwickleroptionen")
+                    #endif
+                    if vm.currentLetterHasVariants,
+                       vm.learningPhase == .guided || vm.learningPhase == .freeWrite {
+                        varianteButton
+                    }
+                    controlDock
                 }
-                controlDock
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .padding(.trailing, 16)
