@@ -77,7 +77,13 @@ struct StrokeCalibrationOverlay: View {
 
     @ViewBuilder
     private func strokePathsLayer(in size: CGSize) -> some View {
-        ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
+        // Only render the dashed path for the active stroke. Drawing every
+        // stroke's dashed polyline on top of the letter turns the glyph into
+        // an unreadable crosshatch — the inactive strokes still show their
+        // start dot as a tap-target for switching, which is all the user
+        // needs to orient between strokes.
+        if editableStrokes.indices.contains(activeStroke) {
+            let stroke = editableStrokes[activeStroke]
             Path { path in
                 let pts = stroke.map { glyphToScreen($0, in: size) }
                 guard let first = pts.first else { return }
@@ -85,8 +91,8 @@ struct StrokeCalibrationOverlay: View {
                 for pt in pts.dropFirst() { path.addLine(to: pt) }
             }
             .stroke(
-                strokeColors[si % strokeColors.count].opacity(si == activeStroke ? 0.7 : 0.3),
-                style: StrokeStyle(lineWidth: si == activeStroke ? 3 : 1.5, dash: [6, 3])
+                strokeColors[activeStroke % strokeColors.count].opacity(0.7),
+                style: StrokeStyle(lineWidth: 3, dash: [6, 3])
             )
         }
     }
@@ -94,11 +100,19 @@ struct StrokeCalibrationOverlay: View {
     @ViewBuilder
     private func dotsLayer(in size: CGSize) -> some View {
         ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
-            ForEach(Array(stroke.enumerated()), id: \.offset) { ci, pt in
-                checkpointDot(si: si, ci: ci, pt: pt, in: size)
-                if ci == 0 {
-                    strokeLabel(si: si, pt: pt, in: size)
+            if si == activeStroke {
+                // Full numbered checkpoint chain for the stroke being edited.
+                ForEach(Array(stroke.enumerated()), id: \.offset) { ci, pt in
+                    checkpointDot(si: si, ci: ci, pt: pt, in: size)
+                    if ci == 0 {
+                        strokeLabel(si: si, pt: pt, in: size)
+                    }
                 }
+            } else if let first = stroke.first {
+                // Inactive strokes: just the start dot, faded, as a tap-to-
+                // switch target. Keeps the letter visible under the overlay.
+                checkpointDot(si: si, ci: 0, pt: first, in: size)
+                strokeLabel(si: si, pt: first, in: size)
             }
         }
     }
@@ -108,11 +122,13 @@ struct StrokeCalibrationOverlay: View {
         let screenPt = glyphToScreen(pt, in: size)
         let color = strokeColors[si % strokeColors.count]
         let isActive = si == activeStroke
-        let diameter: CGFloat = isActive ? 32 : 24
-        let fontSize: CGFloat = isActive ? 12 : 10
+        let diameter: CGFloat = isActive ? 32 : 20
+        let fontSize: CGFloat = isActive ? 12 : 9
 
+        // Inactive start dots are only a switcher hint — keep them small and
+        // faint so the glyph underneath stays readable while calibrating.
         Circle()
-            .fill(color.opacity(isActive ? 1 : 0.55))
+            .fill(color.opacity(isActive ? 1 : 0.35))
             .frame(width: diameter, height: diameter)
             .overlay(
                 Text("\(ci + 1)")
