@@ -284,9 +284,15 @@ private extension LetterRepository {
 
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
+            // `variants` is for alternate stroke ORDERS of the same letter
+            // within the same script — e.g. German primary-school F where
+            // the horizontal bars can be drawn in either of two sequences.
+            // Scripts (Schreibschrift, Grundschrift, …) are NOT variants;
+            // they flow through SchriftArt.bundleVariantID / activeScriptStrokes.
+            // Conflating them meant tapping Variante on Druckschrift A loaded
+            // the Schreibschrift strokes on top of the Primae glyph.
             var variantIDs: [String] = []
             if bundleHasResource(at: "Letters/\(base)/strokes_variant.json") { variantIDs.append("variant") }
-            if bundleHasResource(at: "Letters/\(base)/strokes_schulschrift.json") { variantIDs.append("schulschrift") }
             let variants: [String]? = variantIDs.isEmpty ? nil : variantIDs
             return LetterAsset(id: base, name: base,
                                baseLetter: baseLetter, letterCase: letterCase,

@@ -126,9 +126,15 @@ public final class TracingViewModel {
         return letters[letterIndex].strokes
     }
 
-    /// True when the current letter has at least one registered variant form.
+    /// True when the current letter has a registered alternate stroke-order
+    /// form usable in the active script. `strokes_variant.json` files carry
+    /// Druckschrift-specific coordinates, so in Schreibschrift / future
+    /// scripts there's nothing to load until a per-script variant file is
+    /// added (e.g. `strokes_schulschrift_variant.json`). Hiding the button
+    /// avoids rendering a Druckschrift path on top of a cursive glyph.
     var currentLetterHasVariants: Bool {
-        guard !letters.isEmpty, letterIndex < letters.count else { return false }
+        guard !letters.isEmpty, letterIndex < letters.count,
+              schriftArt == .druckschrift else { return false }
         return !(letters[letterIndex].variants?.isEmpty ?? true)
     }
     /// Stars earned in current letter session (0-3).
