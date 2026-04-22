@@ -173,15 +173,7 @@ public struct ContentView: View {
         HStack(spacing: 14) {
             dockButton("arrow.counterclockwise.circle.fill", .orange, "Buchstabe wiederholen") { vm.resetLetter() }
             dockButton("shuffle.circle.fill",                .purple, "Zufälliger Buchstabe")  { vm.randomLetter() }
-            // Tap replays the current sound, long-press cycles to the next
-            // variant (A1 → A2 → A3 → Affe → Alarm → A1). A toast shows
-            // "Ton X von N" so you can see which one is now active.
             dockButton("speaker.wave.2.circle.fill",         .blue,   "Ton abspielen") { vm.replayAudio() }
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.5)
-                        .onEnded { _ in vm.nextAudioVariant() }
-                )
-                .accessibilityHint("Tippen spielt den aktuellen Ton, lange drücken wechselt zum nächsten Ton")
             dockButton("star.circle.fill",                   .yellow, "Empfohlener Buchstabe") { vm.loadRecommendedLetter() }
             dockButton("gear.circle.fill",                   .gray,   "Einstellungen")         { showDashboard = true }
         }

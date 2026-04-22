@@ -231,7 +231,11 @@ struct TracingCanvasView: View {
                     canvasSize: geo.size,
                     onSingleTouchBegan:  { pt, t in vm.beginTouch(at: pt, t: t) },
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
-                    onSingleTouchEnded:  { vm.endTouch() }
+                    onSingleTouchEnded:  { vm.endTouch() },
+                    // Two-finger vertical swipe cycles through the letter's
+                    // audio variants — up = next, down = previous.
+                    onTwoFingerSwipeUp:   { vm.nextAudioVariant() },
+                    onTwoFingerSwipeDown: { vm.previousAudioVariant() }
                 )
                 .allowsHitTesting(vm.learningPhase != .direct && !vm.isCalibrating)
             )
@@ -385,20 +389,38 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
     let onSingleTouchBegan: (CGPoint, CFTimeInterval) -> Void
     let onSingleTouchMoved: (CGPoint, CFTimeInterval, CGSize) -> Void
     let onSingleTouchEnded: () -> Void
+    let onTwoFingerSwipeUp: () -> Void
+    let onTwoFingerSwipeDown: () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
-            canvasSize:         canvasSize,
-            onSingleTouchBegan: onSingleTouchBegan,
-            onSingleTouchMoved: onSingleTouchMoved,
-            onSingleTouchEnded: onSingleTouchEnded
+            canvasSize:           canvasSize,
+            onSingleTouchBegan:   onSingleTouchBegan,
+            onSingleTouchMoved:   onSingleTouchMoved,
+            onSingleTouchEnded:   onSingleTouchEnded,
+            onTwoFingerSwipeUp:   onTwoFingerSwipeUp,
+            onTwoFingerSwipeDown: onTwoFingerSwipeDown
         )
     }
 
     func makeUIView(context: Context) -> TouchView {
         let view = TouchView(coordinator: context.coordinator)
         view.backgroundColor        = .clear
-        view.isMultipleTouchEnabled = false
+        // Multi-touch on so the pan-gesture recognizer below can see the
+        // second finger. The touches* handlers still gate on single-finger
+        // state so tracing isn't disturbed.
+        view.isMultipleTouchEnabled = true
+        let pan = UIPanGestureRecognizer(
+            target: context.coordinator,
+            action: #selector(Coordinator.handleTwoFingerPan(_:))
+        )
+        pan.minimumNumberOfTouches = 2
+        pan.maximumNumberOfTouches = 2
+        // Don't eat the 1-finger trace that may already be in progress when
+        // a 2-finger swipe begins.
+        pan.cancelsTouchesInView = false
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
         return view
     }
 
@@ -428,22 +450,29 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject {
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
         var canvasSize: CGSize
         private let onSingleTouchBegan: (CGPoint, CFTimeInterval) -> Void
         private let onSingleTouchMoved: (CGPoint, CFTimeInterval, CGSize) -> Void
         private let onSingleTouchEnded: () -> Void
+        private let onTwoFingerSwipeUp: () -> Void
+        private let onTwoFingerSwipeDown: () -> Void
 
         private weak var trackedTouch: UITouch?
+        private var twoFingerSwipeFired = false
 
         init(canvasSize: CGSize,
              onSingleTouchBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
              onSingleTouchMoved: @escaping (CGPoint, CFTimeInterval, CGSize) -> Void,
-             onSingleTouchEnded: @escaping () -> Void) {
-            self.canvasSize         = canvasSize
-            self.onSingleTouchBegan = onSingleTouchBegan
-            self.onSingleTouchMoved = onSingleTouchMoved
-            self.onSingleTouchEnded = onSingleTouchEnded
+             onSingleTouchEnded: @escaping () -> Void,
+             onTwoFingerSwipeUp: @escaping () -> Void,
+             onTwoFingerSwipeDown: @escaping () -> Void) {
+            self.canvasSize           = canvasSize
+            self.onSingleTouchBegan   = onSingleTouchBegan
+            self.onSingleTouchMoved   = onSingleTouchMoved
+            self.onSingleTouchEnded   = onSingleTouchEnded
+            self.onTwoFingerSwipeUp   = onTwoFingerSwipeUp
+            self.onTwoFingerSwipeDown = onTwoFingerSwipeDown
         }
 
         func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?, in view: UIView) {
@@ -464,6 +493,41 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             guard let tracked = trackedTouch, touches.contains(tracked) else { return }
             trackedTouch = nil
             onSingleTouchEnded()
+        }
+
+        @objc func handleTwoFingerPan(_ gesture: UIPanGestureRecognizer) {
+            switch gesture.state {
+            case .began, .possible:
+                twoFingerSwipeFired = false
+            case .changed:
+                // Fire once per gesture as soon as the translation crosses
+                // the threshold so the user gets immediate feedback without
+                // having to lift fingers first.
+                guard !twoFingerSwipeFired, let view = gesture.view else { return }
+                let dy = gesture.translation(in: view).y
+                let threshold: CGFloat = 50
+                if dy < -threshold {
+                    twoFingerSwipeFired = true
+                    onTwoFingerSwipeUp()
+                } else if dy > threshold {
+                    twoFingerSwipeFired = true
+                    onTwoFingerSwipeDown()
+                }
+            case .ended, .cancelled, .failed:
+                twoFingerSwipeFired = false
+            @unknown default:
+                break
+            }
+        }
+
+        // Let the pan recognizer coexist with the single-touch event
+        // pipeline; they operate on disjoint touch counts (1 vs 2) so
+        // allowing simultaneous recognition can't introduce conflicts.
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+        ) -> Bool {
+            true
         }
     }
 }
