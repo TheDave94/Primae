@@ -105,36 +105,25 @@ public final class TracingViewModel {
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
     /// Raw glyph-relative stroke data (0-1 within bounding box) for rendering.
-    /// Priority: variant (if showingVariant) → user calibration in Application
-    /// Support for the current script → bundle Schreibschrift file → bundle
-    /// Druckschrift file. The calibration-store lookup must come *before* the
-    /// Schreibschrift bundle branch, otherwise Schreibschrift saves go to disk
-    /// but are never read back — the variant branch would win every time.
+    /// Schreibschrift always takes its strokes from the bundle JSON so the
+    /// committed calibrations in Resources/Letters/<x>/strokes_schulschrift.json
+    /// are authoritative. Druckschrift still prefers the user-calibrated
+    /// Application Support file when one exists — on-device save there works.
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
-        let letter = letters[letterIndex]
-        if let calibrated = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) {
-            return calibrated
-        }
         if let ss = activeSchulschriftStrokes { return ss }
-        return letter.strokes
+        let letter = letters[letterIndex]
+        return calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
     }
 
     /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
     /// Used by TracingCanvasView to render dots aligned with the ghost at any canvas size.
-    /// Same priority as `glyphRelativeStrokes` so on-screen dots and the
-    /// ghost scaffold can't drift apart when a Schreibschrift calibration
-    /// exists.
     var rawGlyphStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
-        let letter = letters[letterIndex]
-        if let calibrated = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) {
-            return calibrated
-        }
         if let ss = activeSchulschriftStrokes { return ss }
-        return letter.strokes
+        return letters[letterIndex].strokes
     }
 
     /// True when the current letter has at least one registered variant form.
@@ -1201,12 +1190,10 @@ public final class TracingViewModel {
         let source: LetterStrokes
         if showingVariant, let vs = variantStrokeCache {
             source = vs
-        } else if let calibrated = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) {
-            source = calibrated
         } else if let ss = activeSchulschriftStrokes {
             source = ss
         } else {
-            source = letter.strokes
+            source = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
         }
         let strokesForTracker: LetterStrokes
         if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
