@@ -458,9 +458,10 @@ public final class TracingViewModel {
         guard !files.isEmpty else { return }
         guard files.indices.contains(audioIndex) else { audioIndex = 0; return }
         audioIndex = (audioIndex + 1) % files.count
-        audio.loadAudioFile(named: files[audioIndex], autoplay: false)
-        playback.request(.idle, immediate: true)
-        toast("Ton \(audioIndex + 1) von \(files.count)")
+        // Autoplay so the long-press UI gesture both switches and previews
+        // in one step — no "silent swap" that requires a second tap to hear.
+        audio.loadAudioFile(named: files[audioIndex], autoplay: true)
+        toast("Ton \(audioIndex + 1) von \(files.count): \(soundLabel(for: files[audioIndex]))")
     }
 
     func previousAudioVariant() {
@@ -469,9 +470,19 @@ public final class TracingViewModel {
         guard !files.isEmpty else { return }
         guard files.indices.contains(audioIndex) else { audioIndex = 0; return }
         audioIndex = (audioIndex - 1 + files.count) % files.count
-        audio.loadAudioFile(named: files[audioIndex], autoplay: false)
-        playback.request(.idle, immediate: true)
-        toast("Ton \(audioIndex + 1) von \(files.count)")
+        audio.loadAudioFile(named: files[audioIndex], autoplay: true)
+        toast("Ton \(audioIndex + 1) von \(files.count): \(soundLabel(for: files[audioIndex]))")
+    }
+
+    /// Human-friendly label for a letter sound file — strips the letter
+    /// prefix and the `.mp3` extension so toasts read "Ton 4 von 5: Affe"
+    /// instead of the raw filename.
+    private func soundLabel(for file: String) -> String {
+        var label = (file as NSString).deletingPathExtension
+        if label.hasPrefix(currentLetterName), label.count > currentLetterName.count {
+            label.removeFirst(currentLetterName.count)
+        }
+        return label.isEmpty ? file : label
     }
 
     // MARK: - Touch handling
