@@ -17,7 +17,11 @@ struct TracingCanvasView: View {
             // Ghost scaffolding: phase drives default visibility (observe/guided = on,
             // freeWrite = off). User's showGhost toggle can ADD ghost in observe/guided,
             // but cannot re-enable it in freeWrite (scaffolding is withdrawn per GRRM).
+            // Suppressed while calibrating — these are fat (lineWidth 6) blue paths
+            // drawn for every stroke on the glyph and they were still covering the
+            // letter even after the other phase overlays were hidden.
             if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
+               !vm.isCalibrating,
                let rawStrokes = vm.glyphRelativeStrokes,
                !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
