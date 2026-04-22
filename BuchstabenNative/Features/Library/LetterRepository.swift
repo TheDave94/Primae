@@ -55,17 +55,24 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     }
 
     func resourceURL(for relativePath: String) -> URL? {
-        // Package.swift uses `.copy("Resources")` so SPM preserves the
-        // `Resources/` prefix inside the bundle — path-based lookups must
-        // try both `<bundle>/Letters/…` and `<bundle>/Resources/Letters/…`.
-        // Missing the prefixed form is what silently broke Schreibschrift
-        // variant loading: loadVariantStrokes returned nil and the ghost
-        // fell back to the Druckschrift strokes on top of the Playwrite
-        // glyph.
-        let candidates = [relativePath, "Resources/\(relativePath)"]
+        // Resources can land in any of three layouts depending on how the
+        // package is consumed:
+        //   1. SPM module bundle with `.copy("Resources")` →
+        //      <bundle>/Resources/Letters/A/strokes_schulschrift.json
+        //   2. SPM module bundle with `.process(_:)` (flattened) →
+        //      <bundle>/Letters/A/strokes_schulschrift.json
+        //   3. Xcode app target copying files directly to the .app →
+        //      <Bundle.main>/Letters/A/strokes_schulschrift.json or
+        //      <Bundle.main>/A/strokes_schulschrift.json depending on group.
+        // Every Schreibschrift file lookup was silently hitting nil on
+        // layout (1) because the old code only probed (2) and (3). We now
+        // try every layout, then fall back to an enumerator-based suffix
+        // match as a last resort so the app never silently serves the
+        // wrong variant file.
+        let pathCandidates = [relativePath, "Resources/\(relativePath)"]
         for b in searchBundles {
             guard let root = b.resourceURL else { continue }
-            for candidate in candidates {
+            for candidate in pathCandidates {
                 let url = root.appendingPathComponent(candidate)
                 if FileManager.default.fileExists(atPath: url.path) { return url }
             }
@@ -73,9 +80,9 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
         let ns        = relativePath as NSString
         let file      = ns.lastPathComponent
         let directory = ns.deletingLastPathComponent
-        let subdirCandidates = directory.isEmpty
+        let subdirCandidates: [String?] = directory.isEmpty
             ? [nil, "Resources"]
-            : [directory, "Resources/\(directory)"]
+            : [nil, directory, "Resources/\(directory)"]
         for b in searchBundles {
             for subdir in subdirCandidates {
                 if let subdir {
@@ -84,6 +91,13 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
                     if let url = b.url(forResource: file, withExtension: nil) { return url }
                 }
             }
+        }
+        // Last-resort: enumerate every resource URL and match by path suffix.
+        // Slower but guaranteed to find the file as long as it's inside any
+        // of the search bundles somewhere.
+        let suffix = "/" + relativePath
+        for url in allResourceURLs() {
+            if url.path.hasSuffix(suffix) { return url }
         }
         return nil
     }
