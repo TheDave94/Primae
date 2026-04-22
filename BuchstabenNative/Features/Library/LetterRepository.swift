@@ -55,19 +55,34 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     }
 
     func resourceURL(for relativePath: String) -> URL? {
+        // Package.swift uses `.copy("Resources")` so SPM preserves the
+        // `Resources/` prefix inside the bundle — path-based lookups must
+        // try both `<bundle>/Letters/…` and `<bundle>/Resources/Letters/…`.
+        // Missing the prefixed form is what silently broke Schreibschrift
+        // variant loading: loadVariantStrokes returned nil and the ghost
+        // fell back to the Druckschrift strokes on top of the Playwrite
+        // glyph.
+        let candidates = [relativePath, "Resources/\(relativePath)"]
         for b in searchBundles {
             guard let root = b.resourceURL else { continue }
-            let candidate = root.appendingPathComponent(relativePath)
-            if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            for candidate in candidates {
+                let url = root.appendingPathComponent(candidate)
+                if FileManager.default.fileExists(atPath: url.path) { return url }
+            }
         }
         let ns        = relativePath as NSString
         let file      = ns.lastPathComponent
         let directory = ns.deletingLastPathComponent
+        let subdirCandidates = directory.isEmpty
+            ? [nil, "Resources"]
+            : [directory, "Resources/\(directory)"]
         for b in searchBundles {
-            if directory.isEmpty {
-                if let url = b.url(forResource: file, withExtension: nil) { return url }
-            } else {
-                if let url = b.url(forResource: file, withExtension: nil, subdirectory: directory) { return url }
+            for subdir in subdirCandidates {
+                if let subdir {
+                    if let url = b.url(forResource: file, withExtension: nil, subdirectory: subdir) { return url }
+                } else {
+                    if let url = b.url(forResource: file, withExtension: nil) { return url }
+                }
             }
         }
         return nil
