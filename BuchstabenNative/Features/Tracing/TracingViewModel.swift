@@ -666,9 +666,12 @@ public final class TracingViewModel {
     func startGuideAnimation() {
         // Use raw glyph-relative strokes — NOT the canvas-mapped tracker definition.
         // The Canvas maps these to screen coords at render time using normalizedGlyphRect.
-        guard !letters.isEmpty, letterIndex < letters.count else { return }
-        let rawStrokes = letters[letterIndex].strokes
-        guard !rawStrokes.strokes.isEmpty else { return }
+        // rawGlyphStrokes (not letters[…].strokes) so the animation dot follows
+        // the CURRENT script's stroke set — otherwise Schreibschrift mode plays
+        // a Druckschrift path on top of a Playwrite glyph.
+        guard !letters.isEmpty, letterIndex < letters.count,
+              let rawStrokes = rawGlyphStrokes,
+              !rawStrokes.strokes.isEmpty else { return }
         // Auto-advance the observe phase after the second full cycle so a child
         // who can't read "Tippen" isn't stuck waiting for a parent's prompt.
         observeCycleCount = 0
@@ -1124,13 +1127,18 @@ public final class TracingViewModel {
         // when the letter has no strokes (lowercase/umlaut placeholders) — there's
         // nothing to demonstrate, and isComplete would otherwise report vacuous success.
         if phaseController.currentPhase == .observe {
-            if letter.strokes.strokes.isEmpty {
+            // Use the active script's strokes (rawGlyphStrokes) for both the
+            // empty-strokes skip check and the animation payload so
+            // Schreibschrift mode animates the Playwrite path, not the
+            // Druckschrift skeleton from letter.strokes.
+            let observeStrokes = rawGlyphStrokes ?? letter.strokes
+            if observeStrokes.strokes.isEmpty {
                 phaseController.advance(score: 1.0)  // skip observe
                 if phaseController.currentPhase == .direct {
                     phaseController.advance(score: 1.0)  // skip direct (no dots to tap)
                 }
             } else {
-                animation.startAfterDelay(0.3, strokes: letter.strokes)
+                animation.startAfterDelay(0.3, strokes: observeStrokes)
             }
         }
         // If we land directly in guided or freeWrite (e.g. after skipping phases or
