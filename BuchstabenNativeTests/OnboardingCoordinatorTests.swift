@@ -66,8 +66,8 @@ private func makeStore() -> JSONOnboardingStore {
         #expect(c.completedSteps == expected)
     }
     @Test func resume_jumpsToSpecifiedStep() {
-        var c = makeCoordinator(); c.resume(at: .firstTrace)
-        #expect(c.currentStep == .firstTrace)
+        var c = makeCoordinator(); c.resume(at: .directDemo)
+        #expect(c.currentStep == .directDemo)
     }
     @Test func resume_invalidStep_ignored() {
         var c = makeCoordinator(steps: [.welcome, .complete]); c.resume(at: .rewardIntro)
@@ -80,8 +80,12 @@ private func makeStore() -> JSONOnboardingStore {
         #expect(abs(c.progress - 1.0) < 1e-9)
     }
     @Test func progress_intermediateStep() {
+        // One advance from welcome over N-case flow = 1/(N-1). With the
+        // current 7-case flow (welcome, traceDemo, directDemo, guidedDemo,
+        // freeWriteDemo, rewardIntro, complete) that's 1/6.
         var c = makeCoordinator(); c.advance()
-        #expect(abs(c.progress - 0.25) < 1e-9)
+        let expected = 1.0 / Double(OnboardingStep.allCases.count - 1)
+        #expect(abs(c.progress - expected) < 1e-9)
     }
     @Test func customSteps_subset() {
         var c = makeCoordinator(steps: [.welcome, .complete])
@@ -102,8 +106,8 @@ private func makeStore() -> JSONOnboardingStore {
         #expect(s.savedStep == nil)
     }
     @Test func saveProgress_storesSavedStep() {
-        let s = makeStore(); s.saveProgress(step: .firstTrace)
-        #expect(s.savedStep == .firstTrace)
+        let s = makeStore(); s.saveProgress(step: .directDemo)
+        #expect(s.savedStep == .directDemo)
     }
     @Test func reset_clearsAll() {
         let s = makeStore(); s.markComplete(); s.reset()

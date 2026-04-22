@@ -64,7 +64,7 @@ BuchstabenNativeApp
 |------|------|--------------|
 | `StreakStore.swift` | JSONStreakStore: streak tracking + reward events (firstLetter, streakDay3, streakWeek, etc.) | Wire into TracingViewModel.init via TracingDependencies |
 | `LocalNotificationScheduler.swift` | Daily practice reminder scheduling with quiet hours + streak-aware messages | Wire into AppDelegate/BuchstabenNativeApp |
-| `OnboardingCoordinator.swift` | State machine for 5 onboarding steps: welcome → traceDemo → firstTrace → rewardIntro → complete | Wire into ContentView, show on first launch |
+| `OnboardingCoordinator.swift` | State machine for 7 onboarding steps (one per learning phase): welcome → traceDemo → directDemo → guidedDemo → freeWriteDemo → rewardIntro → complete | Wire into ContentView, show on first launch |
 | `ParentDashboardStore.swift` | Per-letter accuracy history, session durations, rolling 7-day practice time | Wire into TracingViewModel.init via TracingDependencies |
 | `ParentDashboardExporter.swift` | CSV/JSON export of DashboardSnapshot (no UIKit — testable on Linux CI) | Wire into a share sheet when ParentDashboard is shown |
 | `CloudSyncService.swift` | CloudKit sync protocol + NullSyncService + SyncCoordinator. Protocol ready. | Wire into app init after onboarding |

@@ -4,8 +4,10 @@ import Foundation
 
 enum OnboardingStep: String, Codable, CaseIterable, Equatable {
     case welcome
-    case traceDemo        // animated path demonstration
-    case firstTrace       // guided first letter trace
+    case traceDemo        // phase 1 — observe (Anschauen) animated stroke demo
+    case directDemo       // phase 2 — direct (Richtung lernen) numbered-dot tap demo
+    case guidedDemo       // phase 3 — guided (Nachspuren) finger-trace demo
+    case freeWriteDemo    // phase 4 — freeWrite (Selbst schreiben) intro
     case rewardIntro      // streak/reward explanation
     case complete
 }
