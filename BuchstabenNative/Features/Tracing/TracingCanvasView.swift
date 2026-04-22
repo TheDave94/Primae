@@ -41,7 +41,9 @@ struct TracingCanvasView: View {
 
             // Stroke start dots — use phaseController.showCheckpoints (single source
             // of truth for phase scaffolding) instead of duplicating the rule here.
-            if vm.showCheckpoints,
+            // Suppressed while calibrating so the calibrator's own numbered dots
+            // aren't doubled up by the phase's fat start-dot overlay.
+            if vm.showCheckpoints, !vm.isCalibrating,
                let rawStrokes = vm.rawGlyphStrokes,
                !rawStrokes.strokes.isEmpty,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(
@@ -69,8 +71,11 @@ struct TracingCanvasView: View {
                                style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
             }
 
-            // Animation guide dot — glyph-relative coords mapped to screen
-            if let point = vm.animationGuidePoint,
+            // Animation guide dot — glyph-relative coords mapped to screen.
+            // Hidden while calibrating: the observe-phase animation would
+            // otherwise scan across the calibrator's numbered dots and make
+            // it impossible to tell what sits where on the glyph.
+            if let point = vm.animationGuidePoint, !vm.isCalibrating,
                let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
                 let screenPt = CGPoint(
                     x: (gr.minX + point.x * gr.width) * size.width,
@@ -82,8 +87,10 @@ struct TracingCanvasView: View {
                 context.stroke(dot, with: .color(.white.opacity(0.60)), lineWidth: 2)
             }
 
-            // Directional arrow — direct phase: shown briefly after a correct dot tap
-            if let arrowIdx = vm.directArrowStrokeIndex,
+            // Directional arrow — direct phase: shown briefly after a correct dot tap.
+            // Skipped while calibrating (we don't want a transient direction cue
+            // flashing over the editable checkpoint chain).
+            if let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
                let rawStrokes = vm.rawGlyphStrokes,
                arrowIdx < rawStrokes.strokes.count,
                rawStrokes.strokes[arrowIdx].checkpoints.count >= 2,
@@ -199,6 +206,10 @@ struct TracingCanvasView: View {
                     },
                     onEnded:  { vm.endTouch() }
                 )
+                // Tracing input is suspended while calibrating so dragging a
+                // dot doesn't also fire proximity audio / stroke progress on
+                // the underlying tracker.
+                .allowsHitTesting(!vm.isCalibrating)
             )
             .overlay(
                 // Finger tracing only: 1-finger → trace. Letter / audio / ghost
@@ -218,11 +229,14 @@ struct TracingCanvasView: View {
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
                     onSingleTouchEnded:  { vm.endTouch() }
                 )
-                .allowsHitTesting(vm.learningPhase != .direct)
+                .allowsHitTesting(vm.learningPhase != .direct && !vm.isCalibrating)
             )
             .overlay(
                 Group {
-                    if vm.learningPhase == .direct {
+                    // Calibrator owns the numbered-dot visualization while
+                    // it's open; the direct-phase overlay would draw the
+                    // next-expected tap dot on top of it otherwise.
+                    if vm.learningPhase == .direct, !vm.isCalibrating {
                         DirectPhaseDotsOverlay()
                     }
                 }

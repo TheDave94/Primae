@@ -20,6 +20,12 @@ public final class TracingViewModel {
     /// sit on top of the calibrator's mode / add-stroke / save controls.
     /// Only meaningful while `showDebug` is also true.
     var showCalibration     = false
+    /// Convenience gate used by rendering code to drop all learning-phase
+    /// overlays (observe-phase modal, start dots, animation guide dot,
+    /// direct-phase tap dots, direction arrow) while the calibrator is open
+    /// — otherwise the phase UI stacks with the calibrator visualization and
+    /// buries the letter.
+    var isCalibrating: Bool { showDebug && showCalibration }
     var letterOrdering: LetterOrderingStrategy = .motorSimilarity
     var schriftArt: SchriftArt = .druckschrift {
         didSet {

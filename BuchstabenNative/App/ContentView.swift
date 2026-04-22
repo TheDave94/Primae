@@ -21,7 +21,10 @@ public struct ContentView: View {
                 .background(Color.white)
                 .ignoresSafeArea()
 
-            if vm.learningPhase == .observe {
+            // Observe-phase "Schau zu!" modal is suppressed while the
+            // calibrator is open — it sits over the center of the glyph,
+            // which is exactly where the user is trying to drag dots.
+            if vm.learningPhase == .observe, !vm.isCalibrating {
                 ObservePhaseOverlay { vm.completeObservePhase() }
             }
 
