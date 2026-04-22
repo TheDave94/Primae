@@ -15,6 +15,11 @@ public final class TracingViewModel {
     var pencilAzimuth: CGFloat   = 0
     var strokeEnforced      = true
     var showDebug           = false
+    /// When true, the stroke-calibration overlay takes focus and the other
+    /// debug panels (audio tuning, letter picker) are hidden so they don't
+    /// sit on top of the calibrator's mode / add-stroke / save controls.
+    /// Only meaningful while `showDebug` is also true.
+    var showCalibration     = false
     var letterOrdering: LetterOrderingStrategy = .motorSimilarity
     var schriftArt: SchriftArt = .druckschrift {
         didSet {
@@ -304,6 +309,7 @@ public final class TracingViewModel {
     func toggleGhost()             { showGhost.toggle();         toast("Hilfslinien \(showGhost ? "an" : "aus")") }
     func toggleStrokeEnforcement() { strokeEnforced.toggle();    resetLetter(); toast("Reihenfolge \(strokeEnforced ? "an" : "aus")") }
     func toggleDebug()             { showDebug.toggle();         toast("Debug \(showDebug ? "an" : "aus")") }
+    func toggleCalibration()       { showCalibration.toggle();   toast("Kalibrieren \(showCalibration ? "an" : "aus")") }
 
     /// Switch between the standard and variant stroke form for the current letter.
     /// Only available when the letter has a registered variant (currentLetterHasVariants).
@@ -792,28 +798,38 @@ public final class TracingViewModel {
         guard index < total, !directTappedDots.contains(index) else { return }
 
         if index == directNextExpectedDotIndex {
+            let isFirstTap = directTappedDots.isEmpty
             directTappedDots.insert(index)
             haptics.fire(.checkpointHit)
-            // Confirmation sound: replay letter name
-            if letters.indices.contains(letterIndex) {
+            // Replay the letter name only on the FIRST correct tap. Every
+            // following dot still fires a haptic + directional arrow, but the
+            // audio would just retrigger the same "Aaa"/"Emm" and turn into
+            // noise — the child already heard it; now they need direction,
+            // not another repetition of the name.
+            if isFirstTap, letters.indices.contains(letterIndex) {
                 let files = letters[letterIndex].audioFiles
                 if files.indices.contains(audioIndex) {
                     audio.loadAudioFile(named: files[audioIndex], autoplay: true)
                 }
             }
-            // Show directional arrow briefly along the stroke path
+            // Show directional arrow briefly along the stroke path.
             directArrowStrokeIndex = index
+            // On the final dot, the old code advanced the phase synchronously,
+            // which tore down the direct-phase overlay before the arrow had a
+            // chance to render — so the last stroke never got its direction
+            // cue. Defer the phase advance until the arrow finishes so the
+            // last arrow is shown just like the others.
+            let isLastTap = directTappedDots.count >= total
             Task { [weak self] in
                 guard let self else { return }
                 try? await Task.sleep(for: .seconds(1.2))
                 if self.directArrowStrokeIndex == index {
                     self.directArrowStrokeIndex = nil
                 }
-            }
-            // All dots tapped — advance phase
-            if directTappedDots.count >= total {
-                haptics.fire(.letterCompleted)
-                advanceLearningPhase()
+                if isLastTap, self.phaseController.currentPhase == .direct {
+                    self.haptics.fire(.letterCompleted)
+                    self.advanceLearningPhase()
+                }
             }
         } else {
             // Wrong dot — gentle haptic, pulse the correct one

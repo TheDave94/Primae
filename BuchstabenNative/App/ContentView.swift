@@ -42,7 +42,10 @@ public struct ContentView: View {
             }
 
             #if DEBUG
-            if vm.showDebug {
+            // Stroke calibrator is opt-in via the "Kalibrieren" toggle so its
+            // full-screen controls don't have to fight with the letter picker
+            // and the audio-tuning panel for the same screen real estate.
+            if vm.showDebug && vm.showCalibration {
                 GeometryReader { geo in
                     StrokeCalibrationOverlay(canvasSize: geo.size)
                 }
@@ -51,18 +54,30 @@ public struct ContentView: View {
             #endif
 
             VStack(spacing: 0) {
-                LetterPickerBar()
-                    .background(.ultraThinMaterial)
+                // LetterPickerBar sits at the very top of the screen and
+                // overlaps the calibrator's mode/add-stroke bar — hide it
+                // while calibrating so those controls are reachable.
+                if !(vm.showDebug && vm.showCalibration) {
+                    LetterPickerBar()
+                        .background(.ultraThinMaterial)
+                }
 
                 #if DEBUG
                 if vm.showDebug {
-                    HStack {
-                        DebugInfoPanel()
-                        Spacer()
+                    // DebugInfoPanel lives at top-left, exactly where the
+                    // calibrator renders its stroke chips and "+ Strich"
+                    // button. Keep the toggle bar (so the user can turn
+                    // calibration off) but hide the info readout so the
+                    // calibrator controls aren't buried under it.
+                    if !vm.showCalibration {
+                        HStack {
+                            DebugInfoPanel()
+                            Spacer()
+                        }
+                        .allowsHitTesting(false)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
                     }
-                    .allowsHitTesting(false)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 4)
 
                     debugToggleBar
                         .padding(.horizontal, 12)
@@ -97,7 +112,9 @@ public struct ContentView: View {
             VStack(alignment: .trailing, spacing: 10) {
                 Spacer()
                 #if DEBUG
-                if vm.showDebug {
+                // Hide the audio-tuning panel while calibrating — it covers
+                // the calibrator's Save / Apply / JSON buttons otherwise.
+                if vm.showDebug && !vm.showCalibration {
                     DebugAudioPanel(vm: vm)
                 }
                 #endif
@@ -174,6 +191,7 @@ public struct ContentView: View {
             ToggleChip(title: "Hilfslinien",  isOn: vm.showGhost,       hint: "Hilfslinien ein- oder ausblenden")         { vm.toggleGhost() }
             ToggleChip(title: "Reihenfolge", isOn: vm.strokeEnforced,   hint: "Strichreihenfolge für Ton erzwingen")      { vm.toggleStrokeEnforcement() }
             ToggleChip(title: "Alle",        isOn: vm.showAllLetters,   hint: "Alle Buchstaben oder nur Demo-Buchstaben") { vm.showAllLetters.toggle() }
+            ToggleChip(title: "Kalibrieren", isOn: vm.showCalibration,  hint: "Strich-Kalibrierung öffnen (blendet Audio-Panel und Buchstabenleiste aus)") { vm.toggleCalibration() }
             Spacer()
         }
     }

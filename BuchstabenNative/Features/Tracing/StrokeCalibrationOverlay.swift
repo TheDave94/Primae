@@ -160,7 +160,10 @@ struct StrokeCalibrationOverlay: View {
             topBar
                 .padding(10)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                .padding(.top, 50)
+                // Top padding clears the status bar (~24) plus the debug
+                // toggle chips row (~45) so Add / Delete mode and "+ Strich"
+                // aren't buried under them.
+                .padding(.top, 110)
 
             if mode == .add {
                 Text("Tippe um Punkt zu setzen")
