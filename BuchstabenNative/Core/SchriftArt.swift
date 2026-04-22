@@ -40,4 +40,24 @@ public enum SchriftArt: String, Codable, CaseIterable {
         case .schulausgangsschrift:      return "Schulausgangsschrift"
         }
     }
+
+    /// The `variantID` that `LetterRepository.loadVariantStrokes` uses to
+    /// find this script's stroke JSON — e.g. "schulschrift" resolves to
+    /// `Letters/<letter>/strokes_schulschrift.json`. `nil` for
+    /// `.druckschrift`: its strokes are the primary `strokes.json` carried
+    /// by `LetterAsset.strokes`, not a variant file.
+    ///
+    /// Adding a new script is a three-step move: add an enum case, return
+    /// the variantID here, and ship `Resources/Letters/<letter>/strokes_<id>.json`
+    /// alongside the font. `TracingViewModel.activeScriptStrokes` picks it
+    /// up automatically — no VM changes required.
+    public var bundleVariantID: String? {
+        switch self {
+        case .druckschrift:              return nil
+        case .schreibschrift:            return "schulschrift"
+        case .grundschrift:              return "grundschrift"
+        case .vereinfachteAusgangschrift: return "vereinfachteAusgangschrift"
+        case .schulausgangsschrift:      return "schulausgangsschrift"
+        }
+    }
 }

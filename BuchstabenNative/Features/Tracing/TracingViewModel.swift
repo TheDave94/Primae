@@ -31,7 +31,7 @@ public final class TracingViewModel {
         didSet {
             guard oldValue != schriftArt,
                   !letters.isEmpty, letterIndex < letters.count else { return }
-            schulschriftStrokeCache = nil
+            scriptStrokeCache.removeAll(keepingCapacity: true)
             PrimaeLetterRenderer.clearCache()
             currentLetterImage = PrimaeLetterRenderer.render(
                 letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
@@ -112,7 +112,7 @@ public final class TracingViewModel {
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
-        if let ss = activeSchulschriftStrokes { return ss }
+        if let ss = activeScriptStrokes { return ss }
         let letter = letters[letterIndex]
         return calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
     }
@@ -122,7 +122,7 @@ public final class TracingViewModel {
     var rawGlyphStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
-        if let ss = activeSchulschriftStrokes { return ss }
+        if let ss = activeScriptStrokes { return ss }
         return letters[letterIndex].strokes
     }
 
@@ -224,7 +224,10 @@ public final class TracingViewModel {
     private var letters: [LetterAsset]          = []
     private var letterIndex                      = 0
     private var variantStrokeCache: LetterStrokes? = nil
-    private var schulschriftStrokeCache: LetterStrokes? = nil
+    /// Per-script bundle stroke cache keyed by (schriftArt). Populated lazily
+    /// on first access for each non-Druckschrift script. Invalidated in
+    /// `schriftArt.didSet` and on letter load so a switch reloads fresh.
+    private var scriptStrokeCache: [SchriftArt: LetterStrokes] = [:]
     private var audioIndex                       = 0
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
@@ -342,16 +345,21 @@ public final class TracingViewModel {
         return repo.loadVariantStrokes(for: letter.name, variantID: variantID)
     }
 
-    /// Returns cursive (Schreibschrift / Playwrite AT) strokes for the current
-    /// letter, loading and caching on first access.
-    private var activeSchulschriftStrokes: LetterStrokes? {
-        guard schriftArt == .schreibschrift,
-              !letters.isEmpty, letterIndex < letters.count else { return nil }
-        if schulschriftStrokeCache == nil {
-            schulschriftStrokeCache = repo.loadVariantStrokes(
-                for: letters[letterIndex].name, variantID: "schulschrift")
-        }
-        return schulschriftStrokeCache
+    /// Returns the current script's bundle strokes, loading from
+    /// `strokes_<variantID>.json` and caching on first access. `nil` when the
+    /// active script is Druckschrift (data lives on the LetterAsset itself)
+    /// or when no variant file exists for the current letter.
+    ///
+    /// Driven by `SchriftArt.bundleVariantID`, so adding a new script only
+    /// needs an enum case + variantID + bundled JSON — no touch here.
+    private var activeScriptStrokes: LetterStrokes? {
+        guard !letters.isEmpty, letterIndex < letters.count,
+              let variantID = schriftArt.bundleVariantID else { return nil }
+        if let cached = scriptStrokeCache[schriftArt] { return cached }
+        guard let loaded = repo.loadVariantStrokes(
+            for: letters[letterIndex].name, variantID: variantID) else { return nil }
+        scriptStrokeCache[schriftArt] = loaded
+        return loaded
     }
 
     // MARK: - Accessibility
@@ -1101,7 +1109,7 @@ public final class TracingViewModel {
         showPaperTransfer = false
         showingVariant = false
         variantStrokeCache = nil
-        schulschriftStrokeCache = nil
+        scriptStrokeCache.removeAll(keepingCapacity: true)
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
         directTappedDots.removeAll()
@@ -1198,7 +1206,7 @@ public final class TracingViewModel {
         let source: LetterStrokes
         if showingVariant, let vs = variantStrokeCache {
             source = vs
-        } else if let ss = activeSchulschriftStrokes {
+        } else if let ss = activeScriptStrokes {
             source = ss
         } else {
             source = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
