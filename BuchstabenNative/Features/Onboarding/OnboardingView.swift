@@ -109,7 +109,14 @@ private let aDemoStrokes: [ADemoStroke] = [
 ]
 
 private func scaled(_ pt: CGPoint, in size: CGSize) -> CGPoint {
-    CGPoint(x: pt.x * size.width, y: pt.y * size.height)
+    // Pad inside the Canvas so dots drawn at the stroke endpoints (which sit
+    // at glyph-relative 0 / 1) don't get clipped by the Canvas frame — the
+    // largest dot is ~14pt radius in the direct demo.
+    let pad: CGFloat = 16
+    return CGPoint(
+        x: pad + pt.x * (size.width  - 2 * pad),
+        y: pad + pt.y * (size.height - 2 * pad)
+    )
 }
 
 // MARK: - Step 1: Welcome

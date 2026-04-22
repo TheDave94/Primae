@@ -185,6 +185,13 @@ final class LetterRepository {
 
     private func loadFromCache() -> [LetterAsset]? {
         guard let letters = try? cache.load(), !letters.isEmpty else { return nil }
+        // Reject caches that contain any letter with an empty stroke array.
+        // A cache written by an earlier build can shadow a valid bundle
+        // indefinitely — when strokes are empty, `load(letter:)` skips the
+        // observe+direct phases and drops the child straight into Nachspuren.
+        // Falling back to the bundle re-reads strokes.json fresh and repairs
+        // itself on the next persist.
+        guard letters.allSatisfy({ !$0.strokes.strokes.isEmpty }) else { return nil }
         // Loggig moved to the slow-path caller so the fast warm-launch path
         // (loadLettersFast -> cache hit) doesn't emit a misleading "bundle
         // load failed" message on every launch.
