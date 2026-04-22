@@ -48,6 +48,7 @@ struct StrokeCalibrationOverlay: View {
             let size = geo.size
             ZStack {
                 addTapLayer(in: size)
+                glyphRectDebugLayer(in: size)
                 strokePathsLayer(in: size)
                 dotsLayer(in: size)
                 controlsLayer
@@ -73,6 +74,26 @@ struct StrokeCalibrationOverlay: View {
                     addCheckpoint(glyph)
                 }
         }
+    }
+
+    /// Dashed red outline of `PrimaeLetterRenderer.normalizedGlyphRect` for
+    /// the current (letter, schriftArt). Lets us spot-check whether the
+    /// coordinate system used to place dots lines up with the visible glyph:
+    /// if the rect isn't wrapping the rendered glyph, the glyph-rel coords
+    /// stored in JSON will also be off on render.
+    @ViewBuilder
+    private func glyphRectDebugLayer(in size: CGSize) -> some View {
+        let gr = glyphRect(in: size)
+        let rect = CGRect(
+            x: gr.minX * size.width,
+            y: gr.minY * size.height,
+            width: gr.width * size.width,
+            height: gr.height * size.height
+        )
+        Path { p in p.addRect(rect) }
+            .stroke(Color.red.opacity(0.6),
+                    style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
+            .allowsHitTesting(false)
     }
 
     @ViewBuilder
