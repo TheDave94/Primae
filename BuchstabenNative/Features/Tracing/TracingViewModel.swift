@@ -501,6 +501,19 @@ public final class TracingViewModel {
         return "\(pct) Prozent fertig"
     }
 
+    /// Autoplay the active cell's letter audio — called on cell advance
+    /// in word mode so each letter announces itself as the child moves
+    /// through the sequence. Always uses variant 0 (no user-selected
+    /// variant for transient cell-advance sounds). Silent when the
+    /// active cell's letter has no audio assets in the inventory,
+    /// which is acceptable demo behavior per the thesis scope.
+    private func autoplayActiveCellLetter() {
+        let activeLetter = gridCellLetter(at: gridActiveCellIndex) ?? currentLetterName
+        guard let asset = letters.first(where: { $0.name == activeLetter }),
+              let first = asset.audioFiles.first else { return }
+        audio.loadAudioFile(named: first, autoplay: true)
+    }
+
     func replayAudio() {
         // Re-load and autoplay the ACTIVE cell's letter audio file. For a
         // length-1 single-letter session the active cell's letter equals
@@ -830,6 +843,11 @@ public final class TracingViewModel {
                     grid.cells[completingCellIndex].activePath = activePath
                 }
                 activePath.removeAll(keepingCapacity: true)
+                // Play the next cell's letter audio so the child hears
+                // "O → M → A" as they trace through "OMA". Per-cell
+                // audio policy per the thesis-plan v1. Silent for letters
+                // without an audio asset in the inventory.
+                autoplayActiveCellLetter()
             } else if !didCompleteCurrentLetter {
                 didCompleteCurrentLetter = true
                 if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
