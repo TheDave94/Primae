@@ -49,6 +49,126 @@ public enum PrimaeLetterRenderer {
         cache.removeAll()
         rectCache.removeAll()
     }
+
+    /// Output of `renderWord` — the whole word rendered as one text run
+    /// (so Schreibschrift ligatures connect properly) plus per-character
+    /// bounding boxes in canvas coordinates. Callers use the frames to
+    /// position per-cell overlays (strokes, dots, active-cell ring); the
+    /// image is drawn once across the whole canvas so connector strokes
+    /// flow across cell boundaries instead of being clipped per-glyph.
+    public struct WordRendering {
+        public let image: UIImage
+        public let characterFrames: [CGRect]
+    }
+
+    /// Render an entire word as one cursive text run. Defaults to
+    /// Schreibschrift since that's the mode that actually needs proper
+    /// ligatures — Druckschrift words work fine with per-letter renders.
+    ///
+    /// Returns nil in test environments (CoreText font loading hangs),
+    /// for empty/zero-size inputs, or when the font / glyphs are
+    /// unavailable. Caller should fall back to per-letter rendering.
+    public static func renderWord(word: String, size: CGSize,
+                                  schriftArt: SchriftArt = .schreibschrift) -> WordRendering? {
+        guard size.width > 0, size.height > 0, !word.isEmpty else { return nil }
+        guard !isRunningTests else { return nil }
+
+        let scale: CGFloat = 2.0
+        let px = CGSize(width: size.width * scale, height: size.height * scale)
+
+        // Probe at a large size to measure the line, then scale so the line
+        // fits the canvas with 10% padding on both axes.
+        let probe: CGFloat = 600
+        guard let probeFont = makeFont(size: probe, fontName: schriftArt.fontFileName) else { return nil }
+        let probeAttrs: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): probeFont
+        ]
+        let probeString = NSAttributedString(string: word, attributes: probeAttrs)
+        let probeLine = CTLineCreateWithAttributedString(probeString as CFAttributedString)
+        var probeAscent: CGFloat = 0
+        var probeDescent: CGFloat = 0
+        var probeLeading: CGFloat = 0
+        let probeWidth = CTLineGetTypographicBounds(probeLine, &probeAscent, &probeDescent, &probeLeading)
+        let probeHeight = probeAscent + probeDescent
+        guard probeWidth > 0, probeHeight > 0 else { return nil }
+
+        let pad: CGFloat = 0.10
+        let availW = px.width  * (1 - 2 * pad)
+        let availH = px.height * (1 - 2 * pad)
+        let ratio  = min(availW / probeWidth, availH / probeHeight)
+        let finalSize = probe * ratio
+
+        // Build the final-size line with the final-size font.
+        guard let font = makeFont(size: finalSize, fontName: schriftArt.fontFileName) else { return nil }
+        let attrs: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): font
+        ]
+        let attrString = NSAttributedString(string: word, attributes: attrs)
+        let line = CTLineCreateWithAttributedString(attrString as CFAttributedString)
+        var ascent: CGFloat = 0
+        var descent: CGFloat = 0
+        var leading: CGFloat = 0
+        let lineWidth = CTLineGetTypographicBounds(line, &ascent, &descent, &leading)
+        let lineHeight = ascent + descent
+        guard lineWidth > 0, lineHeight > 0 else { return nil }
+
+        // Center the line in the px canvas. offsetX is where x=0 of the
+        // CTLine coordinate space maps to in the image; offsetY (in the
+        // bottom-left CT coord system) is the baseline position.
+        let offsetX = (px.width - lineWidth) / 2
+        let baselineY = (px.height - lineHeight) / 2 + descent
+
+        // Extract per-character frames in UIKit (top-origin) canvas coords.
+        var characterFrames: [CGRect] = []
+        let runsArray = CTLineGetGlyphRuns(line) as? [CTRun] ?? []
+        for run in runsArray {
+            let glyphCount = CTRunGetGlyphCount(run)
+            guard glyphCount > 0 else { continue }
+            var positions = [CGPoint](repeating: .zero, count: glyphCount)
+            var advances  = [CGSize](repeating: .zero,  count: glyphCount)
+            CTRunGetPositions(run, CFRange(location: 0, length: glyphCount), &positions)
+            CTRunGetAdvances(run,  CFRange(location: 0, length: glyphCount), &advances)
+            for i in 0..<glyphCount {
+                let pxFrame = CGRect(
+                    // CT reports glyph positions relative to the line origin
+                    // (x baseline start, y baseline).
+                    x: offsetX + positions[i].x,
+                    // Top of the glyph cell in UIKit coords = image height
+                    // minus the baseline minus ascent.
+                    y: px.height - (baselineY + ascent),
+                    width: advances[i].width,
+                    height: lineHeight
+                )
+                characterFrames.append(CGRect(
+                    x: pxFrame.minX / scale,
+                    y: pxFrame.minY / scale,
+                    width: pxFrame.width / scale,
+                    height: pxFrame.height / scale
+                ))
+            }
+        }
+
+        // Draw the line into a bitmap context. CoreText uses bottom-left
+        // origin; we flip the context so the emitted image has top-left
+        // origin consistent with UIKit.
+        guard let ctx = CGContext(
+            data: nil,
+            width: Int(px.width), height: Int(px.height),
+            bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue).rawValue
+        ) else { return nil }
+
+        ctx.clear(CGRect(origin: .zero, size: px))
+        ctx.setFillColor(UIColor(red: 30/255, green: 30/255, blue: 30/255, alpha: 200/255).cgColor)
+        ctx.textMatrix = .identity
+        ctx.textPosition = CGPoint(x: offsetX, y: baselineY)
+        CTLineDraw(line, ctx)
+
+        guard let cgImage = ctx.makeImage() else { return nil }
+        let image = UIImage(cgImage: cgImage, scale: scale, orientation: .up)
+        return WordRendering(image: image, characterFrames: characterFrames)
+    }
     /// Returns the normalized ink bounding rect (0–1 in each axis) for the given letter
     /// as rendered by PrimaeLetterRenderer at the given canvas size.
     /// Used by LetterGuideGeometry to transform ghost coordinates from calibrated (PBM)
