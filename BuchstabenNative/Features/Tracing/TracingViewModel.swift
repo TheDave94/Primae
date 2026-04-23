@@ -80,7 +80,11 @@ public final class TracingViewModel {
 
     /// Forwarded from the pencil overlay on every pencil touchesBegan.
     /// Feeds the detector so the first pencil stroke of a session flips
-    /// the effective preset to `.pencil`.
+    /// the effective preset to `.pencil`. Does NOT re-apply the grid
+    /// preset yet — tracking is still canvas-wide, so auto-promoting
+    /// would leave a multi-cell render with touch coords that don't
+    /// match any cell's glyph. A later commit introduces cell-aware
+    /// tracking alongside the auto-promotion.
     func pencilDidTouchDown() {
         detector.observeTouchBegan(isPencil: true)
     }
@@ -90,6 +94,33 @@ public final class TracingViewModel {
     /// hysteresis to decide when to demote a stale pencil session.
     func fingerDidTouchDown() {
         detector.observeTouchBegan(isPencil: false)
+    }
+
+    /// Rebuild the grid's sequence + preset. Called on letter loads and
+    /// from the debug override chip.
+    ///
+    /// In this commit, ONLY the debug `.forcePencil` override flips the
+    /// layout to pencil multi-cell. The auto-detected pencil kind is
+    /// tracked but not yet acted on — the VM's stroke tracker is still
+    /// canvas-wide, so flipping on a real pencil touch would render 4
+    /// cells whose glyph positions don't match the tracker's checkpoints,
+    /// silently breaking writing. A later commit introduces cell-aware
+    /// tracking alongside auto-promotion.
+    ///
+    /// For finger / auto: length-1 singleLetter sequence, finger preset —
+    /// byte-identical to pre-grid behavior. For forcePencil: repetition
+    /// sequence across the preset's default cell count (developer preview
+    /// of the multi-cell layout; tracking is intentionally broken here).
+    func reapplyGridPreset() {
+        guard letters.indices.contains(letterIndex) else { return }
+        let letter = letters[letterIndex]
+        let useForcedPencil = detector.override == .forcePencil
+        let preset: InputPreset = useForcedPencil ? .pencil : .finger
+        let sequence: TracingSequence = useForcedPencil
+            ? .repetition(letter.name, count: preset.cellCount)
+            : .singleLetter(letter.name)
+        grid.load(sequence: sequence, preset: preset)
+        grid.layout(in: canvasSize)
     }
     var progress: CGFloat   = 0
     var isPlaying           = false
@@ -1187,15 +1218,15 @@ public final class TracingViewModel {
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
-        // Grid sync + layout: the canvas iterates `gridCells`, so every
-        // letter load must produce cell frames before the next draw pass.
-        // For length-1 + finger this is a single cell covering the whole
-        // canvas, so rendering is byte-identical to pre-grid behavior.
-        grid.load(sequence: .singleLetter(letter.name), preset: .finger)
-        grid.layout(in: canvasSize)
         // Only point at which the detector can downgrade from .pencil
-        // back to .finger — see InputModeDetector for the hysteresis rule.
+        // back to .finger — see InputModeDetector for the hysteresis
+        // rule. Runs BEFORE reapplyGridPreset so the grid reflects
+        // post-reset state.
         detector.resetForSequenceChange()
+        // Build the grid to match the detector's current effective mode:
+        // finger → length-1 singleLetter, pencil → N-cell repetition.
+        // For finger this is byte-identical to pre-grid behavior.
+        reapplyGridPreset()
         letterLoadTime                 = CACurrentMediaTime()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)

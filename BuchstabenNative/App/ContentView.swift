@@ -203,6 +203,11 @@ public struct ContentView: View {
             ToggleChip(title: "Reihenfolge", isOn: vm.strokeEnforced,   hint: "Strichreihenfolge für Ton erzwingen")      { vm.toggleStrokeEnforcement() }
             ToggleChip(title: "Alle",        isOn: vm.showAllLetters,   hint: "Alle Buchstaben oder nur Demo-Buchstaben") { vm.showAllLetters.toggle() }
             ToggleChip(title: "Kalibrieren", isOn: vm.showCalibration,  hint: "Strich-Kalibrierung öffnen (blendet Audio-Panel und Buchstabenleiste aus)") { vm.toggleCalibration() }
+            ToggleChip(title: "Stift",       isOn: vm.inputModeDetector.override == .forcePencil, hint: "Pencil-Layout erzwingen (4 Zellen) — für Debug ohne echten Stift") {
+                let current = vm.inputModeDetector.override
+                vm.inputModeDetector.override = (current == .forcePencil) ? .auto : .forcePencil
+                vm.reapplyGridPreset()
+            }
             Spacer()
         }
     }
