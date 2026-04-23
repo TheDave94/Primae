@@ -223,7 +223,13 @@ struct TracingCanvasView: View {
             .overlay(
                 PencilAwareCanvasOverlay(
                     canvasSize: geo.size,
-                    onBegan:  { pt, t in vm.beginTouch(at: pt, t: t) },
+                    onBegan:  { pt, t in
+                        // Feed the input-mode detector first so a pencil
+                        // session flips to the pencil preset before the
+                        // touch kicks off any grid-preset-dependent work.
+                        vm.pencilDidTouchDown()
+                        vm.beginTouch(at: pt, t: t)
+                    },
                     onMoved:  { pt, t, pressure, azimuth, size in
                         vm.pencilPressure = pressure
                         vm.pencilAzimuth  = azimuth
@@ -250,7 +256,13 @@ struct TracingCanvasView: View {
                 // numbered-dot tap gestures always win.
                 UnifiedTouchOverlay(
                     canvasSize: geo.size,
-                    onSingleTouchBegan:  { pt, t in vm.beginTouch(at: pt, t: t) },
+                    onSingleTouchBegan:  { pt, t in
+                        // Symmetrical with the pencil overlay — record
+                        // the finger touch for the detector's hysteresis
+                        // before routing into the tracing flow.
+                        vm.fingerDidTouchDown()
+                        vm.beginTouch(at: pt, t: t)
+                    },
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
                     onSingleTouchEnded:  { vm.endTouch() },
                     // Two-finger vertical swipe cycles through the letter's

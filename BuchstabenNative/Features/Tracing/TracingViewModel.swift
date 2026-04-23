@@ -73,6 +73,24 @@ public final class TracingViewModel {
     /// sidesteps the first-render window where `vm.canvasSize` (fed by
     /// `.onAppear`) hasn't caught up with `geo.size` yet.
     var gridPreset: InputPreset { grid.preset }
+
+    /// Exposed for the debug UI and for unit tests that want to assert
+    /// detector state without poking private storage.
+    var inputModeDetector: InputModeDetector { detector }
+
+    /// Forwarded from the pencil overlay on every pencil touchesBegan.
+    /// Feeds the detector so the first pencil stroke of a session flips
+    /// the effective preset to `.pencil`.
+    func pencilDidTouchDown() {
+        detector.observeTouchBegan(isPencil: true)
+    }
+
+    /// Forwarded from the finger overlay on every finger touchesBegan.
+    /// Tracks the finger-streak counter used by the detector's
+    /// hysteresis to decide when to demote a stale pencil session.
+    func fingerDidTouchDown() {
+        detector.observeTouchBegan(isPencil: false)
+    }
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
@@ -225,14 +243,20 @@ public final class TracingViewModel {
 
     private let repo: LetterRepository
     private let strokeTracker           = StrokeTracker()
-    /// Parallel Schreibheft grid representation of the current sequence.
-    /// Wired but passive in this commit — kept in sync with the current
-    /// letter so later commits can switch the canvas and touch routing
-    /// over to the grid without introducing a functional gap.
+    /// Schreibheft grid representation of the current sequence.
+    /// Drives the canvas renderer via `gridCells` / `gridPreset`. For the
+    /// single-letter flow this is a length-1 sequence with the finger
+    /// preset — byte-identical to pre-grid behavior.
     private let grid = SequenceGridController(
         sequence: .singleLetter(""),
         preset: .finger
     )
+
+    /// Finger / pencil detector with hysteresis. Receives every touch-began
+    /// event from the overlays; its `effectiveKind` will drive grid preset
+    /// promotion from commit 3 onward. Nothing observes it yet in this
+    /// commit — detection runs, rendering is unchanged.
+    private let detector = InputModeDetector()
     private let audio: AudioControlling
     private let haptics: HapticEngineProviding
     let progressStore: ProgressStoring
@@ -1169,6 +1193,9 @@ public final class TracingViewModel {
         // canvas, so rendering is byte-identical to pre-grid behavior.
         grid.load(sequence: .singleLetter(letter.name), preset: .finger)
         grid.layout(in: canvasSize)
+        // Only point at which the detector can downgrade from .pencil
+        // back to .finger — see InputModeDetector for the hysteresis rule.
+        detector.resetForSequenceChange()
         letterLoadTime                 = CACurrentMediaTime()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
