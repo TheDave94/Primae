@@ -210,6 +210,14 @@ public final class TracingViewModel {
 
     private let repo: LetterRepository
     private let strokeTracker           = StrokeTracker()
+    /// Parallel Schreibheft grid representation of the current sequence.
+    /// Wired but passive in this commit — kept in sync with the current
+    /// letter so later commits can switch the canvas and touch routing
+    /// over to the grid without introducing a functional gap.
+    private let grid = SequenceGridController(
+        sequence: .singleLetter(""),
+        preset: .finger
+    )
     private let audio: AudioControlling
     private let haptics: HapticEngineProviding
     let progressStore: ProgressStoring
@@ -1140,6 +1148,10 @@ public final class TracingViewModel {
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
+        // Passive grid sync — no one reads from `grid` yet, but keeping it
+        // current here means later commits can flip the canvas over with a
+        // single-line change instead of retrofitting a load path.
+        grid.load(sequence: .singleLetter(letter.name), preset: .finger)
         letterLoadTime                 = CACurrentMediaTime()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
