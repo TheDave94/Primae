@@ -93,6 +93,19 @@ struct TracingCanvasView: View {
                     }
                 }
 
+                // Retained ink from previously-completed cells — stays on
+                // screen so the child can see the letter they just wrote
+                // even after the active cursor has moved on. Empty for
+                // single-cell sessions (completion fires commit and the
+                // load(letter:) reset clears on the next letter).
+                let retainedInk = vm.gridCells[i].activePath
+                if retainedInk.count > 1 {
+                    var path = Path()
+                    path.addLines(retainedInk)
+                    context.stroke(path, with: .color(.green.opacity(0.9)),
+                                   style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                }
+
                 // Active ink path — the child's in-progress stroke, in
                 // absolute canvas coords. Drawn only on the active cell
                 // pass: for single-cell that's the one iteration (identical
@@ -163,6 +176,17 @@ struct TracingCanvasView: View {
                     context.stroke(headPath, with: .color(.orange.opacity(0.9)),
                                    style: StrokeStyle(lineWidth: 5, lineCap: .round))
                 }
+            }
+
+            // Active-cell highlight: soft blue ring around the active cell
+            // in multi-cell layouts. Skipped for single-cell (ring around
+            // the whole canvas would be visual noise).
+            if cellCount > 1, activeIndex < frames.count, !vm.isCalibrating {
+                let activeFrame = frames[activeIndex].insetBy(dx: 2, dy: 2)
+                let ringPath = Path(roundedRect: activeFrame,
+                                    cornerSize: CGSize(width: 14, height: 14))
+                context.stroke(ringPath, with: .color(.blue.opacity(0.55)),
+                               style: StrokeStyle(lineWidth: 3))
             }
 
             // Progress bar: canvas-wide (one total for the whole sequence),

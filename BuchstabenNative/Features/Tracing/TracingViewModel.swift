@@ -819,11 +819,16 @@ public final class TracingViewModel {
             // grid moves the cursor, `strokeTracker` aliases the next cell
             // (fresh state, zero progress).
             let accuracy = Double(strokeTracker.overallProgress)
+            let completingCellIndex = grid.activeCellIndex
             let sequenceDone = grid.advanceIfCompleted()
             if !sequenceDone {
-                // Inter-cell transition: clear the in-progress ink so the
-                // next cell starts fresh. Per-cell ink retention (keeping
-                // finished cells' strokes visible) is a later commit.
+                // Retain the just-completed cell's ink so it stays on
+                // screen — preserves the child's written letter as they
+                // move on to the next cell. VM activePath clears so the
+                // next cell's tracing starts with a blank slate.
+                if grid.cells.indices.contains(completingCellIndex) {
+                    grid.cells[completingCellIndex].activePath = activePath
+                }
                 activePath.removeAll(keepingCapacity: true)
             } else if !didCompleteCurrentLetter {
                 didCompleteCurrentLetter = true
