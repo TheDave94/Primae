@@ -16,13 +16,27 @@ struct TracingCanvasView: View {
             // so every formula below reduces to the pre-grid code.
             let frames = GridLayoutCalculator.cellFrames(
                 canvasSize: size, preset: vm.gridPreset)
-            for cellFrame in frames {
+            let cellCount = min(frames.count, vm.gridCells.count)
+            let activeIndex = vm.gridActiveCellIndex
+            for i in 0..<cellCount {
+                let cellFrame = frames[i]
                 let cellSize  = cellFrame.size
                 let ox        = cellFrame.minX
                 let oy        = cellFrame.minY
+                // Per-cell letter — for single-letter sessions every cell has
+                // the same letter (repetition or length-1), for word mode
+                // each cell has its own character.
+                let cellLetter = vm.gridCellLetter(at: i) ?? vm.currentLetterName
+                let isActiveCell = (i == activeIndex)
 
-                // Background: PBM letter bitmap (cached in VM, loaded once per letter change)
-                if let img = vm.currentLetterImage {
+                // Background: render the cell's own letter at cell size.
+                // Falls back to the VM's shared currentLetterImage when
+                // rendering fails (missing font glyph) so the single-letter
+                // path still shows its PBM backup.
+                if let img = PrimaeLetterRenderer.render(
+                    letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt) {
+                    context.draw(Image(uiImage: img), in: cellFrame)
+                } else if let img = vm.currentLetterImage, cellLetter == vm.currentLetterName {
                     context.draw(Image(uiImage: img), in: cellFrame)
                 }
 
@@ -34,9 +48,9 @@ struct TracingCanvasView: View {
                 // letter even after the other phase overlays were hidden.
                 if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
                    !vm.isCalibrating,
-                   let rawStrokes = vm.glyphRelativeStrokes,
+                   let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
                     // Ghost lines from stroke JSON — same data as dots, guaranteed alignment.
                     for stroke in rawStrokes.strokes {
                         guard stroke.checkpoints.count >= 2 else { continue }
@@ -60,10 +74,10 @@ struct TracingCanvasView: View {
                 // Suppressed while calibrating so the calibrator's own numbered dots
                 // aren't doubled up by the phase's fat start-dot overlay.
                 if vm.showCheckpoints, !vm.isCalibrating,
-                   let rawStrokes = vm.rawGlyphStrokes,
+                   let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty,
                    let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                       for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                       for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
                     for (idx, stroke) in rawStrokes.strokes.enumerated() {
                         guard let first = stroke.checkpoints.first else { continue }
                         let isComplete = vm.isStrokeCompleted(idx)
@@ -79,13 +93,13 @@ struct TracingCanvasView: View {
                     }
                 }
 
-                // Active ink path — the child's in-progress stroke. Stored at
-                // VM level for now in absolute canvas coordinates, so drawing
-                // it inside the cell loop still paints in canvas space. For
-                // length-1 this is one draw per frame — identical to pre-grid
-                // behavior. Later commits will migrate `activePath` to the
-                // active `LetterCell` and draw one ink path per cell.
-                if vm.activePath.count > 1 {
+                // Active ink path — the child's in-progress stroke, in
+                // absolute canvas coords. Drawn only on the active cell
+                // pass: for single-cell that's the one iteration (identical
+                // to pre-grid behavior); for multi-cell it avoids the same
+                // pixels being stroked N times and keeps ink scoped to
+                // the cell the child is currently tracing.
+                if isActiveCell, vm.activePath.count > 1 {
                     var path = Path()
                     path.addLines(vm.activePath)
                     let inkWidth: CGFloat = vm.pencilPressure.map { 4 + $0 * 10 } ?? 8
@@ -93,12 +107,14 @@ struct TracingCanvasView: View {
                                    style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
                 }
 
-                // Animation guide dot — glyph-relative coords mapped to screen.
+                // Animation guide dot — ACTIVE cell only. Guide scans the
+                // active letter's stroke path; rendering it in every cell
+                // would show N dots scanning N letters in parallel.
                 // Hidden while calibrating: the observe-phase animation would
                 // otherwise scan across the calibrator's numbered dots and make
                 // it impossible to tell what sits where on the glyph.
-                if let point = vm.animationGuidePoint, !vm.isCalibrating,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                if isActiveCell, let point = vm.animationGuidePoint, !vm.isCalibrating,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
                     let screenPt = CGPoint(
                         x: ox + (gr.minX + point.x * gr.width) * cellSize.width,
                         y: oy + (gr.minY + point.y * gr.height) * cellSize.height)
@@ -109,15 +125,15 @@ struct TracingCanvasView: View {
                     context.stroke(dot, with: .color(.white.opacity(0.60)), lineWidth: 2)
                 }
 
-                // Directional arrow — direct phase: shown briefly after a correct dot tap.
-                // Skipped while calibrating (we don't want a transient direction cue
-                // flashing over the editable checkpoint chain).
-                if let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
-                   let rawStrokes = vm.rawGlyphStrokes,
+                // Directional arrow — ACTIVE cell only. Direct-phase cue
+                // belongs to the cell the child is currently being asked
+                // to tap; other cells are static scaffolding.
+                if isActiveCell, let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
+                   let rawStrokes = vm.gridCellStrokes(at: i),
                    arrowIdx < rawStrokes.strokes.count,
                    rawStrokes.strokes[arrowIdx].checkpoints.count >= 2,
                    let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                       for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                       for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
                     let stroke = rawStrokes.strokes[arrowIdx]
                     let c0 = stroke.checkpoints[0]
                     let c1 = stroke.checkpoints[1]

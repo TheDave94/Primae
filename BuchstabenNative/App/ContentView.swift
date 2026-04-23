@@ -208,6 +208,21 @@ public struct ContentView: View {
                 vm.inputModeDetector.override = (current == .forcePencil) ? .auto : .forcePencil
                 vm.reapplyGridPreset()
             }
+            // Cycles the canonical Austrian Volksschule Woche-1 word list.
+            // Pedagogically ordered (shortest → longest): OMA / OMI /
+            // OPA are the grandparent trio (Austrian teacher standard),
+            // MAMA / PAPA are the universal parent pair, LAMA introduces
+            // the doubled A in an animal context, KILO and FILM round out
+            // with 4-letter concrete nouns the child encounters daily.
+            // Demo-scope feature per thesis plan.
+            Button(action: { vm.cycleWord() }) {
+                Text("Wort: \(vm.currentWordCycleLabel)")
+                    .font(.caption)
+                    .padding(.horizontal, 10).padding(.vertical, 6)
+                    .background(.blue.opacity(0.15), in: Capsule())
+                    .overlay(Capsule().stroke(Color.blue.opacity(0.4), lineWidth: 1))
+            }
+            .accessibilityHint("Zyklisch durch Demo-Wörter: OMA, OMI, OPA, MAMA, PAPA, LAMA, KILO, FILM")
             Spacer()
         }
     }

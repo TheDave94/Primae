@@ -74,6 +74,36 @@ public final class TracingViewModel {
     /// `.onAppear`) hasn't caught up with `geo.size` yet.
     var gridPreset: InputPreset { grid.preset }
 
+    /// Index of the currently active cell in the grid. Canvas uses this
+    /// to scope active-cell-only scaffolding (direction arrow, animation
+    /// guide dot) — other cells render static ghost + dots only.
+    var gridActiveCellIndex: Int { grid.activeCellIndex }
+
+    /// Strokes for the cell at `index`, mapped per its letter. For the
+    /// currently-loaded letter (single-letter mode, or first cell of a
+    /// word starting with it) this honors the full override chain
+    /// (variant / script / calibration). Other cells of a word sequence
+    /// fall back to the bundle's default Druckschrift strokes for their
+    /// letter — words don't currently support per-letter variants or
+    /// calibration. Returns nil if the cell's letter isn't in the
+    /// library.
+    func gridCellStrokes(at index: Int) -> LetterStrokes? {
+        guard index < grid.cells.count else { return nil }
+        let cellLetter = grid.cells[index].item.letter
+        if cellLetter == currentLetterName {
+            return glyphRelativeStrokes
+        }
+        return letters.first(where: { $0.name == cellLetter })?.strokes
+    }
+
+    /// Letter displayed in the cell at `index`, or nil if out of range.
+    /// Canvas uses this to render each cell's own glyph in word mode
+    /// — repetition mode returns the same letter for every index.
+    func gridCellLetter(at index: Int) -> String? {
+        guard index < grid.cells.count else { return nil }
+        return grid.cells[index].item.letter
+    }
+
     /// Exposed for the debug UI and for unit tests that want to assert
     /// detector state without poking private storage.
     var inputModeDetector: InputModeDetector { detector }
@@ -472,12 +502,16 @@ public final class TracingViewModel {
     }
 
     func replayAudio() {
-        // Re-load and autoplay the current letter's audio file. The previous
-        // shape (`audio.stop(); audio.play()`) was a no-op because stop()
-        // nils currentFile and play() guards on it being non-nil — the
-        // speaker button silently did nothing.
-        guard letters.indices.contains(letterIndex) else { return }
-        let files = letters[letterIndex].audioFiles
+        // Re-load and autoplay the ACTIVE cell's letter audio file. For a
+        // length-1 single-letter session the active cell's letter equals
+        // letters[letterIndex].name, so behavior is identical to today. In
+        // word mode, the speaker plays whatever letter the child is on now.
+        // Silence is acceptable for letters without audio assets — this is
+        // scope-limited demo behavior per the thesis plan.
+        let activeLetter = gridCellLetter(at: gridActiveCellIndex)
+            ?? currentLetterName
+        guard let asset = letters.first(where: { $0.name == activeLetter }) else { return }
+        let files = asset.audioFiles
         guard files.indices.contains(audioIndex) else { return }
         audio.loadAudioFile(named: files[audioIndex], autoplay: true)
     }
@@ -529,6 +563,63 @@ public final class TracingViewModel {
         letterIndex = idx
         load(letter: letters[idx])
         toast("Buchstabe: \(currentLetterName)")
+    }
+
+    /// Demo word list — Austrian Volksschule 1. Klasse canonical
+    /// Woche-1 tracing words, ordered shortest → longest. Every word
+    /// composes from letters currently in the bundle (A, F, I, K, L,
+    /// M, O, P). See the research note in the commit message: OMA /
+    /// OMI / OPA are the standard grandparent trio, MAMA / PAPA the
+    /// parent pair, LAMA introduces doubled-letter practice, KILO and
+    /// FILM are everyday 4-letter nouns.
+    static let demoWordList: [String] = [
+        "OMA", "OMI", "OPA", "MAMA", "PAPA", "LAMA", "KILO", "FILM"
+    ]
+
+    /// Index into `demoWordList` for the next `cycleWord()` call.
+    /// Starts at 0 so the first cycle loads OMA.
+    private var wordCycleIndex: Int = 0
+
+    /// Human-readable hint for the debug "Wort:" chip — shows the next
+    /// word the chip will load (not the one already loaded).
+    var currentWordCycleLabel: String {
+        guard !Self.demoWordList.isEmpty else { return "–" }
+        return Self.demoWordList[wordCycleIndex % Self.demoWordList.count]
+    }
+
+    /// Advance through the demo word list and load the next word.
+    /// Debug chip wiring only; the real picker UI comes with the
+    /// full "Wörter" tab in a later commit.
+    func cycleWord() {
+        guard !Self.demoWordList.isEmpty else { return }
+        let word = Self.demoWordList[wordCycleIndex % Self.demoWordList.count]
+        wordCycleIndex = (wordCycleIndex + 1) % Self.demoWordList.count
+        loadWord(word)
+    }
+
+    /// Load a word sequence — each character becomes its own cell. Demo
+    /// feature for the thesis scope: uppercase-only (lowercase letters
+    /// aren't currently in the audio inventory), no per-letter variants
+    /// or calibration, no spaced-repetition tracking at the word level.
+    /// Completion fires once the last cell's tracker completes.
+    ///
+    /// Implementation: anchor the VM at the word's first-letter asset so
+    /// the existing load / audio / dashboard paths keep working, then
+    /// replace the grid's length-1 sequence with the full word and
+    /// re-map stroke checkpoints into each cell's 0–1 space.
+    func loadWord(_ word: String) {
+        let upper = word.uppercased()
+        guard !upper.isEmpty, let first = upper.first,
+              let idx = letters.firstIndex(where: { $0.name == String(first) }) else { return }
+        letterIndex = idx
+        load(letter: letters[idx])
+        // load() built a length-1 (singleLetter) grid; swap in the word
+        // sequence and re-flow cells + strokes to match.
+        grid.load(sequence: .word(upper), preset: grid.preset)
+        grid.layout(in: canvasSize)
+        lastCheckpointKey = nil
+        reloadStrokeCheckpoints(for: letters[idx])
+        toast("Wort: \(upper)")
     }
 
     func randomLetter() {
@@ -1372,28 +1463,41 @@ public final class TracingViewModel {
             source = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
         }
         for cell in grid.cells {
+            let cellLetter = cell.item.letter
+            // Per-cell source: the loaded letter keeps its full override
+            // chain (variant / script / calibration). Other letters (word
+            // mode: the non-first cells) fall back to the bundle's default
+            // Druckschrift strokes for that letter. Unknown letters skip.
+            let cellSource: LetterStrokes
+            if cellLetter == letter.name {
+                cellSource = source
+            } else if let cellAsset = letters.first(where: { $0.name == cellLetter }) {
+                cellSource = cellAsset.strokes
+            } else {
+                continue
+            }
             let cellSize = cell.frame.size
             guard cellSize.width > 0, cellSize.height > 0 else {
                 // Pre-layout state (e.g. during init before onAppear) — fall
                 // back to the source strokes so the tracker at least has
                 // definition loaded; the next layout pass will rebuild.
-                cell.tracker.load(source)
+                cell.tracker.load(cellSource)
                 continue
             }
             let strokesForCell: LetterStrokes
             if let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                for: letter.name, canvasSize: cellSize, schriftArt: schriftArt) {
-                let mapped = source.strokes.map { stroke in
+                for: cellLetter, canvasSize: cellSize, schriftArt: schriftArt) {
+                let mapped = cellSource.strokes.map { stroke in
                     StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
                         Checkpoint(x: gr.minX + cp.x * gr.width,
                                    y: gr.minY + cp.y * gr.height)
                     })
                 }
-                strokesForCell = LetterStrokes(letter: source.letter,
-                                               checkpointRadius: source.checkpointRadius,
+                strokesForCell = LetterStrokes(letter: cellSource.letter,
+                                               checkpointRadius: cellSource.checkpointRadius,
                                                strokes: mapped)
             } else {
-                strokesForCell = source
+                strokesForCell = cellSource
             }
             cell.tracker.load(strokesForCell)
         }
