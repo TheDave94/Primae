@@ -1,4 +1,5 @@
 import CoreGraphics
+import Observation
 
 /// One slot in the `SequenceGridController`'s grid: owns its own
 /// `StrokeTracker`, ink path, direct-phase tap set, and audio index so

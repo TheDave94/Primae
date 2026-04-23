@@ -1,4 +1,5 @@
 import CoreGraphics
+import Observation
 
 /// Owns the grid of `LetterCell`s that a `TracingSequence` expands to.
 /// Responsibilities: per-cell layout, active-cell tracking, hit-testing,
