@@ -48,6 +48,10 @@ public final class TracingViewModel {
         didSet {
             guard oldValue != canvasSize,
                   !letters.isEmpty, letterIndex < letters.count else { return }
+            // Re-layout first so cell frames reflect the new canvas size
+            // BEFORE checkpoints reload — reloadStrokeCheckpoints now reads
+            // each cell's frame to map strokes into cell-local space.
+            grid.layout(in: canvasSize)
             // Recompute stroke checkpoints now that we know the real canvas dimensions.
             // load(letter:) was called at init with the default 1024×1024 size; the
             // view updates canvasSize to the actual device size on first layout.
@@ -56,10 +60,6 @@ public final class TracingViewModel {
             currentLetterImage = PrimaeLetterRenderer.render(
                 letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
                 ?? PBMLoader.load(named: currentLetterImageName)
-            // Reflow the grid so each cell's frame matches the new canvas.
-            // For a length-1 finger sequence this produces a single frame
-            // equal to the whole canvas — byte-identical to pre-grid behavior.
-            grid.layout(in: canvasSize)
         }
     }
 
@@ -121,6 +121,10 @@ public final class TracingViewModel {
             : .singleLetter(letter.name)
         grid.load(sequence: sequence, preset: preset)
         grid.layout(in: canvasSize)
+        // Preset changes alter cell frames, which flip the coord space each
+        // cell's tracker runs in. The checkpoint-build idempotency cache
+        // doesn't include preset state, so force the next reload to rebuild.
+        lastCheckpointKey = nil
     }
     var progress: CGFloat   = 0
     var isPlaying           = false
@@ -603,6 +607,10 @@ public final class TracingViewModel {
         // checkpoints for the new size — but the touch overlay coordinator still carries
         // the previous size, causing normalizedPoint vs checkpoint coordinate mismatch.
         if canvasSize != self.canvasSize, !letters.isEmpty, letterIndex < letters.count {
+            // Re-flow cell frames with the overlay-reported size BEFORE
+            // reloading checkpoints — reload now maps per-cell using each
+            // cell's own frame.
+            grid.layout(in: canvasSize)
             reloadStrokeCheckpoints(for: letters[letterIndex], usingSize: canvasSize)
         }
 
@@ -635,8 +643,25 @@ public final class TracingViewModel {
             self.lastTimestamp = t
         }
 
-        let normalized     = CGPoint(x: p.x / max(canvasSize.width, 1),
-                                     y: p.y / max(canvasSize.height, 1))
+        // Canvas-normalised coords (0–1 over the whole canvas) — used for
+        // audio stereo panning so that writing in the right-hand cell of a
+        // pencil layout pans right.
+        let canvasNormalized = CGPoint(x: p.x / max(canvasSize.width, 1),
+                                       y: p.y / max(canvasSize.height, 1))
+        // Cell-normalised coords (0–1 over the active cell's frame) — fed
+        // to the active cell's stroke tracker, whose checkpoints live in the
+        // cell's own 0–1 space. For a length-1 finger sequence the frame
+        // equals the whole canvas, so this is identical to canvasNormalized.
+        let activeFrame = grid.activeCell.frame
+        let normalized: CGPoint
+        if activeFrame.width > 0 && activeFrame.height > 0 {
+            normalized = CGPoint(
+                x: (p.x - activeFrame.minX) / activeFrame.width,
+                y: (p.y - activeFrame.minY) / activeFrame.height
+            )
+        } else {
+            normalized = canvasNormalized
+        }
         let prevStrokeIndex   = strokeTracker.currentStrokeIndex
         let prevNextCheckpoint = strokeTracker.progress.indices.contains(prevStrokeIndex)
             ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
@@ -680,7 +705,10 @@ public final class TracingViewModel {
 
         let speed        = Self.mapVelocityToSpeed(smoothedVelocity)
         let azimuthBias  = pencilPressure != nil ? cos(pencilAzimuth) * 0.2 : 0
-        let hBias        = Float(max(-1.0, min(1.0, (normalized.x * 2.0 - 1.0) + azimuthBias)))
+        // Pan follows the absolute x across the whole canvas, not the
+        // active cell — so a cell on the right still sounds from the right
+        // regardless of cell-local normalisation.
+        let hBias        = Float(max(-1.0, min(1.0, (canvasNormalized.x * 2.0 - 1.0) + azimuthBias)))
         audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
         let shouldPlayForStroke = strokeTracker.isNearStroke
@@ -1309,9 +1337,14 @@ public final class TracingViewModel {
     /// without each reset site having to remember to invalidate the key.
     private func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
-        // Map to canvas-normalised coordinates using the actual rendered glyph rect.
-        // Variant strokes take precedence when showingVariant; otherwise user-calibrated
-        // file in Application Support takes priority over bundle strokes.json.
+        // Map to per-cell-normalised coordinates using each cell's glyph rect,
+        // so a multi-cell layout runs each cell's tracker in its own
+        // cell-local 0–1 space. For a length-1 finger sequence the single
+        // cell's frame equals the whole canvas, so the mapping is identical
+        // to the pre-grid canvas-wide checkpoints.
+        //
+        // Source-of-truth priority: variant (when toggled) → per-script JSON
+        // → user calibration → bundle default.
         let effectiveSize = size ?? canvasSize
         let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt, showingVariant: showingVariant)
         if key == lastCheckpointKey, strokeTracker.definition != nil { return }
@@ -1323,21 +1356,32 @@ public final class TracingViewModel {
         } else {
             source = calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
         }
-        let strokesForTracker: LetterStrokes
-        if let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: letter.name, canvasSize: effectiveSize, schriftArt: schriftArt) {
-            let mapped = source.strokes.map { stroke in
-                StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
-                    Checkpoint(x: gr.minX + cp.x * gr.width,
-                               y: gr.minY + cp.y * gr.height)
-                })
+        for cell in grid.cells {
+            let cellSize = cell.frame.size
+            guard cellSize.width > 0, cellSize.height > 0 else {
+                // Pre-layout state (e.g. during init before onAppear) — fall
+                // back to the source strokes so the tracker at least has
+                // definition loaded; the next layout pass will rebuild.
+                cell.tracker.load(source)
+                continue
             }
-            strokesForTracker = LetterStrokes(letter: source.letter,
+            let strokesForCell: LetterStrokes
+            if let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                for: letter.name, canvasSize: cellSize, schriftArt: schriftArt) {
+                let mapped = source.strokes.map { stroke in
+                    StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
+                        Checkpoint(x: gr.minX + cp.x * gr.width,
+                                   y: gr.minY + cp.y * gr.height)
+                    })
+                }
+                strokesForCell = LetterStrokes(letter: source.letter,
                                                checkpointRadius: source.checkpointRadius,
                                                strokes: mapped)
-        } else {
-            strokesForTracker = source
+            } else {
+                strokesForCell = source
+            }
+            cell.tracker.load(strokesForCell)
         }
-        strokeTracker.load(strokesForTracker)
         lastCheckpointKey = key
     }
 
