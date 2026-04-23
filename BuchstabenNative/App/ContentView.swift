@@ -61,7 +61,7 @@ public struct ContentView: View {
                 // overlaps the calibrator's mode/add-stroke bar — hide it
                 // while calibrating so those controls are reachable.
                 if !(vm.showDebug && vm.showCalibration) {
-                    LetterPickerBar()
+                    SequencePickerBar()
                         .background(.ultraThinMaterial)
                 }
 
