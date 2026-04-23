@@ -9,15 +9,30 @@ struct TracingCanvasView: View {
     @ViewBuilder
     private func tracingCanvas(geo: GeometryProxy) -> some View {
         Canvas { context, size in
-            // Per-cell rendering: iterate cell frames computed from the
-            // live Canvas `size` (not from stored cell.frame, which lags
-            // one frame behind the first layout pass). For a length-1
-            // finger sequence the single frame equals the whole canvas,
-            // so every formula below reduces to the pre-grid code.
-            let frames = GridLayoutCalculator.cellFrames(
-                canvasSize: size, preset: vm.gridPreset)
+            // Frame source: for singleLetter / repetition sequences the
+            // cells are evenly-spaced, so we compute fresh from the live
+            // Canvas `size` to avoid any first-render staleness. For word
+            // sequences the layout depends on CoreText character advances,
+            // so we use the stored cell frames — recomputing a CoreText
+            // run per redraw would thrash the frame budget.
+            let wordRendering = vm.gridWordRendering
+            let frames: [CGRect]
+            if wordRendering != nil {
+                frames = vm.gridCells.map(\.frame)
+            } else {
+                frames = GridLayoutCalculator.cellFrames(
+                    canvasSize: size, preset: vm.gridPreset)
+            }
             let cellCount = min(frames.count, vm.gridCells.count)
             let activeIndex = vm.gridActiveCellIndex
+
+            // Whole-word image (word mode only): drawn once at full canvas
+            // size so the cursive connectors between letters flow across
+            // cell boundaries instead of getting cropped per glyph.
+            if let wr = wordRendering {
+                context.draw(Image(uiImage: wr.image),
+                             in: CGRect(origin: .zero, size: size))
+            }
             for i in 0..<cellCount {
                 let cellFrame = frames[i]
                 let cellSize  = cellFrame.size
@@ -30,14 +45,18 @@ struct TracingCanvasView: View {
                 let isActiveCell = (i == activeIndex)
 
                 // Background: render the cell's own letter at cell size.
+                // Skipped in word mode — the whole-word image was already
+                // drawn above so the ligatures connect across cells.
                 // Falls back to the VM's shared currentLetterImage when
                 // rendering fails (missing font glyph) so the single-letter
                 // path still shows its PBM backup.
-                if let img = PrimaeLetterRenderer.render(
-                    letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt) {
-                    context.draw(Image(uiImage: img), in: cellFrame)
-                } else if let img = vm.currentLetterImage, cellLetter == vm.currentLetterName {
-                    context.draw(Image(uiImage: img), in: cellFrame)
+                if wordRendering == nil {
+                    if let img = PrimaeLetterRenderer.render(
+                        letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt) {
+                        context.draw(Image(uiImage: img), in: cellFrame)
+                    } else if let img = vm.currentLetterImage, cellLetter == vm.currentLetterName {
+                        context.draw(Image(uiImage: img), in: cellFrame)
+                    }
                 }
 
                 // Ghost scaffolding: phase drives default visibility (observe/guided = on,

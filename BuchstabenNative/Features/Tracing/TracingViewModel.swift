@@ -51,7 +51,7 @@ public final class TracingViewModel {
             // Re-layout first so cell frames reflect the new canvas size
             // BEFORE checkpoints reload — reloadStrokeCheckpoints now reads
             // each cell's frame to map strokes into cell-local space.
-            grid.layout(in: canvasSize)
+            grid.layout(in: canvasSize, schriftArt: schriftArt)
             // Recompute stroke checkpoints now that we know the real canvas dimensions.
             // load(letter:) was called at init with the default 1024×1024 size; the
             // view updates canvasSize to the actual device size on first layout.
@@ -78,6 +78,12 @@ public final class TracingViewModel {
     /// to scope active-cell-only scaffolding (direction arrow, animation
     /// guide dot) — other cells render static ghost + dots only.
     var gridActiveCellIndex: Int { grid.activeCellIndex }
+
+    /// Rendered word layout (image + per-character frames). Non-nil only
+    /// for `.word` sequences after a successful CoreText layout — the
+    /// canvas uses it to blit the whole word as one connected run so
+    /// Schreibschrift ligatures aren't cropped per glyph.
+    var gridWordRendering: PrimaeLetterRenderer.WordRendering? { grid.wordRendering }
 
     /// Strokes for the cell at `index`, mapped per its letter. For the
     /// currently-loaded letter (single-letter mode, or first cell of a
@@ -151,7 +157,7 @@ public final class TracingViewModel {
             ? .repetition(letter.name, count: preset.cellCount)
             : .singleLetter(letter.name)
         grid.load(sequence: sequence, preset: preset)
-        grid.layout(in: canvasSize)
+        grid.layout(in: canvasSize, schriftArt: schriftArt)
         // Preset changes alter cell frames, which flip the coord space each
         // cell's tracker runs in. The checkpoint-build idempotency cache
         // doesn't include preset state, so force the next reload to rebuild.
@@ -629,7 +635,7 @@ public final class TracingViewModel {
         // load() built a length-1 (singleLetter) grid; swap in the word
         // sequence and re-flow cells + strokes to match.
         grid.load(sequence: .word(upper), preset: grid.preset)
-        grid.layout(in: canvasSize)
+        grid.layout(in: canvasSize, schriftArt: schriftArt)
         lastCheckpointKey = nil
         reloadStrokeCheckpoints(for: letters[idx])
         toast("Wort: \(upper)")
@@ -715,7 +721,7 @@ public final class TracingViewModel {
             // Re-flow cell frames with the overlay-reported size BEFORE
             // reloading checkpoints — reload now maps per-cell using each
             // cell's own frame.
-            grid.layout(in: canvasSize)
+            grid.layout(in: canvasSize, schriftArt: schriftArt)
             reloadStrokeCheckpoints(for: letters[letterIndex], usingSize: canvasSize)
         }
 

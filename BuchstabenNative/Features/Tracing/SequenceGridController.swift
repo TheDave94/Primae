@@ -16,6 +16,12 @@ final class SequenceGridController {
     private(set) var activeCellIndex: Int
     private(set) var preset: InputPreset
     private(set) var sequence: TracingSequence
+    /// Rendered whole-word image + per-character bounding boxes. Populated
+    /// by `layout(in:schriftArt:)` when the current sequence is `.word(...)`
+    /// and CoreText successfully laid out the characters; nil otherwise.
+    /// Canvas uses the image for a single blit so Schreibschrift ligatures
+    /// connect across cell boundaries.
+    private(set) var wordRendering: PrimaeLetterRenderer.WordRendering?
 
     init(sequence: TracingSequence, preset: InputPreset) {
         self.sequence = sequence
@@ -24,6 +30,7 @@ final class SequenceGridController {
             LetterCell(index: $0.offset, item: $0.element)
         }
         self.activeCellIndex = 0
+        self.wordRendering = nil
     }
 
     /// Replace the sequence and/or preset, rebuilding cells and resetting
@@ -36,12 +43,27 @@ final class SequenceGridController {
             LetterCell(index: $0.offset, item: $0.element)
         }
         self.activeCellIndex = 0
+        self.wordRendering = nil
     }
 
-    /// Assign per-cell frames from the calculator. Called from the canvas
-    /// layout pass — safe to call repeatedly (idempotent for a given size).
-    func layout(in canvasSize: CGSize) {
-        let frames = GridLayoutCalculator.cellFrames(canvasSize: canvasSize, preset: preset)
+    /// Assign per-cell frames. For `.singleLetter` and `.repetition`
+    /// sequences, frames come from GridLayoutCalculator (even-width
+    /// cells). For `.word` sequences, we ask PrimaeLetterRenderer to lay
+    /// the word out via CoreText and use the per-character bboxes — this
+    /// preserves cursive kerning so Schreibschrift words don't split
+    /// into isolated glyphs. Falls back to even-width cells if the word
+    /// renderer returns nil (test env, missing font, etc.).
+    func layout(in canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) {
+        let frames: [CGRect]
+        if case .word(let word) = sequence.kind,
+           let rendering = PrimaeLetterRenderer.renderWord(
+               word: word, size: canvasSize, schriftArt: schriftArt) {
+            frames = rendering.characterFrames
+            wordRendering = rendering
+        } else {
+            frames = GridLayoutCalculator.cellFrames(canvasSize: canvasSize, preset: preset)
+            wordRendering = nil
+        }
         for (i, frame) in frames.enumerated() where i < cells.count {
             cells[i].frame = frame
         }
