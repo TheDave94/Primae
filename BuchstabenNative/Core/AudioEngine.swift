@@ -162,7 +162,12 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             player.stop()
             currentFile = try AVAudioFile(forReading: url)
             prepareCurrentTrack()
-            guard engine.isRunning else { startIfNeeded(); return }
+            // Previously early-returned after startIfNeeded() without setting
+            // shouldResumePlayback or calling attemptResumePlayback — so when
+            // pendingSafeEnginePause had paused the engine, autoplay=true calls
+            // (speaker button, letter switch, sound variant cycling) loaded the
+            // file but never played it until the user restarted the app.
+            if !engine.isRunning { startIfNeeded() }
             shouldResumePlayback = autoplay
             if autoplay { attemptResumePlayback() } else { isPlaying = false }
         } catch {
