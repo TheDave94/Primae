@@ -109,6 +109,6 @@ import CoreGraphics
 
     @Test func aggregateProgress_zeroForFreshSequence() {
         let c = SequenceGridController(sequence: .word("Affe"), preset: .pencil)
-        #expect(c.aggregateProgress == 0)
+        #expect(c.aggregateProgress == 0.0)
     }
 }

@@ -42,8 +42,8 @@ import CoreGraphics
             preset: .pencil
         )
         // Pencil inset is 8pt each side
-        #expect(frames.first?.minX == 8)
-        #expect(frames.last?.maxX == 1000 - 8)
+        #expect(frames.first?.minX == 8.0)
+        #expect(frames.last?.maxX == 992.0)
     }
 
     @Test func cellFrames_haveEqualWidths() {
