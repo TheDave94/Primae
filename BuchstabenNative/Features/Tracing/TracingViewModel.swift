@@ -273,7 +273,14 @@ public final class TracingViewModel {
     // MARK: - Private dependencies
 
     private let repo: LetterRepository
-    private let strokeTracker           = StrokeTracker()
+    /// The active cell's stroke tracker. Source-compatible with every
+    /// pre-grid use site that read `strokeTracker.X`: for a length-1
+    /// sequence the active cell is stable throughout the letter session,
+    /// so the returned tracker reference is the same instance from load
+    /// to completion. For multi-cell sequences (commit 4 onwards) the
+    /// reference shifts when the active cell advances — the tracker is
+    /// mutable state owned by the cell, not by the VM.
+    private var strokeTracker: StrokeTracker { grid.activeCell.tracker }
     /// Schreibheft grid representation of the current sequence.
     /// Drives the canvas renderer via `gridCells` / `gridPreset`. For the
     /// single-letter flow this is a length-1 sequence with the finger
@@ -1214,19 +1221,20 @@ public final class TracingViewModel {
         currentLetterName              = letter.name
         currentLetterImageName         = letter.imageName
         currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize, schriftArt: schriftArt) ?? PBMLoader.load(named: letter.imageName)
-        reloadStrokeCheckpoints(for: letter)
-        progress                       = 0
-        audioIndex                     = 0
-        didCompleteCurrentLetter       = false
         // Only point at which the detector can downgrade from .pencil
         // back to .finger — see InputModeDetector for the hysteresis
         // rule. Runs BEFORE reapplyGridPreset so the grid reflects
         // post-reset state.
         detector.resetForSequenceChange()
-        // Build the grid to match the detector's current effective mode:
-        // finger → length-1 singleLetter, pencil → N-cell repetition.
-        // For finger this is byte-identical to pre-grid behavior.
+        // Build the grid BEFORE loading stroke checkpoints: reapplyGridPreset
+        // creates fresh LetterCell instances with brand-new StrokeTrackers,
+        // and `strokeTracker` is now a computed alias for grid.activeCell.tracker.
+        // Loading into the old grid's tracker would be thrown away here.
         reapplyGridPreset()
+        reloadStrokeCheckpoints(for: letter)
+        progress                       = 0
+        audioIndex                     = 0
+        didCompleteCurrentLetter       = false
         letterLoadTime                 = CACurrentMediaTime()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
