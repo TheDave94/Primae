@@ -449,7 +449,11 @@ private extension AudioEngine {
             stop()
         case .newDeviceAvailable, .categoryChange, .override,
              .routeConfigurationChange, .wakeFromSleep, .noSuitableRouteForCategory:
-            if appIsForeground && !interrupted { attemptResumePlayback() }
+            // Only resume if we were actually playing — otherwise attemptResumePlayback
+            // falls into its !canResumePlayback() branch and schedules
+            // pendingSafeEnginePause(), which pauses the engine 0.2s later.
+            // That killed all audio when the user connected AirPods while idle.
+            if appIsForeground && !interrupted && shouldResumePlayback { attemptResumePlayback() }
         default:
             break
         }
