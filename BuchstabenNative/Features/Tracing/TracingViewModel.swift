@@ -80,13 +80,19 @@ public final class TracingViewModel {
 
     /// Forwarded from the pencil overlay on every pencil touchesBegan.
     /// Feeds the detector so the first pencil stroke of a session flips
-    /// the effective preset to `.pencil`. Does NOT re-apply the grid
-    /// preset yet — tracking is still canvas-wide, so auto-promoting
-    /// would leave a multi-cell render with touch coords that don't
-    /// match any cell's glyph. A later commit introduces cell-aware
-    /// tracking alongside the auto-promotion.
+    /// the effective preset to `.pencil`, and re-applies the grid preset
+    /// immediately so the layout splits before the stroke completes.
+    /// Safe to auto-promote now: commit 4b/4c made tracking cell-aware,
+    /// so touches in cell 0 of a newly-split pencil layout still feed
+    /// the tracker correctly.
     func pencilDidTouchDown() {
+        let priorKind = detector.effectiveKind
         detector.observeTouchBegan(isPencil: true)
+        if priorKind != detector.effectiveKind,
+           letters.indices.contains(letterIndex) {
+            reapplyGridPreset()
+            reloadStrokeCheckpoints(for: letters[letterIndex])
+        }
     }
 
     /// Forwarded from the finger overlay on every finger touchesBegan.
@@ -96,27 +102,22 @@ public final class TracingViewModel {
         detector.observeTouchBegan(isPencil: false)
     }
 
-    /// Rebuild the grid's sequence + preset. Called on letter loads and
-    /// from the debug override chip.
+    /// Rebuild the grid's sequence + preset to match the detector's
+    /// effective input mode. Called on letter loads, from the debug
+    /// override chip, and from the pencil overlay when a real pencil
+    /// touch promotes the session.
     ///
-    /// In this commit, ONLY the debug `.forcePencil` override flips the
-    /// layout to pencil multi-cell. The auto-detected pencil kind is
-    /// tracked but not yet acted on — the VM's stroke tracker is still
-    /// canvas-wide, so flipping on a real pencil touch would render 4
-    /// cells whose glyph positions don't match the tracker's checkpoints,
-    /// silently breaking writing. A later commit introduces cell-aware
-    /// tracking alongside auto-promotion.
-    ///
-    /// For finger / auto: length-1 singleLetter sequence, finger preset —
-    /// byte-identical to pre-grid behavior. For forcePencil: repetition
-    /// sequence across the preset's default cell count (developer preview
-    /// of the multi-cell layout; tracking is intentionally broken here).
+    /// - `.finger`: length-1 singleLetter sequence, finger preset —
+    ///   byte-identical to pre-grid behavior.
+    /// - `.pencil` (auto or forced): repetition sequence broadcasting the
+    ///   current letter across the preset's default cell count. Tracking
+    ///   is cell-aware as of commit 4b, so writing works in each cell.
     func reapplyGridPreset() {
         guard letters.indices.contains(letterIndex) else { return }
         let letter = letters[letterIndex]
-        let useForcedPencil = detector.override == .forcePencil
-        let preset: InputPreset = useForcedPencil ? .pencil : .finger
-        let sequence: TracingSequence = useForcedPencil
+        let usePencil = detector.effectiveKind == .pencil
+        let preset: InputPreset = usePencil ? .pencil : .finger
+        let sequence: TracingSequence = usePencil
             ? .repetition(letter.name, count: preset.cellCount)
             : .singleLetter(letter.name)
         grid.load(sequence: sequence, preset: preset)
