@@ -56,8 +56,23 @@ public final class TracingViewModel {
             currentLetterImage = PrimaeLetterRenderer.render(
                 letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
                 ?? PBMLoader.load(named: currentLetterImageName)
+            // Reflow the grid so each cell's frame matches the new canvas.
+            // For a length-1 finger sequence this produces a single frame
+            // equal to the whole canvas — byte-identical to pre-grid behavior.
+            grid.layout(in: canvasSize)
         }
     }
+
+    /// Read-only view onto the grid's cell list for the canvas renderer.
+    /// Length-1 for every single-letter session, so iterating this in the
+    /// canvas body produces exactly one pass identical to today's layout.
+    var gridCells: [LetterCell] { grid.cells }
+
+    /// Current grid geometry preset. Exposed so the canvas can compute
+    /// cell frames from the live Canvas `size` at each draw — this
+    /// sidesteps the first-render window where `vm.canvasSize` (fed by
+    /// `.onAppear`) hasn't caught up with `geo.size` yet.
+    var gridPreset: InputPreset { grid.preset }
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
@@ -1148,10 +1163,12 @@ public final class TracingViewModel {
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
-        // Passive grid sync — no one reads from `grid` yet, but keeping it
-        // current here means later commits can flip the canvas over with a
-        // single-line change instead of retrofitting a load path.
+        // Grid sync + layout: the canvas iterates `gridCells`, so every
+        // letter load must produce cell frames before the next draw pass.
+        // For length-1 + finger this is a single cell covering the whole
+        // canvas, so rendering is byte-identical to pre-grid behavior.
         grid.load(sequence: .singleLetter(letter.name), preset: .finger)
+        grid.layout(in: canvasSize)
         letterLoadTime                 = CACurrentMediaTime()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)

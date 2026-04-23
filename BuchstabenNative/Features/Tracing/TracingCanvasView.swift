@@ -9,127 +9,148 @@ struct TracingCanvasView: View {
     @ViewBuilder
     private func tracingCanvas(geo: GeometryProxy) -> some View {
         Canvas { context, size in
-            // Background: PBM letter bitmap (cached in VM, loaded once per letter change)
-            if let img = vm.currentLetterImage {
-                context.draw(Image(uiImage: img), in: CGRect(origin: .zero, size: size))
-            }
+            // Per-cell rendering: iterate cell frames computed from the
+            // live Canvas `size` (not from stored cell.frame, which lags
+            // one frame behind the first layout pass). For a length-1
+            // finger sequence the single frame equals the whole canvas,
+            // so every formula below reduces to the pre-grid code.
+            let frames = GridLayoutCalculator.cellFrames(
+                canvasSize: size, preset: vm.gridPreset)
+            for cellFrame in frames {
+                let cellSize  = cellFrame.size
+                let ox        = cellFrame.minX
+                let oy        = cellFrame.minY
 
-            // Ghost scaffolding: phase drives default visibility (observe/guided = on,
-            // freeWrite = off). User's showGhost toggle can ADD ghost in observe/guided,
-            // but cannot re-enable it in freeWrite (scaffolding is withdrawn per GRRM).
-            // Suppressed while calibrating — these are fat (lineWidth 6) blue paths
-            // drawn for every stroke on the glyph and they were still covering the
-            // letter even after the other phase overlays were hidden.
-            if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
-               !vm.isCalibrating,
-               let rawStrokes = vm.glyphRelativeStrokes,
-               !rawStrokes.strokes.isEmpty,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
-                // Ghost lines from stroke JSON — same data as dots, guaranteed alignment.
-                for stroke in rawStrokes.strokes {
-                    guard stroke.checkpoints.count >= 2 else { continue }
-                    var ghostPath = Path()
-                    let first = stroke.checkpoints[0]
-                    ghostPath.move(to: CGPoint(
-                        x: (gr.minX + first.x * gr.width) * size.width,
-                        y: (gr.minY + first.y * gr.height) * size.height))
-                    for cp in stroke.checkpoints.dropFirst() {
-                        ghostPath.addLine(to: CGPoint(
-                            x: (gr.minX + cp.x * gr.width) * size.width,
-                            y: (gr.minY + cp.y * gr.height) * size.height))
+                // Background: PBM letter bitmap (cached in VM, loaded once per letter change)
+                if let img = vm.currentLetterImage {
+                    context.draw(Image(uiImage: img), in: cellFrame)
+                }
+
+                // Ghost scaffolding: phase drives default visibility (observe/guided = on,
+                // freeWrite = off). User's showGhost toggle can ADD ghost in observe/guided,
+                // but cannot re-enable it in freeWrite (scaffolding is withdrawn per GRRM).
+                // Suppressed while calibrating — these are fat (lineWidth 6) blue paths
+                // drawn for every stroke on the glyph and they were still covering the
+                // letter even after the other phase overlays were hidden.
+                if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
+                   !vm.isCalibrating,
+                   let rawStrokes = vm.glyphRelativeStrokes,
+                   !rawStrokes.strokes.isEmpty,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                    // Ghost lines from stroke JSON — same data as dots, guaranteed alignment.
+                    for stroke in rawStrokes.strokes {
+                        guard stroke.checkpoints.count >= 2 else { continue }
+                        var ghostPath = Path()
+                        let first = stroke.checkpoints[0]
+                        ghostPath.move(to: CGPoint(
+                            x: ox + (gr.minX + first.x * gr.width) * cellSize.width,
+                            y: oy + (gr.minY + first.y * gr.height) * cellSize.height))
+                        for cp in stroke.checkpoints.dropFirst() {
+                            ghostPath.addLine(to: CGPoint(
+                                x: ox + (gr.minX + cp.x * gr.width) * cellSize.width,
+                                y: oy + (gr.minY + cp.y * gr.height) * cellSize.height))
+                        }
+                        context.stroke(ghostPath, with: .color(.blue.opacity(0.35)),
+                                       style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
                     }
-                    context.stroke(ghostPath, with: .color(.blue.opacity(0.35)),
-                                   style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                }
+
+                // Stroke start dots — use phaseController.showCheckpoints (single source
+                // of truth for phase scaffolding) instead of duplicating the rule here.
+                // Suppressed while calibrating so the calibrator's own numbered dots
+                // aren't doubled up by the phase's fat start-dot overlay.
+                if vm.showCheckpoints, !vm.isCalibrating,
+                   let rawStrokes = vm.rawGlyphStrokes,
+                   !rawStrokes.strokes.isEmpty,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                       for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                    for (idx, stroke) in rawStrokes.strokes.enumerated() {
+                        guard let first = stroke.checkpoints.first else { continue }
+                        let isComplete = vm.isStrokeCompleted(idx)
+                        let isActive = vm.activeStrokeIndex == idx
+                        let screenX = ox + (gr.minX + first.x * gr.width) * cellSize.width
+                        let screenY = oy + (gr.minY + first.y * gr.height) * cellSize.height
+                        let pt = CGPoint(x: screenX, y: screenY)
+                        let r: CGFloat = isActive ? 18 : 14
+                        let dotRect = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
+                        let dot = Path(ellipseIn: dotRect)
+                        let color: Color = isComplete ? .green : (isActive ? .blue : .gray)
+                        context.fill(dot, with: .color(color.opacity(0.75)))
+                    }
+                }
+
+                // Active ink path — the child's in-progress stroke. Stored at
+                // VM level for now in absolute canvas coordinates, so drawing
+                // it inside the cell loop still paints in canvas space. For
+                // length-1 this is one draw per frame — identical to pre-grid
+                // behavior. Later commits will migrate `activePath` to the
+                // active `LetterCell` and draw one ink path per cell.
+                if vm.activePath.count > 1 {
+                    var path = Path()
+                    path.addLines(vm.activePath)
+                    let inkWidth: CGFloat = vm.pencilPressure.map { 4 + $0 * 10 } ?? 8
+                    context.stroke(path, with: .color(.green),
+                                   style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
+                }
+
+                // Animation guide dot — glyph-relative coords mapped to screen.
+                // Hidden while calibrating: the observe-phase animation would
+                // otherwise scan across the calibrator's numbered dots and make
+                // it impossible to tell what sits where on the glyph.
+                if let point = vm.animationGuidePoint, !vm.isCalibrating,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                    let screenPt = CGPoint(
+                        x: ox + (gr.minX + point.x * gr.width) * cellSize.width,
+                        y: oy + (gr.minY + point.y * gr.height) * cellSize.height)
+                    let r: CGFloat = 22
+                    let dotRect   = CGRect(x: screenPt.x - r, y: screenPt.y - r, width: r * 2, height: r * 2)
+                    let dot       = Path(ellipseIn: dotRect)
+                    context.fill(dot,   with: .color(.blue.opacity(0.75)))
+                    context.stroke(dot, with: .color(.white.opacity(0.60)), lineWidth: 2)
+                }
+
+                // Directional arrow — direct phase: shown briefly after a correct dot tap.
+                // Skipped while calibrating (we don't want a transient direction cue
+                // flashing over the editable checkpoint chain).
+                if let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
+                   let rawStrokes = vm.rawGlyphStrokes,
+                   arrowIdx < rawStrokes.strokes.count,
+                   rawStrokes.strokes[arrowIdx].checkpoints.count >= 2,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                       for: vm.currentLetterName, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                    let stroke = rawStrokes.strokes[arrowIdx]
+                    let c0 = stroke.checkpoints[0]
+                    let c1 = stroke.checkpoints[1]
+                    let from = CGPoint(x: ox + (gr.minX + c0.x * gr.width) * cellSize.width,
+                                       y: oy + (gr.minY + c0.y * gr.height) * cellSize.height)
+                    let to   = CGPoint(x: ox + (gr.minX + c1.x * gr.width) * cellSize.width,
+                                       y: oy + (gr.minY + c1.y * gr.height) * cellSize.height)
+                    var linePath = Path()
+                    linePath.move(to: from)
+                    linePath.addLine(to: to)
+                    context.stroke(linePath, with: .color(.orange.opacity(0.9)),
+                                   style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    let dx = to.x - from.x
+                    let dy = to.y - from.y
+                    let angle = atan2(dy, dx)
+                    let tipLen: CGFloat = 18
+                    let spread: CGFloat = .pi / 5
+                    let b1 = CGPoint(x: to.x - tipLen * cos(angle - spread),
+                                     y: to.y - tipLen * sin(angle - spread))
+                    let b2 = CGPoint(x: to.x - tipLen * cos(angle + spread),
+                                     y: to.y - tipLen * sin(angle + spread))
+                    var headPath = Path()
+                    headPath.move(to: to)
+                    headPath.addLine(to: b1)
+                    headPath.move(to: to)
+                    headPath.addLine(to: b2)
+                    context.stroke(headPath, with: .color(.orange.opacity(0.9)),
+                                   style: StrokeStyle(lineWidth: 5, lineCap: .round))
                 }
             }
 
-            // Stroke start dots — use phaseController.showCheckpoints (single source
-            // of truth for phase scaffolding) instead of duplicating the rule here.
-            // Suppressed while calibrating so the calibrator's own numbered dots
-            // aren't doubled up by the phase's fat start-dot overlay.
-            if vm.showCheckpoints, !vm.isCalibrating,
-               let rawStrokes = vm.rawGlyphStrokes,
-               !rawStrokes.strokes.isEmpty,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                   for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
-                for (idx, stroke) in rawStrokes.strokes.enumerated() {
-                    guard let first = stroke.checkpoints.first else { continue }
-                    let isComplete = vm.isStrokeCompleted(idx)
-                    let isActive = vm.activeStrokeIndex == idx
-                    let screenX = (gr.minX + first.x * gr.width) * size.width
-                    let screenY = (gr.minY + first.y * gr.height) * size.height
-                    let pt = CGPoint(x: screenX, y: screenY)
-                    let r: CGFloat = isActive ? 18 : 14
-                    let dotRect = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
-                    let dot = Path(ellipseIn: dotRect)
-                    let color: Color = isComplete ? .green : (isActive ? .blue : .gray)
-                    context.fill(dot, with: .color(color.opacity(0.75)))
-                }
-            }
-
-            if vm.activePath.count > 1 {
-                var path = Path()
-                path.addLines(vm.activePath)
-                let inkWidth: CGFloat = vm.pencilPressure.map { 4 + $0 * 10 } ?? 8
-                context.stroke(path, with: .color(.green),
-                               style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
-            }
-
-            // Animation guide dot — glyph-relative coords mapped to screen.
-            // Hidden while calibrating: the observe-phase animation would
-            // otherwise scan across the calibrator's numbered dots and make
-            // it impossible to tell what sits where on the glyph.
-            if let point = vm.animationGuidePoint, !vm.isCalibrating,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
-                let screenPt = CGPoint(
-                    x: (gr.minX + point.x * gr.width) * size.width,
-                    y: (gr.minY + point.y * gr.height) * size.height)
-                let r: CGFloat = 22
-                let dotRect   = CGRect(x: screenPt.x - r, y: screenPt.y - r, width: r * 2, height: r * 2)
-                let dot       = Path(ellipseIn: dotRect)
-                context.fill(dot,   with: .color(.blue.opacity(0.75)))
-                context.stroke(dot, with: .color(.white.opacity(0.60)), lineWidth: 2)
-            }
-
-            // Directional arrow — direct phase: shown briefly after a correct dot tap.
-            // Skipped while calibrating (we don't want a transient direction cue
-            // flashing over the editable checkpoint chain).
-            if let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
-               let rawStrokes = vm.rawGlyphStrokes,
-               arrowIdx < rawStrokes.strokes.count,
-               rawStrokes.strokes[arrowIdx].checkpoints.count >= 2,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                   for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
-                let stroke = rawStrokes.strokes[arrowIdx]
-                let c0 = stroke.checkpoints[0]
-                let c1 = stroke.checkpoints[1]
-                let from = CGPoint(x: (gr.minX + c0.x * gr.width) * size.width,
-                                   y: (gr.minY + c0.y * gr.height) * size.height)
-                let to   = CGPoint(x: (gr.minX + c1.x * gr.width) * size.width,
-                                   y: (gr.minY + c1.y * gr.height) * size.height)
-                var linePath = Path()
-                linePath.move(to: from)
-                linePath.addLine(to: to)
-                context.stroke(linePath, with: .color(.orange.opacity(0.9)),
-                               style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                let dx = to.x - from.x
-                let dy = to.y - from.y
-                let angle = atan2(dy, dx)
-                let tipLen: CGFloat = 18
-                let spread: CGFloat = .pi / 5
-                let b1 = CGPoint(x: to.x - tipLen * cos(angle - spread),
-                                 y: to.y - tipLen * sin(angle - spread))
-                let b2 = CGPoint(x: to.x - tipLen * cos(angle + spread),
-                                 y: to.y - tipLen * sin(angle + spread))
-                var headPath = Path()
-                headPath.move(to: to)
-                headPath.addLine(to: b1)
-                headPath.move(to: to)
-                headPath.addLine(to: b2)
-                context.stroke(headPath, with: .color(.orange.opacity(0.9)),
-                               style: StrokeStyle(lineWidth: 5, lineCap: .round))
-            }
-
+            // Progress bar: canvas-wide (one total for the whole sequence),
+            // not per cell. Identical to pre-grid for length-1.
             let clampedProgress = max(0, min(1, vm.progress))
             let trackRect = CGRect(x: 0, y: size.height - 8, width: size.width,                    height: 8)
             let fillRect  = CGRect(x: 0, y: size.height - 8, width: size.width * clampedProgress, height: 8)
