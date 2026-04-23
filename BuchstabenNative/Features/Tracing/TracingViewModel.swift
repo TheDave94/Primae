@@ -671,7 +671,10 @@ public final class TracingViewModel {
 
         let isNowComplete = strokeTracker.isComplete
         if !wasComplete && isNowComplete, feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
-        progress = strokeTracker.overallProgress
+        // Aggregate across all cells so the progress bar tracks the whole
+        // sequence, not just the active cell. For a length-1 sequence this
+        // reduces to the active (and only) cell's overallProgress.
+        progress = grid.aggregateProgress
 
         let currentPhase = phaseController.currentPhase
         if (currentPhase == .guided || currentPhase == .freeWrite) && activePhaseStartTime > 0 {
@@ -719,17 +722,28 @@ public final class TracingViewModel {
         // Guard against vacuous completion: StrokeTracker.isComplete returns true
         // when the letter has no strokes (empty-progress allSatisfy is trivially true).
         let hasStrokes = (strokeTracker.definition?.strokes.isEmpty == false)
-        if hasStrokes, strokeTracker.isComplete, !didCompleteCurrentLetter {
-            didCompleteCurrentLetter = true
-            if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
-
+        if hasStrokes, strokeTracker.isComplete {
+            // Snapshot tracker-derived values BEFORE advancing — after the
+            // grid moves the cursor, `strokeTracker` aliases the next cell
+            // (fresh state, zero progress).
             let accuracy = Double(strokeTracker.overallProgress)
-            let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
-            commitCompletion(letter: currentLetterName,
-                             accuracy: accuracy,
-                             duration: duration)
-            toast("Super gemacht!")
-            playback.request(.idle, immediate: true)
+            let sequenceDone = grid.advanceIfCompleted()
+            if !sequenceDone {
+                // Inter-cell transition: clear the in-progress ink so the
+                // next cell starts fresh. Per-cell ink retention (keeping
+                // finished cells' strokes visible) is a later commit.
+                activePath.removeAll(keepingCapacity: true)
+            } else if !didCompleteCurrentLetter {
+                didCompleteCurrentLetter = true
+                if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
+
+                let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
+                commitCompletion(letter: currentLetterName,
+                                 accuracy: accuracy,
+                                 duration: duration)
+                toast("Super gemacht!")
+                playback.request(.idle, immediate: true)
+            }
         }
 
         self.lastPoint     = p
