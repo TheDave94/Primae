@@ -1237,19 +1237,43 @@ public final class TracingViewModel {
                                   accuracy: Double,
                                   duration: TimeInterval,
                                   phaseScores: [String: Double]? = nil) {
+        // Word sequences fan out per-cell for progress + streak so each
+        // letter that appears in a word counts toward its own mastery
+        // tracking, while the dashboard + adaptation row uses the word
+        // title so thesis analytics can distinguish word sessions from
+        // single-letter sessions by the field length. Single-letter and
+        // repetition sequences take the pre-word path unchanged.
+        let lettersToRecord: [String]
+        let dashboardLabel: String
+        let isWordSequence: Bool
+        if case .word(let word) = grid.sequence.kind {
+            lettersToRecord = grid.cells.map(\.item.letter)
+            dashboardLabel = word
+            isWordSequence = true
+        } else {
+            lettersToRecord = [letter]
+            dashboardLabel = letter
+            isWordSequence = false
+        }
+
         let speed: Double? = strokesPerSecond > 0 ? Double(strokesPerSecond) : nil
-        progressStore.recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: speed)
-        if showingVariant, letters.indices.contains(letterIndex),
+        for l in lettersToRecord {
+            progressStore.recordCompletion(for: l, accuracy: accuracy,
+                                           phaseScores: phaseScores, speed: speed)
+        }
+        // Variant tracking is single-letter only — loadWord doesn't
+        // preserve showingVariant state across word entries.
+        if !isWordSequence, showingVariant, letters.indices.contains(letterIndex),
            let variantID = letters[letterIndex].variants?.first {
             progressStore.recordVariantUsed(for: letter, variantID: variantID)
         }
-        streakStore.recordSession(date: Date(), lettersCompleted: [letter], accuracy: accuracy)
-        dashboardStore.recordSession(letter: letter, accuracy: accuracy,
+        streakStore.recordSession(date: Date(), lettersCompleted: lettersToRecord, accuracy: accuracy)
+        dashboardStore.recordSession(letter: dashboardLabel, accuracy: accuracy,
                                       durationSeconds: duration, date: Date(),
                                       condition: thesisCondition)
         Task { [weak self] in try? await self?.syncCoordinator.pushAll() }
 
-        let adaptSample = AdaptationSample(letter: letter,
+        let adaptSample = AdaptationSample(letter: dashboardLabel,
                                            accuracy: CGFloat(accuracy),
                                            completionTime: duration)
         adaptationPolicy.record(adaptSample)
