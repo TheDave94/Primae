@@ -29,10 +29,18 @@ struct WorldSwitcherRail: View {
         }
         .frame(width: 64)
         .frame(maxHeight: .infinity)
-        .background(Color(red: 0.98, green: 0.98, blue: 0.99))
+        .background(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.99, green: 0.98, blue: 0.96),
+                    Color(red: 0.96, green: 0.97, blue: 0.99)
+                ],
+                startPoint: .top, endPoint: .bottom
+            )
+        )
         .overlay(alignment: .trailing) {
             Rectangle()
-                .fill(Color.black.opacity(0.07))
+                .fill(Color.black.opacity(0.06))
                 .frame(width: 0.5)
         }
         .accessibilityElement(children: .contain)
@@ -52,27 +60,26 @@ struct WorldSwitcherRail: View {
     @ViewBuilder
     private func worldButton(for world: AppWorld) -> some View {
         let isActive = world == activeWorld
+        let accent = WorldPalette.accent(for: world)
         Button {
             activeWorld = world
         } label: {
             ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(isActive
-                          ? Color(red: 0.90, green: 0.95, blue: 0.99)
-                          : Color.clear)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isActive ? accent : accent.opacity(0.14))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .strokeBorder(isActive ? Color.blue : Color.clear,
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(isActive ? accent : Color.clear,
                                           lineWidth: 2)
                     )
 
                 VStack(spacing: 3) {
                     Image(systemName: world.icon)
                         .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(isActive ? Color.blue : Color.secondary)
+                        .foregroundStyle(isActive ? Color.white : accent)
                     Text(world.label)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(isActive ? Color.blue : Color.secondary)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(isActive ? Color.white : accent)
                 }
                 .frame(width: 44, height: 56)
 

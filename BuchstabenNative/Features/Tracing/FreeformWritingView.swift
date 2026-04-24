@@ -244,6 +244,17 @@ struct FreeformWritingView: View {
                 title: "Erkenne…",
                 subtitle: "Ich schaue mir deinen Buchstaben an."
             )
+        } else if vm.isWaitingForRecognition {
+            // Visible debounce window — child just lifted the pen, we're
+            // holding recognition for a moment so multi-stroke letters
+            // can finish. Makes the delay feel intentional instead of
+            // laggy.
+            statusBanner(
+                icon: "hourglass",
+                tint: Color(red: 0.40, green: 0.30, blue: 0.80),
+                title: "Fertig mit dem Buchstaben?",
+                subtitle: "Einen kleinen Moment — oder mach noch einen Strich, wenn du willst."
+            )
         } else if let r = vm.lastRecognitionResult {
             letterResultPanel(result: r)
         } else if vm.hasRecognitionCompleted, !vm.freeformPoints.isEmpty {
@@ -355,7 +366,7 @@ struct FreeformWritingView: View {
                 title: "Erkenne das Wort…",
                 subtitle: "Ich schaue mir deine Buchstaben an."
             )
-        } else if !vm.freeformWordResults.isEmpty {
+        } else if !vm.freeformWordResultSlots.isEmpty {
             wordResultPanel
         } else {
             HStack(spacing: 12) {
@@ -382,13 +393,15 @@ struct FreeformWritingView: View {
     private var wordResultPanel: some View {
         let target = vm.freeformTargetWord?.word ?? ""
         let targetChars = Array(target)
-        let results = vm.freeformWordResults
-        let recognized = results.map(\.predictedLetter).joined()
+        // Slot-aligned so missing letters show as grey placeholder chips
+        // rather than collapsing the row to just the recognized ones.
+        let slots = vm.freeformWordResultSlots
+        let recognized = slots.map { $0?.predictedLetter ?? "·" }.joined()
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 6) {
                 ForEach(Array(targetChars.enumerated()), id: \.offset) { idx, ch in
                     letterChip(expected: String(ch),
-                               result: idx < results.count ? results[idx] : nil)
+                               result: idx < slots.count ? slots[idx] : nil)
                 }
             }
             Text("Erkannt: \(recognized.isEmpty ? "—" : recognized)")

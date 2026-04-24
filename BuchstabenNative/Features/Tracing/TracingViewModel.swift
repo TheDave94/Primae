@@ -317,6 +317,29 @@ public final class TracingViewModel {
     /// Per-letter recognition results in freeform word mode. Empty in
     /// letter mode or before the first "Fertig" tap.
     private(set) var freeformWordResults: [RecognitionResult] = []
+    /// Slot-aligned variant of `freeformWordResults`: one entry per
+    /// target-word letter in left-to-right order, `nil` for letters
+    /// whose column on the canvas received no usable strokes. UI reads
+    /// this so missing letters render as empty-chip placeholders rather
+    /// than silently collapsing the result row.
+    private(set) var freeformWordResultSlots: [RecognitionResult?] = []
+
+    /// Debounce task that waits after the child lifts the pen before
+    /// running freeform-letter recognition. Multi-stroke letters (A, E,
+    /// F, H, K, T, X, …) need the child to start a second stroke within
+    /// the window; starting one cancels this task so the recognizer
+    /// only fires after a full letter is on the canvas. Default window
+    /// is `freeformRecognitionDelay` seconds.
+    private var pendingRecognitionTask: Task<Void, Never>?
+    /// How long to wait after the last pen-lift before recognizing in
+    /// freeform letter mode. Long enough for the child to start a
+    /// second stroke (1–1.5 s is a comfortable window for 5-year-olds
+    /// forming A's horizontal bar after the diagonals).
+    var freeformRecognitionDelay: TimeInterval = 1.2
+    /// True while `pendingRecognitionTask` is counting down. UI shows a
+    /// "Gleich erkenne ich…" indicator so the child knows to keep
+    /// drawing if they want more strokes.
+    private(set) var isWaitingForRecognition: Bool = false
     /// True while the recognizer is running async — UI can show a spinner.
     private(set) var isRecognizing: Bool = false
     /// Size of the freeform blank canvas. Recorded on every updateFreeformTouch
@@ -1759,10 +1782,14 @@ public final class TracingViewModel {
     /// Wipe the freeform drawing buffer without leaving freeform mode.
     /// Used by the "Nochmal" button after a recognition result.
     func clearFreeformCanvas() {
+        pendingRecognitionTask?.cancel()
+        pendingRecognitionTask = nil
+        isWaitingForRecognition = false
         freeformPoints.removeAll(keepingCapacity: true)
         freeformStrokeSizes.removeAll(keepingCapacity: true)
         freeformActivePath.removeAll(keepingCapacity: true)
         freeformWordResults.removeAll(keepingCapacity: true)
+        freeformWordResultSlots.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
         hasRecognitionCompleted = false
     }
@@ -1775,9 +1802,14 @@ public final class TracingViewModel {
     }
 
     /// Begin a freeform stroke. Mirrors `beginTouch` but skips all
-    /// checkpoint / phase / audio side effects.
+    /// checkpoint / phase / audio side effects. Cancels any pending
+    /// recognition debounce so the recognizer waits for THIS stroke to
+    /// finish — critical for multi-stroke letters like A, E, F.
     func beginFreeformTouch(at p: CGPoint) {
         guard writingMode == .freeform else { return }
+        pendingRecognitionTask?.cancel()
+        pendingRecognitionTask = nil
+        isWaitingForRecognition = false
         freeformActivePath = [p]
     }
 
@@ -1795,9 +1827,12 @@ public final class TracingViewModel {
         freeformActivePath.append(p)
     }
 
-    /// End a freeform stroke. In letter sub-mode this triggers recognition
-    /// immediately (child writes one letter → one result). In word sub-mode
-    /// the stroke is retained for the "Fertig" button; recognition waits.
+    /// End a freeform stroke. In letter sub-mode this arms a debounced
+    /// recognition call — the child has `freeformRecognitionDelay`
+    /// seconds to start the next stroke before the recognizer runs.
+    /// Multi-stroke letters (A, E, F, H, K, T, X …) need this window so
+    /// they don't get classified after only their first stroke. Word
+    /// sub-mode waits for the explicit "Fertig" button regardless.
     func endFreeformTouch() {
         guard writingMode == .freeform else { return }
         if freeformActivePath.count >= 2 {
@@ -1807,7 +1842,24 @@ public final class TracingViewModel {
         freeformActivePath.removeAll(keepingCapacity: true)
 
         if freeformSubMode == .letter, freeformPoints.count >= 2 {
-            recognizeFreeformLetter()
+            scheduleFreeformLetterRecognition()
+        }
+    }
+
+    /// Arm a debounced recognition call. Cancels any previously-armed
+    /// task first so a rapid stroke sequence only produces ONE
+    /// recognition call, fired `freeformRecognitionDelay` seconds after
+    /// the most recent pen-lift.
+    private func scheduleFreeformLetterRecognition() {
+        pendingRecognitionTask?.cancel()
+        isWaitingForRecognition = true
+        let delay = freeformRecognitionDelay
+        pendingRecognitionTask = Task { [weak self] in
+            let nanos = UInt64((delay * 1_000_000_000).rounded())
+            try? await Task.sleep(nanoseconds: nanos)
+            guard !Task.isCancelled, let self else { return }
+            self.isWaitingForRecognition = false
+            self.recognizeFreeformLetter()
         }
     }
 
@@ -1832,9 +1884,14 @@ public final class TracingViewModel {
         }
     }
 
-    /// Submit a finished freeform word. Segments the stroke buffer into
-    /// letter regions by horizontal gaps and runs the recognizer on each
-    /// segment. Results land in `freeformWordResults` in left-to-right order.
+    /// Submit a finished freeform word. Assigns each completed stroke to
+    /// one of `target.word.count` equal-width columns by its x-centroid,
+    /// then recognises each column independently. Overlapping handwritten
+    /// letter bounding boxes (M bleeds into A) no longer collapse into a
+    /// single cluster — each stroke belongs to exactly one bucket even
+    /// when the child's writing overlaps. `freeformWordResultSlots` holds
+    /// one entry per target letter (nil when the column got no strokes)
+    /// so the UI can draw grey placeholder chips for missing letters.
     func submitFreeformWord() {
         guard writingMode == .freeform, freeformSubMode == .word,
               let target = freeformTargetWord,
@@ -1842,36 +1899,40 @@ public final class TracingViewModel {
 
         let segmentationWidth = freeformCanvasSize.width > 0
             ? freeformCanvasSize.width : canvasSize.width
-        let segments = Self.segmentByHorizontalGaps(
-            points: freeformPoints,
-            canvasWidth: segmentationWidth
-        )
         let targetLetters = Array(target.word)
+        let buckets = Self.bucketStrokesByTargetLetter(
+            points: freeformPoints,
+            strokeSizes: freeformStrokeSizes,
+            canvasWidth: segmentationWidth,
+            letterCount: targetLetters.count
+        )
         let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
 
         isRecognizing = true
         hasRecognitionCompleted = false
         Task { [weak self, letterRecognizer] in
-            var results: [RecognitionResult] = []
-            for (i, seg) in segments.enumerated() {
-                let expected: String? = i < targetLetters.count
-                    ? String(targetLetters[i]) : nil
-                if let r = await letterRecognizer.recognize(
-                    points: seg, canvasSize: size, expectedLetter: expected) {
-                    results.append(r)
-                }
+            var slots: [RecognitionResult?] = []
+            for i in 0..<targetLetters.count {
+                let seg = i < buckets.count ? buckets[i] : []
+                guard seg.count >= 2 else { slots.append(nil); continue }
+                let expected = String(targetLetters[i])
+                let r = await letterRecognizer.recognize(
+                    points: seg, canvasSize: size, expectedLetter: expected)
+                slots.append(r)
             }
             guard let self else { return }
             await MainActor.run {
                 self.isRecognizing = false
                 self.hasRecognitionCompleted = true
-                self.freeformWordResults = results
-                if let last = results.last {
+                let present = slots.compactMap { $0 }
+                self.freeformWordResultSlots = slots
+                self.freeformWordResults = present
+                if let last = present.last {
                     self.lastRecognitionResult = last
                     self.isRecognitionBadgeDismissed = false
                 }
                 self.recordFreeformWordCompletion(
-                    target: target, results: results)
+                    target: target, results: present)
             }
         }
     }
@@ -1900,30 +1961,39 @@ public final class TracingViewModel {
 
     // MARK: - Segmentation
 
-    /// Split a buffer of points into per-letter clusters using horizontal
-    /// gaps wider than `gapFraction` of the canvas width (default 15%).
-    /// Simple but effective for 1st-graders writing left-to-right with
-    /// visible spaces between glyphs. Sorts the input by x first so the
-    /// clusters come out left-to-right regardless of stroke order.
-    static func segmentByHorizontalGaps(
+    /// Assign every stroke to one of `letterCount` equal-width columns
+    /// by the x-coordinate of its centroid. Works even when the child's
+    /// handwriting overlaps horizontally — each stroke is a unit and
+    /// ends up in exactly one bucket regardless of what the other
+    /// strokes do. Returns an array of length `letterCount`; empty
+    /// buckets stay empty (caller pads those as missing letters in the
+    /// UI). Strokes whose centroid falls outside the canvas clamp to
+    /// the nearest bucket rather than being dropped, so a child who
+    /// started writing a bit to the right of the visual guides still
+    /// gets their strokes accounted for.
+    static func bucketStrokesByTargetLetter(
         points: [CGPoint],
+        strokeSizes: [Int],
         canvasWidth: CGFloat,
-        gapFraction: CGFloat = 0.15
+        letterCount: Int
     ) -> [[CGPoint]] {
-        guard !points.isEmpty, canvasWidth > 0 else { return [] }
-        let gap = canvasWidth * gapFraction
-        let sorted = points.sorted { $0.x < $1.x }
-        var clusters: [[CGPoint]] = [[sorted[0]]]
-        for p in sorted.dropFirst() {
-            guard let current = clusters.last, let lastPoint = current.last else {
-                clusters.append([p]); continue
-            }
-            if p.x - lastPoint.x > gap {
-                clusters.append([p])
-            } else {
-                clusters[clusters.count - 1].append(p)
-            }
+        guard letterCount > 0, canvasWidth > 0, !strokeSizes.isEmpty else {
+            return Array(repeating: [], count: max(letterCount, 0))
         }
-        return clusters.filter { $0.count >= 2 }
+        let bucketWidth = canvasWidth / CGFloat(letterCount)
+        var buckets: [[CGPoint]] = Array(repeating: [], count: letterCount)
+        var cursor = 0
+        for strokeLen in strokeSizes {
+            let endIdx = min(cursor + strokeLen, points.count)
+            guard endIdx > cursor else { cursor = endIdx; continue }
+            let strokePoints = Array(points[cursor..<endIdx])
+            cursor = endIdx
+            let sumX = strokePoints.reduce(0.0) { $0 + $1.x }
+            let centroidX = sumX / CGFloat(strokePoints.count)
+            let raw = Int((centroidX / bucketWidth).rounded(.down))
+            let idx = min(letterCount - 1, max(0, raw))
+            buckets[idx].append(contentsOf: strokePoints)
+        }
+        return buckets
     }
 }

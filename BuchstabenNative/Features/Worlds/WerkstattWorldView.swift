@@ -13,10 +13,15 @@ struct WerkstattWorldView: View {
     @Environment(TracingViewModel.self) private var vm
 
     var body: some View {
-        HStack(spacing: 0) {
-            modePanel
-            Divider()
-            freeformContent
+        ZStack {
+            WorldPalette.background(for: .werkstatt)
+                .ignoresSafeArea()
+
+            HStack(spacing: 0) {
+                modePanel
+                Divider()
+                freeformContent
+            }
         }
         .onAppear {
             // Auto-enter freeform on first landing so the canvas isn't
@@ -50,7 +55,7 @@ struct WerkstattWorldView: View {
         .padding(.top, 20)
         .frame(width: 140)
         .frame(maxHeight: .infinity)
-        .background(Color(red: 0.97, green: 0.98, blue: 0.995))
+        .background(Color.white.opacity(0.6))
     }
 
     @ViewBuilder

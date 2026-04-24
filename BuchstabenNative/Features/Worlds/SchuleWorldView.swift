@@ -18,9 +18,20 @@ struct SchuleWorldView: View {
 
     var body: some View {
         ZStack {
+            WorldPalette.background(for: .schule)
+                .ignoresSafeArea()
+
             TracingCanvasView()
                 .background(Color.white)
-                .ignoresSafeArea(edges: [.top, .bottom, .trailing])
+                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 64)
+                .padding(.bottom, 86)
+                .shadow(color: .black.opacity(0.08), radius: 18, y: 4)
 
             if vm.learningPhase == .observe, !vm.isCalibrating {
                 observeOverlay

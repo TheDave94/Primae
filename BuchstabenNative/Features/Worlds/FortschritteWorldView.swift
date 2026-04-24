@@ -29,7 +29,7 @@ struct FortschritteWorldView: View {
             .padding(.bottom, 40)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemGroupedBackground))
+        .background(WorldPalette.background(for: .fortschritte).ignoresSafeArea())
     }
 
     // MARK: - Header
