@@ -81,8 +81,15 @@ final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendabl
 
     // MARK: LetterRecognizerProtocol
 
+    /// First access compiles the `.mlpackage` and loads the VNCoreMLModel —
+    /// both blocking on disk and GPU warm-up. Ship it to a detached Task
+    /// so the probe never runs on MainActor; otherwise iOS surfaces
+    /// "should not be called on main thread" and the gesture subsystem
+    /// times out waiting for the main runloop.
     func isModelAvailable() async -> Bool {
-        Self.loadModelIfNeeded() != nil
+        await Task.detached(priority: .userInitiated) {
+            Self.loadModelIfNeeded() != nil
+        }.value
     }
 
     func recognize(points: [CGPoint],
@@ -91,37 +98,34 @@ final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendabl
         guard points.count >= 2, canvasSize.width > 0, canvasSize.height > 0 else {
             return nil
         }
-        guard let model = Self.loadModelIfNeeded() else { return nil }
-        guard let image = Self.renderToImage(points: points, canvasSize: canvasSize) else {
-            return nil
-        }
-        // Vision's model handle isn't marked Sendable, but is thread-safe in
-        // practice after initial load. Wrap with an @unchecked Sendable shell
-        // so the strict-concurrency checker allows the off-main hop below.
-        let wrappedModel = UncheckedSendableBox(model)
-        let wrappedImage = UncheckedSendableBox(image)
         let expected = expectedLetter
         let calibratorCopy = calibrator
-        return await withCheckedContinuation { (continuation: CheckedContinuation<RecognitionResult?, Never>) in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let request = VNCoreMLRequest(model: wrappedModel.value)
-                request.imageCropAndScaleOption = .centerCrop
-                let handler = VNImageRequestHandler(cgImage: wrappedImage.value, options: [:])
-                do {
-                    try handler.perform([request])
-                    let classifications = request.results as? [VNClassificationObservation] ?? []
-                    let result = Self.makeResult(
-                        from: classifications,
-                        expectedLetter: expected,
-                        calibrator: calibratorCopy
-                    )
-                    continuation.resume(returning: result)
-                } catch {
-                    recognizerLogger.warning("Vision request failed: \(error.localizedDescription)")
-                    continuation.resume(returning: nil)
-                }
+        // The entire hot path — model load on first call, 40×40 CGContext
+        // rasterization, VNImageRequestHandler.perform — is CPU-heavy and
+        // must NOT execute on the MainActor. A detached Task runs on the
+        // cooperative thread pool and does not inherit the caller's
+        // isolation, so every synchronous call inside happens off-main.
+        return await Task.detached(priority: .userInitiated) {
+            guard let model = Self.loadModelIfNeeded() else { return nil }
+            guard let image = Self.renderToImage(points: points, canvasSize: canvasSize) else {
+                return nil
             }
-        }
+            let request = VNCoreMLRequest(model: model)
+            request.imageCropAndScaleOption = .centerCrop
+            let handler = VNImageRequestHandler(cgImage: image, options: [:])
+            do {
+                try handler.perform([request])
+                let classifications = request.results as? [VNClassificationObservation] ?? []
+                return Self.makeResult(
+                    from: classifications,
+                    expectedLetter: expected,
+                    calibrator: calibratorCopy
+                )
+            } catch {
+                recognizerLogger.warning("Vision request failed: \(error.localizedDescription)")
+                return nil
+            }
+        }.value
     }
 
     // MARK: - Model loading
@@ -305,17 +309,6 @@ final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendabl
 
         return context.makeImage()
     }
-}
-
-// MARK: - Sendable escape hatch
-
-/// Tiny struct that ferries a non-Sendable reference across an actor or
-/// queue boundary. Use only when the value is provably thread-safe in
-/// practice (here: a VNCoreMLModel handle, already stored in a static
-/// cache and read-only after construction).
-private struct UncheckedSendableBox<Value>: @unchecked Sendable {
-    let value: Value
-    init(_ value: Value) { self.value = value }
 }
 
 // MARK: - Test stub
