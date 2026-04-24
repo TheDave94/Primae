@@ -48,7 +48,7 @@ protocol LetterRecognizerProtocol: Sendable {
 
 // MARK: - CoreML-backed recognizer
 
-private let recognizerLogger = Logger(
+private nonisolated(unsafe) let recognizerLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "BuchstabenNative",
     category: "LetterRecognizer"
 )
@@ -60,7 +60,12 @@ private let recognizerLogger = Logger(
 /// missing or fails to load, the recognizer logs a warning and every
 /// subsequent call returns `nil` — the app falls back to Fréchet-only
 /// scoring gracefully.
-final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendable {
+///
+/// Declared `nonisolated` to opt out of the package-level
+/// `defaultIsolation(MainActor.self)` — all its work needs to happen on
+/// the cooperative pool inside a detached Task (see `recognize`), which
+/// can only call nonisolated members.
+nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendable {
 
     // MARK: Static model cache
 
