@@ -23,7 +23,7 @@ struct BuchstabenAppMain: App {
 
     var body: some Scene {
         WindowGroup {
-            BuchstabenNative.ContentView()
+            BuchstabenNative.MainAppView()
                 .environment(vm)
         }
         .onChange(of: scenePhase) { _, newPhase in
