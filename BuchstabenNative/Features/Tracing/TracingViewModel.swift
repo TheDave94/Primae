@@ -333,6 +333,12 @@ public final class TracingViewModel {
     /// false so a silent model-missing case doesn't look like the child's
     /// handwriting is the problem.
     private(set) var isRecognitionModelAvailable: Bool? = nil
+
+    /// Serialised canvas overlay scheduler. New UI (SchuleWorldView,
+    /// WerkstattWorldView) observes this instead of the legacy
+    /// `showFreeWriteOverlay` / `isPhaseSessionComplete` booleans so
+    /// no two overlays stack on top of each other.
+    let overlayQueue = OverlayQueueManager()
     /// Visibility gate for RecognitionFeedbackView. True after a
     /// successful recognition call until the child taps the badge or the
     /// 4-second auto-dismiss timer fires. Driven off the presence of
@@ -1129,6 +1135,12 @@ public final class TracingViewModel {
             if enablePaperTransfer {
                 showPaperTransfer = true
             }
+            // Queue post-freeWrite feedback in the canonical order
+            // (Fréchet → KP → Recognition → Celebration). Recognition
+            // + Celebration are enqueued when their data lands (see the
+            // recognizer Task below and recordPhaseSessionCompletion).
+            overlayQueue.enqueue(.frechetScore(lastWritingAssessment?.formAccuracy ?? 0))
+            overlayQueue.enqueue(.kpOverlay)
         }
     }
 
@@ -1156,6 +1168,9 @@ public final class TracingViewModel {
                 if let r = result {
                     self.progressStore.recordRecognitionSample(
                         letter: expected, result: r)
+                    if r.confidence >= 0.4 {
+                        self.overlayQueue.enqueue(.recognitionBadge(r))
+                    }
                 }
             }
         }
@@ -1309,6 +1324,7 @@ public final class TracingViewModel {
     }
 
     private func recordPhaseSessionCompletion() {
+        overlayQueue.enqueue(.celebration(stars: phaseController.starsEarned))
         let accuracy = Double(phaseController.overallScore)
         let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
         let scores: [String: Double] = Dictionary(
@@ -1511,6 +1527,7 @@ public final class TracingViewModel {
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
         lastRecognitionResult = nil
+        overlayQueue.reset()
         directTappedDots.removeAll()
         directPulsingDot = false
         directArrowStrokeIndex = nil
