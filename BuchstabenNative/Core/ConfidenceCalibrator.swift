@@ -17,7 +17,11 @@ import Foundation
 /// Adjusts raw GermanLetterRecognizer confidences to reduce false
 /// positives on visually-similar letter pairs and reward demonstrated
 /// historical accuracy.
-struct ConfidenceCalibrator: Sendable {
+///
+/// Marked `nonisolated` so `CoreMLLetterRecognizer` (also nonisolated,
+/// runs its hot path on a detached Task) can construct it off-main
+/// despite the package-level `defaultIsolation(MainActor.self)`.
+nonisolated struct ConfidenceCalibrator: Sendable {
 
     // MARK: - Public knobs
 
