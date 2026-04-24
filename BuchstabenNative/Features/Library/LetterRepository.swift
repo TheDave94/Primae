@@ -502,8 +502,21 @@ private extension LetterRepository {
     }
 
     func logValidationIssues(_ issues: [ValidationIssue]) {
+        // Most "issues" are benign: stroke JSONs ship for every letter
+        // A-Z plus umlauts + ß, but bundled audio / PBM only exist for
+        // the 7-letter demo set (A F I K L M O). The loader already
+        // drops letters missing audio so they never appear in the UI.
+        // Logging each skip at .warning level spammed the Xcode console
+        // on every launch — demote the per-letter detail to .debug and
+        // emit a single summary warning so the signal is preserved
+        // without the noise.
+        guard !issues.isEmpty else { return }
+        let missingAudio = issues.filter { $0.message.contains("No audio files") }.count
+        let missingPBM   = issues.filter { $0.message.contains("Missing PBM") }.count
+        let otherCount   = issues.count - missingAudio - missingPBM
+        repoLogger.info("Asset validation summary: \(issues.count) issues (missing audio: \(missingAudio), missing PBM: \(missingPBM), other: \(otherCount)). Per-letter details at debug level.")
         for issue in issues {
-            repoLogger.warning("Asset validation [\(issue.letter)]: \(issue.message)")
+            repoLogger.debug("Asset validation [\(issue.letter)]: \(issue.message)")
         }
     }
 }
