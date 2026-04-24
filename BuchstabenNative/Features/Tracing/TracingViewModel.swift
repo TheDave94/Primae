@@ -278,6 +278,58 @@ public final class TracingViewModel {
                 forKey: "de.flamingistan.buchstaben.enablePaperTransfer")
         }
     }
+    /// Whether the freeform writing button is exposed in the picker bar.
+    /// Parents can disable via Settings; default is enabled.
+    var enableFreeformMode: Bool = true {
+        didSet {
+            UserDefaults.standard.set(enableFreeformMode,
+                forKey: "de.flamingistan.buchstaben.enableFreeformMode")
+        }
+    }
+
+    // MARK: - Recognition + freeform state
+
+    /// Most recent CoreML recognition result. Cleared on letter load and
+    /// phase reset. Surfaced by RecognitionFeedbackView after freeWrite
+    /// completion or freeform endTouch.
+    private(set) var lastRecognitionResult: RecognitionResult?
+
+    /// Whether the app is currently in guided tracing mode (default) or
+    /// freeform writing mode. Setting .freeform switches the canvas to a
+    /// blank background and routes endTouch through the recognizer.
+    var writingMode: WritingMode = .guided
+    /// Sub-mode inside freeform (.letter vs .word).
+    var freeformSubMode: FreeformSubMode = .letter
+    /// Target word when `freeformSubMode == .word`. Nil in letter mode.
+    private(set) var freeformTargetWord: FreeformWord?
+    /// Canvas-space points the child has drawn in freeform mode, across
+    /// multiple strokes. Cleared by `clearFreeformCanvas()` and when the
+    /// user returns to guided mode.
+    private(set) var freeformPoints: [CGPoint] = []
+    /// Per-stroke point counts so segmentation can pick up pen lifts if
+    /// needed. Each entry is the count of points appended during one
+    /// beginTouch/endTouch cycle in freeform mode.
+    private(set) var freeformStrokeSizes: [Int] = []
+    /// Active-stroke path within freeform — becomes a green trail on the
+    /// canvas. Cleared on endTouch; retained portions move into the
+    /// static freeformPoints buffer.
+    private(set) var freeformActivePath: [CGPoint] = []
+    /// Per-letter recognition results in freeform word mode. Empty in
+    /// letter mode or before the first "Fertig" tap.
+    private(set) var freeformWordResults: [RecognitionResult] = []
+    /// True while the recognizer is running async — UI can show a spinner.
+    private(set) var isRecognizing: Bool = false
+    /// Size of the freeform blank canvas. Recorded on every updateFreeformTouch
+    /// so `recognizeFreeformLetter`/`submitFreeformWord` can pass the right
+    /// bounding dimensions to the recognizer without piggy-backing on the
+    /// guided-mode `canvasSize`.
+    private(set) var freeformCanvasSize: CGSize = .zero
+    /// Visibility gate for RecognitionFeedbackView. True after a
+    /// successful recognition call until the child taps the badge or the
+    /// 4-second auto-dismiss timer fires. Driven off the presence of
+    /// `lastRecognitionResult` together with the dismissed flag so the
+    /// view re-appears for each fresh result.
+    var isRecognitionBadgeDismissed: Bool = false
 
     // MARK: - Direct phase state
 
@@ -350,6 +402,7 @@ public final class TracingViewModel {
     private var phaseController: LearningPhaseController
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
+    private let letterRecognizer: LetterRecognizerProtocol
 
     // MARK: - Private playback / touch state
 
@@ -403,6 +456,8 @@ public final class TracingViewModel {
         self.syncCoordinator        = deps.syncCoordinator
         self.thesisCondition        = deps.thesisCondition
         self.enablePaperTransfer    = deps.enablePaperTransfer
+        self.enableFreeformMode     = deps.enableFreeformMode
+        self.letterRecognizer       = deps.letterRecognizer
         // Control condition uses fixed difficulty — no moving-average adaptation.
         self.adaptationPolicy       = deps.adaptationPolicy ?? (
             deps.thesisCondition == .control
@@ -1041,6 +1096,15 @@ public final class TracingViewModel {
 
         let wasInFreeWrite = phaseController.currentPhase == .freeWrite
 
+        // Kick the CoreML recognizer off BEFORE the phase advance so it
+        // runs in parallel with the Fréchet-based scoring above and the
+        // phase-transition side effects below. Result lands on
+        // `lastRecognitionResult` when inference finishes; the UI
+        // badge shows up shortly after the KP overlay renders.
+        if wasInFreeWrite {
+            runRecognizerForFreeWrite()
+        }
+
         if phaseController.advance(score: score) {
             resetForPhaseTransition()
             if phaseController.currentPhase == .observe {
@@ -1055,6 +1119,35 @@ public final class TracingViewModel {
             showFreeWriteOverlay = true
             if enablePaperTransfer {
                 showPaperTransfer = true
+            }
+        }
+    }
+
+    /// Fire-and-forget recognizer pass for the completed freeWrite phase.
+    /// Uses the absolute-canvas-space points already accumulated during
+    /// updateTouch so the model sees the same stroke the child drew.
+    private func runRecognizerForFreeWrite() {
+        let pts = freeWritePoints
+        let size = canvasSize
+        let expected = currentLetterName
+        isRecognizing = true
+        Task { [weak self, letterRecognizer] in
+            let result = await letterRecognizer.recognize(
+                points: pts, canvasSize: size, expectedLetter: expected)
+            guard let self else { return }
+            await MainActor.run {
+                self.isRecognizing = false
+                self.lastRecognitionResult = result
+                self.isRecognitionBadgeDismissed = false
+                // commitCompletion already wrote the guided-mode session
+                // record with a nil recognitionResult — by the time the
+                // recognizer finishes, the progressStore entry exists but
+                // doesn't know about this confidence. Append it now so the
+                // dashboard trend reflects actual recognizer readings.
+                if let r = result {
+                    self.progressStore.recordRecognitionSample(
+                        letter: expected, result: r)
+                }
             }
         }
     }
@@ -1183,6 +1276,7 @@ public final class TracingViewModel {
         reloadStrokeCheckpoints(for: letters[letterIndex])
         progress = 0
         activePath.removeAll(keepingCapacity: true)
+        lastRecognitionResult = nil
         freeWritePoints.removeAll(keepingCapacity: true)
         freeWriteTimestamps.removeAll(keepingCapacity: true)
         freeWriteForces.removeAll(keepingCapacity: true)
@@ -1257,9 +1351,15 @@ public final class TracingViewModel {
         }
 
         let speed: Double? = strokesPerSecond > 0 ? Double(strokesPerSecond) : nil
+        // Recognition result lands asynchronously in parallel with phase
+        // advance — it's often still nil here. Pass whatever's latched so
+        // single-letter guided sessions that finish AFTER the recognizer
+        // returns also populate the dashboard's confidence series.
+        let rr = lastRecognitionResult
         for l in lettersToRecord {
             progressStore.recordCompletion(for: l, accuracy: accuracy,
-                                           phaseScores: phaseScores, speed: speed)
+                                           phaseScores: phaseScores, speed: speed,
+                                           recognitionResult: rr)
         }
         // Variant tracking is single-letter only — loadWord doesn't
         // preserve showingVariant state across word entries.
@@ -1401,6 +1501,7 @@ public final class TracingViewModel {
         scriptStrokeCache.removeAll(keepingCapacity: true)
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
+        lastRecognitionResult = nil
         directTappedDots.removeAll()
         directPulsingDot = false
         directArrowStrokeIndex = nil
@@ -1584,5 +1685,206 @@ public final class TracingViewModel {
         let size: CGSize
         let schriftArt: SchriftArt
         let showingVariant: Bool
+    }
+
+    // MARK: - Freeform writing mode
+
+    /// Switch the app into freeform writing. Clears any in-progress guided
+    /// state and starts a fresh blank canvas. The reference letter is
+    /// whatever the child last tapped in the letter picker — that name
+    /// travels with us as the comparison target.
+    func enterFreeformMode(subMode: FreeformSubMode = .letter) {
+        writingMode = .freeform
+        freeformSubMode = subMode
+        clearFreeformCanvas()
+        if subMode == .word {
+            freeformTargetWord = FreeformWordList.all.first
+        } else {
+            freeformTargetWord = nil
+        }
+        // Halt any in-progress phase audio/animation so freeform is quiet.
+        stopGuideAnimation()
+        audio.stop()
+        playback.forceIdle()
+        isPlaying = false
+        toast(subMode == .word ? "Wort schreiben" : "Freies Schreiben")
+    }
+
+    /// Return to guided tracing mode. Re-loads the current letter so
+    /// phase state and strokes are rebuilt fresh.
+    func exitFreeformMode() {
+        writingMode = .guided
+        freeformSubMode = .letter
+        freeformTargetWord = nil
+        clearFreeformCanvas()
+        if letters.indices.contains(letterIndex) {
+            load(letter: letters[letterIndex])
+        }
+    }
+
+    /// Wipe the freeform drawing buffer without leaving freeform mode.
+    /// Used by the "Nochmal" button after a recognition result.
+    func clearFreeformCanvas() {
+        freeformPoints.removeAll(keepingCapacity: true)
+        freeformStrokeSizes.removeAll(keepingCapacity: true)
+        freeformActivePath.removeAll(keepingCapacity: true)
+        freeformWordResults.removeAll(keepingCapacity: true)
+        lastRecognitionResult = nil
+    }
+
+    /// Pick the next target word for freeform word mode.
+    func selectFreeformWord(_ word: FreeformWord) {
+        freeformTargetWord = word
+        freeformSubMode = .word
+        clearFreeformCanvas()
+    }
+
+    /// Begin a freeform stroke. Mirrors `beginTouch` but skips all
+    /// checkpoint / phase / audio side effects.
+    func beginFreeformTouch(at p: CGPoint) {
+        guard writingMode == .freeform else { return }
+        freeformActivePath = [p]
+    }
+
+    func updateFreeformTouch(at p: CGPoint, canvasSize size: CGSize) {
+        guard writingMode == .freeform else { return }
+        // Record the freeform canvas dimensions separately — we don't
+        // touch `canvasSize` because its didSet rebuilds the guided-mode
+        // stroke tracker and fires needless work during a blank-canvas
+        // stroke. Recognition uses the size passed into submit.
+        freeformCanvasSize = size
+        // Skip microscopic repeats — keeps the buffer from ballooning on
+        // a palm rest or a stationary touch.
+        if let last = freeformActivePath.last,
+           hypot(p.x - last.x, p.y - last.y) < 1.0 { return }
+        freeformActivePath.append(p)
+    }
+
+    /// End a freeform stroke. In letter sub-mode this triggers recognition
+    /// immediately (child writes one letter → one result). In word sub-mode
+    /// the stroke is retained for the "Fertig" button; recognition waits.
+    func endFreeformTouch() {
+        guard writingMode == .freeform else { return }
+        if freeformActivePath.count >= 2 {
+            freeformStrokeSizes.append(freeformActivePath.count)
+            freeformPoints.append(contentsOf: freeformActivePath)
+        }
+        freeformActivePath.removeAll(keepingCapacity: true)
+
+        if freeformSubMode == .letter, freeformPoints.count >= 2 {
+            recognizeFreeformLetter()
+        }
+    }
+
+    private func recognizeFreeformLetter() {
+        let pts = freeformPoints
+        let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
+        isRecognizing = true
+        Task { [weak self, letterRecognizer] in
+            let result = await letterRecognizer.recognize(
+                points: pts, canvasSize: size, expectedLetter: nil)
+            guard let self else { return }
+            await MainActor.run {
+                self.isRecognizing = false
+                self.lastRecognitionResult = result
+                self.isRecognitionBadgeDismissed = false
+                if let result {
+                    self.recordFreeformCompletion(result: result)
+                }
+            }
+        }
+    }
+
+    /// Submit a finished freeform word. Segments the stroke buffer into
+    /// letter regions by horizontal gaps and runs the recognizer on each
+    /// segment. Results land in `freeformWordResults` in left-to-right order.
+    func submitFreeformWord() {
+        guard writingMode == .freeform, freeformSubMode == .word,
+              let target = freeformTargetWord,
+              !freeformPoints.isEmpty else { return }
+
+        let segmentationWidth = freeformCanvasSize.width > 0
+            ? freeformCanvasSize.width : canvasSize.width
+        let segments = Self.segmentByHorizontalGaps(
+            points: freeformPoints,
+            canvasWidth: segmentationWidth
+        )
+        let targetLetters = Array(target.word)
+        let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
+
+        isRecognizing = true
+        Task { [weak self, letterRecognizer] in
+            var results: [RecognitionResult] = []
+            for (i, seg) in segments.enumerated() {
+                let expected: String? = i < targetLetters.count
+                    ? String(targetLetters[i]) : nil
+                if let r = await letterRecognizer.recognize(
+                    points: seg, canvasSize: size, expectedLetter: expected) {
+                    results.append(r)
+                }
+            }
+            guard let self else { return }
+            await MainActor.run {
+                self.isRecognizing = false
+                self.freeformWordResults = results
+                if let last = results.last {
+                    self.lastRecognitionResult = last
+                    self.isRecognitionBadgeDismissed = false
+                }
+                self.recordFreeformWordCompletion(
+                    target: target, results: results)
+            }
+        }
+    }
+
+    /// Dismiss the recognition badge. Called by the badge's tap gesture
+    /// and its 4-second auto-dismiss task.
+    func dismissRecognitionBadge() {
+        isRecognitionBadgeDismissed = true
+    }
+
+    private func recordFreeformCompletion(result: RecognitionResult) {
+        // Freeform letter sessions record under the predicted letter so
+        // the dashboard tallies what the child actually wrote (not what
+        // they were trying to write — the latter is nil in freeform).
+        let label = result.predictedLetter.uppercased()
+        progressStore.recordFreeformCompletion(letter: label, result: result)
+    }
+
+    private func recordFreeformWordCompletion(target: FreeformWord,
+                                              results: [RecognitionResult]) {
+        for r in results {
+            let label = r.predictedLetter.uppercased()
+            progressStore.recordFreeformCompletion(letter: label, result: r)
+        }
+    }
+
+    // MARK: - Segmentation
+
+    /// Split a buffer of points into per-letter clusters using horizontal
+    /// gaps wider than `gapFraction` of the canvas width (default 15%).
+    /// Simple but effective for 1st-graders writing left-to-right with
+    /// visible spaces between glyphs. Sorts the input by x first so the
+    /// clusters come out left-to-right regardless of stroke order.
+    static func segmentByHorizontalGaps(
+        points: [CGPoint],
+        canvasWidth: CGFloat,
+        gapFraction: CGFloat = 0.15
+    ) -> [[CGPoint]] {
+        guard !points.isEmpty, canvasWidth > 0 else { return [] }
+        let gap = canvasWidth * gapFraction
+        let sorted = points.sorted { $0.x < $1.x }
+        var clusters: [[CGPoint]] = [[sorted[0]]]
+        for p in sorted.dropFirst() {
+            guard let current = clusters.last, let lastPoint = current.last else {
+                clusters.append([p]); continue
+            }
+            if p.x - lastPoint.x > gap {
+                clusters.append([p])
+            } else {
+                clusters[clusters.count - 1].append(p)
+            }
+        }
+        return clusters.filter { $0.count >= 2 }
     }
 }

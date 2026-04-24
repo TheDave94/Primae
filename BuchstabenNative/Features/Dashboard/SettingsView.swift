@@ -21,6 +21,13 @@ struct SettingsView: View {
                     orderingRow(strategy)
                 }
             }
+            Section("Freies Schreiben") {
+                Toggle("Freies Schreiben erlauben", isOn: Binding(
+                    get: { vm.enableFreeformMode },
+                    set: { vm.enableFreeformMode = $0 }
+                ))
+                .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
+            }
             Section("Forschung") {
                 Toggle("Schreiben auf Papier", isOn: Binding(
                     get: { vm.enablePaperTransfer },

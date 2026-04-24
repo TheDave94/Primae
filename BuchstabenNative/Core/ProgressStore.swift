@@ -19,6 +19,14 @@ struct LetterProgress: Codable, Equatable {
     /// Variant ID used in the most recent completed session (e.g. "variant").
     /// nil when the standard form was used or no session has been recorded.
     var lastVariantUsed: String?
+    /// Last 10 CoreML recognition confidences for this letter (0–1). Populated
+    /// when either the freeWrite phase or the freeform-letter mode reports
+    /// back from the recognizer. nil before the first successful recognition.
+    var recognitionAccuracy: [Double]?
+    /// Count of freeform-mode completions for this letter. nil before the
+    /// feature was used. Kept separate from `completionCount` so the parent
+    /// dashboard can distinguish guided mastery from exploratory writing.
+    var freeformCompletionCount: Int?
 }
 
 // MARK: - Protocol (testable seam)
@@ -26,9 +34,23 @@ struct LetterProgress: Codable, Equatable {
 @MainActor
 protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
-    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?)
+    func recordCompletion(for letter: String,
+                          accuracy: Double,
+                          phaseScores: [String: Double]?,
+                          speed: Double?,
+                          recognitionResult: RecognitionResult?)
     func recordPaperTransferScore(for letter: String, score: Double)
     func recordVariantUsed(for letter: String, variantID: String?)
+    /// Record a freeform-mode recognition result. Does not increment the
+    /// guided `completionCount` — freeform usage is tracked separately so
+    /// the parent dashboard can distinguish guided mastery from exploration.
+    func recordFreeformCompletion(letter: String, result: RecognitionResult)
+    /// Append a recognition confidence sample to a letter's rolling history
+    /// without incrementing any counters. Used when a guided-mode freeWrite
+    /// session's recognizer result lands AFTER the completion record was
+    /// already committed — the session counts are already in place, we
+    /// just want the confidence data to show up in the dashboard trend.
+    func recordRecognitionSample(letter: String, result: RecognitionResult)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
     /// Current streak: consecutive days with at least one completion.
@@ -43,13 +65,24 @@ protocol ProgressStoring {
 
 extension ProgressStoring {
     func recordCompletion(for letter: String, accuracy: Double) {
-        recordCompletion(for: letter, accuracy: accuracy, phaseScores: nil, speed: nil)
+        recordCompletion(for: letter, accuracy: accuracy,
+                         phaseScores: nil, speed: nil, recognitionResult: nil)
     }
     func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?) {
-        recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores, speed: nil)
+        recordCompletion(for: letter, accuracy: accuracy,
+                         phaseScores: phaseScores, speed: nil, recognitionResult: nil)
+    }
+    func recordCompletion(for letter: String,
+                          accuracy: Double,
+                          phaseScores: [String: Double]?,
+                          speed: Double?) {
+        recordCompletion(for: letter, accuracy: accuracy,
+                         phaseScores: phaseScores, speed: speed, recognitionResult: nil)
     }
     func recordPaperTransferScore(for letter: String, score: Double) {}
     func recordVariantUsed(for letter: String, variantID: String?) {}
+    func recordFreeformCompletion(letter: String, result: RecognitionResult) {}
+    func recordRecognitionSample(letter: String, result: RecognitionResult) {}
     func flush() async {}
 }
 
@@ -98,7 +131,11 @@ public final class JSONProgressStore: ProgressStoring {
         store.letterProgress[letter.uppercased()] ?? LetterProgress()
     }
 
-    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?) {
+    func recordCompletion(for letter: String,
+                          accuracy: Double,
+                          phaseScores: [String: Double]?,
+                          speed: Double?,
+                          recognitionResult: RecognitionResult?) {
         let key = letter.uppercased()
         var p = store.letterProgress[key] ?? LetterProgress()
         p.completionCount += 1
@@ -111,8 +148,37 @@ public final class JSONProgressStore: ProgressStoring {
             if trend.count > 5 { trend.removeFirst(trend.count - 5) }
             p.speedTrend = trend
         }
+        if let rr = recognitionResult {
+            var acc = p.recognitionAccuracy ?? []
+            acc.append(Double(rr.confidence))
+            if acc.count > 10 { acc.removeFirst(acc.count - 10) }
+            p.recognitionAccuracy = acc
+        }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
+        save()
+    }
+
+    func recordFreeformCompletion(letter: String, result: RecognitionResult) {
+        let key = letter.uppercased()
+        var p = store.letterProgress[key] ?? LetterProgress()
+        var acc = p.recognitionAccuracy ?? []
+        acc.append(Double(result.confidence))
+        if acc.count > 10 { acc.removeFirst(acc.count - 10) }
+        p.recognitionAccuracy = acc
+        p.freeformCompletionCount = (p.freeformCompletionCount ?? 0) + 1
+        store.letterProgress[key] = p
+        save()
+    }
+
+    func recordRecognitionSample(letter: String, result: RecognitionResult) {
+        let key = letter.uppercased()
+        var p = store.letterProgress[key] ?? LetterProgress()
+        var acc = p.recognitionAccuracy ?? []
+        acc.append(Double(result.confidence))
+        if acc.count > 10 { acc.removeFirst(acc.count - 10) }
+        p.recognitionAccuracy = acc
+        store.letterProgress[key] = p
         save()
     }
 

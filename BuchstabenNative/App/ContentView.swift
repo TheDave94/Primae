@@ -10,6 +10,8 @@ public struct ContentView: View {
     public var body: some View {
         if !vm.isOnboardingComplete {
             OnboardingView()
+        } else if vm.writingMode == .freeform {
+            FreeformWritingView()
         } else {
             mainContent
         }
@@ -101,6 +103,23 @@ public struct ContentView: View {
                 }
 
                 Spacer()
+
+                // Recognition badge — only in guided mode while the KP
+                // overlay isn't covering the canvas. Freeform mode has its
+                // own in-panel feedback, so we don't show the toast there.
+                if vm.writingMode == .guided,
+                   !vm.showFreeWriteOverlay,
+                   !vm.isRecognitionBadgeDismissed,
+                   let r = vm.lastRecognitionResult {
+                    RecognitionFeedbackView(
+                        result: r,
+                        expectedLetter: vm.currentLetterName,
+                        onDismiss: { vm.dismissRecognitionBadge() }
+                    )
+                    .padding(.bottom, 18)
+                    .padding(.horizontal, 12)
+                    .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                }
 
                 if let completion = vm.completionMessage {
                     CompletionHUD(message: completion) {

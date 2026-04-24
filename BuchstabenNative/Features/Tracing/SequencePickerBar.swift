@@ -32,6 +32,32 @@ struct SequencePickerBar: View {
             case .words:
                 WordPickerRow()
             }
+
+            if vm.enableFreeformMode {
+                HStack(spacing: 10) {
+                    Button {
+                        vm.enterFreeformMode(subMode: .letter)
+                    } label: {
+                        Label("Freies Schreiben ✏️", systemImage: "pencil.and.outline")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.purple)
+                    .accessibilityHint("Öffnet ein leeres Blatt, auf dem du jeden Buchstaben frei schreiben kannst")
+
+                    Button {
+                        vm.enterFreeformMode(subMode: .word)
+                    } label: {
+                        Label("Wort schreiben 📝", systemImage: "text.cursor")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.purple)
+                    .accessibilityHint("Öffnet ein leeres Blatt und zeigt ein Zielwort, das du Buchstabe für Buchstabe schreibst")
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+            }
         }
     }
 }

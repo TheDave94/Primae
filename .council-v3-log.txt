@@ -58,3 +58,77 @@ To https://github.com/TheDave94/Buchstaben-Lernen-App.git
 
 [4/9] 🚀 v3-004: Add directionality teaching phase between observe and guided
   Started: Sun Apr 19 17:24:42 UTC 2026
+═══════════════════════════════════════════════════════
+  iOS V3 Scientific Principles — Sun Apr 19 17:52:32 UTC 2026
+═══════════════════════════════════════════════════════
+[1/9] ⏭️  v3-001: already done, skipping
+[2/9] ⏭️  v3-002: already done, skipping
+[3/9] ⏭️  v3-003: already done, skipping
+[4/9] ⏭️  v3-004: already done, skipping
+
+[5/9] 🚀 v3-005: Add Schreibmotorik four-dimension writing assessment
+  Started: Sun Apr 19 17:52:32 UTC 2026
+═══════════════════════════════════════════════════════
+  iOS V3 Scientific Principles — Sun Apr 19 18:11:56 UTC 2026
+═══════════════════════════════════════════════════════
+[1/9] ⏭️  v3-001: already done, skipping
+[2/9] ⏭️  v3-002: already done, skipping
+[3/9] ⏭️  v3-003: already done, skipping
+[4/9] ⏭️  v3-004: already done, skipping
+[5/9] ⏭️  v3-005: already done, skipping
+
+[6/9] 🚀 v3-006: Track writing speed and automatization progress
+  Started: Sun Apr 19 18:11:56 UTC 2026
+═══════════════════════════════════════════════════════
+  iOS V3 Scientific Principles — Sun Apr 19 18:27:11 UTC 2026
+═══════════════════════════════════════════════════════
+[1/9] ⏭️  v3-001: already done, skipping
+[2/9] ⏭️  v3-002: already done, skipping
+[3/9] ⏭️  v3-003: already done, skipping
+[4/9] ⏭️  v3-004: already done, skipping
+[5/9] ⏭️  v3-005: already done, skipping
+[6/9] ⏭️  v3-006: already done, skipping
+
+[7/9] 🚀 v3-007: Add paper-transfer self-assessment mode
+  Started: Sun Apr 19 18:27:11 UTC 2026
+  ✅ v3-007 committed: 6102b44 v3-007: Add paper-transfer self-assessment mode
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   d784823..6102b44  main -> main
+  Finished: Sun Apr 19 18:34:41 UTC 2026
+
+[8/9] 🚀 v3-008: Add letter variant exploration for Austrian Schulschrift
+  Started: Sun Apr 19 18:34:47 UTC 2026
+Committed and pushed. CI is running (previous builds all passed). Here's what was implemented:
+
+**v3-008 — Austrian Schulschrift variant exploration:**
+
+- **`LetterAsset`** (`Models.swift`): Added `variants: [String]?` — list of variant IDs detected from `strokes_{id}.json` files in each letter folder.
+
+- **`strokes_variant.json`** for three letters:
+  - **F**: Alternate stroke order — top bar drawn first, then spine, then mid bar (vs. standard spine-first)
+  - **H**: Both legs drawn before crossbar (vs. standard left-leg → crossbar → right-leg)
+  - **r**: Two-stroke form — stem downstroke + separate curved shoulder (vs. empty standard placeholder)
+
+- **`LetterRepository`**: Detects `strokes_variant.json` presence at load time and sets `variants: ["variant"]`; exposes `loadVariantStrokes(for:variantID:)` for on-demand loading.
+
+- **`LetterCache`**: `CodableLetterAsset` now round-trips `variants`.
+
+- **`TracingViewModel`**: `showingVariant: Bool`, `toggleVariant()` (reloads checkpoints, resets tracing progress, no phase disruption), `currentLetterHasVariants` computed property. `CheckpointBuildKey` includes `showingVariant` so the idempotency cache correctly distinguishes standard vs. variant. `commitCompletion` calls `recordVariantUsed` when variant was active.
+
+- **`ProgressStore`**: `LetterProgress.lastVariantUsed: String?` and `recordVariantUsed(for:variantID:)` protocol method.
+
+- **`ContentView`**: "Variante"/"Standard" button (teal/orange) appears only in guided and freeWrite phases when the current letter has variants.
+  ✅ v3-008 committed: 88d7eee v3-008: Add letter variant exploration for Austrian Schulschrift
+Everything up-to-date
+  Finished: Sun Apr 19 18:45:14 UTC 2026
+
+[9/9] 🚀 v3-009: Integrate Österreichische Schulschrift 1995 font rendering
+  Started: Sun Apr 19 18:45:19 UTC 2026
+  ✅ v3-009 committed: 13037d5 v3-009: Integrate Österreichische Schulschrift 1995 font rendering
+To https://github.com/TheDave94/Buchstaben-Lernen-App.git
+   88d7eee..13037d5  main -> main
+  Finished: Sun Apr 19 18:55:37 UTC 2026
+
+═══════════════════════════════════════════════════════
+  Complete: 3/9 succeeded
+═══════════════════════════════════════════════════════

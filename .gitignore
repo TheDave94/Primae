@@ -28,3 +28,8 @@ new-sounds/
 ios-build/
 .build/
 vcpkg/
+
+# Secrets
+.env
+.env.*
+!.env.example

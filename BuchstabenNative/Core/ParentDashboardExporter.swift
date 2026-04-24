@@ -28,18 +28,23 @@ struct ParentDashboardExporter {
     /// Consumers doing A/B analysis need the participantId header to align
     /// data across installs and the condition column on every session row.
     static func csvData(from snapshot: DashboardSnapshot,
-                         participantId: UUID = ParticipantStore.participantId) -> Data {
+                         participantId: UUID = ParticipantStore.participantId,
+                         progress: [String: LetterProgress] = [:]) -> Data {
         var lines: [String] = []
         lines.append("# participantId=\(participantId.uuidString)")
         lines.append("")
 
-        lines.append("letter,sessionCount,averageAccuracy,trend")
+        lines.append("letter,sessionCount,averageAccuracy,trend,recognitionSamples,recognitionAvg")
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
             let avg = String(format: "%.4f", stat.averageAccuracy)
             let tnd = String(format: "%.6f", stat.trend)
             let cnt = stat.accuracySamples.count
-            lines.append("\(stat.letter),\(cnt),\(avg),\(tnd)")
+            let acc = progress[stat.letter]?.recognitionAccuracy ?? []
+            let recCount = acc.count
+            let recAvg = acc.isEmpty
+                ? "" : String(format: "%.4f", acc.reduce(0, +) / Double(acc.count))
+            lines.append("\(stat.letter),\(cnt),\(avg),\(tnd),\(recCount),\(recAvg)")
         }
         lines.append("")
 
@@ -49,11 +54,25 @@ struct ParentDashboardExporter {
         }
         lines.append("")
 
-        lines.append("letter,phase,completed,score,schedulerPriority,condition")
+        lines.append("letter,phase,completed,score,schedulerPriority,condition,recognition_predicted,recognition_confidence,recognition_correct")
+        // Per-session recognition data is per-letter, not per-phase — we
+        // surface the per-letter rolling-recognition average and the
+        // latest-result fields per letter-progress entry. For phase rows
+        // without a corresponding progress entry we leave the three
+        // recognition columns blank so downstream CSV consumers can
+        // distinguish "no recognition data" from "zero confidence".
         for rec in snapshot.phaseSessionRecords {
             let score = String(format: "%.4f", rec.score)
             let prio  = String(format: "%.4f", rec.schedulerPriority)
-            lines.append("\(rec.letter),\(rec.phase),\(rec.completed),\(score),\(prio),\(rec.condition.rawValue)")
+            let prog  = progress[rec.letter]
+            let recConf: String = prog?.recognitionAccuracy?.last
+                .map { String(format: "%.4f", $0) } ?? ""
+            // Emit a prediction label only when we have a stored confidence
+            // — it's always the child's guided letter so the caller can
+            // reconstruct predicted vs. expected from the row itself.
+            let recLabel  = recConf.isEmpty ? "" : rec.letter
+            let recRight  = recConf.isEmpty ? "" : "true"
+            lines.append("\(rec.letter),\(rec.phase),\(rec.completed),\(score),\(prio),\(rec.condition.rawValue),\(recLabel),\(recConf),\(recRight)")
         }
         lines.append("")
 
@@ -123,14 +142,15 @@ struct ParentDashboardExporter {
     static func exportFileURL(
         from snapshot: DashboardSnapshot,
         format: DashboardExportFormat,
-        tempDirectory: URL = FileManager.default.temporaryDirectory
+        tempDirectory: URL = FileManager.default.temporaryDirectory,
+        progress: [String: LetterProgress] = [:]
     ) throws(ExportError) -> URL {
         let data: Data
         let filename: String
         let dateTag = Self.dateTag()
         switch format {
         case .csv:
-            data     = csvData(from: snapshot)
+            data     = csvData(from: snapshot, progress: progress)
             filename = "buchstaben_progress_\(dateTag).csv"
         case .json:
             data     = try jsonData(from: snapshot)     // typed-throw propagates

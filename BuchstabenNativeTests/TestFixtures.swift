@@ -76,7 +76,9 @@ final class StubResourceProvider: LetterResourceProviding {
 // MARK: - No-op progress store (avoids FileManager.applicationSupportDirectory hang in CI)
 final class StubProgressStore: ProgressStoring {
     func progress(for letter: String) -> LetterProgress { LetterProgress() }
-    func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?, speed: Double?) {}
+    func recordCompletion(for letter: String, accuracy: Double,
+                          phaseScores: [String: Double]?, speed: Double?,
+                          recognitionResult: RecognitionResult?) {}
     func resetAll() {}
     var allProgress: [String: LetterProgress] { [:] }
     var currentStreakDays: Int { 0 }
@@ -167,7 +169,8 @@ extension TracingDependencies {
                 progressStore: progressStore,
                 streakStore:   streakStore
             ),
-            thesisCondition:      .guidedOnly
+            thesisCondition:      .guidedOnly,
+            letterRecognizer:     StubLetterRecognizer()
         )
     }
 

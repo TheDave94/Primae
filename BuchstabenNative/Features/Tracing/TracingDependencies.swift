@@ -24,6 +24,12 @@ struct TracingDependencies {
     var schriftArt: SchriftArt
     var letterOrdering: LetterOrderingStrategy
     var enablePaperTransfer: Bool
+    /// Whether the parent has enabled the freeform writing mode (default: on).
+    /// Controls the visibility of the "Freies Schreiben" entry in the picker bar.
+    var enableFreeformMode: Bool
+    /// CoreML-backed letter recognizer. Default is `CoreMLLetterRecognizer()`;
+    /// tests inject `StubLetterRecognizer(result:)` to get deterministic output.
+    var letterRecognizer: LetterRecognizerProtocol
 
     /// Factory for the per-VM playback controller. Receives the audio engine
     /// (so tests can swap a recording stub in via `audio:`) and the
@@ -98,6 +104,15 @@ struct TracingDependencies {
         enablePaperTransfer: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.buchstaben.enablePaperTransfer"
         ),
+        enableFreeformMode: Bool = {
+            // Default-on: if the key has never been set, object(forKey:) returns
+            // nil and we treat that as "freeform enabled". Parents can opt out
+            // via Settings; the stored Bool then becomes authoritative.
+            let key = "de.flamingistan.buchstaben.enableFreeformMode"
+            if UserDefaults.standard.object(forKey: key) == nil { return true }
+            return UserDefaults.standard.bool(forKey: key)
+        }(),
+        letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
@@ -130,6 +145,8 @@ struct TracingDependencies {
         self.schriftArt = schriftArt
         self.letterOrdering = letterOrdering
         self.enablePaperTransfer = enablePaperTransfer
+        self.enableFreeformMode = enableFreeformMode
+        self.letterRecognizer = letterRecognizer
         self.makePlaybackController = makePlaybackController
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide

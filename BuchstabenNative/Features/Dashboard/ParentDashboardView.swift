@@ -20,6 +20,7 @@ struct ParentDashboardView: View {
                 starksteBuchstabenSection
                 ubungNoetigSection
                 papierUebertragungSection
+                erkennungsGenauigkeitSection
                 #if DEBUG
                 if vm.showDebug {
                     forschungsmetrikenSection
@@ -161,6 +162,29 @@ struct ParentDashboardView: View {
         return "😟 nochmal üben"
     }
 
+    @ViewBuilder
+    private var erkennungsGenauigkeitSection: some View {
+        let entries = vm.progressStore.allProgress
+            .compactMap { letter, prog -> (String, [Double])? in
+                guard let acc = prog.recognitionAccuracy, !acc.isEmpty else { return nil }
+                return (letter, acc)
+            }
+            .sorted(by: { $0.0 < $1.0 })
+        if !entries.isEmpty {
+            Section("Buchstaben-Erkennung") {
+                ForEach(entries, id: \.0) { letter, samples in
+                    LabeledContent(letter) {
+                        let avg = samples.reduce(0, +) / Double(samples.count)
+                        Text("\(Int((avg * 100).rounded())) % (\(samples.count))")
+                            .monospacedDigit()
+                            .foregroundStyle(avg >= 0.7 ? .green : (avg >= 0.4 ? .orange : .red))
+                    }
+                    .accessibilityLabel("\(letter) erkannt zu \(Int((samples.reduce(0, +) / Double(samples.count) * 100).rounded())) Prozent bei \(samples.count) Versuchen")
+                }
+            }
+        }
+    }
+
     #if DEBUG
     private var forschungsmetrikenSection: some View {
         // Debug-only: research-internal correlations the parent has no use
@@ -207,7 +231,8 @@ struct ParentDashboardView: View {
             do {
                 shareURL = try ParentDashboardExporter.exportFileURL(
                     from: snapshot,
-                    format: .csv
+                    format: .csv,
+                    progress: vm.progressStore.allProgress
                 )
             } catch {
                 showExportError = true
