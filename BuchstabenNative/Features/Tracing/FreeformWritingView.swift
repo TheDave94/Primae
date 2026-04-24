@@ -219,19 +219,13 @@ struct FreeformWritingView: View {
         }
     }
 
-    @ViewBuilder
     private func letterResultPanel(result: RecognitionResult) -> some View {
         let raw = result.confidence
-        let message: String
-        let tint: Color
-        if raw < 0.4 {
-            message = "Hmm, das konnte ich nicht erkennen — versuche es nochmal!"
-            tint = .orange
-        } else {
-            message = "Du hast ein \(result.predictedLetter) geschrieben!"
-            tint = .green
-        }
-        VStack(spacing: 12) {
+        let message = raw < 0.4
+            ? "Hmm, das konnte ich nicht erkennen — versuche es nochmal!"
+            : "Du hast ein \(result.predictedLetter) geschrieben!"
+        let tint: Color = raw < 0.4 ? .orange : .green
+        return VStack(spacing: 12) {
             HStack(spacing: 16) {
                 Text(result.predictedLetter)
                     .font(.system(size: 76, weight: .bold, design: .rounded))
