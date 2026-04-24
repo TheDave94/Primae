@@ -194,6 +194,14 @@ public struct ContentView: View {
             dockButton("shuffle.circle.fill",                .purple, "Zufälliger Buchstabe")  { vm.randomLetter() }
             dockButton("speaker.wave.2.circle.fill",         .blue,   "Ton abspielen") { vm.replayAudio() }
             dockButton("star.circle.fill",                   .yellow, "Empfohlener Buchstabe") { vm.loadRecommendedLetter() }
+            // Freeform entry point. Icon-only so the dock doesn't grow past
+            // the canvas width on smaller iPads; sub-mode (Buchstabe / Wort)
+            // is picked inside the freeform view itself.
+            if vm.enableFreeformMode {
+                dockButton("pencil.and.outline", .pink, "Freies Schreiben") {
+                    vm.enterFreeformMode(subMode: .letter)
+                }
+            }
             dockButton("gear.circle.fill",                   .gray,   "Einstellungen")         { showDashboard = true }
         }
         .padding(.horizontal, 16)

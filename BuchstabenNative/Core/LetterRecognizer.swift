@@ -39,6 +39,11 @@ protocol LetterRecognizerProtocol: Sendable {
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
                    expectedLetter: String?) async -> RecognitionResult?
+    /// Whether the recognizer's backing model is actually loaded and
+    /// ready for inference. `false` means every call to `recognize`
+    /// will return `nil`; the UI uses this to distinguish "model
+    /// missing" from "model said no" and show a diagnostic banner.
+    func isModelAvailable() async -> Bool
 }
 
 // MARK: - CoreML-backed recognizer
@@ -75,6 +80,10 @@ final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendabl
     }
 
     // MARK: LetterRecognizerProtocol
+
+    func isModelAvailable() async -> Bool {
+        Self.loadModelIfNeeded() != nil
+    }
 
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
@@ -141,16 +150,33 @@ final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendabl
         }()
 
         let modelURL: URL? = {
+            // Possible subdirectories — SwiftPM's `.copy("Resources")`
+            // preserves the tree, Xcode's resource processing flattens
+            // into the top-level bundle root. Try all the plausible
+            // locations before giving up.
+            let subdirs: [String?] = [nil, "Resources/ML", "ML", "Resources"]
             for bundle in candidates {
-                if let u = bundle.url(forResource: "GermanLetterRecognizer", withExtension: "mlmodelc") {
-                    return u
+                for sub in subdirs {
+                    if let u = bundle.url(
+                        forResource: "GermanLetterRecognizer",
+                        withExtension: "mlmodelc",
+                        subdirectory: sub
+                    ) {
+                        return u
+                    }
                 }
-                if let u = bundle.url(forResource: "GermanLetterRecognizer", withExtension: "mlpackage") {
-                    do {
-                        return try MLModel.compileModel(at: u)
-                    } catch {
-                        recognizerLogger.warning("Failed to compile mlpackage at \(u.path): \(error.localizedDescription)")
-                        continue
+                for sub in subdirs {
+                    if let u = bundle.url(
+                        forResource: "GermanLetterRecognizer",
+                        withExtension: "mlpackage",
+                        subdirectory: sub
+                    ) {
+                        do {
+                            return try MLModel.compileModel(at: u)
+                        } catch {
+                            recognizerLogger.warning("Failed to compile mlpackage at \(u.path): \(error.localizedDescription)")
+                            continue
+                        }
                     }
                 }
             }
@@ -324,4 +350,6 @@ struct StubLetterRecognizer: LetterRecognizerProtocol {
                    expectedLetter: String?) async -> RecognitionResult? {
         result
     }
+
+    func isModelAvailable() async -> Bool { result != nil }
 }

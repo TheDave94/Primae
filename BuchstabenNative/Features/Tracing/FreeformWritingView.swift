@@ -30,57 +30,79 @@ struct FreeformWritingView: View {
                     footer
                 }
             }
-            .overlay(alignment: .center) {
-                if vm.isRecognizing {
-                    recognitionSpinner
-                }
-            }
         }
     }
 
-    // MARK: - Header (target prompt + exit)
+    // MARK: - Header (two rows: nav + prompt)
 
     private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Button {
-                vm.exitFreeformMode()
-            } label: {
-                Label("Zurück", systemImage: "chevron.left")
-                    .font(.headline)
-            }
-            .buttonStyle(.bordered)
-            .tint(.gray)
-            .accessibilityHint("Zurück zum geführten Modus")
-
-            Spacer()
-
-            if vm.freeformSubMode == .word, let target = vm.freeformTargetWord {
-                VStack(spacing: 2) {
-                    Text("Schreibe:")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Text(target.word)
-                        .font(.system(size: 34, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+        VStack(spacing: 8) {
+            // Row 1: Zurück / mode picker / Nochmal. Fixed layout so
+            // buttons can never crash into each other (see IMG_0334).
+            HStack(alignment: .center, spacing: 12) {
+                Button {
+                    vm.exitFreeformMode()
+                } label: {
+                    Label("Zurück", systemImage: "chevron.left")
+                        .font(.headline)
                 }
-                .accessibilityElement(children: .combine)
-                .accessibilityLabel("Zielwort \(target.word)")
-            } else {
-                Text("Schreibe einen Buchstaben")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
+                .buttonStyle(.bordered)
+                .tint(.gray)
+                .accessibilityHint("Zurück zum geführten Modus")
+
+                Spacer()
+
+                Picker("Modus", selection: Binding(
+                    get: { vm.freeformSubMode },
+                    set: { newValue in
+                        if newValue == .word, vm.freeformTargetWord == nil {
+                            vm.selectFreeformWord(FreeformWordList.all.first ?? FreeformWord(word: "OMA", difficulty: 1))
+                        } else {
+                            vm.freeformSubMode = newValue
+                            vm.clearFreeformCanvas()
+                        }
+                    }
+                )) {
+                    Text("Buchstabe").tag(FreeformSubMode.letter)
+                    Text("Wort").tag(FreeformSubMode.word)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 260)
+
+                Spacer()
+
+                Button {
+                    vm.clearFreeformCanvas()
+                } label: {
+                    Label("Nochmal", systemImage: "arrow.counterclockwise")
+                        .font(.headline)
+                }
+                .buttonStyle(.bordered)
+                .tint(.orange)
+                .accessibilityHint("Leert das Blatt, damit du es nochmal versuchen kannst")
             }
 
-            Spacer()
-
-            Button {
-                vm.clearFreeformCanvas()
-            } label: {
-                Label("Nochmal", systemImage: "arrow.counterclockwise")
-                    .font(.headline)
+            // Row 2: target prompt. Occupies its own horizontal band so
+            // it never collides with the nav buttons above.
+            HStack {
+                Spacer()
+                if vm.freeformSubMode == .word, let target = vm.freeformTargetWord {
+                    HStack(spacing: 8) {
+                        Text("Schreibe:")
+                            .font(.subheadline).foregroundStyle(.secondary)
+                        Text(target.word)
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Zielwort \(target.word)")
+                } else {
+                    Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
             }
-            .buttonStyle(.bordered)
-            .tint(.orange)
-            .accessibilityHint("Leert das Blatt, damit du es nochmal versuchen kannst")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
@@ -208,8 +230,29 @@ struct FreeformWritingView: View {
 
     @ViewBuilder
     private var letterFooter: some View {
-        if let r = vm.lastRecognitionResult {
+        if vm.isRecognitionModelAvailable == false {
+            statusBanner(
+                icon: "exclamationmark.triangle.fill",
+                tint: .red,
+                title: "KI-Modell nicht verfügbar",
+                subtitle: "Die Buchstaben-Erkennung wurde nicht gefunden. Freies Schreiben funktioniert, aber die Rückmeldung fehlt."
+            )
+        } else if vm.isRecognizing {
+            statusBanner(
+                icon: "sparkles",
+                tint: .blue,
+                title: "Erkenne…",
+                subtitle: "Ich schaue mir deinen Buchstaben an."
+            )
+        } else if let r = vm.lastRecognitionResult {
             letterResultPanel(result: r)
+        } else if vm.hasRecognitionCompleted, !vm.freeformPoints.isEmpty {
+            statusBanner(
+                icon: "questionmark.circle.fill",
+                tint: .orange,
+                title: "Ich konnte nichts erkennen",
+                subtitle: "Probiere es noch einmal — schreibe den Buchstaben groß und deutlich."
+            )
         } else if vm.freeformPoints.isEmpty {
             Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift.")
                 .font(.subheadline).foregroundStyle(.secondary)
@@ -219,60 +262,102 @@ struct FreeformWritingView: View {
         }
     }
 
+    private func statusBanner(icon: String,
+                              tint: Color,
+                              title: String,
+                              subtitle: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title)
+                .foregroundStyle(tint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline).foregroundStyle(.primary)
+                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+            }
+            Spacer()
+        }
+        .padding(12)
+        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(title + ". " + subtitle)
+    }
+
     private func letterResultPanel(result: RecognitionResult) -> some View {
         let raw = result.confidence
-        let message = raw < 0.4
-            ? "Hmm, das konnte ich nicht erkennen — versuche es nochmal!"
-            : "Du hast ein \(result.predictedLetter) geschrieben!"
-        let tint: Color = raw < 0.4 ? .orange : .green
-        return VStack(spacing: 12) {
+        let tint: Color = raw >= 0.7 ? .green : (raw >= 0.4 ? .yellow : .orange)
+        let headline: String
+        if raw >= 0.7 {
+            headline = "Du hast ein \(result.predictedLetter) geschrieben!"
+        } else if raw >= 0.4 {
+            headline = "Das sieht aus wie ein \(result.predictedLetter)."
+        } else {
+            headline = "Vielleicht ein \(result.predictedLetter) — ich bin nicht sicher."
+        }
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 16) {
                 Text(result.predictedLetter)
                     .font(.system(size: 76, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                     .frame(width: 92, height: 92)
-                    .background(tint.opacity(0.15), in: RoundedRectangle(cornerRadius: 16))
+                    .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(message)
+                    Text(headline)
                         .font(.headline)
                         .foregroundStyle(.primary)
-                    if raw >= 0.4 {
-                        Text("Sicherheit: \(Int((raw * 100).rounded())) %")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
+                    Text("Sicherheit: \(Int((raw * 100).rounded())) %")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
             }
-            HStack(spacing: 12) {
-                Button {
-                    vm.clearFreeformCanvas()
-                } label: {
-                    Label("Nochmal", systemImage: "arrow.counterclockwise")
-                        .font(.headline)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(.orange)
 
-                Button {
-                    vm.exitFreeformMode()
-                } label: {
-                    Label("Zurück", systemImage: "chevron.left")
-                        .font(.headline)
+            // Top-3 alternatives. Shown always so the child sees the
+            // runner-up guesses — especially useful when the top-1 is
+            // a confident mis-classification of a confusable pair.
+            if !result.topThree.isEmpty {
+                HStack(spacing: 10) {
+                    Text("Vorschläge:")
+                        .font(.caption).foregroundStyle(.secondary)
+                    ForEach(Array(result.topThree.enumerated()), id: \.offset) { _, cand in
+                        HStack(spacing: 4) {
+                            Text(cand.letter)
+                                .font(.subheadline.weight(.semibold))
+                            Text("\(Int((cand.confidence * 100).rounded())) %")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                        .background(Color.gray.opacity(0.12), in: Capsule())
+                    }
+                    Spacer()
                 }
-                .buttonStyle(.bordered)
-                .tint(.gray)
-                Spacer()
             }
         }
         .padding(14)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(message)
+        .accessibilityLabel(headline)
     }
 
     @ViewBuilder
     private var wordFooter: some View {
-        if vm.freeformWordResults.isEmpty {
+        if vm.isRecognitionModelAvailable == false {
+            statusBanner(
+                icon: "exclamationmark.triangle.fill",
+                tint: .red,
+                title: "KI-Modell nicht verfügbar",
+                subtitle: "Die Buchstaben-Erkennung wurde nicht gefunden. Du kannst trotzdem das Wort schreiben."
+            )
+        } else if vm.isRecognizing {
+            statusBanner(
+                icon: "sparkles",
+                tint: .blue,
+                title: "Erkenne das Wort…",
+                subtitle: "Ich schaue mir deine Buchstaben an."
+            )
+        } else if !vm.freeformWordResults.isEmpty {
+            wordResultPanel
+        } else {
             HStack(spacing: 12) {
                 Text(vm.freeformPoints.isEmpty
                      ? "Schreibe das Wort Buchstabe für Buchstabe."
@@ -290,8 +375,6 @@ struct FreeformWritingView: View {
                 .disabled(vm.freeformPoints.count < 2)
                 .accessibilityHint("Lässt alle geschriebenen Buchstaben erkennen und zeigt dir das Ergebnis")
             }
-        } else {
-            wordResultPanel
         }
     }
 
@@ -356,17 +439,6 @@ struct FreeformWritingView: View {
         .accessibilityLabel("\(expected) wurde als \(shown) erkannt — \(correct ? "richtig" : "noch nicht richtig")")
     }
 
-    private var recognitionSpinner: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .scaleEffect(1.4)
-            Text("Einen Moment…").font(.subheadline)
-        }
-        .padding(18)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .accessibilityLabel("Erkenne deine Schrift…")
-    }
 }
 
 // MARK: - Freeform touch overlay (finger + pencil, no audio hookup)

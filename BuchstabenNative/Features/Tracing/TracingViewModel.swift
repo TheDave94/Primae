@@ -324,6 +324,15 @@ public final class TracingViewModel {
     /// bounding dimensions to the recognizer without piggy-backing on the
     /// guided-mode `canvasSize`.
     private(set) var freeformCanvasSize: CGSize = .zero
+    /// Set to true once a recognition call has completed (regardless of
+    /// whether it returned a result). Distinguishes "still thinking" from
+    /// "finished but could not recognize" — the UI needs both.
+    private(set) var hasRecognitionCompleted: Bool = false
+    /// Whether the CoreML model is loaded and ready. nil = haven't checked
+    /// yet. Surfaces "KI-Modell nicht verfügbar" banner in freeform when
+    /// false so a silent model-missing case doesn't look like the child's
+    /// handwriting is the problem.
+    private(set) var isRecognitionModelAvailable: Bool? = nil
     /// Visibility gate for RecognitionFeedbackView. True after a
     /// successful recognition call until the child taps the badge or the
     /// 4-second auto-dismiss timer fires. Driven off the presence of
@@ -1707,6 +1716,14 @@ public final class TracingViewModel {
         audio.stop()
         playback.forceIdle()
         isPlaying = false
+        // Probe the recognizer so the freeform footer can distinguish
+        // "still thinking" from "model not available" on first paint.
+        if isRecognitionModelAvailable == nil {
+            Task { [weak self, letterRecognizer] in
+                let available = await letterRecognizer.isModelAvailable()
+                await MainActor.run { self?.isRecognitionModelAvailable = available }
+            }
+        }
         toast(subMode == .word ? "Wort schreiben" : "Freies Schreiben")
     }
 
@@ -1730,6 +1747,7 @@ public final class TracingViewModel {
         freeformActivePath.removeAll(keepingCapacity: true)
         freeformWordResults.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
+        hasRecognitionCompleted = false
     }
 
     /// Pick the next target word for freeform word mode.
@@ -1780,12 +1798,14 @@ public final class TracingViewModel {
         let pts = freeformPoints
         let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
         isRecognizing = true
+        hasRecognitionCompleted = false
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: nil)
             guard let self else { return }
             await MainActor.run {
                 self.isRecognizing = false
+                self.hasRecognitionCompleted = true
                 self.lastRecognitionResult = result
                 self.isRecognitionBadgeDismissed = false
                 if let result {
@@ -1813,6 +1833,7 @@ public final class TracingViewModel {
         let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
 
         isRecognizing = true
+        hasRecognitionCompleted = false
         Task { [weak self, letterRecognizer] in
             var results: [RecognitionResult] = []
             for (i, seg) in segments.enumerated() {
@@ -1826,6 +1847,7 @@ public final class TracingViewModel {
             guard let self else { return }
             await MainActor.run {
                 self.isRecognizing = false
+                self.hasRecognitionCompleted = true
                 self.freeformWordResults = results
                 if let last = results.last {
                     self.lastRecognitionResult = last
