@@ -1,5 +1,13 @@
 import SwiftUI
 
+// MARK: - DEPRECATED
+//
+// This view was the pre-ui-redesign root. It is no longer the app's
+// entry point — see MainAppView for the three-world navigation. Kept
+// for reference and in case we need to resurrect specific chrome
+// (dock, toast, completion HUD) during the redesign. Do not add new
+// features here; new code goes into Features/Worlds/*.
+@available(*, deprecated, message: "Use MainAppView. Retained for reference only.")
 public struct ContentView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
