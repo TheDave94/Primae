@@ -109,13 +109,12 @@ struct WorldSwitcherRail: View {
         n > 99 ? "99+" : "\(n)"
     }
 
-    /// Total stars earned across all letters. Approximated as the sum of
-    /// freeWrite phase scores for letters the child has completed, since
-    /// that's the dimension the existing scoring pipeline already persists.
+    /// Total stars earned across all letters. Sums each letter's
+    /// quality-gated star count so the badge agrees with the celebration
+    /// overlay and the letter gallery.
     private var starTotal: Int {
         vm.progressStore.allProgress.values.reduce(0) { acc, prog in
-            let stars = Int((prog.phaseScores?.values.filter { $0 > 0 }.count ?? 0))
-            return acc + stars
+            acc + LetterStars.stars(for: prog.phaseScores)
         }
     }
 

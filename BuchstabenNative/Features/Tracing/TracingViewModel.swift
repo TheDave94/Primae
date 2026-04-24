@@ -186,11 +186,15 @@ public final class TracingViewModel {
 
     /// Whether the ghost guide-line should render because of the current phase.
     /// Composed with the user's `showGhost` toggle in views: phase-driven
-    /// scaffolding is always on in observe/direct/guided and always off in freeWrite.
+    /// scaffolding is now ON only in observe (the intro animation) so the
+    /// child sees stroke direction being demonstrated. In direct / guided
+    /// / freeWrite the fat blue ghost lines are off by default and the
+    /// child sees only the letter glyph + dots — the user's Hilfslinien
+    /// toggle can add them back on demand for struggling sessions.
     var showGhostForPhase: Bool {
         switch phaseController.currentPhase {
-        case .observe, .direct, .guided: return true
-        case .freeWrite:                 return false
+        case .observe:                         return true
+        case .direct, .guided, .freeWrite:     return false
         }
     }
 
@@ -262,6 +266,16 @@ public final class TracingViewModel {
     private(set) var lastFreeWriteDistance: CGFloat = 0
     /// Most recent Schreibmotorik four-dimension assessment from the freeWrite phase.
     private(set) var lastWritingAssessment: WritingAssessment? = nil
+    /// Most recent guided-phase checkpoint-accuracy score (0–1), captured
+    /// the moment the child transitions out of Nachspuren. Surfaced by
+    /// the Schule world as a "Form: XX %" feedback card so the child
+    /// sees how close their tracing was to the reference.
+    private(set) var lastGuidedScore: CGFloat? = nil
+    /// Form-accuracy score (0–1) for the last freeform letter
+    /// recognition, computed via FreeWriteScorer against the recognized
+    /// letter's reference strokes when those are bundled. nil when the
+    /// recognizer returned nothing or the letter has no reference.
+    private(set) var lastFreeformFormScore: CGFloat? = nil
     /// Normalised (0–1) touch path accumulated during the freeWrite phase.
     /// Kept for the KP overlay that shows where the child deviated.
     private(set) var freeWritePath: [CGPoint] = []
@@ -1133,6 +1147,7 @@ public final class TracingViewModel {
         }
 
         let wasInFreeWrite = phaseController.currentPhase == .freeWrite
+        let wasInGuided = phaseController.currentPhase == .guided
 
         // Kick the CoreML recognizer off BEFORE the phase advance so it
         // runs in parallel with the Fréchet-based scoring above and the
@@ -1141,6 +1156,13 @@ public final class TracingViewModel {
         // badge shows up shortly after the KP overlay renders.
         if wasInFreeWrite {
             runRecognizerForFreeWrite()
+        }
+        if wasInGuided {
+            // Capture the guided score before the phase advance so the
+            // Schule world can show a "Form XX %" feedback card during
+            // the transition into freeWrite. Cleared on letter load.
+            lastGuidedScore = score
+            overlayQueue.enqueue(.frechetScore(score))
         }
 
         if phaseController.advance(score: score) {
@@ -1549,6 +1571,8 @@ public final class TracingViewModel {
         scriptStrokeCache.removeAll(keepingCapacity: true)
         lastFreeWriteDistance = 0
         lastWritingAssessment = nil
+        lastGuidedScore = nil
+        lastFreeformFormScore = nil
         lastRecognitionResult = nil
         overlayQueue.reset()
         directTappedDots.removeAll()
@@ -1877,11 +1901,46 @@ public final class TracingViewModel {
                 self.hasRecognitionCompleted = true
                 self.lastRecognitionResult = result
                 self.isRecognitionBadgeDismissed = false
+                // Compute a form-accuracy score by comparing the child's
+                // freeform path to the recognized letter's reference
+                // strokes. This is the "how well did I draw the letter"
+                // signal (separate from "which letter did the CNN pick"),
+                // exposed on the result panel as a Form XX % row.
                 if let result {
+                    self.lastFreeformFormScore = self.freeformFormAccuracy(
+                        points: pts, canvasSize: size,
+                        predictedLetter: result.predictedLetter)
                     self.recordFreeformCompletion(result: result)
+                } else {
+                    self.lastFreeformFormScore = nil
                 }
             }
         }
+    }
+
+    /// Score how closely the freeform path matches the recognized
+    /// letter's reference strokes. Returns nil when the letter has no
+    /// bundled reference (e.g. lowercase variants without strokes.json).
+    private func freeformFormAccuracy(points: [CGPoint],
+                                      canvasSize: CGSize,
+                                      predictedLetter: String) -> CGFloat? {
+        guard canvasSize.width > 0, canvasSize.height > 0,
+              points.count >= 2 else { return nil }
+        let candidateNames = [predictedLetter,
+                              predictedLetter.uppercased(),
+                              predictedLetter.lowercased()]
+        let reference = candidateNames.lazy
+            .compactMap { name in self.letters.first(where: { $0.name == name }) }
+            .first?.strokes
+        guard let reference else { return nil }
+        let normalised = points.map {
+            CGPoint(x: $0.x / canvasSize.width, y: $0.y / canvasSize.height)
+        }
+        let assessment = FreeWriteScorer.score(
+            tracedPoints: normalised,
+            reference: reference
+        )
+        return assessment.formAccuracy
     }
 
     /// Submit a finished freeform word. Assigns each completed stroke to

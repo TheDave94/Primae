@@ -50,8 +50,33 @@ struct LearningPhaseController: Equatable {
 
     // MARK: - Computed properties
 
-    /// Number of phases that have been scored (0–3).
-    var starsEarned: Int { phaseScores.count }
+    /// Stars earned in this letter session, 0…N where N is the number of
+    /// active phases under the current thesis condition. A phase earns
+    /// its star only when the recorded score meets its quality threshold
+    /// (see `starThreshold(for:)`) — so a child who ran through guided +
+    /// freeWrite without actually tracing anything gets 2 observe/direct
+    /// stars at most, not 4.
+    var starsEarned: Int {
+        phaseScores.reduce(0) { acc, entry in
+            acc + (entry.value >= Self.starThreshold(for: entry.key) ? 1 : 0)
+        }
+    }
+
+    /// Lowest phase score required to earn that phase's star.
+    /// - observe / direct: 0 — completing them always earns the star
+    ///   because they're pass/fail (score stored as 1.0 on completion).
+    /// - guided: 0.5 — at least half the checkpoints reached in order.
+    /// - freeWrite: 0.4 — form-accuracy roughly matches the reference
+    ///   (Fréchet distance under 3× checkpoint radius).
+    /// Exposed as a static so UI code can mirror the threshold when
+    /// explaining to parents why a letter got 2 stars instead of 4.
+    static func starThreshold(for phase: LearningPhase) -> CGFloat {
+        switch phase {
+        case .observe, .direct: return 0.0
+        case .guided:           return 0.5
+        case .freeWrite:        return 0.4
+        }
+    }
 
     /// The phases that are active under the current thesis condition.
     var activePhases: [LearningPhase] {

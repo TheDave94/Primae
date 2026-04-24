@@ -55,6 +55,22 @@ struct SchuleWorldView: View {
 
             VStack {
                 topRow
+                if let guided = vm.lastGuidedScore,
+                   vm.learningPhase == .freeWrite {
+                    guidedFeedbackCard(score: guided)
+                        .padding(.top, 8)
+                        .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
+                }
+                if let assessment = vm.lastWritingAssessment,
+                   vm.isPhaseSessionComplete == false,
+                   vm.learningPhase == .freeWrite, vm.showFreeWriteOverlay == false {
+                    // After the KP overlay dismisses but before the
+                    // celebration appears, show the form-accuracy row
+                    // so the child sees the Fréchet-based score.
+                    formFeedbackCard(score: assessment.formAccuracy)
+                        .padding(.top, 8)
+                        .transition(reduceMotion ? .opacity : .opacity)
+                }
                 Spacer()
                 bottomBar
             }
@@ -77,8 +93,8 @@ struct SchuleWorldView: View {
                     letters: vm.visibleLetterNames,
                     currentLetter: vm.currentLetterName,
                     starCount: { name in
-                        vm.progressStore.progress(for: name).phaseScores?
-                            .values.filter { $0 > 0 }.count ?? 0
+                        LetterStars.stars(
+                            for: vm.progressStore.progress(for: name).phaseScores)
                     },
                     onSelect: { letter in
                         vm.loadLetter(name: letter)
@@ -95,6 +111,60 @@ struct SchuleWorldView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.isPhaseSessionComplete)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
+    }
+
+    // MARK: - Feedback cards
+
+    private func guidedFeedbackCard(score: CGFloat) -> some View {
+        feedbackCard(
+            title: "Nachspuren fertig",
+            score: score,
+            subtitle: "So gut hast du die Linien getroffen."
+        )
+    }
+
+    private func formFeedbackCard(score: CGFloat) -> some View {
+        feedbackCard(
+            title: "Selbst geschrieben",
+            score: score,
+            subtitle: "So ähnlich war deine Form dem Buchstaben."
+        )
+    }
+
+    private func feedbackCard(title: String, score: CGFloat, subtitle: String) -> some View {
+        let pct = Int((max(0, min(1, score)) * 100).rounded())
+        let tint: Color = score >= 0.7 ? .green : (score >= 0.5 ? .yellow : .orange)
+        return HStack(spacing: 14) {
+            VStack(spacing: 2) {
+                Text("\(pct)")
+                    .font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
+                    .foregroundStyle(tint)
+                Text("%")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(tint)
+            }
+            .frame(width: 48, height: 48)
+            .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.subheadline.weight(.semibold))
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            HStack(spacing: 2) {
+                ForEach(0..<3, id: \.self) { idx in
+                    let filled = CGFloat(idx + 1) * 0.33 <= score + 0.01
+                    Image(systemName: filled ? "star.fill" : "star")
+                        .font(.footnote)
+                        .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.4))
+                }
+            }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(tint.opacity(0.35), lineWidth: 1))
+        .padding(.horizontal, 16)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(pct) Prozent. \(subtitle)")
     }
 
     // MARK: - Top row (letter pill)

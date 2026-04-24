@@ -273,6 +273,23 @@ struct FreeformWritingView: View {
         }
     }
 
+    private func metricPill(label: String,
+                            value: CGFloat,
+                            accent: Color) -> some View {
+        let percent = Int((max(0, min(1, value)) * 100).rounded())
+        return HStack(spacing: 6) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("\(percent) %")
+                .font(.caption.weight(.semibold).monospacedDigit())
+                .foregroundStyle(accent)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 4)
+        .background(accent.opacity(0.15), in: Capsule())
+        .accessibilityLabel("\(label) \(percent) Prozent")
+    }
+
     private func statusBanner(icon: String,
                               tint: Color,
                               title: String,
@@ -295,6 +312,7 @@ struct FreeformWritingView: View {
 
     private func letterResultPanel(result: RecognitionResult) -> some View {
         let raw = result.confidence
+        let formScore = vm.lastFreeformFormScore
         let tint: Color = raw >= 0.7 ? .green : (raw >= 0.4 ? .yellow : .orange)
         let headline: String
         if raw >= 0.7 {
@@ -316,8 +334,17 @@ struct FreeformWritingView: View {
                     Text(headline)
                         .font(.headline)
                         .foregroundStyle(.primary)
-                    Text("Sicherheit: \(Int((raw * 100).rounded())) %")
-                        .font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        metricPill(label: "Klarheit",
+                                   value: raw,
+                                   accent: tint)
+                        if let fs = formScore {
+                            metricPill(label: "Form",
+                                       value: fs,
+                                       accent: fs >= 0.7 ? .green
+                                              : (fs >= 0.4 ? .yellow : .orange))
+                        }
+                    }
                 }
                 Spacer()
             }

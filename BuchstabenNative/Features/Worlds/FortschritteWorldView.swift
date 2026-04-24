@@ -100,9 +100,11 @@ struct FortschritteWorldView: View {
     @ViewBuilder
     private func letterCard(letter: String) -> some View {
         let prog = vm.progressStore.progress(for: letter)
-        let stars = prog.phaseScores?.values.filter { $0 > 0 }.count ?? 0
+        let stars = LetterStars.stars(for: prog.phaseScores)
         let tint: Color = {
-            if stars >= 4 { return Color(red: 0.82, green: 0.94, blue: 0.82) }
+            if stars >= LetterStars.maxStars {
+                return Color(red: 0.82, green: 0.94, blue: 0.82)
+            }
             if stars >= 1 { return Color(red: 1.00, green: 0.88, blue: 0.60) }
             return Color.gray.opacity(0.15)
         }()
@@ -159,7 +161,7 @@ struct FortschritteWorldView: View {
 
     private var totalStars: Int {
         vm.progressStore.allProgress.values.reduce(0) { acc, prog in
-            acc + (prog.phaseScores?.values.filter { $0 > 0 }.count ?? 0)
+            acc + LetterStars.stars(for: prog.phaseScores)
         }
     }
 
