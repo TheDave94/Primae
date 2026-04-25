@@ -80,6 +80,98 @@ struct FreeWriteScorer {
         )
     }
 
+    // MARK: - Shape-only accuracy (freeform writing)
+
+    /// Shape-similarity score in 0–1, designed for blank-canvas writing
+    /// where stroke order, pen-lift count, and absolute position on the
+    /// canvas are all irrelevant — the question is simply "does the
+    /// child's ink cover the reference glyph's footprint?"
+    ///
+    /// Three changes from `formAccuracy`:
+    ///
+    /// 1. **Bounding-box normalisation on both paths.** Without this, a
+    ///    centred trace at e.g. (0.5–0.7, 0.4–0.7) can never align with
+    ///    a reference at (0–1, 0–1) — Fréchet captures position offset
+    ///    on top of any shape error. After normalisation both fill the
+    ///    unit square so only shape matters.
+    /// 2. **Symmetric Hausdorff** instead of discrete Fréchet. Fréchet
+    ///    requires the curves to be *traversed* in matching order, so
+    ///    a multi-stroke F drawn spine→top→mid scores poorly when the
+    ///    reference polyline phantom-jumps between strokes the same
+    ///    way. Hausdorff is order-free: every trace point only has to
+    ///    be near *some* reference point and vice-versa, which matches
+    ///    what "looks right to a 5-year-old" actually means.
+    /// 3. **Looser tolerance + concave mapping.** 6×checkpointRadius
+    ///    plus a square-root softener, so a clearly-shaped L lands in
+    ///    the 80s instead of capping at ~55 %. A scribble still scores
+    ///    near zero — `max(0, …)` clamps the bottom.
+    static func formAccuracyShape(
+        tracedPoints: [CGPoint],
+        reference: LetterStrokes
+    ) -> CGFloat {
+        let refPoints = referencePolyline(from: reference)
+        guard refPoints.count >= 2, tracedPoints.count >= 2 else { return 0 }
+
+        let traceUnit = normaliseToUnitBox(tracedPoints)
+        let refUnit   = normaliseToUnitBox(refPoints)
+
+        // Resample both so straight reference segments contribute
+        // intermediate points to the Hausdorff comparison — otherwise
+        // a long horizontal foot becomes two endpoints and wins easy.
+        let n = 60
+        let traceR = resample(traceUnit, targetCount: n)
+        let refR   = resample(refUnit,   targetCount: n)
+
+        let d1 = oneSidedHausdorff(traceR, refR)
+        let d2 = oneSidedHausdorff(refR, traceR)
+        let distance = max(d1, d2)
+
+        let maxAcceptable = max(reference.checkpointRadius * 6.0, 0.001)
+        let raw = max(0, min(1, 1.0 - distance / maxAcceptable))
+        // Square-root softens the high end: raw 0.50 → 0.71,
+        // raw 0.70 → 0.84, raw 0.85 → 0.92. A child who clearly drew
+        // the right letter should feel rewarded; the bottom only
+        // climbs a little (raw 0.10 → 0.32) so a scribble still reads
+        // as "needs more practice" rather than a pity score.
+        return CGFloat(sqrt(Double(raw)))
+    }
+
+    /// Map a path so its axis-aligned bounding box fills the unit
+    /// square. Degenerate paths (zero extent on one axis, single point)
+    /// fall back to centred 0.5 coordinates so the caller never deals
+    /// with NaN.
+    static func normaliseToUnitBox(_ points: [CGPoint]) -> [CGPoint] {
+        guard !points.isEmpty,
+              let minX = points.map(\.x).min(),
+              let maxX = points.map(\.x).max(),
+              let minY = points.map(\.y).min(),
+              let maxY = points.map(\.y).max() else { return points }
+        let w = maxX - minX
+        let h = maxY - minY
+        return points.map { p in
+            CGPoint(
+                x: w > 0 ? (p.x - minX) / w : 0.5,
+                y: h > 0 ? (p.y - minY) / h : 0.5
+            )
+        }
+    }
+
+    /// Asymmetric Hausdorff distance: the maximum, over points in `a`,
+    /// of each point's distance to the nearest point in `b`. O(|a|·|b|).
+    private static func oneSidedHausdorff(_ a: [CGPoint],
+                                          _ b: [CGPoint]) -> CGFloat {
+        var maxMin: CGFloat = 0
+        for p in a {
+            var minD: CGFloat = .greatestFiniteMagnitude
+            for q in b {
+                let d = dist(p, q)
+                if d < minD { minD = d }
+            }
+            if minD > maxMin { maxMin = minD }
+        }
+        return maxMin
+    }
+
     // MARK: - Dimension: Form accuracy
 
     private static func formAccuracy(tracedPoints: [CGPoint], reference: LetterStrokes) -> CGFloat {

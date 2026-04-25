@@ -42,6 +42,17 @@ private enum FreeformSurface {
 
 struct FreeformWritingView: View {
     @Environment(TracingViewModel.self) private var vm
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// "Details" disclosure inside the result popup. When false the
+    /// child sees only the predicted letter + the written evaluation;
+    /// flipping it reveals Klarheit / Form pills and Vorschläge so
+    /// adults watching can sanity-check the recogniser.
+    @State private var showDetails = false
+    /// IDs of recognition results we've already shown the popup for.
+    /// Without this, dismissing the popup would just bring it back on
+    /// the next render. Reset whenever the canvas is cleared.
+    @State private var dismissedResultLetter: String? = nil
 
     var body: some View {
         GeometryReader { geo in
@@ -49,13 +60,33 @@ struct FreeformWritingView: View {
                 Color.white
                     .ignoresSafeArea()
 
+                // Anchor to the top + push the footer down with an
+                // inert spacer. Without this the ZStack-default centring
+                // made the canvas slide vertically every time the
+                // footer's content changed height (idle prompt → "Erkenne…"
+                // banner → result row), and a child mid-stroke saw their
+                // letter jump several points up or down between pen
+                // lifts. The footer reserves a stable `minHeight` (see
+                // `footer` below) so its expansion never eats the spacer.
                 VStack(spacing: 0) {
                     header
                     if vm.freeformSubMode == .word {
                         wordPickerStrip
                     }
                     freeformCanvas(size: geo.size)
+                    Spacer(minLength: 0)
                     footer
+                }
+                .frame(maxWidth: .infinity,
+                       maxHeight: .infinity,
+                       alignment: .top)
+
+                if shouldShowResultPopup, let r = vm.lastRecognitionResult {
+                    resultPopup(result: r)
+                        .transition(reduceMotion
+                                    ? .opacity
+                                    : .scale(scale: 0.92).combined(with: .opacity))
+                        .zIndex(20)
                 }
             }
         }
@@ -64,6 +95,32 @@ struct FreeformWritingView: View {
         // resolve to white-ish in dark mode and disappear into the
         // canvas, exactly the white-on-white symptom in IMG_0337–0340.
         .preferredColorScheme(.light)
+        .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82),
+                   value: shouldShowResultPopup)
+        .onChange(of: vm.freeformPoints.count) { _, newValue in
+            // New stroke after a dismissed result → re-arm the popup
+            // for the next recognition. Without this the popup would
+            // never come back unless the user left and re-entered the
+            // mode.
+            if newValue == 0 { dismissedResultLetter = nil }
+        }
+    }
+
+    /// Show the popup only for letter mode, only when the recogniser
+    /// has produced a result, and only if the child hasn't already
+    /// dismissed THIS particular result. Word-mode keeps its inline
+    /// slot-aligned chip row; the popup is letter-mode-only.
+    private var shouldShowResultPopup: Bool {
+        guard vm.freeformSubMode == .letter,
+              let r = vm.lastRecognitionResult else { return false }
+        return dismissedResultLetter != popupKey(for: r)
+    }
+
+    private func popupKey(for r: RecognitionResult) -> String {
+        // Per-result key: predicted letter + confidence to two decimals.
+        // Same letter shown twice in a row should pop again because the
+        // form score / stroke count likely changed.
+        "\(r.predictedLetter)-\(Int((r.confidence * 100).rounded()))-\(vm.freeformStrokeSizes.count)"
     }
 
     // MARK: - Header (two rows: nav + prompt)
@@ -272,7 +329,16 @@ struct FreeformWritingView: View {
                 letterFooter
             }
         }
-        .frame(maxWidth: .infinity)
+        // `minHeight` reserves enough vertical space for the tallest
+        // letterFooter state (post-popup result row, ≈ 92 pt) so the
+        // footer never grows or shrinks during a writing session.
+        // Word mode's wordResultPanel is taller, but it only appears
+        // after the explicit "Fertig" button — never mid-stroke — so
+        // a temporary expansion there is acceptable. Top alignment
+        // keeps short prompts from drifting toward the centre.
+        .frame(maxWidth: .infinity,
+               minHeight: 130,
+               alignment: .top)
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 20)
@@ -371,50 +437,194 @@ struct FreeformWritingView: View {
         .accessibilityLabel(title + ". " + subtitle)
     }
 
+    /// Tiny inline stub shown under the canvas after the popup has
+    /// been dismissed. Just the predicted letter + the headline — no
+    /// Vorschläge, no Klarheit/Form pills. Detail breakdown lives in
+    /// the popup's "Details" disclosure.
     private func letterResultPanel(result: RecognitionResult) -> some View {
         let raw = result.confidence
-        let formScore = vm.lastFreeformFormScore
         let tint: Color = raw >= 0.7 ? .green : (raw >= 0.4 ? .yellow : .orange)
-        let headline: String
-        if raw >= 0.7 {
-            headline = "Du hast ein \(result.predictedLetter) geschrieben!"
-        } else if raw >= 0.4 {
-            headline = "Das sieht aus wie ein \(result.predictedLetter)."
-        } else {
-            headline = "Vielleicht ein \(result.predictedLetter) — ich bin nicht sicher."
+        let headline = headline(for: result)
+        return HStack(spacing: 14) {
+            Text(result.predictedLetter)
+                .font(.system(size: 56, weight: .bold, design: .rounded))
+                .foregroundStyle(.primary)
+                .frame(width: 72, height: 72)
+                .background(tint.opacity(0.20), in: RoundedRectangle(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(tint.opacity(0.55), lineWidth: 1)
+                )
+            Text(headline)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            Spacer()
+            // Re-open the popup so the child can see the written
+            // evaluation again on demand.
+            Button {
+                dismissedResultLetter = nil
+            } label: {
+                Image(systemName: "info.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(tint)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Bewertung erneut anzeigen")
         }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .background(FreeformSurface.card, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(FreeformSurface.cardEdge, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(headline)
+    }
 
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 16) {
+    private func headline(for result: RecognitionResult) -> String {
+        let raw = result.confidence
+        if raw >= 0.7 {
+            return "Du hast ein \(result.predictedLetter) geschrieben!"
+        } else if raw >= 0.4 {
+            return "Das sieht aus wie ein \(result.predictedLetter)."
+        } else {
+            return "Vielleicht ein \(result.predictedLetter) — ich bin nicht sicher."
+        }
+    }
+
+    // MARK: - Result popup (child-facing written evaluation)
+
+    /// Modal-style popup centred over the canvas. Drives off the form
+    /// score (FreeWriteScorer.formAccuracyShape) so the message rewards
+    /// well-shaped letters even when CoreML's confusable-pair penalty
+    /// drops Klarheit. Falls back to a Klarheit-only message when no
+    /// reference glyph is bundled for the recognised letter.
+    private func resultPopup(result: RecognitionResult) -> some View {
+        let formScore = vm.lastFreeformFormScore
+        let scoreForMessage = formScore ?? result.confidence
+        let tint: Color = scoreForMessage >= 0.7 ? .green
+                       : (scoreForMessage >= 0.45 ? .yellow : .orange)
+        let evaluation = formEvaluation(score: scoreForMessage,
+                                        letter: result.predictedLetter,
+                                        hasFormScore: formScore != nil)
+        let stars = formStars(for: scoreForMessage)
+
+        return ZStack {
+            Color.black.opacity(0.45)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture { dismissPopup(for: result) }
+                .accessibilityHidden(true)
+
+            VStack(spacing: 18) {
                 Text(result.predictedLetter)
-                    .font(.system(size: 76, weight: .bold, design: .rounded))
+                    .font(.system(size: 96, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
-                    .frame(width: 92, height: 92)
-                    .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(headline)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
-                    HStack(spacing: 10) {
-                        metricPill(label: "Klarheit",
-                                   value: raw,
-                                   accent: tint)
-                        if let fs = formScore {
-                            metricPill(label: "Form",
-                                       value: fs,
-                                       accent: fs >= 0.7 ? .green
-                                              : (fs >= 0.4 ? .yellow : .orange))
-                        }
+                    .frame(width: 132, height: 132)
+                    .background(tint.opacity(0.22),
+                                in: RoundedRectangle(cornerRadius: 26))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26)
+                            .stroke(tint.opacity(0.55), lineWidth: 2)
+                    )
+
+                Text(headline(for: result))
+                    .font(.title2.weight(.bold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+
+                HStack(spacing: 6) {
+                    ForEach(0..<3, id: \.self) { idx in
+                        let filled = idx < stars
+                        Image(systemName: filled ? "star.fill" : "star")
+                            .font(.system(size: 26))
+                            .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.45))
                     }
+                }
+                .accessibilityLabel("\(stars) von 3 Sternen für die Form")
+
+                Text(evaluation)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(FreeformSurface.prompt)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 8)
+
+                HStack(spacing: 14) {
+                    Button {
+                        vm.clearFreeformCanvas()
+                        dismissPopup(for: result)
+                    } label: {
+                        Label("Nochmal", systemImage: "arrow.counterclockwise")
+                            .font(.headline)
+                            .padding(.horizontal, 12)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.orange)
+
+                    Button {
+                        dismissPopup(for: result)
+                    } label: {
+                        Label("Weiter", systemImage: "checkmark")
+                            .font(.headline)
+                            .padding(.horizontal, 12)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.blue)
+                }
+
+                DisclosureGroup(isExpanded: $showDetails) {
+                    detailsRow(result: result, formScore: formScore, tint: tint)
+                        .padding(.top, 10)
+                } label: {
+                    Text(showDetails ? "Weniger anzeigen" : "Details anzeigen")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(FreeformSurface.prompt)
+                }
+                .accentColor(FreeformSurface.prompt)
+                .padding(.top, 4)
+            }
+            .padding(28)
+            .frame(maxWidth: 460)
+            .background(FreeformSurface.card,
+                        in: RoundedRectangle(cornerRadius: 28))
+            .overlay(
+                RoundedRectangle(cornerRadius: 28)
+                    .stroke(FreeformSurface.cardEdge, lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.25), radius: 24, y: 8)
+            .padding(24)
+        }
+    }
+
+    private func dismissPopup(for result: RecognitionResult) {
+        dismissedResultLetter = popupKey(for: result)
+        showDetails = false
+    }
+
+    /// Klarheit + Form pills + Vorschläge — moved from the always-on
+    /// inline panel to the popup's "Details anzeigen" disclosure so
+    /// the child's default view stays uncluttered.
+    @ViewBuilder
+    private func detailsRow(result: RecognitionResult,
+                             formScore: CGFloat?,
+                             tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                metricPill(label: "Klarheit",
+                           value: result.confidence,
+                           accent: tint)
+                if let fs = formScore {
+                    metricPill(label: "Form",
+                               value: fs,
+                               accent: fs >= 0.7 ? .green
+                                      : (fs >= 0.45 ? .yellow : .orange))
                 }
                 Spacer()
             }
-
-            // Top-3 alternatives. Shown always so the child sees the
-            // runner-up guesses — especially useful when the top-1 is
-            // a confident mis-classification of a confusable pair.
             if !result.topThree.isEmpty {
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Text("Vorschläge:")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(FreeformSurface.prompt)
@@ -435,15 +645,47 @@ struct FreeformWritingView: View {
                 }
             }
         }
-        .padding(14)
-        .background(FreeformSurface.card, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(FreeformSurface.cardEdge, lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(headline)
+    }
+
+    /// Stars 0–3 from the form (or fallback) score. Bands mirror the
+    /// celebration overlay's tiering so a "3 stars in the popup" lines
+    /// up with what the child sees on phase completion.
+    private func formStars(for score: CGFloat) -> Int {
+        switch score {
+        case 0.85...:   return 3
+        case 0.65..<0.85: return 2
+        case 0.40..<0.65: return 1
+        default:        return 0
+        }
+    }
+
+    /// Child-friendly written evaluation. Distinct messages per band
+    /// rather than a single template so the kid sees variety, and
+    /// `hasFormScore == false` (letter has no bundled reference)
+    /// rephrases to avoid telling the child their shape is "great"
+    /// when we couldn't actually measure shape.
+    private func formEvaluation(score: CGFloat,
+                                 letter: String,
+                                 hasFormScore: Bool) -> String {
+        if !hasFormScore {
+            // No reference glyph for this letter — speak only to what
+            // the recogniser saw, not to shape we didn't measure.
+            return score >= 0.7
+                ? "Super, ich erkenne dein \(letter) ganz klar!"
+                : "Ich glaube, das ist ein \(letter). Probier es nochmal größer und deutlicher."
+        }
+        switch score {
+        case 0.85...:
+            return "Wunderschön! Dein \(letter) sieht fast aus wie im Buch. ⭐️"
+        case 0.70..<0.85:
+            return "Toll gemacht! Dein \(letter) ist sehr gut geworden."
+        case 0.55..<0.70:
+            return "Gut! Mit ein bisschen Übung wird dein \(letter) noch schöner."
+        case 0.35..<0.55:
+            return "Nicht schlecht! Probier dein \(letter) etwas größer und langsamer."
+        default:
+            return "Übe dein \(letter) noch ein bisschen — du schaffst das!"
+        }
     }
 
     @ViewBuilder
