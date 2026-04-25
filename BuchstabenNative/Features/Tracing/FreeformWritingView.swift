@@ -60,14 +60,13 @@ struct FreeformWritingView: View {
                 Color.white
                     .ignoresSafeArea()
 
-                // Anchor to the top + push the footer down with an
-                // inert spacer. Without this the ZStack-default centring
-                // made the canvas slide vertically every time the
-                // footer's content changed height (idle prompt → "Erkenne…"
-                // banner → result row), and a child mid-stroke saw their
-                // letter jump several points up or down between pen
-                // lifts. The footer reserves a stable `minHeight` (see
-                // `footer` below) so its expansion never eats the spacer.
+                // Header + canvas pinned to the top edge. They live in
+                // their own VStack so neither the footer nor the popup
+                // can shift them. The previous "Spacer + footer with
+                // minHeight" layout still let the footer push the
+                // canvas up when the result panel exceeded the reserved
+                // 130 pt (IMG_0342) — the footer is now a bottom-anchored
+                // overlay and shares no layout flow with the canvas.
                 VStack(spacing: 0) {
                     header
                     if vm.freeformSubMode == .word {
@@ -75,11 +74,13 @@ struct FreeformWritingView: View {
                     }
                     freeformCanvas(size: geo.size)
                     Spacer(minLength: 0)
-                    footer
                 }
                 .frame(maxWidth: .infinity,
                        maxHeight: .infinity,
                        alignment: .top)
+                .overlay(alignment: .bottom) {
+                    footer
+                }
 
                 if shouldShowResultPopup, let r = vm.lastRecognitionResult {
                     resultPopup(result: r)
