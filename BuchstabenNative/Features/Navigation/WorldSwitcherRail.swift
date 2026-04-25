@@ -134,7 +134,7 @@ struct WorldSwitcherRail: View {
                 .animation(.linear(duration: 0.1), value: gearHoldProgress)
             Image(systemName: "gear")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(AppSurface.prompt)
         }
         .contentShape(Rectangle())
         .onLongPressGesture(

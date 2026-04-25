@@ -31,6 +31,9 @@ struct WerkstattWorldView: View {
                 vm.enterFreeformMode(subMode: .letter)
             }
         }
+        // Freeform canvas is hard-coded `Color.white`; pin the chrome
+        // to light mode so .primary stays black even in dark mode.
+        .preferredColorScheme(.light)
     }
 
     // MARK: - Mode panel (left 140pt)
@@ -79,27 +82,28 @@ struct WerkstattWorldView: View {
                     .font(.system(size: 36, weight: .semibold))
                     .foregroundStyle(isActive ? Color.white : Color.blue)
                 Text(title)
-                    .font(.headline)
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(isActive ? Color.white : Color.primary)
                 Text(subtitle)
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(isActive
-                                      ? Color.white.opacity(0.85)
-                                      : Color.secondary)
+                                      ? Color.white.opacity(0.95)
+                                      : AppSurface.caption)
                     .multilineTextAlignment(.center)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 120)
             .padding(.horizontal, 8)
             .background(
-                isActive ? Color.blue : Color.gray.opacity(0.12),
+                isActive ? Color.blue : AppSurface.card,
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(isActive ? Color.blue : Color.black.opacity(0.06),
+                    .stroke(isActive ? Color.blue : AppSurface.cardEdge,
                             lineWidth: isActive ? 2 : 1)
             )
+            .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)

@@ -80,8 +80,11 @@ struct SchuleWorldView: View {
                 VStack {
                     Text(toast)
                         .font(.headline)
+                        .foregroundStyle(.primary)
                         .padding(.horizontal, 14).padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .background(AppSurface.card, in: Capsule())
+                        .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.1), radius: 6, y: 2)
                         .padding(.top, 80)
                     Spacer()
                 }
@@ -111,6 +114,10 @@ struct SchuleWorldView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.isPhaseSessionComplete)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
+        // Tracing canvas is hard-coded `Color.white`; pin the surrounding
+        // chrome to light mode so `.primary` resolves to black instead of
+        // disappearing into the canvas in dark mode.
+        .preferredColorScheme(.light)
     }
 
     // MARK: - Feedback cards
@@ -144,10 +151,11 @@ struct SchuleWorldView: View {
                     .foregroundStyle(tint)
             }
             .frame(width: 48, height: 48)
-            .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 12))
+            .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.55), lineWidth: 1))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.semibold))
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                Text(subtitle).font(.caption.weight(.medium)).foregroundStyle(AppSurface.caption)
             }
             Spacer()
             HStack(spacing: 2) {
@@ -155,13 +163,14 @@ struct SchuleWorldView: View {
                     let filled = CGFloat(idx + 1) * 0.33 <= score + 0.01
                     Image(systemName: filled ? "star.fill" : "star")
                         .font(.footnote)
-                        .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.4))
+                        .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.55))
                 }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(tint.opacity(0.35), lineWidth: 1))
+        .background(AppSurface.card, in: RoundedRectangle(cornerRadius: 16))
+        .overlay(RoundedRectangle(cornerRadius: 16).stroke(tint.opacity(0.55), lineWidth: 1))
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title): \(pct) Prozent. \(subtitle)")
@@ -184,13 +193,15 @@ struct SchuleWorldView: View {
             HStack(spacing: 8) {
                 Text(vm.currentLetterName)
                     .font(.system(.title, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
                 Image(systemName: "chevron.down")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .font(.footnote.weight(.bold))
+                    .foregroundStyle(AppSurface.prompt)
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(Capsule().stroke(Color.black.opacity(0.08), lineWidth: 1))
+            .background(AppSurface.card, in: Capsule())
+            .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
+            .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -240,7 +251,9 @@ struct SchuleWorldView: View {
                      label: "Vorheriger Buchstabe") { vm.previousLetter() }
             PhaseDotIndicator(phase: vm.learningPhase, scores: vm.phaseScores)
                 .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(.ultraThinMaterial, in: Capsule())
+                .background(AppSurface.card, in: Capsule())
+                .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
+                .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
             navArrow(systemName: "chevron.right",
                      label: "Nächster Buchstabe") { vm.nextLetter() }
         }
@@ -252,11 +265,12 @@ struct SchuleWorldView: View {
                           action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: 20, weight: .bold))
                 .foregroundStyle(.primary)
                 .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().stroke(Color.black.opacity(0.08), lineWidth: 1))
+                .background(AppSurface.card, in: Circle())
+                .overlay(Circle().stroke(AppSurface.cardEdge, lineWidth: 1))
+                .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

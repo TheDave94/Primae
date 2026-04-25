@@ -30,6 +30,10 @@ struct FortschritteWorldView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WorldPalette.background(for: .fortschritte).ignoresSafeArea())
+        // Letter gallery / fluency cards use opaque white surfaces, so
+        // pin to light mode to keep `.primary` resolving to dark text
+        // even when the system theme is dark.
+        .preferredColorScheme(.light)
     }
 
     // MARK: - Header
@@ -50,13 +54,18 @@ struct FortschritteWorldView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(totalStars) Sterne")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
                 Text("gesammelt")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppSurface.caption)
             }
         }
         .padding(20)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(totalStars) Sterne gesammelt")
@@ -68,13 +77,18 @@ struct FortschritteWorldView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(vm.currentStreak) \(vm.currentStreak == 1 ? "Tag" : "Tage")")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
                 Text(vm.currentStreak <= 1 ? "Weiter so!" : "hintereinander")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(AppSurface.caption)
             }
         }
         .padding(20)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(vm.currentStreak) Tage hintereinander")
@@ -86,6 +100,7 @@ struct FortschritteWorldView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Deine Buchstaben")
                 .font(.title2.weight(.bold))
+                .foregroundStyle(.primary)
             LazyVGrid(
                 columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 6),
                 spacing: 14
@@ -144,14 +159,19 @@ struct FortschritteWorldView: View {
     private var fluencyFooter: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Schreibflüssigkeit")
-                .font(.headline)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(.primary)
             Text(fluencyMessage)
-                .font(.title3)
+                .font(.title3.weight(.semibold))
                 .foregroundStyle(fluencyColor)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.05), radius: 10, y: 3)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Schreibflüssigkeit: \(fluencyMessage)")
@@ -177,9 +197,9 @@ struct FortschritteWorldView: View {
     private var fluencyColor: Color {
         switch vm.writingSpeedTrend {
         case .improving: return .green
-        case .stable:    return .secondary
+        case .stable:    return AppSurface.prompt
         case .declining: return .orange
-        case .none:      return .secondary
+        case .none:      return AppSurface.caption
         }
     }
 }

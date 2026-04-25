@@ -53,3 +53,27 @@ enum WorldPalette {
         }
     }
 }
+
+// MARK: - Shared surface tokens
+//
+// Solid colours used by the world chrome instead of `.ultraThinMaterial`.
+// Materials over the white canvas + pastel world backgrounds rendered as
+// light gray and crushed `.secondary` labels (see IMG_0337–0340 — the
+// "Schreibe einen Buchstaben…" prompt and "Vorschläge:" row were nearly
+// invisible). These tokens give every chrome element a predictable
+// background so child-facing text stays legible regardless of system
+// colour scheme.
+enum AppSurface {
+    /// Card / pill body colour. Slightly off-white so it floats over a
+    /// pure-white canvas and reads as a separate surface.
+    static let card     = Color(red: 0.97, green: 0.97, blue: 0.99)
+    /// Hairline border around `card` so it doesn't disappear when set
+    /// against the white canvas.
+    static let cardEdge = Color(red: 0.78, green: 0.78, blue: 0.84)
+    /// Subdued body label colour — replaces `.secondary` on top of
+    /// pastel/white backgrounds where the system grey washes out.
+    static let prompt   = Color(red: 0.20, green: 0.20, blue: 0.25)
+    /// Caption-weight label colour — slightly lighter than `prompt`
+    /// for hierarchy, still meets WCAG AA on `card`.
+    static let caption  = Color(red: 0.32, green: 0.32, blue: 0.40)
+}
