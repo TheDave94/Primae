@@ -1933,14 +1933,42 @@ public final class TracingViewModel {
             .compactMap { name in self.letters.first(where: { $0.name == name }) }
             .first?.strokes
         guard let reference else { return nil }
-        let normalised = points.map {
-            CGPoint(x: $0.x / canvasSize.width, y: $0.y / canvasSize.height)
-        }
+        // Normalise the trace by its OWN bounding box, not by canvas
+        // size: the reference glyph spans the full 0–1 unit box, so the
+        // trace must too if Fréchet distance is to measure shape rather
+        // than position. Dividing by canvasSize put a centred L at e.g.
+        // (0.5–0.7, 0.4–0.7) while the reference covered (0–1, 0–1),
+        // pinning Form to 0 % even for a perfectly shaped letter.
+        let normalised = Self.normaliseToUnitBox(points: points)
         let assessment = FreeWriteScorer.score(
             tracedPoints: normalised,
             reference: reference
         )
         return assessment.formAccuracy
+    }
+
+    /// Map a path so its axis-aligned bounding box fills the unit square.
+    /// Falls back gracefully for degenerate paths (single point, zero
+    /// extent on one axis) so the caller never has to special-case them.
+    static func normaliseToUnitBox(points: [CGPoint]) -> [CGPoint] {
+        guard !points.isEmpty,
+              let minX = points.map(\.x).min(),
+              let maxX = points.map(\.x).max(),
+              let minY = points.map(\.y).min(),
+              let maxY = points.map(\.y).max() else { return points }
+        let w = maxX - minX
+        let h = maxY - minY
+        // If a stroke has zero extent on an axis (pure horizontal or
+        // pure vertical line) place it at 0.5 on that axis so the
+        // resampled comparison still has a defined position.
+        let denomX = w > 0 ? w : 1
+        let denomY = h > 0 ? h : 1
+        return points.map { p in
+            CGPoint(
+                x: w > 0 ? (p.x - minX) / denomX : 0.5,
+                y: h > 0 ? (p.y - minY) / denomY : 0.5
+            )
+        }
     }
 
     /// Submit a finished freeform word. Assigns each completed stroke to

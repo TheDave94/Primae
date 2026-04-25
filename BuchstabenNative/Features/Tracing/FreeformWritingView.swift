@@ -12,6 +12,34 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Surface palette
+//
+// Solid colours used for the freeform UI panels. Replaces the previous
+// `.ultraThinMaterial` cards, which read as light gray over the white
+// canvas and crushed the contrast of `.secondary` labels and tinted
+// chips (see IMG_0337–0340 — "Schreibe einen Buchstaben…", the
+// "Vorschläge:" row, and the Klarheit / Form pills were almost
+// invisible). These tones give every label and chip a predictable
+// background to sit on regardless of system colour scheme.
+private enum FreeformSurface {
+    /// Toolbar and prompt strip behind Zurück / mode picker / Nochmal.
+    static let header   = Color(red: 0.94, green: 0.94, blue: 0.97)
+    /// Result and status cards under the canvas.
+    static let card     = Color(red: 0.97, green: 0.97, blue: 0.99)
+    /// Hairline border around cards so they read as a unit on white.
+    static let cardEdge = Color(red: 0.78, green: 0.78, blue: 0.84)
+    /// Word-picker pill backgrounds for unselected items — strong
+    /// enough that the dark label remains legible (purple.opacity(0.12)
+    /// rendered as near-pink and dropped contrast below WCAG AA).
+    static let pillIdle = Color(red: 0.91, green: 0.85, blue: 0.97)
+    /// Dark text for the unselected word-picker pills. Hand-picked dark
+    /// purple paired against `pillIdle` — measured ≈ 7:1 contrast.
+    static let pillIdleText = Color(red: 0.30, green: 0.13, blue: 0.45)
+    /// Body label for prompts that used to be `.secondary` — solid dark
+    /// grey is legible on both the header and the canvas.
+    static let prompt = Color(red: 0.20, green: 0.20, blue: 0.25)
+}
+
 struct FreeformWritingView: View {
     @Environment(TracingViewModel.self) private var vm
 
@@ -31,6 +59,11 @@ struct FreeformWritingView: View {
                 }
             }
         }
+        // Canvas is hard-coded `Color.white`, so pin the rest of the
+        // view to light mode too — otherwise `.primary`/`.secondary`
+        // resolve to white-ish in dark mode and disappear into the
+        // canvas, exactly the white-on-white symptom in IMG_0337–0340.
+        .preferredColorScheme(.light)
     }
 
     // MARK: - Header (two rows: nav + prompt)
@@ -89,7 +122,8 @@ struct FreeformWritingView: View {
                 if vm.freeformSubMode == .word, let target = vm.freeformTargetWord {
                     HStack(spacing: 8) {
                         Text("Schreibe:")
-                            .font(.subheadline).foregroundStyle(.secondary)
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(FreeformSurface.prompt)
                         Text(target.word)
                             .font(.system(size: 30, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
@@ -98,15 +132,20 @@ struct FreeformWritingView: View {
                     .accessibilityLabel("Zielwort \(target.word)")
                 } else {
                     Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(FreeformSurface.prompt)
                 }
                 Spacer()
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.ultraThinMaterial)
+        .background(FreeformSurface.header)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(FreeformSurface.cardEdge.opacity(0.5))
+                .frame(height: 1)
+        }
     }
 
     // MARK: - Word picker strip
@@ -120,12 +159,23 @@ struct FreeformWritingView: View {
                         vm.selectFreeformWord(word)
                     } label: {
                         Text(word.word)
-                            .font(.system(.headline, design: .rounded))
-                            .foregroundStyle(isSelected ? Color.white : Color.primary)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .font(.system(.headline, design: .rounded).weight(.semibold))
+                            .foregroundStyle(isSelected
+                                             ? Color.white
+                                             : FreeformSurface.pillIdleText)
+                            .padding(.horizontal, 14).padding(.vertical, 8)
                             .background(
-                                isSelected ? Color.purple : Color.purple.opacity(0.12),
+                                isSelected
+                                    ? Color.purple
+                                    : FreeformSurface.pillIdle,
                                 in: Capsule()
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(isSelected
+                                            ? Color.clear
+                                            : FreeformSurface.pillIdleText.opacity(0.35),
+                                            lineWidth: 1)
                             )
                     }
                     .buttonStyle(.plain)
@@ -266,10 +316,12 @@ struct FreeformWritingView: View {
             )
         } else if vm.freeformPoints.isEmpty {
             Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift.")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(FreeformSurface.prompt)
         } else {
             Text("Hebe den Finger, um deinen Buchstaben erkennen zu lassen.")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(FreeformSurface.prompt)
         }
     }
 
@@ -279,14 +331,17 @@ struct FreeformWritingView: View {
         let percent = Int((max(0, min(1, value)) * 100).rounded())
         return HStack(spacing: 6) {
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.primary)
             Text("\(percent) %")
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(accent)
+                .font(.caption.weight(.bold).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 6).padding(.vertical, 2)
+                .background(accent, in: Capsule())
         }
         .padding(.horizontal, 10).padding(.vertical, 4)
-        .background(accent.opacity(0.15), in: Capsule())
+        .background(accent.opacity(0.22), in: Capsule())
+        .overlay(Capsule().stroke(accent.opacity(0.55), lineWidth: 1))
         .accessibilityLabel("\(label) \(percent) Prozent")
     }
 
@@ -300,12 +355,18 @@ struct FreeformWritingView: View {
                 .foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.headline).foregroundStyle(.primary)
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
+                Text(subtitle)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(FreeformSurface.prompt)
             }
             Spacer()
         }
         .padding(12)
-        .background(tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 16))
+        .background(tint.opacity(0.18), in: RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(tint.opacity(0.55), lineWidth: 1)
+        )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(title + ". " + subtitle)
     }
@@ -355,24 +416,32 @@ struct FreeformWritingView: View {
             if !result.topThree.isEmpty {
                 HStack(spacing: 10) {
                     Text("Vorschläge:")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(FreeformSurface.prompt)
                     ForEach(Array(result.topThree.enumerated()), id: \.offset) { _, cand in
                         HStack(spacing: 4) {
                             Text(cand.letter)
-                                .font(.subheadline.weight(.semibold))
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.primary)
                             Text("\(Int((cand.confidence * 100).rounded())) %")
                                 .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(FreeformSurface.prompt)
                         }
                         .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.gray.opacity(0.12), in: Capsule())
+                        .background(Color.gray.opacity(0.22), in: Capsule())
+                        .overlay(Capsule().stroke(Color.gray.opacity(0.5), lineWidth: 1))
                     }
                     Spacer()
                 }
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(FreeformSurface.card, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(FreeformSurface.cardEdge, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(headline)
     }
@@ -400,7 +469,8 @@ struct FreeformWritingView: View {
                 Text(vm.freeformPoints.isEmpty
                      ? "Schreibe das Wort Buchstabe für Buchstabe."
                      : "Wenn du fertig bist, tippe auf Fertig.")
-                    .font(.subheadline).foregroundStyle(.secondary)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(FreeformSurface.prompt)
                 Spacer()
                 Button {
                     vm.submitFreeformWord()
@@ -437,7 +507,8 @@ struct FreeformWritingView: View {
             Text(recognized.uppercased() == target.uppercased()
                  ? "🎉 Super, du hast das Wort richtig geschrieben!"
                  : "Gut versucht! Vergleiche mit dem Zielwort oben.")
-                .font(.subheadline).foregroundStyle(.secondary)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(FreeformSurface.prompt)
             HStack(spacing: 12) {
                 Button {
                     vm.clearFreeformCanvas()
@@ -460,7 +531,12 @@ struct FreeformWritingView: View {
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .background(FreeformSurface.card, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(FreeformSurface.cardEdge, lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 8, y: 2)
     }
 
     @ViewBuilder
@@ -469,7 +545,7 @@ struct FreeformWritingView: View {
         let shown = result?.predictedLetter ?? "·"
         let tint: Color = result == nil ? .gray : (correct ? .green : .orange)
         VStack(spacing: 2) {
-            Text(expected).font(.caption).foregroundStyle(.secondary)
+            Text(expected).font(.caption.weight(.semibold)).foregroundStyle(.primary)
             Text(shown)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)
