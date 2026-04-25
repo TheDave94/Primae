@@ -1919,29 +1919,58 @@ public final class TracingViewModel {
     }
 
     /// Score how closely the freeform path matches the recognized
-    /// letter's reference strokes. Returns nil when the letter has no
-    /// bundled reference (e.g. lowercase variants without strokes.json).
+    /// letter's reference strokes — using the **currently selected
+    /// font's** stroke definition, not the Druckschrift default. A
+    /// child practising Schreibschrift draws a curvy A that should be
+    /// scored against the cursive reference, and a child practising
+    /// Druckschrift the angular one. Returns nil when the letter has
+    /// no bundled reference for the active font.
     ///
-    /// Delegates to `FreeWriteScorer.formAccuracyShape`, which handles
-    /// bounding-box normalisation, order-free Hausdorff matching, and
-    /// child-friendly tolerance internally. This view-model is just
-    /// resolving the predicted letter to its reference glyph.
+    /// Delegates the maths to `FreeWriteScorer.formAccuracyShape` —
+    /// bounding-box normalisation, per-stroke densification, and
+    /// symmetric Hausdorff happen there.
     private func freeformFormAccuracy(points: [CGPoint],
                                       canvasSize: CGSize,
                                       predictedLetter: String) -> CGFloat? {
         guard canvasSize.width > 0, canvasSize.height > 0,
-              points.count >= 2 else { return nil }
-        let candidateNames = [predictedLetter,
-                              predictedLetter.uppercased(),
-                              predictedLetter.lowercased()]
-        let reference = candidateNames.lazy
-            .compactMap { name in self.letters.first(where: { $0.name == name }) }
-            .first?.strokes
-        guard let reference else { return nil }
+              points.count >= 2,
+              let reference = referenceStrokes(forLetterNamed: predictedLetter,
+                                               schrift: schriftArt)
+        else { return nil }
         return FreeWriteScorer.formAccuracyShape(
             tracedPoints: points,
             reference: reference
         )
+    }
+
+    /// Resolve a letter name (e.g. "A", "f", "ß") to the stroke
+    /// definition for the given script. Schreibschrift /
+    /// Grundschrift / Vereinfachte Ausgangsschrift /
+    /// Schulausgangsschrift each ship per-letter `strokes_<id>.json`
+    /// in the bundle (loaded via `LetterRepository.loadVariantStrokes`);
+    /// Druckschrift uses the primary `LetterAsset.strokes`. Falls back
+    /// to Druckschrift if a variant isn't bundled for this letter so
+    /// new fonts don't have to ship the full alphabet to be useful.
+    private func referenceStrokes(forLetterNamed name: String,
+                                   schrift: SchriftArt) -> LetterStrokes? {
+        let candidates = [name, name.uppercased(), name.lowercased()]
+        if let variantID = schrift.bundleVariantID {
+            for candidate in candidates {
+                if let variant = repo.loadVariantStrokes(
+                    for: candidate, variantID: variantID) {
+                    return variant
+                }
+            }
+        }
+        // Druckschrift, or variant not bundled for this letter — fall
+        // back to the primary strokes.json. Better to score against the
+        // print form than to drop the metric entirely.
+        for candidate in candidates {
+            if let asset = letters.first(where: { $0.name == candidate }) {
+                return asset.strokes
+            }
+        }
+        return nil
     }
 
     /// Submit a finished freeform word. Assigns each completed stroke to
