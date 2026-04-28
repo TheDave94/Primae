@@ -16,6 +16,12 @@ struct LetterWheelPicker: View {
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
 
+    /// Dynamic-Type-scaled tile geometry. The glyph and the tile scale
+    /// together so the letter never clips at larger accessibility sizes.
+    /// Baseline 60×60 with 34pt glyph matches the original visual design.
+    @ScaledMetric(relativeTo: .title) private var tileSize: CGFloat = 60
+    @ScaledMetric(relativeTo: .title) private var letterFontSize: CGFloat = 34
+
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
 
     var body: some View {
@@ -63,11 +69,11 @@ struct LetterWheelPicker: View {
         } label: {
             VStack(spacing: 4) {
                 Text(letter)
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .font(.system(size: letterFontSize, weight: .bold, design: .rounded))
                     .foregroundStyle(isCurrent ? Color.white : Color.primary)
                 starRow(stars: stars, highlighted: isCurrent)
             }
-            .frame(width: 60, height: 60)
+            .frame(width: tileSize, height: tileSize)
             .background(
                 isCurrent
                     ? Color.blue

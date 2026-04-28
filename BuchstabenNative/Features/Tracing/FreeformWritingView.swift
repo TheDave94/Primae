@@ -49,6 +49,11 @@ struct FreeformWritingView: View {
     /// the next render. Reset whenever the canvas is cleared.
     @State private var dismissedResultLetter: String? = nil
 
+    /// Dynamic-Type-scaled size for the target-word glyph in word
+    /// sub-mode. Baseline 30pt is the original visual; scales relative
+    /// to .title so it tracks the parent dashboard's heading sizes.
+    @ScaledMetric(relativeTo: .title) private var targetWordFontSize: CGFloat = 30
+
     var body: some View {
         GeometryReader { geo in
             ZStack {
@@ -178,7 +183,7 @@ struct FreeformWritingView: View {
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(FreeformSurface.prompt)
                         Text(target.word)
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(.system(size: targetWordFontSize, weight: .bold, design: .rounded))
                             .foregroundStyle(.primary)
                     }
                     .accessibilityElement(children: .combine)
