@@ -486,15 +486,15 @@ public final class TracingViewModel {
     private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
-    /// Owned by `init` after all other stored properties are bound. Once
-    /// the init returns, this is non-nil for the lifetime of the VM. The
-    /// previous IUO `playback: PlaybackController!` shape (review item
-    /// W-16) couldn't be statically verified by the compiler, so a future
-    /// reorder that touched `playback` before init's closing line would
-    /// crash at first access. The `let` form below removes that footgun
-    /// — Swift now refuses to compile any code path that reads
-    /// `playback` before it's been assigned.
-    private let playback: PlaybackController
+    /// IUO is intentional (review item W-16): `init` captures `[weak self]`
+    /// when constructing `PlaybackController`, which under Swift's two-
+    /// phase init rules requires every stored property — including
+    /// `playback` itself — to already have an initial value at the
+    /// capture site. A non-optional `let` is therefore not assignable
+    /// here without an inner indirection. The IUO is set exactly once on
+    /// the closing line of `init`; every subsequent access goes through
+    /// the implicit unwrap. Treat this as effectively non-optional.
+    private var playback: PlaybackController!
     private let messages: TransientMessagePresenter
     private let animation: AnimationGuideController
     /// Full-cycle counter for the observe-phase animation. Used to auto-advance
