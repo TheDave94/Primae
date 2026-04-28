@@ -72,9 +72,16 @@ private func completeAll(_ tracker: StrokeTracker, _ def: LetterStrokes) {
         t.load(def); completeAll(t, def)
         #expect(t.isComplete); #expect(abs(t.overallProgress - 1.0) < 1e-9)
     }
-    @Test func zeroStrokes_isCompleteImmediately() {
+    @Test func zeroStrokes_isNotCompleteWithoutInput() {
+        // Empty stroke definition must NOT report `isComplete`.
+        // `[].allSatisfy(\.complete)` is vacuously true, which
+        // previously let an empty-placeholder letter "complete"
+        // itself the instant it loaded. The fix in
+        // `StrokeTracker.isComplete` adds an explicit
+        // `!definition.strokes.isEmpty` guard. This test pins the
+        // corrected contract.
         let t = StrokeTracker(); t.load(letter(strokes: []))
-        #expect(t.isComplete)
+        #expect(!t.isComplete)
         #expect(!t.soundEnabled)
         #expect(abs(t.overallProgress) < 1e-9)
         #expect(!t.overallProgress.isNaN)
@@ -266,11 +273,15 @@ private func completeAll(_ tracker: StrokeTracker, _ def: LetterStrokes) {
         t.radiusMultiplier = 1.0; t.update(normalizedPoint: insidePoint); #expect(t.isComplete)
     }
     @Test func radiusMultiplier_zero_emptyStrokes_noCrash() {
+        // Empty-strokes + zero radius is a no-crash sanity test. After
+        // the `isComplete` vacuous-truth fix, `isComplete` must be
+        // `false` for empty stroke definitions regardless of the
+        // radius multiplier — see `zeroStrokes_isNotCompleteWithoutInput`.
         var t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: []))
         t.radiusMultiplier = 0.0
         t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
-        #expect(t.isComplete); #expect(!t.soundEnabled)
+        #expect(!t.isComplete); #expect(!t.soundEnabled)
     }
     @Test func radiusMultiplier_negative_exactHitDoesNotRegister() {
         var t = StrokeTracker()
