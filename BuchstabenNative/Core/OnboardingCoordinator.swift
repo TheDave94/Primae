@@ -141,17 +141,20 @@ final class JSONOnboardingStore: OnboardingStoring {
     }
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(state) else { return }
+        // Encode off main: see ProgressStore.save() for the same pattern.
+        let snapshot = state
         let url = fileURL
-        // Same coalesce-and-await pattern as the other JSON stores: each call
-        // cancels and supersedes the previous pending write since `data` is
-        // already the full latest snapshot. Ordering is preserved by awaiting
-        // the previous task before this one's write hits the disk.
+        // Same coalesce-and-await pattern as the other JSON stores: each
+        // call cancels and supersedes the previous pending write since
+        // the snapshot is already the full latest copy. Ordering is
+        // preserved by awaiting the previous task before this one's
+        // write hits the disk.
         let previous = pendingSave
         previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
+            guard let data = try? JSONEncoder().encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

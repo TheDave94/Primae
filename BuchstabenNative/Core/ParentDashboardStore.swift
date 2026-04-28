@@ -368,7 +368,9 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     // MARK: Private
 
     private func persist() {
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        // Encode off main: snapshot the value-type DashboardSnapshot on
+        // the actor, then encode + write inside the detached Task.
+        let snapshotCopy = snapshot
         let url = fileURL
         // Coalesce + order: see ProgressStore.save() for rationale.
         let previous = pendingSave
@@ -376,6 +378,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
+            guard let data = try? JSONEncoder().encode(snapshotCopy) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

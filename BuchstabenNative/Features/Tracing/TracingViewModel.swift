@@ -911,7 +911,6 @@ public final class TracingViewModel {
             // Snapshot tracker-derived values BEFORE advancing — after the
             // grid moves the cursor, `strokeTracker` aliases the next cell
             // (fresh state, zero progress).
-            let accuracy = Double(strokeTracker.overallProgress)
             let completingCellIndex = grid.activeCellIndex
             let sequenceDone = grid.advanceIfCompleted()
             if !sequenceDone {
@@ -931,13 +930,15 @@ public final class TracingViewModel {
             } else if !didCompleteCurrentLetter {
                 didCompleteCurrentLetter = true
                 if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
-
-                let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
-                commitCompletion(letter: currentLetterName,
-                                 accuracy: accuracy,
-                                 duration: duration)
-                toast("Super gemacht!")
+                // Stop audio before phase teardown so the child doesn't
+                // hear the letter sound bleed into the next phase.
                 playback.request(.idle, immediate: true)
+                // Route through advanceLearningPhase() so phase transitions
+                // always go through one path:
+                //   guided     → freeWrite  (phaseController.advance returns true)
+                //   guided     → complete   (guidedOnly/control: returns false → celebration)
+                //   freeWrite  → complete   (threePhase: returns false → celebration)
+                advanceLearningPhase()
             }
         }
 
@@ -1474,64 +1475,6 @@ public final class TracingViewModel {
     /// dashboard's debug-only Forschungsmetriken section so a researcher can
     /// confirm at a glance which arm the device is on.
     var thesisConditionRawName: String { thesisCondition.rawValue }
-
-    // MARK: - Debug audio tuning (forwarders for the DebugAudioPanel sliders)
-    //
-    // The debug panel binds Sliders to these computed properties; each setter
-    // forwards to the underlying controller / engine so changes apply
-    // immediately while the child is tracing. Wrapping in #if DEBUG keeps
-    // the runtime tuning surface out of release builds entirely.
-
-    /// AudioEngine fade-out duration (s). 0 reverts to abrupt-stop behaviour.
-    var tuneFadeOutSeconds: TimeInterval {
-        get { (audio as? AudioEngine)?.fadeOutSeconds ?? 0 }
-        set { (audio as? AudioEngine)?.fadeOutSeconds = newValue }
-    }
-    /// PlaybackController idle-debounce window (s) — perceived "finger-lifting" delay.
-    var tuneIdleDebounce: TimeInterval {
-        get { playback.idleDebounceSeconds }
-        set { playback.idleDebounceSeconds = newValue }
-    }
-    /// PlaybackController active-debounce window (s).
-    var tuneActiveDebounce: TimeInterval {
-        get { playback.activeDebounceSeconds }
-        set { playback.activeDebounceSeconds = newValue }
-    }
-    /// Coalesce window for rapid play-intents (s).
-    var tunePlayIntentDedup: TimeInterval {
-        get { playback.playIntentDebounceSeconds }
-        set { playback.playIntentDebounceSeconds = newValue }
-    }
-    /// Min smoothed touch velocity (pt/s) before audio kicks in.
-    var tuneVelocityThreshold: CGFloat {
-        get { playbackActivationVelocityThreshold }
-        set { playbackActivationVelocityThreshold = newValue }
-    }
-    /// Exponential smoothing factor on touch velocity (0–1).
-    var tuneVelocitySmoothing: CGFloat {
-        get { velocitySmoothingAlpha }
-        set { velocitySmoothingAlpha = newValue }
-    }
-    /// Min per-event movement (pt). Below this the touch event is ignored.
-    var tuneMinMoveDistance: CGFloat {
-        get { minimumTouchMoveDistance }
-        set { minimumTouchMoveDistance = newValue }
-    }
-    /// Lower clamp for time-stretch playback rate.
-    var tuneMinPlaybackRate: Float {
-        get { (audio as? AudioEngine)?.minPlaybackRate ?? 0.5 }
-        set { (audio as? AudioEngine)?.minPlaybackRate = newValue }
-    }
-    /// Upper clamp for time-stretch playback rate.
-    var tuneMaxPlaybackRate: Float {
-        get { (audio as? AudioEngine)?.maxPlaybackRate ?? 2.0 }
-        set { (audio as? AudioEngine)?.maxPlaybackRate = newValue }
-    }
-    /// Pitch shift in cents (AVAudioUnitTimePitch.pitch). 0 = unshifted.
-    var tunePitchCents: Float {
-        get { (audio as? AudioEngine)?.pitchCents ?? 0 }
-        set { (audio as? AudioEngine)?.pitchCents = newValue }
-    }
     #endif
 
     // MARK: - Private helpers

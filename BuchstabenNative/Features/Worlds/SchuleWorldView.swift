@@ -17,6 +17,14 @@ struct SchuleWorldView: View {
     @State private var showLetterPicker = false
 
     var body: some View {
+        if vm.visibleLetterNames.isEmpty {
+            ContentUnavailableView(
+                "Buchstaben nicht geladen",
+                systemImage: "exclamationmark.triangle",
+                description: Text("Bitte die App neu starten.")
+            )
+            .preferredColorScheme(.light)
+        } else {
         ZStack {
             WorldPalette.background(for: .schule)
                 .ignoresSafeArea()
@@ -111,6 +119,7 @@ struct SchuleWorldView: View {
         // chrome to light mode so `.primary` resolves to black instead of
         // disappearing into the canvas in dark mode.
         .preferredColorScheme(.light)
+        } // end else
     }
 
     // MARK: - Queue-driven modal overlays
