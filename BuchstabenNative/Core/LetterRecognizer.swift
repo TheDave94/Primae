@@ -346,7 +346,27 @@ struct StubLetterRecognizer: LetterRecognizerProtocol {
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
                    expectedLetter: String?) async -> RecognitionResult? {
-        result
+        // Truthfulness check (DEBUG only). The pre-configured
+        // `result.isCorrect` should match
+        // `result.predictedLetter == expectedLetter` when the caller
+        // supplied an expectation; otherwise the test is asserting
+        // against an inconsistent stub state and any pass/fail signal
+        // it produces is suspect. Production builds skip this check
+        // so the stub stays a zero-cost no-op outside tests.
+        #if DEBUG
+        if let result, let expected = expectedLetter {
+            let actuallyCorrect =
+                result.predictedLetter.caseInsensitiveCompare(expected) == .orderedSame
+            assert(
+                result.isCorrect == actuallyCorrect,
+                "StubLetterRecognizer: result.isCorrect (\(result.isCorrect)) " +
+                "contradicts predicted='\(result.predictedLetter)' vs " +
+                "expected='\(expected)'. Either fix the stub setup or use " +
+                "alwaysReturn(predicted:confidence:isCorrect:) honestly."
+            )
+        }
+        #endif
+        return result
     }
 
     func isModelAvailable() async -> Bool { result != nil }
