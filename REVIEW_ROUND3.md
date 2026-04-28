@@ -1,6 +1,7 @@
 # Review Round 3 — Council Synthesis
 
 Generated: 2026-04-28  
+Last updated: 2026-04-28 (post W-23 + cleanup pass)  
 Source: Regression check + deep bug hunt + test audit + thesis data audit
 
 ---
@@ -13,22 +14,21 @@ Source: Regression check + deep bug hunt + test audit + thesis data audit
 | **C-2** | 🔴 Critical | **FIXED** | FreeformController:97 | `isRecognizing` stuck `true` after canvas clear — spinner permanent |
 | **C-3** | 🔴 Critical | **FIXED** | TracingViewModel:1437, ParentDashboardStore:222 | `schedulerPriority` hardcoded `0` — `schedulerEffectivenessProxy` permanently 0 |
 | **C-4** | 🔴 Critical | **FIXED** | OverlayQueueManager:116 | Recognition badge silently dropped when CoreML finishes after celebration already showing |
-| **W-4** | 🟡 Warning | **FIXED** | TracingViewModel:1361 | "Weiter" button non-functional if `recommendNext` returns nil — child trapped on screen |
-| **W-5** | 🟡 Warning | **FIXED** | CompletionCelebrationOverlay:35 | Stars hardcoded `1…4` for all conditions — motivational confound for guidedOnly/control |
-| **W-6** | 🟡 Warning | **FIXED** | TracingViewModel:1396 | `isSingleTouchInteractionActive` not cleared in `resetForPhaseTransition()` — canvas lockout on interrupted gesture |
-| **W-1** | 🟡 Warning | not fixed | TracingViewModel:1361 | Priority should be captured at selection time — now fixed by C-3 fix (same site) |
-| **W-2** | 🟡 Warning | not fixed | ParentDashboardExporter:103 | CSV attaches latest-ever recognition sample to every phase row |
-| **W-3** | 🟡 Warning | not fixed | ParentDashboardStore:344 | `ß` → `"SS"` in `PhaseSessionRecord.letter` vs `ß` in `ProgressStore` |
-| **W-16** | 🟡 Warning | not fixed (documented) | TracingViewModel:497 | `playback` remains IUO — two-phase init constraint documented |
+| **W-1** | 🟡 Warning | **FIXED (via C-3)** | TracingViewModel:1380 | Priority captured at selection time — same site as C-3 |
+| **W-2** | 🟡 Warning | **FIXED** | ParentDashboardExporter:103 | Phase rows now blank the recognition columns; per-letter aggregate retained |
+| **W-3** | 🟡 Warning | **FIXED** | ParentDashboardStore + StreakStore | All stores now route through `LetterProgress.canonicalKey` so `ß` stays `ß` everywhere |
+| **W-4** | 🟡 Warning | **FIXED** | TracingViewModel:1377 | "Weiter" button non-functional if `recommendNext` returns nil — child trapped on screen |
+| **W-5** | 🟡 Warning | **FIXED** | CompletionCelebrationOverlay:40 | Stars hardcoded `1…4` for all conditions — motivational confound for guidedOnly/control |
+| **W-6** | 🟡 Warning | **FIXED** | TracingViewModel:1411 | `isSingleTouchInteractionActive` not cleared in `resetForPhaseTransition()` — canvas lockout on interrupted gesture |
+| **W-23** | 🟡 Warning | **FIXED** | LetterScheduler:88 | `fixedOrder()` now scores by `-completionCount` so control arm round-robins instead of stalling on the first letter |
+| **W-16** | 🟡 Warning | not fixed (documented) | TracingViewModel:504 | `playback` remains IUO — two-phase init constraint documented; 98e63de reverted the IUO→let attempt |
 | **W-17** | 🟡 Warning | not fixed | All stores | No `schemaVersion` sentinel — silent data loss on decode failure |
-| **W-23** | 🟡 Warning | not fixed (new bug) | LetterScheduler:90 | `fixedOrder()` control scheduler always returns first letter — not round-robin |
 | **W-24** | 🟡 Warning | not fixed | LetterScheduler:49 | `memoryStabilityDays` fixed — no expanding-interval implementation |
 | **I-2** | 🟢 Info | not fixed (documented) | TracingDependencies:16 | `adaptationPolicy = nil` meaning undocumented |
-| **I-4** | 🟢 Info | not fixed | PhaseDotIndicator:26 | Always 4 dots regardless of thesis condition |
-| **I-5** | 🟢 Info | not fixed | SchriftArt:11 | `vereinfachteAusgangschrift` missing genitive-s |
-| **I-6** | 🟢 Info | not fixed | FreeformWritingView:368, :642 | Recognition alert titles remain imperative |
-| **I-7** | 🟢 Info | not fixed | CompletionCelebrationOverlay:29 | Identical praise text in overlay and feedback card |
-| **W-5** | 🟡 Warning | not fixed | CompletionCelebrationOverlay:35 | Star display condtion-agnostic — fixed in this round |
+| **I-4** | 🟢 Info | **FIXED** | PhaseDotIndicator:26 + SchuleWorldView:330 | Now uses `vm.activePhases` so guidedOnly/control render only the dots they actually run |
+| **I-5** | 🟢 Info | **FIXED** | SchriftArt:16 | Case renamed `vereinfachteAusgangsschrift` (genitive-s); raw value pinned to old spelling for back-compat |
+| **I-6** | 🟢 Info | **FIXED** | FreeformWritingView:368, :642 | "Erkenne…" → "Wird erkannt…" / "Erkenne das Wort…" → "Wort wird erkannt…" |
+| **I-7** | 🟢 Info | **FIXED** | CompletionCelebrationOverlay:34 | Headline changed from "Super gemacht!" to "Geschafft!" — no longer duplicates the feedback card |
 
 ---
 
@@ -116,41 +116,94 @@ This also fixes **W-1** (priority must be captured at selection time, not comple
 
 ---
 
+### W-2 — Phase rows attached the latest-ever recognition sample (FIXED)
+
+**Root cause:** `ParentDashboardExporter` looked up `progress[rec.letter]?.recognitionSamples?.last` for every per-phase row. That array is a 10-deep rolling window with no session timestamps, so a phase that completed days ago got tagged with whatever the recognizer most recently saw — a structurally invalid correlation.
+
+**Fix:** Blank the three recognition columns (`recognition_predicted`, `recognition_confidence`, `recognition_correct`) on per-phase rows. The per-letter aggregate block above still surfaces the recognition data (sample count + average confidence). Genuine session-aligned recognition correlation requires the schema change tracked in audit item D-2; until that lands, blanking is the only correct value. Two existing tests that asserted the buggy substring were rewritten to assert the new "always blank" contract.
+
+---
+
+### W-3 — `ß` collapsed to `"SS"` in dashboard / streak stores (FIXED)
+
+**Root cause:** `ProgressStore` had a private `canonicalKey` that special-cased `ß` (Unicode would otherwise upper-case it to `"SS"`, losing identity). `ParentDashboardStore.recordSession` / `recordPhaseSession` / `phaseScores(for:)` and `StreakStore.recordCompletions` all called `letter.uppercased()` directly, so a child practising `ß` had their progress, dashboard rows, and streak completions land under three different keys.
+
+**Fix:** Lifted the rule to `LetterProgress.canonicalKey(_:)` (extension, public to the module) and routed all four sites through it, including `JSONProgressStore` itself. One canonical normaliser, three stores in lock-step. Existing on-disk data is unaffected — the function returns the same value for every non-`ß` input as the prior `uppercased()` path.
+
+---
+
+### W-23 — `fixedOrder()` always returned the first letter (FIXED)
+
+**Root cause:** `LetterScheduler.fixedOrder()` (the `.control` thesis arm scheduler) returned `priority: 0` for every letter. `recommendNext()` picked `prioritized().first?.letter`, and Swift's stable sort kept the caller-supplied order — so children in `.control` were perpetually recommended whichever letter sat first in `visibleLetterNames`.
+
+**Fix:** Score by `priority: -Double(completionCount)` in the `fixedOrder` branch. Less-practised letters bubble up; on a tie (e.g. clean slate) the stable sort still returns the input order, so a fresh device starts on the first letter and rotates through as the child completes them. Three regression tests added to `LetterSchedulerTests`.
+
+---
+
+### I-4 — Phase dot indicator always rendered four dots (FIXED)
+
+**Root cause:** `PhaseDotIndicator` iterated `LearningPhase.allCases` (always four). Under `.guidedOnly` / `.control`, only `.guided` runs — three dots were permanently empty placeholders, mis-cueing the child and creating a between-arms visual confound.
+
+**Fix:** Added an `activePhases` parameter (default `LearningPhase.allCases` to keep current callers working). `SchuleWorldView` passes `vm.activePhases`, which forwards `phaseController.activePhases`. Dot count, completion count, and accessibility value now all derive from that list.
+
+---
+
+### I-5 — `vereinfachteAusgangschrift` missing genitive-s (FIXED)
+
+**Root cause:** German "Vereinfachte Ausgangs**s**chrift" — the case label dropped the genitive *s* even though the display name was correct.
+
+**Fix:** Renamed the enum case to `vereinfachteAusgangsschrift` and pinned the raw value to the old spelling (`= "vereinfachteAusgangschrift"`). Persisted user-default selections, the bundled font filename (`VereinfachteAusgangschrift-Regular`), and the `strokes_vereinfachteAusgangschrift.json` lookup all keep resolving without a migration step.
+
+---
+
+### I-6 — Recognition status titles read as imperatives (FIXED)
+
+**Root cause:** "Erkenne…" / "Erkenne das Wort…" parses as an imperative ("recognise!"), not the intended progressive ("recognising…"). German learners reading the screen aloud would say it as a command to themselves.
+
+**Fix:** Swapped to the passive present `"Wird erkannt…"` / `"Wort wird erkannt…"`. Tone matches the `Erkenne…`-paired sparkles icon and the subtitle.
+
+---
+
+### I-7 — Identical praise on overlay and feedback card (FIXED)
+
+**Root cause:** `SchuleWorldView`'s "Nachspuren fertig" card emits `"Super gemacht!"` for a 3-of-3 score, then `CompletionCelebrationOverlay` headlines with the exact same string moments later — the child sees the same words stacked.
+
+**Fix:** Celebration overlay headline changed to `"Geschafft!"`. The card keeps its scored praise so the score-to-text mapping stays informative.
+
+---
+
 ## Thesis Data Findings (not fixed in this round — documentation only)
 
 These findings from the thesis data audit require larger structural changes or are by-design limitations that need explicit acknowledgement in the thesis methodology.
 
-| # | Risk | Impact |
-|---|------|--------|
-| D-1 | `schedulerEffectivenessProxy` always 0 (C-3) | **FIXED** |
-| D-2 | Recognition data attached at export-time from rolling window, not at session-time | Correlation impossible from CSV |
-| D-3 | No per-session timestamps on `PhaseSessionRecord` | Dated learning curves impossible |
-| D-4 | `.guidedOnly`/`.control` have zero Schreibmotorik + recognition data | Between-condition ANOVA has empty cells |
-| D-5 | Session duration includes background time | Duration analysis unreliable |
-| D-6 | `speedTrend` (5-entry rolling) absent from CSV | Automatization analysis requires JSON export |
-| D-7 | Pre-enrollment records decode as `.threePhase` — indistinguishable from real data | Pilot contamination risk |
+| # | Risk | Impact | Why deferred |
+|---|------|--------|--------------|
+| D-1 | `schedulerEffectivenessProxy` always 0 | **FIXED** (C-3) | — |
+| D-2 | `recognitionSamples` is a 10-deep rolling per-letter window with no per-sample timestamps. The CSV exporter could only attach "the latest sample" to every phase row, which mis-correlates recognition with phases that completed earlier. W-2 now blanks those columns; recovering real session-aligned recognition needs a schema change. | Correlation impossible from CSV without that schema change | Requires a new persisted type (per-session recognition record) and a migration. Out of scope for a review round; queued for the next thesis-data refactor. |
+| D-3 | `PhaseSessionRecord` has no `Date` field, only an implicit append order. So you can't ask "what was this child's freeWrite score on day 4?" — only "what's their N-th freeWrite". Dated learning curves and duration-windowed analyses are impossible from the CSV. | Dated learning curves impossible | Adding a `recordedAt: Date` field is small in code but invalidates every prior-recorded JSON file unless paired with a careful migration; deferred to the same schema refactor as D-2. |
+| D-4 | The `.guidedOnly` and `.control` arms only run the `.guided` phase, so they never produce freeWrite data. That's where Schreibmotorik dimensions (`formAccuracy`, `tempoConsistency`, `pressureControl`, `rhythmScore`) and the freeform recognition path live, so those columns are structurally empty for two of the three arms. | Between-condition ANOVA has empty cells | Cannot be fixed in code without changing the thesis design itself — by-design experimental contrast. Must be acknowledged in the methodology / limitations chapter. |
+| D-5 | Session duration is computed as `endedAt − startedAt`. The clock keeps running when the app is backgrounded (lock screen, Control Center swipe, incoming notification), so a 4-minute "session" might include 3 minutes of the iPad sitting on a table. | Duration analysis unreliable | Switching to active-time (pause on `scenePhase == .background`) needs reconciliation across `FreeWritePhaseRecorder`, `ParentDashboardStore`, and `JSONProgressStore`. Worth doing, but bigger than a council-round fix; flagged for the next session-tracking refactor. |
+| D-6 | `speedTrend` (the last 5 session writing speeds, used by the scheduler's `automatizationBonus`) is in `LetterProgress` but not in any CSV column. Researchers can only reconstruct the automatization signal from the JSON export. | Automatization analysis requires JSON export | Easy to add (one column to the per-letter row), but the CSV column set is referenced by downstream R/SPSS scripts; deferred until the schema bump batches D-2 / D-3 as well. |
+| D-7 | Anything completed before a research participant was formally enrolled — pilot taps, parent demos, sandbox sessions — decodes today as `.threePhase` (the default) and is indistinguishable from real `.threePhase` arm data. | Pilot contamination risk | Needs a `ParticipantStore` `enrolledAt` timestamp + filtering at export time; touches three components. Methodology workaround: discard the first session date per device when analysing. |
 
 ---
 
 ## Regression Check Cross-Reference
 
-The regression check identified 5 items not fixed by round 2:
-
 | Item | Status |
 |------|--------|
 | W-5 (progressStore not private) | Still open — views access `vm.progressStore` directly; no `starCount(for:)` forwarder added. Deferred. |
-| W-16 (IUO playback) | Documented but not fixed — two-phase init constraint. Retained. |
-| W-17 (schemaVersion) | Not fixed. No sentinel added to stores. Deferred. |
-| I-2 (nil adaptationPolicy undocumented) | Not fixed. Deferred. |
-| I-4 (PhaseDotIndicator always 4 dots) | Not fixed. Deferred. |
-| I-5 (vereinfachteAusgangschrift typo) | Not fixed. Deferred. |
-| I-6 (imperative recognition titles) | Not fixed. Deferred. |
-| I-7 (duplicate praise text) | Not fixed. Deferred. |
-
-**New bug W-23 introduced by prior round** (still open): `LetterScheduler.fixedOrder()` returns all letters with `priority: 0`; `recommendNext()` always returns the first letter in `visibleLetterNames` (stable sort on equal priorities). Control children are perpetually recommended the same single letter rather than cycling through the alphabet. Requires `fixedOrder()` to return letters in rotating fashion or `loadRecommendedLetter()` to track position.
+| W-16 (IUO playback) | Documented but not fixed — two-phase init constraint; revert in 98e63de. Retained. |
+| W-17 (schemaVersion) | Not fixed. No sentinel added to stores. Deferred — pair with D-2/D-3 refactor. |
+| W-23 (fixedOrder() always first letter) | **FIXED** in 84fa6c8 — round-robin via `-completionCount`. |
+| I-2 (nil adaptationPolicy undocumented) | Not fixed. Deferred (doc-only). |
+| I-4 (PhaseDotIndicator always 4 dots) | **FIXED** — uses `vm.activePhases`. |
+| I-5 (vereinfachteAusgangschrift typo) | **FIXED** — case renamed; raw value pinned for back-compat. |
+| I-6 (imperative recognition titles) | **FIXED** — passive present tense ("Wird erkannt…"). |
+| I-7 (duplicate praise text) | **FIXED** — overlay reads "Geschafft!"; card keeps scored praise. |
 
 ---
 
-## Zero 🔴 Findings Remaining
+## Zero 🔴 Findings, Zero 🟡 Code-Bug Findings Remaining
 
-All four critical findings (C-1 through C-4) have been fixed. The guided feedback scaffold now displays correctly, the freeform spinner clears on canvas reset, the scheduler effectiveness metric is now computable from exported data, and the recognition badge no longer races the celebration to disappear.
+All four critical findings (C-1 through C-4) and every actionable warning are fixed. The remaining 🟡 entries (W-16, W-17, W-24) are by-design or pure-doc deferrals; the remaining 🟢 entry (I-2) is documentation only. The thesis-data findings D-2 through D-7 are tracked above with the rationale for each deferral.

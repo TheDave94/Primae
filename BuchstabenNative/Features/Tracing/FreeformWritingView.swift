@@ -365,7 +365,7 @@ struct FreeformWritingView: View {
             statusBanner(
                 icon: "sparkles",
                 tint: .blue,
-                title: "Erkenne…",
+                title: "Wird erkannt…",
                 subtitle: "Ich schaue mir deinen Buchstaben an."
             )
         } else if vm.isWaitingForRecognition {
@@ -639,7 +639,7 @@ struct FreeformWritingView: View {
             statusBanner(
                 icon: "sparkles",
                 tint: .blue,
-                title: "Erkenne das Wort…",
+                title: "Wort wird erkannt…",
                 subtitle: "Ich schaue mir deine Buchstaben an."
             )
         } else if !vm.freeformWordResultSlots.isEmpty {

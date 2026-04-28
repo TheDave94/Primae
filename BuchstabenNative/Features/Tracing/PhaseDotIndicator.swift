@@ -13,6 +13,13 @@ import SwiftUI
 struct PhaseDotIndicator: View {
     let phase: LearningPhase
     let scores: [LearningPhase: CGFloat]
+    /// I-4: phases the current thesis condition actually runs. The
+    /// `.guidedOnly` / `.control` arms only run `.guided`, so showing
+    /// four dots there displayed three permanently-empty placeholders
+    /// — visually misleading and a between-arms confound. Default
+    /// keeps the previous four-dot behaviour for any caller that
+    /// doesn't pass an explicit list yet.
+    var activePhases: [LearningPhase] = LearningPhase.allCases
 
     private let dotSize: CGFloat = 10
 
@@ -23,7 +30,7 @@ struct PhaseDotIndicator: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            ForEach(LearningPhase.allCases, id: \.self) { p in
+            ForEach(activePhases, id: \.self) { p in
                 dot(for: p)
             }
         }
@@ -34,11 +41,11 @@ struct PhaseDotIndicator: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Lernphase \(phase.displayName)")
-        .accessibilityValue("\(completedCount) von \(LearningPhase.allCases.count) abgeschlossen")
+        .accessibilityValue("\(completedCount) von \(activePhases.count) abgeschlossen")
     }
 
     private var completedCount: Int {
-        LearningPhase.allCases.filter { scores[$0] != nil }.count
+        activePhases.filter { scores[$0] != nil }.count
     }
 
     @ViewBuilder

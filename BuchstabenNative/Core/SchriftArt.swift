@@ -8,7 +8,12 @@ public enum SchriftArt: String, Codable, CaseIterable {
     case druckschrift
     case schreibschrift
     case grundschrift
-    case vereinfachteAusgangschrift
+    // I-5: identifier is German "Vereinfachte Ausgangs**s**chrift" — the
+    // genitive-s was missing from the original case name. The raw value
+    // is pinned to the old spelling so persisted user-default selections
+    // and the bundled font/strokes filenames keep resolving without a
+    // migration step.
+    case vereinfachteAusgangsschrift = "vereinfachteAusgangschrift"
     case schulausgangsschrift
 
     /// Font resource filename (without extension) for this script.
@@ -25,7 +30,7 @@ public enum SchriftArt: String, Codable, CaseIterable {
         // label is the generic "Schreibschrift".
         case .schreibschrift:            return "PlaywriteAT-Regular"
         case .grundschrift:              return "Grundschrift-Regular"
-        case .vereinfachteAusgangschrift: return "VereinfachteAusgangschrift-Regular"
+        case .vereinfachteAusgangsschrift: return "VereinfachteAusgangschrift-Regular"
         case .schulausgangsschrift:      return "Schulausgangsschrift-Regular"
         }
     }
@@ -36,7 +41,7 @@ public enum SchriftArt: String, Codable, CaseIterable {
         case .druckschrift:              return "Druckschrift"
         case .schreibschrift:            return "Schreibschrift"
         case .grundschrift:              return "Grundschrift"
-        case .vereinfachteAusgangschrift: return "Vereinfachte Ausgangsschrift"
+        case .vereinfachteAusgangsschrift: return "Vereinfachte Ausgangsschrift"
         case .schulausgangsschrift:      return "Schulausgangsschrift"
         }
     }
@@ -56,7 +61,7 @@ public enum SchriftArt: String, Codable, CaseIterable {
         case .druckschrift:              return nil
         case .schreibschrift:            return "schulschrift"
         case .grundschrift:              return "grundschrift"
-        case .vereinfachteAusgangschrift: return "vereinfachteAusgangschrift"
+        case .vereinfachteAusgangsschrift: return "vereinfachteAusgangschrift"
         case .schulausgangsschrift:      return "schulausgangsschrift"
         }
     }

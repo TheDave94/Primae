@@ -65,6 +65,20 @@ struct LetterProgress: Codable, Equatable {
     var freeformCompletionCount: Int?
 }
 
+extension LetterProgress {
+    /// Canonical dictionary key for any per-letter persistence. The bare
+    /// `letter.uppercased()` rule is wrong for the German `ß`: Unicode
+    /// canonicalises it to `"SS"`, which silently loses the eszett's
+    /// identity and routes its progress into a non-existent `SS` slot.
+    /// Every store that keys by letter — `JSONProgressStore`,
+    /// `JSONParentDashboardStore`, `JSONStreakStore` — must use this so
+    /// the same child practising `ß` is reflected consistently across
+    /// stores (review item W-3).
+    static func canonicalKey(_ letter: String) -> String {
+        letter == "ß" ? "ß" : letter.uppercased()
+    }
+}
+
 // MARK: - Protocol (testable seam)
 
 @MainActor
@@ -188,14 +202,10 @@ public final class JSONProgressStore: ProgressStoring {
     // MARK: - Canonical key
 
     /// Normalised dictionary key used by every per-letter store entry.
-    /// `letter.uppercased()` would collapse the German `ß` to `SS` (the
-    /// Unicode canonical rule — there's no historical capital eszett),
-    /// so a child practising `ß` would silently lose their progress to
-    /// a non-existent `SS` slot. Special-case `ß` to preserve its
-    /// identity; everything else uppercases as before so `a` and `A`
-    /// keep grouping under `A`.
+    /// Delegates to `LetterProgress.canonicalKey` so all stores share
+    /// one normalisation rule (review item W-3).
     private static func canonicalKey(_ letter: String) -> String {
-        letter == "ß" ? "ß" : letter.uppercased()
+        LetterProgress.canonicalKey(letter)
     }
 
     // MARK: ProgressStoring

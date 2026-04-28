@@ -90,28 +90,19 @@ struct ParentDashboardExporter {
         // PhaseSessionRecord.init — so observe / direct / guided rows
         // emit empty strings for them.
         lines.append(["letter","phase","completed","score","schedulerPriority","condition","recognition_predicted","recognition_confidence","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore"].joined(separator: sep))
-        // Per-session recognition data is per-letter, not per-phase — we
-        // surface the per-letter latest recognition reading per letter-
-        // progress entry. For phase rows without a corresponding progress
-        // entry we leave the three recognition columns blank so downstream
-        // consumers can distinguish "no recognition data" from
-        // "zero confidence".
+        // W-2: the per-letter `recognitionSamples` array is a rolling
+        // latest-N window with no session timestamps, so attaching
+        // `samples.last` to every per-phase row mis-correlates the most
+        // recent recognition with phases that finished hours or days
+        // earlier. The per-letter block above already surfaces the
+        // recognition aggregate; per-session recognition correlation
+        // requires session-time samples (see audit D-2), which the
+        // schema can't reconstruct yet. Until then, leave these columns
+        // blank so downstream tooling cannot accidentally read the
+        // wrong reading as a session-aligned value.
         for rec in snapshot.phaseSessionRecords {
             let score = String(format: "%.4f", rec.score)
             let prio  = String(format: "%.4f", rec.schedulerPriority)
-            let prog  = progress[rec.letter]
-            let lastSample = prog?.recognitionSamples?.last
-            let legacyConf = prog?.recognitionAccuracy?.last
-            let recLabel: String = lastSample?.predictedLetter ?? ""
-            let recConf: String
-            if let s = lastSample {
-                recConf = String(format: "%.4f", s.confidence)
-            } else if let c = legacyConf {
-                recConf = String(format: "%.4f", c)
-            } else {
-                recConf = ""
-            }
-            let recRight: String = lastSample.map { String($0.isCorrect) } ?? ""
             let dimForm   = rec.formAccuracy.map     { String(format: "%.4f", $0) } ?? ""
             let dimTempo  = rec.tempoConsistency.map { String(format: "%.4f", $0) } ?? ""
             let dimPress  = rec.pressureControl.map  { String(format: "%.4f", $0) } ?? ""
@@ -119,7 +110,7 @@ struct ParentDashboardExporter {
             lines.append([
                 rec.letter, rec.phase, "\(rec.completed)", score, prio,
                 rec.condition.rawValue,
-                recLabel, recConf, recRight,
+                "", "", "",
                 dimForm, dimTempo, dimPress, dimRhythm
             ].joined(separator: sep))
         }

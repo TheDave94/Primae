@@ -158,8 +158,8 @@ struct DashboardSnapshot: Codable, Equatable {
     /// "observe" entry, etc. Used by the per-letter dashboard row to show
     /// which phase a child masters vs which one they get stuck on.
     func phaseScores(for letter: String) -> [String: Double] {
-        let key = letter.uppercased()
-        let records = phaseSessionRecords.filter { $0.letter.uppercased() == key && $0.completed }
+        let key = LetterProgress.canonicalKey(letter)
+        let records = phaseSessionRecords.filter { LetterProgress.canonicalKey($0.letter) == key && $0.completed }
         guard !records.isEmpty else { return [:] }
         var sums: [String: (total: Double, count: Int)] = [:]
         for r in records {
@@ -314,7 +314,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     private static let sessionDurationsCap = 1000
 
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {
-        let key = letter.uppercased()
+        let key = LetterProgress.canonicalKey(letter)
         let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
         var samples = existing.accuracySamples
         samples.append(accuracy)
@@ -343,7 +343,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
 
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?) {
         let record = PhaseSessionRecord(
-            letter: letter.uppercased(),
+            letter: LetterProgress.canonicalKey(letter),
             phase: phase,
             completed: completed,
             score: score,

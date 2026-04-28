@@ -99,15 +99,14 @@ final class JSONStreakStore: StreakStoring {
             state.lastPracticeDayString = dayString
         }
 
-        // Update totals. Canonical-keyed: `"ß".uppercased()` collapses
-        // to `"SS"`, which would lose the eszett's identity — special-
-        // case it so `completedLetters` and the `allLettersComplete`
-        // reward (which checks for `"ß"` literally below) line up.
+        // Update totals. Routed through `LetterProgress.canonicalKey`
+        // so the `ß` special-case stays in lock-step with the progress
+        // and dashboard stores (review item W-3) — the
+        // `allLettersComplete` reward below checks for `"ß"` literally.
         let previousLetterCount = state.completedLetters.count
         state.totalCompletions += lettersCompleted.count
         lettersCompleted.forEach { letter in
-            let key = letter == "ß" ? "ß" : letter.uppercased()
-            state.completedLetters.insert(key)
+            state.completedLetters.insert(LetterProgress.canonicalKey(letter))
         }
 
         // Check rewards

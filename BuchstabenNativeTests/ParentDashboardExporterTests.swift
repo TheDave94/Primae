@@ -99,13 +99,15 @@ struct ParentDashboardExporterTests {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // MARK: - F1: recognition columns are populated from RecognitionSample
+    // MARK: - W-2: phase-row recognition columns must stay blank
 
-    /// Build a snapshot with a phase-session record for a letter and pair it
-    /// with a LetterProgress that carries a wrong-letter, low-confidence
-    /// recognition sample. The exporter must emit those values verbatim
-    /// instead of the prior bug's hardcoded `<expected>,<conf>,true`.
-    @Test func csvRecognitionColumnsReflectStoredSample() {
+    /// W-2: the rolling per-letter `recognitionSamples` window has no
+    /// session timestamps, so attaching its latest entry to every
+    /// per-phase row mis-correlates the most recent recognition with
+    /// phases that finished hours or days earlier. The exporter now
+    /// blanks all three recognition columns on per-phase rows; the
+    /// per-letter rows above retain the aggregate.
+    @Test func csvPhaseRowRecognitionColumnsBlankEvenWhenSamplePresent() {
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "A", phase: "freeWrite", completed: true,
@@ -113,38 +115,34 @@ struct ParentDashboardExporterTests {
         ))
         var prog = LetterProgress()
         prog.recognitionSamples = [RecognitionSample(
-            predictedLetter: "O",  // model picked a different letter
-            confidence: 0.62,
-            isCorrect: false       // mismatch with expected "A"
+            predictedLetter: "O", confidence: 0.62, isCorrect: false
         )]
         prog.recognitionAccuracy = [0.62]
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: ["A": prog]), encoding: .utf8)!
         // Phase row format: letter,phase,completed,score,prio,condition,
-        // recognition_predicted,recognition_confidence,recognition_correct
-        #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,O,0.6200,false"),
-                "Expected the exporter to emit the actual predicted letter (O) and isCorrect (false) — found:\n\(csv)")
+        // recognition_predicted,recognition_confidence,recognition_correct,
+        // formAccuracy,tempoConsistency,pressureControl,rhythmScore
+        #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,,,,,,,"),
+                "Expected phase row recognition columns blank — found:\n\(csv)")
     }
 
-    /// Pre-RecognitionSample installs only stored a confidence list. Make
-    /// sure the exporter still surfaces that legacy confidence (so the
-    /// column isn't suddenly blank) and leaves predicted/correct empty
-    /// because we never persisted them under the old schema.
-    @Test func csvRecognitionColumnsFallBackToLegacyAccuracy() {
+    /// Legacy installs that only persisted `recognitionAccuracy` are
+    /// covered by the same rule: nothing on the phase row uses that
+    /// data because it can't be session-aligned.
+    @Test func csvPhaseRowRecognitionColumnsBlankForLegacyConfidence() {
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "B", phase: "guided", completed: true,
             score: 0.8, schedulerPriority: 0, condition: .control
         ))
         var prog = LetterProgress()
-        prog.recognitionAccuracy = [0.42]   // legacy: confidence only
-        prog.recognitionSamples  = nil      // never written under old schema
+        prog.recognitionAccuracy = [0.42]
+        prog.recognitionSamples  = nil
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: ["B": prog]), encoding: .utf8)!
-        // Predicted + correct columns blank because the legacy schema didn't
-        // capture them; confidence still surfaces from recognitionAccuracy.
-        #expect(csv.contains("B,guided,true,0.8000,0.0000,control,,0.4200,"),
-                "Expected legacy-confidence fallback row — found:\n\(csv)")
+        #expect(csv.contains("B,guided,true,0.8000,0.0000,control,,,,,,,"),
+                "Expected phase row recognition columns blank under legacy schema — found:\n\(csv)")
     }
 
     @Test func csvRecognitionColumnsBlankWhenNoData() {

@@ -31,7 +31,12 @@ struct CompletionCelebrationOverlay: View {
                     .font(.system(size: 58))
                     .accessibilityHidden(true)
 
-                Text("Super gemacht!")
+                // I-7: distinct from the SchuleWorldView "Nachspuren
+                // fertig" feedback card (which uses "Super gemacht!" for
+                // a 3-of-3 score), so the child doesn't see the same
+                // praise text stack twice when the card and the
+                // celebration both show after the freeWrite phase.
+                Text("Geschafft!")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)

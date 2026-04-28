@@ -257,6 +257,10 @@ public final class TracingViewModel {
     /// Maximum achievable stars under the active thesis condition.
     /// W-5: guidedOnly/control have 1 active phase so maxStars = 1, not 4.
     var maxStars: Int { phaseController.maxStars }
+    /// Phases active under the current thesis condition. I-4: the
+    /// `PhaseDotIndicator` HUD uses this so guidedOnly/control don't
+    /// render three permanently-empty placeholder dots.
+    var activePhases: [LearningPhase] { phaseController.activePhases }
 
     // MARK: - FreeWrite phase data (forwarded from FreeWritePhaseRecorder)
     //

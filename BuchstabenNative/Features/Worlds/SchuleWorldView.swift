@@ -327,7 +327,8 @@ struct SchuleWorldView: View {
         HStack(spacing: 24) {
             navArrow(systemName: "chevron.left",
                      label: "Vorheriger Buchstabe") { vm.previousLetter() }
-            PhaseDotIndicator(phase: vm.learningPhase, scores: vm.phaseScores)
+            PhaseDotIndicator(phase: vm.learningPhase, scores: vm.phaseScores,
+                              activePhases: vm.activePhases)
                 .padding(.horizontal, 16).padding(.vertical, 10)
                 .background(AppSurface.card, in: Capsule())
                 .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
