@@ -51,18 +51,18 @@ struct LetterScheduler {
     /// Days assigned to letters never practised (treated as "very stale").
     var neverPracticedDays: Double = 30.0
 
-    /// When true, all weights effectively zero out and `prioritized`
-    /// returns letters in input order with equal priority — used by the
+    /// When true, `prioritized` ignores Ebbinghaus/accuracy/novelty
+    /// scoring and ranks letters purely by `-completionCount`, giving
+    /// round-robin delivery through the available pool. Used by the
     /// `.control` thesis condition so the scheduling effect doesn't
     /// confound the phase-progression manipulation (review item W-23).
     /// Default: false (full Ebbinghaus-weighted scheduling).
     var fixedOrder: Bool = false
 
-    /// Builds a "control" scheduler that returns letters in input order
-    /// with no scoring — equivalent to a round-robin pass through the
-    /// alphabet. The `.control` thesis arm uses this so a between-arms
-    /// reading attributes the difference to phase progression rather
-    /// than to differing letter sequences.
+    /// Builds a "control" scheduler that walks letters round-robin by
+    /// completion count. The `.control` thesis arm uses this so a
+    /// between-arms reading attributes the difference to phase
+    /// progression rather than to differing letter sequences.
     static func fixedOrder() -> LetterScheduler {
         var s = LetterScheduler()
         s.fixedOrder = true
@@ -86,10 +86,16 @@ struct LetterScheduler {
         now: Date = Date()
     ) -> [ScoredLetter] {
         if fixedOrder {
-            // Equal priority for everything; Swift's stable sort
-            // preserves the caller-supplied order. The .control thesis
-            // arm relies on this for round-robin letter delivery.
-            return available.map { ScoredLetter(letter: $0, priority: 0) }
+            // W-23: priority = -completionCount so less-practised letters
+            // bubble up. With Swift's stable sort, ties (e.g. on first
+            // launch when every letter has count 0) preserve caller
+            // order, giving round-robin delivery as the .control thesis
+            // arm requires. Pure `priority: 0` would make recommendNext()
+            // always return the first letter and stall the child there.
+            return available.map { letter in
+                let count = progress[letter]?.completionCount ?? 0
+                return ScoredLetter(letter: letter, priority: -Double(count))
+            }
         }
         return available.map { letter in
             score(letter: letter, progress: progress[letter], now: now)

@@ -150,6 +150,49 @@ struct LetterSchedulerTests {
         #expect(r1.map(\.letter) == inputAtoG)
         #expect(r2.map(\.letter) == inputGtoA)
     }
+
+    // MARK: - Fixed-order control scheduler (review item W-23)
+
+    @Test("fixedOrder advances past the first letter as it gets practised")
+    func fixedOrderRoundRobinsByCompletionCount() {
+        // The .control thesis arm uses fixedOrder() so the scheduler
+        // doesn't confound the phase manipulation. Earlier the priority
+        // was a constant 0 for every letter, which made recommendNext()
+        // always return the first letter — children in the control arm
+        // were stuck on "A" forever. With priority = -completionCount,
+        // a single completion on "A" should bubble "F" to the top.
+        let control = LetterScheduler.fixedOrder()
+        let progress: [String: LetterProgress] = [
+            "A": LetterProgress(completionCount: 1, bestAccuracy: 0.9, lastCompletedAt: now),
+        ]
+        #expect(control.recommendNext(available: letters, progress: progress, now: now) == "F")
+    }
+
+    @Test("fixedOrder still gives the first letter on a clean slate")
+    func fixedOrderStartsAtFirstLetter() {
+        // With no progress recorded, every letter has count 0 → equal
+        // priority → stable sort preserves input order → first letter
+        // wins. This is the round-robin starting position.
+        let control = LetterScheduler.fixedOrder()
+        #expect(control.recommendNext(available: letters, progress: [:], now: now) == "A")
+    }
+
+    @Test("fixedOrder ignores Ebbinghaus recency and accuracy")
+    func fixedOrderIgnoresScoringFactors() {
+        // The control arm must not be influenced by accuracy / recency,
+        // only by completion count. A long-stale, low-accuracy letter
+        // must still rank below a freshly-practised one if the latter
+        // has fewer completions.
+        let control = LetterScheduler.fixedOrder()
+        let thirtyDaysAgo = now.addingTimeInterval(-30 * 86400)
+        let progress: [String: LetterProgress] = [
+            "A": LetterProgress(completionCount: 5, bestAccuracy: 0.10,
+                                 lastCompletedAt: thirtyDaysAgo),
+            "F": LetterProgress(completionCount: 0, bestAccuracy: 1.0,
+                                 lastCompletedAt: now),
+        ]
+        #expect(control.recommendNext(available: ["A", "F"], progress: progress, now: now) == "F")
+    }
 }
 
 // MARK: - LetterOrderingStrategy (V3-003)
