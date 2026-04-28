@@ -254,6 +254,9 @@ public final class TracingViewModel {
     }
     /// Stars earned in current letter session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
+    /// Maximum achievable stars under the active thesis condition.
+    /// W-5: guidedOnly/control have 1 active phase so maxStars = 1, not 4.
+    var maxStars: Int { phaseController.maxStars }
 
     // MARK: - FreeWrite phase data (forwarded from FreeWritePhaseRecorder)
     //
@@ -486,6 +489,10 @@ public final class TracingViewModel {
     private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
+    /// Scheduler priority captured at letter selection time (loadRecommendedLetter).
+    /// Forwarded to recordPhaseSession so schedulerEffectivenessProxy is non-zero.
+    /// C-3: was hardcoded 0, making the Pearson correlation permanently 0.
+    private var lastScheduledLetterPriority: Double = 0
     /// IUO is intentional (review item W-16): `init` captures `[weak self]`
     /// when constructing `PlaybackController`, which under Swift's two-
     /// phase init rules requires every stored property — including
@@ -1359,10 +1366,18 @@ public final class TracingViewModel {
     /// Load the letter recommended by spaced repetition.
     func loadRecommendedLetter() {
         let available = visibleLetterNames
-        guard let rec = letterScheduler.recommendNext(
-            available: available,
-            progress: progressStore.allProgress
-        ), let idx = letters.firstIndex(where: { $0.name == rec }) else { return }
+        let scored = letterScheduler.prioritized(available: available,
+                                                  progress: progressStore.allProgress)
+        // C-3: capture priority at selection time so schedulerEffectivenessProxy
+        // gets a real non-zero value instead of the hardcoded 0 it was receiving.
+        // W-4: reset the overlay queue when no letter is available so the
+        // celebration "Weiter" button doesn't leave the child stuck on screen.
+        guard let best = scored.first,
+              let idx  = letters.firstIndex(where: { $0.name == best.letter }) else {
+            overlayQueue.reset()
+            return
+        }
+        lastScheduledLetterPriority = best.priority
         letterIndex = idx
         load(letter: letters[idx])
         toast("Empfohlen: \(currentLetterName)")
@@ -1406,7 +1421,12 @@ public final class TracingViewModel {
         // not leak into the next one if the controller lands on a
         // non-freeWrite phase first (e.g. via thesis-condition skips).
         // Then re-arm the timing for the active phase.
+        // C-1: clearAll() wipes lastGuidedScore, but advanceLearningPhase() sets
+        // it immediately before calling here (guided→freeWrite path). Preserve it
+        // so SchuleWorldView's "Nachspuren fertig" feedback card can display.
+        let savedGuidedScore = freeWriteRecorder.lastGuidedScore
         freeWriteRecorder.clearAll()
+        freeWriteRecorder.lastGuidedScore = savedGuidedScore
         if phaseController.currentPhase == .freeWrite {
             freeWriteRecorder.startSession()
         } else if phaseController.currentPhase == .guided {
@@ -1416,6 +1436,12 @@ public final class TracingViewModel {
         directPulsingDot = false
         directArrowStrokeIndex = nil
         smoothedVelocity = 0
+        // W-6: a phase transition can fire mid-stroke (handleStrokeCompletionIfReached
+        // is called from updateTouch while a finger is down). If the system interrupts
+        // the gesture (incoming call, Control Centre swipe) between that updateTouch
+        // and the matching endTouch, isSingleTouchInteractionActive is stranded true
+        // and beginTouch's guard rejects all future touches. Reset it here.
+        isSingleTouchInteractionActive = false
         playback.resumeIntent = false
         playback.cancelPending()
         audio.stop()
@@ -1439,7 +1465,7 @@ public final class TracingViewModel {
                 phase: phase,
                 completed: true,
                 score: phaseScore,
-                schedulerPriority: 0,
+                schedulerPriority: lastScheduledLetterPriority,
                 condition: thesisCondition,
                 assessment: phase == "freeWrite" ? lastWritingAssessment : nil
             )

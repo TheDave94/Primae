@@ -78,6 +78,12 @@ struct LearningPhaseController: Equatable {
         }
     }
 
+    /// Maximum stars achievable under the current thesis condition.
+    /// W-5: the celebration overlay must show this many stars (not a
+    /// hardcoded 4) so children in guidedOnly/control don't see empty
+    /// stars for a perfect guided session — a motivational confound.
+    var maxStars: Int { activePhases.count }
+
     /// The phases that are active under the current thesis condition.
     var activePhases: [LearningPhase] {
         switch condition {

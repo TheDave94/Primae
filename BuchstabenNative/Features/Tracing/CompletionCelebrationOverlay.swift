@@ -2,6 +2,11 @@ import SwiftUI
 
 struct CompletionCelebrationOverlay: View {
     let starsEarned: Int
+    /// W-5: max achievable stars for the current thesis condition (1 for
+    /// guidedOnly/control, 4 for threePhase). Showing 4 stars to a
+    /// guidedOnly child who scored perfectly would always show 3 empty
+    /// stars — a motivational confound between conditions.
+    let maxStars: Int
     let onWeiter: () -> Void
 
     /// Warm panel gradient — reads as a "reward" card against the dark
@@ -32,7 +37,7 @@ struct CompletionCelebrationOverlay: View {
                     .multilineTextAlignment(.center)
 
                 HStack(spacing: 12) {
-                    ForEach(1...4, id: \.self) { index in
+                    ForEach(1...max(1, maxStars), id: \.self) { index in
                         Image(systemName: index <= starsEarned ? "star.fill" : "star")
                             .font(.system(size: 40))
                             .foregroundStyle(index <= starsEarned
@@ -41,7 +46,7 @@ struct CompletionCelebrationOverlay: View {
                     }
                 }
                 .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(starsEarned) von 4 Sternen")
+                .accessibilityLabel("\(starsEarned) von \(maxStars) Sternen")
 
                 Button(action: onWeiter) {
                     Text("Weiter")

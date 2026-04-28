@@ -113,9 +113,28 @@ final class OverlayQueueManager {
     /// and celebration synchronously while the CoreML inference was still
     /// running on a background Task. Without this, the celebration's
     /// "Weiter" tap resets the queue and the badge is silently dropped.
+    ///
+    /// C-4: also handles the case where celebration is *already* the active
+    /// overlay (CoreML inference took longer than kpOverlay + paperTransfer).
+    /// In that case the celebration is pushed back to queue position 0 and
+    /// the badge becomes the new currentOverlay, then auto-advances back
+    /// into the celebration when the badge timer fires.
     func enqueueBeforeCelebration(_ overlay: CanvasOverlay,
                                    duration: TimeInterval? = nil) {
         let d = duration ?? overlay.defaultDuration
+        if case .celebration = currentOverlay {
+            // Celebration is already on screen. Interrupt it: re-enqueue it at
+            // the front so it shows after the badge, then call advance() which
+            // will pop the badge first via the two inserts below.
+            let saved = currentOverlay!
+            advanceTask?.cancel()
+            advanceTask = nil
+            currentOverlay = nil
+            queue.insert((saved, saved.defaultDuration), at: 0)
+            queue.insert((overlay, d), at: 0)
+            advance()
+            return
+        }
         if let idx = queue.firstIndex(where: { entry in
             if case .celebration = entry.overlay { return true }
             return false

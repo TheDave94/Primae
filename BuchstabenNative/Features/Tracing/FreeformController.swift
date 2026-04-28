@@ -98,6 +98,10 @@ final class FreeformController {
         pendingRecognitionTask?.cancel()
         pendingRecognitionTask = nil
         isWaitingForRecognition = false
+        // C-2: if a CoreML task is in flight and the canvas is cleared (e.g. "Nochmal"),
+        // the task's completion handler checks activeRecognitionToken and returns early —
+        // but it never resets isRecognizing. Reset it here so the spinner clears.
+        isRecognizing = false
         freeformPoints.removeAll(keepingCapacity: true)
         freeformStrokeSizes.removeAll(keepingCapacity: true)
         freeformActivePath.removeAll(keepingCapacity: true)

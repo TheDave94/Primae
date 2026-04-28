@@ -152,7 +152,7 @@ struct SchuleWorldView: View {
             .transition(.opacity)
             .zIndex(15)
         case .celebration(let stars):
-            CompletionCelebrationOverlay(starsEarned: stars) {
+            CompletionCelebrationOverlay(starsEarned: stars, maxStars: vm.maxStars) {
                 vm.loadRecommendedLetter()
             }
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
