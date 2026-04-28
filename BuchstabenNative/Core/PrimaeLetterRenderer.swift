@@ -182,8 +182,9 @@ public enum PrimaeLetterRenderer {
     }
     /// Returns the normalized ink bounding rect (0–1 in each axis) for the given letter
     /// as rendered by PrimaeLetterRenderer at the given canvas size.
-    /// Used by LetterGuideGeometry to transform ghost coordinates from calibrated (PBM)
-    /// space to actual rendered space.
+    /// Used by TracingCanvasView and StrokeCalibrationOverlay to map normalised
+    /// ghost / stroke coordinates from calibration space to the actual font-rendered
+    /// glyph rect on screen.
     ///
     /// Memoized by (letter, canvasSize, schriftArt) — TracingCanvasView calls this
     /// up to 3× per frame on the 60 fps render loop, and each call previously ran a

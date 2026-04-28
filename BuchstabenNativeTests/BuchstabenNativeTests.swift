@@ -74,34 +74,6 @@ import AVFoundation
         #expect(m.audioFiles == ["M/Meer.mp3", "M/Möwe.mp3"])
     }
 
-    @Test func guideRendererSupportsCouncilLetterSet() {
-        let rect = CGRect(x: 0, y: 0, width: 320, height: 480)
-        for letter in ["A", "F", "I", "K", "L", "M", "O"] {
-            #expect(LetterGuideRenderer.guidePath(for: letter, in: rect) != nil)
-        }
-        #expect(LetterGuideRenderer.guidePath(for: "Z", in: rect) != nil)
-    }
-
-    @Test func guideRendererGeometryIsNonDegenerateAndContained() throws {
-        let rect = CGRect(x: 20, y: 30, width: 320, height: 480)
-        for letter in ["A", "F", "I", "K", "L", "M", "O"] {
-            let path = try #require(LetterGuideRenderer.guidePath(for: letter, in: rect))
-            let bounds = path.boundingRect
-            #expect(bounds.width > 1); #expect(bounds.height > 1)
-            #expect(rect.intersects(bounds))
-            #expect(rect.insetBy(dx: -1, dy: -1).contains(bounds))
-        }
-    }
-
-    @Test func guideRendererFallbackIsDeterministicForUnknownLetter() throws {
-        let rect = CGRect(x: 0, y: 0, width: 300, height: 500)
-        let f1 = try #require(LetterGuideRenderer.guidePath(for: "Z", in: rect))
-        let f2 = try #require(LetterGuideRenderer.guidePath(for: "?", in: rect))
-        let f3 = try #require(LetterGuideRenderer.guidePath(for: "Z", in: rect))
-        #expect(f1.boundingRect.integral == f2.boundingRect.integral)
-        #expect(f1.boundingRect.integral == f3.boundingRect.integral)
-    }
-
     @Test func tracingViewModelUsesInjectedAudioControllerAcrossLifecycle() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))

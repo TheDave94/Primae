@@ -96,21 +96,6 @@ final class PerformanceBenchmarkTests: XCTestCase {
         }
     }
 
-    // MARK: - LetterGuideRenderer performance
-
-    /// guidePath generation for all 7 curated letters + 3 fallbacks, 1000 iterations.
-    @MainActor func testLetterGuideRenderer_performance() async {
-        let rect = CGRect(x: 0, y: 0, width: 400, height: 400)
-        let letters = ["A", "F", "I", "K", "L", "M", "O", "Z", "Q", "B"]
-        measure {
-            for _ in 0..<100 {
-                for letter in letters {
-                    _ = LetterGuideRenderer.guidePath(for: letter, in: rect)
-                }
-            }
-        }
-    }
-
     // MARK: - PlaybackStateMachine performance
 
     /// 10,000 rapid transition() calls — must complete in <50ms.
