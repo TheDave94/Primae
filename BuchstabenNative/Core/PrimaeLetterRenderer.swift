@@ -13,9 +13,17 @@ public enum PrimaeLetterRenderer {
     // MARK: - Cache
 
     private struct CacheKey: Hashable {
-        let letter: String
-        let width:  Int
-        let height: Int
+        let letter:     String
+        let width:      Int
+        let height:     Int
+        // schriftArt was missing from this key. `clearCache()` is called
+        // by `TracingViewModel.schriftArt.didSet`, which prevents stale
+        // glyphs in the steady state — but the cache window between the
+        // didSet and the next render could still serve the previous
+        // script's image. Including the script in the key removes the
+        // race entirely; it also lets two scripts coexist in the cache
+        // (useful when the calibrator switches scripts repeatedly).
+        let schriftArt: SchriftArt
     }
 
     private struct RectCacheKey: Hashable {
@@ -35,7 +43,10 @@ public enum PrimaeLetterRenderer {
         guard size.width > 0, size.height > 0, !letter.isEmpty else { return nil }
         // Skip font rendering in test environments to avoid CGDataProvider hangs
         guard !isRunningTests else { return nil }
-        let key = CacheKey(letter: letter, width: Int(size.width), height: Int(size.height))
+        let key = CacheKey(letter: letter,
+                            width: Int(size.width),
+                            height: Int(size.height),
+                            schriftArt: schriftArt)
         if let cached = cache[key] { return cached }
         guard let image = draw(letter: letter, size: size, fontName: schriftArt.fontFileName) else { return nil }
         // Evict entire cache when full rather than an LRU walk — letters rarely
