@@ -17,6 +17,7 @@ struct LetterPickerBar: View {
                     ) {
                         vm.loadLetter(name: name)
                     }
+                    .equatable()
                 }
             }
             .padding(.horizontal, 12)
@@ -32,16 +33,31 @@ struct LetterPickerBar: View {
     }
 }
 
-enum LetterCompletionState {
+enum LetterCompletionState: Equatable {
     case complete, partial, notStarted
 }
 
-private struct LetterPickerButton: View {
+/// Equatable so callers can wrap in `.equatable()` and SwiftUI skips
+/// body re-evaluation while only unrelated VM state changes (audio
+/// state, recognition flags, freeform buffers, …). The action closure
+/// is intentionally excluded from `==`: it's reconstructed every render
+/// from `vm.loadLetter` regardless of whether anything changed, so
+/// including it would defeat the gate. Identity is fine — the closure
+/// only fires after a tap, and at tap time the value-prop snapshot
+/// already captures whatever the button visually represented.
+private struct LetterPickerButton: View, Equatable {
     let name: String
     let isSelected: Bool
     let completionState: LetterCompletionState
     let isDimmed: Bool
     let action: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.name == rhs.name
+        && lhs.isSelected == rhs.isSelected
+        && lhs.completionState == rhs.completionState
+        && lhs.isDimmed == rhs.isDimmed
+    }
 
     var body: some View {
         Button(action: action) {

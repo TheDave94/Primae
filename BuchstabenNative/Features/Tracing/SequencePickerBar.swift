@@ -52,6 +52,7 @@ private struct WordPickerRow: View {
                     ) {
                         vm.loadWord(word)
                     }
+                    .equatable()
                 }
             }
             .padding(.horizontal, 12)
@@ -60,10 +61,17 @@ private struct WordPickerRow: View {
     }
 }
 
-private struct WordPickerButton: View {
+/// Equatable so the parent's `.equatable()` wrapper can skip body
+/// re-evaluation while only unrelated VM state changes. Closure
+/// excluded from `==` for the same reason as LetterPickerButton.
+private struct WordPickerButton: View, Equatable {
     let word: String
     let isSelected: Bool
     let action: () -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.word == rhs.word && lhs.isSelected == rhs.isSelected
+    }
 
     var body: some View {
         Button(action: action) {

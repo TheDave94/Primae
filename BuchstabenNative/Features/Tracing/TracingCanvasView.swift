@@ -272,6 +272,7 @@ struct TracingCanvasView: View {
 
                 ProgressPill(progress: vm.progress,
                              differentiateWithoutColor: differentiateWithoutColor)
+                    .equatable()
                     .padding(.leading, 12)
                     .padding(.bottom, 16)
             }
@@ -379,7 +380,12 @@ private struct TracingCanvasAccessibility: ViewModifier {
 /// this renders a coloured fill bar (blue → yellow → green as progress
 /// rises) with **no number visible**. The numeric figure remains
 /// accessible to assistive tech and to engineering builds.
-private struct ProgressPill: View {
+/// Equatable so callers can wrap in `.equatable()` and SwiftUI skips
+/// body re-evaluation when neither `progress` nor
+/// `differentiateWithoutColor` changed. The pill re-renders on every
+/// `vm.*` change otherwise — most of which (audio state, recognition
+/// result, overlay queue, …) don't affect this view at all.
+private struct ProgressPill: View, Equatable {
     let progress: CGFloat
     let differentiateWithoutColor: Bool
 
