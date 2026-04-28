@@ -307,6 +307,17 @@ public final class TracingViewModel {
     /// letter load and phase reset.
     private(set) var lastRecognitionResult: RecognitionResult?
 
+    /// Idempotency gate for in-flight recognition Tasks. Each recognition
+    /// dispatch (freeWrite phase teardown, freeform letter, freeform word)
+    /// stamps a fresh UUID here; the matching async completion handler
+    /// checks equality before applying side effects (lastRecognitionResult,
+    /// progress writes, overlay enqueue, speech). State-clearing
+    /// transitions — `loadLetter`, `resetForPhaseTransition`,
+    /// `clearFreeformCanvas` — set this to nil so any late-arriving
+    /// recognition result whose dispatch preceded the clear is silently
+    /// dropped instead of writing into the new context.
+    private var activeRecognitionToken: UUID?
+
     var writingMode: WritingMode {
         get { freeform.writingMode }
         set { freeform.writingMode = newValue }
@@ -1168,11 +1179,17 @@ public final class TracingViewModel {
         // and freeWrite share the same UI state since only one recognition
         // request is ever in flight at a time.
         freeform.isRecognizing = true
+        // Stamp an idempotency token so a late-arriving result whose letter
+        // or phase has since been cleared is silently dropped — see
+        // `activeRecognitionToken`.
+        let token = UUID()
+        self.activeRecognitionToken = token
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: expected)
             guard let self else { return }
             await MainActor.run {
+                guard self.activeRecognitionToken == token else { return }
                 self.freeform.isRecognizing = false
                 self.lastRecognitionResult = result
                 // commitCompletion already wrote the guided-mode session
@@ -1325,6 +1342,7 @@ public final class TracingViewModel {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
+        activeRecognitionToken = nil
         // Always clear the recorder when a phase transition fires —
         // a stale freeWritePath from a previous freeWrite session must
         // not leak into the next one if the controller lands on a
@@ -1489,6 +1507,7 @@ public final class TracingViewModel {
         // freeform buffers as part of letter load resets it alongside.
         freeform.clearBuffers()
         lastRecognitionResult = nil
+        activeRecognitionToken = nil
         overlayQueue.reset()
         directTappedDots.removeAll()
         directPulsingDot = false
@@ -1730,6 +1749,7 @@ public final class TracingViewModel {
     func clearFreeformCanvas() {
         freeform.clearBuffers()
         lastRecognitionResult = nil
+        activeRecognitionToken = nil
     }
 
     /// Pick the next target word for freeform word mode.
@@ -1807,11 +1827,17 @@ public final class TracingViewModel {
             ? freeform.freeformCanvasSize : canvasSize
         freeform.isRecognizing = true
         freeform.hasRecognitionCompleted = false
+        // Idempotency token — see `activeRecognitionToken`. Dropped if the
+        // user clears the canvas or switches letter before the recognizer
+        // returns.
+        let token = UUID()
+        self.activeRecognitionToken = token
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: nil)
             guard let self else { return }
             await MainActor.run {
+                guard self.activeRecognitionToken == token else { return }
                 self.freeform.isRecognizing = false
                 self.freeform.hasRecognitionCompleted = true
                 self.lastRecognitionResult = result
@@ -1916,6 +1942,11 @@ public final class TracingViewModel {
 
         freeform.isRecognizing = true
         freeform.hasRecognitionCompleted = false
+        // Idempotency token — see `activeRecognitionToken`. Dropped if the
+        // user clears the word, switches mode, or loads a new letter before
+        // the per-letter recognition pipeline returns.
+        let token = UUID()
+        self.activeRecognitionToken = token
         Task { [weak self, letterRecognizer] in
             var slots: [RecognitionResult?] = []
             for i in 0..<targetLetters.count {
@@ -1928,6 +1959,7 @@ public final class TracingViewModel {
             }
             guard let self else { return }
             await MainActor.run {
+                guard self.activeRecognitionToken == token else { return }
                 self.freeform.isRecognizing = false
                 self.freeform.hasRecognitionCompleted = true
                 let present = slots.compactMap { $0 }
