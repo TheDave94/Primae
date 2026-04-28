@@ -13,14 +13,22 @@ iPad app for teaching German children (ages 5-6) to trace letters. Built with Sw
 
 ## Key Files
 - `TracingViewModel.swift` — main VM, coordinates phases, strokes, audio, animation
-- `TracingCanvasView.swift` — Canvas rendering (ghost lines, start dots, ink)
-- `ContentView.swift` — top-level layout, button bar, overlays
+- `TracingCanvasView.swift` — Canvas rendering (ghost lines, start dots, ink, KP overlay)
+- `MainAppView.swift` — root host with WorldSwitcherRail + worlds
+- `SchuleWorldView.swift` — World 1: guided four-phase tracing
+- `WerkstattWorldView.swift` — World 2: freeform writing
+- `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
 - `StrokeTracker.swift` — checkpoint proximity detection
 - `AudioEngine.swift` — ⚠️ STABLE AND FRAGILE — do NOT modify
+- `SpeechSynthesizer.swift` — German TTS for child-facing verbal feedback
 - `LetterRepository.swift` — loads letters from bundle
 - `PrimaeLetterRenderer.swift` — renders letter glyphs using Primae font
 - `ProgressStore.swift` — persists learning progress
+- `OverlayQueueManager.swift` — serialised post-freeWrite overlay scheduler
 - `StrokeCalibrationOverlay.swift` — debug stroke editing UI
+
+For the full developer-grade reference see `docs/APP_REFERENCE.md`.
+For the thesis-foundation document see `docs/APP_DOCUMENTATION.md`.
 
 ## Build & Test
 ```bash

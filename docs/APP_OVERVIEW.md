@@ -399,5 +399,5 @@ Selection persists in `UserDefaults` under `de.flamingistan.buchstaben.selectedS
 
 ### 6.5 What this document is not
 - Not a user manual — that's the in-app onboarding flow.
-- Not a developer onboarding doc — that's `APP_REFERENCE.md` + `LESSONS.md` at the repo root.
+- Not a developer onboarding doc — that's `APP_REFERENCE.md` + `LESSONS.md` (sibling files in this directory).
 - Not the thesis itself — this is source material; the thesis would build a coherent narrative from it, refine the framing, and add the empirical results once the study runs.

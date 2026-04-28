@@ -46,17 +46,35 @@ See `.github/workflows/ios-build.yml`.
 ## Project Structure
 ````
 BuchstabenNative/          Swift Package (library)
-├── App/                   App entry point + root view
-├── Core/                  Audio, progress, strokes, haptics, difficulty
+├── App/                   App entry point
+├── Core/                  Audio, progress, strokes, haptics, difficulty,
+│                          recognition, scoring, speech synthesis
 └── Features/
     ├── Library/           Letter loading + caching
-    └── Tracing/           Canvas, ViewModel, guide rendering
+    ├── Navigation/        World switcher rail + main app shell
+    ├── Onboarding/        First-run flow
+    ├── Parent/            Parental-gate + research dashboard
+    ├── Worlds/            Schule / Werkstatt / Fortschritte
+    ├── Dashboard/         Settings + parent dashboard
+    └── Tracing/           Canvas, ViewModel, freeform / freeWrite controllers
 
 BuchstabenApp/             Xcode host app target (imports BuchstabenNative)
 BuchstabenNativeTests/     Swift Testing test suite
-scripts/                   PBM + stroke generation utilities
+docs/                      Documentation (architecture, thesis foundation,
+                            roadmaps, lessons, workflow, diagrams)
+scripts/                   PBM + stroke + audio generation utilities
 ````
 
-## Developer Reference
+## Documentation
 
-See `APP_REFERENCE.md` for detailed architecture, asset conventions, and common change locations.
+All project documentation lives under `docs/`:
+
+| File | Purpose |
+|------|---------|
+| `docs/APP_DOCUMENTATION.md` (+ `.pdf`) | Thesis-ready technical foundation — architecture, scientific methods with citations, learning pipeline, data schemas, claim verification, bibliography. |
+| `docs/APP_REFERENCE.md` | Concise architecture reference — file map, dependency graph, key invariants. Use this for quick lookup while editing code. |
+| `docs/APP_OVERVIEW.md` (+ `.pdf`) | Marketing- and demo-flavoured overview, paired with `docs/diagrams/` mock illustrations. |
+| `docs/PROJECT.md` | Project scope, target audience, deliberately-out-of-scope features. |
+| `docs/WORKFLOW.md` | Day-to-day development workflow. |
+| `docs/LESSONS.md` | Persistent lessons from past failed proposals — read before any council-style automated work. |
+| `docs/IOS_ROADMAP.yaml`, `docs/IOS_ROADMAP_V3.yaml` | Historical roadmaps with acceptance criteria; useful for thesis-section "what was implemented". |
