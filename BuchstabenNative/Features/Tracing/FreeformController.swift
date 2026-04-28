@@ -67,6 +67,13 @@ final class FreeformController {
     /// Whether the CoreML model is loaded and ready. nil = not probed.
     /// UI surfaces a "KI-Modell nicht verfügbar" banner on false.
     var isRecognitionModelAvailable: Bool? = nil
+    /// True while a model availability probe Task is in flight. Prevents
+    /// concurrent probes from rapid mode-toggle gestures: without this
+    /// gate the value-only `isRecognitionModelAvailable == nil` check has
+    /// a window between dispatch and result where a second probe sneaks
+    /// in, redundantly loading the ML model. Reset to false in the probe
+    /// completion handler.
+    var isProbingModel: Bool = false
     /// Form-accuracy score from the last freeform recognition (0–1),
     /// computed from the child's path against the recognised letter's
     /// reference glyph. nil when the recognised letter has no bundle

@@ -1723,10 +1723,19 @@ public final class TracingViewModel {
         isPlaying = false
         // Probe the recognizer so the freeform footer can distinguish
         // "still thinking" from "model not available" on first paint.
-        if freeform.isRecognitionModelAvailable == nil {
+        // Two-flag idempotency: the value flag (`isRecognitionModelAvailable
+        // == nil`) gates *re-probing* once the answer is known, while the
+        // in-flight flag (`isProbingModel`) gates a second dispatch during
+        // the dispatch→result window — without it, rapid freeform-mode
+        // toggles spawn redundant CoreML model loads.
+        if freeform.isRecognitionModelAvailable == nil, !freeform.isProbingModel {
+            freeform.isProbingModel = true
             Task { [weak self, letterRecognizer] in
                 let available = await letterRecognizer.isModelAvailable()
-                await MainActor.run { self?.freeform.isRecognitionModelAvailable = available }
+                await MainActor.run {
+                    self?.freeform.isRecognitionModelAvailable = available
+                    self?.freeform.isProbingModel = false
+                }
             }
         }
         toast(subMode == .word ? "Wort schreiben" : "Freies Schreiben")
