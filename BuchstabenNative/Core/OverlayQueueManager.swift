@@ -79,6 +79,16 @@ final class OverlayQueueManager {
     /// so a manual dismissal doesn't race with the timeout.
     private var advanceTask: Task<Void, Never>?
 
+    /// Injected sleeper for the timed-overlay auto-advance. Defaults to
+    /// `realSleeper` (Task.sleep) in production; tests substitute a
+    /// deterministic fake so the queue's timing contract can be exercised
+    /// without real wall-clock waits.
+    private let sleeper: Sleeper
+
+    init(sleeper: @escaping Sleeper = realSleeper) {
+        self.sleeper = sleeper
+    }
+
     // MARK: - Public API
 
     /// Append `overlay` to the queue. If nothing is showing, display
@@ -158,9 +168,8 @@ final class OverlayQueueManager {
             advanceTask = nil
             return
         }
-        advanceTask = Task { [weak self] in
-            let nanos = UInt64((duration * 1_000_000_000).rounded())
-            try? await Task.sleep(nanoseconds: nanos)
+        advanceTask = Task { [weak self, sleeper] in
+            try? await sleeper(.seconds(duration))
             guard !Task.isCancelled else { return }
             self?.advance()
         }

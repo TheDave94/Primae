@@ -31,6 +31,16 @@ final class AnimationGuideController {
     /// separately so `stop()` can cancel either phase cleanly.
     private var startTask: Task<Void, Never>?
 
+    /// Injected sleeper for per-step + inter-cycle waits. Defaults to
+    /// `realSleeper` (Task.sleep) in production; tests substitute a
+    /// deterministic fake so the cycle / step timing can be exercised
+    /// without real wall-clock waits.
+    private let sleeper: Sleeper
+
+    init(sleeper: @escaping Sleeper = realSleeper) {
+        self.sleeper = sleeper
+    }
+
     /// Begin the looping animation immediately for the supplied strokes.
     /// Replaces any in-flight animation.
     func start(strokes: LetterStrokes) {
@@ -38,17 +48,17 @@ final class AnimationGuideController {
         let guide = LetterAnimationGuide.build(from: strokes)
         guard !guide.steps.isEmpty else { return }
 
-        task = Task { [weak self] in
+        task = Task { [weak self, sleeper] in
             while !Task.isCancelled {
                 guard let self else { return }
                 for step in guide.steps {
                     guard !Task.isCancelled else { break }
                     self.guidePoint = step.point
-                    try? await Task.sleep(for: .seconds(guide.duration(for: step)))
+                    try? await sleeper(.seconds(guide.duration(for: step)))
                 }
                 if !Task.isCancelled {
                     self.guidePoint = nil
-                    try? await Task.sleep(for: .seconds(0.5))
+                    try? await sleeper(.seconds(0.5))
                     // One full cycle completed — invite the observer to advance.
                     // The callback reads `self` again because the outer while
                     // continues until cancelled by the callback site via stop().
@@ -63,8 +73,8 @@ final class AnimationGuideController {
     /// the dot doesn't race ahead of the PBM fade-in.
     func startAfterDelay(_ seconds: TimeInterval, strokes: LetterStrokes) {
         startTask?.cancel()
-        startTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(seconds))
+        startTask = Task { [weak self, sleeper] in
+            try? await sleeper(.seconds(seconds))
             guard !Task.isCancelled, let self else { return }
             self.start(strokes: strokes)
         }
