@@ -33,3 +33,8 @@ vcpkg/
 .env
 .env.*
 !.env.example
+
+# Claude Code per-developer state. `settings.local.json` follows the
+# `.local` convention — per-machine tool allowlists, never team-shared.
+# A team-wide `settings.json` would be tracked; this repo doesn't use one.
+.claude/settings.local.json
