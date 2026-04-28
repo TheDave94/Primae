@@ -1163,13 +1163,16 @@ public final class TracingViewModel {
         let pts = freeWritePoints
         let size = canvasSize
         let expected = currentLetterName
-        isRecognizing = true
+        // FreeformController owns the isRecognizing flag — both freeform
+        // and freeWrite share the same UI state since only one recognition
+        // request is ever in flight at a time.
+        freeform.isRecognizing = true
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: expected)
             guard let self else { return }
             await MainActor.run {
-                self.isRecognizing = false
+                self.freeform.isRecognizing = false
                 self.lastRecognitionResult = result
                 // commitCompletion already wrote the guided-mode session
                 // record with a nil recognitionResult — by the time the
