@@ -27,7 +27,12 @@ final class StrokeTracker {
     }
 
     var isComplete: Bool {
-        guard let definition else { return false }
+        // `[].allSatisfy(_:)` is vacuously true, so a definition with zero
+        // strokes would otherwise report itself as complete without any
+        // user input. Guard against that here too — TracingViewModel
+        // already checks `hasStrokes` at the call site, but the API
+        // itself shouldn't lie about completeness.
+        guard let definition, !definition.strokes.isEmpty else { return false }
         return progress.count == definition.strokes.count && progress.allSatisfy(\.complete)
     }
 

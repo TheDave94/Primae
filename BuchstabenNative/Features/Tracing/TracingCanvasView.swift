@@ -374,21 +374,47 @@ private struct TracingCanvasAccessibility: ViewModifier {
 
 // MARK: - Progress pill
 
+/// Verbal/visual progress capsule shown in the bottom-leading corner of
+/// the tracing canvas. Children at age 5–6 don't read percentages, so
+/// this renders a coloured fill bar (blue → yellow → green as progress
+/// rises) with **no number visible**. The numeric figure remains
+/// accessible to assistive tech and to engineering builds.
 private struct ProgressPill: View {
     let progress: CGFloat
     let differentiateWithoutColor: Bool
 
     var body: some View {
-        Text("Fortschritt \(Int(max(0, min(1, progress)) * 100))%")
-            .font(.caption.weight(.semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.ultraThinMaterial, in: Capsule())
-            .overlay(
+        let p = max(0, min(1, progress))
+        let tint: Color = p >= 0.99 ? .green : (p >= 0.5 ? .yellow : .blue)
+        return ZStack(alignment: .leading) {
+            Capsule()
+                .fill(Color.gray.opacity(0.18))
+            GeometryReader { geo in
                 Capsule()
-                    .stroke((differentiateWithoutColor ? Color.blue : Color.green).opacity(0.5), lineWidth: 1)
-            )
-            .accessibilityHidden(true)
+                    .fill(tint)
+                    .frame(width: geo.size.width * p)
+            }
+            .frame(height: 8)
+            #if DEBUG
+            // Engineering builds keep the numeric readout for tuning;
+            // children never see it because Release strips this branch.
+            Text("\(Int(p * 100))%")
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.primary)
+                .padding(.leading, 8)
+            #endif
+        }
+        .frame(width: 88, height: 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.ultraThinMaterial, in: Capsule())
+        .overlay(
+            Capsule()
+                .stroke((differentiateWithoutColor ? Color.blue : tint).opacity(0.55), lineWidth: 1)
+        )
+        // Status is communicated verbally through ChildSpeechLibrary on
+        // phase transitions; the pill is decorative for the canvas.
+        .accessibilityHidden(true)
     }
 }
 
@@ -398,6 +424,7 @@ private struct ProgressPill: View {
 /// Sits above the touch overlays so SwiftUI tap gestures win over the tracing handler.
 private struct DirectPhaseDotsOverlay: View {
     @Environment(TracingViewModel.self) private var vm
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulseToggle = false
 
     var body: some View {
@@ -425,7 +452,10 @@ private struct DirectPhaseDotsOverlay: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onChange(of: vm.directPulsingDot) { _, isPulsing in
-            guard isPulsing else { pulseToggle = false; return }
+            // Respect Reduce Motion: skip the repeating pulse so users
+            // who disabled motion don't see the dot animate. The wrong-
+            // tap haptic + the on-screen dot still convey the prompt.
+            guard isPulsing, !reduceMotion else { pulseToggle = false; return }
             withAnimation(.easeInOut(duration: 0.25).repeatCount(3, autoreverses: true)) {
                 pulseToggle = true
             }
@@ -454,7 +484,10 @@ private struct DirectPhaseDotsOverlay: View {
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                     .opacity(isTapped ? 0.85 : 0.80)
                     .scaleEffect(isNext && pulseToggle ? 1.3 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.5), value: pulseToggle)
+                    .animation(reduceMotion
+                                ? nil
+                                : .spring(response: 0.25, dampingFraction: 0.5),
+                               value: pulseToggle)
                 Text("\(idx + 1)")
                     .font(.system(size: r * 0.85, weight: .bold))
                     .foregroundStyle(.white)

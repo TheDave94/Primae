@@ -72,11 +72,16 @@ nonisolated struct ConfidenceCalibrator: Sendable {
     }
 
     /// Default confusable set. Chosen from the spec: C/c, O/o, S/s, V/v,
-    /// W/w, X/x, Z/z, P/p, U/u, K/k. Both cases in the set because the
-    /// model's output classes are case-specific.
+    /// W/w, X/x, Z/z, P/p, U/u, K/k — plus the vertical-stroke trio
+    /// I / i / l, which is the most common German-handwriting letter
+    /// confusion at age 5–6 (capital I, lowercase l, lowercase i all
+    /// reduce to a single vertical line in a child's hand). Both cases
+    /// stay in the set because the model's output classes are
+    /// case-specific.
     static let defaultConfusables: Set<String> = [
         "C", "c", "O", "o", "S", "s", "V", "v", "W", "w",
-        "X", "x", "Z", "z", "P", "p", "U", "u", "K", "k"
+        "X", "x", "Z", "z", "P", "p", "U", "u", "K", "k",
+        "I", "i", "l"
     ]
 
     // MARK: - Calibration

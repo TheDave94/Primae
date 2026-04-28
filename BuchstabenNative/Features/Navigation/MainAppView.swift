@@ -10,6 +10,7 @@ import SwiftUI
 
 public struct MainAppView: View {
     @Environment(TracingViewModel.self) private var vm
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Persisted across launches so the child returns to the world
     /// they were last in. Stored as the AppWorld raw value because
     /// `@AppStorage` only supports plain Codable scalars.
@@ -82,6 +83,9 @@ public struct MainAppView: View {
             insertion: .move(edge: .trailing).combined(with: .opacity),
             removal: .opacity
         ))
-        .animation(.easeInOut(duration: 0.3), value: activeWorld)
+        // Respect Reduce Motion: skip the slide-in transition for users
+        // who disabled motion. The world still swaps, just without the
+        // 300 ms ease — matches the rest of the app's reduceMotion gates.
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: activeWorld)
     }
 }

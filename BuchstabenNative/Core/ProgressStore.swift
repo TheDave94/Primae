@@ -153,10 +153,23 @@ public final class JSONProgressStore: ProgressStoring {
         self.store = Self.load(from: self.fileURL)
     }
 
+    // MARK: - Canonical key
+
+    /// Normalised dictionary key used by every per-letter store entry.
+    /// `letter.uppercased()` would collapse the German `ß` to `SS` (the
+    /// Unicode canonical rule — there's no historical capital eszett),
+    /// so a child practising `ß` would silently lose their progress to
+    /// a non-existent `SS` slot. Special-case `ß` to preserve its
+    /// identity; everything else uppercases as before so `a` and `A`
+    /// keep grouping under `A`.
+    private static func canonicalKey(_ letter: String) -> String {
+        letter == "ß" ? "ß" : letter.uppercased()
+    }
+
     // MARK: ProgressStoring
 
     func progress(for letter: String) -> LetterProgress {
-        store.letterProgress[letter.uppercased()] ?? LetterProgress()
+        store.letterProgress[Self.canonicalKey(letter)] ?? LetterProgress()
     }
 
     func recordCompletion(for letter: String,
@@ -164,7 +177,7 @@ public final class JSONProgressStore: ProgressStoring {
                           phaseScores: [String: Double]?,
                           speed: Double?,
                           recognitionResult: RecognitionResult?) {
-        let key = letter.uppercased()
+        let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         p.completionCount += 1
         p.bestAccuracy = max(p.bestAccuracy, min(1.0, max(0.0, accuracy)))
@@ -185,7 +198,7 @@ public final class JSONProgressStore: ProgressStoring {
     }
 
     func recordFreeformCompletion(letter: String, result: RecognitionResult) {
-        let key = letter.uppercased()
+        let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         Self.appendRecognition(result, into: &p)
         p.freeformCompletionCount = (p.freeformCompletionCount ?? 0) + 1
@@ -194,7 +207,7 @@ public final class JSONProgressStore: ProgressStoring {
     }
 
     func recordRecognitionSample(letter: String, result: RecognitionResult) {
-        let key = letter.uppercased()
+        let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         Self.appendRecognition(result, into: &p)
         store.letterProgress[key] = p
@@ -224,7 +237,7 @@ public final class JSONProgressStore: ProgressStoring {
     }
 
     func recordPaperTransferScore(for letter: String, score: Double) {
-        let key = letter.uppercased()
+        let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         p.paperTransferScore = score
         store.letterProgress[key] = p
@@ -232,7 +245,7 @@ public final class JSONProgressStore: ProgressStoring {
     }
 
     func recordVariantUsed(for letter: String, variantID: String?) {
-        let key = letter.uppercased()
+        let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         p.lastVariantUsed = variantID
         store.letterProgress[key] = p
