@@ -1,0 +1,184 @@
+//  OverlayQueueManagerTests.swift
+//  BuchstabenNativeTests
+//
+//  Coverage for the overlay scheduler that serialises post-freeWrite
+//  feedback (KP overlay, recognition badge, paper transfer, celebration).
+//  Pins the canonical ordering rules — especially `enqueueBeforeCelebration`
+//  which lets a late-arriving CoreML recognition badge slot ahead of an
+//  already-queued celebration without resetting the queue.
+
+import Testing
+import Foundation
+@testable import BuchstabenNative
+
+private func sampleResult(_ predicted: String = "A",
+                          confidence: CGFloat = 0.9,
+                          isCorrect: Bool = true) -> RecognitionResult {
+    RecognitionResult(
+        predictedLetter: predicted,
+        confidence: confidence,
+        topThree: [.init(letter: predicted, confidence: confidence)],
+        isCorrect: isCorrect
+    )
+}
+
+@Suite @MainActor struct OverlayQueueManagerTests {
+
+    // MARK: - Default duration table
+
+    @Test func defaultDuration_perCase() {
+        #expect(CanvasOverlay.frechetScore(0.5).defaultDuration == 1.5)
+        #expect(CanvasOverlay.kpOverlay.defaultDuration == 3.0)
+        #expect(CanvasOverlay.recognitionBadge(sampleResult()).defaultDuration == 3.0)
+        #expect(CanvasOverlay.paperTransfer(letter: "A").defaultDuration == nil)
+        #expect(CanvasOverlay.celebration(stars: 3).defaultDuration == nil)
+    }
+
+    // MARK: - Enqueue
+
+    @Test func enqueue_intoEmptyQueue_showsImmediately() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        #expect(q.currentOverlay == .kpOverlay)
+        #expect(q.pendingCount == 0)
+    }
+
+    @Test func enqueue_whileOverlayActive_buffersBehind() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueue(.celebration(stars: 3))
+        #expect(q.currentOverlay == .kpOverlay)
+        #expect(q.pendingCount == 1)
+    }
+
+    @Test func enqueue_severalIntoEmptyQueue_firstShownRestQueued() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueue(.paperTransfer(letter: "B"))
+        q.enqueue(.celebration(stars: 2))
+        #expect(q.currentOverlay == .kpOverlay)
+        #expect(q.pendingCount == 2)
+    }
+
+    // MARK: - enqueueBeforeCelebration
+
+    @Test func enqueueBeforeCelebration_inserts_aheadOfQueuedCelebration() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueue(.paperTransfer(letter: "B"))
+        q.enqueue(.celebration(stars: 3))
+        // Late-arriving badge: must sit ahead of the celebration so the
+        // child's last visible feedback is the celebration, not the badge.
+        q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("B")))
+        // Drain through KP and paperTransfer so we can read the rest.
+        #expect(q.currentOverlay == .kpOverlay)
+        q.dismiss()
+        #expect(q.currentOverlay == .paperTransfer(letter: "B"))
+        q.dismiss()
+        #expect(q.currentOverlay == .recognitionBadge(sampleResult("B")))
+        q.dismiss()
+        #expect(q.currentOverlay == .celebration(stars: 3))
+    }
+
+    @Test func enqueueBeforeCelebration_withoutQueuedCelebration_appends() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("C")))
+        #expect(q.currentOverlay == .kpOverlay)
+        q.dismiss()
+        #expect(q.currentOverlay == .recognitionBadge(sampleResult("C")))
+    }
+
+    @Test func enqueueBeforeCelebration_intoEmptyQueue_showsImmediately() {
+        let q = OverlayQueueManager()
+        q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("D")))
+        #expect(q.currentOverlay == .recognitionBadge(sampleResult("D")))
+        #expect(q.pendingCount == 0)
+    }
+
+    @Test func enqueueBeforeCelebration_picksFirstCelebrationWhenMany() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueue(.celebration(stars: 1))
+        q.enqueue(.celebration(stars: 2)) // unusual but not invalid
+        q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("E")))
+        // Badge should land ahead of the FIRST celebration: order should be
+        // KP → badge → celebration(1) → celebration(2).
+        #expect(q.currentOverlay == .kpOverlay)
+        q.dismiss()
+        #expect(q.currentOverlay == .recognitionBadge(sampleResult("E")))
+        q.dismiss()
+        #expect(q.currentOverlay == .celebration(stars: 1))
+        q.dismiss()
+        #expect(q.currentOverlay == .celebration(stars: 2))
+    }
+
+    // MARK: - Dismiss
+
+    @Test func dismiss_advancesToNextQueued() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueue(.paperTransfer(letter: "F"))
+        q.dismiss()
+        #expect(q.currentOverlay == .paperTransfer(letter: "F"))
+        #expect(q.pendingCount == 0)
+    }
+
+    @Test func dismiss_drainsToIdleWhenQueueEmpty() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.dismiss()
+        #expect(q.currentOverlay == nil)
+        #expect(q.pendingCount == 0)
+    }
+
+    @Test func dismiss_whenIdle_isNoOp() {
+        let q = OverlayQueueManager()
+        q.dismiss()
+        #expect(q.currentOverlay == nil)
+        #expect(q.pendingCount == 0)
+    }
+
+    // MARK: - Reset
+
+    @Test func reset_clearsActiveAndQueued() {
+        let q = OverlayQueueManager()
+        q.enqueue(.kpOverlay)
+        q.enqueue(.paperTransfer(letter: "G"))
+        q.enqueue(.celebration(stars: 1))
+        q.reset()
+        #expect(q.currentOverlay == nil)
+        #expect(q.pendingCount == 0)
+    }
+
+    @Test func reset_whenIdle_isNoOp() {
+        let q = OverlayQueueManager()
+        q.reset()
+        #expect(q.currentOverlay == nil)
+        #expect(q.pendingCount == 0)
+    }
+
+    // MARK: - Auto-advance after timed overlay
+
+    @Test func timedOverlay_autoAdvances() async {
+        // Use frechetScore (1.5s default) but override to a tiny duration so
+        // the test stays fast. The timer Task uses Task.sleep — wait a bit
+        // longer than the override before asserting the queue advanced.
+        let q = OverlayQueueManager()
+        q.enqueue(.frechetScore(0.5), duration: 0.05)
+        q.enqueue(.celebration(stars: 1))
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        #expect(q.currentOverlay == .celebration(stars: 1))
+    }
+
+    @Test func modalOverlay_doesNotAutoAdvance() async {
+        // Modal overlays (paperTransfer, celebration) carry nil duration
+        // and must wait for an explicit dismiss — no timer should fire.
+        let q = OverlayQueueManager()
+        q.enqueue(.paperTransfer(letter: "H"))
+        q.enqueue(.celebration(stars: 1))
+        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        #expect(q.currentOverlay == .paperTransfer(letter: "H"))
+        #expect(q.pendingCount == 1)
+    }
+}
