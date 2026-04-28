@@ -31,10 +31,7 @@ struct WorldSwitcherRail: View {
         .frame(maxHeight: .infinity)
         .background(
             LinearGradient(
-                colors: [
-                    Color(red: 0.99, green: 0.98, blue: 0.96),
-                    Color(red: 0.96, green: 0.97, blue: 0.99)
-                ],
+                colors: [AppSurface.railTop, AppSurface.railBottom],
                 startPoint: .top, endPoint: .bottom
             )
         )

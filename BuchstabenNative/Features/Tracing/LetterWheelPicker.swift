@@ -26,24 +26,37 @@ struct LetterWheelPicker: View {
 
     var body: some View {
         ZStack {
+            // Sighted users tap the scrim to dismiss; VoiceOver users
+            // get an explicit "Abbrechen" button (review item W-34) so
+            // focus order is deterministic — the previous scrim-as-
+            // button left the focus ordering ambiguous, sometimes
+            // hitting the scrim before the grid and sometimes after.
             Color.black.opacity(0.35)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
-                .accessibilityLabel("Abbrechen")
-                .accessibilityAddTraits(.isButton)
+                .accessibilityHidden(true)
 
-            grid
-                .padding(20)
-                .background(.ultraThinMaterial,
-                            in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .stroke(Color.white.opacity(0.25), lineWidth: 1)
-                )
-                .shadow(color: .black.opacity(0.2), radius: 24, y: 8)
-                .padding(.horizontal, 40)
-                .padding(.vertical, 40)
+            VStack(spacing: 16) {
+                grid
+                    .padding(20)
+                    .background(.ultraThinMaterial,
+                                in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.2), radius: 24, y: 8)
+
+                Button("Abbrechen") { onDismiss() }
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .accessibilityHint("Schließt die Buchstabenauswahl, ohne den Buchstaben zu wechseln")
+            }
+            .padding(.horizontal, 40)
+            .padding(.vertical, 40)
         }
         .transition(.opacity)
     }

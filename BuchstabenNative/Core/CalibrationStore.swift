@@ -80,7 +80,12 @@ final class CalibrationStore {
               let data = try? JSONEncoder().encode(ls) else { return }
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try? data.write(to: url, options: .atomic)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            storePersistenceLogger.warning(
+                "CalibrationStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
         cache.removeValue(forKey: cacheKey(letter: letter, schriftArt: schriftArt))
     }
 

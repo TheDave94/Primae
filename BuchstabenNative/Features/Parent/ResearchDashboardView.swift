@@ -61,7 +61,7 @@ struct ResearchDashboardView: View {
                           subtitle: "Mittel über alle abgeschlossenen freeWrite-Sessions")
             if let dims = vm.dashboardSnapshot.averageWritingDimensions {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
-                    metricTile(label: "Form (Frécheté)",
+                    metricTile(label: "Form (Fréchet)",
                                value: dims.form, weight: 0.40)
                     metricTile(label: "Tempo (CV²)",
                                value: dims.tempo, weight: 0.25)
@@ -172,7 +172,7 @@ struct ResearchDashboardView: View {
                 emptyHint("Noch keine Phasen-Sessions abgeschlossen.")
             } else {
                 VStack(spacing: 0) {
-                    headerRow(["Letter", "Phase", "Score", "Form", "Tempo", "Druck", "Rhythmus"])
+                    headerRow(["Buchstabe", "Phase", "Wertung", "Form", "Tempo", "Druck", "Rhythmus"])
                     ForEach(Array(recent.enumerated()), id: \.offset) { _, rec in
                         dataRow([
                             rec.letter,
@@ -202,7 +202,7 @@ struct ResearchDashboardView: View {
                 emptyHint("Noch keine Sitzungs-Daten.")
             } else {
                 VStack(spacing: 0) {
-                    headerRow(["Letter", "Sessions", "Ø Acc.", "Trend", "KI Ø"])
+                    headerRow(["Buchstabe", "Sitzungen", "Ø Genauigkeit", "Trend", "KI Ø"])
                     ForEach(stats, id: \.letter) { stat in
                         let recAcc = vm.progressStore.progress(for: stat.letter).recognitionAccuracy ?? []
                         let recAvg = recAcc.isEmpty ? "—" : String(format: "%.2f", recAcc.reduce(0, +) / Double(recAcc.count))

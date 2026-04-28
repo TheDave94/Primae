@@ -12,6 +12,7 @@ import Testing
 
 @MainActor
 final class PlaybackTestAudio: AudioControlling {
+    var initializationError: String? { nil }
     private(set) var playCount = 0
     private(set) var stopCount = 0
     private(set) var cancelLifecycleCount = 0

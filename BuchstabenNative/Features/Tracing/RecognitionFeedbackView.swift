@@ -10,7 +10,8 @@
 // When raw confidence is below 0.4 the recognizer is too unsure to show
 // anything, and the caller falls back to the Fréchet score alone.
 //
-// Auto-dismisses after 4 seconds or on tap.
+// Auto-dismissed after 3 s by `OverlayQueueManager` (the queue's
+// timer for `.recognitionBadge`), or earlier on tap.
 
 import SwiftUI
 
@@ -36,14 +37,16 @@ struct RecognitionFeedbackView: View {
                 .background(style.tint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
                 .onTapGesture { onDismiss() }
-                .task {
-                    try? await Task.sleep(for: .seconds(4))
-                    onDismiss()
-                }
+                // Auto-dismiss is owned by OverlayQueueManager (3 s for the
+                // .recognitionBadge case). The view-level .task previously
+                // here was dead code: the queue fires first, SwiftUI tears
+                // the view down, the .task is cancelled. Removing it so a
+                // future "fix" that aligns the queue duration with the
+                // (wrong) 4 s comment doesn't introduce a second timer.
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(style.message)
                 .accessibilityAddTraits(.isButton)
-                .accessibilityHint("Tippen um die Rückmeldung zu schließen")
+                .accessibilityHint("Tippen, um die Rückmeldung zu schließen")
             } else {
                 // Confidence < 0.4 — model is unsure, show nothing so the
                 // child isn't distracted by a meaningless badge. Caller's

@@ -77,7 +77,6 @@ import AVFoundation
     @Test func tracingViewModelUsesInjectedAudioControllerAcrossLifecycle() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         #expect(audio.loadedFiles.count >= 1)
         vm.nextAudioVariant(); vm.previousAudioVariant()
         await vm.appDidEnterBackground(); vm.appDidBecomeActive()
@@ -89,7 +88,6 @@ import AVFoundation
     @Test func backgroundCancelsPendingPlaybackAndAvoidsResumeUntilNewIntent() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
@@ -107,7 +105,6 @@ import AVFoundation
     @Test func longSessionLifecycleRegressionMatrix() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         for cycle in 0..<5 {
             let base = CFTimeInterval(10 + cycle)
@@ -131,7 +128,6 @@ import AVFoundation
     @Test func rapidBackgroundForegroundChurn_50Cycles() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         for cycle in 0..<50 {
             let base = CFTimeInterval(100 + cycle * 2)
@@ -149,7 +145,6 @@ import AVFoundation
     @Test func avAudioSessionInterruption_shouldResumeFalse_doesNotPlay() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
@@ -164,7 +159,6 @@ import AVFoundation
     @Test func avAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
@@ -178,7 +172,6 @@ import AVFoundation
     @Test func audioRouteChange_oldDeviceUnavailable_stopsPlayback() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 140, y: 160), t: 1.01, canvasSize: size)
@@ -191,7 +184,6 @@ import AVFoundation
     @Test func audioRouteChange_oldDeviceUnavailable_isIdempotent() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
@@ -203,7 +195,6 @@ import AVFoundation
     @Test func debounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         let playsBefore = audio.playCount
         for i in 0..<20 {
@@ -218,7 +209,6 @@ import AVFoundation
     @Test func debounceWindow_afterExpiry_playbackIsAllowed() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 140, y: 160), t: 1.01, canvasSize: size)
@@ -229,7 +219,6 @@ import AVFoundation
     @Test func interruptionDuringBgFgChurn_stateRemainsConsistent() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         for i in 0..<10 {
             let base = CFTimeInterval(10 + i * 3)
@@ -246,7 +235,6 @@ import AVFoundation
     @Test func avAudioSessionInterruptionIdempotency_doubleBegan() async {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
@@ -387,6 +375,7 @@ private final class TempResourceFS {
 
 @MainActor
 private final class LocalMockAudioController: AudioControlling {
+    var initializationError: String? { nil }
     private(set) var loadedFiles: [String] = []
     private(set) var suspendForLifecycleCount = 0
     private(set) var resumeAfterLifecycleCount = 0

@@ -9,6 +9,7 @@ import CoreGraphics
 
 @MainActor
 fileprivate final class MockAudio: AudioControlling {
+    var initializationError: String? { nil }
     private(set) var loadedFiles: [String] = []
     private(set) var playCount  = 0
     private(set) var stopCount  = 0
@@ -81,7 +82,6 @@ private func slowDrag(vm: TracingViewModel,
             return mp
         }
         let model = TracingViewModel(deps)
-        model.strokeEnforced = false
 
         self.audio    = mockAudio
         self.vm       = model

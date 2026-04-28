@@ -91,7 +91,9 @@ struct FortschritteWorldView: View {
         )
         .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(vm.currentStreak) Tage hintereinander")
+        .accessibilityLabel(vm.currentStreak == 1
+                            ? "1 Tag hintereinander"
+                            : "\(vm.currentStreak) Tage hintereinander")
     }
 
     // MARK: - Gallery
@@ -101,12 +103,25 @@ struct FortschritteWorldView: View {
             Text("Deine Buchstaben")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.primary)
-            LazyVGrid(
-                columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 6),
-                spacing: 14
-            ) {
-                ForEach(vm.visibleLetterNames, id: \.self) { letter in
-                    letterCard(letter: letter)
+            if vm.visibleLetterNames.isEmpty {
+                // Defensive empty state — shouldn't happen in practice
+                // (letter list is bundled), but a parent who's somehow
+                // landed here on an empty install gets a verbal hint
+                // rather than a silent grey box.
+                ContentUnavailableView(
+                    "Noch keine Buchstaben",
+                    systemImage: "textformat.abc",
+                    description: Text("Starte im Schule-Modus, um Buchstaben freizuschalten.")
+                )
+                .frame(maxWidth: .infinity, alignment: .center)
+            } else {
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: 14), count: 6),
+                    spacing: 14
+                ) {
+                    ForEach(vm.visibleLetterNames, id: \.self) { letter in
+                        letterCard(letter: letter)
+                    }
                 }
             }
         }
@@ -117,9 +132,9 @@ struct FortschritteWorldView: View {
         let prog = vm.progressStore.progress(for: letter)
         let stars = LetterStars.stars(for: prog.phaseScores)
         let tint: Color = {
-            if stars >= LetterStars.maxStars {
-                return Color(red: 0.82, green: 0.94, blue: 0.82)
-            }
+            // Shared token with LetterPickerBar so a "mastered" letter
+            // looks identical in the picker and the gallery.
+            if stars >= LetterStars.maxStars { return AppSurface.mastered }
             if stars >= 1 { return Color(red: 1.00, green: 0.88, blue: 0.60) }
             return Color.gray.opacity(0.15)
         }()

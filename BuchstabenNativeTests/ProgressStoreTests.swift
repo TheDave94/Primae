@@ -20,7 +20,6 @@ import Foundation
 
     @Test func initialState_isEmpty() {
         #expect(store.totalCompletions == 0)
-        #expect(store.currentStreakDays == 0)
         #expect(store.allProgress.isEmpty)
     }
     @Test func initialProgress_forUnknownLetter_returnsDefault() {
@@ -92,7 +91,6 @@ import Foundation
         store.resetAll()
         #expect(store.totalCompletions == 0)
         #expect(store.allProgress.isEmpty)
-        #expect(store.currentStreakDays == 0)
     }
     @Test func resetAll_persistsOnDisk() async {
         store.recordCompletion(for: "L", accuracy: 1.0)
@@ -100,17 +98,9 @@ import Foundation
         await store.flush()
         #expect(JSONProgressStore(fileURL: tempURL).totalCompletions == 0)
     }
-    @Test func streak_singleCompletionToday_isOne() {
-        store.recordCompletion(for: "M", accuracy: 1.0)
-        #expect(store.currentStreakDays >= 1)
-    }
-    @Test func streak_noCompletions_isZero() {
-        #expect(store.currentStreakDays == 0)
-    }
-    @Test func streak_multipleCompletionsSameDay_countsOnce() {
-        for _ in 0..<5 { store.recordCompletion(for: "N", accuracy: 1.0) }
-        #expect(store.currentStreakDays == 1)
-    }
+    // Streak math now lives on JSONStreakStore — see StreakStoreTests.
+    // Removed `streak_*` cases that exercised the deleted
+    // `JSONProgressStore.currentStreakDays` accessor (review item W-9).
     @Test func recordCompletion_withPhaseScores_persistsAndLoads() async {
         let scores: [String: Double] = ["observe": 1.0, "guided": 0.85, "freeWrite": 0.72]
         store.recordCompletion(for: "Q", accuracy: 0.85, phaseScores: scores)

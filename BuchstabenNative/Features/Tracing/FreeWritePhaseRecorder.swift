@@ -37,10 +37,10 @@ final class FreeWritePhaseRecorder {
     /// `CACurrentMediaTime()` at session start. Drives `rhythmScore`.
     private(set) var sessionStart: CFTimeInterval = 0
     /// `CACurrentMediaTime()` when the active guided / freeWrite phase
-    /// began. Drives `strokesPerSecond` automatisation tracking.
+    /// began. Drives `checkpointsPerSecond` automatisation tracking.
     private(set) var activePhaseStart: CFTimeInterval = 0
     /// Live checkpoints-per-second figure surfaced on the dashboard.
-    private(set) var strokesPerSecond: CGFloat = 0
+    private(set) var checkpointsPerSecond: CGFloat = 0
     /// Last raw Fréchet distance (0 = perfect). Debug overlay only.
     private(set) var lastDistance: CGFloat = 0
     /// Latest 4-dimension Schreibmotorik assessment. Set by `assess`.
@@ -60,19 +60,19 @@ final class FreeWritePhaseRecorder {
         forces.removeAll(keepingCapacity: true)
         sessionStart = now
         activePhaseStart = now
-        strokesPerSecond = 0
+        checkpointsPerSecond = 0
         lastDistance = 0
         lastAssessment = nil
     }
 
     /// Begin the speed-tracking window without resetting freeWrite
-    /// buffers. Used when entering guided so strokesPerSecond reflects
+    /// buffers. Used when entering guided so checkpointsPerSecond reflects
     /// the guided pass while leaving any pending freeWrite KP path
     /// untouched. (FreeWrite buffers reset via `clearAll` on letter
     /// load or via `startSession` when freeWrite itself begins.)
     func startGuidedSpeedTracking(now: CFTimeInterval = CACurrentMediaTime()) {
         activePhaseStart = now
-        strokesPerSecond = 0
+        checkpointsPerSecond = 0
     }
 
     /// Append one freeWrite touch sample. Pass canvas-space `point` and
@@ -98,7 +98,7 @@ final class FreeWritePhaseRecorder {
         guard activePhaseStart > 0 else { return }
         let elapsed = now - activePhaseStart
         guard elapsed > 0.1 else { return }
-        strokesPerSecond = CGFloat(completedCheckpoints) / CGFloat(elapsed)
+        checkpointsPerSecond = CGFloat(completedCheckpoints) / CGFloat(elapsed)
     }
 
     /// Score the captured trace against `reference` strokes mapped into
@@ -138,7 +138,7 @@ final class FreeWritePhaseRecorder {
         path.removeAll(keepingCapacity: true)
         sessionStart = 0
         activePhaseStart = 0
-        strokesPerSecond = 0
+        checkpointsPerSecond = 0
         lastDistance = 0
         lastAssessment = nil
         lastGuidedScore = nil

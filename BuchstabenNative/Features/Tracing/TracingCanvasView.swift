@@ -301,9 +301,10 @@ struct TracingCanvasView: View {
                 .allowsHitTesting(!vm.isCalibrating)
             )
             .overlay(
-                // Finger tracing only: 1-finger → trace. Letter / audio / ghost
-                // navigation routed through visible dock buttons in ContentView
-                // to avoid accidental palm-rest triggers for 5-year-olds.
+                // Finger tracing only: 1-finger → trace. Letter / audio /
+                // ghost navigation routed through the visible world-bar
+                // controls (MainAppView / SchuleWorldView) to avoid
+                // accidental palm-rest triggers for 5-year-olds.
                 //
                 // Disabled entirely in the direct phase: the VM's `beginTouch`
                 // already no-ops for .direct, and because this is a
@@ -510,8 +511,9 @@ private struct DirectPhaseDotsOverlay: View {
 
 // MARK: - Unified touch overlay
 // 1-finger tracing only. Letter/audio/ghost navigation moved to the visible
-// control dock in ContentView — 2-finger pan / tap / 3-finger tap caused too
-// many accidental triggers for 5-year-olds resting a palm on the iPad.
+// world-bar controls (MainAppView / SchuleWorldView) — 2-finger pan / tap
+// / 3-finger tap caused too many accidental triggers for 5-year-olds
+// resting a palm on the iPad.
 
 private struct UnifiedTouchOverlay: UIViewRepresentable {
     let canvasSize: CGSize

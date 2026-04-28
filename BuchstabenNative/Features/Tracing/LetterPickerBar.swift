@@ -8,7 +8,11 @@ struct LetterPickerBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                ForEach(vm.allLetterNames, id: \.self) { name in
+                // Mirror the nav-arrow source list so the bar's letters
+                // and the ◀ ▶ buttons agree on what's reachable. Earlier
+                // this used `allLetterNames`, which surfaced the full
+                // alphabet even while the visibility toggle was off.
+                ForEach(vm.visibleLetterNames, id: \.self) { name in
                     LetterPickerButton(
                         name: name,
                         isSelected: name == vm.currentLetterName,
@@ -76,12 +80,15 @@ private struct LetterPickerButton: View, Equatable {
         .scaleEffect(isSelected ? 1.08 : 1)
         .animation(.spring(response: 0.25, dampingFraction: 0.7), value: isSelected)
         .accessibilityLabel(name)
+        .accessibilityHint("Tippen, um diesen Buchstaben zu üben")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var backgroundColor: Color {
         switch completionState {
-        case .complete:   return .green.opacity(0.25)
+        // Shared token with FortschritteWorldView gallery so a "mastered"
+        // letter looks identical in the picker and the gallery.
+        case .complete:   return AppSurface.mastered
         // Tint slightly darker + desaturated so the paired brown text meets
         // WCAG AA (was yellow.opacity(0.3) with .orange ≈ 2.5:1 — fail).
         case .partial:    return Color(red: 1.00, green: 0.88, blue: 0.60)
@@ -91,7 +98,7 @@ private struct LetterPickerButton: View, Equatable {
 
     private var textColor: Color {
         switch completionState {
-        case .complete:   return .green
+        case .complete:   return AppSurface.masteredText
         // Dark brown over the honey-yellow fill above ≈ 4.7:1 — WCAG AA pass
         // for large bold text and also meets AA-Normal (4.5:1).
         case .partial:    return Color(red: 0.40, green: 0.20, blue: 0.00)

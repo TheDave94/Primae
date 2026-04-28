@@ -18,7 +18,11 @@ protocol AudioControlling: AnyObject {
     var initializationError: String? { get }
 }
 
-extension AudioControlling {
-    var initializationError: String? { nil }
-}
+// Previously a default implementation returned `nil` here so any
+// conformer (production or mock) that omitted the property silently
+// reported "no error". Review item W-14 removed that default — every
+// conformer now spells out its initialisation contract. Production's
+// `AudioEngine` returns the real error from `engine.start()`; test
+// stubs declare `nil` explicitly to opt in to the "always healthy"
+// behaviour the default used to silently grant.
 

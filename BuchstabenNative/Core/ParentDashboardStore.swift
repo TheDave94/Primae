@@ -393,7 +393,12 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                storePersistenceLogger.warning(
+                    "ParentDashboardStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

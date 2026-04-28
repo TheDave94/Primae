@@ -6,6 +6,7 @@ import Testing
 
 @MainActor
 fileprivate final class LocalMockAudioController: AudioControlling {
+    var initializationError: String? { nil }
     var stopCount = 0
     var playCount = 0
     var loadedFiles: [String] = []

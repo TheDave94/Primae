@@ -51,6 +51,24 @@ struct LetterScheduler {
     /// Days assigned to letters never practised (treated as "very stale").
     var neverPracticedDays: Double = 30.0
 
+    /// When true, all weights effectively zero out and `prioritized`
+    /// returns letters in input order with equal priority — used by the
+    /// `.control` thesis condition so the scheduling effect doesn't
+    /// confound the phase-progression manipulation (review item W-23).
+    /// Default: false (full Ebbinghaus-weighted scheduling).
+    var fixedOrder: Bool = false
+
+    /// Builds a "control" scheduler that returns letters in input order
+    /// with no scoring — equivalent to a round-robin pass through the
+    /// alphabet. The `.control` thesis arm uses this so a between-arms
+    /// reading attributes the difference to phase progression rather
+    /// than to differing letter sequences.
+    static func fixedOrder() -> LetterScheduler {
+        var s = LetterScheduler()
+        s.fixedOrder = true
+        return s
+    }
+
     // MARK: - API
 
     /// Returns all available letters ordered by practice priority (highest first).
@@ -67,7 +85,13 @@ struct LetterScheduler {
         progress: [String: LetterProgress],
         now: Date = Date()
     ) -> [ScoredLetter] {
-        available.map { letter in
+        if fixedOrder {
+            // Equal priority for everything; Swift's stable sort
+            // preserves the caller-supplied order. The .control thesis
+            // arm relies on this for round-robin letter delivery.
+            return available.map { ScoredLetter(letter: $0, priority: 0) }
+        }
+        return available.map { letter in
             score(letter: letter, progress: progress[letter], now: now)
         }.sorted()
     }

@@ -7,6 +7,7 @@ import CoreGraphics
 
 @MainActor
 fileprivate final class MockAccessibilityAudio: AudioControlling {
+    var initializationError: String? { nil }
     func loadAudioFile(named: String, autoplay: Bool) {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
     func play() {}
@@ -25,7 +26,6 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
     init() {
         audio = MockAccessibilityAudio()
         vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
     }
 
     @Test func progressString_initial_isZeroPercent() {

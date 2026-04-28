@@ -1,4 +1,15 @@
 import Foundation
+import os
+
+/// Disk-write logger used by every JSON-backed store so a `try data.write`
+/// failure is no longer silently swallowed (review item W-18). Marked
+/// `nonisolated(unsafe)` because `Logger` is Sendable but the
+/// module-level `MainActor` default isolation needs an opt-out for use
+/// from a detached Task.
+nonisolated(unsafe) let storePersistenceLogger = Logger(
+    subsystem: Bundle.main.bundleIdentifier ?? "BuchstabenNative",
+    category: "StorePersistence"
+)
 
 // MARK: - Domain model
 
@@ -78,8 +89,6 @@ protocol ProgressStoring {
     func recordRecognitionSample(letter: String, result: RecognitionResult)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
-    /// Current streak: consecutive days with at least one completion.
-    var currentStreakDays: Int { get }
     /// Total letters completed across all sessions.
     var totalCompletions: Int { get }
     /// Await any pending background write. Callers that need to guarantee
@@ -104,10 +113,24 @@ extension ProgressStoring {
         recordCompletion(for: letter, accuracy: accuracy,
                          phaseScores: phaseScores, speed: speed, recognitionResult: nil)
     }
-    func recordPaperTransferScore(for letter: String, score: Double) {}
-    func recordVariantUsed(for letter: String, variantID: String?) {}
-    func recordFreeformCompletion(letter: String, result: RecognitionResult) {}
-    func recordRecognitionSample(letter: String, result: RecognitionResult) {}
+    // Optional protocol methods. Default implementations crash so a stub
+    // that forgot to override one fails loudly in tests instead of
+    // silently swallowing thesis-critical data (review item W-13/P-3).
+    // Production conformers (`JSONProgressStore`) implement all four;
+    // test stubs (`StubProgressStore`) opt in explicitly with no-op
+    // overrides where the test isn't asserting that channel.
+    func recordPaperTransferScore(for letter: String, score: Double) {
+        fatalError("Conformer must override \(#function) — protocol default refuses to silently no-op.")
+    }
+    func recordVariantUsed(for letter: String, variantID: String?) {
+        fatalError("Conformer must override \(#function) — protocol default refuses to silently no-op.")
+    }
+    func recordFreeformCompletion(letter: String, result: RecognitionResult) {
+        fatalError("Conformer must override \(#function) — protocol default refuses to silently no-op.")
+    }
+    func recordRecognitionSample(letter: String, result: RecognitionResult) {
+        fatalError("Conformer must override \(#function) — protocol default refuses to silently no-op.")
+    }
     func flush() async {}
 }
 
@@ -279,30 +302,6 @@ public final class JSONProgressStore: ProgressStoring {
         store.letterProgress
     }
 
-    var currentStreakDays: Int {
-        guard !store.completionDates.isEmpty else { return 0 }
-        let cal = Calendar.current
-        let today = cal.startOfDay(for: Date())
-        let uniqueDays = Set(store.completionDates.map { cal.startOfDay(for: $0) })
-        var streak = 0
-        var cursor = today
-        while uniqueDays.contains(cursor) {
-            streak += 1
-            guard let prev = cal.date(byAdding: .day, value: -1, to: cursor) else { break }
-            cursor = prev
-        }
-        // If nothing today, also check if yesterday completed (streak didn't reset yet)
-        if streak == 0, let yesterday = cal.date(byAdding: .day, value: -1, to: today) {
-            var c = yesterday
-            while uniqueDays.contains(c) {
-                streak += 1
-                guard let prev = cal.date(byAdding: .day, value: -1, to: c) else { break }
-                c = prev
-            }
-        }
-        return streak
-    }
-
     var totalCompletions: Int {
         store.letterProgress.values.reduce(0) { $0 + $1.completionCount }
     }
@@ -338,7 +337,17 @@ public final class JSONProgressStore: ProgressStoring {
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
-            try? data.write(to: url, options: .atomic)
+            do {
+                try data.write(to: url, options: .atomic)
+            } catch {
+                // Surfacing instead of silently dropping (review item W-18).
+                // The on-disk file might be corrupt or the volume full;
+                // either way the in-memory state is still good for the
+                // current session, but a parent investigating "the streak
+                // reset itself" deserves a log line to point at.
+                storePersistenceLogger.warning(
+                    "ProgressStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 

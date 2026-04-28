@@ -125,7 +125,7 @@ struct TracingDependencies {
         makeMessagePresenter: @escaping () -> TransientMessagePresenter = { TransientMessagePresenter() },
         makeAnimationGuide:   @escaping () -> AnimationGuideController   = { AnimationGuideController() },
         makeCalibrationStore: @escaping () -> CalibrationStore           = { CalibrationStore() },
-        makeLetterScheduler:  @escaping () -> LetterScheduler            = { LetterScheduler() }
+        makeLetterScheduler:  (() -> LetterScheduler)?                   = nil
     ) {
         self.audio = audio
         self.progressStore = progressStore
@@ -158,9 +158,34 @@ struct TracingDependencies {
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide
         self.makeCalibrationStore   = makeCalibrationStore
-        self.makeLetterScheduler    = makeLetterScheduler
+        // Default scheduler is condition-aware: `.control` gets a
+        // fixed-order scheduler so the scheduling effect doesn't
+        // confound the phase-progression manipulation (review item
+        // W-23). Other conditions get the full Ebbinghaus-weighted
+        // scheduler. Tests can still pass an explicit factory.
+        if let factory = makeLetterScheduler {
+            self.makeLetterScheduler = factory
+        } else {
+            let condition = thesisCondition
+            self.makeLetterScheduler = {
+                condition == .control
+                    ? LetterScheduler.fixedOrder()
+                    : LetterScheduler()
+            }
+        }
     }
 
     /// The default production configuration.
+    ///
+    /// Initialisation contract (review item W-6): this `static let`
+    /// reads `UserDefaults` and `ParticipantStore` exactly **once**,
+    /// when first accessed (typically at app launch from
+    /// `BuchstabenNativeApp.init`). Subsequent settings changes — e.g.
+    /// the parent toggling `Schriftart` in `SettingsView` — bypass this
+    /// snapshot and write directly to `vm.schriftArt` /
+    /// `vm.letterOrdering` on the running VM, so the effective state
+    /// stays current without rebuilding the dependency graph. Don't
+    /// re-read `live` mid-session expecting fresh `UserDefaults` — it
+    /// won't reflect post-launch toggles.
     static let live = TracingDependencies()
 }

@@ -3,7 +3,7 @@
 //
 //  Coverage for the recorder that owns the freeWrite phase's four
 //  buffers (points / timestamps / forces / normalised path) plus the
-//  session-timing state that drives strokesPerSecond and rhythmScore.
+//  session-timing state that drives checkpointsPerSecond and rhythmScore.
 //  Buffer lifecycle is load-bearing — a leak between letters would
 //  corrupt the next freeWrite assessment.
 
@@ -22,7 +22,7 @@ import CoreGraphics
         #expect(r.path.isEmpty)
         #expect(r.sessionStart == 0)
         #expect(r.activePhaseStart == 0)
-        #expect(r.strokesPerSecond == 0)
+        #expect(r.checkpointsPerSecond == 0)
         #expect(r.lastDistance == 0)
         #expect(r.lastAssessment == nil)
         #expect(r.lastGuidedScore == nil)
@@ -41,7 +41,7 @@ import CoreGraphics
         #expect(r.path.isEmpty)
         #expect(r.sessionStart == 42.0)
         #expect(r.activePhaseStart == 42.0)
-        #expect(r.strokesPerSecond == 0)
+        #expect(r.checkpointsPerSecond == 0)
         #expect(r.lastDistance == 0)
         #expect(r.lastAssessment == nil)
     }
@@ -84,7 +84,7 @@ import CoreGraphics
         r.startSession(now: 100)
         r.updateSpeed(completedCheckpoints: 8, now: 102)
         // 8 checkpoints in 2 s → 4 per second.
-        #expect(abs(r.strokesPerSecond - 4) < 1e-9)
+        #expect(abs(r.checkpointsPerSecond - 4) < 1e-9)
     }
 
     @Test func updateSpeed_withTinyElapsed_isIgnored() {
@@ -93,14 +93,14 @@ import CoreGraphics
         let r = FreeWritePhaseRecorder()
         r.startSession(now: 100)
         r.updateSpeed(completedCheckpoints: 5, now: 100.05)
-        #expect(r.strokesPerSecond == 0)
+        #expect(r.checkpointsPerSecond == 0)
     }
 
     @Test func updateSpeed_beforeSessionStart_isIgnored() {
         let r = FreeWritePhaseRecorder()
         // No startSession — activePhaseStart is 0.
         r.updateSpeed(completedCheckpoints: 10, now: 5)
-        #expect(r.strokesPerSecond == 0)
+        #expect(r.checkpointsPerSecond == 0)
     }
 
     @Test func startGuidedSpeedTracking_resetsTimingButPreservesBuffers() {
@@ -117,7 +117,7 @@ import CoreGraphics
         #expect(r.path == pathBefore)
         // … but the speed-tracking window is rebased.
         #expect(r.activePhaseStart == 200)
-        #expect(r.strokesPerSecond == 0)
+        #expect(r.checkpointsPerSecond == 0)
         // sessionStart is untouched (kept at 100).
         #expect(r.sessionStart == 100)
     }
@@ -138,7 +138,7 @@ import CoreGraphics
         #expect(r.path.isEmpty)
         #expect(r.sessionStart == 0)
         #expect(r.activePhaseStart == 0)
-        #expect(r.strokesPerSecond == 0)
+        #expect(r.checkpointsPerSecond == 0)
         #expect(r.lastDistance == 0)
         #expect(r.lastAssessment == nil)
         #expect(r.lastGuidedScore == nil)

@@ -68,18 +68,53 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
 }
 
 /// Persists a per-install participant UUID for stable A/B cohort assignment.
+///
+/// Storage layering (review item W-22):
+///   1. **iCloud Key-Value** (`NSUbiquitousKeyValueStore`) — primary,
+///      survives app reinstall on the same iCloud account so a parent
+///      who deletes + reinstalls mid-study doesn't accidentally reroll
+///      the child's A/B condition assignment.
+///   2. **UserDefaults** — local fallback for offline / no-iCloud
+///      installs, and for the test target which doesn't have iCloud
+///      entitlements.
+///
+/// On first access we read both sources, prefer whichever has a valid
+/// UUID, and reconcile by writing the chosen value back to whichever
+/// source was empty. Subsequent writes hit both stores so a future
+/// device-replacement read finds the same UUID.
 enum ParticipantStore {
     private static let key = "de.flamingistan.buchstaben.participantId"
     private static let enrolledKey = "de.flamingistan.buchstaben.thesisEnrolled"
 
     /// The participant's UUID, generated on first call and persisted thereafter.
+    /// Reads from iCloud-KVS first, then UserDefaults, so a reinstall on the
+    /// same iCloud account preserves the original cohort assignment.
     static var participantId: UUID {
-        if let raw = UserDefaults.standard.string(forKey: key),
+        let icloud = NSUbiquitousKeyValueStore.default
+        // Pre-existing values take precedence over any new generation.
+        if let raw = icloud.string(forKey: key),
            let uuid = UUID(uuidString: raw) {
+            // Backfill local UserDefaults if missing so offline reads
+            // still hit a value when iCloud isn't reachable.
+            if UserDefaults.standard.string(forKey: key) != raw {
+                UserDefaults.standard.set(raw, forKey: key)
+            }
             return uuid
         }
+        if let raw = UserDefaults.standard.string(forKey: key),
+           let uuid = UUID(uuidString: raw) {
+            // Promote local-only UUID to iCloud so a future reinstall
+            // sees the same cohort assignment.
+            icloud.set(raw, forKey: key)
+            icloud.synchronize()
+            return uuid
+        }
+        // First-ever launch on this install + iCloud account combination.
         let new = UUID()
-        UserDefaults.standard.set(new.uuidString, forKey: key)
+        let raw = new.uuidString
+        UserDefaults.standard.set(raw, forKey: key)
+        icloud.set(raw, forKey: key)
+        icloud.synchronize()
         return new
     }
 
@@ -90,8 +125,23 @@ enum ParticipantStore {
     /// pins `thesisCondition` to `.threePhase` so every child gets the full
     /// four-phase flow. When `true`, the stable UUID-derived condition from
     /// `ThesisCondition.assign(participantId:)` takes over.
+    ///
+    /// Mirrored to iCloud-KVS so an enrolled child who reinstalls keeps
+    /// the same condition (review item W-22).
     static var isEnrolled: Bool {
-        get { UserDefaults.standard.bool(forKey: enrolledKey) }
-        set { UserDefaults.standard.set(newValue, forKey: enrolledKey) }
+        get {
+            // Prefer iCloud if it has a value; otherwise fall back to local.
+            let icloud = NSUbiquitousKeyValueStore.default
+            if icloud.object(forKey: enrolledKey) != nil {
+                return icloud.bool(forKey: enrolledKey)
+            }
+            return UserDefaults.standard.bool(forKey: enrolledKey)
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: enrolledKey)
+            let icloud = NSUbiquitousKeyValueStore.default
+            icloud.set(newValue, forKey: enrolledKey)
+            icloud.synchronize()
+        }
     }
 }

@@ -68,6 +68,7 @@ import QuartzCore
 
 @MainActor
 private final class TrackingMockAudio: AudioControlling {
+    var initializationError: String? { nil }
     func loadAudioFile(named: String, autoplay: Bool) {}
     func play() {}
     func stop() {}

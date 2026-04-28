@@ -13,7 +13,6 @@ public final class TracingViewModel {
     var showAllLetters      = false
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
-    var strokeEnforced      = true
     var showDebug           = false
     /// When true, the stroke-calibration overlay takes focus and the other
     /// debug panels (audio tuning, letter picker) are hidden so they don't
@@ -33,6 +32,15 @@ public final class TracingViewModel {
                   !letters.isEmpty, letterIndex < letters.count else { return }
             scriptStrokeCache.removeAll(keepingCapacity: true)
             PrimaeLetterRenderer.clearCache()
+            // Invariant: variants are druckschrift-only (review item
+            // W-10). Switching script invalidates any previously-shown
+            // variant — clearing it here keeps the impossible state
+            // `showingVariant && schriftArt != .druckschrift` from
+            // ever being observable, regardless of toggle ordering.
+            if schriftArt != .druckschrift {
+                showingVariant = false
+                variantStrokeCache = nil
+            }
             currentLetterImage = PrimaeLetterRenderer.render(
                 letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
                 ?? PBMLoader.load(named: currentLetterImageName)
@@ -166,8 +174,6 @@ public final class TracingViewModel {
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
-    /// Forwarded from `TransientMessagePresenter` for views bound via `vm.completionMessage`.
-    var completionMessage: String? { messages.completionMessage }
     private(set) var currentDifficultyTier: DifficultyTier = .standard
 
     // MARK: - Learning phase state
@@ -264,7 +270,11 @@ public final class TracingViewModel {
     var freeWriteForces: [CGFloat] { freeWriteRecorder.forces }
     /// Checkpoints passed per second in the current guided or freeWrite phase.
     /// Updated on every touch event; reset on phase transition and letter load.
-    var strokesPerSecond: CGFloat { freeWriteRecorder.strokesPerSecond }
+    /// Renamed from `strokesPerSecond` (review item W-25): the figure is
+    /// `completedCheckpoints / elapsed`, which is checkpoints/sec, not
+    /// strokes/sec. The old name read as "strokes per second" and could
+    /// mislead a thesis reader correlating it with motor-rhythm research.
+    var checkpointsPerSecond: CGFloat { freeWriteRecorder.checkpointsPerSecond }
     /// Last computed Fréchet distance (for debug overlay).
     var lastFreeWriteDistance: CGFloat { freeWriteRecorder.lastDistance }
     /// Most recent Schreibmotorik four-dimension assessment from the freeWrite phase.
@@ -476,7 +486,15 @@ public final class TracingViewModel {
     private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
-    private var playback: PlaybackController!
+    /// Owned by `init` after all other stored properties are bound. Once
+    /// the init returns, this is non-nil for the lifetime of the VM. The
+    /// previous IUO `playback: PlaybackController!` shape (review item
+    /// W-16) couldn't be statically verified by the compiler, so a future
+    /// reorder that touched `playback` before init's closing line would
+    /// crash at first access. The `let` form below removes that footgun
+    /// — Swift now refuses to compile any code path that reads
+    /// `playback` before it's been assigned.
+    private let playback: PlaybackController
     private let messages: TransientMessagePresenter
     private let animation: AnimationGuideController
     /// Full-cycle counter for the observe-phase animation. Used to auto-advance
@@ -563,7 +581,6 @@ public final class TracingViewModel {
     // MARK: - Toggles
 
     func toggleGhost()             { showGhost.toggle();         toast("Hilfslinien \(showGhost ? "an" : "aus")") }
-    func toggleStrokeEnforcement() { strokeEnforced.toggle();    resetLetter(); toast("Reihenfolge \(strokeEnforced ? "an" : "aus")") }
     func toggleDebug()             { showDebug.toggle();         toast("Debug \(showDebug ? "an" : "aus")") }
     func toggleCalibration()       { showCalibration.toggle();   toast("Kalibrieren \(showCalibration ? "an" : "aus")") }
 
@@ -708,27 +725,6 @@ public final class TracingViewModel {
         "OMA", "OMI", "OPA", "MAMA", "PAPA", "LAMA", "KILO", "FILM"
     ]
 
-    /// Index into `demoWordList` for the next `cycleWord()` call.
-    /// Starts at 0 so the first cycle loads OMA.
-    private var wordCycleIndex: Int = 0
-
-    /// Human-readable hint for the debug "Wort:" chip — shows the next
-    /// word the chip will load (not the one already loaded).
-    var currentWordCycleLabel: String {
-        guard !Self.demoWordList.isEmpty else { return "–" }
-        return Self.demoWordList[wordCycleIndex % Self.demoWordList.count]
-    }
-
-    /// Advance through the demo word list and load the next word.
-    /// Debug chip wiring only; the real picker UI comes with the
-    /// full "Wörter" tab in a later commit.
-    func cycleWord() {
-        guard !Self.demoWordList.isEmpty else { return }
-        let word = Self.demoWordList[wordCycleIndex % Self.demoWordList.count]
-        wordCycleIndex = (wordCycleIndex + 1) % Self.demoWordList.count
-        loadWord(word)
-    }
-
     /// Load a word sequence — each character becomes its own cell. Demo
     /// feature for the thesis scope: uppercase-only (lowercase letters
     /// aren't currently in the audio inventory), no per-letter variants
@@ -810,7 +806,12 @@ public final class TracingViewModel {
         lastPoint                        = p
         lastTimestamp                    = t
         activePath                       = [p]
-        haptics.fire(.strokeBegan)
+        // Gate on `feedbackIntensity > 0` so freeWrite (which fades all
+        // real-time feedback per Schmidt & Lee 2005 Guidance Hypothesis)
+        // doesn't fire a stroke-begin haptic. Every other haptic + audio
+        // channel already respects this gate; this site was the lone
+        // exception (review item W-20 / P-10).
+        if feedbackIntensity > 0 { haptics.fire(.strokeBegan) }
         // Reload audio file — stop() in endTouch clears currentFile, so play() would
         // silently fail on subsequent touches without reloading first.
         if letters.indices.contains(letterIndex) {
@@ -1073,12 +1074,6 @@ public final class TracingViewModel {
         playback.forceIdle()
     }
 
-    // MARK: - Completion HUD
-
-    func dismissCompletionHUD() {
-        messages.dismissCompletion()
-    }
-
     // MARK: - Animation guide
     // Delegates the guide-dot animation to `AnimationGuideController`.
     // The observe-phase canvas binds to `vm.animationGuidePoint` which forwards
@@ -1238,10 +1233,18 @@ public final class TracingViewModel {
         // and freeWrite share the same UI state since only one recognition
         // request is ever in flight at a time.
         freeform.isRecognizing = true
+        // Pull the child's prior recognition history for this letter so
+        // the calibrator's "practised letter" boost (review item W-21)
+        // actually fires. Empty array on first encounter — calibrator
+        // skips the boost path until enough samples accumulate.
+        let history = (progressStore.progress(for: expected)
+                       .recognitionAccuracy ?? [])
+                      .map { CGFloat($0) }
         let token = issueRecognitionToken()
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
-                points: pts, canvasSize: size, expectedLetter: expected)
+                points: pts, canvasSize: size, expectedLetter: expected,
+                historicalFormScores: history)
             guard let self else { return }
             await MainActor.run {
                 guard self.recognitionStillActive(token) else { return }
@@ -1475,7 +1478,7 @@ public final class TracingViewModel {
             isWordSequence = false
         }
 
-        let speed: Double? = strokesPerSecond > 0 ? Double(strokesPerSecond) : nil
+        let speed: Double? = checkpointsPerSecond > 0 ? Double(checkpointsPerSecond) : nil
         // Recognition result lands asynchronously in parallel with phase
         // advance — it's often still nil here. Pass whatever's latched so
         // single-letter guided sessions that finish AFTER the recognizer
@@ -2002,6 +2005,18 @@ public final class TracingViewModel {
 
         freeform.isRecognizing = true
         freeform.hasRecognitionCompleted = false
+        // Pre-compute per-letter recognition history on the main actor
+        // so the detached Task can look it up without re-entering the
+        // VM's isolation. Activates the calibrator boost (review item
+        // W-21) for whichever target letters the child has practised.
+        let historyByLetter: [String: [CGFloat]] = Dictionary(uniqueKeysWithValues:
+            targetLetters.map { ch -> (String, [CGFloat]) in
+                let key = String(ch)
+                let scores = (progressStore.progress(for: key).recognitionAccuracy ?? [])
+                              .map { CGFloat($0) }
+                return (key, scores)
+            }
+        )
         let token = issueRecognitionToken()
         Task { [weak self, letterRecognizer] in
             var slots: [RecognitionResult?] = []
@@ -2010,7 +2025,8 @@ public final class TracingViewModel {
                 guard seg.count >= 2 else { slots.append(nil); continue }
                 let expected = String(targetLetters[i])
                 let r = await letterRecognizer.recognize(
-                    points: seg, canvasSize: size, expectedLetter: expected)
+                    points: seg, canvasSize: size, expectedLetter: expected,
+                    historicalFormScores: historyByLetter[expected] ?? [])
                 slots.append(r)
             }
             guard let self else { return }

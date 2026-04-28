@@ -32,10 +32,12 @@ struct PaperTransferView: View {
                         Image(systemName: "pencil")
                             .font(.system(size: 64))
                             .foregroundStyle(.blue)
+                            .accessibilityHidden(true)
                         Text("Schreibe den Buchstaben jetzt auf Papier!")
                             .font(.title2.bold())
                             .multilineTextAlignment(.center)
                     }
+                    .accessibilityElement(children: .combine)
                     .transition(.opacity)
 
                 case .assess:

@@ -36,14 +36,35 @@ struct RecognitionResult: Equatable, Sendable {
 
 /// Async recognition seam. Swap `StubLetterRecognizer` in tests.
 protocol LetterRecognizerProtocol: Sendable {
+    /// Recognise the rasterised stroke. `historicalFormScores` is the
+    /// child's prior recognition-accuracy history for the expected
+    /// letter — the calibrator uses it to award a small confidence
+    /// boost on letters the child has practised reliably (review item
+    /// W-21 / P-4). Empty array disables the boost (default).
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
-                   expectedLetter: String?) async -> RecognitionResult?
+                   expectedLetter: String?,
+                   historicalFormScores: [CGFloat]) async -> RecognitionResult?
     /// Whether the recognizer's backing model is actually loaded and
     /// ready for inference. `false` means every call to `recognize`
     /// will return `nil`; the UI uses this to distinguish "model
     /// missing" from "model said no" and show a diagnostic banner.
     func isModelAvailable() async -> Bool
+}
+
+extension LetterRecognizerProtocol {
+    /// Convenience that omits `historicalFormScores` — equivalent to
+    /// passing `[]`. Lets callers that don't have a progress store on
+    /// hand (e.g. ad-hoc tests, the freeform-letter pipeline that has
+    /// no `expectedLetter`) keep the older two-argument shape.
+    func recognize(points: [CGPoint],
+                   canvasSize: CGSize,
+                   expectedLetter: String?) async -> RecognitionResult? {
+        await recognize(points: points,
+                        canvasSize: canvasSize,
+                        expectedLetter: expectedLetter,
+                        historicalFormScores: [])
+    }
 }
 
 // MARK: - CoreML-backed recognizer
@@ -99,12 +120,14 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
 
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
-                   expectedLetter: String?) async -> RecognitionResult? {
+                   expectedLetter: String?,
+                   historicalFormScores: [CGFloat]) async -> RecognitionResult? {
         guard points.count >= 2, canvasSize.width > 0, canvasSize.height > 0 else {
             return nil
         }
         let expected = expectedLetter
         let calibratorCopy = calibrator
+        let history = historicalFormScores
         // The entire hot path — model load on first call, 40×40 CGContext
         // rasterization, VNImageRequestHandler.perform — is CPU-heavy and
         // must NOT execute on the MainActor. A detached Task runs on the
@@ -124,7 +147,8 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
                 return Self.makeResult(
                     from: classifications,
                     expectedLetter: expected,
-                    calibrator: calibratorCopy
+                    calibrator: calibratorCopy,
+                    historicalFormScores: history
                 )
             } catch {
                 recognizerLogger.warning("Vision request failed: \(error.localizedDescription)")
@@ -212,14 +236,16 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     private static func makeResult(
         from classifications: [VNClassificationObservation],
         expectedLetter: String?,
-        calibrator: ConfidenceCalibrator
+        calibrator: ConfidenceCalibrator,
+        historicalFormScores: [CGFloat]
     ) -> RecognitionResult? {
         guard let top = classifications.first else { return nil }
         let rawTopLetter = top.identifier
         let calibratedTopConfidence = calibrator.calibrate(
             rawConfidence: CGFloat(top.confidence),
             predictedLetter: rawTopLetter,
-            expectedLetter: expectedLetter
+            expectedLetter: expectedLetter,
+            historicalFormScores: historicalFormScores
         )
         let topThree: [RecognitionResult.TopCandidate] = classifications
             .prefix(3)
@@ -227,7 +253,8 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
                 let conf = calibrator.calibrate(
                     rawConfidence: CGFloat(obs.confidence),
                     predictedLetter: obs.identifier,
-                    expectedLetter: expectedLetter
+                    expectedLetter: expectedLetter,
+                    historicalFormScores: historicalFormScores
                 )
                 return .init(letter: obs.identifier, confidence: conf)
             }
@@ -345,7 +372,12 @@ struct StubLetterRecognizer: LetterRecognizerProtocol {
 
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
-                   expectedLetter: String?) async -> RecognitionResult? {
+                   expectedLetter: String?,
+                   historicalFormScores: [CGFloat]) async -> RecognitionResult? {
+        // historicalFormScores is intentionally ignored: the stub
+        // returns its pre-configured result regardless of input, so the
+        // calibrator boost wouldn't actually change anything observable.
+        _ = historicalFormScores
         // Truthfulness check (DEBUG only). The pre-configured
         // `result.isCorrect` should match
         // `result.predictedLetter == expectedLetter` when the caller

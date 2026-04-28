@@ -157,7 +157,19 @@ struct SchuleWorldView: View {
             }
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(20)
-        case .kpOverlay, .frechetScore, .none:
+        case .kpOverlay:
+            // KP overlay is rendered by `TracingCanvasView` itself (it
+            // needs the canvas geometry and reference-stroke data) — the
+            // queueModalOverlay branch only handles full-screen modals.
+            EmptyView()
+        case .frechetScore:
+            // Reserved enum case for a future inline Fréchet-score chip.
+            // Currently the inline form/guided feedback cards in this
+            // view render the signal instead; the queue case is kept so
+            // a downstream caller can re-introduce the chip without an
+            // enum-shape migration. See OverlayQueueManager.CanvasOverlay.
+            EmptyView()
+        case .none:
             EmptyView()
         }
     }

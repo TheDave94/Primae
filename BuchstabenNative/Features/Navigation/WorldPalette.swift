@@ -76,4 +76,20 @@ enum AppSurface {
     /// Caption-weight label colour — slightly lighter than `prompt`
     /// for hierarchy, still meets WCAG AA on `card`.
     static let caption  = Color(red: 0.32, green: 0.32, blue: 0.40)
+    /// Mastered-letter tile fill — soft pastel green used in the
+    /// FortschritteWorldView gallery and the LetterPickerBar so a
+    /// "fully completed" letter looks identical wherever it appears.
+    /// Hand-picked to read as success without overpowering the
+    /// neighbouring tiles.
+    static let mastered = Color(red: 0.82, green: 0.94, blue: 0.82)
+    /// Foreground colour to pair with `mastered` for letter glyphs in
+    /// the picker — saturated dark green that reads as success against
+    /// the pastel fill. ≈ 4.7:1 contrast, WCAG AA pass for large bold.
+    static let masteredText = Color(red: 0.10, green: 0.45, blue: 0.18)
+    /// Background gradient for `WorldSwitcherRail`. Subtle warm-to-cool
+    /// pastel that sits below the world buttons without competing with
+    /// each world's own accent. Token-ised so a future re-skin only
+    /// touches WorldPalette instead of grepping for hardcoded RGB.
+    static let railTop    = Color(red: 0.99, green: 0.98, blue: 0.96)
+    static let railBottom = Color(red: 0.96, green: 0.97, blue: 0.99)
 }

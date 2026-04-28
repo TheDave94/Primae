@@ -6,6 +6,7 @@ import UserNotifications
 // MARK: - Shared no-op stubs for unit tests
 
 final class StubAudio: AudioControlling {
+    var initializationError: String? { nil }
     func loadAudioFile(named: String, autoplay: Bool) {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
     func play() {}
@@ -79,9 +80,17 @@ final class StubProgressStore: ProgressStoring {
     func recordCompletion(for letter: String, accuracy: Double,
                           phaseScores: [String: Double]?, speed: Double?,
                           recognitionResult: RecognitionResult?) {}
+    // Explicitly opt in to no-op behaviour for the optional protocol
+    // methods. Previously the protocol's extension defaults silently
+    // swallowed these calls — review item W-13/P-3 promoted those
+    // defaults to `fatalError` so a forgotten stub override fails
+    // loudly in tests instead of silently dropping thesis data.
+    func recordPaperTransferScore(for letter: String, score: Double) {}
+    func recordVariantUsed(for letter: String, variantID: String?) {}
+    func recordFreeformCompletion(letter: String, result: RecognitionResult) {}
+    func recordRecognitionSample(letter: String, result: RecognitionResult) {}
     func resetAll() {}
     var allProgress: [String: LetterProgress] { [:] }
-    var currentStreakDays: Int { 0 }
     var totalCompletions: Int { 0 }
 }
 

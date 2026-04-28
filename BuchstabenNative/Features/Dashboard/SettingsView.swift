@@ -43,6 +43,9 @@ struct SettingsView: View {
                     }
                 ))
                 .accessibilityHint("Nur für Forschung aktivieren. Weist das Gerät stabil einer Studienbedingung zu; andernfalls erhält jedes Kind die volle Vier-Phasen-Lernabfolge. Änderung wird beim nächsten App-Start wirksam.")
+                Text("Änderung wird beim nächsten App-Start wirksam.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("Hilfe") {
                 Button("Einführung wiederholen") { vm.restartOnboarding() }

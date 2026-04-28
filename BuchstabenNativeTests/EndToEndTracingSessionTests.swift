@@ -9,6 +9,7 @@ import CoreGraphics
 
 @MainActor
 fileprivate final class RecordingAudio: AudioControlling {
+    var initializationError: String? { nil }
     enum Event: Equatable {
         case load(String), play, stop, suspend, resume, cancelPending, setAdaptive(speed: Float)
     }
@@ -35,7 +36,6 @@ fileprivate final class RecordingAudio: AudioControlling {
     init() {
         audio = RecordingAudio()
         vm = TracingViewModel(.stub.with(audio: audio))
-        vm.strokeEnforced = false
     }
 
     // MARK: 1 — Initial state

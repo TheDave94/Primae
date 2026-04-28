@@ -21,13 +21,16 @@ import UIKit
 // "Vorschläge:" row, and the Klarheit / Form pills were almost
 // invisible). These tones give every label and chip a predictable
 // background to sit on regardless of system colour scheme.
+/// Freeform-mode-specific tokens that don't have an `AppSurface`
+/// equivalent. Card / edge / prompt now alias `AppSurface` directly so
+/// a re-skin only touches one file (review item W-38).
 private enum FreeformSurface {
     /// Toolbar and prompt strip behind Zurück / mode picker / Nochmal.
     static let header   = Color(red: 0.94, green: 0.94, blue: 0.97)
-    /// Result and status cards under the canvas.
-    static let card     = Color(red: 0.97, green: 0.97, blue: 0.99)
-    /// Hairline border around cards so they read as a unit on white.
-    static let cardEdge = Color(red: 0.78, green: 0.78, blue: 0.84)
+    /// Result and status cards under the canvas. Aliases `AppSurface.card`.
+    static let card     = AppSurface.card
+    /// Hairline border around cards. Aliases `AppSurface.cardEdge`.
+    static let cardEdge = AppSurface.cardEdge
     /// Word-picker pill backgrounds for unselected items — strong
     /// enough that the dark label remains legible (purple.opacity(0.12)
     /// rendered as near-pink and dropped contrast below WCAG AA).
@@ -35,9 +38,8 @@ private enum FreeformSurface {
     /// Dark text for the unselected word-picker pills. Hand-picked dark
     /// purple paired against `pillIdle` — measured ≈ 7:1 contrast.
     static let pillIdleText = Color(red: 0.30, green: 0.13, blue: 0.45)
-    /// Body label for prompts that used to be `.secondary` — solid dark
-    /// grey is legible on both the header and the canvas.
-    static let prompt = Color(red: 0.20, green: 0.20, blue: 0.25)
+    /// Body label for prompts. Aliases `AppSurface.prompt`.
+    static let prompt   = AppSurface.prompt
 }
 
 struct FreeformWritingView: View {
@@ -189,7 +191,9 @@ struct FreeformWritingView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Zielwort \(target.word)")
                 } else {
-                    Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift")
+                    // Match the in-canvas prompt at line 385 (same wording,
+                    // terminal period) — review item W-29.
+                    Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift.")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(FreeformSurface.prompt)
                 }
@@ -221,7 +225,10 @@ struct FreeformWritingView: View {
                             .foregroundStyle(isSelected
                                              ? Color.white
                                              : FreeformSurface.pillIdleText)
-                            .padding(.horizontal, 14).padding(.vertical, 8)
+                            // Lift to ≥ 44 pt total height (HIG minimum
+                            // touch target) — review item W-31. headline
+                            // line height ≈ 22 pt + 2×14 pt vertical = ≥ 50 pt.
+                            .padding(.horizontal, 14).padding(.vertical, 14)
                             .background(
                                 isSelected
                                     ? Color.purple
