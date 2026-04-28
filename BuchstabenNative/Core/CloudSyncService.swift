@@ -1,3 +1,39 @@
+// CloudSyncService.swift
+// BuchstabenNative
+//
+// ⚠️ DORMANT — protocol-only scaffolding for a future CloudKit sync.
+// =================================================================
+// No real CloudKit-backed implementation ships in this repository today.
+// The only conforming type is `NullSyncService`, an in-memory no-op
+// installed by `TracingDependencies.stub` and the production app entry
+// point alike. `SyncCoordinator.pushAll()` runs on every letter
+// completion (see TracingViewModel.recordPhaseSessionCompletion) and
+// silently does nothing — the data is buffered in `pushedRecords` for
+// tests but never leaves the device.
+//
+// What's intentionally already wired:
+//   • Sendable-correct async/throws protocol
+//   • SyncCoordinator with last-write-wins merge semantics scaffolded
+//   • Test seam (NullSyncService.simulateError, seedRecord)
+//   • Region-isolated payload materialisation in pushAll
+//
+// What's missing for a thesis demo or a real shipping build:
+//   • CloudKitCloudSyncService implementation (CKDatabase / CKRecord /
+//     CKModifyRecordsOperation, plus a Sendable wrapper for the
+//     `[String: any Sendable]` payload)
+//   • CKContainer entitlement + iCloud capability in BuchstabenApp.entitlements
+//   • Conflict-resolution policy beyond last-write-wins (timestamps in
+//     payload are scaffolded but the merge-on-fetch path is unwritten)
+//   • Background-fetch / push-notification trigger so other devices
+//     pick up changes without an explicit pushAll()
+//
+// Reactivating this code path is intentionally one-edit-away: swap the
+// NullSyncService injection in TracingDependencies for a CloudKit
+// implementation. Until then, treat this file as documentation of the
+// intended interface and a regression guard against breaking that
+// interface during unrelated refactors.
+// =================================================================
+
 import Foundation
 #if canImport(CloudKit)
 import CloudKit
