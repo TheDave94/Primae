@@ -368,21 +368,24 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     // MARK: Private
 
     private func persist() {
-        // Encode off main: snapshot the value-type DashboardSnapshot on
-        // the actor, then encode + write inside the detached Task.
+        // Encode on main, write off main. JSON encoding of the
+        // DashboardSnapshot value type is bounded (caps in DashboardSnapshot
+        // keep it well under 100 KB), and main-actor encoding sidesteps the
+        // Swift 6 strict-concurrency restriction on calling MainActor-
+        // isolated Encodable conformances from a nonisolated detached Task.
+        // The atomic disk write — the heavier I/O — still runs off main.
         //
-        // Rapid-fire batching note (review item #9): when 4 persist()
+        // Rapid-fire batching note (review item #9): when several persist()
         // calls happen synchronously in one runloop tick — e.g.
-        // `recordPhaseSessionCompletion` writes one PhaseSessionRecord
-        // per phase — the cancel-and-replace chain coalesces them into
-        // a single disk write. Each successor cancels its predecessor;
-        // each predecessor's `guard !Task.isCancelled` short-circuits
-        // before reaching `JSONEncoder().encode(...)`. Only the final
-        // task encodes + writes. No explicit buffer needed: the value-
-        // type DashboardSnapshot in `snapshotCopy` already captures the
-        // accumulated state. See ParentDashboardStoreTests for a
-        // regression guard pinning this behaviour.
-        let snapshotCopy = snapshot
+        // `recordPhaseSessionCompletion` writes one PhaseSessionRecord per
+        // phase — the cancel-and-replace chain coalesces them into a single
+        // disk write. Each successor cancels its predecessor; each
+        // predecessor's `guard !Task.isCancelled` short-circuits before
+        // reaching the atomic write. Only the final task hits the disk.
+        // The value-type DashboardSnapshot in `data` already captures the
+        // accumulated state. See ParentDashboardStoreTests for a regression
+        // guard pinning this behaviour.
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = fileURL
         // Coalesce + order: see ProgressStore.save() for rationale.
         let previous = pendingSave
@@ -390,7 +393,6 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
-            guard let data = try? JSONEncoder().encode(snapshotCopy) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }

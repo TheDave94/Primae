@@ -317,18 +317,19 @@ public final class JSONProgressStore: ProgressStoring {
     }
 
     private func save() {
-        // Snapshot the in-memory store on the actor so the detached
-        // Task encodes a stable copy. `Store` is a value type so the
-        // capture is a deep copy — safe against subsequent mutations
-        // on this actor. Encoding (the hot CPU work) and disk write
-        // both happen off-main on the cooperative pool.
-        let snapshot = store
+        // Encode on main, write off main. Encoding the value-type Store is
+        // bounded (completionDates capped at 1000) and main-actor encoding
+        // sidesteps the Swift 6 strict-concurrency restriction on calling a
+        // MainActor-isolated Encodable conformance from a nonisolated
+        // detached Task. The atomic disk write — the heavier I/O — still
+        // runs off main on the cooperative pool.
+        guard let data = try? JSONEncoder().encode(store) else { return }
         let url = fileURL
-        // Coalesce: cancel any prior pending task. Since in-memory state is
-        // already up-to-date and the snapshot is a full copy of the current
-        // store, writing only the latest snapshot is equivalent to writing N
-        // back-to-back snapshots. This avoids unbounded chain growth + N×
-        // Data retention under rapid save() bursts.
+        // Coalesce: cancel any prior pending task. Since the encoded data is
+        // already a full copy of the current store, writing only the latest
+        // snapshot is equivalent to writing N back-to-back snapshots. This
+        // avoids unbounded chain growth + N× Data retention under rapid
+        // save() bursts.
         //
         // Ordering: await the previous task before writing so two in-flight
         // writes can't race and leave an older snapshot on disk.
@@ -337,7 +338,6 @@ public final class JSONProgressStore: ProgressStoring {
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
-            guard let data = try? JSONEncoder().encode(snapshot) else { return }
             try? data.write(to: url, options: .atomic)
         }
     }
