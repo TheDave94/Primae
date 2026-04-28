@@ -1,26 +1,102 @@
-# Letter Asset Generation Scripts
+# scripts/
 
-## generate_pbm.py
-Generates P4 PBM ghost files from Primae-Regular.otf.
+Asset-generation utilities and the local Git pre-commit hook. Each
+file here is run by hand from the repo root (no part of the iOS build
+depends on these). Run order when adding a new letter is documented at
+the bottom.
+
+## Asset generators
+
+### `generate_pbm.py`
+Render a P4 PBM bitmap of a glyph from `Primae-Regular.otf` for use as
+the letter's background image.
+
 ```bash
 pip install Pillow
-# Generate specific letters:
-python3 scripts/generate_pbm.py A B C
-# Generate all letters:
-python3 scripts/generate_pbm.py
+python3 scripts/generate_pbm.py A B C   # specific letters
+python3 scripts/generate_pbm.py         # all letters
 ```
 
-Output: `BuchstabenNative/Resources/Letters/{LETTER}/{LETTER}.pbm`
+Output: `BuchstabenNative/Resources/Letters/<X>/<X>.pbm`
 
-## generate_strokes.py
-Generates `strokes.json` tracing paths for letters that don't have them.
-Paths are algorithmically generated — **review for pedagogical correctness**.
+### `generate_strokes.py`
+Generate `strokes.json` skeleton tracing paths for letters that don't
+ship hand-calibrated checkpoints. Coordinates are normalised 0–1
+(x = right, y = down), one entry per stroke.
+
 ```bash
 python3 scripts/generate_strokes.py
 ```
 
-## After adding new letters
-1. Run both scripts for the new letter
-2. Add audio files to `BuchstabenNative/Resources/Letters/{LETTER}/`
-3. Sync PBM to Xcode: `cp BuchstabenNative/Resources/Letters/{L}/{L}.pbm BuchstabenApp/BuchstabenApp/Letters/{L}/`
-4. Review strokes.json for correct stroke order and direction
+> The output is algorithmic, not pedagogical. **Always review with a
+> Volksschule-1.-Klasse handwriting reference before shipping** — wrong
+> stroke order or direction will cement bad motor programs.
+
+Output: `BuchstabenNative/Resources/Letters/<X>/strokes.json`
+
+### `generate_letter_audio.py`
+ElevenLabs voice generator for letter phonemes, example words, and
+tracing words across multiple voices. Used to build the audio inventory
+for the demo letters and any future expansion.
+
+```bash
+export ELEVENLABS_API_KEY=...                    # never commit; .env is gitignored
+pip install requests
+python3 scripts/generate_letter_audio.py --letter M   # audition mode (one letter, all voices)
+python3 scripts/generate_letter_audio.py             # full inventory
+```
+
+The script writes to `audio_variants/<Voice>/<Letter>/` and
+`audio_variants/<Voice>/words/`. That directory is **not** tracked in
+git — pick the favourite voice's files and copy them into
+`BuchstabenNative/Resources/Letters/<X>/` to ship them.
+
+> Phonemes, not letter names. `M` is recorded as "mmmh", not "Em" — the
+> Anlauttabelle approach used in Austrian Volksschule 1. Klasse.
+
+### `gen_appicon.py`
+Render the app-icon PNG set (light / dark / monochrome) into the Xcode
+asset catalogue. The icon shows the same three-stroke "A" the child
+sees in the onboarding observe-phase demo.
+
+```bash
+pip install Pillow
+python3 scripts/gen_appicon.py
+```
+
+Output: `BuchstabenApp/BuchstabenApp/Assets.xcassets/AppIcon.appiconset/`
+(`AppIcon.png`, `AppIcon-dark.png`, `AppIcon-tinted.png`).
+
+## Git hooks
+
+### `install-hooks.sh`
+Copies `scripts/pre-commit` into `.git/hooks/pre-commit` and makes it
+executable. Run **once** after every fresh clone.
+
+```bash
+./scripts/install-hooks.sh
+```
+
+### `pre-commit`
+Pre-commit gate that runs `swift build --build-tests` and
+`swift test --parallel` whenever a `BuchstabenNative/*.swift` file is
+staged. Blocks the commit on a build or test failure.
+
+Emergency bypass:
+```bash
+git commit --no-verify
+```
+
+## Adding a new letter
+
+1. `python3 scripts/generate_pbm.py X` — produces `<X>.pbm`.
+2. `python3 scripts/generate_strokes.py` — drafts `strokes.json`.
+   **Review** the order and direction against a handwriting reference.
+3. `python3 scripts/generate_letter_audio.py --letter X` — auditions
+   all bundled voices for the phoneme. Pick one, copy its files into
+   `BuchstabenNative/Resources/Letters/X/`.
+4. Sync the PBM into the Xcode resource group:
+   `cp BuchstabenNative/Resources/Letters/X/X.pbm BuchstabenApp/BuchstabenApp/Letters/X/`
+5. Open the calibration overlay in DEBUG mode on-device to refine the
+   checkpoint positions interactively (the calibrator persists per-
+   letter overrides into Application Support).
