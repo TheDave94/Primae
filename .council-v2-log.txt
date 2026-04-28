@@ -1,8 +1,0 @@
-  ✅ v2-006 committed: 0c052f6 v2-006: Child-friendly main UI with letter picker and phase indicator
-To https://github.com/TheDave94/Buchstaben-Lernen-App.git
-   4b7d0e9..0c052f6  main -> main
-  Finished: Sat Apr 18 17:04:51 UTC 2026
-
-═══════════════════════════════════════════════════════
-  Complete: 2/6 succeeded
-═══════════════════════════════════════════════════════
