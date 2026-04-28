@@ -161,23 +161,35 @@ private func sampleResult(_ predicted: String = "A",
     // MARK: - Auto-advance after timed overlay
 
     @Test func timedOverlay_autoAdvances() async {
-        // Use frechetScore (1.5s default) but override to a tiny duration so
-        // the test stays fast. The timer Task uses Task.sleep — wait a bit
-        // longer than the override before asserting the queue advanced.
-        let q = OverlayQueueManager()
+        // Use the injected Sleeper seam so the test is deterministic —
+        // the production wall-clock 0.05s wait + 0.2s assertion poll was
+        // flaky on CI runners where Task scheduling overhead pushed the
+        // sleep past the poll window. The fake sleeper resolves instantly
+        // via Task.yield() so the auto-advance fires before we read the
+        // queue state.
+        let fakeSleeper: Sleeper = { _ in await Task.yield() }
+        let q = OverlayQueueManager(sleeper: fakeSleeper)
         q.enqueue(.frechetScore(0.5), duration: 0.05)
         q.enqueue(.celebration(stars: 1))
-        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        // Yield until the auto-advance Task has had a chance to run.
+        // Two yields covers the dispatch → sleep-await → resume → advance
+        // cycle; bump to three for headroom on slow runners.
+        for _ in 0..<3 { await Task.yield() }
         #expect(q.currentOverlay == .celebration(stars: 1))
     }
 
     @Test func modalOverlay_doesNotAutoAdvance() async {
         // Modal overlays (paperTransfer, celebration) carry nil duration
         // and must wait for an explicit dismiss — no timer should fire.
+        // No sleeper involvement at all (the queue skips arming the
+        // advance Task when duration is nil), so this stays fully
+        // synchronous.
         let q = OverlayQueueManager()
         q.enqueue(.paperTransfer(letter: "H"))
         q.enqueue(.celebration(stars: 1))
-        try? await Task.sleep(nanoseconds: 200_000_000) // 0.2s
+        // A few yields prove the absence of a timer — without an arm,
+        // nothing advances regardless of how much we yield.
+        for _ in 0..<5 { await Task.yield() }
         #expect(q.currentOverlay == .paperTransfer(letter: "H"))
         #expect(q.pendingCount == 1)
     }
