@@ -1,392 +1,300 @@
-# Code Review & Improvement Proposals
+# Council Code Review — Buchstaben-Lernen-App
 
-A 6-agent council reviewed the codebase in parallel:
+**Date:** 2026-04-28  
+**Reviewers:** Architecture · Safety · Scientific Methods · UX  
+**Scope:** All production Swift source files in `BuchstabenNative/`  
+**Severity key:** 🔴 CRITICAL · 🟡 WARNING · 🟢 INFO
 
-1. **TracingViewModel + crash + concurrency**
-2. **Scoring + recognition correctness**
-3. **Persistence + data integrity**
-4. **UI + accessibility + German text**
-5. **Performance, memory, redraw**
-6. **Tests + dead code + invariants**
-
-This document synthesises their findings. Severity legend:
-
-- 🔴 **Must fix** — crashes, data loss, wrong thesis data, child-facing
-  UX violation
-- 🟡 **Should fix** — user-facing quality issue, potential perf
-  regression, missing test coverage on a thesis-critical path
-- 🟢 **Nice to have** — code-quality cleanup, micro-optimisation,
-  documentation polish
-
-A second commit (after this doc lands) applies every 🔴 fix.
+Findings were cross-referenced against the actual codebase; duplicates merged, contradictions resolved by reading source. All 🔴 findings have been applied as code fixes in the same commit.
 
 ---
 
-## Summary table — all findings sorted by severity
+## Summary Table
 
-| # | Sev | Area | Finding | File:Line |
-|--:|:--:|------|---------|-----------|
-| 1 | 🔴 | Persistence | `"ß".uppercased()` returns `"SS"` — `ß` progress is keyed under `SS`, colliding with the (non-existent) capital ß and breaking per-letter analytics for the only German letter that doesn't round-trip through `.uppercased()`. | `ProgressStore.swift:159, 167, 188, 197, 227, 235`; `StreakStore.swift:105` |
-| 2 | 🔴 | Child UI | `ProgressPill` shows `"Fortschritt 47%"` to children. Thesis spec mandates verbal/visual feedback only — no percentages. | `TracingCanvasView.swift:382` |
-| 3 | 🔴 | Accessibility | World-switch animation in `MainAppView` is not gated on `accessibilityReduceMotion`. | `MainAppView.swift:85` |
-| 4 | 🔴 | Accessibility | Direct-phase dot pulse animation ignores `accessibilityReduceMotion`. | `TracingCanvasView.swift:429, 457` |
-| 5 | 🔴 | Logic | `StrokeTracker.isComplete` returns `true` when `definition.strokes.isEmpty == true` (vacuous truth). Currently masked by a guard in `TracingViewModel:942`, but the API itself is wrong. | `StrokeTracker.swift:29-32` |
-| 6 | 🟡 | Recognition | Confusable list omits the `I/l/i` triad — a notorious first-grade handwriting confusion in German. | `ConfidenceCalibrator.swift:77-80` |
-| 7 | 🟡 | Persistence | `phaseSessionRecords` and `completionDates` arrays are unbounded — long-running thesis devices accumulate thousands of entries. | `ParentDashboardStore.swift:101`; `ProgressStore.swift:108` |
-| 8 | 🟡 | Performance | `TracingCanvasView` body reads ~11 reactive `vm` properties; any one mutation invalidates the whole canvas. During a touch event (`activePath`, `pencilPressure`, `progress` all mutating at ~100 Hz), this is heavy. | `TracingCanvasView.swift:10-219` |
-| 9 | 🟡 | Performance | `ParentDashboardStore.recordPhaseSession()` `persist()`s synchronously on every phase row — ~20 disk writes per typical 4-letter session. | `ParentDashboardStore.swift:312-324` |
-| 10 | 🟡 | Performance | `JSONEncoder().encode(store)` runs on the main actor before the detached write task. Encoding is small (~8 KB after 10 sessions), <5 ms — but still on main. | `ProgressStore.swift:289`; `ParentDashboardStore.swift:347` |
-| 11 | 🟡 | Performance | `PrimaeLetterRenderer` image cache key is `(letter, width, height)` — missing `schriftArt`. A font swap across the cache window can serve stale glyphs. (Mitigated by `clearCache()` on schriftArt change, but the key itself is a footgun.) | `PrimaeLetterRenderer.swift` (CacheKey struct) |
-| 12 | 🟡 | TracingViewModel | `runRecognizerForFreeWrite` and `recognizeFreeformLetter` set `isRecognizing = true` synchronously, then the late-completing Task can write to a freshly-cleared FreeformController if the user advanced letters mid-recognition. Not a crash (writes target the live controller), but UI state can briefly stick. | `TracingViewModel.swift:1166, 1865` |
-| 13 | 🟡 | Concurrency | `Task` in `enterFreeformMode` (model-availability probe) lacks idempotency — rapid double calls spawn two probes. | `TracingViewModel.swift:1762-1768` |
-| 14 | 🟡 | UI | Fixed-size fonts (`.font(.system(size: 30))`, `.font(.system(size: 34))`) on child-facing letter glyphs ignore Dynamic Type. Children with low-vision needs can't enlarge them. | `LetterWheelPicker.swift:66`; `FreeformWritingView.swift:181` |
-| 15 | 🟡 | Tests | Multiple new components have **zero** tests: `FreeWritePhaseRecorder.assess()`, `OverlayQueueManager.enqueueBeforeCelebration`, `FreeformController.clearBuffers()`, `enablePaperTransfer` end-to-end wiring, `PaperTransferView` button→score mapping. | `BuchstabenNativeTests/` |
-| 16 | 🟡 | Tests | 10+ tests use real `Task.sleep` (150 ms – 1.2 s) instead of injected sleepers — flakiness risk on slow runners. | `EndToEndTracingSessionTests.swift`, `AccessibilityContractTests.swift`, `AnimationGuideControllerTests.swift`, `TransientMessagePresenterTests.swift` |
-| 17 | 🟢 | TracingViewModel | `updateTouch` is ~159 lines and orchestrates: canvas resync, velocity smoothing, normalisation, tracker update, freeWrite recording, haptics, audio panning, cell advancement, completion. Readable but a candidate for splitting into `dispatchTouch` + `updateAudio` + `updateProgress`. | `TracingViewModel.swift:818-979` |
-| 18 | 🟢 | TracingViewModel | `runRecognizerForFreeWrite` and `recognizeFreeformLetter` share ~70% of their structure — could extract a `_runRecogniser(points:size:expected:onResult:)` helper. | `TracingViewModel.swift:1162, 1861` |
-| 19 | 🟢 | Scheduler | `LetterScheduler` priority ties resolve in input-array order (Swift's stable sort) — undocumented. A test or comment naming this would prevent future surprise. | `LetterScheduler.swift:62-65` |
-| 20 | 🟢 | Performance | `GridLayoutCalculator.cellFrames(...)` is a pure function with zero caching, called per Canvas redraw. A 2-entry `(canvasSize, preset) → [CGRect]` cache would eliminate redundant computation. | `GridLayoutCalculator.swift` |
-| 21 | 🟢 | Cleanup | `LetterGuideGeometry` + `LetterGuideRenderer` are referenced only by `LetterGuideRendererTests` / `LetterGuideSnapshotTests` / one assertion in `BuchstabenNativeTests`. Production code does not use them. Can be removed once those tests are replaced or the geometry helpers are wired into a calibration helper. | `Features/Tracing/LetterGuideGeometry.swift`, `LetterGuideRenderer.swift` |
-| 22 | 🟢 | Cleanup | `CloudSyncService` / `NullSyncService` / `SyncCoordinator` is wired into `TracingDependencies` and `TracingViewModel`, but the only call (`syncCoordinator.pushAll()`) goes to the `NullSyncService` and silently no-ops. Either implement CloudKit or document the dormant scaffolding explicitly. | `Core/CloudSyncService.swift` |
-| 23 | 🟢 | Tests | `StubLetterRecognizer.alwaysReturn(predicted:confidence:isCorrect:)` accepts an `isCorrect` parameter that callers must set truthfully — no auto-validation that `isCorrect == (predicted == expected)`. | `LetterRecognizer.swift` (StubLetterRecognizer) |
-
-**Counts:** 5 🔴, 11 🟡, 7 🟢.
-
----
-
-## 🔴 Critical findings — exact fixes
-
-### #1 — `"ß"` key collision (data integrity, German-app footgun)
-
-**What's wrong.** `"ß".uppercased()` in Swift returns `"SS"` (canonical
-Unicode rule, German ß has no historical capital form). Every store
-that keys per-letter progress by `letter.uppercased()` therefore stores
-the eszett's data under `"SS"`, where it collides with **nothing else**
-today (no SS letter) — but the per-letter dashboard query
-`progress(for: "ß")` then looks under `"ß"` and finds nothing.
-
-The dashboard already lists `"ß"` in `StreakStore`'s
-`allLettersComplete` reward set (line 117), so the streak system
-expects the letter; but `recordSession` immediately mangles it before
-storing.
-
-**Fix.** Add a private helper that special-cases `"ß"`. Apply it at
-every `letter.uppercased()` site that's used as a dictionary key.
-
-In `BuchstabenNative/Core/ProgressStore.swift`, add:
-
-```swift
-/// Canonical key used by progress dictionaries. `letter.uppercased()`
-/// would collapse the German `ß` to `SS` (Unicode canonical rule),
-/// destroying per-letter analytics for that letter. Special-case `ß`
-/// to preserve its identity; everything else uppercases as before.
-private static func canonicalKey(_ letter: String) -> String {
-    letter == "ß" ? "ß" : letter.uppercased()
-}
-```
-
-…and replace all six `letter.uppercased()` call sites in
-`ProgressStore.swift` (lines 159, 167, 188, 197, 227, 235) with
-`Self.canonicalKey(letter)`.
-
-In `BuchstabenNative/Core/StreakStore.swift`, replace line 105:
-
-```swift
-// before
-lettersCompleted.forEach { state.completedLetters.insert($0.uppercased()) }
-// after
-lettersCompleted.forEach { state.completedLetters.insert($0 == "ß" ? "ß" : $0.uppercased()) }
-```
-
-### #2 — Child sees a percentage progress pill
-
-**What's wrong.** `TracingCanvasView.swift:382`:
-
-```swift
-Text("Fortschritt \(Int(max(0, min(1, progress)) * 100))%")
-```
-
-Children at 5–6 don't read percentages and shouldn't see numeric
-metrics — every other child-facing surface is verbal/visual only.
-
-**Fix.** Replace the percentage with a verbal-only progress pill
-(filled-bar + colour, no number). Wrap the existing struct so DEBUG
-builds still get the numeric readout for engineering.
-
-In `BuchstabenNative/Features/Tracing/TracingCanvasView.swift`, replace
-the `ProgressPill.body` (~lines 379-394):
-
-```swift
-private struct ProgressPill: View {
-    let progress: CGFloat
-    let differentiateWithoutColor: Bool
-
-    var body: some View {
-        let p = max(0, min(1, progress))
-        let tint: Color = p >= 0.99 ? .green : (p >= 0.5 ? .yellow : .blue)
-        return HStack(spacing: 6) {
-            Capsule()
-                .fill(Color.gray.opacity(0.15))
-                .overlay(alignment: .leading) {
-                    GeometryReader { geo in
-                        Capsule().fill(tint).frame(width: geo.size.width * p)
-                    }
-                }
-                .frame(width: 80, height: 8)
-        }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(.ultraThinMaterial, in: Capsule())
-        .overlay(
-            Capsule()
-                .stroke((differentiateWithoutColor ? Color.blue : tint).opacity(0.5), lineWidth: 1)
-        )
-        .accessibilityHidden(true)   // status communicated by ChildSpeechLibrary
-    }
-}
-```
-
-### #3 — World-switch animation ignores `accessibilityReduceMotion`
-
-**What's wrong.** `MainAppView.swift:85`:
-
-```swift
-.animation(.easeInOut(duration: 0.3), value: activeWorld)
-```
-
-Users with motion sensitivity see a slide that the rest of the app
-respects via `@Environment(\.accessibilityReduceMotion)`.
-
-**Fix.** Read `reduceMotion` and gate the animation:
-
-```swift
-@Environment(\.accessibilityReduceMotion) private var reduceMotion
-…
-.animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: activeWorld)
-```
-
-### #4 — Direct-phase dot pulse ignores reduceMotion
-
-**What's wrong.** `TracingCanvasView.swift:429-431, 456-457`:
-
-```swift
-withAnimation(.easeInOut(duration: 0.25).repeatCount(3, autoreverses: true)) {
-    pulseToggle = true
-}
-…
-.scaleEffect(isNext && pulseToggle ? 1.3 : 1.0)
-.animation(.spring(response: 0.25, dampingFraction: 0.5), value: pulseToggle)
-```
-
-**Fix.** Capture `accessibilityReduceMotion` in the
-`DirectPhaseDotsOverlay` and gate both animations:
-
-```swift
-@Environment(\.accessibilityReduceMotion) private var reduceMotion
-…
-.onChange(of: vm.directPulsingDot) { _, isPulsing in
-    guard isPulsing, !reduceMotion else { pulseToggle = false; return }
-    withAnimation(.easeInOut(duration: 0.25).repeatCount(3, autoreverses: true)) {
-        pulseToggle = true
-    }
-    Task {
-        try? await Task.sleep(for: .milliseconds(800))
-        pulseToggle = false
-    }
-}
-…
-.scaleEffect(isNext && pulseToggle ? 1.3 : 1.0)
-.animation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.5), value: pulseToggle)
-```
-
-### #5 — `StrokeTracker.isComplete` reports completion on empty strokes
-
-**What's wrong.** `StrokeTracker.swift:29-32`:
-
-```swift
-var isComplete: Bool {
-    guard let definition else { return false }
-    return progress.count == definition.strokes.count && progress.allSatisfy(\.complete)
-}
-```
-
-When `definition.strokes.isEmpty`, `progress.count == 0` and
-`[].allSatisfy(...)` is vacuously `true`, so the tracker reports
-"complete" without any user input. `TracingViewModel:942` guards the
-caller, but the API itself is misleading.
-
-**Fix.**
-
-```swift
-var isComplete: Bool {
-    guard let definition, !definition.strokes.isEmpty else { return false }
-    return progress.count == definition.strokes.count && progress.allSatisfy(\.complete)
-}
-```
-
-After this, the `hasStrokes` guard at `TracingViewModel:942` becomes
-redundant but harmless — leave it for defence in depth.
+| # | Sev | Category | Finding | File(s) | Fix |
+|---|-----|----------|---------|---------|-----|
+| C-1 | 🔴 | Architecture | Phase transitions guided→freeWrite and freeWrite→complete never triggered from production UI | `TracingViewModel.swift:931` | Replace `commitCompletion()` in `updateTouch` with `advanceLearningPhase()` |
+| C-2 | 🔴 | Architecture | `DebugAudioPanel.swift` never instantiated (ContentView removed); 9 dead `tune*` VM properties | `DebugAudioPanel.swift`, `TracingViewModel.swift:1478–1535` | Delete file; remove `#if DEBUG` tune block |
+| C-3 | 🔴 | UX | Blank canvas with no error message when letters fail to load | `SchuleWorldView.swift` | Add `ContentUnavailableView` guard |
+| W-1 | 🟡 | Architecture | `TracingViewModel` God object: 2055 lines, ~16 distinct responsibilities | `TracingViewModel.swift` | Incremental extraction (see §Proposals P-1) |
+| W-2 | 🟡 | Architecture | `updateTouch` is 158 lines combining proximity detection, snapping, audio, phase-completion | `TracingViewModel.swift:788` | Extract to dedicated methods (P-1) |
+| W-3 | 🟡 | Architecture | `strokeEnforced` written but never read in any view or production logic | `TracingViewModel.swift:16, 530` | Remove property and toggle method |
+| W-4 | 🟡 | Architecture | `completionMessage`/`dismissCompletionHUD()` are write-only from view layer | `TracingViewModel.swift:170, 1007` | Remove or wire to a view |
+| W-5 | 🟡 | Architecture | `progressStore` is `internal let`; views bypass VM coordination | `TracingViewModel.swift:405` | Change to `private let`; add `starCount(for:)` forwarder |
+| W-6 | 🟡 | Architecture | `TracingDependencies.live` reads `UserDefaults` at `static let` init; stale after parent settings change | `TracingDependencies.swift:89` | Document contract; or observe `UserDefaults` in VM |
+| W-7 | 🟡 | Architecture | `wordCycleIndex`/`currentWordCycleLabel`/`cycleWord()` triad superseded by `SequencePickerBar` | `TracingViewModel.swift:677–694` | Remove triad |
+| W-8 | 🟡 | Architecture | `CanvasOverlay.frechetScore` declared with "currently unused" comment; never enqueued | `OverlayQueueManager.swift:32` | Remove case (or implement) |
+| W-9 | 🟡 | Architecture | `ProgressStoring.currentStreakDays` implemented in `JSONProgressStore` but never called in production | `ProgressStore.swift:82, 264` | Remove or move to streak store |
+| W-10 | 🟡 | Architecture | `showingVariant + schriftArt` can silently produce an impossible state | `TracingViewModel.swift` | Add invariant assertion |
+| W-11 | 🟡 | Architecture | `LearningPhaseController.advance()` re-entrancy window: `isLetterSessionComplete` flag set at end of method | `LearningPhaseController.swift:110` | Set flag before the side-effect block |
+| W-12 | 🟡 | Architecture | `LetterPickerBar` uses `allLetterNames`; nav arrows use `visibleLetterNames` — inconsistent lists | `LetterPickerBar.swift:11`, `SchuleWorldView.swift` | Make picker use `visibleLetterNames` |
+| W-13 | 🟡 | Architecture | `ProgressStoring` no-op protocol defaults silently swallow data in test stubs | `ProgressStore.swift:107–112` | Replace with `fatalError` stubs (P-3) |
+| W-14 | 🟡 | Architecture | `AudioControlling.initializationError` default always returns `nil`; hides init failures in mocks | `AudioControlling.swift:20` | Remove default; require explicit stub |
+| W-15 | 🟡 | Architecture | `.frechetScore` grouped with `.none` as `EmptyView`; semantic mismatch | `SchuleWorldView.swift:151` | Give explicit branch or remove the enum case |
+| W-16 | 🟡 | Safety | `playback: PlaybackController!` IUO; compiler cannot verify init ordering | `TracingViewModel.swift:443` | Use `lazy var` with `preconditionFailure` |
+| W-17 | 🟡 | Safety | Silent total data loss on any JSON decode failure; no schema version sentinel in any store | `ProgressStore.swift:312`, `ParentDashboardStore.swift:389`, `StreakStore.swift:185` | Add schema version; wrap field decodes in `try?` with defaults (P-5) |
+| W-18 | 🟡 | Safety | Disk write failures (`try? data.write`) silently ignored in all stores | All stores | Wrap in `do/catch` with logger call |
+| W-19 | 🟡 | Safety | `DispatchQueue.main.async` inside `nonisolated` callback — GCD/MainActor mixing | `AudioEngine.swift:374` | Known issue; document (file is STABLE — do not modify) |
+| W-20 | 🟡 | Scientific | `haptics.fire(.strokeBegan)` fires ungated in freeWrite, violating Schmidt & Lee Guidance Hypothesis | `TracingViewModel.swift:777` | Guard with `feedbackIntensity > 0` (P-10) |
+| W-21 | 🟡 | Scientific | `ConfidenceCalibrator` history boost implemented but never invoked — `historicalFormScores` always `[]` at call site | `CoreMLLetterRecognizer.swift` | Pass `progressStore.progress(for:).recognitionAccuracy` (P-4) |
+| W-22 | 🟡 | Scientific | App reinstall generates new UUID, silently reassigning A/B condition mid-study | `ParticipantStore.swift` | Persist UUID in `NSUbiquitousKeyValueStore` (P-6) |
+| W-23 | 🟡 | Scientific | `.control` condition does not neutralise spaced-repetition letter scheduling | `TracingDependencies.swift` | Inject `FixedLetterScheduler` for `.control` (P-7) |
+| W-24 | 🟡 | Scientific | `memoryStabilityDays = 7.0` fixed for all letters; Cepeda 2006 expanding intervals not implemented | `LetterScheduler.swift` | Increase stability with `completionCount`; note limitation in thesis |
+| W-25 | 🟡 | Scientific | `strokesPerSecond` measures checkpoints/second, not strokes/second — naming error | `TracingViewModel.swift`, `FreeWritePhaseRecorder.swift` | Rename to `checkpointsPerSecond` |
+| W-26 | 🟡 | UX | Missing comma in VoiceOver hint (`"Tippen um"` → `"Tippen, um"`) | `RecognitionFeedbackView.swift:46` | Add comma (P-9) |
+| W-27 | 🟡 | UX | Typo: `"Form (Frécheté)"` should be `"Form (Fréchet)"` | `ResearchDashboardView.swift:64` | Fix typo |
+| W-28 | 🟡 | UX | English column headers in German-language parent tables (`"Letter"`, `"Score"`, `"Sessions"`, `"Ø Acc."`) | `ResearchDashboardView.swift:175, 205` | Translate to German (P-8) |
+| W-29 | 🟡 | UX | Duplicate freeform prompt text with inconsistent terminal punctuation | `FreeformWritingView.swift:~187, ~380` | Unify; add period |
+| W-30 | 🟡 | UX | Streak VoiceOver label always uses plural `"Tage"` even for streak of 1 | `FortschritteWorldView.swift:94` | Singular/plural branch (P-9) |
+| W-31 | 🟡 | UX | Word-picker pills ~33 pt — below iOS HIG 44 pt minimum touch target | `FreeformWritingView.swift` (wordPickerStrip) | Increase vertical padding to 14 pt |
+| W-32 | 🟡 | UX | `LetterPickerButton` has no `accessibilityHint` | `LetterPickerBar.swift` | Add hint (P-9) |
+| W-33 | 🟡 | UX | `PaperTransferView` write-phase icon + text not grouped for VoiceOver | `PaperTransferView.swift` | `.accessibilityHidden(true)` on icon; `.accessibilityElement(children: .combine)` on VStack |
+| W-34 | 🟡 | UX | `LetterWheelPicker` scrim is an interactive button behind the grid; VoiceOver focus order undefined | `LetterWheelPicker.swift` | Hide scrim from VoiceOver; add explicit Cancel button |
+| W-35 | 🟡 | UX | `RecognitionFeedbackView` doc comment says "4 s" but queue fires at 3 s — view-level `.task` is dead code | `RecognitionFeedbackView.swift:13, 40`, `OverlayQueueManager.swift:54` | Remove `.task` from view; update comment |
+| W-36 | 🟡 | UX | Study arm toggle restart-warning only in `accessibilityHint` — invisible to sighted parents | `SettingsView.swift:45` | Add visible `Text` caption below toggle |
+| W-37 | 🟡 | UX | `FortschritteWorldView` letter gallery shows no placeholder when empty | `FortschritteWorldView.swift:99` | Add `ContentUnavailableView` or equivalent |
+| W-38 | 🟡 | UX | `FreeformSurface` duplicates three tokens identical to `AppSurface` | `FreeformWritingView.swift:24–41`, `WorldPalette.swift` | Replace with `AppSurface.*` |
+| W-39 | 🟡 | UX | "Mastered" green tint differs between `FortschritteWorldView` gallery and `LetterPickerBar` | `FortschritteWorldView.swift:121`, `LetterPickerBar.swift:66` | Unify to shared token in `AppSurface` |
+| W-40 | 🟡 | UX | `WorldSwitcherRail` background gradient hardcoded; not in `WorldPalette` | `WorldSwitcherRail.swift:33` | Move to `WorldPalette` |
+| W-41 | 🟡 | UX | PAPA missing from word list — natural pair to MAMA at difficulty 1 | `FreeformWordList.swift` | Add `FreeformWord(word: "PAPA", difficulty: 1)` |
+| W-42 | 🟡 | UX | SCHULE misclassified as difficulty 2 (6 letters, SCH trigraph → difficulty 3) | `FreeformWordList.swift:35` | Move to difficulty 3 |
+| W-43 | 🟡 | UX | FREUND too advanced for Austrian 1st-graders (FR onset, EU diphthong, ND coda) | `FreeformWordList.swift:39` | Replace with `BUCH` (4 letters, thematically apt) |
+| I-1 | 🟢 | Architecture | Dead `tune*` debug props removed by C-2 fix | `TracingViewModel.swift:1478` | Covered by C-2 |
+| I-2 | 🟢 | Architecture | `adaptationPolicy: nil` means "auto" — implicit two-level default undocumented | `TracingDependencies.swift` | Document contract in comment |
+| I-3 | 🟢 | Architecture | Stale `"ContentView"` references in `TracingCanvasView` comments | `TracingCanvasView.swift:304, 507` | Update comments |
+| I-4 | 🟢 | Architecture | `PhaseDotIndicator` always renders 4 dots regardless of `ThesisCondition` | `PhaseDotIndicator.swift` | Scope to `phaseController.activePhases` |
+| I-5 | 🟢 | UX | `SchriftArt.vereinfachteAusgangschrift` enum case missing genitive-s | `SchriftArt.swift:13` | Rename case (display string already correct) |
+| I-6 | 🟢 | UX | `"Erkenne…"` title is imperative — sounds like command to child | `FreeformWritingView.swift` | Change to `"Ich schaue…"` |
+| I-7 | 🟢 | UX | `"Super gemacht!"` appears in both inline feedback card and celebration within seconds | `SchuleWorldView.swift:193`, `CompletionCelebrationOverlay.swift` | Differentiate wording |
+| I-8 | 🟢 | Scientific | `direct` phase extends Pearson & Gallagher 1983 GRR — valid but not from original three-stage paper | `LearningPhase.swift` | Cite Fisher & Frey 2013 in thesis; already present in comment |
+| I-9 | 🟢 | Scientific | KP overlay is terminal, not concurrent — deliberate design choice worth noting in thesis | `OverlayQueueManager.swift` | Acknowledge in thesis discussion |
 
 ---
 
-## 🟡 Should fix — what to change and why
+## Detailed Findings
 
-### #6 — Add `I / l / i / 1` to confusable pairs
+### C-1 — Phase transitions guided→freeWrite and freeWrite→complete unreachable
 
-`ConfidenceCalibrator.swift:77-80` lists curve-shaped letters
-(C/c, O/o, S/s, V/v, W/w, X/x, Z/z, P/p, U/u, K/k) but omits the
-*vertical-line trio* I / l / i (and digit 1, which is out of the
-model's class space but worth noting). For a German first-grader's
-handwriting, I/l confusion is the most common error.
-
-**Change.** Add `"I"`, `"i"`, `"l"` to `defaultConfusables`. (Lowercase
-`"L"` is not in the alphabet; `"l"` is the lowercase form of capital
-L.)
-
-### #7 — Cap unbounded persistence arrays
-
-`ParentDashboardStore.phaseSessionRecords` and
-`ProgressStore.completionDates` accumulate one entry per session
-forever. A 6-month thesis device records ~5,000 phase records and
-~1,500 completion dates. JSON file growth is moderate but unnecessary.
-
-**Change.** Add a rolling cap (e.g., 2,000 phase records, 1,000
-completion dates) — the dashboard summaries already work off recent
-windows.
-
-### #8 — `TracingCanvasView` redraw granularity
-
-The canvas reads ~11 properties from the VM. Every `pencilPressure`
-mutation (≈100 Hz during a Pencil stroke) triggers a full canvas redraw
-including ghost path + start dot construction.
-
-**Change.** Either:
-1. Wrap the Canvas in an `EquatableView` that compares only
-   `(progress, activePath.count, animationGuidePoint, pencilPressure)`; or
-2. Split the VM into a `CanvasRenderState` Observable with the four
-   render-affecting properties only, and hand that to the Canvas.
-
-Both are bigger refactors than the 🔴 fixes — flagged for a focused
-follow-up.
-
-### #9 — Batch `recordPhaseSession()` writes
-
-A 4-letter session triggers up to 16 phase-record disk writes.
-Coalescing them into one write per letter completion (4×) cuts I/O
-significantly without changing the data shape.
-
-### #10 — Move `JSONEncoder().encode()` off the main thread
+`advanceLearningPhase()` — the sole function that drives phase progression — has exactly two production call sites: `completeObservePhase()` (observe→direct) and `tapDirectDot()` (direct→guided). When the child completes all guided strokes, `updateTouch` calls `commitCompletion()` directly, bypassing `advanceLearningPhase()`. The phase controller stays at `.guided`. The `.freeWrite` phase is completely unreachable in `ThesisCondition.threePhase`. Tests call `vm.advanceLearningPhase()` directly, masking the gap.
 
 ```swift
-pendingSave = Task.detached(priority: .utility) { [storeSnapshot = self.store] in
-    await previous?.value
-    guard !Task.isCancelled else { return }
-    let data = try? JSONEncoder().encode(storeSnapshot)
-    try? data?.write(to: url, options: .atomic)
+// TracingViewModel.swift:931–940 — BEFORE fix
+} else if !didCompleteCurrentLetter {
+    didCompleteCurrentLetter = true
+    if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
+    let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
+    commitCompletion(letter: currentLetterName,
+                     accuracy: accuracy,
+                     duration: duration)   // records data but never advances phase
+    toast("Super gemacht!")
+    playback.request(.idle, immediate: true)
 }
 ```
 
-…in `ProgressStore.save()` and `ParentDashboardStore.persist()`. Small
-on-main work today (~5 ms after 10 sessions), but the principle is
-right and pre-empts future bloat.
+**Fix:** Replace `commitCompletion()` + `toast("Super gemacht!")` with `advanceLearningPhase()`. The function handles all four terminal cases:
+- `threePhase` guided → freeWrite: `phaseController.advance()` returns `true` → `resetForPhaseTransition()`
+- `threePhase` freeWrite → complete: returns `false` → `recordPhaseSessionCompletion()` → celebration + `commitCompletion(phaseScores:)`
+- `guidedOnly` / `control` guided → complete: same as above
 
-### #11 — Add `schriftArt` to `PrimaeLetterRenderer` cache key
+The `accuracy` and `duration` local variables are removed (they were only passed to the now-replaced call). `playback.request(.idle)` moves before the call to stop audio before phase teardown.
 
-The image cache currently keys on `(letter, width, height)`; the rect
-cache (line 206 of the same file) already keys on
-`(letter, width, height, schriftArt)`. Make the image cache match.
+---
 
-### #12 — Idempotent recognition state writes
+### C-2 — DebugAudioPanel.swift never instantiated
 
-In `runRecognizerForFreeWrite` (line 1166) and
-`recognizeFreeformLetter` (line 1865), capture a stable token:
+`DebugAudioPanel.swift:9` reads: *"Wrapped in #if DEBUG at the use site (ContentView)"*. `ContentView` was removed. No call site exists anywhere in the codebase:
+
+```
+$ grep -r "DebugAudioPanel()" BuchstabenNative/ → (no output)
+```
+
+Nine `#if DEBUG` `tune*` computed properties on `TracingViewModel` (lines 1478–1535) exist solely to feed this panel's sliders. These remain accessible via their underlying owners (`playback.*`, `audio as? AudioEngine`) if future tooling needs them.
+
+**Fix:** `DebugAudioPanel.swift` deleted. The `#if DEBUG` `// MARK: - Debug audio tuning` block removed from `TracingViewModel.swift`.
+
+---
+
+### C-3 — Blank canvas when letters fail to load
+
+If `LetterRepository` returns zero letters (missing bundle resource, SPM layout mismatch), `vm.visibleLetterNames` is empty and `vm.currentLetterImage` is nil. `SchuleWorldView.body` opens directly with `ZStack { ... TracingCanvasView() ... }` — no guard. The child sees a blank white rectangle with no glyph, no guidance, and no error message. `FortschritteWorldView` letter gallery shares the same silent-empty gap.
+
+**Fix:** Added `if vm.visibleLetterNames.isEmpty { ContentUnavailableView(...) }` branch at the top of `SchuleWorldView.body`. German-language text; parent instructed to restart the app.
+
+---
+
+### W-17 — Silent total data loss on JSON decode failure
+
+All three stores use the same pattern:
 
 ```swift
-let token = UUID()
-self.activeRecognitionToken = token
-freeform.isRecognizing = true
-Task { … 
-    await MainActor.run {
-        guard self.activeRecognitionToken == token else { return }
-        self.freeform.isRecognizing = false
-        …
-    }
+guard let data = try? Data(contentsOf: url),
+      let decoded = try? JSONDecoder().decode(Store.self, from: data)
+else { return Store() }   // silently discards ALL progress on any error
+```
+
+A future schema addition of a non-optional `Codable` field causes the entire store to wipe itself on all existing devices with no warning. There is no `schemaVersion` sentinel in any store.
+
+**Recommended fix (P-5):** Add `schemaVersion: Int = 1`; implement `init(from:)` with `try?` per-field fallbacks so a corrupt entry for one letter does not wipe all others.
+
+---
+
+### W-20 — `.strokeBegan` haptic ungated in freeWrite
+
+```swift
+// TracingViewModel.swift:777
+func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+    ...
+    haptics.fire(.strokeBegan)   // feedbackIntensity = 0.0 in freeWrite → should be silent
+```
+
+Every other haptic and audio channel is correctly gated on `feedbackIntensity > 0`. This is the only exception. Schmidt & Lee (2005) Guidance Hypothesis requires withdrawing all real-time concurrent feedback in freeWrite. The thesis description says feedback is fully withdrawn in freeWrite; the code does not match.
+
+**Fix (P-10):** `if feedbackIntensity > 0 { haptics.fire(.strokeBegan) }`
+
+---
+
+### W-21 — ConfidenceCalibrator history boost dead code
+
+`ConfidenceCalibrator.calibrate(…historicalFormScores:)` includes a 10% confidence boost for letters the child has practised reliably. The call site in `CoreMLLetterRecognizer.makeResult` passes `historicalFormScores: []` (the default), so `scores.count >= minimumHistorySamples` is always false and the boost path is never reached. The thesis describes this feature as active.
+
+**Fix (P-4):** Pass `(progressStore.progress(for: expectedLetter ?? "").recognitionAccuracy ?? []).map { CGFloat($0) }` at the call site.
+
+---
+
+### W-35 — RecognitionFeedbackView 4 s timer dead code
+
+`RecognitionFeedbackView` has `.task { try? await Task.sleep(for: .seconds(4)); onDismiss() }`. `OverlayQueueManager` fires its timer after 3 s for `.recognitionBadge`. The queue fires first, SwiftUI removes the view, and the Task is cancelled. The file's own doc comment `"Auto-dismisses after 4 seconds"` is wrong. Any developer who "fixes" the queue to 4 s to match the comment introduces a second auto-dismiss.
+
+**Fix (W-35):** Remove the `.task` from `RecognitionFeedbackView`; update the comment to `"Auto-dismissed after 3 s by OverlayQueueManager"`.
+
+---
+
+### W-41–43 — Word list issues
+
+| # | Issue | Current | Fix |
+|---|-------|---------|-----|
+| W-41 | PAPA missing | Only MAMA | `FreeformWord(word: "PAPA", difficulty: 1)` |
+| W-42 | SCHULE difficulty wrong | 2 | Move to 3 (6 letters, SCH trigraph) |
+| W-43 | FREUND too hard | difficulty 3 | Replace with `BUCH` (4 letters, thematically apt for a letter-learning app) |
+
+---
+
+## Improvement Proposals
+
+Ordered by thesis impact, then code health. All proposals improve **existing features** only — no new functionality.
+
+---
+
+### P-1 — Extract `updateTouch` sub-methods (Effort: M)
+
+`updateTouch` is ~158 lines. Extract three private helpers:
+- `processVelocitySmoothing(distance:dt:)`
+- `updateAudioFeedback(canvasNormalized:)`
+- `checkLetterCompletion()` — wraps the `grid.advanceIfCompleted()` + `advanceLearningPhase()` block
+
+**Files:** `TracingViewModel.swift:788–946` | **Thesis impact:** None (behaviour unchanged).
+
+---
+
+### P-2 — Remove dead VM properties (Effort: S)
+
+Remove `strokeEnforced`/`toggleStrokeEnforcement()` (lines 16, 530), the `completionMessage` computed forwarder and `dismissCompletionHUD()` (lines 170, 1007), and the `wordCycleIndex`/`currentWordCycleLabel`/`cycleWord()` triad (lines 677–694). All are write-only or superseded by newer UI.
+
+**Files:** `TracingViewModel.swift` | **Thesis impact:** None.
+
+---
+
+### P-3 — Replace ProgressStoring no-op defaults with fatalError stubs (Effort: S)
+
+```swift
+// Current — silently swallows thesis data in any stub that omits these
+extension ProgressStoring {
+    func recordPaperTransferScore(...) {}
+    func recordRecognitionSample(...) {}
+    ...
+}
+// Fix
+extension ProgressStoring {
+    func recordPaperTransferScore(...) { fatalError("Test stub must override \(#function)") }
+    ...
 }
 ```
 
-…so a late completion can't write to state cleared by an intervening
-letter change.
-
-### #13 — Idempotent model-availability probe
-
-`enterFreeformMode` already gates with
-`if isRecognitionModelAvailable == nil`, but a rapid double-tap can
-spawn two probes. Add a `private var isProbingModel = false` flag that
-the probe sets/clears.
-
-### #14 — Replace fixed `.font(.system(size:))` on child glyphs
-
-For example `LetterWheelPicker.swift:66` and
-`FreeformWritingView.swift:181` use `.font(.system(size: 30/34))`.
-Replace with `.font(.system(.title, design: .rounded).weight(.bold))`
-so Dynamic Type still scales them.
-
-### #15 — Add tests for the new components
-
-Each of these should get a focused `@Test` suite (each <100 lines):
-
-* `FreeWritePhaseRecorderTests` — `record(...)` / `assess(...)` /
-  `clearAll()` round-trip with synthetic timestamps + forces.
-* `OverlayQueueManagerTests` — `enqueueBeforeCelebration` slots in
-  front of `.celebration` regardless of order; modal overlays don't
-  auto-advance.
-* `FreeformControllerTests` — `clearBuffers()` resets every field; the
-  pendingRecognitionTask is cancelled.
-* `TracingViewModelPaperTransferTests` — toggling
-  `enablePaperTransfer` and finishing a freeWrite trial enqueues
-  `.paperTransfer` exactly once.
-* `PaperTransferViewTests` — three `assessButton` invocations call
-  `onComplete` with `0.0 / 0.5 / 1.0` respectively.
-
-### #16 — Replace real `Task.sleep` with injected sleepers
-
-The pattern `sleep: { _ in }` already exists for `PlaybackController`
-and `TransientMessagePresenter`. Apply the same to
-`AnimationGuideController` and the timing-dependent end-to-end tests.
+**Files:** `ProgressStore.swift:107–112` | **Thesis impact:** 📝 Prevents false-positive tests on paper-transfer and recognition recording.
 
 ---
 
-## 🟢 Nice to have — brief description
+### P-4 — Wire ConfidenceCalibrator history boost (Effort: S)
 
-* **#17** — Split `updateTouch` (~159 lines in `TracingViewModel`) into
-  `dispatchTouch` + `updateAudioBus` + `progressBookkeeping`.
-* **#18** — Extract the recogniser-runner duplication into a private
-  helper.
-* **#19** — Document `LetterScheduler` tie-breaker (input-array order via
-  Swift's stable sort) with a comment + targeted test.
-* **#20** — Cache `GridLayoutCalculator.cellFrames(...)` per
-  `(canvasSize, preset)`.
-* **#21** — Decide on `LetterGuideGeometry` / `LetterGuideRenderer`:
-  delete or wire into `StrokeCalibrationOverlay` so they're not
-  test-only weight in the production binary.
-* **#22** — Either implement `CloudSyncService.CloudKitSyncService` or
-  document the dormancy explicitly in `Core/CloudSyncService.swift`'s
-  file header.
-* **#23** — Add an internal assertion to
-  `StubLetterRecognizer.alwaysReturn` that `isCorrect == (predicted ==
-  expected)` when `expected` is supplied to `recognize`.
+Pass actual historical recognition accuracy to the calibrator call site so the implemented boost activates:
+
+```swift
+// CoreMLLetterRecognizer.makeResult
+let calibratedTopConfidence = calibrator.calibrate(
+    rawConfidence: CGFloat(top.confidence),
+    predictedLetter: rawTopLetter,
+    expectedLetter: expectedLetter,
+    historicalFormScores: (progressStore.progress(for: expectedLetter ?? "")
+                                         .recognitionAccuracy ?? [])
+                          .map { CGFloat($0) }
+)
+```
+
+**Files:** `CoreMLLetterRecognizer.swift` | **Thesis impact:** 📝 Activates the feature the thesis describes; improves confidence for practised letters.
 
 ---
 
-## What lands in the second commit
+### P-5 — Add schema versioning to all three persistence stores (Effort: M)
 
-Every 🔴 above (1–5) gets applied directly. Plus the 🟡 quick wins
-that are one-liners and don't need a separate review:
+Add `schemaVersion: Int = 1` to `Store`, `DashboardSnapshot`, and `StreakState`. Implement custom `init(from:)` with `try?` per-field fallbacks so partial JSON corruption never silently resets all progress.
 
-- **#6**: Add `I / i / l` to the confusable set.
+**Files:** `ProgressStore.swift:131`, `ParentDashboardStore.swift`, `StreakStore.swift` | **Thesis impact:** 📝 High — prevents silent data loss that would corrupt study results.
 
-Larger 🟡 items (overlay-queue tests, redraw splitting, encoder
-off-main, write batching, idempotent recognition tokens, font scaling)
-are deliberately deferred — each is a focused change that benefits
-from its own commit and CI run.
+---
 
-The 🟢 entries are tracking items only.
+### P-6 — Persist participant UUID in iCloud to survive reinstall (Effort: M)
+
+Store the participant UUID in `NSUbiquitousKeyValueStore` (iCloud Key-Value) with `UserDefaults` as fallback. An app reinstall on the same iCloud account restores the same UUID and same A/B condition assignment.
+
+**Files:** `ParticipantStore.swift` | **Thesis impact:** 📝 High — prevents silent A/B condition reassignment mid-study.
+
+---
+
+### P-7 — Neutralise letter scheduling for .control condition (Effort: S)
+
+Inject a `FixedLetterScheduler` (round-robin) for `.control` in `TracingDependencies.live`. Currently all conditions receive the same Ebbinghaus-weighted scheduler, conflating the scheduling effect with the phase-progression manipulation.
+
+**Files:** `TracingDependencies.swift`, new `FixedLetterScheduler.swift` | **Thesis impact:** 📝 Improves between-conditions validity.
+
+---
+
+### P-8 — Translate mixed English headers in ResearchDashboardView (Effort: S)
+
+Lines 175 and 205 mix English (`"Letter"`, `"Score"`, `"Sessions"`, `"Ø Acc."`, `"Trend"`) into a German UI. Suggested replacements: Buchstabe · Wertung · Sitzungen · Ø Genauigkeit · Trend.
+
+**Files:** `ResearchDashboardView.swift:175, 205` | **Thesis impact:** Presentation quality.
+
+---
+
+### P-9 — Targeted accessibility fixes (Effort: S each)
+
+| Item | File | Fix |
+|------|------|-----|
+| Missing comma in VoiceOver hint | `RecognitionFeedbackView.swift:46` | `"Tippen, um die Rückmeldung zu schließen"` |
+| Streak VoiceOver wrong grammatical number | `FortschritteWorldView.swift:94` | `vm.currentStreak == 1 ? "1 Tag hintereinander" : "\(vm.currentStreak) Tage hintereinander"` |
+| `LetterPickerButton` no hint | `LetterPickerBar.swift` | `.accessibilityHint("Tippen, um diesen Buchstaben zu üben")` |
+| `PaperTransferView` icon not hidden | `PaperTransferView.swift` | `.accessibilityHidden(true)` on `Image`; `.accessibilityElement(children: .combine)` on `VStack` |
+
+**Thesis impact:** Accessibility compliance.
+
+---
+
+### P-10 — Haptic fading in freeWrite (Effort: S)
+
+Guard `haptics.fire(.strokeBegan)` in `beginTouch` with `feedbackIntensity > 0`. Every other feedback channel already respects this gate; `.strokeBegan` is the sole exception.
+
+**Files:** `TracingViewModel.swift:777` | **Thesis impact:** 📝 Ensures zero real-time concurrent haptic feedback in freeWrite, matching the Guidance Hypothesis protocol the thesis describes.
+
+---
+
+*End of council review — 2026-04-28*
