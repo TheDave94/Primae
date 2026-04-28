@@ -170,7 +170,8 @@ extension TracingDependencies {
                 streakStore:   streakStore
             ),
             thesisCondition:      .guidedOnly,
-            letterRecognizer:     StubLetterRecognizer()
+            letterRecognizer:     StubLetterRecognizer(),
+            speech:               NullSpeechSynthesizer()
         )
     }
 

@@ -145,6 +145,8 @@ private struct WelcomeStepView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+            .accessibilityLabel("Los geht's")
+            .accessibilityHint("Startet die Einführung")
         }
         .padding(32)
     }
@@ -191,6 +193,8 @@ private struct TraceDemoStepView: View {
             Button("Weiter", action: onNext)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .accessibilityLabel("Weiter")
+                .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
     }
@@ -276,6 +280,8 @@ private struct DirectDemoStepView: View {
             Button("Weiter", action: onNext)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .accessibilityLabel("Weiter")
+                .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
     }
@@ -426,6 +432,8 @@ private struct GuidedDemoStepView: View {
             Button("Weiter", action: onNext)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .accessibilityLabel("Weiter")
+                .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
     }
@@ -512,6 +520,8 @@ private struct FreeWriteDemoStepView: View {
             Button("Weiter", action: onNext)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .accessibilityLabel("Weiter")
+                .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
     }
@@ -552,6 +562,8 @@ private struct RewardIntroStepView: View {
             Button("Fertig!", action: onNext)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .accessibilityLabel("Fertig")
+                .accessibilityHint("Schließt die Einführung ab und beginnt die Buchstaben-Schule")
         }
         .padding(32)
     }

@@ -259,11 +259,9 @@ struct TracingCanvasView: View {
         }
         .background(.black.opacity(0.15))
         .contentShape(Rectangle())
-        .onTapGesture { vm.showFreeWriteOverlay = false }
-        .task {
-            try? await Task.sleep(for: .seconds(3))
-            vm.showFreeWriteOverlay = false
-        }
+        .onTapGesture { vm.overlayQueue.dismiss() }
+        // Auto-dismiss is owned by OverlayQueueManager (3 s default for
+        // .kpOverlay). The queue advances itself, so no local timer here.
     }
 
     var body: some View {
@@ -343,7 +341,7 @@ struct TracingCanvasView: View {
             )
             .overlay(
                 Group {
-                    if vm.showFreeWriteOverlay {
+                    if case .kpOverlay = vm.overlayQueue.currentOverlay {
                         freeWriteKPOverlay()
                     }
                 }

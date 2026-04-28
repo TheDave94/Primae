@@ -19,11 +19,12 @@ struct ParentAreaView: View {
     @Environment(TracingViewModel.self) private var vm
 
     enum Section: String, CaseIterable, Identifiable {
-        case overview, settings, export
+        case overview, research, settings, export
         var id: String { rawValue }
         var title: String {
             switch self {
             case .overview:  return "Übersicht"
+            case .research:  return "Forschungs-Daten"
             case .settings:  return "Einstellungen"
             case .export:    return "Datenexport"
             }
@@ -31,6 +32,7 @@ struct ParentAreaView: View {
         var systemImage: String {
             switch self {
             case .overview:  return "chart.bar.fill"
+            case .research:  return "chart.xyaxis.line"
             case .settings:  return "gearshape.fill"
             case .export:    return "square.and.arrow.up"
             }
@@ -66,6 +68,8 @@ struct ParentAreaView: View {
         switch section {
         case .overview:
             ParentDashboardView()
+        case .research:
+            ResearchDashboardView()
         case .settings:
             SettingsView()
         case .export:
@@ -90,13 +94,18 @@ private struct ExportCenterView: View {
                     Label("CSV exportieren", systemImage: "doc.text")
                 }
                 Button {
+                    export(format: .tsv)
+                } label: {
+                    Label("TSV exportieren", systemImage: "doc.plaintext")
+                }
+                Button {
                     export(format: .json)
                 } label: {
                     Label("JSON exportieren", systemImage: "curlybraces")
                 }
             }
             Section("Hinweis") {
-                Text("Exportiert den vollständigen Lernfortschritt inklusive Phasen-Daten, Schreibmotorik-Scores und KI-Erkennungs-Konfidenzen. Die Teilnehmer-ID wird mitgesendet.")
+                Text("Exportiert den vollständigen Lernfortschritt inklusive Phasen-Daten, Schreibmotorik-Dimensionen (Form, Tempo, Druck, Rhythmus) und KI-Erkennungs-Konfidenzen. Die Teilnehmer-ID wird mitgesendet. TSV passt am besten zu SPSS/R, CSV zu Excel/pandas.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

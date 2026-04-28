@@ -125,17 +125,21 @@ struct WorldSwitcherRail: View {
         ZStack {
             Circle()
                 .stroke(Color.gray.opacity(0.25), lineWidth: 2)
-                .frame(width: 42, height: 42)
+                .frame(width: 44, height: 44)
             Circle()
                 .trim(from: 0, to: gearHoldProgress)
                 .stroke(Color.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                .frame(width: 42, height: 42)
+                .frame(width: 44, height: 44)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.1), value: gearHoldProgress)
             Image(systemName: "gear")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(AppSurface.prompt)
         }
+        // 44×44 ring + a 4pt invisible padding on each side gives a 48pt
+        // hit area, matching iOS HIG for primary nav while leaving the
+        // visible gear at its prior size.
+        .frame(width: 48, height: 48)
         .contentShape(Rectangle())
         .onLongPressGesture(
             minimumDuration: gearHoldSeconds,

@@ -37,21 +37,13 @@ struct SchuleWorldView: View {
                 observeOverlay
             }
 
-            if vm.isPhaseSessionComplete {
-                CompletionCelebrationOverlay(starsEarned: vm.starsEarned) {
-                    vm.loadRecommendedLetter()
-                }
-                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
-                .zIndex(10)
-            }
-
-            if vm.showPaperTransfer {
-                PaperTransferView(letter: vm.currentLetterName) { score in
-                    vm.submitPaperTransfer(score: score)
-                }
-                .transition(.opacity)
-                .zIndex(15)
-            }
+            // All post-freeWrite overlays flow through the overlay queue —
+            // no two can stack because the queue serialises them in canonical
+            // order: kpOverlay → recognitionBadge → paperTransfer → celebration.
+            // (KP overlay is rendered inside TracingCanvasView so it has
+            // access to the live canvas geometry; the modals below sit on
+            // top of the world chrome.)
+            queuedModalOverlay
 
             VStack {
                 topRow
@@ -63,7 +55,8 @@ struct SchuleWorldView: View {
                 }
                 if let assessment = vm.lastWritingAssessment,
                    vm.isPhaseSessionComplete == false,
-                   vm.learningPhase == .freeWrite, vm.showFreeWriteOverlay == false {
+                   vm.learningPhase == .freeWrite,
+                   !isQueueShowingKPOverlay {
                     // After the KP overlay dismisses but before the
                     // celebration appears, show the form-accuracy row
                     // so the child sees the Fréchet-based score.
@@ -112,12 +105,60 @@ struct SchuleWorldView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
-                   value: vm.isPhaseSessionComplete)
+                   value: vm.overlayQueue.currentOverlay)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
         // Tracing canvas is hard-coded `Color.white`; pin the surrounding
         // chrome to light mode so `.primary` resolves to black instead of
         // disappearing into the canvas in dark mode.
         .preferredColorScheme(.light)
+    }
+
+    // MARK: - Queue-driven modal overlays
+
+    /// Renders whichever overlay the OverlayQueueManager currently has on
+    /// top, except for the KP overlay (which lives in TracingCanvasView so
+    /// it can reach the canvas geometry). Returns an empty view for that
+    /// case and for `nil`, letting the queue advance naturally.
+    @ViewBuilder
+    private var queuedModalOverlay: some View {
+        switch vm.overlayQueue.currentOverlay {
+        case .recognitionBadge(let result):
+            VStack {
+                Spacer().frame(height: 88)
+                RecognitionFeedbackView(
+                    result: result,
+                    expectedLetter: vm.currentLetterName,
+                    onDismiss: { vm.overlayQueue.dismiss() }
+                )
+                Spacer()
+            }
+            .transition(reduceMotion
+                        ? .opacity
+                        : .opacity.combined(with: .scale(scale: 0.9)))
+            .zIndex(12)
+        case .paperTransfer(let letter):
+            PaperTransferView(letter: letter) { score in
+                vm.submitPaperTransfer(score: score)
+            }
+            .transition(.opacity)
+            .zIndex(15)
+        case .celebration(let stars):
+            CompletionCelebrationOverlay(starsEarned: stars) {
+                vm.loadRecommendedLetter()
+            }
+            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+            .zIndex(20)
+        case .kpOverlay, .frechetScore, .none:
+            EmptyView()
+        }
+    }
+
+    /// True while the overlay queue is actively showing the KP (Knowledge
+    /// of Performance) overlay. Used to suppress the inline form-accuracy
+    /// card during the KP window so the two don't overlap.
+    private var isQueueShowingKPOverlay: Bool {
+        if case .kpOverlay = vm.overlayQueue.currentOverlay { return true }
+        return false
     }
 
     // MARK: - Feedback cards
@@ -138,29 +179,45 @@ struct SchuleWorldView: View {
         )
     }
 
+    /// Verbal feedback band shown above the canvas during the freeWrite
+    /// transition. Children must NEVER see numeric metrics — they get a
+    /// star count + a short German encouragement line + a colour swatch
+    /// that signals quality without spelling out a percentage. The exact
+    /// numeric scores all the metrics produce live in the research
+    /// dashboard (parent-gated) and the CSV/TSV thesis export.
     private func feedbackCard(title: String, score: CGFloat, subtitle: String) -> some View {
-        let pct = Int((max(0, min(1, score)) * 100).rounded())
         let tint: Color = score >= 0.7 ? .green : (score >= 0.5 ? .yellow : .orange)
+        let starsEarned = score >= 0.85 ? 3 : (score >= 0.6 ? 2 : (score >= 0.35 ? 1 : 0))
+        let praise: String
+        switch starsEarned {
+        case 3: praise = "Super gemacht!"
+        case 2: praise = "Gut gemacht!"
+        case 1: praise = "Schon ganz gut."
+        default: praise = "Probier es nochmal."
+        }
         return HStack(spacing: 14) {
-            VStack(spacing: 2) {
-                Text("\(pct)")
-                    .font(.system(size: 26, weight: .bold, design: .rounded).monospacedDigit())
-                    .foregroundStyle(tint)
-                Text("%")
-                    .font(.caption2.weight(.semibold))
+            // Mood swatch — colour conveys quality, no number.
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(tint.opacity(0.22))
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(tint.opacity(0.55), lineWidth: 1)
+                Image(systemName: starsEarned >= 2
+                                  ? "hand.thumbsup.fill"
+                                  : "sparkles")
+                    .font(.title3)
                     .foregroundStyle(tint)
             }
             .frame(width: 48, height: 48)
-            .background(tint.opacity(0.22), in: RoundedRectangle(cornerRadius: 12))
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(tint.opacity(0.55), lineWidth: 1))
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
-                Text(subtitle).font(.caption.weight(.medium)).foregroundStyle(AppSurface.caption)
+                Text(praise).font(.caption.weight(.medium)).foregroundStyle(AppSurface.caption)
             }
             Spacer()
             HStack(spacing: 2) {
                 ForEach(0..<3, id: \.self) { idx in
-                    let filled = CGFloat(idx + 1) * 0.33 <= score + 0.01
+                    let filled = idx < starsEarned
                     Image(systemName: filled ? "star.fill" : "star")
                         .font(.footnote)
                         .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.55))
@@ -173,7 +230,7 @@ struct SchuleWorldView: View {
         .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(title): \(pct) Prozent. \(subtitle)")
+        .accessibilityLabel("\(title): \(praise) \(subtitle)")
     }
 
     // MARK: - Top row (letter pill)

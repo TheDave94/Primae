@@ -134,4 +134,81 @@ import Foundation
         #expect(all.keys.contains("P"))
         #expect(!all.keys.contains("Q"))
     }
+
+    // MARK: - speedTrend cap (V3-006)
+
+    @Test func speedTrend_capsAtFiveEntries() {
+        for s in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1] {
+            store.recordCompletion(for: "S", accuracy: 0.9,
+                                   phaseScores: nil, speed: s)
+        }
+        let trend = store.progress(for: "S").speedTrend ?? []
+        #expect(trend.count == 5, "speedTrend exceeded the documented 5-entry cap")
+        // Oldest two entries (0.5, 0.6) should have been dropped — cap keeps
+        // the most recent five so the trend reflects the latest sessions.
+        #expect(trend.first == 0.7)
+        #expect(trend.last  == 1.1)
+    }
+
+    @Test func speedTrend_isNilUntilFirstSpeedRecorded() {
+        store.recordCompletion(for: "T", accuracy: 0.9)
+        #expect(store.progress(for: "T").speedTrend == nil)
+        store.recordCompletion(for: "T", accuracy: 0.9,
+                               phaseScores: nil, speed: 1.5)
+        #expect(store.progress(for: "T").speedTrend == [1.5])
+    }
+
+    // MARK: - Recognition samples (F1)
+
+    @Test func recordCompletion_storesFullRecognitionSample() {
+        let result = RecognitionResult(
+            predictedLetter: "O",
+            confidence: 0.62,
+            topThree: [.init(letter: "O", confidence: 0.62)],
+            isCorrect: false  // child was supposed to write A
+        )
+        store.recordCompletion(for: "A", accuracy: 0.8,
+                               phaseScores: nil, speed: nil,
+                               recognitionResult: result)
+        let p = store.progress(for: "A")
+        let sample = p.recognitionSamples?.last
+        #expect(sample?.predictedLetter == "O")
+        #expect(abs((sample?.confidence ?? 0) - 0.62) < 1e-6)
+        #expect(sample?.isCorrect == false)
+        // Legacy field stays populated for backward compatibility.
+        #expect(p.recognitionAccuracy?.last.map { abs($0 - 0.62) < 1e-6 } == true)
+    }
+
+    @Test func recordFreeformCompletion_storesFullRecognitionSample() {
+        let result = RecognitionResult(
+            predictedLetter: "M",
+            confidence: 0.91,
+            topThree: [.init(letter: "M", confidence: 0.91)],
+            isCorrect: false  // freeform has no expectation
+        )
+        store.recordFreeformCompletion(letter: "M", result: result)
+        let p = store.progress(for: "M")
+        #expect(p.recognitionSamples?.count == 1)
+        #expect(p.recognitionSamples?.first?.predictedLetter == "M")
+        #expect(p.freeformCompletionCount == 1)
+    }
+
+    @Test func recordRecognitionSample_capsAtTen() {
+        for i in 0..<12 {
+            let conf = 0.4 + (Double(i) * 0.05)
+            let result = RecognitionResult(
+                predictedLetter: "A",
+                confidence: CGFloat(conf),
+                topThree: [.init(letter: "A", confidence: CGFloat(conf))],
+                isCorrect: true
+            )
+            store.recordRecognitionSample(letter: "A", result: result)
+        }
+        let p = store.progress(for: "A")
+        #expect(p.recognitionSamples?.count == 10)
+        #expect(p.recognitionAccuracy?.count == 10)
+        // Oldest two readings dropped: the first kept reading should be
+        // the third one (index 2 → confidence 0.5).
+        #expect(abs((p.recognitionSamples?.first?.confidence ?? 0) - 0.5) < 1e-6)
+    }
 }

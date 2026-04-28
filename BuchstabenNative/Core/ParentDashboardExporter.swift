@@ -4,6 +4,11 @@ import Foundation
 
 enum DashboardExportFormat {
     case csv
+    /// Tab-separated variant of `csv`. SPSS, R, and most stat tools
+    /// import TSV without escape-quoting confusion when the dataset
+    /// happens to contain commas, so a TSV export is offered alongside
+    /// the canonical CSV.
+    case tsv
     case json
 }
 
@@ -20,7 +25,7 @@ enum ExportError: Error, Equatable {
 /// No UIKit/SwiftUI dependency — kept in Core so it's testable on Linux CI.
 struct ParentDashboardExporter {
 
-    // MARK: CSV
+    // MARK: CSV / TSV
 
     /// Produces a UTF-8 CSV with a `# participantId=...` header, one row per
     /// letter, per-session durations (with condition), per-phase records
@@ -30,11 +35,34 @@ struct ParentDashboardExporter {
     static func csvData(from snapshot: DashboardSnapshot,
                          participantId: UUID = ParticipantStore.participantId,
                          progress: [String: LetterProgress] = [:]) -> Data {
+        delimitedData(from: snapshot, participantId: participantId,
+                       progress: progress, separator: ",")
+    }
+
+    /// Tab-separated variant of `csvData`. Same row layout, fewer
+    /// import-time escaping headaches in SPSS / R for datasets that
+    /// happen to contain commas.
+    static func tsvData(from snapshot: DashboardSnapshot,
+                         participantId: UUID = ParticipantStore.participantId,
+                         progress: [String: LetterProgress] = [:]) -> Data {
+        delimitedData(from: snapshot, participantId: participantId,
+                       progress: progress, separator: "\t")
+    }
+
+    /// Shared row builder behind csvData / tsvData. Keeping a single
+    /// implementation guarantees both formats stay in lock-step on
+    /// columns and dimension precision.
+    private static func delimitedData(
+        from snapshot: DashboardSnapshot,
+        participantId: UUID,
+        progress: [String: LetterProgress],
+        separator sep: String
+    ) -> Data {
         var lines: [String] = []
         lines.append("# participantId=\(participantId.uuidString)")
         lines.append("")
 
-        lines.append("letter,sessionCount,averageAccuracy,trend,recognitionSamples,recognitionAvg")
+        lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
             let avg = String(format: "%.4f", stat.averageAccuracy)
@@ -44,64 +72,100 @@ struct ParentDashboardExporter {
             let recCount = acc.count
             let recAvg = acc.isEmpty
                 ? "" : String(format: "%.4f", acc.reduce(0, +) / Double(acc.count))
-            lines.append("\(stat.letter),\(cnt),\(avg),\(tnd),\(recCount),\(recAvg)")
+            lines.append([stat.letter, "\(cnt)", avg, tnd, "\(recCount)", recAvg].joined(separator: sep))
         }
         lines.append("")
 
-        lines.append("date,durationSeconds,condition")
+        lines.append(["date","durationSeconds","condition"].joined(separator: sep))
         for rec in snapshot.sessionDurations.sorted(by: { $0.dateString < $1.dateString }) {
-            lines.append("\(rec.dateString),\(rec.durationSeconds),\(rec.condition.rawValue)")
+            lines.append([rec.dateString, "\(rec.durationSeconds)", rec.condition.rawValue].joined(separator: sep))
         }
         lines.append("")
 
-        lines.append("letter,phase,completed,score,schedulerPriority,condition,recognition_predicted,recognition_confidence,recognition_correct")
+        // Per-phase records gain four Schreibmotorik dimensions
+        // (formAccuracy, tempoConsistency, pressureControl, rhythmScore)
+        // alongside the recognition columns so SPSS / R / pandas imports
+        // can analyse each motor-skill dimension independently. The
+        // dimensions are non-null only on freeWrite rows — see
+        // PhaseSessionRecord.init — so observe / direct / guided rows
+        // emit empty strings for them.
+        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recognition_predicted","recognition_confidence","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore"].joined(separator: sep))
         // Per-session recognition data is per-letter, not per-phase — we
-        // surface the per-letter rolling-recognition average and the
-        // latest-result fields per letter-progress entry. For phase rows
-        // without a corresponding progress entry we leave the three
-        // recognition columns blank so downstream CSV consumers can
-        // distinguish "no recognition data" from "zero confidence".
+        // surface the per-letter latest recognition reading per letter-
+        // progress entry. For phase rows without a corresponding progress
+        // entry we leave the three recognition columns blank so downstream
+        // consumers can distinguish "no recognition data" from
+        // "zero confidence".
         for rec in snapshot.phaseSessionRecords {
             let score = String(format: "%.4f", rec.score)
             let prio  = String(format: "%.4f", rec.schedulerPriority)
             let prog  = progress[rec.letter]
-            let recConf: String = prog?.recognitionAccuracy?.last
-                .map { String(format: "%.4f", $0) } ?? ""
-            // Emit a prediction label only when we have a stored confidence
-            // — it's always the child's guided letter so the caller can
-            // reconstruct predicted vs. expected from the row itself.
-            let recLabel  = recConf.isEmpty ? "" : rec.letter
-            let recRight  = recConf.isEmpty ? "" : "true"
-            lines.append("\(rec.letter),\(rec.phase),\(rec.completed),\(score),\(prio),\(rec.condition.rawValue),\(recLabel),\(recConf),\(recRight)")
+            let lastSample = prog?.recognitionSamples?.last
+            let legacyConf = prog?.recognitionAccuracy?.last
+            let recLabel: String = lastSample?.predictedLetter ?? ""
+            let recConf: String
+            if let s = lastSample {
+                recConf = String(format: "%.4f", s.confidence)
+            } else if let c = legacyConf {
+                recConf = String(format: "%.4f", c)
+            } else {
+                recConf = ""
+            }
+            let recRight: String = lastSample.map { String($0.isCorrect) } ?? ""
+            let dimForm   = rec.formAccuracy.map     { String(format: "%.4f", $0) } ?? ""
+            let dimTempo  = rec.tempoConsistency.map { String(format: "%.4f", $0) } ?? ""
+            let dimPress  = rec.pressureControl.map  { String(format: "%.4f", $0) } ?? ""
+            let dimRhythm = rec.rhythmScore.map      { String(format: "%.4f", $0) } ?? ""
+            lines.append([
+                rec.letter, rec.phase, "\(rec.completed)", score, prio,
+                rec.condition.rawValue,
+                recLabel, recConf, recRight,
+                dimForm, dimTempo, dimPress, dimRhythm
+            ].joined(separator: sep))
         }
         lines.append("")
 
-        lines.append("metric,value")
+        lines.append(["metric","value"].joined(separator: sep))
         let rates = snapshot.phaseCompletionRates
         // Iterate LearningPhase.allCases so Richtung-lernen (direct) is
         // exported alongside the other three phases — prior versions dropped it.
         for phase in LearningPhase.allCases.map(\.rawName) {
             if let rate = rates[phase] {
-                lines.append("phaseCompletionRate_\(phase),\(String(format: "%.4f", rate))")
+                lines.append(["phaseCompletionRate_\(phase)", String(format: "%.4f", rate)].joined(separator: sep))
             }
         }
-        lines.append("averageFreeWriteScore,\(String(format: "%.4f", snapshot.averageFreeWriteScore))")
-        lines.append("schedulerEffectivenessProxy,\(String(format: "%.4f", snapshot.schedulerEffectivenessProxy))")
+        lines.append(["averageFreeWriteScore", String(format: "%.4f", snapshot.averageFreeWriteScore)].joined(separator: sep))
+        lines.append(["schedulerEffectivenessProxy", String(format: "%.4f", snapshot.schedulerEffectivenessProxy)].joined(separator: sep))
+        // Aggregate Schreibmotorik dimensions across all completed
+        // freeWrite sessions. Only emitted when at least one session
+        // contributed — pre-V3 installs never see these rows.
+        if let dims = snapshot.averageWritingDimensions {
+            lines.append(["averageFormAccuracy", String(format: "%.4f", dims.form)].joined(separator: sep))
+            lines.append(["averageTempoConsistency", String(format: "%.4f", dims.tempo)].joined(separator: sep))
+            lines.append(["averagePressureControl", String(format: "%.4f", dims.pressure)].joined(separator: sep))
+            lines.append(["averageRhythmScore", String(format: "%.4f", dims.rhythm)].joined(separator: sep))
+        }
         return lines.joined(separator: "\n").data(using: .utf8) ?? Data()
     }
 
     // MARK: JSON
 
     /// Produces pretty-printed JSON of the full ``DashboardSnapshot`` plus
-    /// thesis metrics and the stable `participantId` needed for cross-install
-    /// A/B analysis.
+    /// thesis metrics, the stable `participantId` needed for cross-install
+    /// A/B analysis, and the per-letter progress entries (recognition
+    /// samples, speed trend, paper-transfer assessments).
     static func jsonData(from snapshot: DashboardSnapshot,
-                          participantId: UUID = ParticipantStore.participantId) throws(ExportError) -> Data {
+                          participantId: UUID = ParticipantStore.participantId,
+                          progress: [String: LetterProgress] = [:]) throws(ExportError) -> Data {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            let export = SnapshotWithMetrics(snapshot: snapshot, participantId: participantId)
+            let export = SnapshotWithMetrics(
+                snapshot: snapshot,
+                participantId: participantId,
+                progress: progress
+            )
             return try encoder.encode(export)
         } catch {
             throw ExportError.encodingFailed(error.localizedDescription)
@@ -115,17 +179,26 @@ struct ParentDashboardExporter {
         let letterStats: [String: LetterAccuracyStat]
         let sessionDurations: [SessionDurationRecord]
         let phaseSessionRecords: [PhaseSessionRecord]
+        let letterProgress: [String: LetterProgress]
         let thesisMetrics: ThesisMetrics
 
-        init(snapshot: DashboardSnapshot, participantId: UUID) {
+        init(snapshot: DashboardSnapshot,
+             participantId: UUID,
+             progress: [String: LetterProgress]) {
             self.participantId = participantId.uuidString
             letterStats = snapshot.letterStats
             sessionDurations = snapshot.sessionDurations
             phaseSessionRecords = snapshot.phaseSessionRecords
+            letterProgress = progress
+            let dims = snapshot.averageWritingDimensions
             thesisMetrics = ThesisMetrics(
                 phaseCompletionRates: snapshot.phaseCompletionRates,
                 averageFreeWriteScore: snapshot.averageFreeWriteScore,
-                schedulerEffectivenessProxy: snapshot.schedulerEffectivenessProxy
+                schedulerEffectivenessProxy: snapshot.schedulerEffectivenessProxy,
+                averageFormAccuracy: dims?.form,
+                averageTempoConsistency: dims?.tempo,
+                averagePressureControl: dims?.pressure,
+                averageRhythmScore: dims?.rhythm
             )
         }
 
@@ -133,6 +206,12 @@ struct ParentDashboardExporter {
             let phaseCompletionRates: [String: Double]
             let averageFreeWriteScore: Double
             let schedulerEffectivenessProxy: Double
+            /// Schreibmotorik dimensions averaged across all completed
+            /// freeWrite sessions. nil when no freeWrite data exists yet.
+            let averageFormAccuracy: Double?
+            let averageTempoConsistency: Double?
+            let averagePressureControl: Double?
+            let averageRhythmScore: Double?
         }
     }
 
@@ -152,8 +231,11 @@ struct ParentDashboardExporter {
         case .csv:
             data     = csvData(from: snapshot, progress: progress)
             filename = "buchstaben_progress_\(dateTag).csv"
+        case .tsv:
+            data     = tsvData(from: snapshot, progress: progress)
+            filename = "buchstaben_progress_\(dateTag).tsv"
         case .json:
-            data     = try jsonData(from: snapshot)     // typed-throw propagates
+            data     = try jsonData(from: snapshot, progress: progress)
             filename = "buchstaben_progress_\(dateTag).json"
         }
         let url = tempDirectory.appendingPathComponent(filename)

@@ -44,11 +44,6 @@ struct FreeformWritingView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// "Details" disclosure inside the result popup. When false the
-    /// child sees only the predicted letter + the written evaluation;
-    /// flipping it reveals Klarheit / Form pills and Vorschläge so
-    /// adults watching can sanity-check the recogniser.
-    @State private var showDetails = false
     /// IDs of recognition results we've already shown the popup for.
     /// Without this, dismissing the popup would just bring it back on
     /// the next render. Reset whenever the canvas is cleared.
@@ -392,26 +387,6 @@ struct FreeformWritingView: View {
         }
     }
 
-    private func metricPill(label: String,
-                            value: CGFloat,
-                            accent: Color) -> some View {
-        let percent = Int((max(0, min(1, value)) * 100).rounded())
-        return HStack(spacing: 6) {
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-            Text("\(percent) %")
-                .font(.caption.weight(.bold).monospacedDigit())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(accent, in: Capsule())
-        }
-        .padding(.horizontal, 10).padding(.vertical, 4)
-        .background(accent.opacity(0.22), in: Capsule())
-        .overlay(Capsule().stroke(accent.opacity(0.55), lineWidth: 1))
-        .accessibilityLabel("\(label) \(percent) Prozent")
-    }
-
     private func statusBanner(icon: String,
                               tint: Color,
                               title: String,
@@ -575,16 +550,11 @@ struct FreeformWritingView: View {
                     .tint(.blue)
                 }
 
-                DisclosureGroup(isExpanded: $showDetails) {
-                    detailsRow(result: result, formScore: formScore, tint: tint)
-                        .padding(.top, 10)
-                } label: {
-                    Text(showDetails ? "Weniger anzeigen" : "Details anzeigen")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(FreeformSurface.prompt)
-                }
-                .accentColor(FreeformSurface.prompt)
-                .padding(.top, 4)
+                // Numeric metrics (Klarheit, Form, Vorschläge with %) live
+                // in the parent-gated research dashboard. The child popup
+                // is intentionally metric-free — verbal evaluation + star
+                // count only — to match the thesis spec for an audience
+                // that cannot read percentages yet.
             }
             .padding(28)
             .frame(maxWidth: 460)
@@ -601,51 +571,6 @@ struct FreeformWritingView: View {
 
     private func dismissPopup(for result: RecognitionResult) {
         dismissedResultLetter = popupKey(for: result)
-        showDetails = false
-    }
-
-    /// Klarheit + Form pills + Vorschläge — moved from the always-on
-    /// inline panel to the popup's "Details anzeigen" disclosure so
-    /// the child's default view stays uncluttered.
-    @ViewBuilder
-    private func detailsRow(result: RecognitionResult,
-                             formScore: CGFloat?,
-                             tint: Color) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                metricPill(label: "Klarheit",
-                           value: result.confidence,
-                           accent: tint)
-                if let fs = formScore {
-                    metricPill(label: "Form",
-                               value: fs,
-                               accent: fs >= 0.7 ? .green
-                                      : (fs >= 0.45 ? .yellow : .orange))
-                }
-                Spacer()
-            }
-            if !result.topThree.isEmpty {
-                HStack(spacing: 8) {
-                    Text("Vorschläge:")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(FreeformSurface.prompt)
-                    ForEach(Array(result.topThree.enumerated()), id: \.offset) { _, cand in
-                        HStack(spacing: 4) {
-                            Text(cand.letter)
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(.primary)
-                            Text("\(Int((cand.confidence * 100).rounded())) %")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(FreeformSurface.prompt)
-                        }
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Color.gray.opacity(0.22), in: Capsule())
-                        .overlay(Capsule().stroke(Color.gray.opacity(0.5), lineWidth: 1))
-                    }
-                    Spacer()
-                }
-            }
-        }
     }
 
     /// Stars 0–3 from the form (or fallback) score. Bands mirror the

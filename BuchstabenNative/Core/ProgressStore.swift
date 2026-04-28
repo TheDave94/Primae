@@ -2,6 +2,21 @@ import Foundation
 
 // MARK: - Domain model
 
+/// One recognition reading captured for a letter, retaining everything the
+/// thesis-data CSV needs to reconstruct per-session recognition outcomes.
+/// Stored alongside the legacy `recognitionAccuracy: [Double]?` so old
+/// JSON files keep decoding; new writes populate both fields.
+struct RecognitionSample: Codable, Equatable, Sendable {
+    /// The letter the model picked for this sample.
+    var predictedLetter: String
+    /// Calibrated confidence 0–1 of the top prediction.
+    var confidence: Double
+    /// Whether the prediction matched what the child was supposed to write.
+    /// `false` for freeform-letter sessions (no expected letter — we don't
+    /// know what they were aiming for).
+    var isCorrect: Bool
+}
+
 /// Persisted stats for a single letter.
 struct LetterProgress: Codable, Equatable {
     var completionCount: Int = 0
@@ -22,7 +37,17 @@ struct LetterProgress: Codable, Equatable {
     /// Last 10 CoreML recognition confidences for this letter (0–1). Populated
     /// when either the freeWrite phase or the freeform-letter mode reports
     /// back from the recognizer. nil before the first successful recognition.
+    /// Retained alongside `recognitionSamples` so old JSON files (which only
+    /// encoded the confidence array) keep decoding.
     var recognitionAccuracy: [Double]?
+    /// Last 10 full recognition readings for this letter. Adds the predicted
+    /// letter and whether it matched the expectation — without this the CSV
+    /// export had no way to recover those signals from the bare confidence
+    /// list and silently emitted constant `recognition_predicted` and
+    /// `recognition_correct` columns. nil before the first successful
+    /// recognition under the new schema; old installs migrate naturally as
+    /// new sessions land.
+    var recognitionSamples: [RecognitionSample]?
     /// Count of freeform-mode completions for this letter. nil before the
     /// feature was used. Kept separate from `completionCount` so the parent
     /// dashboard can distinguish guided mastery from exploratory writing.
@@ -114,10 +139,13 @@ public final class JSONProgressStore: ProgressStoring {
         if let url = fileURL {
             self.fileURL = url
         } else {
+            // iOS sandbox guarantees this URL exists; the `??` keeps a sandbox
+            // edge case from crashing the app on launch — we'd lose persistence
+            // across launches in that case but keep the session alive.
             let support = FileManager.default.urls(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
-            ).first!
+            ).first ?? FileManager.default.temporaryDirectory
             let dir = support.appendingPathComponent("BuchstabenNative", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("progress.json")
@@ -149,10 +177,7 @@ public final class JSONProgressStore: ProgressStoring {
             p.speedTrend = trend
         }
         if let rr = recognitionResult {
-            var acc = p.recognitionAccuracy ?? []
-            acc.append(Double(rr.confidence))
-            if acc.count > 10 { acc.removeFirst(acc.count - 10) }
-            p.recognitionAccuracy = acc
+            Self.appendRecognition(rr, into: &p)
         }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
@@ -162,10 +187,7 @@ public final class JSONProgressStore: ProgressStoring {
     func recordFreeformCompletion(letter: String, result: RecognitionResult) {
         let key = letter.uppercased()
         var p = store.letterProgress[key] ?? LetterProgress()
-        var acc = p.recognitionAccuracy ?? []
-        acc.append(Double(result.confidence))
-        if acc.count > 10 { acc.removeFirst(acc.count - 10) }
-        p.recognitionAccuracy = acc
+        Self.appendRecognition(result, into: &p)
         p.freeformCompletionCount = (p.freeformCompletionCount ?? 0) + 1
         store.letterProgress[key] = p
         save()
@@ -174,12 +196,31 @@ public final class JSONProgressStore: ProgressStoring {
     func recordRecognitionSample(letter: String, result: RecognitionResult) {
         let key = letter.uppercased()
         var p = store.letterProgress[key] ?? LetterProgress()
+        Self.appendRecognition(result, into: &p)
+        store.letterProgress[key] = p
+        save()
+    }
+
+    /// Append a recognition reading to a LetterProgress' rolling history.
+    /// Maintains both the legacy `recognitionAccuracy` confidence list and
+    /// the richer `recognitionSamples` list capped at 10 entries each.
+    /// Centralised so the three record* paths can't drift on the cap or
+    /// on which fields they write.
+    private static func appendRecognition(_ result: RecognitionResult,
+                                          into p: inout LetterProgress) {
         var acc = p.recognitionAccuracy ?? []
         acc.append(Double(result.confidence))
         if acc.count > 10 { acc.removeFirst(acc.count - 10) }
         p.recognitionAccuracy = acc
-        store.letterProgress[key] = p
-        save()
+
+        var samples = p.recognitionSamples ?? []
+        samples.append(RecognitionSample(
+            predictedLetter: result.predictedLetter,
+            confidence: Double(result.confidence),
+            isCorrect: result.isCorrect
+        ))
+        if samples.count > 10 { samples.removeFirst(samples.count - 10) }
+        p.recognitionSamples = samples
     }
 
     func recordPaperTransferScore(for letter: String, score: Double) {

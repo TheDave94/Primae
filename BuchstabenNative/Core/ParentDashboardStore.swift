@@ -280,10 +280,11 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         if let url = fileURL {
             self.fileURL = url
         } else {
+            // See ProgressStore.init for the `??` fallback rationale.
             let support = FileManager.default.urls(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
-            ).first!
+            ).first ?? FileManager.default.temporaryDirectory
             let dir = support.appendingPathComponent("BuchstabenNative", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("dashboard.json")
@@ -291,12 +292,24 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         self.snapshot = Self.load(from: self.fileURL) ?? DashboardSnapshot()
     }
 
+    /// Hard ceiling on per-letter accuracy samples. The trend regression
+    /// only looks at the trailing 10, so anything beyond ~200 samples is
+    /// noise — capping there keeps the dashboard JSON file from growing
+    /// unbounded on long-running thesis devices while still preserving
+    /// enough history for a generous trailing-window analysis.
+    private static let accuracySamplesCap = 200
+
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {
         let key = letter.uppercased()
         let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
+        var samples = existing.accuracySamples
+        samples.append(accuracy)
+        if samples.count > Self.accuracySamplesCap {
+            samples.removeFirst(samples.count - Self.accuracySamplesCap)
+        }
         let updated = LetterAccuracyStat(
             letter: existing.letter,
-            accuracySamples: existing.accuracySamples + [accuracy]
+            accuracySamples: samples
         )
         snapshot.letterStats[key] = updated
 

@@ -5,6 +5,7 @@ import SwiftUI
 /// three-button self-assessment (😊 / 😐 / 😟). Selecting a button calls
 /// onComplete with the corresponding score (1.0 / 0.5 / 0.0).
 struct PaperTransferView: View {
+    @Environment(TracingViewModel.self) private var vm
     let letter: String
     let onComplete: (Double) -> Void
 
@@ -57,11 +58,18 @@ struct PaperTransferView: View {
             .padding(48)
         }
         .task {
+            // Children can't read the prompt text; speak it as German
+            // verbal feedback while the visual phase rotates. Each TTS
+            // line lines up with the corresponding visual phase so a
+            // pre-reader gets the same instruction aurally.
+            vm.speech.speak(ChildSpeechLibrary.paperTransferShow)
             do {
                 try await Task.sleep(for: .seconds(3))
                 withAnimation { phase = .writePaper }
+                vm.speech.speak(ChildSpeechLibrary.paperTransferWrite)
                 try await Task.sleep(for: .seconds(10))
                 withAnimation { phase = .assess }
+                vm.speech.speak(ChildSpeechLibrary.paperTransferAssess)
             } catch {}
         }
     }

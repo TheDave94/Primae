@@ -61,10 +61,11 @@ final class JSONStreakStore: StreakStoring {
         if let url = fileURL {
             self.fileURL = url
         } else {
+            // See ProgressStore.init for the `??` fallback rationale.
             let support = FileManager.default.urls(
                 for: .applicationSupportDirectory,
                 in: .userDomainMask
-            ).first!
+            ).first ?? FileManager.default.temporaryDirectory
             let dir = support.appendingPathComponent("BuchstabenNative", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("streak.json")

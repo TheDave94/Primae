@@ -134,3 +134,45 @@ struct LetterSchedulerTests {
         #expect(r1.map(\.letter) == r2.map(\.letter))
     }
 }
+
+// MARK: - LetterOrderingStrategy (V3-003)
+
+struct LetterOrderingStrategyTests {
+
+    @Test("motorSimilarity matches the V3-003 spec ordering")
+    func motorSimilarityOrdering() {
+        let order = LetterOrderingStrategy.motorSimilarity.orderedLetters()
+        #expect(order == [
+            "I","L","T","F","E","H","A","K","M","N","V","W","X","Y","Z",
+            "C","O","G","Q","S","U","J","B","D","P","R"
+        ])
+        #expect(order.count == 26)
+    }
+
+    @Test("wordBuilding matches the V3-003 spec ordering")
+    func wordBuildingOrdering() {
+        let order = LetterOrderingStrategy.wordBuilding.orderedLetters()
+        #expect(order == [
+            "M","A","L","E","I","O","S","R","N","T","D","U","H","G","K",
+            "W","B","P","F","J","V","C","Q","X","Y","Z"
+        ])
+        #expect(order.count == 26)
+    }
+
+    @Test("alphabetical produces A through Z exactly once each")
+    func alphabeticalOrdering() {
+        let order = LetterOrderingStrategy.alphabetical.orderedLetters()
+        #expect(order.first == "A")
+        #expect(order.last  == "Z")
+        #expect(order.count == 26)
+        // Defensive: confirm each letter appears once and only once.
+        #expect(Set(order).count == 26)
+    }
+
+    @Test("displayName is German for every case")
+    func displayNamesAreGerman() {
+        #expect(LetterOrderingStrategy.motorSimilarity.displayName == "Motorisch ähnlich")
+        #expect(LetterOrderingStrategy.wordBuilding.displayName    == "Wortbildend")
+        #expect(LetterOrderingStrategy.alphabetical.displayName    == "Alphabetisch")
+    }
+}

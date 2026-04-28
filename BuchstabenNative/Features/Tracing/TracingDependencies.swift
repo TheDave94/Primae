@@ -30,6 +30,11 @@ struct TracingDependencies {
     /// CoreML-backed letter recognizer. Default is `CoreMLLetterRecognizer()`;
     /// tests inject `StubLetterRecognizer(result:)` to get deterministic output.
     var letterRecognizer: LetterRecognizerProtocol
+    /// German speech-synthesiser used for child-facing verbal feedback
+    /// (phase entries, recognition results, celebrations). Default is the
+    /// AVSpeechSynthesizer-backed live implementation; tests inject
+    /// `NullSpeechSynthesizer()` so utterances never drive real audio.
+    var speech: SpeechSynthesizing
 
     /// Factory for the per-VM playback controller. Receives the audio engine
     /// (so tests can swap a recording stub in via `audio:`) and the
@@ -113,6 +118,7 @@ struct TracingDependencies {
             return UserDefaults.standard.bool(forKey: key)
         }(),
         letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
+        speech: SpeechSynthesizing = AVSpeechSpeechSynthesizer(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
@@ -147,6 +153,7 @@ struct TracingDependencies {
         self.enablePaperTransfer = enablePaperTransfer
         self.enableFreeformMode = enableFreeformMode
         self.letterRecognizer = letterRecognizer
+        self.speech = speech
         self.makePlaybackController = makePlaybackController
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide

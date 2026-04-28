@@ -248,41 +248,35 @@ public final class TracingViewModel {
     }
     /// Stars earned in current letter session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
-    /// Accumulated normalised touch points for free-write scoring.
-    private(set) var freeWritePoints: [CGPoint] = []
+
+    // MARK: - FreeWrite phase data (forwarded from FreeWritePhaseRecorder)
+    //
+    // The four buffers, session-timing state, and scoring helpers were
+    // extracted into `FreeWritePhaseRecorder` during the W8 God-object
+    // cleanup. The VM keeps the same read-only public surface so views
+    // and tests don't notice the extraction.
+
+    /// Accumulated canvas-space touch points for free-write scoring.
+    var freeWritePoints: [CGPoint] { freeWriteRecorder.points }
     /// CACurrentMediaTime timestamps for each accumulated free-write point.
-    private(set) var freeWriteTimestamps: [CFTimeInterval] = []
-    /// Digitizer force at each accumulated free-write point (0 = finger / no data).
-    private(set) var freeWriteForces: [CGFloat] = []
-    /// CACurrentMediaTime when the freeWrite phase began. Used for rhythmScore.
-    private var freeWriteSessionStart: CFTimeInterval = 0
-    /// CACurrentMediaTime when the current guided or freeWrite phase began.
-    /// Used to compute writing speed (checkpoints per second).
-    private var activePhaseStartTime: CFTimeInterval = 0
+    var freeWriteTimestamps: [CFTimeInterval] { freeWriteRecorder.timestamps }
+    /// Digitiser force at each accumulated free-write point (0 = finger / no data).
+    var freeWriteForces: [CGFloat] { freeWriteRecorder.forces }
     /// Checkpoints passed per second in the current guided or freeWrite phase.
     /// Updated on every touch event; reset on phase transition and letter load.
-    private(set) var strokesPerSecond: CGFloat = 0
-    /// Last computed Frechet distance (for debug overlay).
-    private(set) var lastFreeWriteDistance: CGFloat = 0
+    var strokesPerSecond: CGFloat { freeWriteRecorder.strokesPerSecond }
+    /// Last computed Fréchet distance (for debug overlay).
+    var lastFreeWriteDistance: CGFloat { freeWriteRecorder.lastDistance }
     /// Most recent Schreibmotorik four-dimension assessment from the freeWrite phase.
-    private(set) var lastWritingAssessment: WritingAssessment? = nil
+    var lastWritingAssessment: WritingAssessment? { freeWriteRecorder.lastAssessment }
     /// Most recent guided-phase checkpoint-accuracy score (0–1), captured
     /// the moment the child transitions out of Nachspuren. Surfaced by
-    /// the Schule world as a "Form: XX %" feedback card so the child
-    /// sees how close their tracing was to the reference.
-    private(set) var lastGuidedScore: CGFloat? = nil
-    /// Form-accuracy score (0–1) for the last freeform letter
-    /// recognition, computed via FreeWriteScorer against the recognized
-    /// letter's reference strokes when those are bundled. nil when the
-    /// recognizer returned nothing or the letter has no reference.
-    private(set) var lastFreeformFormScore: CGFloat? = nil
+    /// the Schule world as a verbal "Nachspuren fertig" feedback band.
+    var lastGuidedScore: CGFloat? { freeWriteRecorder.lastGuidedScore }
     /// Normalised (0–1) touch path accumulated during the freeWrite phase.
     /// Kept for the KP overlay that shows where the child deviated.
-    private(set) var freeWritePath: [CGPoint] = []
-    /// Shows the KP (Knowledge of Performance) overlay after freeWrite completion.
-    var showFreeWriteOverlay: Bool = false
-    /// Shows the paper-transfer self-assessment overlay after freeWrite, when enabled.
-    var showPaperTransfer: Bool = false
+    /// Forwarded from FreeWritePhaseRecorder.
+    var freeWritePath: [CGPoint] { freeWriteRecorder.path }
     /// Whether the user is currently tracing the variant stroke form.
     var showingVariant: Bool = false
     /// Whether the paper-transfer phase is enabled (thesis setting).
@@ -301,87 +295,53 @@ public final class TracingViewModel {
         }
     }
 
-    // MARK: - Recognition + freeform state
+    // MARK: - Recognition + freeform state (forwarded from FreeformController)
 
-    /// Most recent CoreML recognition result. Cleared on letter load and
-    /// phase reset. Surfaced by RecognitionFeedbackView after freeWrite
-    /// completion or freeform endTouch.
+    /// Owns every freeform field. The VM keeps the *methods* because they
+    /// touch VM-only collaborators (audio, recognizer, speech, stores);
+    /// the controller exists to give those fields a single home for
+    /// auditing and lifecycle management. Views observe via VM forwarders.
+    private let freeform = FreeformController()
+
+    /// Most recent CoreML recognition result (any mode). Cleared on
+    /// letter load and phase reset.
     private(set) var lastRecognitionResult: RecognitionResult?
 
-    /// Whether the app is currently in guided tracing mode (default) or
-    /// freeform writing mode. Setting .freeform switches the canvas to a
-    /// blank background and routes endTouch through the recognizer.
-    var writingMode: WritingMode = .guided
-    /// Sub-mode inside freeform (.letter vs .word).
-    var freeformSubMode: FreeformSubMode = .letter
-    /// Target word when `freeformSubMode == .word`. Nil in letter mode.
-    private(set) var freeformTargetWord: FreeformWord?
-    /// Canvas-space points the child has drawn in freeform mode, across
-    /// multiple strokes. Cleared by `clearFreeformCanvas()` and when the
-    /// user returns to guided mode.
-    private(set) var freeformPoints: [CGPoint] = []
-    /// Per-stroke point counts so segmentation can pick up pen lifts if
-    /// needed. Each entry is the count of points appended during one
-    /// beginTouch/endTouch cycle in freeform mode.
-    private(set) var freeformStrokeSizes: [Int] = []
-    /// Active-stroke path within freeform — becomes a green trail on the
-    /// canvas. Cleared on endTouch; retained portions move into the
-    /// static freeformPoints buffer.
-    private(set) var freeformActivePath: [CGPoint] = []
-    /// Per-letter recognition results in freeform word mode. Empty in
-    /// letter mode or before the first "Fertig" tap.
-    private(set) var freeformWordResults: [RecognitionResult] = []
-    /// Slot-aligned variant of `freeformWordResults`: one entry per
-    /// target-word letter in left-to-right order, `nil` for letters
-    /// whose column on the canvas received no usable strokes. UI reads
-    /// this so missing letters render as empty-chip placeholders rather
-    /// than silently collapsing the result row.
-    private(set) var freeformWordResultSlots: [RecognitionResult?] = []
+    var writingMode: WritingMode {
+        get { freeform.writingMode }
+        set { freeform.writingMode = newValue }
+    }
+    var freeformSubMode: FreeformSubMode {
+        get { freeform.freeformSubMode }
+        set { freeform.freeformSubMode = newValue }
+    }
+    var freeformTargetWord: FreeformWord? { freeform.freeformTargetWord }
+    var freeformPoints: [CGPoint] { freeform.freeformPoints }
+    var freeformStrokeSizes: [Int] { freeform.freeformStrokeSizes }
+    var freeformActivePath: [CGPoint] { freeform.freeformActivePath }
+    var freeformWordResults: [RecognitionResult] { freeform.freeformWordResults }
+    var freeformWordResultSlots: [RecognitionResult?] { freeform.freeformWordResultSlots }
+    var freeformRecognitionDelay: TimeInterval {
+        get { freeform.freeformRecognitionDelay }
+        set { freeform.freeformRecognitionDelay = newValue }
+    }
+    var isWaitingForRecognition: Bool { freeform.isWaitingForRecognition }
+    var isRecognizing: Bool { freeform.isRecognizing }
+    var freeformCanvasSize: CGSize { freeform.freeformCanvasSize }
+    var hasRecognitionCompleted: Bool { freeform.hasRecognitionCompleted }
+    var isRecognitionModelAvailable: Bool? { freeform.isRecognitionModelAvailable }
+    /// Form-accuracy score from the last freeform recognition (0–1).
+    /// Forwarded from FreeformController.
+    var lastFreeformFormScore: CGFloat? { freeform.lastFreeformFormScore }
 
-    /// Debounce task that waits after the child lifts the pen before
-    /// running freeform-letter recognition. Multi-stroke letters (A, E,
-    /// F, H, K, T, X, …) need the child to start a second stroke within
-    /// the window; starting one cancels this task so the recognizer
-    /// only fires after a full letter is on the canvas. Default window
-    /// is `freeformRecognitionDelay` seconds.
-    private var pendingRecognitionTask: Task<Void, Never>?
-    /// How long to wait after the last pen-lift before recognizing in
-    /// freeform letter mode. Long enough for the child to start a
-    /// second stroke (1–1.5 s is a comfortable window for 5-year-olds
-    /// forming A's horizontal bar after the diagonals).
-    var freeformRecognitionDelay: TimeInterval = 1.2
-    /// True while `pendingRecognitionTask` is counting down. UI shows a
-    /// "Gleich erkenne ich…" indicator so the child knows to keep
-    /// drawing if they want more strokes.
-    private(set) var isWaitingForRecognition: Bool = false
-    /// True while the recognizer is running async — UI can show a spinner.
-    private(set) var isRecognizing: Bool = false
-    /// Size of the freeform blank canvas. Recorded on every updateFreeformTouch
-    /// so `recognizeFreeformLetter`/`submitFreeformWord` can pass the right
-    /// bounding dimensions to the recognizer without piggy-backing on the
-    /// guided-mode `canvasSize`.
-    private(set) var freeformCanvasSize: CGSize = .zero
-    /// Set to true once a recognition call has completed (regardless of
-    /// whether it returned a result). Distinguishes "still thinking" from
-    /// "finished but could not recognize" — the UI needs both.
-    private(set) var hasRecognitionCompleted: Bool = false
-    /// Whether the CoreML model is loaded and ready. nil = haven't checked
-    /// yet. Surfaces "KI-Modell nicht verfügbar" banner in freeform when
-    /// false so a silent model-missing case doesn't look like the child's
-    /// handwriting is the problem.
-    private(set) var isRecognitionModelAvailable: Bool? = nil
-
-    /// Serialised canvas overlay scheduler. New UI (SchuleWorldView,
-    /// WerkstattWorldView) observes this instead of the legacy
-    /// `showFreeWriteOverlay` / `isPhaseSessionComplete` booleans so
-    /// no two overlays stack on top of each other.
+    /// Serialised canvas overlay scheduler. SchuleWorldView and
+    /// TracingCanvasView observe this so no two overlays stack on top of
+    /// each other; the canonical post-freeWrite order is
+    /// `kpOverlay → recognitionBadge → paperTransfer → celebration`,
+    /// driven entirely from this queue (the legacy
+    /// `showFreeWriteOverlay` / `showPaperTransfer` booleans were
+    /// removed alongside this migration).
     let overlayQueue = OverlayQueueManager()
-    /// Visibility gate for RecognitionFeedbackView. True after a
-    /// successful recognition call until the child taps the badge or the
-    /// 4-second auto-dismiss timer fires. Driven off the presence of
-    /// `lastRecognitionResult` together with the dismissed flag so the
-    /// view re-appears for each fresh result.
-    var isRecognitionBadgeDismissed: Bool = false
 
     // MARK: - Direct phase state
 
@@ -455,6 +415,15 @@ public final class TracingViewModel {
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
     private let letterRecognizer: LetterRecognizerProtocol
+    /// German speech synthesiser used for child-facing verbal feedback.
+    /// Children can't read fluently yet, so every score the dashboard
+    /// computes (Klarheit, Form, Tempo, Druck, Rhythmus) goes via TTS
+    /// in plain encouraging German rather than visible numbers.
+    let speech: SpeechSynthesizing
+    /// Owns the freeWrite buffers + session timing + scoring. Lives on
+    /// the VM so views can keep reading via the existing forwarders;
+    /// extracting it cleared the four-buffer churn out of the VM body.
+    private let freeWriteRecorder = FreeWritePhaseRecorder()
 
     // MARK: - Private playback / touch state
 
@@ -510,6 +479,7 @@ public final class TracingViewModel {
         self.enablePaperTransfer    = deps.enablePaperTransfer
         self.enableFreeformMode     = deps.enableFreeformMode
         self.letterRecognizer       = deps.letterRecognizer
+        self.speech                 = deps.speech
         // Control condition uses fixed difficulty — no moving-average adaptation.
         self.adaptationPolicy       = deps.adaptationPolicy ?? (
             deps.thesisCondition == .control
@@ -841,13 +811,14 @@ public final class TracingViewModel {
 
         if isWithinCanvasBounds && distance >= minimumTouchMoveDistance {
             activePath.append(p)
-            // Accumulate for free-write scoring and KP overlay
+            // Accumulate for free-write scoring + KP overlay. The recorder
+            // owns the four-buffer state so the VM body doesn't re-derive
+            // canvas normalisation per touch.
             if phaseController.currentPhase == .freeWrite {
-                freeWritePoints.append(p)
-                freeWriteTimestamps.append(t)
-                freeWriteForces.append(pencilPressure ?? 0)
-                freeWritePath.append(CGPoint(x: p.x / max(canvasSize.width, 1),
-                                             y: p.y / max(canvasSize.height, 1)))
+                freeWriteRecorder.record(point: p,
+                                          timestamp: t,
+                                          force: pencilPressure ?? 0,
+                                          canvasSize: canvasSize)
             }
         }
 
@@ -895,20 +866,16 @@ public final class TracingViewModel {
         progress = grid.aggregateProgress
 
         let currentPhase = phaseController.currentPhase
-        if (currentPhase == .guided || currentPhase == .freeWrite) && activePhaseStartTime > 0 {
-            let elapsed = CACurrentMediaTime() - activePhaseStartTime
-            if elapsed > 0.1 {
-                if let def = strokeTracker.definition {
-                    let completedCPs = def.strokes.enumerated().reduce(0) { acc, item in
-                        let (idx, stroke) = item
-                        guard strokeTracker.progress.indices.contains(idx) else { return acc }
-                        return strokeTracker.progress[idx].complete
-                            ? acc + stroke.checkpoints.count
-                            : acc + strokeTracker.progress[idx].nextCheckpoint
-                    }
-                    strokesPerSecond = CGFloat(completedCPs) / CGFloat(elapsed)
-                }
+        if currentPhase == .guided || currentPhase == .freeWrite,
+           let def = strokeTracker.definition {
+            let completedCPs = def.strokes.enumerated().reduce(0) { acc, item in
+                let (idx, stroke) = item
+                guard strokeTracker.progress.indices.contains(idx) else { return acc }
+                return strokeTracker.progress[idx].complete
+                    ? acc + stroke.checkpoints.count
+                    : acc + strokeTracker.progress[idx].nextCheckpoint
             }
+            freeWriteRecorder.updateSpeed(completedCheckpoints: completedCPs)
         }
 
         let newStrokeIndex     = strokeTracker.currentStrokeIndex
@@ -989,6 +956,9 @@ public final class TracingViewModel {
         playback.apply(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
         audio.suspendForLifecycle()
+        // Halt any in-flight verbal feedback so the synthesised voice
+        // doesn't keep talking after the child leaves the app.
+        speech.stop()
         playback.resetPlayIntentClock()
         // Drain pending disk writes before returning so the SwiftUI scene-phase
         // wrapper can hold the iOS suspension grace window open until durability
@@ -1124,26 +1094,15 @@ public final class TracingViewModel {
             score = progress
         case .freeWrite:
             guard let def = strokeTracker.definition else {
-                lastWritingAssessment = nil
+                freeWriteRecorder.clearAll()
                 score = 0
                 break
             }
-            let normalised = freeWritePoints.map { pt in
-                CGPoint(x: pt.x / max(canvasSize.width, 1),
-                        y: pt.y / max(canvasSize.height, 1))
-            }
-            let assessment = FreeWriteScorer.score(
-                tracedPoints: normalised,
-                reference: def,
-                timestamps: freeWriteTimestamps,
-                forces: freeWriteForces,
-                sessionStart: freeWriteSessionStart,
-                sessionEnd: CACurrentMediaTime()
-            )
-            lastWritingAssessment = assessment
-            score = assessment.overallScore
-            lastFreeWriteDistance = FreeWriteScorer.rawDistance(
-                tracedPoints: normalised, reference: def)
+            // Recorder owns scoring — it has the buffers, sessionStart,
+            // and canvasSize-normalised points all in one place.
+            score = freeWriteRecorder.assess(
+                reference: def, canvasSize: canvasSize
+            ).overallScore
         }
 
         let wasInFreeWrite = phaseController.currentPhase == .freeWrite
@@ -1151,18 +1110,31 @@ public final class TracingViewModel {
 
         // Kick the CoreML recognizer off BEFORE the phase advance so it
         // runs in parallel with the Fréchet-based scoring above and the
-        // phase-transition side effects below. Result lands on
-        // `lastRecognitionResult` when inference finishes; the UI
-        // badge shows up shortly after the KP overlay renders.
+        // phase-transition side effects below. The result lands on
+        // `lastRecognitionResult` when inference finishes; the badge
+        // slots into the queue *before* the celebration regardless of
+        // how long inference takes — see `enqueueBeforeCelebration`.
         if wasInFreeWrite {
             runRecognizerForFreeWrite()
         }
         if wasInGuided {
             // Capture the guided score before the phase advance so the
-            // Schule world can show a "Form XX %" feedback card during
-            // the transition into freeWrite. Cleared on letter load.
-            lastGuidedScore = score
-            overlayQueue.enqueue(.frechetScore(score))
+            // Schule world can show a verbal feedback band during the
+            // transition into freeWrite. Cleared on letter load.
+            freeWriteRecorder.lastGuidedScore = score
+        }
+
+        // Queue post-freeWrite feedback in canonical order BEFORE we
+        // advance the phase controller — `recordPhaseSessionCompletion`
+        // (called below for the final phase) enqueues `.celebration`,
+        // which we want to come last. The recognition badge enqueue
+        // happens asynchronously on the recognizer Task; it slots ahead
+        // of the celebration via `enqueueBeforeCelebration`.
+        if wasInFreeWrite {
+            overlayQueue.enqueue(.kpOverlay)
+            if enablePaperTransfer {
+                overlayQueue.enqueue(.paperTransfer(letter: currentLetterName))
+            }
         }
 
         if phaseController.advance(score: score) {
@@ -1171,27 +1143,22 @@ public final class TracingViewModel {
                 startGuideAnimation()
             }
             toast(phaseController.currentPhase.displayName)
+            // Verbal phase prompt — spoken every transition so a child
+            // who can't read the on-screen "Anschauen / Richtung lernen"
+            // pill still knows what's happening next.
+            speech.speak(ChildSpeechLibrary.phaseEntry(phaseController.currentPhase))
         } else {
             recordPhaseSessionCompletion()
-        }
-
-        if wasInFreeWrite {
-            showFreeWriteOverlay = true
-            if enablePaperTransfer {
-                showPaperTransfer = true
-            }
-            // Queue post-freeWrite feedback in the canonical order
-            // (Fréchet → KP → Recognition → Celebration). Recognition
-            // + Celebration are enqueued when their data lands (see the
-            // recognizer Task below and recordPhaseSessionCompletion).
-            overlayQueue.enqueue(.frechetScore(lastWritingAssessment?.formAccuracy ?? 0))
-            overlayQueue.enqueue(.kpOverlay)
         }
     }
 
     /// Fire-and-forget recognizer pass for the completed freeWrite phase.
     /// Uses the absolute-canvas-space points already accumulated during
     /// updateTouch so the model sees the same stroke the child drew.
+    /// The badge enqueues via `enqueueBeforeCelebration` so it always
+    /// lands ahead of the final celebration even when CoreML inference
+    /// finishes after the synchronous freeWrite teardown has already
+    /// enqueued kpOverlay + paperTransfer + celebration.
     private func runRecognizerForFreeWrite() {
         let pts = freeWritePoints
         let size = canvasSize
@@ -1204,7 +1171,6 @@ public final class TracingViewModel {
             await MainActor.run {
                 self.isRecognizing = false
                 self.lastRecognitionResult = result
-                self.isRecognitionBadgeDismissed = false
                 // commitCompletion already wrote the guided-mode session
                 // record with a nil recognitionResult — by the time the
                 // recognizer finishes, the progressStore entry exists but
@@ -1214,17 +1180,26 @@ public final class TracingViewModel {
                     self.progressStore.recordRecognitionSample(
                         letter: expected, result: r)
                     if r.confidence >= 0.4 {
-                        self.overlayQueue.enqueue(.recognitionBadge(r))
+                        self.overlayQueue.enqueueBeforeCelebration(.recognitionBadge(r))
+                        // Verbal mirror of the on-screen badge — same
+                        // German wording RecognitionFeedbackView shows,
+                        // so a pre-reader hears what they otherwise
+                        // could only see. Empty string returns from low-
+                        // confidence wrong cases stay silent on purpose.
+                        let line = ChildSpeechLibrary.recognition(
+                            r, expected: expected)
+                        if !line.isEmpty { self.speech.speak(line) }
                     }
                 }
             }
         }
     }
 
-    /// Record the child's paper-transfer self-assessment score and dismiss the overlay.
+    /// Record the child's paper-transfer self-assessment score and advance
+    /// the overlay queue to the next overlay (typically the celebration).
     func submitPaperTransfer(score: Double) {
         progressStore.recordPaperTransferScore(for: currentLetterName, score: score)
-        showPaperTransfer = false
+        overlayQueue.dismiss()
     }
 
     /// Manually complete observe phase (tap to continue).
@@ -1346,16 +1321,16 @@ public final class TracingViewModel {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
-        freeWritePoints.removeAll(keepingCapacity: true)
-        freeWriteTimestamps.removeAll(keepingCapacity: true)
-        freeWriteForces.removeAll(keepingCapacity: true)
+        // Always clear the recorder when a phase transition fires —
+        // a stale freeWritePath from a previous freeWrite session must
+        // not leak into the next one if the controller lands on a
+        // non-freeWrite phase first (e.g. via thesis-condition skips).
+        // Then re-arm the timing for the active phase.
+        freeWriteRecorder.clearAll()
         if phaseController.currentPhase == .freeWrite {
-            freeWritePath.removeAll(keepingCapacity: true)
-            freeWriteSessionStart = CACurrentMediaTime()
-        }
-        if phaseController.currentPhase == .guided || phaseController.currentPhase == .freeWrite {
-            strokesPerSecond = 0
-            activePhaseStartTime = CACurrentMediaTime()
+            freeWriteRecorder.startSession()
+        } else if phaseController.currentPhase == .guided {
+            freeWriteRecorder.startGuidedSpeedTracking()
         }
         directTappedDots.removeAll()
         directPulsingDot = false
@@ -1370,6 +1345,9 @@ public final class TracingViewModel {
 
     private func recordPhaseSessionCompletion() {
         overlayQueue.enqueue(.celebration(stars: phaseController.starsEarned))
+        // Verbal celebration. Stars-tier praise so the child hears
+        // approximately how well they did without seeing any percentage.
+        speech.speak(ChildSpeechLibrary.praise(starsEarned: phaseController.starsEarned))
         let accuracy = Double(phaseController.overallScore)
         let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
         let scores: [String: Double] = Dictionary(
@@ -1557,22 +1535,13 @@ public final class TracingViewModel {
 
     private func load(letter: LetterAsset) {
         phaseController.reset()
-        freeWritePoints.removeAll(keepingCapacity: true)
-        freeWriteTimestamps.removeAll(keepingCapacity: true)
-        freeWriteForces.removeAll(keepingCapacity: true)
-        freeWriteSessionStart = 0
-        activePhaseStartTime = 0
-        strokesPerSecond = 0
-        freeWritePath.removeAll(keepingCapacity: true)
-        showFreeWriteOverlay = false
-        showPaperTransfer = false
+        freeWriteRecorder.clearAll()
         showingVariant = false
         variantStrokeCache = nil
         scriptStrokeCache.removeAll(keepingCapacity: true)
-        lastFreeWriteDistance = 0
-        lastWritingAssessment = nil
-        lastGuidedScore = nil
-        lastFreeformFormScore = nil
+        // FreeformController owns lastFreeformFormScore now — clearing the
+        // freeform buffers as part of letter load resets it alongside.
+        freeform.clearBuffers()
         lastRecognitionResult = nil
         overlayQueue.reset()
         directTappedDots.removeAll()
@@ -1624,8 +1593,10 @@ public final class TracingViewModel {
         }
         // If we land directly in guided or freeWrite (e.g. after skipping phases or
         // for thesis conditions that omit observe/direct), start the speed clock now.
-        if phaseController.currentPhase == .guided || phaseController.currentPhase == .freeWrite {
-            activePhaseStartTime = CACurrentMediaTime()
+        if phaseController.currentPhase == .freeWrite {
+            freeWriteRecorder.startSession()
+        } else if phaseController.currentPhase == .guided {
+            freeWriteRecorder.startGuidedSpeedTracking()
         }
         if let firstAudio = letter.audioFiles.first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
@@ -1634,6 +1605,14 @@ public final class TracingViewModel {
             // no observe-phase auto-play (it would loop silently behind onboarding
             // and start immediately on letter switch without any user action).
         }
+        // Speak the initial phase prompt once a fresh letter loads. Phase
+        // *transitions* are spoken from `advanceLearningPhase`; this site
+        // covers the very first phase a child sees per letter (typically
+        // observe, but can be guided when the thesis condition skips
+        // observe/direct or when an empty-strokes letter auto-skipped).
+        // Empty-strokes letters that vacuously land at .guided also land
+        // here, so a child still gets a verbal cue rather than silence.
+        speech.speak(ChildSpeechLibrary.phaseEntry(phaseController.currentPhase))
     }
 
     private func randomAudioVariant() {
@@ -1767,14 +1746,11 @@ public final class TracingViewModel {
     /// whatever the child last tapped in the letter picker — that name
     /// travels with us as the comparison target.
     func enterFreeformMode(subMode: FreeformSubMode = .letter) {
-        writingMode = .freeform
-        freeformSubMode = subMode
+        freeform.writingMode = .freeform
+        freeform.freeformSubMode = subMode
         clearFreeformCanvas()
-        if subMode == .word {
-            freeformTargetWord = FreeformWordList.all.first
-        } else {
-            freeformTargetWord = nil
-        }
+        freeform.freeformTargetWord = subMode == .word
+            ? FreeformWordList.all.first : nil
         // Halt any in-progress phase audio/animation so freeform is quiet.
         stopGuideAnimation()
         audio.stop()
@@ -1782,10 +1758,10 @@ public final class TracingViewModel {
         isPlaying = false
         // Probe the recognizer so the freeform footer can distinguish
         // "still thinking" from "model not available" on first paint.
-        if isRecognitionModelAvailable == nil {
+        if freeform.isRecognitionModelAvailable == nil {
             Task { [weak self, letterRecognizer] in
                 let available = await letterRecognizer.isModelAvailable()
-                await MainActor.run { self?.isRecognitionModelAvailable = available }
+                await MainActor.run { self?.freeform.isRecognitionModelAvailable = available }
             }
         }
         toast(subMode == .word ? "Wort schreiben" : "Freies Schreiben")
@@ -1794,9 +1770,9 @@ public final class TracingViewModel {
     /// Return to guided tracing mode. Re-loads the current letter so
     /// phase state and strokes are rebuilt fresh.
     func exitFreeformMode() {
-        writingMode = .guided
-        freeformSubMode = .letter
-        freeformTargetWord = nil
+        freeform.writingMode = .guided
+        freeform.freeformSubMode = .letter
+        freeform.freeformTargetWord = nil
         clearFreeformCanvas()
         if letters.indices.contains(letterIndex) {
             load(letter: letters[letterIndex])
@@ -1806,22 +1782,14 @@ public final class TracingViewModel {
     /// Wipe the freeform drawing buffer without leaving freeform mode.
     /// Used by the "Nochmal" button after a recognition result.
     func clearFreeformCanvas() {
-        pendingRecognitionTask?.cancel()
-        pendingRecognitionTask = nil
-        isWaitingForRecognition = false
-        freeformPoints.removeAll(keepingCapacity: true)
-        freeformStrokeSizes.removeAll(keepingCapacity: true)
-        freeformActivePath.removeAll(keepingCapacity: true)
-        freeformWordResults.removeAll(keepingCapacity: true)
-        freeformWordResultSlots.removeAll(keepingCapacity: true)
+        freeform.clearBuffers()
         lastRecognitionResult = nil
-        hasRecognitionCompleted = false
     }
 
     /// Pick the next target word for freeform word mode.
     func selectFreeformWord(_ word: FreeformWord) {
-        freeformTargetWord = word
-        freeformSubMode = .word
+        freeform.freeformTargetWord = word
+        freeform.freeformSubMode = .word
         clearFreeformCanvas()
     }
 
@@ -1831,10 +1799,10 @@ public final class TracingViewModel {
     /// finish — critical for multi-stroke letters like A, E, F.
     func beginFreeformTouch(at p: CGPoint) {
         guard writingMode == .freeform else { return }
-        pendingRecognitionTask?.cancel()
-        pendingRecognitionTask = nil
-        isWaitingForRecognition = false
-        freeformActivePath = [p]
+        freeform.pendingRecognitionTask?.cancel()
+        freeform.pendingRecognitionTask = nil
+        freeform.isWaitingForRecognition = false
+        freeform.freeformActivePath = [p]
     }
 
     func updateFreeformTouch(at p: CGPoint, canvasSize size: CGSize) {
@@ -1843,12 +1811,12 @@ public final class TracingViewModel {
         // touch `canvasSize` because its didSet rebuilds the guided-mode
         // stroke tracker and fires needless work during a blank-canvas
         // stroke. Recognition uses the size passed into submit.
-        freeformCanvasSize = size
+        freeform.freeformCanvasSize = size
         // Skip microscopic repeats — keeps the buffer from ballooning on
         // a palm rest or a stationary touch.
-        if let last = freeformActivePath.last,
+        if let last = freeform.freeformActivePath.last,
            hypot(p.x - last.x, p.y - last.y) < 1.0 { return }
-        freeformActivePath.append(p)
+        freeform.freeformActivePath.append(p)
     }
 
     /// End a freeform stroke. In letter sub-mode this arms a debounced
@@ -1859,13 +1827,13 @@ public final class TracingViewModel {
     /// sub-mode waits for the explicit "Fertig" button regardless.
     func endFreeformTouch() {
         guard writingMode == .freeform else { return }
-        if freeformActivePath.count >= 2 {
-            freeformStrokeSizes.append(freeformActivePath.count)
-            freeformPoints.append(contentsOf: freeformActivePath)
+        if freeform.freeformActivePath.count >= 2 {
+            freeform.freeformStrokeSizes.append(freeform.freeformActivePath.count)
+            freeform.freeformPoints.append(contentsOf: freeform.freeformActivePath)
         }
-        freeformActivePath.removeAll(keepingCapacity: true)
+        freeform.freeformActivePath.removeAll(keepingCapacity: true)
 
-        if freeformSubMode == .letter, freeformPoints.count >= 2 {
+        if freeform.freeformSubMode == .letter, freeform.freeformPoints.count >= 2 {
             scheduleFreeformLetterRecognition()
         }
     }
@@ -1875,44 +1843,46 @@ public final class TracingViewModel {
     /// recognition call, fired `freeformRecognitionDelay` seconds after
     /// the most recent pen-lift.
     private func scheduleFreeformLetterRecognition() {
-        pendingRecognitionTask?.cancel()
-        isWaitingForRecognition = true
-        let delay = freeformRecognitionDelay
-        pendingRecognitionTask = Task { [weak self] in
+        freeform.pendingRecognitionTask?.cancel()
+        freeform.isWaitingForRecognition = true
+        let delay = freeform.freeformRecognitionDelay
+        freeform.pendingRecognitionTask = Task { [weak self] in
             let nanos = UInt64((delay * 1_000_000_000).rounded())
             try? await Task.sleep(nanoseconds: nanos)
             guard !Task.isCancelled, let self else { return }
-            self.isWaitingForRecognition = false
+            self.freeform.isWaitingForRecognition = false
             self.recognizeFreeformLetter()
         }
     }
 
     private func recognizeFreeformLetter() {
-        let pts = freeformPoints
-        let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
-        isRecognizing = true
-        hasRecognitionCompleted = false
+        let pts = freeform.freeformPoints
+        let size = freeform.freeformCanvasSize.width > 0
+            ? freeform.freeformCanvasSize : canvasSize
+        freeform.isRecognizing = true
+        freeform.hasRecognitionCompleted = false
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: nil)
             guard let self else { return }
             await MainActor.run {
-                self.isRecognizing = false
-                self.hasRecognitionCompleted = true
+                self.freeform.isRecognizing = false
+                self.freeform.hasRecognitionCompleted = true
                 self.lastRecognitionResult = result
-                self.isRecognitionBadgeDismissed = false
-                // Compute a form-accuracy score by comparing the child's
-                // freeform path to the recognized letter's reference
-                // strokes. This is the "how well did I draw the letter"
-                // signal (separate from "which letter did the CNN pick"),
-                // exposed on the result panel as a Form XX % row.
                 if let result {
-                    self.lastFreeformFormScore = self.freeformFormAccuracy(
+                    self.freeform.lastFreeformFormScore = self.freeformFormAccuracy(
                         points: pts, canvasSize: size,
                         predictedLetter: result.predictedLetter)
                     self.recordFreeformCompletion(result: result)
+                    // Verbal mirror of the freeform popup's headline so a
+                    // child who can't read still hears whether the model
+                    // recognised their letter. Empty string returns are
+                    // intentional silence (low confidence).
+                    let line = ChildSpeechLibrary.recognition(
+                        result, expected: result.predictedLetter)
+                    if !line.isEmpty { self.speech.speak(line) }
                 } else {
-                    self.lastFreeformFormScore = nil
+                    self.freeform.lastFreeformFormScore = nil
                 }
             }
         }
@@ -1983,22 +1953,23 @@ public final class TracingViewModel {
     /// so the UI can draw grey placeholder chips for missing letters.
     func submitFreeformWord() {
         guard writingMode == .freeform, freeformSubMode == .word,
-              let target = freeformTargetWord,
-              !freeformPoints.isEmpty else { return }
+              let target = freeform.freeformTargetWord,
+              !freeform.freeformPoints.isEmpty else { return }
 
-        let segmentationWidth = freeformCanvasSize.width > 0
-            ? freeformCanvasSize.width : canvasSize.width
+        let segmentationWidth = freeform.freeformCanvasSize.width > 0
+            ? freeform.freeformCanvasSize.width : canvasSize.width
         let targetLetters = Array(target.word)
         let buckets = Self.bucketStrokesByTargetLetter(
-            points: freeformPoints,
-            strokeSizes: freeformStrokeSizes,
+            points: freeform.freeformPoints,
+            strokeSizes: freeform.freeformStrokeSizes,
             canvasWidth: segmentationWidth,
             letterCount: targetLetters.count
         )
-        let size = freeformCanvasSize.width > 0 ? freeformCanvasSize : canvasSize
+        let size = freeform.freeformCanvasSize.width > 0
+            ? freeform.freeformCanvasSize : canvasSize
 
-        isRecognizing = true
-        hasRecognitionCompleted = false
+        freeform.isRecognizing = true
+        freeform.hasRecognitionCompleted = false
         Task { [weak self, letterRecognizer] in
             var slots: [RecognitionResult?] = []
             for i in 0..<targetLetters.count {
@@ -2011,25 +1982,18 @@ public final class TracingViewModel {
             }
             guard let self else { return }
             await MainActor.run {
-                self.isRecognizing = false
-                self.hasRecognitionCompleted = true
+                self.freeform.isRecognizing = false
+                self.freeform.hasRecognitionCompleted = true
                 let present = slots.compactMap { $0 }
-                self.freeformWordResultSlots = slots
-                self.freeformWordResults = present
+                self.freeform.freeformWordResultSlots = slots
+                self.freeform.freeformWordResults = present
                 if let last = present.last {
                     self.lastRecognitionResult = last
-                    self.isRecognitionBadgeDismissed = false
                 }
                 self.recordFreeformWordCompletion(
                     target: target, results: present)
             }
         }
-    }
-
-    /// Dismiss the recognition badge. Called by the badge's tap gesture
-    /// and its 4-second auto-dismiss task.
-    func dismissRecognitionBadge() {
-        isRecognitionBadgeDismissed = true
     }
 
     private func recordFreeformCompletion(result: RecognitionResult) {

@@ -484,7 +484,7 @@ private struct ExportSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 12) {
-                Text("Copy this JSON into:")
+                Text("JSON in diese Datei kopieren:")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                 Text("Letters/\(letterName)/strokes.json")
@@ -501,7 +501,7 @@ private struct ExportSheet: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                 }
 
-                Button(copied ? "Copied ✓" : "Copy to Clipboard") {
+                Button(copied ? "Kopiert ✓" : "In Zwischenablage kopieren") {
                     UIPasteboard.general.string = text
                     copied = true
                 }
@@ -509,11 +509,11 @@ private struct ExportSheet: View {
                 .tint(copied ? .green : .blue)
             }
             .padding()
-            .navigationTitle("Stroke JSON")
+            .navigationTitle("Stroke-JSON")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") { dismiss() }
+                    Button("Fertig") { dismiss() }
                 }
             }
         }

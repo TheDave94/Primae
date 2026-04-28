@@ -112,17 +112,15 @@ public struct ContentView: View {
 
                 Spacer()
 
-                // Recognition badge — only in guided mode while the KP
-                // overlay isn't covering the canvas. Freeform mode has its
-                // own in-panel feedback, so we don't show the toast there.
+                // Recognition badge — driven by the OverlayQueueManager
+                // (post-W4 migration). Freeform mode has its own in-panel
+                // feedback, so we don't show the toast there.
                 if vm.writingMode == .guided,
-                   !vm.showFreeWriteOverlay,
-                   !vm.isRecognitionBadgeDismissed,
-                   let r = vm.lastRecognitionResult {
+                   case .recognitionBadge(let r) = vm.overlayQueue.currentOverlay {
                     RecognitionFeedbackView(
                         result: r,
                         expectedLetter: vm.currentLetterName,
-                        onDismiss: { vm.dismissRecognitionBadge() }
+                        onDismiss: { vm.overlayQueue.dismiss() }
                     )
                     .padding(.bottom, 18)
                     .padding(.horizontal, 12)
