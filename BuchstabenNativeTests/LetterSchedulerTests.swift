@@ -133,6 +133,23 @@ struct LetterSchedulerTests {
         let r2 = scheduler.prioritized(available: letters, progress: progress, now: now)
         #expect(r1.map(\.letter) == r2.map(\.letter))
     }
+
+    // MARK: - Tie-breaker (review item #19)
+
+    @Test("Equal-priority letters preserve input-array order")
+    func tieBreakerIsInputOrder() {
+        // With identical (empty) progress for every letter, every score
+        // collapses to the same priority. Swift's `sorted()` is stable,
+        // so equal-priority elements keep their input order — the
+        // scheduler intentionally relies on this. Two flips of the same
+        // input should produce mirror outputs.
+        let inputAtoG = ["A", "B", "C", "D", "E", "F", "G"]
+        let inputGtoA = ["G", "F", "E", "D", "C", "B", "A"]
+        let r1 = scheduler.prioritized(available: inputAtoG, progress: [:], now: now)
+        let r2 = scheduler.prioritized(available: inputGtoA, progress: [:], now: now)
+        #expect(r1.map(\.letter) == inputAtoG)
+        #expect(r2.map(\.letter) == inputGtoA)
+    }
 }
 
 // MARK: - LetterOrderingStrategy (V3-003)

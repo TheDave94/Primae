@@ -54,6 +54,14 @@ struct LetterScheduler {
     // MARK: - API
 
     /// Returns all available letters ordered by practice priority (highest first).
+    ///
+    /// **Tie-breaker.** When two letters score identically (e.g. on first
+    /// launch every letter has zero history), the result preserves the
+    /// order of `available`. This is Swift's `Array.sorted()` stability
+    /// guarantee — equal-priority elements keep their relative input
+    /// order. Callers that want a deterministic tie-break independent
+    /// of the caller-supplied order should pre-sort `available`
+    /// alphabetically first.
     func prioritized(
         available: [String],
         progress: [String: LetterProgress],
