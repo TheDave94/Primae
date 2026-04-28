@@ -233,4 +233,31 @@ private func makeStore() -> JSONParentDashboardStore {
         #expect(abs((store.snapshot.letterStats["A"]?.averageAccuracy ?? 0) - 1.0) < 1e-9)
         #expect(abs((store.snapshot.letterStats["B"]?.averageAccuracy ?? 0) - 0.5) < 1e-9)
     }
+
+    /// Regression guard for review item #9 — rapid-fire batching contract.
+    /// When several `recordSession` / `recordPhaseSession` calls fire
+    /// synchronously in one runloop tick, the cancel-and-replace chain in
+    /// `persist()` must coalesce them into a single durable write that
+    /// reflects the *final* accumulated state. Cancelling earlier writes
+    /// must not drop data — the value-type `DashboardSnapshot` snapshot in
+    /// each task already captures the accumulated state at enqueue time.
+    @Test func rapidFireWrites_finalStateIsDurable() async {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DashRapid-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
+        // Four synchronous writes — exercises the cancel-and-replace chain.
+        store.recordSession(letter: "A", accuracy: 0.5, durationSeconds: 10, date: date(2025, 1, 1), condition: .threePhase)
+        store.recordSession(letter: "B", accuracy: 0.6, durationSeconds: 10, date: date(2025, 1, 1), condition: .threePhase)
+        store.recordSession(letter: "C", accuracy: 0.7, durationSeconds: 10, date: date(2025, 1, 1), condition: .threePhase)
+        store.recordSession(letter: "D", accuracy: 0.8, durationSeconds: 10, date: date(2025, 1, 1), condition: .threePhase)
+        await store.flush()
+
+        let reloaded = JSONParentDashboardStore(fileURL: url, calendar: utcCal())
+        #expect(reloaded.snapshot.letterStats["A"]?.accuracySamples == [0.5])
+        #expect(reloaded.snapshot.letterStats["B"]?.accuracySamples == [0.6])
+        #expect(reloaded.snapshot.letterStats["C"]?.accuracySamples == [0.7])
+        #expect(reloaded.snapshot.letterStats["D"]?.accuracySamples == [0.8])
+        #expect(reloaded.snapshot.sessionDurations.count == 4)
+    }
 }

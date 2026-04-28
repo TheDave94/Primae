@@ -370,6 +370,18 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     private func persist() {
         // Encode off main: snapshot the value-type DashboardSnapshot on
         // the actor, then encode + write inside the detached Task.
+        //
+        // Rapid-fire batching note (review item #9): when 4 persist()
+        // calls happen synchronously in one runloop tick — e.g.
+        // `recordPhaseSessionCompletion` writes one PhaseSessionRecord
+        // per phase — the cancel-and-replace chain coalesces them into
+        // a single disk write. Each successor cancels its predecessor;
+        // each predecessor's `guard !Task.isCancelled` short-circuits
+        // before reaching `JSONEncoder().encode(...)`. Only the final
+        // task encodes + writes. No explicit buffer needed: the value-
+        // type DashboardSnapshot in `snapshotCopy` already captures the
+        // accumulated state. See ParentDashboardStoreTests for a
+        // regression guard pinning this behaviour.
         let snapshotCopy = snapshot
         let url = fileURL
         // Coalesce + order: see ProgressStore.save() for rationale.
