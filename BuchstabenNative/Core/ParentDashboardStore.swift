@@ -299,6 +299,20 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     /// enough history for a generous trailing-window analysis.
     private static let accuracySamplesCap = 200
 
+    /// Hard ceiling on phase-session records. The dashboard summaries
+    /// (phaseCompletionRates, schedulerEffectivenessProxy, recent table
+    /// in ResearchDashboardView) all work over recent windows, never
+    /// scan the full history. Long-running thesis devices were
+    /// previously accumulating one record per phase × ~5 letters per
+    /// session × multiple sessions per day — fine for a year, but
+    /// unbounded growth on a multi-year deployment.
+    private static let phaseSessionRecordsCap = 2000
+
+    /// Hard ceiling on per-day session durations. PracticeTrendChart
+    /// renders the last 30 days at most; 1000 entries gives roughly
+    /// three years of headroom for the trailing-window export.
+    private static let sessionDurationsCap = 1000
+
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {
         let key = letter.uppercased()
         let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
@@ -318,6 +332,11 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             snapshot.sessionDurations.append(
                 SessionDurationRecord(dateString: day, durationSeconds: durationSeconds, condition: condition)
             )
+            if snapshot.sessionDurations.count > Self.sessionDurationsCap {
+                snapshot.sessionDurations.removeFirst(
+                    snapshot.sessionDurations.count - Self.sessionDurationsCap
+                )
+            }
         }
         persist()
     }
@@ -333,6 +352,11 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             assessment: assessment
         )
         snapshot.phaseSessionRecords.append(record)
+        if snapshot.phaseSessionRecords.count > Self.phaseSessionRecordsCap {
+            snapshot.phaseSessionRecords.removeFirst(
+                snapshot.phaseSessionRecords.count - Self.phaseSessionRecordsCap
+            )
+        }
         persist()
     }
 

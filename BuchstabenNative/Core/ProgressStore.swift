@@ -153,6 +153,15 @@ public final class JSONProgressStore: ProgressStoring {
         self.store = Self.load(from: self.fileURL)
     }
 
+    // MARK: - Caps
+
+    /// Hard ceiling on `completionDates`. The streak query reads at
+    /// most the trailing 30 days of entries, so anything beyond ~1000
+    /// is dead weight on disk. Long-running thesis devices that practise
+    /// daily for a year would otherwise accumulate 365+ records per
+    /// year × N completions per session.
+    private static let completionDatesCap = 1000
+
     // MARK: - Canonical key
 
     /// Normalised dictionary key used by every per-letter store entry.
@@ -194,6 +203,15 @@ public final class JSONProgressStore: ProgressStoring {
         }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
+        // Cap the rolling completion log — only the last 30 days are
+        // ever queried by `currentStreakDays`, but we keep a few hundred
+        // for long-window analytics. Bound at the head so the most
+        // recent entries always survive.
+        if store.completionDates.count > Self.completionDatesCap {
+            store.completionDates.removeFirst(
+                store.completionDates.count - Self.completionDatesCap
+            )
+        }
         save()
     }
 
