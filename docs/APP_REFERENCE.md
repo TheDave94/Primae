@@ -78,7 +78,7 @@ explicit dismiss for the modal ones (paper-transfer, celebration).
 | `LearningPhase.swift` | observe / direct / guided / freeWrite. German display names. Codable rawName for persistence. |
 | `LearningPhaseController.swift` | Pure-value-type FSM. ThesisCondition-aware activePhases. Star thresholds per phase (max 4 stars). |
 | `LetterOrderingStrategy.swift` | motorSimilarity / wordBuilding / alphabetical with German labels. |
-| `SchriftArt.swift` | druckschrift / schreibschrift / grundschrift / vereinfachteAusgangschrift / schulausgangsschrift. Schreibschrift = Playwrite AT (SIL OFL); Schulschrift 1995 was renamed in code due to font licensing. |
+| `SchriftArt.swift` | druckschrift / schreibschrift / grundschrift / vereinfachteAusgangsschrift / schulausgangsschrift. The `vereinfachteAusgangsschrift` case keeps the older mis-spelled `vereinfachteAusgangschrift` raw value so persisted user-defaults and the bundled font/strokes filenames keep resolving. Schreibschrift = Playwrite AT (SIL OFL); Schulschrift 1995 was renamed in code due to font licensing. |
 | `WritingMode.swift` | guided / freeform. |
 | `ThesisCondition.swift` | threePhase / guidedOnly / control. ParticipantStore enrolment gate. |
 | `OverlayQueueManager.swift` | FIFO of CanvasOverlay (frechetScore / kpOverlay / recognitionBadge / paperTransfer / celebration). Modal overlays carry nil duration (wait for explicit dismiss); timed overlays auto-advance. `enqueueBeforeCelebration` slots late-arriving recognition badges ahead of celebration. |
@@ -89,14 +89,14 @@ explicit dismiss for the modal ones (paper-transfer, celebration).
 | `StrokeTracker.swift` | Checkpoint proximity. ⚠️ Do NOT replace `hypot` with `distSq`. |
 | `HapticEngine.swift` | CoreHapticsEngine + UIKit fallback + Null. |
 | `DifficultyAdaptation.swift` | DifficultyTier + MovingAverageAdaptationPolicy + FixedAdaptationPolicy (control arm). |
-| `ProgressStore.swift` | JSONProgressStore. LetterProgress carries phaseScores, speedTrend (cap 5), recognitionAccuracy (cap 10), recognitionSamples (predictedLetter + isCorrect, cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. |
+| `ProgressStore.swift` | JSONProgressStore. LetterProgress carries phaseScores, speedTrend (cap 5), recognitionAccuracy (cap 10), recognitionSamples (predictedLetter + isCorrect, cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. Exposes `LetterProgress.canonicalKey(_:)` — the shared ß-preserving normaliser every per-letter store routes through. |
 | `ParentDashboardStore.swift` | JSONParentDashboardStore. PhaseSessionRecord stores all 4 Schreibmotorik dimensions for freeWrite rows. accuracySamples cap 200. |
-| `ParentDashboardExporter.swift` | CSV / TSV / JSON export. Per-phase rows include 13 columns: letter, phase, completed, score, schedulerPriority, condition, recognition_predicted, recognition_confidence, recognition_correct, formAccuracy, tempoConsistency, pressureControl, rhythmScore. |
+| `ParentDashboardExporter.swift` | CSV / TSV / JSON export. Per-phase rows include 13 columns: letter, phase, completed, score, schedulerPriority, condition, recognition_predicted, recognition_confidence, recognition_correct, formAccuracy, tempoConsistency, pressureControl, rhythmScore. The three recognition columns are intentionally blank on per-phase rows — the rolling per-letter `recognitionSamples` window has no session timestamps, so the per-letter aggregate block above is the only place the recognition signal can be read without mis-correlation (review item W-2 / audit D-2). |
 | `StreakStore.swift` | JSONStreakStore. RewardEvent enum. |
 | `LocalNotificationScheduler.swift` | Daily reminder with quiet hours + streak-aware copy. |
 | `OnboardingCoordinator.swift` | 7-step state machine (welcome → 4 phase demos → reward intro → complete). |
 | `CloudSyncService.swift` | Protocol + NullSyncService + SyncCoordinator. CloudKit-ready, no live impl. |
-| `LetterScheduler.swift` | Ebbinghaus-style spaced repetition. |
+| `LetterScheduler.swift` | Ebbinghaus-style spaced repetition. `.fixedOrder()` returns a "control" scheduler that scores by `-completionCount` (round-robin through the alphabet) so the `.control` thesis arm doesn't confound scheduling with phase progression. |
 | `LetterStars.swift` | phaseScores → 0…4 star count, mirrors LearningPhaseController.starThreshold. |
 | `LetterRecognizer.swift` | CoreMLLetterRecognizer wraps GermanLetterRecognizer.mlpackage. nonisolated, runs on Task.detached. Falls back to nil on missing model. ConfidenceCalibrator applied to top-k. StubLetterRecognizer for tests. |
 | `ConfidenceCalibrator.swift` | Confusable-pair penalties + history boost. |
@@ -119,7 +119,7 @@ explicit dismiss for the modal ones (paper-transfer, celebration).
 | `RecognitionFeedbackView.swift` | German verbal-only badge for freeWrite recognition. Auto-dismisses, mirrored by speech. |
 | `CompletionCelebrationOverlay.swift` | Stars + "Weiter" button. |
 | `PaperTransferView.swift` | 3 s reference → 10 s write-on-paper → 3-emoji self-assessment. Speaks each prompt via TTS. |
-| `PhaseDotIndicator.swift` / `PhaseIndicatorView.swift` | Phase-progress UI. |
+| `PhaseDotIndicator.swift` / `PhaseIndicatorView.swift` | Phase-progress UI. `PhaseDotIndicator` takes an explicit `activePhases` list (default `LearningPhase.allCases`) so guidedOnly/control conditions render only the dots they actually run — wired up via `vm.activePhases` from `LearningPhaseController`. |
 | `LetterPickerBar.swift` / `LetterWheelPicker.swift` / `SequencePickerBar.swift` | Letter / word selection chrome. |
 | `DebugAudioPanel.swift` | Live audio-tuning sliders (DEBUG only). |
 | `StrokeCalibrationOverlay.swift` | Debug stroke editing (drag / add / delete) with per-script persistence. German UI strings throughout. |

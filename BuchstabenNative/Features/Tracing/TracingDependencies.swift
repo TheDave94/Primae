@@ -13,6 +13,12 @@ struct TracingDependencies {
     var audio: AudioControlling
     var progressStore: ProgressStoring
     var haptics: HapticEngineProviding
+    /// Difficulty adaptation policy. `nil` lets the VM pick a default
+    /// based on `thesisCondition`: `.control` gets a `FixedAdaptationPolicy`
+    /// (no live adaptation, so the difficulty manipulation can't confound
+    /// the phase-progression IV), and the other arms get a
+    /// `MovingAverageAdaptationPolicy`. Tests inject explicit policies
+    /// to pin behaviour (review item I-2).
     var adaptationPolicy: (any AdaptationPolicy)?
     var repo: LetterRepository
     var streakStore: StreakStoring

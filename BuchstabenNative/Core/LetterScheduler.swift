@@ -87,15 +87,17 @@ struct LetterScheduler {
     ) -> [ScoredLetter] {
         if fixedOrder {
             // W-23: priority = -completionCount so less-practised letters
-            // bubble up. With Swift's stable sort, ties (e.g. on first
-            // launch when every letter has count 0) preserve caller
-            // order, giving round-robin delivery as the .control thesis
-            // arm requires. Pure `priority: 0` would make recommendNext()
-            // always return the first letter and stall the child there.
+            // bubble up. The result still has to be `.sorted()` like the
+            // standard branch — `prioritized`'s contract is "ordered by
+            // practice priority (highest first)" and `recommendNext`
+            // takes `.first` on faith. Swift's stable sort preserves
+            // caller order on ties (e.g. on first launch when every
+            // letter has count 0), giving round-robin delivery as the
+            // .control thesis arm requires.
             return available.map { letter in
                 let count = progress[letter]?.completionCount ?? 0
                 return ScoredLetter(letter: letter, priority: -Double(count))
-            }
+            }.sorted()
         }
         return available.map { letter in
             score(letter: letter, progress: progress[letter], now: now)

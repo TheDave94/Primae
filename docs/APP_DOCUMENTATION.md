@@ -873,8 +873,19 @@ inter-session interval is calibrated to the desired retention.
   `memoryStabilityDays = 7.0` (matches typical word-list half-decay).
 
 * `TracingViewModel.loadRecommendedLetter()` calls
-  `letterScheduler.recommendNext(available:, progress:)` and loads
-  the highest-priority letter.
+  `letterScheduler.prioritized(available:, progress:)`, takes the
+  highest-priority letter, and stores its priority on
+  `lastScheduledLetterPriority` so the dashboard's
+  `schedulerEffectivenessProxy` can correlate it with the eventual
+  session score.
+
+* `LetterScheduler.fixedOrder()` is the `.control` thesis arm
+  scheduler. It scores by `priority = -completionCount` and ignores
+  Ebbinghaus / accuracy / novelty entirely, giving round-robin
+  delivery so the scheduling effect doesn't confound the phase-
+  progression manipulation. (Earlier the constant `priority: 0`
+  stalled control children on the first letter forever — review
+  item W-23.)
 
 **How the implementation differs.** Ebbinghaus's curve has a single
 parameter (memory stability); this app combines that with accuracy and
@@ -1139,7 +1150,7 @@ public var fontFileName: String {
     case .druckschrift:   return "Primae-Regular"
     case .schreibschrift: return "PlaywriteAT-Regular"
     case .grundschrift:   return "Grundschrift-Regular"            // not bundled
-    case .vereinfachteAusgangschrift: return "VereinfachteAusgangschrift-Regular"  // not bundled
+    case .vereinfachteAusgangsschrift: return "VereinfachteAusgangschrift-Regular"  // not bundled — case spelling fixed, font filename kept
     case .schulausgangsschrift:       return "Schulausgangsschrift-Regular"        // not bundled
     }
 }
@@ -1219,6 +1230,12 @@ streaks.
 Custom decoders default `condition` to `.threePhase` for pre-migration
 records.
 
+`recordSession`, `recordPhaseSession`, and `phaseScores(for:)` route
+their letter argument through `LetterProgress.canonicalKey(_:)` — the
+same shared normaliser `JSONProgressStore` and `JSONStreakStore` use —
+so every store agrees that `ß` stays `ß` instead of collapsing to
+`"SS"` (review item W-3).
+
 ### 6.3 StreakStore (engagement)
 
 **File.** `Core/StreakStore.swift`. Stored at
@@ -1253,9 +1270,9 @@ formAccuracy,tempoConsistency,pressureControl,rhythmScore
 | `score` | Phase-level accuracy / form score (0–1). |
 | `schedulerPriority` | Spaced-repetition scheduler's prediction at the time the letter was recommended; used as the IV in the scheduler-effectiveness Pearson r. |
 | `condition` | Thesis A/B arm — required for between-arm comparisons. |
-| `recognition_predicted` | Latest CoreML prediction for the letter (since recognition is per-letter, not per-phase, this is the most-recent reading at export time). |
-| `recognition_confidence` | Calibrated confidence 0–1 (post ConfidenceCalibrator). |
-| `recognition_correct` | Whether the prediction matched the expected letter. |
+| `recognition_predicted` | **Always blank on per-phase rows.** The rolling per-letter `recognitionSamples` window has no session timestamps, so attaching the latest sample to every phase row mis-correlates recognition with phases that completed earlier. Read recognition data from the per-letter aggregate block instead. Session-aligned recognition awaits the schema work tracked in audit item D-2. |
+| `recognition_confidence` | Always blank on per-phase rows (same reason as `recognition_predicted`). |
+| `recognition_correct` | Always blank on per-phase rows (same reason as `recognition_predicted`). |
 | `formAccuracy` | Schreibmotorik Form dimension (Fréchet, weight 0.40). |
 | `tempoConsistency` | Schreibmotorik Tempo dimension (CV², weight 0.25). |
 | `pressureControl` | Schreibmotorik Druck dimension (force variance, weight 0.15). |
