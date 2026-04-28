@@ -825,18 +825,7 @@ public final class TracingViewModel {
         guard isSingleTouchInteractionActive      else { return }
         guard let lastPoint                       else { return }
 
-        // If the canvas size reported by the touch layer differs from what was used to
-        // map checkpoints (self.canvasSize), resync immediately.  This closes the window
-        // where a rotation/layout update has already fired canvasSize.didSet — reloading
-        // checkpoints for the new size — but the touch overlay coordinator still carries
-        // the previous size, causing normalizedPoint vs checkpoint coordinate mismatch.
-        if canvasSize != self.canvasSize, !letters.isEmpty, letterIndex < letters.count {
-            // Re-flow cell frames with the overlay-reported size BEFORE
-            // reloading checkpoints — reload now maps per-cell using each
-            // cell's own frame.
-            grid.layout(in: canvasSize, schriftArt: schriftArt)
-            reloadStrokeCheckpoints(for: letters[letterIndex], usingSize: canvasSize)
-        }
+        resyncCanvasSizeIfNeeded(canvasSize)
 
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 && p.x <= canvasSize.width && p.y <= canvasSize.height
@@ -901,32 +890,77 @@ public final class TracingViewModel {
         // reduces to the active (and only) cell's overallProgress.
         progress = grid.aggregateProgress
 
-        let currentPhase = phaseController.currentPhase
-        if currentPhase == .guided || currentPhase == .freeWrite,
-           let def = strokeTracker.definition {
-            let completedCPs = def.strokes.enumerated().reduce(0) { acc, item in
-                let (idx, stroke) = item
-                guard strokeTracker.progress.indices.contains(idx) else { return acc }
-                return strokeTracker.progress[idx].complete
-                    ? acc + stroke.checkpoints.count
-                    : acc + strokeTracker.progress[idx].nextCheckpoint
-            }
-            freeWriteRecorder.updateSpeed(completedCheckpoints: completedCPs)
-        }
+        updateGuidedAndFreeWriteSpeed()
 
+        fireMovementHaptics(prevStrokeIndex: prevStrokeIndex,
+                            prevNextCheckpoint: prevNextCheckpoint)
+
+        updateAdaptivePlayback(canvasNormalized: canvasNormalized)
+
+        handleStrokeCompletionIfReached()
+
+        self.lastPoint     = p
+        self.lastTimestamp = t
+    }
+
+    /// Bring `self.canvasSize` (and the cell layout / checkpoint mapping
+    /// that derive from it) back in sync with whatever the touch overlay
+    /// is currently reporting. This closes the window where a
+    /// rotation/layout update has already fired `canvasSize.didSet` —
+    /// reloading checkpoints for the new size — but the touch overlay
+    /// coordinator still carries the previous size, causing
+    /// normalizedPoint vs. checkpoint coordinate mismatch.
+    private func resyncCanvasSizeIfNeeded(_ canvasSize: CGSize) {
+        guard canvasSize != self.canvasSize,
+              !letters.isEmpty,
+              letterIndex < letters.count else { return }
+        // Re-flow cell frames with the overlay-reported size BEFORE
+        // reloading checkpoints — reload now maps per-cell using each
+        // cell's own frame.
+        grid.layout(in: canvasSize, schriftArt: schriftArt)
+        reloadStrokeCheckpoints(for: letters[letterIndex], usingSize: canvasSize)
+    }
+
+    /// Push the live "checkpoints per second" figure into the recorder
+    /// while the user is in guided or freeWrite. Stays silent in observe
+    /// / direct since those phases have no continuous motion to measure.
+    private func updateGuidedAndFreeWriteSpeed() {
+        let currentPhase = phaseController.currentPhase
+        guard currentPhase == .guided || currentPhase == .freeWrite,
+              let def = strokeTracker.definition else { return }
+        let completedCPs = def.strokes.enumerated().reduce(0) { acc, item in
+            let (idx, stroke) = item
+            guard strokeTracker.progress.indices.contains(idx) else { return acc }
+            return strokeTracker.progress[idx].complete
+                ? acc + stroke.checkpoints.count
+                : acc + strokeTracker.progress[idx].nextCheckpoint
+        }
+        freeWriteRecorder.updateSpeed(completedCheckpoints: completedCPs)
+    }
+
+    /// Trigger checkpoint or stroke-completed haptics if the tracker
+    /// crossed a boundary on this touch update. Compares the snapshot
+    /// taken before `strokeTracker.update(...)` to the post-update state.
+    private func fireMovementHaptics(prevStrokeIndex: Int,
+                                     prevNextCheckpoint: Int) {
+        guard feedbackIntensity > 0 else { return }
         let newStrokeIndex     = strokeTracker.currentStrokeIndex
         let newNextCheckpoint  = strokeTracker.progress.indices.contains(prevStrokeIndex)
             ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
-        if (prevNextCheckpoint != newNextCheckpoint || newStrokeIndex != prevStrokeIndex),
-           feedbackIntensity > 0 {
-            if strokeTracker.progress.indices.contains(prevStrokeIndex)
-                && strokeTracker.progress[prevStrokeIndex].complete {
-                haptics.fire(.strokeCompleted)
-            } else {
-                haptics.fire(.checkpointHit)
-            }
+        guard prevNextCheckpoint != newNextCheckpoint
+              || newStrokeIndex != prevStrokeIndex else { return }
+        if strokeTracker.progress.indices.contains(prevStrokeIndex)
+            && strokeTracker.progress[prevStrokeIndex].complete {
+            haptics.fire(.strokeCompleted)
+        } else {
+            haptics.fire(.checkpointHit)
         }
+    }
 
+    /// Map the smoothed velocity + canvas-x to the audio engine's
+    /// time-stretch speed and stereo pan, then ask the playback state
+    /// machine whether the underlying source should be active or idle.
+    private func updateAdaptivePlayback(canvasNormalized: CGPoint) {
         let speed        = Self.mapVelocityToSpeed(smoothedVelocity)
         let azimuthBias  = pencilPressure != nil ? cos(pencilAzimuth) * 0.2 : 0
         // Pan follows the absolute x across the whole canvas, not the
@@ -939,47 +973,47 @@ public final class TracingViewModel {
         let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
                                   && feedbackIntensity > 0.3
         playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
+    }
 
-        // Guard against vacuous completion: StrokeTracker.isComplete returns true
-        // when the letter has no strokes (empty-progress allSatisfy is trivially true).
+    /// If the active cell's tracker just completed, advance the grid
+    /// cursor to the next cell — or, if the whole sequence is done, kick
+    /// off the phase advance. Guards against vacuous completion (empty
+    /// stroke definitions, where `isComplete` would be trivially true).
+    private func handleStrokeCompletionIfReached() {
         let hasStrokes = (strokeTracker.definition?.strokes.isEmpty == false)
-        if hasStrokes, strokeTracker.isComplete {
-            // Snapshot tracker-derived values BEFORE advancing — after the
-            // grid moves the cursor, `strokeTracker` aliases the next cell
-            // (fresh state, zero progress).
-            let completingCellIndex = grid.activeCellIndex
-            let sequenceDone = grid.advanceIfCompleted()
-            if !sequenceDone {
-                // Retain the just-completed cell's ink so it stays on
-                // screen — preserves the child's written letter as they
-                // move on to the next cell. VM activePath clears so the
-                // next cell's tracing starts with a blank slate.
-                if grid.cells.indices.contains(completingCellIndex) {
-                    grid.cells[completingCellIndex].activePath = activePath
-                }
-                activePath.removeAll(keepingCapacity: true)
-                // Play the next cell's letter audio so the child hears
-                // "O → M → A" as they trace through "OMA". Per-cell
-                // audio policy per the thesis-plan v1. Silent for letters
-                // without an audio asset in the inventory.
-                autoplayActiveCellLetter()
-            } else if !didCompleteCurrentLetter {
-                didCompleteCurrentLetter = true
-                if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
-                // Stop audio before phase teardown so the child doesn't
-                // hear the letter sound bleed into the next phase.
-                playback.request(.idle, immediate: true)
-                // Route through advanceLearningPhase() so phase transitions
-                // always go through one path:
-                //   guided     → freeWrite  (phaseController.advance returns true)
-                //   guided     → complete   (guidedOnly/control: returns false → celebration)
-                //   freeWrite  → complete   (threePhase: returns false → celebration)
-                advanceLearningPhase()
+        guard hasStrokes, strokeTracker.isComplete else { return }
+        // Snapshot tracker-derived values BEFORE advancing — after the
+        // grid moves the cursor, `strokeTracker` aliases the next cell
+        // (fresh state, zero progress).
+        let completingCellIndex = grid.activeCellIndex
+        let sequenceDone = grid.advanceIfCompleted()
+        if !sequenceDone {
+            // Retain the just-completed cell's ink so it stays on
+            // screen — preserves the child's written letter as they
+            // move on to the next cell. VM activePath clears so the
+            // next cell's tracing starts with a blank slate.
+            if grid.cells.indices.contains(completingCellIndex) {
+                grid.cells[completingCellIndex].activePath = activePath
             }
+            activePath.removeAll(keepingCapacity: true)
+            // Play the next cell's letter audio so the child hears
+            // "O → M → A" as they trace through "OMA". Per-cell
+            // audio policy per the thesis-plan v1. Silent for letters
+            // without an audio asset in the inventory.
+            autoplayActiveCellLetter()
+        } else if !didCompleteCurrentLetter {
+            didCompleteCurrentLetter = true
+            if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
+            // Stop audio before phase teardown so the child doesn't
+            // hear the letter sound bleed into the next phase.
+            playback.request(.idle, immediate: true)
+            // Route through advanceLearningPhase() so phase transitions
+            // always go through one path:
+            //   guided     → freeWrite  (phaseController.advance returns true)
+            //   guided     → complete   (guidedOnly/control: returns false → celebration)
+            //   freeWrite  → complete   (threePhase: returns false → celebration)
+            advanceLearningPhase()
         }
-
-        self.lastPoint     = p
-        self.lastTimestamp = t
     }
 
     // MARK: - Lifecycle
