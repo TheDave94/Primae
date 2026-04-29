@@ -499,12 +499,12 @@ public final class TracingViewModel {
     /// to completion. For multi-cell sequences (commit 4 onwards) the
     /// reference shifts when the active cell advances — the tracker is
     /// mutable state owned by the cell, not by the VM.
-    private var strokeTracker: StrokeTracker { grid.activeCell.tracker }
+    var strokeTracker: StrokeTracker { grid.activeCell.tracker }
     /// Schreibheft grid representation of the current sequence.
     /// Drives the canvas renderer via `gridCells` / `gridPreset`. For the
     /// single-letter flow this is a length-1 sequence with the finger
     /// preset — byte-identical to pre-grid behavior.
-    private let grid = SequenceGridController(
+    let grid = SequenceGridController(
         sequence: .singleLetter(""),
         preset: .finger
     )
@@ -514,8 +514,8 @@ public final class TracingViewModel {
     /// promotion from commit 3 onward. Nothing observes it yet in this
     /// commit — detection runs, rendering is unchanged.
     private let detector = InputModeDetector()
-    private let audio: AudioControlling
-    private let haptics: HapticEngineProviding
+    let audio: AudioControlling
+    let haptics: HapticEngineProviding
     /// Persistent letter-progress store. Private so the VM remains the
     /// only mutator; views consume the read-only `allProgress` /
     /// `progress(for:)` forwarders below (W-5).
@@ -554,7 +554,7 @@ public final class TracingViewModel {
     private let syncCoordinator: SyncCoordinator
     private var adaptationPolicy: any AdaptationPolicy
     private var onboardingCoordinator: OnboardingCoordinator
-    private var phaseController: LearningPhaseController
+    var phaseController: LearningPhaseController
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
     private let letterRecognizer: LetterRecognizerProtocol
@@ -566,20 +566,18 @@ public final class TracingViewModel {
     /// Owns the freeWrite buffers + session timing + scoring. Lives on
     /// the VM so views can keep reading via the existing forwarders;
     /// extracting it cleared the four-buffer churn out of the VM body.
-    private let freeWriteRecorder = FreeWritePhaseRecorder()
+    let freeWriteRecorder = FreeWritePhaseRecorder()
 
     // MARK: - Private playback / touch state
 
-    private var letters: [LetterAsset]          = []
-    private var letterIndex                      = 0
+    var letters: [LetterAsset]          = []
+    var letterIndex                      = 0
     private var variantStrokeCache: LetterStrokes? = nil
     /// Per-script bundle stroke cache keyed by (schriftArt). Populated lazily
     /// on first access for each non-Druckschrift script. Invalidated in
     /// `schriftArt.didSet` and on letter load so a switch reloads fresh.
     private var scriptStrokeCache: [SchriftArt: LetterStrokes] = [:]
-    private var audioIndex                       = 0
-    private var lastPoint: CGPoint?
-    private var lastTimestamp: CFTimeInterval?
+    var audioIndex                       = 0
     /// Wall-clock start of the *current* foreground window for the active
     /// letter. Reset on every `load(letter:)` and on every foreground return
     /// (`appDidBecomeActive`). Cleared on backgrounding so the timer doesn't
@@ -598,8 +596,7 @@ public final class TracingViewModel {
     /// `letterLoadTime` (CACurrentMediaTime) because we need a stable
     /// timestamp that survives background/foreground cycles.
     private var letterLoadedDate: Date?
-    private var isSingleTouchInteractionActive   = false
-    private var didCompleteCurrentLetter         = false
+    var didCompleteCurrentLetter         = false
     /// Scheduler priority captured at letter selection time (loadRecommendedLetter).
     /// Forwarded to recordPhaseSession so schedulerEffectivenessProxy is non-zero.
     /// C-3: was hardcoded 0, making the Pearson correlation permanently 0.
@@ -612,7 +609,7 @@ public final class TracingViewModel {
     /// controller is constructed with a no-op callback, assigned to
     /// `self.playback`, and the real `[weak self]` callback is wired
     /// AFTER `self` is fully initialised — eliminating the IUO.
-    private let playback: PlaybackController
+    let playback: PlaybackController
     private let messages: TransientMessagePresenter
     private let animation: AnimationGuideController
     /// Full-cycle counter for the observe-phase animation. Used to auto-advance
@@ -623,13 +620,14 @@ public final class TracingViewModel {
     /// or a fast-touch burst don't re-map the same checkpoints over and over.
     /// Reset to nil whenever the source data changes (e.g. user calibration).
     private var lastCheckpointKey: CheckpointBuildKey?
-    private var smoothedVelocity: CGFloat        = 0
-    /// The three velocity knobs are mutable so the debug audio panel can
-    /// tune them live. Defaults are calibrated for iPad-finger writing
-    /// at ~50–800 pt/s; see `Self.mapVelocityToSpeed` for the curve they feed.
-    private var velocitySmoothingAlpha: CGFloat  = 0.22
-    private var playbackActivationVelocityThreshold: CGFloat = 22
-    private var minimumTouchMoveDistance: CGFloat    = 1.5
+
+    /// D1b (ROADMAP): owns the touch-session state and the
+    /// `beginTouch` / `updateTouch` / `endTouch` flow. The VM keeps thin
+    /// forwarders so SwiftUI views and tests don't change. Wired in
+    /// `init` using the same W-16 two-phase pattern as `playback`: built
+    /// without `self`, assigned, then the back-reference is set once the
+    /// VM is fully initialised.
+    let touchDispatcher: TouchDispatcher
 
     // MARK: - Init
 
@@ -697,13 +695,20 @@ public final class TracingViewModel {
         haptics.prepare()
         // W-16: build with a no-op callback first so the closure does
         // not capture `self` (which is not yet fully initialised). Once
-        // `self.playback` is assigned, every stored `let` is in place
-        // and `self` is fully initialised — wire the real `[weak self]`
-        // callback at that point. The controller stores
-        // `onIsPlayingChanged` as a `var` precisely for this seam.
+        // both `self.playback` and `self.touchDispatcher` are assigned,
+        // every stored `let` is in place and `self` is fully
+        // initialised — wire the real `[weak self]` callback at that
+        // point. The controller stores `onIsPlayingChanged` as a `var`
+        // precisely for this seam.
         let pb = deps.makePlaybackController(deps.audio) { _ in }
         self.playback = pb
+        // D1b: same two-phase pattern as `playback`. Build a vm-less
+        // dispatcher, assign it to the stored property so `self` is
+        // fully initialised, then wire the closures + back-reference.
+        let td = TouchDispatcher()
+        self.touchDispatcher = td
         pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }
+        td.vm = self
         letters = repo.loadLettersFast()
         // Surface a startup audio failure as a brief German toast so a parent
         // notices the device is silent on purpose (not because the child got
@@ -781,7 +786,7 @@ public final class TracingViewModel {
     /// variant for transient cell-advance sounds). Silent when the
     /// active cell's letter has no audio assets in the inventory,
     /// which is acceptable demo behavior per the thesis scope.
-    private func autoplayActiveCellLetter() {
+    func autoplayActiveCellLetter() {
         let activeLetter = gridCellLetter(at: gridActiveCellIndex) ?? currentLetterName
         guard let asset = letters.first(where: { $0.name == activeLetter }),
               let first = activeAudioFiles(for: asset).first else { return }
@@ -810,7 +815,7 @@ public final class TracingViewModel {
     /// letter-name set is used. This keeps the existing two-finger
     /// swipe variant cycler working — it always cycles within the
     /// active population.
-    private func activeAudioFiles(for asset: LetterAsset) -> [String] {
+    func activeAudioFiles(for asset: LetterAsset) -> [String] {
         if enablePhonemeMode, !asset.phonemeAudioFiles.isEmpty {
             return asset.phonemeAudioFiles
         }
@@ -823,7 +828,7 @@ public final class TracingViewModel {
         strokeTracker.reset()
         progress = 0
         activePath.removeAll(keepingCapacity: true)
-        smoothedVelocity = 0
+        touchDispatcher.resetVelocity()
         playback.resumeIntent = false
         playback.cancelPending()
         audio.stop()
@@ -948,226 +953,25 @@ public final class TracingViewModel {
 
     // MARK: - Touch handling
 
+    /// D1b (ROADMAP): the touch-handling logic and its session-scoped
+    /// state (last point/timestamp, smoothed velocity, single-touch
+    /// flag, the three tuning knobs) live on `TouchDispatcher` now.
+    /// The VM keeps the public touch methods as thin forwarders so
+    /// SwiftUI views and tests don't notice the move.
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
-        guard phaseController.isTouchEnabled       else { return }
-        guard phaseController.currentPhase != .direct else { return }  // handled by DirectPhaseDotsOverlay
-        guard !isSingleTouchInteractionActive     else { return }
-
-        isSingleTouchInteractionActive   = true
-        playback.resumeIntent     = true
-        lastPoint                        = p
-        lastTimestamp                    = t
-        activePath                       = [p]
-        // Gate on `feedbackIntensity > 0` so freeWrite (which fades all
-        // real-time feedback per Schmidt & Lee 2005 Guidance Hypothesis)
-        // doesn't fire a stroke-begin haptic. Every other haptic + audio
-        // channel already respects this gate; this site was the lone
-        // exception (review item W-20 / P-10).
-        if feedbackIntensity > 0 { haptics.fire(.strokeBegan) }
-        // Reload audio file — stop() in endTouch clears currentFile, so play() would
-        // silently fail on subsequent touches without reloading first.
-        if letters.indices.contains(letterIndex) {
-            let files = activeAudioFiles(for: letters[letterIndex])
-            if files.indices.contains(audioIndex) {
-                audio.loadAudioFile(named: files[audioIndex], autoplay: false)
-            }
-        }
+        touchDispatcher.beginTouch(at: p, t: t)
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
-        guard isSingleTouchInteractionActive      else { return }
-        guard let lastPoint                       else { return }
-
-        resyncCanvasSizeIfNeeded(canvasSize)
-
-        let isWithinCanvasBounds =
-            p.x >= 0 && p.y >= 0 && p.x <= canvasSize.width && p.y <= canvasSize.height
-
-        let dx       = p.x - lastPoint.x
-        let dy       = p.y - lastPoint.y
-        let distance = hypot(dx, dy)
-
-        if isWithinCanvasBounds && distance >= minimumTouchMoveDistance {
-            activePath.append(p)
-            // Accumulate for free-write scoring + KP overlay. The recorder
-            // owns the four-buffer state so the VM body doesn't re-derive
-            // canvas normalisation per touch.
-            if phaseController.currentPhase == .freeWrite {
-                freeWriteRecorder.record(point: p,
-                                          timestamp: t,
-                                          force: pencilPressure ?? 0,
-                                          canvasSize: canvasSize)
-            }
-        }
-
-        if let lastTimestamp {
-            let dt       = max(0.001, t - lastTimestamp)
-            let velocity = distance / dt
-            smoothedVelocity = smoothedVelocity == 0
-                ? velocity
-                : smoothedVelocity + velocitySmoothingAlpha * (velocity - smoothedVelocity)
-        } else {
-            self.lastTimestamp = t
-        }
-
-        // Canvas-normalised coords (0–1 over the whole canvas) — used for
-        // audio stereo panning so that writing in the right-hand cell of a
-        // pencil layout pans right.
-        let canvasNormalized = CGPoint(x: p.x / max(canvasSize.width, 1),
-                                       y: p.y / max(canvasSize.height, 1))
-        // Cell-normalised coords (0–1 over the active cell's frame) — fed
-        // to the active cell's stroke tracker, whose checkpoints live in the
-        // cell's own 0–1 space. For a length-1 finger sequence the frame
-        // equals the whole canvas, so this is identical to canvasNormalized.
-        let activeFrame = grid.activeCell.frame
-        let normalized: CGPoint
-        if activeFrame.width > 0 && activeFrame.height > 0 {
-            normalized = CGPoint(
-                x: (p.x - activeFrame.minX) / activeFrame.width,
-                y: (p.y - activeFrame.minY) / activeFrame.height
-            )
-        } else {
-            normalized = canvasNormalized
-        }
-        let prevStrokeIndex   = strokeTracker.currentStrokeIndex
-        let prevNextCheckpoint = strokeTracker.progress.indices.contains(prevStrokeIndex)
-            ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
-        let wasComplete       = strokeTracker.isComplete
-
-        strokeTracker.update(normalizedPoint: normalized)
-
-        let isNowComplete = strokeTracker.isComplete
-        if !wasComplete && isNowComplete, feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
-        // Aggregate across all cells so the progress bar tracks the whole
-        // sequence, not just the active cell. For a length-1 sequence this
-        // reduces to the active (and only) cell's overallProgress.
-        progress = grid.aggregateProgress
-
-        updateGuidedAndFreeWriteSpeed()
-
-        fireMovementHaptics(prevStrokeIndex: prevStrokeIndex,
-                            prevNextCheckpoint: prevNextCheckpoint)
-
-        updateAdaptivePlayback(canvasNormalized: canvasNormalized)
-
-        handleStrokeCompletionIfReached()
-
-        self.lastPoint     = p
-        self.lastTimestamp = t
+        touchDispatcher.updateTouch(at: p, t: t, canvasSize: canvasSize)
     }
 
-    /// Bring `self.canvasSize` (and the cell layout / checkpoint mapping
-    /// that derive from it) back in sync with whatever the touch overlay
-    /// is currently reporting. This closes the window where a
-    /// rotation/layout update has already fired `canvasSize.didSet` —
-    /// reloading checkpoints for the new size — but the touch overlay
-    /// coordinator still carries the previous size, causing
-    /// normalizedPoint vs. checkpoint coordinate mismatch.
-    private func resyncCanvasSizeIfNeeded(_ canvasSize: CGSize) {
-        guard canvasSize != self.canvasSize,
-              !letters.isEmpty,
-              letterIndex < letters.count else { return }
-        // Re-flow cell frames with the overlay-reported size BEFORE
-        // reloading checkpoints — reload now maps per-cell using each
-        // cell's own frame.
-        grid.layout(in: canvasSize, schriftArt: schriftArt)
-        reloadStrokeCheckpoints(for: letters[letterIndex], usingSize: canvasSize)
-    }
-
-    /// Push the live "checkpoints per second" figure into the recorder
-    /// while the user is in guided or freeWrite. Stays silent in observe
-    /// / direct since those phases have no continuous motion to measure.
-    private func updateGuidedAndFreeWriteSpeed() {
-        let currentPhase = phaseController.currentPhase
-        guard currentPhase == .guided || currentPhase == .freeWrite,
-              let def = strokeTracker.definition else { return }
-        let completedCPs = def.strokes.enumerated().reduce(0) { acc, item in
-            let (idx, stroke) = item
-            guard strokeTracker.progress.indices.contains(idx) else { return acc }
-            return strokeTracker.progress[idx].complete
-                ? acc + stroke.checkpoints.count
-                : acc + strokeTracker.progress[idx].nextCheckpoint
-        }
-        freeWriteRecorder.updateSpeed(completedCheckpoints: completedCPs)
-    }
-
-    /// Trigger checkpoint or stroke-completed haptics if the tracker
-    /// crossed a boundary on this touch update. Compares the snapshot
-    /// taken before `strokeTracker.update(...)` to the post-update state.
-    private func fireMovementHaptics(prevStrokeIndex: Int,
-                                     prevNextCheckpoint: Int) {
-        guard feedbackIntensity > 0 else { return }
-        let newStrokeIndex     = strokeTracker.currentStrokeIndex
-        let newNextCheckpoint  = strokeTracker.progress.indices.contains(prevStrokeIndex)
-            ? strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
-        guard prevNextCheckpoint != newNextCheckpoint
-              || newStrokeIndex != prevStrokeIndex else { return }
-        if strokeTracker.progress.indices.contains(prevStrokeIndex)
-            && strokeTracker.progress[prevStrokeIndex].complete {
-            haptics.fire(.strokeCompleted)
-        } else {
-            haptics.fire(.checkpointHit)
-        }
-    }
-
-    /// Map the smoothed velocity + canvas-x to the audio engine's
-    /// time-stretch speed and stereo pan, then ask the playback state
-    /// machine whether the underlying source should be active or idle.
-    private func updateAdaptivePlayback(canvasNormalized: CGPoint) {
-        let speed        = Self.mapVelocityToSpeed(smoothedVelocity)
-        let azimuthBias  = pencilPressure != nil ? cos(pencilAzimuth) * 0.2 : 0
-        // Pan follows the absolute x across the whole canvas, not the
-        // active cell — so a cell on the right still sounds from the right
-        // regardless of cell-local normalisation.
-        let hBias        = Float(max(-1.0, min(1.0, (canvasNormalized.x * 2.0 - 1.0) + azimuthBias)))
-        audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
-
-        let shouldPlayForStroke = strokeTracker.isNearStroke
-        let shouldBeActive      = shouldPlayForStroke && smoothedVelocity >= playbackActivationVelocityThreshold
-                                  && feedbackIntensity > 0.3
-        playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
-    }
-
-    /// If the active cell's tracker just completed, advance the grid
-    /// cursor to the next cell — or, if the whole sequence is done, kick
-    /// off the phase advance. Guards against vacuous completion (empty
-    /// stroke definitions, where `isComplete` would be trivially true).
-    private func handleStrokeCompletionIfReached() {
-        let hasStrokes = (strokeTracker.definition?.strokes.isEmpty == false)
-        guard hasStrokes, strokeTracker.isComplete else { return }
-        // Snapshot tracker-derived values BEFORE advancing — after the
-        // grid moves the cursor, `strokeTracker` aliases the next cell
-        // (fresh state, zero progress).
-        let completingCellIndex = grid.activeCellIndex
-        let sequenceDone = grid.advanceIfCompleted()
-        if !sequenceDone {
-            // Retain the just-completed cell's ink so it stays on
-            // screen — preserves the child's written letter as they
-            // move on to the next cell. VM activePath clears so the
-            // next cell's tracing starts with a blank slate.
-            if grid.cells.indices.contains(completingCellIndex) {
-                grid.cells[completingCellIndex].activePath = activePath
-            }
-            activePath.removeAll(keepingCapacity: true)
-            // Play the next cell's letter audio so the child hears
-            // "O → M → A" as they trace through "OMA". Per-cell
-            // audio policy per the thesis-plan v1. Silent for letters
-            // without an audio asset in the inventory.
-            autoplayActiveCellLetter()
-        } else if !didCompleteCurrentLetter {
-            didCompleteCurrentLetter = true
-            if feedbackIntensity > 0 { haptics.fire(.letterCompleted) }
-            // Stop audio before phase teardown so the child doesn't
-            // hear the letter sound bleed into the next phase.
-            playback.request(.idle, immediate: true)
-            // Route through advanceLearningPhase() so phase transitions
-            // always go through one path:
-            //   guided     → freeWrite  (phaseController.advance returns true)
-            //   guided     → complete   (guidedOnly/control: returns false → celebration)
-            //   freeWrite  → complete   (threePhase: returns false → celebration)
-            advanceLearningPhase()
-        }
-    }
+    /// Test-only inspection of the dispatcher's smoothed-velocity
+    /// state. Lets the existing TracingViewModelTests assertions on
+    /// audio-state changes pin the contract without poking through the
+    /// dispatcher type.
+    var debugSmoothedVelocity: CGFloat { touchDispatcher.smoothedVelocity }
+    var debugIsSingleTouchInteractionActive: Bool { touchDispatcher.isSingleTouchInteractionActive }
 
     // MARK: - Lifecycle
 
@@ -1225,19 +1029,7 @@ public final class TracingViewModel {
     }
 
     func endTouch() {
-        isSingleTouchInteractionActive = false
-        lastPoint                      = nil
-        lastTimestamp                  = nil
-        activePath.removeAll(keepingCapacity: true)
-        smoothedVelocity               = 0
-        pencilPressure                 = nil
-        pencilAzimuth                  = 0
-        playback.resumeIntent   = false
-        playback.cancelPending()
-        let cmd = playback.transition(to: .idle)
-        playback.apply(cmd)
-        if cmd == .none { audio.stop(); isPlaying = false }
-        playback.forceIdle()
+        touchDispatcher.endTouch()
     }
 
     // MARK: - Animation guide
@@ -1709,13 +1501,15 @@ public final class TracingViewModel {
         directPulsingTask = nil
         directPulsingDot = false
         directArrowStrokeIndex = nil
-        smoothedVelocity = 0
-        // W-6: a phase transition can fire mid-stroke (handleStrokeCompletionIfReached
-        // is called from updateTouch while a finger is down). If the system interrupts
-        // the gesture (incoming call, Control Centre swipe) between that updateTouch
-        // and the matching endTouch, isSingleTouchInteractionActive is stranded true
-        // and beginTouch's guard rejects all future touches. Reset it here.
-        isSingleTouchInteractionActive = false
+        // W-6: a phase transition can fire mid-stroke
+        // (handleStrokeCompletionIfReached is called from updateTouch
+        // while a finger is down). If the system interrupts the gesture
+        // (incoming call, Control Centre swipe) between that
+        // updateTouch and the matching endTouch,
+        // `isSingleTouchInteractionActive` is stranded true and
+        // beginTouch's guard rejects all future touches. The dispatcher
+        // owns that flag now, so the reset goes through it.
+        touchDispatcher.resetTouchState()
         playback.resumeIntent = false
         playback.cancelPending()
         audio.stop()
@@ -1968,8 +1762,7 @@ public final class TracingViewModel {
         letterLoadedDate               = Date()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
-        isSingleTouchInteractionActive = false
-        smoothedVelocity               = 0
+        touchDispatcher.resetTouchState()
         playback.resumeIntent   = true
         playback.cancelPending()
         stopGuideAnimation()
@@ -2027,16 +1820,6 @@ public final class TracingViewModel {
         messages.show(completion: "🎉 \(currentLetterName) geschafft!")
     }
 
-    static func mapVelocityToSpeed(_ v: CGFloat) -> Float {
-        // Map writing velocity to playback rate: slow tracing = slow audio, fast = fast.
-        // Range calibrated to iPad finger writing: ~50 pt/s (careful) to ~800 pt/s (quick).
-        // Rate 1.0 at ~300 pt/s (normal writing pace).
-        let low: CGFloat = 50, high: CGFloat = 800
-        if v <= low  { return 0.5 }
-        if v >= high { return 2.0 }
-        return Float(0.5 + 1.5 * ((v - low) / (high - low)))
-    }
-
     /// Reload stroke checkpoints mapped to canvas-normalised coordinates (0–1).
     /// Pass `usingSize` to override `self.canvasSize` — used by `updateTouch` to
     /// guarantee the mapping size equals the size used to normalise the touch point.
@@ -2047,7 +1830,7 @@ public final class TracingViewModel {
     /// gated on `strokeTracker.definition != nil` so any path that resets the
     /// tracker (resetLetter, phase transition) automatically misses and rebuilds
     /// without each reset site having to remember to invalidate the key.
-    private func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
+    func reloadStrokeCheckpoints(for letter: LetterAsset, usingSize size: CGSize? = nil) {
         // Stroke coordinates in JSON are glyph-relative (0–1 within bounding box).
         // Map to per-cell-normalised coordinates using each cell's glyph rect,
         // so a multi-cell layout runs each cell's tracker in its own
