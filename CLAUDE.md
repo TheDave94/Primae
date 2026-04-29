@@ -1,6 +1,6 @@
 # CLAUDE.md — Primae (Letter Learning App)
 
-> Brand: **Primae** (formerly "Buchstaben-Lernen-App"). The repo, Xcode project (`BuchstabenApp`), and Swift Package target (`BuchstabenNative`) keep their pre-rebrand names for build-system stability — only user-facing strings, the bundle display name, and documentation use "Primae".
+> Brand: **Primae** (formerly "Buchstaben-Lernen-App"). Everything carries the new name: the GitHub repo (`TheDave94/Primae`), Xcode project, scheme, host app, host folder (`Primae/`), Swift Package target (`PrimaeNative`), test target (`PrimaeNativeTests`), bundle identifier (`de.flamingistan.primae`), and the SPM relative path (`../../Primae`). Pre-rebrand UserDefaults keys (`de.flamingistan.buchstaben.*`) moved to `de.flamingistan.primae.*` — the app is in alpha so existing test-device state is intentionally reset. The local working-tree directory is still `Buchstaben-Lernen-App` on this machine (the SPM ref expects `Primae`, so a fresh `git clone https://github.com/TheDave94/Primae.git` is the cleanest way to land in the right path).
 
 ## Project Overview
 iPad app for teaching German children (ages 5-6) to trace letters. Built with SwiftUI, Swift 6.3, targeting iOS 18+. Academic thesis project.
@@ -40,8 +40,8 @@ Read `docs/LESSONS.md` before touching `AudioEngine.swift`,
 
 ## Build & Test
 ```bash
-cd BuchstabenApp
-xcodebuild test -project BuchstabenApp.xcodeproj -scheme BuchstabenApp \
+cd Primae
+xcodebuild test -project Primae.xcodeproj -scheme Primae \
   -destination "platform=iOS Simulator,name=iPad (A16)" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO
 ```
@@ -59,28 +59,28 @@ xcodebuild test -project BuchstabenApp.xcodeproj -scheme BuchstabenApp \
 
 2. **Full build** (CI runner or local Mac):
    ```bash
-   xcodebuild build -project BuchstabenApp/BuchstabenApp.xcodeproj -scheme BuchstabenApp \
+   xcodebuild build -project Primae/Primae.xcodeproj -scheme Primae \
      -destination "platform=iOS Simulator,name=iPad (A16)" \
      -configuration Debug CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
-     -derivedDataPath /tmp/DerivedData-BuchstabenApp 2>&1 | tail -20
+     -derivedDataPath /tmp/DerivedData-Primae 2>&1 | tail -20
    ```
 
 3. **Full test suite** (CI runner or local Mac):
    ```bash
-   xcodebuild test -project BuchstabenApp/BuchstabenApp.xcodeproj -scheme BuchstabenApp \
+   xcodebuild test -project Primae/Primae.xcodeproj -scheme Primae \
      -destination "platform=iOS Simulator,name=iPad (A16)" \
      -configuration Debug CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
-     -derivedDataPath /tmp/DerivedData-BuchstabenApp 2>&1 | tail -30
+     -derivedDataPath /tmp/DerivedData-Primae 2>&1 | tail -30
    ```
 
 4. **strokes.json validation** (works anywhere with python3):
    ```bash
-   python3 -c "import json, pathlib; [json.loads(f.read_text()) for f in pathlib.Path('BuchstabenNative/Resources/Letters').rglob('strokes.json')]; print('All strokes.json valid')"
+   python3 -c "import json, pathlib; [json.loads(f.read_text()) for f in pathlib.Path('PrimaeNative/Resources/Letters').rglob('strokes.json')]; print('All strokes.json valid')"
    ```
 
 5. **CI status**:
    ```bash
-   gh run list --repo TheDave94/Buchstaben-Lernen-App --limit 3
+   gh run list --repo TheDave94/Primae --limit 3
    ```
 
 ## DO NOT

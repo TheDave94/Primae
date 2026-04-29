@@ -48,7 +48,7 @@ reach those screens accidentally.
   azimuth feed the pressure-control dimension; finger input is treated
   as zero-force.
 * The package targets `iOS 26.0` and `macOS 15.0`
-  (`Package.swift:6-9`); the BuchstabenApp Xcode wrapper hosts it on iOS.
+  (`Package.swift:6-9`); the Primae Xcode wrapper hosts it on iOS.
 
 ### 1.4 Language
 
@@ -84,7 +84,7 @@ casual user is never silently dropped into a degraded condition.
 #### `App/`
 | File | Lines | Role |
 |------|------:|------|
-| `BuchstabenNativeApp.swift` | 24 | App entry. Creates the shared TracingViewModel and wires `scenePhase` → `appDidBecomeActive` / `appDidEnterBackground`. |
+| `PrimaeNativeApp.swift` | 24 | App entry. Creates the shared TracingViewModel and wires `scenePhase` → `appDidBecomeActive` / `appDidEnterBackground`. |
 | `ContentView.swift` | 382 | Pre-redesign root, marked `@available(*, deprecated)`. Retained for chrome reference; not instantiated. |
 
 #### `Core/` (data + algorithms; no SwiftUI)
@@ -197,7 +197,7 @@ casual user is never silently dropped into a degraded condition.
 * `ML/GermanLetterRecognizer.mlpackage/` — CoreML model + manifest.
 * `letter_set.json` — `active_letters: ["A","F","I","K","L","M","O"]`.
 
-#### `BuchstabenNativeTests/`
+#### `PrimaeNativeTests/`
 40+ test files using **Swift Testing** (`@Test`, `@Suite`, `#expect`).
 Notable: `WritingAssessmentTests`, `LetterSchedulerTests`,
 `ParentDashboardStoreTests`, `ParentDashboardExporterTests`,
@@ -214,7 +214,7 @@ Notable: `WritingAssessmentTests`, `LetterSchedulerTests`,
 ### 2.2 Dependency graph
 
 ```
-BuchstabenNativeApp
+PrimaeNativeApp
   └── @State vm = TracingViewModel()       ← single shared instance
        └── TracingDependencies.live (injected)
             ├── AudioEngine          (AudioControlling)
@@ -1176,7 +1176,7 @@ the bundled font is not the official one.
 ### 5.3 SchriftArt switching
 
 * `TracingDependencies` reads the persisted choice from
-  `UserDefaults.standard.string(forKey: "de.flamingistan.buchstaben.selectedSchriftArt")`
+  `UserDefaults.standard.string(forKey: "de.flamingistan.primae.selectedSchriftArt")`
   on init. Migration logic maps a legacy `"schulschrift1995"` value to
   `.schreibschrift`.
 * `TracingViewModel.schriftArt` setter (line 30) clears the script
@@ -1204,7 +1204,7 @@ the bundled font is not the official one.
 ### 6.1 ProgressStore (per letter)
 
 **File.** `Core/ProgressStore.swift`. Stored at
-`Application Support/BuchstabenNative/progress.json` (atomic, debounced
+`Application Support/PrimaeNative/progress.json` (atomic, debounced
 writes).
 
 **Schema.**
@@ -1229,7 +1229,7 @@ streaks.
 ### 6.2 ParentDashboardStore (sessions + phases)
 
 **File.** `Core/ParentDashboardStore.swift`. Stored at
-`Application Support/BuchstabenNative/dashboard.json`.
+`Application Support/PrimaeNative/dashboard.json`.
 
 **Schema.**
 * `LetterAccuracyStat(letter, accuracySamples)` — per letter, capped at
@@ -1263,7 +1263,7 @@ so every store agrees that `ß` stays `ß` instead of collapsing to
 ### 6.3 StreakStore (engagement)
 
 **File.** `Core/StreakStore.swift`. Stored at
-`Application Support/BuchstabenNative/streak.json`.
+`Application Support/PrimaeNative/streak.json`.
 
 * `currentStreak`, `longestStreak`, `totalCompletions`,
   `completedLetters: Set<String>`, `earnedRewards: Set<RewardEvent>`.
@@ -1589,7 +1589,7 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 * **Swift Testing** (`@Test`, `@Suite`, `#expect`) for new tests; a
   small core of XCTest files retained from before the framework
   switch (per `LESSONS.md` instruction not to migrate existing XCTest).
-* Tests live in `BuchstabenNativeTests/`. The package targets
+* Tests live in `PrimaeNativeTests/`. The package targets
   `.swiftLanguageMode(.v5)` for the test target only — the main
   target uses Swift 6 with `.defaultIsolation(MainActor.self)`. The
   v5 carve-out exists because `XCTestCase`'s inherited nonisolated
@@ -1813,7 +1813,7 @@ Souberman, Eds.). Harvard University Press.
 _Compact one-page architecture map. Drilldown lives in §2 above._
 
 ```
-BuchstabenNativeApp
+PrimaeNativeApp
 └── MainAppView                     ← root, hosts WorldSwitcherRail + worlds
     ├── WorldSwitcherRail           ← persistent left rail; gear long-press → Parent Area
     ├── SchuleWorldView             ← guided 4-phase letter learning (observe → direct → guided → freeWrite)
@@ -1828,7 +1828,7 @@ BuchstabenNativeApp
         └── ExportCenterView        ← CSV / TSV / JSON share-sheet export
 ```
 
-`TracingViewModel` is a single shared `@Observable` instance created in `BuchstabenNativeApp` and injected via `.environment(vm)`. All worlds read from it; only the calibrator and parent area mutate it directly.
+`TracingViewModel` is a single shared `@Observable` instance created in `PrimaeNativeApp` and injected via `.environment(vm)`. All worlds read from it; only the calibrator and parent area mutate it directly.
 
 ## Key data flow on freeWrite end
 
@@ -1966,7 +1966,7 @@ The app's existing audio plays the **letter name** (German /aː/, /beː/, …). 
 Drop phoneme recordings into the existing per-letter directory:
 
 ```
-BuchstabenNative/Resources/Letters/<base>/
+PrimaeNative/Resources/Letters/<base>/
     <base>_phoneme1.mp3
     <base>_phoneme2.mp3        # optional second voice / take
     <base>_phoneme3.mp3        # optional third voice / take

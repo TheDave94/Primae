@@ -1,0 +1,516 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		DB8613CD2F6CC57600D508C8 /* PrimaeNative in Frameworks */ = {isa = PBXBuildFile; productRef = DBDE4FB92F6330730052F95D /* PrimaeNative */; };
+		DBDE4FBA2F6330730052F95D /* PrimaeNative in Frameworks */ = {isa = PBXBuildFile; productRef = DBDE4FB92F6330730052F95D /* PrimaeNative */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D000000000000001000000A2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = DBDE4FA22F632FC30052F95D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DBDE4FA92F632FC30052F95D;
+			remoteInfo = Primae;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		9FAA85E4814CF09513405571 /* PrimaeNativeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PrimaeNativeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		DBDE4FAA2F632FC30052F95D /* Primae.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Primae.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		DBDE4FAC2F632FC30052F95D /* Primae */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Primae;
+			sourceTree = "<group>";
+		};
+		DBDE50052F6333E40052F95D /* Letters */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Letters;
+			sourceTree = "<group>";
+		};
+		FC232BB4343BDEA478F5E6E5 /* ../PrimaeNativeTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ../PrimaeNativeTests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		C97523547CBDF68781C570C0 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DB8613CD2F6CC57600D508C8 /* PrimaeNative in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DBDE4FA72F632FC30052F95D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DBDE4FBA2F6330730052F95D /* PrimaeNative in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		DB8613CE2F6CC57600D508C8 /* Recovered References */ = {
+			isa = PBXGroup;
+			children = (
+				FC232BB4343BDEA478F5E6E5 /* ../PrimaeNativeTests */,
+			);
+			name = "Recovered References";
+			sourceTree = "<group>";
+		};
+		DBDE4FA12F632FC30052F95D = {
+			isa = PBXGroup;
+			children = (
+				DBDE50052F6333E40052F95D /* Letters */,
+				DBDE4FAC2F632FC30052F95D /* Primae */,
+				DBDE4FAB2F632FC30052F95D /* Products */,
+				DB8613CE2F6CC57600D508C8 /* Recovered References */,
+			);
+			sourceTree = "<group>";
+		};
+		DBDE4FAB2F632FC30052F95D /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				DBDE4FAA2F632FC30052F95D /* Primae.app */,
+				9FAA85E4814CF09513405571 /* PrimaeNativeTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DBDE4FA92F632FC30052F95D /* Primae */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DBDE4FB52F632FC40052F95D /* Build configuration list for PBXNativeTarget "Primae" */;
+			buildPhases = (
+				DBDE4FA62F632FC30052F95D /* Sources */,
+				DBDE4FA72F632FC30052F95D /* Frameworks */,
+				DBDE4FA82F632FC30052F95D /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				DBDE4FAC2F632FC30052F95D /* Primae */,
+				DBDE50052F6333E40052F95D /* Letters */,
+			);
+			name = Primae;
+			packageProductDependencies = (
+				DBDE4FB92F6330730052F95D /* PrimaeNative */,
+			);
+			productName = Primae;
+			productReference = DBDE4FAA2F632FC30052F95D /* Primae.app */;
+			productType = "com.apple.product-type.application";
+		};
+		DC81ED0CB6E1B1C304209F6A /* PrimaeNativeTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6218514A0CB4B9C58D5F2631 /* Build configuration list for PBXNativeTarget "PrimaeNativeTests" */;
+			buildPhases = (
+				1ACC3DE65C17C32CD2C6B734 /* Sources */,
+				C97523547CBDF68781C570C0 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				D000000000000001000000A1 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				FC232BB4343BDEA478F5E6E5 /* ../PrimaeNativeTests */,
+			);
+			name = PrimaeNativeTests;
+			packageProductDependencies = (
+				DBDE4FB92F6330730052F95D /* PrimaeNative */,
+			);
+			productName = PrimaeNativeTests;
+			productReference = 9FAA85E4814CF09513405571 /* PrimaeNativeTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		DBDE4FA22F632FC30052F95D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					DBDE4FA92F632FC30052F95D = {
+						CreatedOnToolsVersion = 26.3;
+					};
+					DC81ED0CB6E1B1C304209F6A = {
+						CreatedOnToolsVersion = 26.3;
+						TestTargetID = DBDE4FA92F632FC30052F95D;
+					};
+				};
+			};
+			buildConfigurationList = DBDE4FA52F632FC30052F95D /* Build configuration list for PBXProject "Primae" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = DBDE4FA12F632FC30052F95D;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DBDE4FB82F6330730052F95D /* XCLocalSwiftPackageReference "../../Primae" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = DBDE4FAB2F632FC30052F95D /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DBDE4FA92F632FC30052F95D /* Primae */,
+				DC81ED0CB6E1B1C304209F6A /* PrimaeNativeTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		DBDE4FA82F632FC30052F95D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1ACC3DE65C17C32CD2C6B734 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		DBDE4FA62F632FC30052F95D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D000000000000001000000A1 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DBDE4FA92F632FC30052F95D /* Primae */;
+			targetProxy = D000000000000001000000A2 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0170380416A87A1278248E94 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.flamingistan.primae.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Primae.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Primae";
+			};
+			name = Debug;
+		};
+		CC476E0DBE5DA3DCEF735B05 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.flamingistan.primae.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 2;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Primae.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Primae";
+			};
+			name = Release;
+		};
+		DBDE4FB32F632FC40052F95D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		DBDE4FB42F632FC40052F95D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		DBDE4FB62F632FC40052F95D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Primae;
+				INFOPLIST_KEY_UIAppFonts = "Primae-Light.otf Primae-LightCursive.otf Primae-Semilight.otf Primae-SemilightCursive.otf Primae-Regular.otf Primae-Cursive.otf Primae-Semibold.otf Primae-SemiboldCursive.otf Primae-Bold.otf Primae-BoldCursive.otf PrimaeText-Light.otf PrimaeText-LightCursive.otf PrimaeText-Semilight.otf PrimaeText-SemilightCursive.otf PrimaeText-Regular.otf PrimaeText-Cursive.otf PrimaeText-Semibold.otf PrimaeText-SemiboldCursive.otf PrimaeText-Bold.otf PrimaeText-BoldCursive.otf PlaywriteAT-Regular.ttf";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.flamingistan.primae;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Debug;
+		};
+		DBDE4FB72F632FC40052F95D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = XMX37BH48B;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Primae;
+				INFOPLIST_KEY_UIAppFonts = "Primae-Light.otf Primae-LightCursive.otf Primae-Semilight.otf Primae-SemilightCursive.otf Primae-Regular.otf Primae-Cursive.otf Primae-Semibold.otf Primae-SemiboldCursive.otf Primae-Bold.otf Primae-BoldCursive.otf PrimaeText-Light.otf PrimaeText-LightCursive.otf PrimaeText-Semilight.otf PrimaeText-SemilightCursive.otf PrimaeText-Regular.otf PrimaeText-Cursive.otf PrimaeText-Semibold.otf PrimaeText-SemiboldCursive.otf PrimaeText-Bold.otf PrimaeText-BoldCursive.otf PlaywriteAT-Regular.ttf";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.flamingistan.primae;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 2;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6218514A0CB4B9C58D5F2631 /* Build configuration list for PBXNativeTarget "PrimaeNativeTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0170380416A87A1278248E94 /* Debug */,
+				CC476E0DBE5DA3DCEF735B05 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DBDE4FA52F632FC30052F95D /* Build configuration list for PBXProject "Primae" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DBDE4FB32F632FC40052F95D /* Debug */,
+				DBDE4FB42F632FC40052F95D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		DBDE4FB52F632FC40052F95D /* Build configuration list for PBXNativeTarget "Primae" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DBDE4FB62F632FC40052F95D /* Debug */,
+				DBDE4FB72F632FC40052F95D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		DBDE4FB82F6330730052F95D /* XCLocalSwiftPackageReference "../../Primae" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../Primae";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		DBDE4FB92F6330730052F95D /* PrimaeNative */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = PrimaeNative;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = DBDE4FA22F632FC30052F95D /* Project object */;
+}

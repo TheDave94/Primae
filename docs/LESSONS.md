@@ -79,7 +79,7 @@ Logger.shared.warning("…")
 
 // RIGHT
 private let logger = Logger(
-    subsystem: Bundle.main.bundleIdentifier ?? "BuchstabenNative",
+    subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
     category: "Recogniser"
 )
 ```
@@ -133,7 +133,7 @@ changes need a separate commit.
 
 ### Use `@Observable`, not `ObservableObject` / `@Published`
 The migration is complete: `grep -r "ObservableObject\|@Published"
-BuchstabenNative/` returns zero matches (verified 2026-04-29).
+PrimaeNative/` returns zero matches (verified 2026-04-29).
 **Do not regress** any new type back to the `ObservableObject` /
 `@Published` shape — it would re-introduce isolation traps under
 Swift 6 strict-concurrency checking. Every new observable type uses

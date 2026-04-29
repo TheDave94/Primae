@@ -1,0 +1,25 @@
+{
+  "configurations" : [
+    {
+      "id" : "device-tests-config",
+      "name" : "Configuration 1",
+      "options" : {}
+    }
+  ],
+  "defaultOptions" : {
+    "testTimeoutsEnabled" : true
+  },
+  "testTargets" : [
+    {
+      "selectedTests" : [
+        "AudioEngineTests"
+      ],
+      "target" : {
+        "containerPath" : "container:Primae.xcodeproj",
+        "identifier" : "PrimaeNativeTests",
+        "name" : "PrimaeNativeTests"
+      }
+    }
+  ],
+  "version" : 1
+}

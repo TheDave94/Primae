@@ -56,7 +56,7 @@ Detail sections follow with effort, file list, citations, failure modes per item
    - Open the app in Debug mode (long-press the phase indicator on SchuleWorldView)
    - Open the calibration overlay (long-press again)
    - Drag-place each checkpoint visually over the rendered glyph
-   - The calibration store writes to `Application Support/BuchstabenNative/calibration/`
+   - The calibration store writes to `Application Support/PrimaeNative/calibration/`
    - Export the calibrated checkpoints into the bundle's `Resources/Letters/<x>/strokes.json`
 2. **PBM bitmap fallback.** Optional but the validator complains without it.
 3. **Audio takes.** 3 mp3 recordings of the letter name (`<x>1.mp3`, `<x>2.mp3`, `<x>3.mp3`).
@@ -88,7 +88,7 @@ Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing hand
 **What's still needed.**
 1. **Audio recordings** following the convention `<base>_phoneme<n>.<ext>` per Appendix C in `docs/APP_DOCUMENTATION.md`. Three takes per letter (different voices for child preference). 30 letters × 3 takes = 90 recordings.
 2. ElevenLabs prompt template + per-letter IPA reference table is in the appendix. Generation should be straightforward; clean-up (trim silence, normalise to -16 LUFS, export at 44.1 kHz mp3) is the per-file labour.
-3. **Bundle wiring.** Drop the files into `BuchstabenNative/Resources/Letters/<base>/`. Repository scan picks them up automatically; no Swift code changes required.
+3. **Bundle wiring.** Drop the files into `PrimaeNative/Resources/Letters/<base>/`. Repository scan picks them up automatically; no Swift code changes required.
 4. **Verification checklist** (in the appendix): toggle on → tap → phoneme plays; two-finger swipe cycles through takes; toggle off → name resumes.
 
 **Citations.**

@@ -17,7 +17,7 @@ python3 scripts/generate_pbm.py A B C   # specific letters
 python3 scripts/generate_pbm.py         # all letters
 ```
 
-Output: `BuchstabenNative/Resources/Letters/<X>/<X>.pbm`
+Output: `PrimaeNative/Resources/Letters/<X>/<X>.pbm`
 
 ### `generate_strokes.py`
 Generate `strokes.json` skeleton tracing paths for letters that don't
@@ -32,7 +32,7 @@ python3 scripts/generate_strokes.py
 > Volksschule-1.-Klasse handwriting reference before shipping** — wrong
 > stroke order or direction will cement bad motor programs.
 
-Output: `BuchstabenNative/Resources/Letters/<X>/strokes.json`
+Output: `PrimaeNative/Resources/Letters/<X>/strokes.json`
 
 ### `generate_letter_audio.py`
 ElevenLabs voice generator for letter phonemes, example words, and
@@ -49,7 +49,7 @@ python3 scripts/generate_letter_audio.py             # full inventory
 The script writes to `audio_variants/<Voice>/<Letter>/` and
 `audio_variants/<Voice>/words/`. That directory is **not** tracked in
 git — pick the favourite voice's files and copy them into
-`BuchstabenNative/Resources/Letters/<X>/` to ship them.
+`PrimaeNative/Resources/Letters/<X>/` to ship them.
 
 > Phonemes, not letter names. `M` is recorded as "mmmh", not "Em" — the
 > Anlauttabelle approach used in Austrian Volksschule 1. Klasse.
@@ -64,7 +64,7 @@ pip install Pillow
 python3 scripts/gen_appicon.py
 ```
 
-Output: `BuchstabenApp/BuchstabenApp/Assets.xcassets/AppIcon.appiconset/`
+Output: `Primae/Primae/Assets.xcassets/AppIcon.appiconset/`
 (`AppIcon.png`, `AppIcon-dark.png`, `AppIcon-tinted.png`).
 
 ## Git hooks
@@ -79,7 +79,7 @@ executable. Run **once** after every fresh clone.
 
 ### `pre-commit`
 Pre-commit gate that runs `swift build --build-tests` and
-`swift test --parallel` whenever a `BuchstabenNative/*.swift` file is
+`swift test --parallel` whenever a `PrimaeNative/*.swift` file is
 staged. Blocks the commit on a build or test failure.
 
 Emergency bypass:
@@ -94,9 +94,9 @@ git commit --no-verify
    **Review** the order and direction against a handwriting reference.
 3. `python3 scripts/generate_letter_audio.py --letter X` — auditions
    all bundled voices for the phoneme. Pick one, copy its files into
-   `BuchstabenNative/Resources/Letters/X/`.
+   `PrimaeNative/Resources/Letters/X/`.
 4. Sync the PBM into the Xcode resource group:
-   `cp BuchstabenNative/Resources/Letters/X/X.pbm BuchstabenApp/BuchstabenApp/Letters/X/`
+   `cp PrimaeNative/Resources/Letters/X/X.pbm Primae/Primae/Letters/X/`
 5. Open the calibration overlay in DEBUG mode on-device to refine the
    checkpoint positions interactively (the calibrator persists per-
    letter overrides into Application Support).

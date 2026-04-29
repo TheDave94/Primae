@@ -35,15 +35,15 @@ jobs:
       - name: Resolve Swift Package dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp
+            -project Primae/Primae.xcodeproj \
+            -scheme Primae
 
       - name: Build & Test — iPad simulator
         run: |
           set -o pipefail
           xcodebuild test \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp \
+            -project Primae/Primae.xcodeproj \
+            -scheme Primae \
             -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5),OS=latest' \
             -configuration Debug \
             -enableCodeCoverage NO \
@@ -95,8 +95,8 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild test \
-            -project BuchstabenApp/BuchstabenApp.xcodeproj \
-            -scheme BuchstabenApp \
+            -project Primae/Primae.xcodeproj \
+            -scheme Primae \
             -destination 'platform=iOS Simulator,name=iPad (A16)' \
             -configuration Debug \
             -enableCodeCoverage NO \

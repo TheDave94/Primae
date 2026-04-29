@@ -1,4 +1,4 @@
-# SwiftLint config for BuchstabenNative
+# SwiftLint config for PrimaeNative
 # All violations block commits — enforcing best practices
 strict: true
 
@@ -35,9 +35,9 @@ force_try: error
 force_unwrapping: error
 
 included:
-  - BuchstabenNative
+  - PrimaeNative
 
 excluded:
-  - BuchstabenNative/Tests
+  - PrimaeNative/Tests
   - Pods
   - .build

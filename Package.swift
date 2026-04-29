@@ -2,18 +2,18 @@
 import PackageDescription
 
 let package = Package(
-    name: "BuchstabenNative",
+    name: "PrimaeNative",
     platforms: [
         .iOS(.v26),
         .macOS(.v15)
     ],
     products: [
-        .library(name: "BuchstabenNative", targets: ["BuchstabenNative"]),
+        .library(name: "PrimaeNative", targets: ["PrimaeNative"]),
     ],
     targets: [
         .target(
-            name: "BuchstabenNative",
-            path: "BuchstabenNative",
+            name: "PrimaeNative",
+            path: "PrimaeNative",
             resources: [.copy("Resources")],
             swiftSettings: [
                 .defaultIsolation(MainActor.self),
@@ -21,9 +21,9 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "BuchstabenNativeTests",
-            dependencies: ["BuchstabenNative"],
-            path: "BuchstabenNativeTests",
+            name: "PrimaeNativeTests",
+            dependencies: ["PrimaeNative"],
+            path: "PrimaeNativeTests",
             swiftSettings: [
                 // XCTest subclasses with @MainActor members hit a Swift 6 limitation:
                 // inherited nonisolated initialisers (init(invocation:) etc.) conflict

@@ -2,7 +2,7 @@
 
 > An iPad app for Austrian first-graders to learn letter writing — built around a research-backed four-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional Schreibmotorik motor-skill assessment. (Repo + Swift Package + Xcode target names retain their pre-rebrand `Buchstaben*` prefixes for build-system stability.)
 
-[![iOS Build & Test](https://github.com/TheDave94/Buchstaben-Lernen-App/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TheDave94/Buchstaben-Lernen-App/actions/workflows/ios-build.yml)
+[![iOS Build & Test](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml)
 ![Platform](https://img.shields.io/badge/platform-iPadOS%2018%2B-blue)
 ![Swift](https://img.shields.io/badge/Swift-6.3-orange)
 ![Xcode](https://img.shields.io/badge/Xcode-26.4-blue)
@@ -81,14 +81,14 @@ The four phases implement **Gradual Release of Responsibility** (Pearson & Galla
 
 ### Open in Xcode
 ```bash
-open BuchstabenApp/BuchstabenApp.xcodeproj
+open Primae/Primae.xcodeproj
 ```
 Set your development team in project settings, then build & run to a simulator or device.
 
 ### Run the test suite
 ```bash
-cd BuchstabenApp
-xcodebuild test -project BuchstabenApp.xcodeproj -scheme BuchstabenApp \
+cd Primae
+xcodebuild test -project Primae.xcodeproj -scheme Primae \
   -destination "platform=iOS Simulator,name=iPad (A16)" \
   -configuration Debug CODE_SIGNING_ALLOWED=NO
 ```
@@ -110,7 +110,7 @@ See [`.github/workflows/`](.github/workflows/).
 ## Project structure
 
 ```
-BuchstabenNative/          Swift Package (library)
+PrimaeNative/          Swift Package (library)
 ├── App/                   App entry point
 ├── Core/                  Audio, progress, strokes, haptics, difficulty,
 │                          recognition, scoring, speech synthesis
@@ -123,8 +123,8 @@ BuchstabenNative/          Swift Package (library)
     ├── Dashboard/         Settings + parent dashboard
     └── Tracing/           Canvas, ViewModel, freeform / freeWrite recorders
 
-BuchstabenApp/             Xcode host app (imports BuchstabenNative)
-BuchstabenNativeTests/     Swift Testing + XCTest suite
+Primae/             Xcode host app (imports PrimaeNative)
+PrimaeNativeTests/     Swift Testing + XCTest suite
 docs/                      Architecture, thesis foundation, code invariants
 scripts/                   PBM, stroke, audio, app-icon generators + git hooks
 ```
@@ -157,7 +157,7 @@ Pedagogical model and scoring metrics are grounded in:
 
 Full bibliography in [`docs/APP_DOCUMENTATION.md`](docs/APP_DOCUMENTATION.md) § 12.
 
-Schreibschrift rendering uses **Playwrite Österreich** by TypeTogether, SIL Open Font License 1.1 — see [`BuchstabenNative/Resources/Fonts/PlaywriteAT-OFL.txt`](BuchstabenNative/Resources/Fonts/PlaywriteAT-OFL.txt).
+Schreibschrift rendering uses **Playwrite Österreich** by TypeTogether, SIL Open Font License 1.1 — see [`PrimaeNative/Resources/Fonts/PlaywriteAT-OFL.txt`](PrimaeNative/Resources/Fonts/PlaywriteAT-OFL.txt).
 
 ## License
 

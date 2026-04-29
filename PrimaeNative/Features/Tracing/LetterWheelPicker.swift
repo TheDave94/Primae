@@ -1,0 +1,120 @@
+// LetterWheelPicker.swift
+// PrimaeNative
+//
+// Overlay picker shown when the child long-presses the current-letter
+// pill in the top-left of SchuleWorldView. 4-column grid of letter
+// tiles, each sized 60×60 with an optional star-count footer. Tapping
+// a tile calls onSelect; tapping the scrim dismisses without changing
+// the active letter.
+
+import SwiftUI
+
+struct LetterWheelPicker: View {
+    let letters: [String]
+    let currentLetter: String
+    let starCount: (String) -> Int
+    let onSelect: (String) -> Void
+    let onDismiss: () -> Void
+
+    /// Dynamic-Type-scaled tile geometry. The glyph and the tile scale
+    /// together so the letter never clips at larger accessibility sizes.
+    /// Baseline 60×60 with 34pt glyph matches the original visual design.
+    @ScaledMetric(relativeTo: .title) private var tileSize: CGFloat = 60
+    @ScaledMetric(relativeTo: .title) private var letterFontSize: CGFloat = 34
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 12), count: 4)
+
+    var body: some View {
+        ZStack {
+            // Sighted users tap the scrim to dismiss; VoiceOver users
+            // get an explicit "Abbrechen" button (review item W-34) so
+            // focus order is deterministic — the previous scrim-as-
+            // button left the focus ordering ambiguous, sometimes
+            // hitting the scrim before the grid and sometimes after.
+            Color.black.opacity(0.35)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onDismiss)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 16) {
+                grid
+                    .padding(20)
+                    .background(.ultraThinMaterial,
+                                in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color.white.opacity(0.25), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.2), radius: 24, y: 8)
+
+                Button("Abbrechen") { onDismiss() }
+                    .font(.body.weight(.semibold))
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .accessibilityHint("Schließt die Buchstabenauswahl, ohne den Buchstaben zu wechseln")
+            }
+            .padding(.horizontal, 40)
+            .padding(.vertical, 40)
+        }
+        .transition(.opacity)
+    }
+
+    private var grid: some View {
+        ScrollView {
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(letters, id: \.self) { letter in
+                    tile(for: letter)
+                }
+            }
+            .padding(8)
+        }
+        .frame(maxHeight: 420)
+    }
+
+    @ViewBuilder
+    private func tile(for letter: String) -> some View {
+        let isCurrent = letter == currentLetter
+        let stars = starCount(letter)
+        Button {
+            onSelect(letter)
+        } label: {
+            VStack(spacing: 4) {
+                Text(letter)
+                    .font(.system(size: letterFontSize, weight: .bold, design: .rounded))
+                    .foregroundStyle(isCurrent ? Color.white : Color.primary)
+                starRow(stars: stars, highlighted: isCurrent)
+            }
+            .frame(width: tileSize, height: tileSize)
+            .background(
+                isCurrent
+                    ? Color.blue
+                    : Color(red: 0.94, green: 0.96, blue: 0.99),
+                in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isCurrent ? Color.blue : Color.black.opacity(0.06),
+                            lineWidth: isCurrent ? 2 : 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Buchstabe \(letter)")
+        .accessibilityValue(stars > 0 ? "\(stars) Sterne" : "Noch keine Sterne")
+        .accessibilityAddTraits(isCurrent ? [.isButton, .isSelected] : .isButton)
+    }
+
+    @ViewBuilder
+    private func starRow(stars: Int, highlighted: Bool) -> some View {
+        HStack(spacing: 1) {
+            ForEach(0..<4, id: \.self) { idx in
+                Image(systemName: idx < stars ? "star.fill" : "star")
+                    .font(.system(size: 7))
+                    .foregroundStyle(highlighted
+                                      ? Color.white.opacity(idx < stars ? 1 : 0.5)
+                                      : (idx < stars ? AppSurface.starGold : Color.gray.opacity(0.4)))
+            }
+        }
+    }
+}
