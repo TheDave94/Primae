@@ -117,10 +117,12 @@ final class FreeWritePhaseRecorder {
                 canvasSize: CGSize,
                 now: CFTimeInterval = CACurrentMediaTime()) -> WritingAssessment {
         guard let lastCell = cellReferences.last else {
-            // No cells supplied at all — preserve the single-cell shape
-            // by scoring against an empty reference (overall = 0).
-            return assess(reference: LetterStrokes(strokes: []),
-                          canvasSize: canvasSize, now: now)
+            // No cells supplied at all — synthesize a zero-score
+            // assessment so the caller gets a stable shape.
+            let empty = WritingAssessment(formAccuracy: 0, tempoConsistency: 0,
+                                           pressureControl: 0, rhythmScore: 0)
+            lastAssessment = empty
+            return empty
         }
         var perCell: [WritingAssessment] = []
         for cell in cellReferences {
