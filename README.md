@@ -131,13 +131,14 @@ scripts/                   PBM, stroke, audio, app-icon generators + git hooks
 
 ## Documentation
 
-All project documentation lives under [`docs/`](docs/):
+The repo intentionally keeps documentation small and role-separated:
 
 | File | Purpose |
 |------|---------|
-| [`APP_DOCUMENTATION.md`](docs/APP_DOCUMENTATION.md) (+ [`.pdf`](docs/APP_DOCUMENTATION.pdf)) | Thesis-ready technical foundation — architecture, scientific methods with citations, learning pipeline, data schemas, claim verification, bibliography |
-| [`APP_REFERENCE.md`](docs/APP_REFERENCE.md) | Concise architecture reference — file map, dependency graph, key invariants |
-| [`LESSONS.md`](docs/LESSONS.md) | Code-level invariants — read before touching `AudioEngine.swift`, `StrokeTracker.swift`, or the `load(letter:)` path |
+| [`docs/APP_DOCUMENTATION.md`](docs/APP_DOCUMENTATION.md) (+ [`.pdf`](docs/APP_DOCUMENTATION.pdf)) | **The single technical doc.** Architecture, scientific methods with citations, learning pipeline, data schemas, claim verification, bibliography. Includes appendices A (architecture quick reference), B (research export schema), C (phoneme audio authoring guide). |
+| [`ROADMAP.md`](ROADMAP.md) | **The single outstanding-work file.** Forward-looking only — items shipped are removed (commit history is the archive). Each item has effort estimate, file list, citations, failure modes. |
+| [`docs/LESSONS.md`](docs/LESSONS.md) | **Code-level invariants** — guardrails to read before touching `AudioEngine.swift`, `StrokeTracker.swift`, or the `load(letter:)` path. Kept separate so the next contributor reads it in full instead of skimming an appendix. |
+| [`CLAUDE.md`](CLAUDE.md) | Auto-loaded context for Claude Code agents. |
 
 ## Acknowledgments
 

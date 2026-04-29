@@ -1803,5 +1803,249 @@ Souberman, Eds.). Harvard University Press.
 
 ---
 
-_End of document. Last updated against the source tree at HEAD on the
-date this file was last committed._
+# Appendix A — Architecture Quick Reference
+
+_Compact one-page architecture map. Drilldown lives in §2 above._
+
+```
+BuchstabenNativeApp
+└── MainAppView                     ← root, hosts WorldSwitcherRail + worlds
+    ├── WorldSwitcherRail           ← persistent left rail; gear long-press → Parent Area
+    ├── SchuleWorldView             ← guided 4-phase letter learning (observe → direct → guided → freeWrite)
+    │   └── TracingCanvasView       ← Canvas: glyph + ghost + active path + KP overlay
+    ├── WerkstattWorldView          ← freeform letter / word writing
+    │   └── FreeformWritingView     ← blank canvas + result popup (verbal only)
+    ├── FortschritteWorldView       ← child-facing star/streak/letter gallery
+    └── ParentAreaView (parental gate)
+        ├── ParentDashboardView     ← practice-time, per-letter accuracy, phase rates
+        ├── ResearchDashboardView   ← Schreibmotorik dimensions, KI predictions, condition arms
+        ├── SettingsView            ← schriftArt / ordering / paper-transfer / freeform / phoneme toggles
+        └── ExportCenterView        ← CSV / TSV / JSON share-sheet export
+```
+
+`TracingViewModel` is a single shared `@Observable` instance created in `BuchstabenNativeApp` and injected via `.environment(vm)`. All worlds read from it; only the calibrator and parent area mutate it directly.
+
+## Key data flow on freeWrite end
+
+```
+endTouch → advanceLearningPhase
+  ├─ runRecognizerForFreeWrite (background Task)
+  ├─ overlayQueue.enqueue(.kpOverlay)
+  ├─ overlayQueue.enqueue(.paperTransfer) [if enabled]
+  ├─ phaseController.advance → recordPhaseSessionCompletion
+  │   ├─ overlayQueue.enqueue(.celebration)
+  │   ├─ speech.speak(praise)
+  │   └─ progressStore + dashboardStore + streakStore writes
+  └─ recognizer Task → overlayQueue.enqueueBeforeCelebration(.recognitionBadge)
+                     + speech.speak(recognition message)
+```
+
+The OverlayQueueManager serialises every overlay so the child sees one at a time in canonical order: kpOverlay → recognitionBadge → paperTransfer → celebration. Timed cases (kpOverlay 3 s, recognitionBadge 3 s) auto-advance; modal cases (paperTransfer, celebration) wait for explicit dismiss. `rewardCelebration` (U1) auto-advances after 2.5 s.
+
+## Verbal feedback wiring
+
+Children can't read fluently yet, so every numeric metric the data model captures is **only** spoken or rendered as visual encouragement (stars, colour swatches). Speech triggers:
+
+| Trigger | Phrase source |
+|---------|---------------|
+| `load(letter:)` initial phase | `ChildSpeechLibrary.phaseEntry(currentPhase)` |
+| `advanceLearningPhase` transition | `ChildSpeechLibrary.phaseEntry(newPhase)` |
+| `recordPhaseSessionCompletion` | `ChildSpeechLibrary.praise(starsEarned:)` |
+| Recognition result lands (freeWrite) | `ChildSpeechLibrary.recognition(result, expected)` |
+| Freeform recognition lands | `ChildSpeechLibrary.recognition(result, expected: predicted)` |
+| `PaperTransferView` phase rotation | `paperTransferShow / Write / Assess` |
+| `appDidEnterBackground` | `speech.stop()` |
+
+## Letters with full support
+
+A, F, I, K, L, M, O — both `strokes.json` and audio. Lowercase a–z + Ä Ö Ü ß have placeholder folders; they render the glyph but skip phase scaffolding when the stroke array is empty (see ROADMAP.md §T1 for the active-set lowercase plan).
+
+---
+
+# Appendix B — Research Export Schema
+
+_Reference for analysts working with the CSV / TSV / JSON exports produced by `ParentDashboardExporter`. Update this appendix whenever the exporter shape changes._
+
+## File-level header lines
+
+Every CSV / TSV begins with comment lines starting `#`:
+
+| Header | Source | Meaning |
+|---|---|---|
+| `# participantId=<UUID>` | `ParticipantStore.participantId` | Stable per-install UUID. Persists across reinstall via iCloud KV. |
+| `# enrolledAt=<ISO-8601>` | `ParticipantStore.enrolledAt` | First time the install opted into the thesis study. Only present when set. |
+| `# timezone=<IANA>` | `TimeZone.current.identifier` | Device timezone at export time. Useful for interpreting `recordedAt` columns. |
+
+Then a blank line, followed by five data sections.
+
+## Section 1 — Per-letter aggregates
+
+One row per letter the child has practised.
+
+| Column | Type | Source | Range | Purpose |
+|---|---|---|---|---|
+| `letter` | string | `LetterAccuracyStat.letter` | A–Z, Ä, Ö, Ü, ß (uppercase) | Slicing key. |
+| `sessionCount` | int | `accuracySamples.count` | ≥ 0 | How often practised. |
+| `averageAccuracy` | float | `LetterAccuracyStat.averageAccuracy` | 0–1 | Mean session score. |
+| `trend` | float | `LetterAccuracyStat.trend` | signed slope | Linear-regression slope over trailing 10 samples. |
+| `recognitionSamples` | int | `LetterProgress.recognitionAccuracy.count` | 0–10 | CoreML readings retained. |
+| `recognitionAvg` | float | mean of `recognitionAccuracy` | 0–1 | Mean **calibrated** confidence. |
+| `speedTrend` | float-list (`;` joined) | `LetterProgress.speedTrend` | up to 50 | D-4 raised cap from 5 → 50. |
+| `freeformCompletionCount` | int / blank | `LetterProgress.freeformCompletionCount` | ≥ 0 | Werkstatt-mode completions. |
+
+## Section 2 — Per-day session durations
+
+| Column | Type | Source | Purpose |
+|---|---|---|---|
+| `date` | string | `SessionDurationRecord.dateString` | `yyyy-MM-dd` (device-local). |
+| `recordedAt` | ISO-8601 / blank | `SessionDurationRecord.recordedAt` | D-9: time-of-day analysis. |
+| `durationSeconds` | float | `SessionDurationRecord.durationSeconds` | **Active** practice time. Pauses on background (D-1). |
+| `wallClockSeconds` | float / blank | `SessionDurationRecord.wallClockSeconds` | T4: total time including backgrounded intervals. |
+| `condition` | string | `SessionDurationRecord.condition` | `threePhase` / `guidedOnly` / `control`. |
+| `inputDevice` | string / blank | `SessionDurationRecord.inputDevice` | T7: `finger` / `pencil` / blank. |
+
+`condition == threePhase` does not imply four phases ran — the case label predates the `direct` phase.
+
+## Section 3 — Per-phase records
+
+One row per phase × letter session, chronological order. Filtered by `enrolledAt` (D-7) and pre-D-3 nil-recordedAt rows are dropped when `enrolledAt` is set (D-8).
+
+| Column | Source | Purpose |
+|---|---|---|
+| `letter` | `PhaseSessionRecord.letter` | Per-letter slicing. |
+| `phase` | `PhaseSessionRecord.phase` | `observe` / `direct` / `guided` / `freeWrite`. |
+| `completed` | `PhaseSessionRecord.completed` | Selection criterion. |
+| `score` | `PhaseSessionRecord.score` | Phase-level accuracy / form score (0–1). |
+| `schedulerPriority` | `PhaseSessionRecord.schedulerPriority` | Scheduler priority at letter selection. |
+| `condition` | `PhaseSessionRecord.condition` | A/B arm. |
+| `recordedAt` | `PhaseSessionRecord.recordedAt` | D-3: dated learning curves. |
+| `recognition_predicted` | `PhaseSessionRecord.recognitionPredicted` | CoreML top-1 letter (freeWrite rows since D-2). |
+| `recognition_confidence` | `PhaseSessionRecord.recognitionConfidence` | **Post**-calibration softmax. |
+| `recognition_confidence_raw` | `PhaseSessionRecord.recognitionConfidenceRaw` | T5: **pre**-calibration softmax. |
+| `recognition_correct` | `PhaseSessionRecord.recognitionCorrect` | Match expectation? |
+| `formAccuracy` | `PhaseSessionRecord.formAccuracy` | Schreibmotorik dim 1 (Fréchet, weight 0.40). |
+| `tempoConsistency` | `PhaseSessionRecord.tempoConsistency` | dim 2 (CV², weight 0.25). |
+| `pressureControl` | `PhaseSessionRecord.pressureControl` | dim 3 (force variance, weight 0.15). |
+| `rhythmScore` | `PhaseSessionRecord.rhythmScore` | dim 4 (active-time ratio, weight 0.20). |
+| `inputDevice` | `PhaseSessionRecord.inputDevice` | D-6: disambiguates `pressureControl == 1.0`. |
+
+## Section 4 — Aggregate metrics (`metric,value`)
+
+- `phaseCompletionRate_<phase>` per LearningPhase.
+- `averageFreeWriteScore` (cross-arm).
+- `schedulerEffectivenessProxy` (cross-arm Pearson r — interpret with caution; `.control` priorities don't share scale with the other arms).
+- Per-arm: `averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>` (D-7 / D-10).
+- Schreibmotorik dimension means: `averageFormAccuracy`, `averageTempoConsistency`, `averagePressureControl`, `averageRhythmScore` (when ≥ 1 freeWrite session has dimensions).
+
+## Section 5 — Per-arm letter aggregates (D-5)
+
+`letterByArm,<letter>,<arm>,<sampleCount>,<averageScore>` — derived from `phaseSessionRecords` so between-arm letter-level analyses have a clean source.
+
+## JSON export
+
+Contains the full `DashboardSnapshot` plus a `thesisMetrics` block. Use it when you need raw `recognitionSamples`; CSV / TSV is the tabular surface.
+
+---
+
+# Appendix C — Phoneme audio authoring guide (P6)
+
+_Companion guide for ROADMAP §P6 — phoneme audio integration._
+
+## Why phonemes
+
+The app's existing audio plays the **letter name** (German /aː/, /beː/, …). Phonemic awareness — recognising the *sound* `A` makes (/a/ as in *Affe*) — is the load-bearing pre-reading skill German Volksschule curricula teach in parallel with handwriting. Adding phoneme audio lets the parent toggle between names and sounds (Adams 1990; *Beginning to Read*).
+
+## Filename convention
+
+Drop phoneme recordings into the existing per-letter directory:
+
+```
+BuchstabenNative/Resources/Letters/<base>/
+    <base>_phoneme1.mp3
+    <base>_phoneme2.mp3        # optional second voice / take
+    <base>_phoneme3.mp3        # optional third voice / take
+```
+
+`<base>` is the **uppercase** letter directory (`A`–`Z`, `Ä`, `Ö`, `Ü`, `ß`). The leaf filename must contain `_phoneme` (case-insensitive) — that's the partition rule in `LetterRepository.partitionPhonemeAudio`. Existing letter-name recordings (`A1.mp3`, etc.) keep working unchanged; the repository scan picks up both populations.
+
+Supported formats: `.mp3`, `.wav`, `.m4a`, `.aac`, `.flac`, `.ogg`.
+
+## Recommended specs
+
+- 44.1 kHz / 48 kHz, 16-bit / 192 kbps mp3 or higher
+- 0.6–1.2 seconds per take
+- ≤ 50 ms pre-roll silence
+- Loudness target `-16 LUFS` to match existing letter-name tracks
+
+## Voice variants
+
+The existing layout ships 1–3 takes per letter (`A1.mp3`, `A2.mp3`, `A3.mp3`). The child cycles via two-finger swipe. Phonemes inherit the same gesture: swipe cycles `<base>_phoneme1`, `_phoneme2`, `_phoneme3`.
+
+Recommended mix:
+1. Neutral adult German voice (clear articulation; matches existing letter-name set)
+2. Second adult voice in different timbre
+3. Child-pitched voice (modelled, not real child) — Mayer & Sims (1994) personalisation principle suggests peer-aged voice boosts engagement
+
+## ElevenLabs prompt template
+
+> Speak only the German phoneme, not the letter name. The letter is `<base>`. Produce the **sound** the letter makes, e.g. for `A` produce `/a/` as in *Affe*, not `/aː/` as in the alphabet song. Brief and clean — under 1 second total. No words, no syllables, just the bare phoneme.
+
+## German phoneme reference (target IPA per letter)
+
+| Letter | Phoneme | German example |
+|---|---|---|
+| A | /a/ | *Affe* |
+| B | /b/ | *Ball* |
+| C | /ts/ or /k/ | *Cent* / *Computer* (use /k/ as primary) |
+| D | /d/ | *Dach* |
+| E | /ɛ/ or /eː/ | *Bett* / *Esel* (use /ɛ/) |
+| F | /f/ | *Fisch* |
+| G | /ɡ/ | *Gabel* |
+| H | /h/ | *Haus* |
+| I | /ɪ/ or /iː/ | *Igel* (use /ɪ/) |
+| J | /j/ | *Jahr* |
+| K | /k/ | *Kuh* |
+| L | /l/ | *Löwe* |
+| M | /m/ | *Maus* |
+| N | /n/ | *Nase* |
+| O | /ɔ/ or /oː/ | *Ofen* (use /ɔ/) |
+| P | /p/ | *Papa* |
+| Q | /kv/ | *Quelle* (digraph; record as a unit) |
+| R | /ʁ/ or /ɐ/ | *Rad* (German R, not rolled Spanish) |
+| S | /s/ or /z/ | *Sonne* (use /z/ at word start) |
+| T | /t/ | *Tisch* |
+| U | /ʊ/ or /uː/ | *Uhu* (use /ʊ/) |
+| V | /f/ | *Vater* (German V usually /f/) |
+| W | /v/ | *Wasser* |
+| X | /ks/ | *Hexe* (digraph) |
+| Y | /y/ or /ʏ/ | *Yacht* (rare; use /y/) |
+| Z | /ts/ | *Zoo* (always /ts/, not English /z/) |
+| Ä | /ɛ/ | *Äpfel* |
+| Ö | /ø/ or /œ/ | *Öl* |
+| Ü | /y/ or /ʏ/ | *Über* |
+| ß | /s/ | *Straße* (unvoiced — important: NOT /z/) |
+
+Citation: Krech, E.-M. et al. (2009). *Deutsches Aussprachewörterbuch*. de Gruyter.
+
+## Verification checklist
+
+After dropping new files into the bundle:
+1. Run the app, Settings → Lautwert → toggle "Lautwert wiedergeben" on.
+2. Tap a letter that has phoneme recordings — phoneme plays, not the name.
+3. Two-finger vertical swipe cycles through takes (toast: "Ton 1 von 3" etc.).
+4. Tap a letter without phoneme recordings — letter-name fallback plays, never silence.
+5. Toggle Lautwert off — name audio resumes immediately.
+
+## Coverage tracking
+
+Status values: ⏳ pending · 🟡 partial (1–2 voices) · ✅ complete (3 voices).
+
+| Letter | Status | Voices | Notes |
+|---|---|---|---|
+| (add rows as letters are recorded) | | | |
+
+---
+
+---
+
+_End of document. Last updated 2026-04-29 against `main` after the ROADMAP_V5 implementation pass + tier-1/2 branch merge. Outstanding work lives in `/ROADMAP.md`. Code-level invariants (read before touching fragile code) live separately in `docs/LESSONS.md` — that file is a contributor guardrail, not reference documentation, and is intentionally kept out-of-band so a maintainer reads it in full instead of skimming an appendix._

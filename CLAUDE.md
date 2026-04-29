@@ -27,8 +27,14 @@ iPad app for teaching German children (ages 5-6) to trace letters. Built with Sw
 - `OverlayQueueManager.swift` — serialised post-freeWrite overlay scheduler
 - `StrokeCalibrationOverlay.swift` — debug stroke editing UI
 
-For the full developer-grade reference see `docs/APP_REFERENCE.md`.
-For the thesis-foundation document see `docs/APP_DOCUMENTATION.md`.
+For the full developer-grade reference + thesis foundation see
+`docs/APP_DOCUMENTATION.md` (single comprehensive doc; includes
+architecture quick reference, research export schema, and phoneme
+audio guide as Appendices A/B/C).
+Outstanding work, deferred items, and post-thesis ideas live in
+`/ROADMAP.md`.
+Read `docs/LESSONS.md` before touching `AudioEngine.swift`,
+`StrokeTracker.swift`, or the `load(letter:)` path.
 
 ## Build & Test
 ```bash
