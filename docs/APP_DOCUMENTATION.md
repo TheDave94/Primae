@@ -98,7 +98,7 @@ casual user is never silently dropped into a degraded condition.
 | `SchriftArt.swift` | 63 | Five script enum cases. Currently bundled: Druckschrift (Primae) + Schreibschrift (Playwrite AT). |
 | `WritingMode.swift` | small | `guided` vs `freeform`. |
 | `ThesisCondition.swift` | 97 | A/B condition + ParticipantStore with stable UUID assignment. |
-| `OverlayQueueManager.swift` | 132 | Serialised FIFO of `CanvasOverlay` cases. Modal overlays carry nil duration (wait for explicit dismiss). |
+| `OverlayQueueManager.swift` | 203 | Serialised FIFO of `CanvasOverlay` cases. Modal overlays carry nil duration (wait for explicit dismiss). `enqueueBeforeCelebration` interrupts an already-active celebration or paperTransfer to slot a late-arriving recognition badge ahead of it (C-4 + W-25). |
 | `AudioControlling.swift` | small | Protocol seam for the audio engine. |
 | `PlaybackStateMachine.swift` | small | Pure FSM idle ↔ active. |
 | `AudioEngine.swift` | 382 | ⚠️ **STABLE & FRAGILE** — do NOT modify. AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. |
@@ -106,10 +106,10 @@ casual user is never silently dropped into a degraded condition.
 | `StrokeTracker.swift` | 96 | Checkpoint proximity tracker. Owns `progress[]` + `radiusMultiplier`. |
 | `HapticEngine.swift` | 156 | Protocol + `CoreHapticsEngine` + `UIKitHapticEngine` fallback + `NullHapticEngine` for tests. |
 | `DifficultyAdaptation.swift` | 127 | `MovingAverageAdaptationPolicy` with hysteresis + `FixedAdaptationPolicy` for control arm. |
-| `ProgressStore.swift` | 282 | Per-letter progress JSON store. Carries phaseScores, speedTrend (cap 5), recognitionAccuracy + recognitionSamples (cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. |
-| `ParentDashboardStore.swift` | 372 | Session + phase-record JSON store. PhaseSessionRecord stores all four Schreibmotorik dimensions. accuracySamples cap 200. |
-| `ParentDashboardExporter.swift` | 232 | CSV / TSV / JSON exporter. 13-column per-phase rows. |
-| `StreakStore.swift` | 182 | Daily-streak JSON store + RewardEvent enum. |
+| `ProgressStore.swift` | 400 | Per-letter progress JSON store. Carries phaseScores, speedTrend (cap 50, D-4), recognitionAccuracy + recognitionSamples (cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. Schema-versioned (W-17). |
+| `ParentDashboardStore.swift` | 497 | Session + phase-record JSON store. `PhaseSessionRecord` carries Schreibmotorik dimensions, session-aligned recognition (D-2), `recordedAt` timestamp (D-3), `inputDevice` (D-6). `SessionDurationRecord` also carries `recordedAt` (D-9). accuracySamples cap 200. Schema-versioned (W-17). |
+| `ParentDashboardExporter.swift` | 354 | CSV / TSV / JSON exporter. 15-column per-phase rows; per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`); `letterByArm` block (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
+| `StreakStore.swift` | 219 | Daily-streak JSON store + `RewardEvent` enum. `earnedRewards: Set<RewardEvent>` exposed on the protocol so the Fortschritte gallery can render achievement badges. Schema-versioned (W-17). |
 | `LocalNotificationScheduler.swift` | small | Daily reminder with quiet hours + streak-aware copy. |
 | `OnboardingCoordinator.swift` | 165 | 7-step state machine. |
 | `CloudSyncService.swift` | small | Protocol + NullSyncService + SyncCoordinator (CloudKit-ready, not live). |
@@ -128,11 +128,11 @@ casual user is never silently dropped into a degraded condition.
 #### `Features/Tracing/`
 | File | Lines | Role |
 |------|------:|------|
-| `TracingViewModel.swift` | 2052 | `@MainActor @Observable` central coordinator. Touch dispatch, phase advance, scoring, recognition orchestration. |
+| `TracingViewModel.swift` | 2277 | `@MainActor @Observable` central coordinator. Touch dispatch, phase advance, scoring, recognition orchestration. `progressStore` is private with read-only `allProgress` / `progress(for:)` forwarders (W-5); `playback` is non-optional `let` after the W-16 init reshuffle. Tracks active practice time across background/foreground (D-1). |
 | `TracingDependencies.swift` | small | DI bundle. `.live` defaults; `.stub` swaps for tests. |
 | `TracingCanvasView.swift` | 697 | SwiftUI Canvas: glyph + ghost + ink + KP overlay. Pencil + finger UIKit overlays. |
 | `FreeformController.swift` | 113 | Owns freeform state (mode, sub-mode, target word, drawing buffers, recognition state, debounce task). |
-| `FreeWritePhaseRecorder.swift` | 153 | Owns the four freeWrite buffers + session timing + Schreibmotorik scoring. |
+| `FreeWritePhaseRecorder.swift` | 213 | Owns the four freeWrite buffers + session timing + Schreibmotorik scoring. Two `assess` overloads: single-cell (with optional `cellFrame` for pencil layouts, C-5) and multi-cell `assess(cellReferences:)` that partitions points by frame and averages per-letter scores for word mode (W-26). |
 | `FreeformWritingView.swift` | ~720 | Blank-canvas writing UI. Verbal-only result popup (no metrics shown to children). |
 | `RecognitionFeedbackView.swift` | 140 | German verbal-only badge for freeWrite recognition. |
 | `CompletionCelebrationOverlay.swift` | small | Stars + "Weiter" button. |
@@ -163,7 +163,7 @@ casual user is never silently dropped into a degraded condition.
 |------|------:|------|
 | `SchuleWorldView.swift` | ~280 | World 1. Hosts `TracingCanvasView` + queue-driven overlays. |
 | `WerkstattWorldView.swift` | 126 | World 2. Mode-card panel + `FreeformWritingView`. |
-| `FortschritteWorldView.swift` | ~230 | World 3. Star + streak + letter gallery + fluency footer. |
+| `FortschritteWorldView.swift` | 298 | World 3. Star + streak header, "Auszeichnungen" badge row (every `RewardEvent` rendered earned/unearned), letter gallery, fluency footer. |
 
 #### `Features/Onboarding/`
 | File | Lines | Role |
@@ -181,7 +181,7 @@ casual user is never silently dropped into a degraded condition.
 |------|------:|------|
 | `ParentDashboardView.swift` | ~250 | Adult-grade overview. |
 | `PhaseRatesView.swift` / `PracticeTrendChart.swift` | small | Charts. |
-| `SettingsView.swift` | 99 | Schriftart / ordering / freeform / paper-transfer / study-enrolment / restart-onboarding. |
+| `SettingsView.swift` | 111 | Schriftart / ordering / freeform / paper-transfer / Anzeige (Geisterbuchstabe) / study-enrolment / restart-onboarding. |
 
 #### `Resources/`
 * `Letters/<X>/strokes.json` — 26 uppercase + 26 lowercase + Ä Ö Ü ß. Demo set (A F I K L M O) plus full alphabet placeholders for completion.
@@ -442,7 +442,7 @@ ProgressStore.recordRecognitionSample
 - Audio is gated by `feedbackIntensity > 0.3` (line 937) and
   `smoothedVelocity >= playbackActivationVelocityThreshold` (default
   22 pt/s).
-- The freeWriteRecorder also tracks `strokesPerSecond` during this
+- The freeWriteRecorder also tracks `checkpointsPerSecond` during this
   phase via `freeWriteRecorder.updateSpeed(completedCheckpoints:)`.
 
 **Recorded data**
@@ -749,7 +749,7 @@ in der Grundschule*. Beschluss der Kultusministerkonferenz (revised).
 
 **Implementation.**
 * `Features/Tracing/FreeWritePhaseRecorder.swift` — owns
-  `strokesPerSecond`, recomputed on each touch:
+  `checkpointsPerSecond`, recomputed on each touch:
 
   ```swift
   func updateSpeed(completedCheckpoints: Int,
@@ -757,15 +757,18 @@ in der Grundschule*. Beschluss der Kultusministerkonferenz (revised).
       guard activePhaseStart > 0 else { return }
       let elapsed = now - activePhaseStart
       guard elapsed > 0.1 else { return }
-      strokesPerSecond = CGFloat(completedCheckpoints) / CGFloat(elapsed)
+      checkpointsPerSecond = CGFloat(completedCheckpoints) / CGFloat(elapsed)
   }
   ```
 
 * `Core/ProgressStore.swift` — `LetterProgress.speedTrend: [Double]?`
-  capped at 5 entries (line 148):
+  capped at **50 entries** (D-4 raised the cap from 5 so the thesis
+  export carries the full automatisation trajectory; the scheduler's
+  `automatizationBonus` reads halves so longer histories don't
+  distort the bonus):
 
   ```swift
-  if trend.count > 5 { trend.removeFirst(trend.count - 5) }
+  if trend.count > 50 { trend.removeFirst(trend.count - 50) }
   ```
 
 * `Core/LetterScheduler.swift` — `automatizationBonus(trend:)` (line
@@ -870,7 +873,12 @@ inter-session interval is calibrated to the desired retention.
                + speedBonus                              // automatisation pull-down
   ```
 
-  `memoryStabilityDays = 7.0` (matches typical word-list half-decay).
+  `memoryStabilityDays = 7.0` is the baseline (matches typical word-list
+  half-decay). `effectiveStabilityDays(for:)` stretches this per-letter
+  with a logarithmic practice factor and a [0.5, 1.5] accuracy factor,
+  capped at 60 days (W-24). Less-practised or struggling letters keep
+  the 7-day baseline; well-practised, accurate letters fade slower —
+  matching the SuperMemo SM-2 / Cepeda 2006 expanding-interval rule.
 
 * `TracingViewModel.loadRecommendedLetter()` calls
   `letterScheduler.prioritized(available:, progress:)`, takes the
@@ -1201,7 +1209,7 @@ struct LetterProgress: Codable, Equatable {
     var bestAccuracy: Double = 0.0
     var lastCompletedAt: Date?
     var phaseScores: [String: Double]?              // "observe" / "direct" / "guided" / "freeWrite"
-    var speedTrend: [Double]?                        // last 5 sessions
+    var speedTrend: [Double]?                        // last 50 sessions (D-4)
     var paperTransferScore: Double?                  // 1.0 / 0.5 / 0.0
     var lastVariantUsed: String?                     // "variant" or nil
     var recognitionAccuracy: [Double]?               // legacy: last 10 confidences
@@ -1220,15 +1228,26 @@ streaks.
 
 **Schema.**
 * `LetterAccuracyStat(letter, accuracySamples)` — per letter, capped at
-  200 samples (rolling window).
-* `SessionDurationRecord(dateString, durationSeconds, condition)`.
+  200 samples (rolling window). Word-mode multi-character keys are
+  excluded so `letterStats` stays per-letter (D-11).
+* `SessionDurationRecord(dateString, durationSeconds, condition,
+  recordedAt?)` — `recordedAt` is the full ISO-8601 timestamp added in
+  D-9 so time-of-day analysis is recoverable from the export.
 * `PhaseSessionRecord(letter, phase, completed, score,
-  schedulerPriority, condition, formAccuracy?, tempoConsistency?,
-  pressureControl?, rhythmScore?)` — the four optional fields are
-  populated only on freeWrite rows.
+  schedulerPriority, condition, recordedAt?, formAccuracy?,
+  tempoConsistency?, pressureControl?, rhythmScore?,
+  recognitionPredicted?, recognitionConfidence?, recognitionCorrect?,
+  inputDevice?)` — the dimension fields are populated only on freeWrite
+  rows; `recognition*` carry the session-aligned recognition outcome
+  (D-2); `recordedAt` is the wall-clock timestamp (D-3); `inputDevice`
+  ("finger" / "pencil") disambiguates `pressureControl == 1.0` between
+  finger sessions (no force data) and low-variance pencil sessions
+  (D-6).
 
 Custom decoders default `condition` to `.threePhase` for pre-migration
-records.
+records; D-8 then filters those rows from the export when an
+`enrolledAt` is set so the legacy fallback can't silently inflate the
+threePhase arm.
 
 `recordSession`, `recordPhaseSession`, and `phaseScores(for:)` route
 their letter argument through `LetterProgress.canonicalKey(_:)` — the
@@ -1242,12 +1261,16 @@ so every store agrees that `ß` stays `ß` instead of collapsing to
 `Application Support/BuchstabenNative/streak.json`.
 
 * `currentStreak`, `longestStreak`, `totalCompletions`,
-  `completedLetters: Set<String>`.
+  `completedLetters: Set<String>`, `earnedRewards: Set<RewardEvent>`.
 * `RewardEvent` enum: `firstLetter`, `dailyGoalMet`, `streakDay3`,
   `streakWeek`, `streakMonth`, `allLettersComplete`, `perfectAccuracy`,
   `centuryClub`.
 * `recordSession(date:lettersCompleted:accuracy:)` returns any newly
   earned `RewardEvent`s.
+* `earnedRewards` is now exposed on the `StreakStoring` protocol so
+  the `FortschritteWorldView` "Auszeichnungen" row can render achievement
+  badges (earned in colour, unearned desaturated) — closes the
+  HIDDEN_FEATURES_AUDIT C.6 gap.
 
 ### 6.4 Research export
 
@@ -1256,9 +1279,9 @@ share a row builder so they stay in lock-step.
 
 **CSV / TSV header row (per-phase section):**
 ```
-letter,phase,completed,score,schedulerPriority,condition,
+letter,phase,completed,score,schedulerPriority,condition,recordedAt,
 recognition_predicted,recognition_confidence,recognition_correct,
-formAccuracy,tempoConsistency,pressureControl,rhythmScore
+formAccuracy,tempoConsistency,pressureControl,rhythmScore,inputDevice
 ```
 
 **Column → thesis-analysis purpose:**
@@ -1268,24 +1291,41 @@ formAccuracy,tempoConsistency,pressureControl,rhythmScore
 | `phase` | Which phase (observe / direct / guided / freeWrite) the session belonged to; needed for any GRR efficacy claim. |
 | `completed` | Selection criterion for "successful sessions". |
 | `score` | Phase-level accuracy / form score (0–1). |
-| `schedulerPriority` | Spaced-repetition scheduler's prediction at the time the letter was recommended; used as the IV in the scheduler-effectiveness Pearson r. |
+| `schedulerPriority` | Spaced-repetition scheduler's prediction at the time the letter was recommended; used as the IV in the scheduler-effectiveness Pearson r (per-arm proxy below — cross-arm proxy is invalid because `.control` uses `-completionCount` priorities, not Ebbinghaus). |
 | `condition` | Thesis A/B arm — required for between-arm comparisons. |
-| `recognition_predicted` | **Always blank on per-phase rows.** The rolling per-letter `recognitionSamples` window has no session timestamps, so attaching the latest sample to every phase row mis-correlates recognition with phases that completed earlier. Read recognition data from the per-letter aggregate block instead. Session-aligned recognition awaits the schema work tracked in audit item D-2. |
-| `recognition_confidence` | Always blank on per-phase rows (same reason as `recognition_predicted`). |
-| `recognition_correct` | Always blank on per-phase rows (same reason as `recognition_predicted`). |
+| `recordedAt` | ISO-8601 wall-clock timestamp (D-3). Required for time-of-day and dated learning-curve analyses. Empty on legacy pre-D-3 rows. |
+| `recognition_predicted` | Letter the CoreML model predicted for the freeWrite session. Populated on freeWrite rows since D-2 (was blank under the W-2 workaround); empty on observe / direct / guided rows. |
+| `recognition_confidence` | CoreML softmax confidence after `ConfidenceCalibrator` adjustments. Same population rule. |
+| `recognition_correct` | Whether the prediction matched the expected letter. Same population rule. |
 | `formAccuracy` | Schreibmotorik Form dimension (Fréchet, weight 0.40). |
 | `tempoConsistency` | Schreibmotorik Tempo dimension (CV², weight 0.25). |
 | `pressureControl` | Schreibmotorik Druck dimension (force variance, weight 0.15). |
 | `rhythmScore` | Schreibmotorik Rhythmus dimension (active-time ratio, weight 0.20). |
+| `inputDevice` | "finger" or "pencil" — disambiguates `pressureControl == 1.0` between a real finger session (no force data) and a low-variance pencil session (D-6). |
 
-Additional sections in the export: per-letter aggregates (sessionCount,
-averageAccuracy, trend slope), per-day session durations,
-phase-completion rates (one row per phase), aggregate freeWrite score,
-scheduler-effectiveness Pearson r, and the four
-average-Schreibmotorik-dimension rows when ≥ 1 freeWrite sample exists.
+Additional sections in the export:
+* Per-letter aggregates (`letter,sessionCount,averageAccuracy,trend,
+  recognitionSamples,recognitionAvg,speedTrend,freeformCompletionCount`)
+  — `speedTrend` is a semicolon-joined trajectory; `freeformCompletionCount`
+  surfaces blank-canvas usage that was previously collected but never exported.
+* Per-day session durations (`date,recordedAt,durationSeconds,condition`) —
+  `recordedAt` is the full ISO-8601 timestamp (D-9).
+* Phase-completion rates (one row per phase).
+* Aggregate `averageFreeWriteScore`, plus per-arm `averageFreeWriteScore_<arm>`
+  rows (D-7).
+* `schedulerEffectivenessProxy` (overall Pearson r) plus per-arm
+  `schedulerEffectivenessProxy_<arm>` rows (D-10).
+* `letterByArm,letter,arm,sampleCount,averageScore` — derived from
+  `phaseSessionRecords`, gives a clean per-arm letter-level aggregate
+  that the flat `letterStats` (which mixes arms) can't (D-5).
+* The four average-Schreibmotorik-dimension rows when ≥ 1 freeWrite
+  sample exists.
 
 The first line of every file is `# participantId=<UUID>` so a
-researcher can align data across installs.
+researcher can align data across installs. When `enrolledAt` is set,
+a second `# enrolledAt=<ISO-8601>` header line documents the cutoff
+the exporter applies to discard pre-enrolment rows (D-7) and legacy
+rows missing `recordedAt` (D-8).
 
 ### 6.5 GDPR / DSGVO considerations
 
@@ -1480,6 +1520,9 @@ paperTransfer → celebration.
   alphabetical.
 * **Freies Schreiben**: toggle for the freeform writing mode (default
   on).
+* **Anzeige**: "Geisterbuchstabe anzeigen" — half-transparent letter
+  while tracing. Was previously toggleable only via the undocumented
+  debug long-press; now parent-accessible.
 * **Forschung**:
   - "Schreiben auf Papier" — paper transfer toggle (default off).
   - "Studienteilnahme (A/B-Arm)" — opt-in cohort assignment toggle
@@ -1490,12 +1533,17 @@ paperTransfer → celebration.
 
 `Features/Dashboard/ParentDashboardView.swift`:
 * Übersicht: letters practised, current streak, longest streak,
-  practice time (7 days).
+  practice time (7 days), Schreibqualität (composite %).
+* Schreibqualität – Details: per-dimension breakdown (Form, Tempo,
+  Druck, Rhythmus) as labelled `ProgressView` bars. Only renders when
+  ≥ 1 completed freeWrite session has produced dimension data.
+  Surfaces the four Schreibmotorik dimensions individually instead of
+  only the composite — closes HIDDEN_FEATURES_AUDIT C.1.
 * Phasen: per-phase completion rates.
 * Übungsverlauf: 30-day practice trend chart.
 * Stärkste Buchstaben: top-5 by accuracy.
-* Übung nötig: letters below 0.6 accuracy.
-* Papier-Übertragung: per-letter paperTransferScore values.
+* Noch zu üben: letters below 0.70 accuracy.
+* Schreiben auf Papier: per-letter paperTransferScore values.
 * Erkennungsgenauigkeit: per-letter rolling recognition averages.
 * DEBUG-only Forschungsmetriken section.
 
@@ -1561,7 +1609,7 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 
 ### 10.3 What's tested
 
-(40+ test files, ~94 `@Test` declarations after the audit pass.)
+(46 test files, 647 `@Test` declarations after rounds 3 and 4.)
 
 * All four Schreibmotorik dimensions (`WritingAssessmentTests`).
 * Letter scheduler weights, recency saturation, novelty tie-breaking
@@ -1600,16 +1648,44 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 device validation; skipped on this run because the simulator job
 failed first.
 
-### 10.5 Test coverage gaps (honest)
+### 10.5 Tests added in rounds 3 and 4 (audit response)
+
+The round-3 audit identified seven test gaps; all closed:
+* `LearningPhaseController.advance()` for the `.control` arm
+  (`controlCompletesAfterOne`).
+* `LetterScheduler.automatizationBonus` speed-trend ordering pinned
+  through `recommendNext` (`automatisationBonusOrdersByTrend`).
+* `OverlayQueueManager.enqueueBeforeCelebration` C-4 branch when
+  celebration is the active overlay; W-25 branch when paperTransfer
+  is the active overlay.
+* `JSONProgressStore.recordVariantUsed` and
+  `recordPaperTransferScore` round-trip after reload.
+* `FreeWriteScorer.formAccuracyShape` — identical, scribble,
+  reversed-trace order invariance, empty inputs.
+* `fastTouch_triggersPlay` deflaked: awaits
+  `vm.awaitPlaybackDebounce()` (a `#if DEBUG` helper that yields on
+  `playback.pendingTransition`) instead of sleeping 150 ms.
+* `avAudioSessionInterruption_shouldResumeFalse_doesNotPlay`
+  tightened from `playCount <= +1` to `== playsBefore`.
+
+Round-4 added contract tests for the recent fixes:
+* `progressForwarders_passThroughAndReadOnly` — W-5 forwarders never
+  insert into the underlying store on a get.
+* `multiCellActiveFrame_isNilForSingleLetter` — pin the W-24
+  contract.
+* `assess_multiCell_emptyReferencesReturnsZero` and
+  `assess_multiCell_filtersPointsByCellFrame` — W-26 multi-cell
+  scorer.
+* `d1_activeTimeAccumulator_pausesOnBackground` — the duration
+  clock pauses on background and restarts on foreground (D-1).
+
+### 10.6 Test coverage gaps (honest)
 
 * **CoreMLLetterRecognizer**: no dedicated unit test for the
   model-loading + Vision-request path. The recognizer is exercised
   end-to-end via integration tests but the renderToImage / loadModel
   internals are unverified.
 * **AudioEngine**: only sanity-skipped tests on simulator (lacks AVAudioSession route in CI).
-* **DirectPhaseDotsOverlay tap routing**: the overlay's SwiftUI tap
-  gestures are not exercised in unit tests; the underlying VM method
-  `tapDirectDot(index:)` is.
 * **PaperTransferView 3 s + 10 s timing**: the visual phase rotation
   uses real `Task.sleep` so it isn't deterministically tested. The
   state-mapping (.showLetter / .writePaper / .assess) is verified by
