@@ -147,10 +147,10 @@ enum ChildSpeechLibrary {
     /// avoid the race).
     static func phaseEntry(_ phase: LearningPhase) -> String {
         switch phase {
-        case .observe:    return "Schau genau hin."
-        case .direct:     return "Tipp die Punkte der Reihe nach."
-        case .guided:     return "Fahr die Linien nach."
-        case .freeWrite:  return "Schreib jetzt allein."
+        case .observe:    return "Pass jetzt gut auf!"
+        case .direct:     return "Tipp die Punkte der Reihe nach an."
+        case .guided:     return "Fahr die Linie nach."
+        case .freeWrite:  return "Und jetzt du alleine."
         }
     }
 
@@ -197,4 +197,35 @@ enum ChildSpeechLibrary {
     static let paperTransferShow = "Schau dir den Buchstaben gut an."
     static let paperTransferWrite = "Jetzt schreibst du den Buchstaben auf Papier."
     static let paperTransferAssess = "Wie ist dein Buchstabe geworden?"
+
+    /// Headline of the spaced-retrieval modal — spoken on appear so
+    /// the child knows the screen is asking them to identify a
+    /// letter. Mirrors the on-screen text exactly.
+    static let retrievalQuestion = "Welchen Buchstaben hörst du?"
+
+    // MARK: - PromptPlayer mapping
+
+    /// Map a learning phase to its `PromptPlayer.PromptKey` so
+    /// `vm.prompts.play(...)` can play the recorded ElevenLabs MP3
+    /// (when bundled) instead of the AVSpeechSynthesizer voice.
+    static func phaseEntryPromptKey(_ phase: LearningPhase) -> PromptPlayer.PromptKey {
+        switch phase {
+        case .observe:   return .phaseObserve
+        case .direct:    return .phaseDirect
+        case .guided:    return .phaseGuided
+        case .freeWrite: return .phaseFreeWrite
+        }
+    }
+
+    /// Map a star count (0–4) to its praise prompt key. Out-of-range
+    /// counts collapse to the 0-star "probier's nochmal" tier.
+    static func praisePromptKey(starsEarned: Int) -> PromptPlayer.PromptKey {
+        switch starsEarned {
+        case 4: return .praise4
+        case 3: return .praise3
+        case 2: return .praise2
+        case 1: return .praise1
+        default: return .praise0
+        }
+    }
 }

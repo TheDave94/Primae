@@ -72,14 +72,14 @@ struct PaperTransferView: View {
             // verbal feedback while the visual phase rotates. Each TTS
             // line lines up with the corresponding visual phase so a
             // pre-reader gets the same instruction aurally.
-            vm.speech.speak(ChildSpeechLibrary.paperTransferShow)
+            vm.prompts.play(.paperShow,   fallbackText: ChildSpeechLibrary.paperTransferShow)
             do {
                 try await sleep(.seconds(3))
                 withAnimation { phase = .writePaper }
-                vm.speech.speak(ChildSpeechLibrary.paperTransferWrite)
+                vm.prompts.play(.paperWrite, fallbackText: ChildSpeechLibrary.paperTransferWrite)
                 try await sleep(.seconds(10))
                 withAnimation { phase = .assess }
-                vm.speech.speak(ChildSpeechLibrary.paperTransferAssess)
+                vm.prompts.play(.paperAssess, fallbackText: ChildSpeechLibrary.paperTransferAssess)
             } catch {}
         }
     }

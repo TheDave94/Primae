@@ -568,6 +568,13 @@ public final class TracingViewModel {
     /// computes (Klarheit, Form, Tempo, Druck, Rhythmus) goes via TTS
     /// in plain encouraging German rather than visible numbers.
     let speech: SpeechSynthesizing
+    /// Plays bundled ElevenLabs MP3s for the static prompts (phase
+    /// entries, praise tiers, paper-transfer cues, retrieval
+    /// question). Falls back to `speech` when an MP3 is missing —
+    /// covers builds before `scripts/generate_prompts.py` has run.
+    /// Dynamic per-letter content (recognition templates) still
+    /// goes through `speech` directly.
+    let prompts: PromptPlayer
     /// Owns the freeWrite buffers + session timing + scoring. Lives on
     /// the VM so views can keep reading via the existing forwarders;
     /// extracting it cleared the four-buffer churn out of the VM body.
@@ -664,6 +671,7 @@ public final class TracingViewModel {
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
         self.speech                 = deps.speech
+        self.prompts                = PromptPlayer(fallbackSpeech: deps.speech)
         // Control condition uses fixed difficulty — no moving-average adaptation.
         self.adaptationPolicy       = deps.adaptationPolicy ?? (
             deps.thesisCondition == .control
@@ -1612,7 +1620,10 @@ public final class TracingViewModel {
         // observe/direct or when an empty-strokes letter auto-skipped).
         // Empty-strokes letters that vacuously land at .guided also land
         // here, so a child still gets a verbal cue rather than silence.
-        speech.speak(ChildSpeechLibrary.phaseEntry(phaseController.currentPhase))
+        prompts.play(
+            ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
+            fallbackText: ChildSpeechLibrary.phaseEntry(phaseController.currentPhase)
+        )
     }
 
     private func randomAudioVariant() {

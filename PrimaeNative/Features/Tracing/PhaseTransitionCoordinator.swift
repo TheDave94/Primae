@@ -139,8 +139,13 @@ final class PhaseTransitionCoordinator {
             vm.toast(vm.phaseController.currentPhase.displayName)
             // Verbal phase prompt — spoken every transition so a child
             // who can't read the on-screen "Anschauen / Richtung lernen"
-            // pill still knows what's happening next.
-            vm.speech.speak(ChildSpeechLibrary.phaseEntry(vm.phaseController.currentPhase))
+            // pill still knows what's happening next. Routed through
+            // PromptPlayer so the ElevenLabs MP3 plays when bundled,
+            // with the AVSpeechSynthesizer line as the fallback.
+            vm.prompts.play(
+                ChildSpeechLibrary.phaseEntryPromptKey(vm.phaseController.currentPhase),
+                fallbackText: ChildSpeechLibrary.phaseEntry(vm.phaseController.currentPhase)
+            )
         } else {
             recordSessionCompletion()
         }
@@ -152,8 +157,14 @@ final class PhaseTransitionCoordinator {
         guard let vm else { return }
         vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
         // Verbal celebration. Stars-tier praise so the child hears
-        // approximately how well they did without seeing any percentage.
-        vm.speech.speak(ChildSpeechLibrary.praise(starsEarned: vm.phaseController.starsEarned))
+        // approximately how well they did without seeing any
+        // percentage. Pre-recorded ElevenLabs takes via PromptPlayer
+        // when bundled; AVSpeechSynthesizer fallback otherwise.
+        let stars = vm.phaseController.starsEarned
+        vm.prompts.play(
+            ChildSpeechLibrary.praisePromptKey(starsEarned: stars),
+            fallbackText: ChildSpeechLibrary.praise(starsEarned: stars)
+        )
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()
         let liveSlice = vm.letterLoadTime.map { now - $0 } ?? 0

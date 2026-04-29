@@ -582,10 +582,10 @@ struct ChildSpeechLibraryTests {
         // Children must hear different prompts as the four-phase flow
         // progresses; the strings are pinned here so any rewording lands
         // in code review with full context.
-        #expect(ChildSpeechLibrary.phaseEntry(.observe).contains("Schau"))
+        #expect(ChildSpeechLibrary.phaseEntry(.observe).contains("Pass"))
         #expect(ChildSpeechLibrary.phaseEntry(.direct).contains("Punkte"))
-        #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("Linien"))
-        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("Schreib"))
+        #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("Linie"))
+        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("alleine"))
     }
 
     @Test("Praise tier maps to encouraging German phrases")

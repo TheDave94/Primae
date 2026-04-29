@@ -97,8 +97,10 @@ struct RetrievalPromptView: View {
             // Spoken instruction first — the child can't read the
             // on-screen "Welcher Buchstabe?" headline. Pre-readers
             // need to hear what's being asked before the letter
-            // sound plays.
-            vm.speech.speak("Welchen Buchstaben hörst du?")
+            // sound plays. Pre-recorded ElevenLabs MP3 via
+            // PromptPlayer when bundled; AVSpeech fallback otherwise.
+            vm.prompts.play(.retrievalQuestion,
+                            fallbackText: ChildSpeechLibrary.retrievalQuestion)
             // Prime the audio so the first "Hören" tap doesn't hit a
             // cold cache. The VM has already arranged the active letter,
             // but the overlay queue may run before the load finishes —
