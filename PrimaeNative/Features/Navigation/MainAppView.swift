@@ -63,6 +63,17 @@ public struct MainAppView: View {
                 if activeWorld != .werkstatt, vm.writingMode == .freeform {
                     vm.exitFreeformMode()
                 }
+                // Leaving Schule → halt any in-flight phase-entry
+                // voiceover. Phase prompts are Schule-only context
+                // ("Pass jetzt gut auf!", "Fahr die Linie nach.") —
+                // hearing them play *into* Sterne or Werkstatt is
+                // confusing for a child. The post-onboarding cue
+                // takes ~2 s on TTS; without this stop, a quick tap
+                // on Sterne right after onboarding ends bleeds the
+                // Schule prompt across the world boundary.
+                if activeWorld != .schule {
+                    vm.prompts.stop()
+                }
             }
         }
     }
