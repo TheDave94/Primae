@@ -66,6 +66,19 @@ final class TouchDispatcher {
     /// the same trick used for `playback` (W-16).
     weak var vm: TracingViewModel?
 
+    /// Scheduled freeWrite auto-advance. The child's freeform writing
+    /// rarely satisfies the canonical-stroke `strokeTracker.isComplete`
+    /// check (no rails to follow), so the existing
+    /// `handleStrokeCompletionIfReached` path almost never fires
+    /// during freeWrite. Without an explicit completion signal the
+    /// child got stuck — they could write forever but the celebration
+    /// + commitCompletion never ran. The fix: when they lift in
+    /// freeWrite, schedule a quiet-window task that advances the
+    /// phase ~2 s later. A re-touch within that window cancels the
+    /// task (they're still writing).
+    private var freeWriteAutoAdvanceTask: Task<Void, Never>?
+    private let freeWriteQuietSeconds: TimeInterval = 2.0
+
     // MARK: - Public API (forwarded from VM)
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
@@ -73,6 +86,11 @@ final class TouchDispatcher {
         guard vm.phaseController.isTouchEnabled       else { return }
         guard vm.phaseController.currentPhase != .direct else { return }  // handled by DirectPhaseDotsOverlay
         guard !isSingleTouchInteractionActive         else { return }
+
+        // Re-touch during a freeWrite quiet window cancels the
+        // pending auto-advance — the child is still writing.
+        freeWriteAutoAdvanceTask?.cancel()
+        freeWriteAutoAdvanceTask = nil
 
         isSingleTouchInteractionActive = true
         vm.playback.resumeIntent       = true
@@ -198,6 +216,17 @@ final class TouchDispatcher {
         vm.playback.apply(cmd)
         if cmd == .none { vm.audio.stop(); vm.isPlaying = false }
         vm.playback.forceIdle()
+
+        // FreeWrite has no canonical-stroke completion path (the child
+        // writes freely without rails), so without an explicit signal
+        // the phase never advances and `commitCompletion` never fires.
+        // Treat lift-then-quiet as the implicit "I'm done" — schedule
+        // advance, cancel if the child re-touches within the window.
+        if vm.phaseController.currentPhase == .freeWrite,
+           !vm.didCompleteCurrentLetter,
+           !vm.freeWritePoints.isEmpty {
+            scheduleFreeWriteAutoAdvance()
+        }
     }
 
     // MARK: - State-clearing entry points (called by VM transitions)
@@ -211,6 +240,11 @@ final class TouchDispatcher {
         lastPoint                      = nil
         lastTimestamp                  = nil
         smoothedVelocity               = 0
+        // Phase transitions / letter loads invalidate any pending
+        // freeWrite quiet-window advance — the phase that scheduled
+        // it is no longer active.
+        freeWriteAutoAdvanceTask?.cancel()
+        freeWriteAutoAdvanceTask = nil
     }
 
     /// Clear just the velocity smoothing without touching the active
@@ -342,6 +376,29 @@ final class TouchDispatcher {
             //   guided     → freeWrite  (phaseController.advance returns true)
             //   guided     → complete   (guidedOnly/control: returns false → celebration)
             //   freeWrite  → complete   (threePhase: returns false → celebration)
+            vm.advanceLearningPhase()
+        }
+    }
+
+    /// Schedule the freeWrite quiet-window advance. After
+    /// `freeWriteQuietSeconds` of no re-touch the phase advances —
+    /// running the recognizer, the celebration, and (critically)
+    /// `commitCompletion`, which is what writes stars to the
+    /// progress store. Cancellation paths: re-touch in `beginTouch`,
+    /// any phase transition / letter load via `resetTouchState`, or
+    /// the guard checks below if state shifted while we slept.
+    private func scheduleFreeWriteAutoAdvance() {
+        freeWriteAutoAdvanceTask?.cancel()
+        let seconds = freeWriteQuietSeconds
+        freeWriteAutoAdvanceTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            guard let self,
+                  !Task.isCancelled,
+                  let vm = self.vm,
+                  vm.phaseController.currentPhase == .freeWrite,
+                  !vm.didCompleteCurrentLetter,
+                  !self.isSingleTouchInteractionActive else { return }
+            self.freeWriteAutoAdvanceTask = nil
             vm.advanceLearningPhase()
         }
     }
