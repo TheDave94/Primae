@@ -584,8 +584,8 @@ struct ChildSpeechLibraryTests {
         // in code review with full context.
         #expect(ChildSpeechLibrary.phaseEntry(.observe).contains("Schau"))
         #expect(ChildSpeechLibrary.phaseEntry(.direct).contains("Punkte"))
-        #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("fährst"))
-        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("alleine"))
+        #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("Linien"))
+        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("Schreib"))
     }
 
     @Test("Praise tier maps to encouraging German phrases")

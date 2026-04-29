@@ -16,6 +16,7 @@
 import SwiftUI
 
 struct RetrievalPromptView: View {
+    @Environment(TracingViewModel.self) private var vm
     let target: String
     let distractors: [String]
     /// Replays the audio cue. The VM wires this to `replayAudio()` so
@@ -38,7 +39,7 @@ struct RetrievalPromptView: View {
             Color.black.opacity(0.45).ignoresSafeArea()
 
             VStack(spacing: 28) {
-                Text("Welcher Buchstabe ist das?")
+                Text("Welchen Buchstaben hörst du?")
                     .font(.system(.title, design: .rounded).weight(.bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
@@ -93,6 +94,11 @@ struct RetrievalPromptView: View {
             // the duration of the modal; the queue's reset re-creates
             // the view with a fresh shuffle next time.
             options = ([target] + distractors).shuffled()
+            // Spoken instruction first — the child can't read the
+            // on-screen "Welcher Buchstabe?" headline. Pre-readers
+            // need to hear what's being asked before the letter
+            // sound plays.
+            vm.speech.speak("Welchen Buchstaben hörst du?")
             // Prime the audio so the first "Hören" tap doesn't hit a
             // cold cache. The VM has already arranged the active letter,
             // but the overlay queue may run before the load finishes —

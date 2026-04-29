@@ -132,13 +132,18 @@ final class NullSpeechSynthesizer: SpeechSynthesizing {
 /// kindergarten-level vocabulary.
 enum ChildSpeechLibrary {
 
-    /// Phase entry prompts spoken when a learning phase becomes active.
+    /// Phase entry prompts spoken when a learning phase becomes
+    /// active. Imperative + short — the child can't read the
+    /// on-screen phase pill, so the spoken instruction has to
+    /// stand on its own. Three to five words each, action verb
+    /// first (the German child voice convention from the design
+    /// system), no fillers ("mal", "Jetzt") that don't add meaning.
     static func phaseEntry(_ phase: LearningPhase) -> String {
         switch phase {
-        case .observe:    return "Schau mal genau hin."
-        case .direct:     return "Tippe die Punkte der Reihe nach."
-        case .guided:     return "Jetzt fährst du die Linien nach."
-        case .freeWrite:  return "Jetzt schreibst du den Buchstaben ganz alleine."
+        case .observe:    return "Schau genau hin."
+        case .direct:     return "Tipp die Punkte der Reihe nach."
+        case .guided:     return "Fahr die Linien nach."
+        case .freeWrite:  return "Schreib den Buchstaben jetzt selbst."
         }
     }
 
