@@ -2,7 +2,7 @@
 
 _Single forward-looking work log. Last updated 2026-04-29 against `main`. Only items still requiring work appear here — every shipped item has been removed. Where a row says "infrastructure shipped, asset work pending", the code-side foundation is in place and the remaining work is content authoring (audio, glyph definitions) on your side._
 
-Each item has a short summary line plus a deeper-context section below it (effort, file list, citations, failure modes). The two were previously split across `ROADMAP_V5.md` + `docs/ROADMAP_V5_DEFERRED_NOTES.md`; they're now unified here.
+Each item has a short summary line plus a deeper-context section below it (effort, file list, citations, failure modes).
 
 Effort key: **S** = under 1 day · **M** = 1–3 days · **L** = 3+ days · **XL** = multi-week
 Priority key: **P1** = thesis-blocking · **P2** = thesis-strengthening · **P3** = post-thesis polish
@@ -39,29 +39,6 @@ Priority key: **P1** = thesis-blocking · **P2** = thesis-strengthening · **P3*
 
 ---
 
-### P1 — Spaced retrieval testing prompts *(infrastructure on main; UI pending)*
-**Effort:** M (UI only) · **Priority:** P1
-
-The app implements spaced *practice* (Cepeda 2006) via `LetterScheduler` but not spaced *retrieval*. Roediger & Karpicke (2006) showed retrieval tests produce better long-term retention than additional study — generating an answer beats re-encoding it. Adding retrieval extends the thesis pedagogical claim from "spacing exposure" to "spacing recall".
-
-**What's already in code (on `main`).**
-- `Core/RetrievalScheduler.swift` — every-Nth-letter cadence with `interval` (default 3), `minimumPriorCompletions` (default 1, skips testing on never-seen letters), persisted counter so cadence survives relaunch.
-- `LetterProgress.retrievalAttempts: [Bool]?` rolling outcome log (cap 10) on `ProgressStore`.
-- `JSONProgressStore.recordRetrievalAttempt(letter:correct:)` write path.
-- Stub default on `ProgressStoring` so older mocks compile.
-
-**What's still needed.**
-1. **`RetrievalPromptView`** (new file in `Features/Tracing/`). Three-button German recognition test: "Welcher Buchstabe ist das?" with audio plays the letter (or phoneme — useful overlap with P6) and three candidate buttons (the correct letter + two distractors from the same motor-similarity cluster — `LetterOrderingStrategy.motorSimilarity` ordering gives you the cluster automatically). On tap, record the outcome and dismiss.
-2. **Settings opt-in.** `enableRetrievalPrompts: Bool` UserDefaults key in `TracingDependencies`, mirrored toggle in SettingsView under a "Erinnerungstest" / "Forschung" section. Default off — opt-in research feature.
-3. **VM wiring.** In `loadRecommendedLetter()`, before `load(letter:)`, call `retrievalScheduler.shouldPrompt(for: letter, progress: progress)`. When `true`, push a `.retrievalPrompt(letter:)` overlay onto the queue ahead of the actual letter load. The retrieval prompt's `onComplete` runs the load.
-4. **`CanvasOverlay.retrievalPrompt(letter: String)`** case on `OverlayQueueManager`. Modal (no auto-dismiss).
-5. **CSV export.** Add `retrievalAccuracy` column to the per-letter aggregate row in `ParentDashboardExporter.swift`. Update Appendix B in `docs/APP_DOCUMENTATION.md`.
-6. **Tests.** RetrievalScheduler unit tests (interval cadence, minimum-prior-completions skip, counter reset). RetrievalPromptView is integration-tested through the queue.
-
-**Citation.** Roediger, H. L., & Karpicke, J. D. (2006). Test-enhanced learning: Taking memory tests improves long-term retention. *Psychological Science*, 17(3), 249–255.
-
----
-
 ### P6 — Phoneme audio recordings *(infrastructure on main; audio assets pending)*
 **Effort:** XL (recording + voice direction work) · **Priority:** P1
 
@@ -85,33 +62,7 @@ Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing hand
 
 ---
 
-## 2. PEDAGOGICAL — DEFERRED
-
-### P5 — Forward + backward stroke chaining toggle
-**Effort:** S–M · **Priority:** P3
-
-**Why deferred.** Spooner et al. 2014 is about *special-needs interventions* (autism, motor-planning disorders), not the typical Volksschule cohort. Adding it as an opt-in parent toggle is plausible but reads as feature creep without IRB / curriculum justification. It also adds complexity to the direct-phase order tracking (the "next-expected" index has to flip direction) for a feature your thesis cohort won't use.
-
-**If you decide to do it anyway.** Settings toggle "Schreibrichtung umkehren" (off by default), `LearningPhaseController.directDotOrder` reading the toggle and flipping the iteration. The change is local to the direct phase only; guided/freeWrite always run canonical order. ~1 day.
-
-**Recommendation.** Skip for thesis. Defer to a post-thesis inclusive-design pass if the app ships to clinical SPED settings.
-
----
-
 ## 3. UX — DEFERRED
-
-### U4 — Onboarding length tuning *(needs empirical signal first)*
-**Effort:** M · **Priority:** P3
-
-**Why deferred.** The current 7-step onboarding (welcome → 4 phase demos → reward intro → complete) was deferred because compressing without empirical signal is a UX risk: children might miss the per-phase concept demos, parents miss the reward-system intro and don't connect stars to practice motivation.
-
-**What needs to happen first.** Instrument `OnboardingCoordinator.advance()` calls with timestamps; measure step-level completion rate. Two failure modes to watch for: (a) drop-off concentrated on a specific step (signal that step is broken), (b) uniform drop-off across all steps (signal it's just too long). The compression decision is data-driven, not a priori.
-
-**The proposed compression** (if data warrants): 3 steps for the child path — welcome → "Zeig mal was du kannst" (10-second guided trace of letter `A`, child does it, success animation) → "Los geht's!". Move the per-phase concept demos and reward-system intro behind the existing parent's "Einführung wiederholen" button.
-
-**Decision threshold.** Onboarding-completion < 70% → compress. > 90% → leave alone. In between → A/B split.
-
----
 
 ### U5 — Apple Pencil 2 squeeze *(wired on main; needs device validation)*
 **Effort:** S (already done in code) — but **0–1 days for device validation** · **Priority:** P3
@@ -182,41 +133,26 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 
 ## 4. TECHNICAL DEBT
 
-### D1 — TracingViewModel God-object decomposition *(deliberate multi-day refactor; needs your in-the-loop review)*
-**Effort:** L (3–5 days, one PR per extraction) · **Priority:** P1
+### D1 — TracingViewModel God-object decomposition *(D1a shipped; D1b + D1c remain)*
+**Effort:** M–L for the remaining two slices · **Priority:** P1
 
-`TracingViewModel.swift` is **2350+ lines** as of `main`. ~16 distinct responsibilities. Every subsequent thesis-supporting feature lands in this file — once you commit to T1 (lowercase) or P1 UI, every change cuts through this God object. **Ship D1 first or pay the per-feature tax forever.**
+`TracingViewModel.swift` is **2350+ lines** with ~16 responsibilities. The first slice (D1a — `RecognitionTokenTracker`) shipped on `main` (commit `7800e8e`); it pulled the UUID-equality token machinery out into a small `@MainActor` reference type so the three async recognizer call sites stop hand-rolling the same guards.
 
-**Three clean extractions** (each = one PR, CI green between them):
+**Two remaining slices** (each one PR with CI green between):
 
-**1. `TouchDispatcher`** — owns `beginTouch` / `updateTouch` / `endTouch`, velocity smoothing knobs, and the playback-activation threshold logic. Inputs: haptics, playback, audio, freeWriteRecorder, phaseController (for `feedbackIntensity`). Outputs: callbacks for stroke-completion + canvas-progress updates. **~300 lines** moved out.
+**D1b — `TouchDispatcher`** — `beginTouch` / `updateTouch` / `endTouch`, velocity smoothing knobs, the playback-activation threshold logic. Inputs: haptics, playback, audio, freeWriteRecorder, phaseController (for `feedbackIntensity`). Outputs: callbacks for stroke-completion + canvas-progress updates. **~300 lines** to move. The risk is that `updateTouch` is the hottest code path; a runtime regression there wouldn't be caught by the existing test suite, which doesn't exercise the precise touch-debounce + audio-gate + stroke-completion combo.
 
-**2. `RecognitionOrchestrator`** — owns `activeRecognitionToken`, `runRecognizerForFreeWrite`, the freeform-letter and freeform-word recognition paths, the `enqueueBeforeCelebration` + speech wiring. Inputs: recognizer, calibrator, progress store, overlay queue, speech, animation guide (for the P2 self-explanation re-animation). Token tracking is currently shared across three call sites; centralising it removes 3 nearly-identical guards. **~200 lines** moved out.
+**D1c — `PhaseTransitionCoordinator`** — `advanceLearningPhase`, `recordPhaseSessionCompletion`, `commitCompletion`, the post-transition side-effect block (overlay enqueue, speech praise, store writes, adaptation sample, HUD). Inputs: phaseController, freeWriteRecorder, all four stores, overlay queue, speech, syncCoordinator. **~200 lines**.
 
-**3. `PhaseTransitionCoordinator`** — owns `advanceLearningPhase`, `recordPhaseSessionCompletion`, `commitCompletion`, the post-transition side-effect block (overlay enqueue, speech praise, store writes, adaptation sample, HUD). Inputs: phaseController, freeWriteRecorder, all four stores, overlay queue, speech, syncCoordinator. **~200 lines** moved out.
+**The recognition-orchestration slice (originally planned as D1's second cut) is genuinely hard to autonomously extract.** The recognize-then-route flow has 3 entry points (freeWrite, freeform-letter, freeform-word) with distinct side effects: `lastRecognitionResult`, `freeform.isRecognizing`, `freeform.lastFreeformFormScore`, `recordFreeformCompletion`, the P2 self-explanation re-animation, and the W-30-corrected synthesised result for freeform mode. A clean callback-injected orchestrator works on paper but the coupling-point count makes it the wrong thing to do without per-slice in-the-loop review. D1a (the token-tracker piece) is the safe-autonomous portion of that work; the rest waits.
 
-**After all three:** VM ~1500 lines, dominated by the @Observable forwarder properties (which can't move because views bind to them).
-
-**Failure modes.**
+**Failure modes for the remaining slices.**
 - **Forwarders.** Each property/method that views currently call must keep its name on the VM after the move.
 - **MainActor isolation.** All collaborators must be `@MainActor`. Background work hops back to MainActor before mutating state.
 - **Test fixtures.** `TestFixtures.StubProgressStore` etc. are used directly; new collaborators need stub-friendly initialisers.
 - **Per-VM identity.** Each collaborator must be created once per VM (not shared static).
 
-**Recommendation.** This is the highest-EV technical-debt item. **Worth scheduling a dedicated week with you in the loop** — three PRs over three days, each reviewed before the next starts. Not safe autonomous work; failure mode is a test that *passes* but a runtime regression that surfaces in a real session weeks later.
-
----
-
-### D3 — CoreMLLetterRecognizer Vision-request coverage *(rendering tests on main; model path still needs a mock)*
-**Effort:** M · **Priority:** P3
-
-**What's already done.** Five `renderToImage` golden-image tests in `BuchstabenNativeTests/CoreMLLetterRecognizerTests.swift` cover empty/single-point input → nil, 40×40 grayscale output for non-trivial paths, vertical-only degenerate path, centring-translation invariance.
-
-**What's still missing.** The Vision-request path (`loadModelIfNeeded`, `makeResult`, `VNCoreMLRequest` lifecycle, `ConfidenceCalibrator` wiring). This needs either:
-- A real `.mlpackage` bundled into the test target (synthetic tiny model trained on 4×4 inputs to keep size under 100 KB), or
-- A mock `VNCoreMLModel` — but `VNCoreMLModel` is `final`, so this requires a protocol-typed seam in the recognizer that the tests can swap.
-
-**Recommendation.** The mock-protocol approach is the cleaner long-term path: define `LetterClassifying` with `func classify(_ image: CGImage) async -> [VNClassificationObservation]?`, route the production call through it, swap a deterministic stub in tests. ~1 day.
+**Recommendation.** Schedule a dedicated session for D1b first (smaller risk than the recognition-orchestration cut, but still touches the hottest code path). D1c can follow once D1b is green for ~24 hours.
 
 ---
 
@@ -294,12 +230,12 @@ For motor-impaired children, expose the direct-phase dot tap as a Switch Control
 
 ## Recommended ordering for the next sprint
 
-1. **D1** (3–5 days, your branch + my reviews per slice) — clean architecture before the bigger features land.
-2. **T1 demo lowercase set** (14–21 hours, your iPad + ElevenLabs) — minimum thesis floor for the four-phase claim.
-3. **P1 UI** (1 PR, 1–2 days from me, with your review) — surfaces the retrieval-practice claim that pairs with the existing spaced-practice claim.
-4. **P6 recordings** (your ElevenLabs work, parallel with the above) — unlocks the phonemic-awareness toggle that's already wired.
+1. **T1 demo lowercase set** (14–21 hours, your iPad + ElevenLabs) — minimum thesis floor for the four-phase claim.
+2. **P6 recordings** (your ElevenLabs work, parallel with T1) — unlocks the phonemic-awareness toggle that's already wired.
+3. **D1b TouchDispatcher** (1 PR with in-loop review) — second VM-extraction slice, lighter risk than the recognition-orchestration cut.
+4. **D1c PhaseTransitionCoordinator** (1 PR after D1b is stable for ~24 hr).
 
-D8 / U10 / U11 are post-thesis polish. F1–F10 are post-thesis full features.
+U5 / U10 / U11 / D8 are post-thesis polish. F1–F10 are post-thesis full features.
 
 ---
 
