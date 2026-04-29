@@ -34,6 +34,22 @@ struct SettingsView: View {
                 ))
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
+            Section("Lautwert") {
+                // P6 (ROADMAP_V5): opt-in phoneme playback. When on,
+                // the audio gesture (tap, replay, two-finger swipe) plays
+                // the *sound* the letter makes (/a/ as in *Affe*) rather
+                // than its name (/aː/). Falls back to the name set for
+                // letters without phoneme recordings, so the toggle never
+                // produces silence.
+                Toggle("Lautwert wiedergeben", isOn: Binding(
+                    get: { vm.enablePhonemeMode },
+                    set: { vm.enablePhonemeMode = $0 }
+                ))
+                .accessibilityHint("Spielt den Lautwert (z. B. /a/ wie in Affe) statt des Buchstabennamens (z. B. \"Aaa\"). Hilfreich für die phonologische Bewusstheit.")
+                Text("Spielt den Laut (/a/ wie in Affe) statt des Namens (/aː/). Phonologische Bewusstheit nach Adams 1990.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Sprache") {
                 // U8 (ROADMAP_V5): three-position rate picker so a parent
                 // can slow the TTS for younger / less verbal children.

@@ -327,6 +327,22 @@ public final class TracingViewModel {
                 forKey: "de.flamingistan.buchstaben.enableFreeformMode")
         }
     }
+    /// P6 (ROADMAP_V5): play the *phoneme* (sound the letter makes —
+    /// /a/ as in *Affe*) instead of the letter *name* (/aː/) when the
+    /// child taps the audio gesture. Falls back to the name set when
+    /// a letter ships no phoneme recordings, so the toggle never
+    /// produces silence on letters that haven't been recorded yet.
+    /// Persisted in UserDefaults; default off (the canonical name
+    /// audio is the established behaviour).
+    var enablePhonemeMode: Bool = false {
+        didSet {
+            UserDefaults.standard.set(enablePhonemeMode,
+                forKey: "de.flamingistan.buchstaben.enablePhonemeMode")
+            // Reset the audio-variant cursor so a swipe doesn't index
+            // out of the new (potentially shorter / longer) population.
+            audioIndex = 0
+        }
+    }
 
     // MARK: - Recognition + freeform state (forwarded from FreeformController)
 
@@ -608,6 +624,7 @@ public final class TracingViewModel {
         self.thesisCondition        = deps.thesisCondition
         self.enablePaperTransfer    = deps.enablePaperTransfer
         self.enableFreeformMode     = deps.enableFreeformMode
+        self.enablePhonemeMode      = deps.enablePhonemeMode
         self.letterRecognizer       = deps.letterRecognizer
         self.speech                 = deps.speech
         // Control condition uses fixed difficulty — no moving-average adaptation.
@@ -728,7 +745,7 @@ public final class TracingViewModel {
     private func autoplayActiveCellLetter() {
         let activeLetter = gridCellLetter(at: gridActiveCellIndex) ?? currentLetterName
         guard let asset = letters.first(where: { $0.name == activeLetter }),
-              let first = asset.audioFiles.first else { return }
+              let first = activeAudioFiles(for: asset).first else { return }
         audio.loadAudioFile(named: first, autoplay: true)
     }
 
@@ -742,9 +759,23 @@ public final class TracingViewModel {
         let activeLetter = gridCellLetter(at: gridActiveCellIndex)
             ?? currentLetterName
         guard let asset = letters.first(where: { $0.name == activeLetter }) else { return }
-        let files = asset.audioFiles
+        let files = activeAudioFiles(for: asset)
         guard files.indices.contains(audioIndex) else { return }
         audio.loadAudioFile(named: files[audioIndex], autoplay: true)
+    }
+
+    /// P6 (ROADMAP_V5): pick the audio population to play given the
+    /// parent's "Lautwert wiedergeben" toggle. When phoneme mode is on
+    /// AND the asset ships phoneme recordings, the phoneme set wins.
+    /// Otherwise (toggle off, or asset lacks phoneme audio), the
+    /// letter-name set is used. This keeps the existing two-finger
+    /// swipe variant cycler working — it always cycles within the
+    /// active population.
+    private func activeAudioFiles(for asset: LetterAsset) -> [String] {
+        if enablePhonemeMode, !asset.phonemeAudioFiles.isEmpty {
+            return asset.phonemeAudioFiles
+        }
+        return asset.audioFiles
     }
 
     // MARK: - Letter navigation
@@ -845,7 +876,7 @@ public final class TracingViewModel {
 
     func nextAudioVariant() {
         guard !letters.isEmpty else { return }
-        let files = letters[letterIndex].audioFiles
+        let files = activeAudioFiles(for: letters[letterIndex])
         guard !files.isEmpty else { return }
         guard files.indices.contains(audioIndex) else { audioIndex = 0; return }
         audioIndex = (audioIndex + 1) % files.count
@@ -857,7 +888,7 @@ public final class TracingViewModel {
 
     func previousAudioVariant() {
         guard !letters.isEmpty else { return }
-        let files = letters[letterIndex].audioFiles
+        let files = activeAudioFiles(for: letters[letterIndex])
         guard !files.isEmpty else { return }
         guard files.indices.contains(audioIndex) else { audioIndex = 0; return }
         audioIndex = (audioIndex - 1 + files.count) % files.count
@@ -897,7 +928,7 @@ public final class TracingViewModel {
         // Reload audio file — stop() in endTouch clears currentFile, so play() would
         // silently fail on subsequent touches without reloading first.
         if letters.indices.contains(letterIndex) {
-            let files = letters[letterIndex].audioFiles
+            let files = activeAudioFiles(for: letters[letterIndex])
             if files.indices.contains(audioIndex) {
                 audio.loadAudioFile(named: files[audioIndex], autoplay: false)
             }
@@ -1444,7 +1475,7 @@ public final class TracingViewModel {
             // noise — the child already heard it; now they need direction,
             // not another repetition of the name.
             if isFirstTap, letters.indices.contains(letterIndex) {
-                let files = letters[letterIndex].audioFiles
+                let files = activeAudioFiles(for: letters[letterIndex])
                 if files.indices.contains(audioIndex) {
                     audio.loadAudioFile(named: files[audioIndex], autoplay: true)
                 }
@@ -1863,7 +1894,7 @@ public final class TracingViewModel {
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
         }
-        if let firstAudio = letter.audioFiles.first {
+        if let firstAudio = activeAudioFiles(for: letter).first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             playback.request(.idle, immediate: true)
             // Audio plays in response to touches via the playback state machine;
@@ -1881,7 +1912,7 @@ public final class TracingViewModel {
     }
 
     private func randomAudioVariant() {
-        let files = letters[letterIndex].audioFiles
+        let files = activeAudioFiles(for: letters[letterIndex])
         guard !files.isEmpty else { return }
         audioIndex = Int.random(in: 0..<files.count)
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)

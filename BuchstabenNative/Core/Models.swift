@@ -8,6 +8,14 @@ struct LetterAsset: Identifiable, Equatable {
     let letterCase: LetterCase
     let imageName: String
     let audioFiles: [String]
+    /// P6 (ROADMAP_V5): phoneme recordings — the *sound* the letter
+    /// makes (/a/ as in *Affe*) rather than its name (/aː/). Filename
+    /// convention: `<base>_phoneme<n>.mp3` in the per-letter directory.
+    /// Cycles independently from `audioFiles` when the parent enables
+    /// "Lautwert wiedergeben" in Settings. Empty array for letters
+    /// without phoneme recordings — the audio path falls back to the
+    /// letter-name `audioFiles`.
+    let phonemeAudioFiles: [String]
     let strokes: LetterStrokes
     /// Variant IDs for which a strokes_{id}.json exists alongside strokes.json.
     /// e.g. ["variant"] when strokes_variant.json is present (Austrian Schulschrift 1995).
@@ -19,13 +27,15 @@ struct LetterAsset: Identifiable, Equatable {
 
     /// Convenience init preserving backward compatibility (defaults to .upper, no variants).
     init(id: String, name: String, imageName: String,
-         audioFiles: [String], strokes: LetterStrokes) {
+         audioFiles: [String], strokes: LetterStrokes,
+         phonemeAudioFiles: [String] = []) {
         self.id = id
         self.name = name
         self.baseLetter = name.uppercased()
         self.letterCase = .upper
         self.imageName = imageName
         self.audioFiles = audioFiles
+        self.phonemeAudioFiles = phonemeAudioFiles
         self.strokes = strokes
         self.variants = nil
     }
@@ -34,13 +44,15 @@ struct LetterAsset: Identifiable, Equatable {
     init(id: String, name: String, baseLetter: String,
          letterCase: LetterCase, imageName: String,
          audioFiles: [String], strokes: LetterStrokes,
-         variants: [String]? = nil) {
+         variants: [String]? = nil,
+         phonemeAudioFiles: [String] = []) {
         self.id = id
         self.name = name
         self.baseLetter = baseLetter
         self.letterCase = letterCase
         self.imageName = imageName
         self.audioFiles = audioFiles
+        self.phonemeAudioFiles = phonemeAudioFiles
         self.strokes = strokes
         self.variants = variants
     }

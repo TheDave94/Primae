@@ -276,11 +276,17 @@ private extension LetterRepository {
                     message: "Missing PBM image (expected \(imageCandidates.joined(separator: " or ")))"))
             }
 
-            let audio = findAudioAssets(for: base)
-            if audio.isEmpty {
+            let allAudio = findAudioAssets(for: base)
+            if allAudio.isEmpty {
                 issues.append(.init(letter: base, message: "No audio files found in bundle for letter"))
                 return nil
             }
+            // P6 (ROADMAP_V5): partition into letter-name and phoneme
+            // tracks. Phoneme files use the suffix convention
+            // `<base>_phoneme<n>.<ext>` (case-insensitive) so a single
+            // bundle scan picks up both populations and the parent's
+            // "Lautwert wiedergeben" toggle decides which plays.
+            let (audio, phonemeAudio) = partitionPhonemeAudio(allAudio)
 
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
@@ -297,7 +303,8 @@ private extension LetterRepository {
             return LetterAsset(id: base, name: base,
                                baseLetter: baseLetter, letterCase: letterCase,
                                imageName: imageName, audioFiles: audio, strokes: strokes,
-                               variants: variants)
+                               variants: variants,
+                               phonemeAudioFiles: phonemeAudio)
         }.sorted { $0.name < $1.name }
 
         return (letters, issues)
@@ -318,17 +325,19 @@ private extension LetterRepository {
 
             let id            = folder.count == 1 ? folder : String(file.prefix(1))
             let imageRelative = "Letters/\(id)/\(id).pbm"
-            let audio         = findAudioAssets(for: id)
-            if audio.isEmpty {
+            let allAudio      = findAudioAssets(for: id)
+            if allAudio.isEmpty {
                 issues.append(.init(letter: id, message: "No audio files found for folder-scanned letter"))
                 return nil
             }
+            let (audio, phonemeAudio) = partitionPhonemeAudio(allAudio)
 
             return LetterAsset(
                 id: id, name: id.uppercased(),
                 imageName: bundleHasResource(at: imageRelative) ? imageRelative : "\(id)/\(id).pbm",
                 audioFiles: audio,
-                strokes: defaultStrokes(for: id.uppercased())
+                strokes: defaultStrokes(for: id.uppercased()),
+                phonemeAudioFiles: phonemeAudio
             )
         }
 
@@ -337,6 +346,25 @@ private extension LetterRepository {
             .sorted { $0.name < $1.name }
 
         return (deduped, issues)
+    }
+
+    /// P6 (ROADMAP_V5): split a letter's audio inventory into the
+    /// letter-name population and the phoneme population. Phoneme
+    /// recordings follow the convention `<base>_phoneme<n>.<ext>`
+    /// (e.g. `A_phoneme1.mp3`). Match is case-insensitive on the
+    /// suffix; sorted output keeps playback order deterministic.
+    func partitionPhonemeAudio(_ files: [String]) -> (name: [String], phoneme: [String]) {
+        var name: [String] = []
+        var phoneme: [String] = []
+        for f in files.sorted() {
+            let leaf = (f as NSString).lastPathComponent.lowercased()
+            if leaf.contains("_phoneme") {
+                phoneme.append(f)
+            } else {
+                name.append(f)
+            }
+        }
+        return (name, phoneme)
     }
 
     func findAudioAssets(for base: String) -> [String] {

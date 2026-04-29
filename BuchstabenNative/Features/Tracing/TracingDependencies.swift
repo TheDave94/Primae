@@ -33,6 +33,11 @@ struct TracingDependencies {
     /// Whether the parent has enabled the freeform writing mode (default: on).
     /// Controls the visibility of the "Freies Schreiben" entry in the picker bar.
     var enableFreeformMode: Bool
+    /// P6 (ROADMAP_V5): play the *phoneme* (sound the letter makes)
+    /// instead of the letter *name* when the parent enables it. Default
+    /// off; falls back to name audio for letters without phoneme
+    /// recordings even when on.
+    var enablePhonemeMode: Bool
     /// CoreML-backed letter recognizer. Default is `CoreMLLetterRecognizer()`;
     /// tests inject `StubLetterRecognizer(result:)` to get deterministic output.
     var letterRecognizer: LetterRecognizerProtocol
@@ -123,6 +128,9 @@ struct TracingDependencies {
             if UserDefaults.standard.object(forKey: key) == nil { return true }
             return UserDefaults.standard.bool(forKey: key)
         }(),
+        enablePhonemeMode: Bool = UserDefaults.standard.bool(
+            forKey: "de.flamingistan.buchstaben.enablePhonemeMode"
+        ),
         letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
         speech: SpeechSynthesizing = AVSpeechSpeechSynthesizer(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
@@ -158,6 +166,7 @@ struct TracingDependencies {
         self.letterOrdering = letterOrdering
         self.enablePaperTransfer = enablePaperTransfer
         self.enableFreeformMode = enableFreeformMode
+        self.enablePhonemeMode = enablePhonemeMode
         self.letterRecognizer = letterRecognizer
         self.speech = speech
         self.makePlaybackController = makePlaybackController
