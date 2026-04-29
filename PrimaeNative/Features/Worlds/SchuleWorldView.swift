@@ -323,18 +323,21 @@ struct SchuleWorldView: View {
     // MARK: - Observe overlay
 
     private var observeOverlay: some View {
+        // The child can't read, so the spoken prompt
+        // (`ChildSpeechLibrary.phaseEntry(.observe)` — "Schau mal
+        // genau hin.") + the live guide-dot animation are the actual
+        // phase cue. The on-screen overlay is just two glyphs in a
+        // brand pill: an eye for "watch" and a finger for "tap to
+        // continue when ready". No text — words wouldn't reach the
+        // intended user anyway, and they cluttered the canvas.
         VStack {
             Spacer()
-            VStack(spacing: 12) {
-                Text("👁️  Schau genau hin!")
-                    .font(.display(FontSize.lg, weight: .bold))
-                    .foregroundStyle(.white)
-                Text("👆  Tippen, um weiterzumachen")
-                    .font(.display(FontSize.md, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
+            HStack(spacing: 18) {
+                Text("👁️").font(.system(size: 36))
+                Text("👆").font(.system(size: 36))
             }
-            .padding(.horizontal, 28).padding(.vertical, 18)
-            .background(Color.brand, in: RoundedRectangle(cornerRadius: Radii.md))
+            .padding(.horizontal, 28).padding(.vertical, 16)
+            .background(Color.brand, in: Capsule())
             .shadow(color: Color.brand.opacity(0.30), radius: 12, y: 4)
             .padding(.bottom, 100)
         }
