@@ -62,10 +62,19 @@ final class PromptPlayer {
 
     private let speech: SpeechSynthesizing
     private var player: AVAudioPlayer?
+    /// Pre-loaded short-effect player for the direct-phase tap chime
+    /// (and any future short UI sounds). Kept separate from `player`
+    /// so a long phase-prompt MP3 doesn't get cancelled by a per-tap
+    /// click. AVAudioPlayer inherits the existing `.playback` session
+    /// the AudioEngine sets up, so it bypasses the iPad ringer/silent
+    /// switch — a regression vs. AudioServicesPlaySystemSound which
+    /// the user couldn't hear with mute on.
+    private var tapPlayer: AVAudioPlayer?
     private let log = Logger(subsystem: "buchstaben.primae", category: "prompts")
 
     init(fallbackSpeech: SpeechSynthesizing) {
         self.speech = fallbackSpeech
+        tapPlayer = loadTapPlayer()
     }
 
     /// Play the prompt audio for `key`. Falls back to
@@ -110,11 +119,48 @@ final class PromptPlayer {
     }
 
     /// Short confirmation tap, fired when the child taps a correct
-    /// numbered start-dot in the direct phase. Asset ID 1104 is the
-    /// system "key click" — a brief, low-pitched click that reads
-    /// as "registered" without competing with the letter audio.
+    /// numbered start-dot in the direct phase. Plays the bundled
+    /// `tap.wav` (80 ms attack-decay click at 1.5 kHz) through
+    /// AVAudioPlayer — inherits the AudioEngine's `.playback`
+    /// session so it bypasses the iPad ringer switch (the user's
+    /// device is muted; AudioServicesPlaySystemSound was silenced).
+    /// Falls back to the system sound only if the asset is missing.
     func playTapChime() {
-        AudioServicesPlaySystemSound(1104)
+        if let p = tapPlayer {
+            p.currentTime = 0
+            p.play()
+        } else {
+            AudioServicesPlaySystemSound(1104)
+        }
+    }
+
+    /// One-time tap-chime player setup. Bundle lookup mirrors
+    /// `locate(_:)` (probes `.module` and `.main` with the
+    /// `Resources/Prompts` and `Prompts` subdirs). Returns nil if
+    /// the asset isn't bundled — `playTapChime()` falls back to a
+    /// system sound in that case.
+    private func loadTapPlayer() -> AVAudioPlayer? {
+        let bundles: [Bundle] = [.module, .main]
+        let subdirs: [String?] = ["Resources/Prompts", "Prompts", nil]
+        for bundle in bundles {
+            for subdir in subdirs {
+                let url: URL?
+                if let subdir {
+                    url = bundle.url(forResource: "tap",
+                                     withExtension: "wav",
+                                     subdirectory: subdir)
+                } else {
+                    url = bundle.url(forResource: "tap",
+                                     withExtension: "wav")
+                }
+                if let url, let p = try? AVAudioPlayer(contentsOf: url) {
+                    p.prepareToPlay()
+                    return p
+                }
+            }
+        }
+        log.info("tap.wav not bundled — falling back to system sound for direct-phase tap chime.")
+        return nil
     }
 
     // MARK: - Bundle lookup

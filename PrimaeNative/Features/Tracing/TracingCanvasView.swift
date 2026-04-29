@@ -436,17 +436,6 @@ private struct ProgressPill: View, Equatable {
 private struct DirectPhaseDotsOverlay: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Drives the wrong-tap "look here" emphasis pulse. Bound to
-    /// `vm.directPulsingDot` (currently never raised in practice
-    /// because the overlay only renders one dot at a time, but kept
-    /// for Reduce-Motion / a11y parity if the rendering policy ever
-    /// changes back to all-dots-at-once).
-    @State private var pulseToggle = false
-    /// Drives the continuous attention-pulse on the next-expected
-    /// dot. Without it the dot just sits there static and a 5-yr-
-    /// old can scan past it; the slow breathing scale (1.0 ↔ 1.18)
-    /// reads as "tap me" without being distracting.
-    @State private var idlePulse = false
 
     var body: some View {
         GeometryReader { geo in
@@ -466,62 +455,57 @@ private struct DirectPhaseDotsOverlay: View {
                 // canvas origin, so the path is unchanged for them.
                 let cellFrame = vm.multiCellActiveFrame
                 ?? CGRect(origin: .zero, size: geo.size)
-                if let rawStrokes = vm.rawGlyphStrokes,
-                   !rawStrokes.strokes.isEmpty,
-                   vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                       for: vm.currentLetterName,
-                       canvasSize: cellFrame.size,
-                       schriftArt: vm.schriftArt) {
-                    let idx = vm.directNextExpectedDotIndex
-                    dotView(idx: idx,
-                            stroke: rawStrokes.strokes[idx],
-                            gr: gr,
-                            cellFrame: cellFrame)
-                        // `.id(idx)` makes SwiftUI treat each
-                        // next-expected dot as a distinct view, so
-                        // the outgoing one runs the exit transition
-                        // (scale up + fade) and the incoming one runs
-                        // the entry transition. Visual confirmation
-                        // of a registered tap that doesn't depend on
-                        // haptic / audio (iPad lacks the Taptic Engine
-                        // for impact haptics, and system sounds are
-                        // silenced by the ringer switch).
-                        .id(idx)
-                        .transition(reduceMotion
-                                    ? .opacity
-                                    : .asymmetric(
-                                        insertion: .scale(scale: 0.6).combined(with: .opacity),
-                                        removal: .scale(scale: 1.6).combined(with: .opacity)))
+                // TimelineView drives a 60 Hz body re-eval so the
+                // pulse value is recomputed every frame from the wall
+                // clock — bypasses SwiftUI's `.animation(repeatForever)`
+                // path, which proved unreliable on this iOS 26 / Swift 6
+                // build (canonical pattern visually never started). The
+                // sine-wave maths is explicit and visible; Reduce Motion
+                // collapses the pulse to a static scale of 1.0.
+                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { ctx in
+                    let elapsed = ctx.date.timeIntervalSinceReferenceDate
+                    // 1.2 s period (cycle = 0.6 s up + 0.6 s down).
+                    let phase = (sin(elapsed * .pi / 0.6) + 1) / 2 // 0…1
+                    let pulseScale: CGFloat = reduceMotion
+                        ? 1.0
+                        : CGFloat(1.0 + 0.35 * phase)            // 1.00…1.35
+                    if let rawStrokes = vm.rawGlyphStrokes,
+                       !rawStrokes.strokes.isEmpty,
+                       vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
+                       let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                           for: vm.currentLetterName,
+                           canvasSize: cellFrame.size,
+                           schriftArt: vm.schriftArt) {
+                        let idx = vm.directNextExpectedDotIndex
+                        dotView(idx: idx,
+                                stroke: rawStrokes.strokes[idx],
+                                gr: gr,
+                                cellFrame: cellFrame,
+                                pulseScale: pulseScale)
+                            // `.id(idx)` makes SwiftUI treat each
+                            // next-expected dot as a distinct view so
+                            // the outgoing one runs the exit transition
+                            // (scale up + fade) and the incoming one
+                            // runs entry. Visual confirmation of a
+                            // registered tap that doesn't depend on
+                            // haptic / audio (iPad-7-or-earlier lacks
+                            // the Taptic Engine; system sounds are
+                            // silenced by the ringer switch).
+                            .id(idx)
+                            .transition(reduceMotion
+                                        ? .opacity
+                                        : .asymmetric(
+                                            insertion: .scale(scale: 0.6).combined(with: .opacity),
+                                            removal: .scale(scale: 1.6).combined(with: .opacity)))
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .onChange(of: vm.directPulsingDot) { _, isPulsing in
-            // Respect Reduce Motion: skip the repeating pulse so users
-            // who disabled motion don't see the dot animate. The wrong-
-            // tap haptic + the on-screen dot still convey the prompt.
-            guard isPulsing, !reduceMotion else { pulseToggle = false; return }
-            withAnimation(.easeInOut(duration: 0.25).repeatCount(3, autoreverses: true)) {
-                pulseToggle = true
-            }
-            Task {
-                try? await Task.sleep(for: .milliseconds(800))
-                pulseToggle = false
-            }
-        }
-        .onAppear {
-            guard !reduceMotion else { return }
-            // Toggle the value so the .animation(_:value: idlePulse)
-            // modifier on the dot picks up a state change. Without
-            // wrapping in withAnimation here — the modifier carries
-            // the curve, and the value change is what triggers it.
-            idlePulse = true
-        }
     }
 
     @ViewBuilder
-    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, cellFrame: CGRect) -> some View {
+    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, cellFrame: CGRect, pulseScale: CGFloat) -> some View {
         if let first = stroke.checkpoints.first {
             // gr is normalised 0..1 relative to `cellFrame.size`; offset by
             // cellFrame origin so word-mode (multi-cell) draws the dot in
@@ -537,28 +521,15 @@ private struct DirectPhaseDotsOverlay: View {
             // ForEach, only the top-most (last) dot's handler would then fire for
             // every tap, leaving multi-stroke letters unable to advance.
             // Idle breathing pulse on the next-expected dot draws
-            // a 5-yr-old's eye. Wrong-tap pulse layers on top via
-            // pulseToggle for the louder "look here" emphasis.
-            let idleScale: CGFloat = isNext && idlePulse ? 1.18 : 1.0
-            let emphasisScale: CGFloat = isNext && pulseToggle ? 1.3 : idleScale
+            // a 5-yr-old's eye. `pulseScale` is computed every frame
+            // by the parent's TimelineView from a sine wave on wall
+            // time, so the pulse value is fresh on every render.
+            let scale: CGFloat = isNext ? pulseScale : 1.0
             ZStack {
                 Circle()
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                     .opacity(isTapped ? 0.85 : 0.80)
-                    .scaleEffect(emphasisScale)
-                    // Two value-keyed animations layered: the slow
-                    // breathing curve drives idlePulse; the wrong-tap
-                    // emphasis snaps via pulseToggle. SwiftUI honours
-                    // both because each `.animation(_:value:)` is
-                    // scoped to its own state key.
-                    .animation(reduceMotion
-                                ? nil
-                                : .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
-                               value: idlePulse)
-                    .animation(reduceMotion
-                                ? nil
-                                : .spring(response: 0.25, dampingFraction: 0.5),
-                               value: pulseToggle)
+                    .scaleEffect(scale)
                 Text("\(idx + 1)")
                     .font(.system(size: r * 0.85, weight: .bold))
                     .foregroundStyle(.white)
@@ -569,8 +540,11 @@ private struct DirectPhaseDotsOverlay: View {
                 // Wrap so the .id(idx) transition above (outgoing
                 // dot scales up + fades, incoming scales in) runs.
                 // The VM doesn't import SwiftUI, so the animation
-                // transaction lives here at the call site.
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) {
+                // transaction lives here at the call site. Duration
+                // chosen so the flash is unmissable for a 5-yr-old —
+                // shorter than this and the scale-up reads as a
+                // glitch rather than a confirmation.
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.55)) {
                     vm.tapDirectDot(index: idx)
                 }
             }
