@@ -90,7 +90,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=iPad (A16)' \
             -configuration Debug \
             -enableCodeCoverage NO \
-            -derivedDataPath /tmp/DerivedData-BuchstabenApp \
+            -derivedDataPath /Users/musicbox/DerivedData-CI \
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_DEBUG_DYLIB=NO \
             2>&1 | tee /tmp/test-device.log
