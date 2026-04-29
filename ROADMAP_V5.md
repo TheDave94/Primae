@@ -135,7 +135,7 @@ World switching is instant. A 200 ms cross-fade on the world content (not the ra
 - **Files:** `Features/Navigation/MainAppView.swift`.
 - **Dependencies:** none.
 
-### U4 (P2, S) — Onboarding length tuning
+### U4 (P2, S) — Onboarding length tuning ⏭ deferred (UX risk; needs A/B validation before committing)
 The 7-step onboarding (welcome → 4 phase demos → reward intro → complete) is long for a 5-year-old. Shorten to **3 steps** for the child path: welcome → "Zeig mal was du kannst" (10 s tracing demo) → "Los geht's!". Keep the long form behind the parent's "Einführung wiederholen" button.
 - **Files:** `Features/Onboarding/OnboardingView.swift`, `Core/OnboardingCoordinator.swift`.
 - **Dependencies:** none.
