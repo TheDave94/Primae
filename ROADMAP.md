@@ -19,7 +19,6 @@ _Single forward-looking work log. Last updated 2026-04-29 against `main`. Only i
 
 | Item | What I need from you | Why it can't be autonomous |
 |---|---|---|
-| **D1c** extract `PhaseTransitionCoordinator` | A focused review session — after D1b has soaked on `main` for ~24 hours, similar shape: one PR, you confirm phase transitions still feel right between commits | Post-transition side-effect block touches every store, the overlay queue, speech, syncCoordinator |
 | **U11** dark-mode parity | iPad + 1 hour of paired tonal validation | Card surfaces need re-toning from `Color.white` to `secondarySystemGroupedBackground`; failure modes are visible only on device |
 | **D8** canvas redraw profile | iPad + Instruments time-profile of a high-velocity guided session | No measured evidence of a problem; pre-optimising could break a currently-correct redraw path |
 
@@ -34,7 +33,7 @@ This list is intentionally collapsed; the detail lives in commit messages. Remov
 - **Thesis data correctness:** condition-tagged samples, timezone header, wallClockSeconds, raw recognition confidence, researcher arm override, input-mode on durations, EXPORT_SCHEMA appendix.
 - **Pedagogical features:** self-explanation re-animation on misrecognition, errorless first-3-sessions ramp, daily goal pill, spaced-retrieval testing prompts (P1 — `RetrievalScheduler`, `RetrievalPromptView`, opt-in toggle, motorSimilarity-cluster distractors, `retrievalAccuracy` CSV column), backward-chaining direct-phase toggle (P5), onboarding A/B variants with first-completion lock (U4), phoneme audio infrastructure (P6 — toggle + filename convention + scanner partition).
 - **UX:** reward-celebration overlay, Schreibmotorik dimension sparklines, gold-tint token unification, celebration haptic, speech-rate slider, Bob-the-dog start-cue dwell.
-- **Tech debt:** `SchemaMigrator` framework, `PaperTransferView` deterministic timing seam, CoreML classifier-closure protocol seam (D3) with 7 pipeline tests, `RecognitionTokenTracker` extracted (D1a — first VM-decomposition slice), `TouchDispatcher` extracted (D1b — moved touch-session state + the `beginTouch`/`updateTouch`/`endTouch` flow + 5 helpers + `mapVelocityToSpeed` off the VM, ~333 lines down), CI timeout caps, accessibility partial (Schreibqualität rows collapse to single VoiceOver elements).
+- **Tech debt:** `SchemaMigrator` framework, `PaperTransferView` deterministic timing seam, CoreML classifier-closure protocol seam (D3) with 7 pipeline tests, **VM God-object decomposition (D1) fully shipped**: `RecognitionTokenTracker` (D1a, recognition tokens off the VM), `TouchDispatcher` (D1b, touch-session state + `beginTouch`/`updateTouch`/`endTouch` flow + 5 helpers + `mapVelocityToSpeed`), `PhaseTransitionCoordinator` (D1c, `advanceLearningPhase` + post-phase pipeline + `commitCompletion`). VM down from 2350+ to ~2030 lines; CI timeout caps; accessibility partial (Schreibqualität rows collapse to single VoiceOver elements).
 
 ---
 
@@ -169,30 +168,6 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 
 ## 4. TECHNICAL DEBT
 
-### D1 — TracingViewModel God-object decomposition *(D1a + D1b shipped; D1c remains)*
-**Effort:** M for the remaining slice · **Priority:** P1
-
-`TracingViewModel.swift` was **2350+ lines**; after D1a and D1b it's down to **~2000 lines** with the touch-session state and recognition-token machinery extracted. The two shipped slices:
-
-- **D1a — `RecognitionTokenTracker`** (commit `7800e8e`): pulled the UUID-equality token machinery out into a small `@MainActor` reference type so the three async recognizer call sites stop hand-rolling the same guards.
-- **D1b — `TouchDispatcher`** (commit `5c88ae9`): moved the touch-session state (`isSingleTouchInteractionActive`, last point/timestamp, smoothed velocity, the three tunable knobs) and the `beginTouch`/`updateTouch`/`endTouch` flow, plus 5 helpers and the static `mapVelocityToSpeed`. The VM keeps thin forwarders so views and tests didn't change. Net VM diff: −333 / +71.
-
-**Remaining slice.**
-
-**D1c — `PhaseTransitionCoordinator`** — `advanceLearningPhase`, `recordPhaseSessionCompletion`, `commitCompletion`, the post-transition side-effect block (overlay enqueue, speech praise, store writes, adaptation sample, HUD). Inputs: phaseController, freeWriteRecorder, all four stores, overlay queue, speech, syncCoordinator. **~200 lines**.
-
-**The recognition-orchestration slice (originally planned as D1's second cut) is genuinely hard to autonomously extract.** The recognize-then-route flow has 3 entry points (freeWrite, freeform-letter, freeform-word) with distinct side effects: `lastRecognitionResult`, `freeform.isRecognizing`, `freeform.lastFreeformFormScore`, `recordFreeformCompletion`, the P2 self-explanation re-animation, and the W-30-corrected synthesised result for freeform mode. A clean callback-injected orchestrator works on paper but the coupling-point count makes it the wrong thing to do without per-slice in-the-loop review. D1a (the token-tracker piece) is the safe-autonomous portion of that work; the rest waits.
-
-**Failure modes for the remaining slice.**
-- **Forwarders.** Each property/method that views currently call must keep its name on the VM after the move.
-- **MainActor isolation.** All collaborators must be `@MainActor`. Background work hops back to MainActor before mutating state.
-- **Test fixtures.** `TestFixtures.StubProgressStore` etc. are used directly; new collaborators need stub-friendly initialisers.
-- **Per-VM identity.** Each collaborator must be created once per VM (not shared static).
-
-**Recommendation.** D1c can follow once D1b has been on `main` for ~24 hours with no regression reports. The touch-session move is the higher-risk one; phase-transition has more callers but each is a one-shot side effect, not a per-frame hot path.
-
----
-
 ### D8 — Canvas redraw frequency profile
 **Effort:** S (profile only) — could expand to M if a real bottleneck surfaces · **Priority:** P3
 
@@ -272,7 +247,6 @@ The at-a-glance table at the top of this file is the authoritative version. Repe
 1. **T1 demo lowercase set** — block out an iPad session: open the calibration overlay (long-press phase indicator → long-press again), author stroke checkpoints for `a f i k l m o`, export to `Resources/Letters/<x>/strokes.json`. ElevenLabs the matching audio in parallel.
 2. **P6 phoneme recordings** — runs in parallel with T1 since it's pure ElevenLabs work + drop-into-bundle.
 3. **U5 + U10 device validation** — same iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
-4. **D1c PhaseTransitionCoordinator** — schedule a focused engineering session with me after D1b has been on `main` for ~24 hours with no regression reports. One PR, ~200 lines extracted, you review the diff before merge.
 
 **U11 dark-mode parity** and **D8 canvas redraw profile** are post-thesis polish — schedule once the demo set ships and there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F10** are post-thesis full features.
 
