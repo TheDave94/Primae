@@ -1483,6 +1483,17 @@ public final class TracingViewModel {
         activePath.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
         recognitionTokens.cancel()
+        // `didCompleteCurrentLetter` is set true by the guided-phase
+        // stroke-completion path (TouchDispatcher.handleStrokeCompletionIfReached)
+        // when the grid sequence finishes — but at that point only the
+        // *guided* phase is done, not the whole letter session. The
+        // flag was originally meant to mean "letter session done"; we
+        // restore that meaning here so the freeWrite auto-advance gate
+        // (`!vm.didCompleteCurrentLetter`) doesn't stay clamped after
+        // guided→freeWrite. The final-phase commit path inside
+        // `recordSessionCompletion` wins because it runs before the
+        // controller advances back to observe on the next letter.
+        didCompleteCurrentLetter = false
         // Always clear the recorder when a phase transition fires —
         // a stale freeWritePath from a previous freeWrite session must
         // not leak into the next one if the controller lands on a
