@@ -222,9 +222,16 @@ final class TouchDispatcher {
         // the phase never advances and `commitCompletion` never fires.
         // Treat lift-then-quiet as the implicit "I'm done" — schedule
         // advance, cancel if the child re-touches within the window.
-        if vm.phaseController.currentPhase == .freeWrite,
-           !vm.didCompleteCurrentLetter,
-           !vm.freeWritePoints.isEmpty {
+        let phase = vm.phaseController.currentPhase
+        let pointsCount = vm.freeWritePoints.count
+        let alreadyComplete = vm.didCompleteCurrentLetter
+        #if DEBUG
+        print("[Primae.progress] endTouch:",
+              "phase=\(phase)",
+              "freeWritePoints=\(pointsCount)",
+              "didComplete=\(alreadyComplete)")
+        #endif
+        if phase == .freeWrite, !alreadyComplete, pointsCount > 0 {
             scheduleFreeWriteAutoAdvance()
         }
     }
@@ -390,15 +397,31 @@ final class TouchDispatcher {
     private func scheduleFreeWriteAutoAdvance() {
         freeWriteAutoAdvanceTask?.cancel()
         let seconds = freeWriteQuietSeconds
+        #if DEBUG
+        print("[Primae.progress] scheduleFreeWriteAutoAdvance: armed (\(seconds)s)")
+        #endif
         freeWriteAutoAdvanceTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-            guard let self,
-                  !Task.isCancelled,
-                  let vm = self.vm,
-                  vm.phaseController.currentPhase == .freeWrite,
-                  !vm.didCompleteCurrentLetter,
-                  !self.isSingleTouchInteractionActive else { return }
+            guard let self else { return }
+            let cancelled = Task.isCancelled
+            let vmAlive = self.vm != nil
+            let phaseStillFree = self.vm?.phaseController.currentPhase == .freeWrite
+            let notComplete = !(self.vm?.didCompleteCurrentLetter ?? true)
+            let noActiveTouch = !self.isSingleTouchInteractionActive
+            #if DEBUG
+            print("[Primae.progress] freeWriteAutoAdvance fire-check:",
+                  "cancelled=\(cancelled)",
+                  "vmAlive=\(vmAlive)",
+                  "phaseStillFree=\(phaseStillFree)",
+                  "notComplete=\(notComplete)",
+                  "noActiveTouch=\(noActiveTouch)")
+            #endif
+            guard !cancelled, vmAlive, phaseStillFree, notComplete, noActiveTouch,
+                  let vm = self.vm else { return }
             self.freeWriteAutoAdvanceTask = nil
+            #if DEBUG
+            print("[Primae.progress] freeWriteAutoAdvance: calling advanceLearningPhase")
+            #endif
             vm.advanceLearningPhase()
         }
     }
