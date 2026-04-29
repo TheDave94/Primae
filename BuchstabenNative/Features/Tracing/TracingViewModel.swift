@@ -540,15 +540,15 @@ public final class TracingViewModel {
     /// Forwarded to recordPhaseSession so schedulerEffectivenessProxy is non-zero.
     /// C-3: was hardcoded 0, making the Pearson correlation permanently 0.
     private var lastScheduledLetterPriority: Double = 0
-    /// IUO is intentional (review item W-16): `init` captures `[weak self]`
-    /// when constructing `PlaybackController`, which under Swift's two-
-    /// phase init rules requires every stored property — including
-    /// `playback` itself — to already have an initial value at the
-    /// capture site. A non-optional `let` is therefore not assignable
-    /// here without an inner indirection. The IUO is set exactly once on
-    /// the closing line of `init`; every subsequent access goes through
-    /// the implicit unwrap. Treat this as effectively non-optional.
-    private var playback: PlaybackController!
+    /// W-16: was previously an IUO because `init` needed to capture
+    /// `[weak self]` while constructing `PlaybackController`, which under
+    /// Swift's two-phase init rules requires every stored property to
+    /// have an initial value at the capture site. The fix exposes
+    /// `PlaybackController.onIsPlayingChanged` as a mutable `var` so the
+    /// controller is constructed with a no-op callback, assigned to
+    /// `self.playback`, and the real `[weak self]` callback is wired
+    /// AFTER `self` is fully initialised — eliminating the IUO.
+    private let playback: PlaybackController
     private let messages: TransientMessagePresenter
     private let animation: AnimationGuideController
     /// Full-cycle counter for the observe-phase animation. Used to auto-advance
@@ -617,9 +617,15 @@ public final class TracingViewModel {
         self.letterScheduler  = deps.makeLetterScheduler()
 
         haptics.prepare()
-        self.playback = deps.makePlaybackController(deps.audio) { [weak self] in
-            self?.isPlaying = $0
-        }
+        // W-16: build with a no-op callback first so the closure does
+        // not capture `self` (which is not yet fully initialised). Once
+        // `self.playback` is assigned, every stored `let` is in place
+        // and `self` is fully initialised — wire the real `[weak self]`
+        // callback at that point. The controller stores
+        // `onIsPlayingChanged` as a `var` precisely for this seam.
+        let pb = deps.makePlaybackController(deps.audio) { _ in }
+        self.playback = pb
+        pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }
         letters = repo.loadLettersFast()
         // Surface a startup audio failure as a brief German toast so a parent
         // notices the device is silent on purpose (not because the child got

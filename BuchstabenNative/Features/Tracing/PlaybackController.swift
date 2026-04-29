@@ -28,7 +28,13 @@ final class PlaybackController {
     private let audio: AudioControlling
     /// Invoked when the audible playing state changes. VM uses this to
     /// update its @Observable `isPlaying` mirror.
-    private let onIsPlayingChanged: (Bool) -> Void
+    ///
+    /// Settable post-init so the owning VM can capture `[weak self]`
+    /// AFTER `self.playback` has already been assigned (W-16). Pass the
+    /// real callback at init when you can; assign it later when the
+    /// callback needs to capture an enclosing object that can't escape
+    /// Swift's two-phase init rules.
+    var onIsPlayingChanged: (Bool) -> Void
 
     // MARK: - Tunable timings (live-adjustable from the debug audio panel)
 
@@ -59,7 +65,7 @@ final class PlaybackController {
          idleDebounceSeconds: TimeInterval = 0.12,
          playIntentDebounceSeconds: CFTimeInterval = 0.1,
          sleep: @escaping Sleeper = { try await Task.sleep(for: $0) },
-         onIsPlayingChanged: @escaping (Bool) -> Void) {
+         onIsPlayingChanged: @escaping (Bool) -> Void = { _ in }) {
         self.audio = audio
         self.activeDebounceSeconds = activeDebounceSeconds
         self.idleDebounceSeconds = idleDebounceSeconds
