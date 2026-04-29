@@ -48,6 +48,12 @@ enum CanvasOverlay: Equatable, Sendable {
     /// Phase-complete / letter-complete celebration. Modal: no auto-dismiss,
     /// child taps "Weiter" to load the next recommended letter.
     case celebration(stars: Int)
+    /// U1 (ROADMAP_V5): newly-unlocked achievement (firstLetter, 7-day
+    /// streak, allLetters, etc). Auto-advances after 2.5 s so the queue
+    /// keeps flowing into the celebration that follows. The badges in
+    /// FortschritteWorldView are the persistent display; this overlay is
+    /// the one-time "you just earned this" moment.
+    case rewardCelebration(RewardEvent)
 
     /// Default display duration chosen per overlay type so callers can
     /// enqueue without re-stating the timing at every site. `nil` means
@@ -60,6 +66,7 @@ enum CanvasOverlay: Equatable, Sendable {
         case .recognitionBadge:   return 3.0
         case .paperTransfer:      return nil   // modal: wait for child
         case .celebration:        return nil   // modal: wait for child
+        case .rewardCelebration:  return 2.5
         }
     }
 }

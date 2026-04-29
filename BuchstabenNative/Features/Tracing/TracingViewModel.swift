@@ -1648,7 +1648,19 @@ public final class TracingViewModel {
            let variantID = letters[letterIndex].variants?.first {
             progressStore.recordVariantUsed(for: letter, variantID: variantID)
         }
-        streakStore.recordSession(date: Date(), lettersCompleted: lettersToRecord, accuracy: accuracy)
+        let newRewards = streakStore.recordSession(
+            date: Date(),
+            lettersCompleted: lettersToRecord,
+            accuracy: accuracy
+        )
+        // U1 (ROADMAP_V5): surface freshly-unlocked achievements as a
+        // one-time overlay before the celebration the child is already
+        // expecting. `enqueueBeforeCelebration` slots each badge ahead
+        // of the celebration regardless of where in the queue the
+        // celebration currently sits (queued / about to fire / active).
+        for event in newRewards {
+            overlayQueue.enqueueBeforeCelebration(.rewardCelebration(event))
+        }
         // T4: wall-clock duration includes any backgrounded interval and
         // is reconstructed from the load Date stamp; the active-time
         // `duration` parameter excludes it (D-1 accumulator).
@@ -1768,6 +1780,21 @@ public final class TracingViewModel {
         // Loading into the old grid's tracker would be thrown away here.
         reapplyGridPreset()
         reloadStrokeCheckpoints(for: letter)
+        // P3 (ROADMAP_V5): errorless-learning ramp for the first three
+        // sessions on a new letter. The MovingAveragePolicy starts at
+        // .standard for every letter regardless of whether the child has
+        // seen this glyph before; an extra-lenient radius for the first
+        // few encounters supports motor-pattern formation without the
+        // child experiencing repeated near-miss failure on novel letters
+        // (Skinner 1958; Terrace 1963). Falls back to the policy tier
+        // from session 4 onward, so adaptation still drives long-term.
+        let priorCompletions = progressStore.progress(for: letter.name).completionCount
+        if priorCompletions < 3 {
+            strokeTracker.radiusMultiplier = max(
+                strokeTracker.radiusMultiplier,
+                DifficultyTier.easy.radiusMultiplier
+            )
+        }
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false

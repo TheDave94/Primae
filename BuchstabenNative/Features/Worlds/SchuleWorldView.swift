@@ -161,6 +161,14 @@ struct SchuleWorldView: View {
             }
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(20)
+        case .rewardCelebration(let event):
+            // U1 (ROADMAP_V5): timed (2.5 s) one-shot achievement
+            // celebration. Auto-dismisses through the queue's own
+            // timer; tap-to-dismiss for impatient users.
+            RewardCelebrationOverlay(event: event)
+                .onTapGesture { vm.overlayQueue.dismiss() }
+                .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                .zIndex(25)
         case .kpOverlay:
             // KP overlay is rendered by `TracingCanvasView` itself (it
             // needs the canvas geometry and reference-stroke data) — the

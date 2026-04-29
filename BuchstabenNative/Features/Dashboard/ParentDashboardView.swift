@@ -108,21 +108,45 @@ struct ParentDashboardView: View {
     private var schreibqualitaetDetailsSection: some View {
         if let dims = snapshot.averageWritingDimensions {
             Section("Schreibqualität – Details") {
-                dimensionRow(label: "Form",     value: dims.form)
-                dimensionRow(label: "Tempo",    value: dims.tempo)
-                dimensionRow(label: "Druck",    value: dims.pressure)
-                dimensionRow(label: "Rhythmus", value: dims.rhythm)
+                dimensionRow(label: "Form",
+                             value: dims.form,
+                             trend: dimensionTrend(\.formAccuracy))
+                dimensionRow(label: "Tempo",
+                             value: dims.tempo,
+                             trend: dimensionTrend(\.tempoConsistency))
+                dimensionRow(label: "Druck",
+                             value: dims.pressure,
+                             trend: dimensionTrend(\.pressureControl))
+                dimensionRow(label: "Rhythmus",
+                             value: dims.rhythm,
+                             trend: dimensionTrend(\.rhythmScore))
             }
         }
     }
 
+    /// U7 (ROADMAP_V5): pull the last 5 non-nil values for one Schreibmotorik
+    /// dimension across all completed freeWrite phase records, so the row
+    /// can render a tiny trend sparkline next to the average.
+    private func dimensionTrend(_ keyPath: KeyPath<PhaseSessionRecord, Double?>) -> [Double] {
+        snapshot.phaseSessionRecords
+            .filter { $0.phase == "freeWrite" && $0.completed }
+            .compactMap { $0[keyPath: keyPath] }
+            .suffix(5)
+            .map { $0 }
+    }
+
     @ViewBuilder
-    private func dimensionRow(label: String, value: Double) -> some View {
+    private func dimensionRow(label: String, value: Double, trend: [Double]) -> some View {
         let pct = Int((value * 100).rounded())
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            HStack(spacing: 8) {
                 Text(label)
                 Spacer()
+                if trend.count >= 2 {
+                    Sparkline(values: trend)
+                        .frame(width: 56, height: 16)
+                        .accessibilityHidden(true)
+                }
                 Text("\(pct) %").monospacedDigit().foregroundStyle(.secondary)
             }
             ProgressView(value: max(0, min(1, value)))
@@ -130,6 +154,33 @@ struct ParentDashboardView: View {
         }
         .padding(.vertical, 2)
     }
+}
+
+/// U7 (ROADMAP_V5): minimal inline sparkline. Renders a polyline
+/// over the supplied 0–1 values, scaled to fit the assigned frame.
+/// Single-value series fall through; the row caller already gates
+/// on `count >= 2`.
+private struct Sparkline: View, Equatable {
+    let values: [Double]
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                guard values.count >= 2 else { return }
+                let xStep = geo.size.width / CGFloat(values.count - 1)
+                for (idx, raw) in values.enumerated() {
+                    let v = max(0, min(1, raw))
+                    let x = CGFloat(idx) * xStep
+                    let y = geo.size.height * (1 - CGFloat(v))
+                    if idx == 0 { path.move(to: .init(x: x, y: y)) }
+                    else { path.addLine(to: .init(x: x, y: y)) }
+                }
+            }
+            .stroke(AppSurface.starGold, lineWidth: 1.5)
+        }
+    }
+}
+
+extension ParentDashboardView {
 
     private var phasenSection: some View {
         Section("Phasen-Erfolgsquote") {
