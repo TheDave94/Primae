@@ -74,8 +74,8 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
     @Test func content_identifier_isDailyPractice() {
         #expect(makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)?.identifier == "daily_practice_reminder")
     }
-    @Test func content_titleIsBuchstabenLernen() {
-        #expect(makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)?.title == "Buchstaben Lernen")
+    @Test func content_titleIsPrimae() {
+        #expect(makePolicy().content(currentStreak: 0, onboardingComplete: true, calendar: .current)?.title == "Primae")
     }
 }
 

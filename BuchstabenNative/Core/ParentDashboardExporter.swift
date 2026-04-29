@@ -352,13 +352,13 @@ struct ParentDashboardExporter {
         switch format {
         case .csv:
             data     = csvData(from: snapshot, progress: progress)
-            filename = "buchstaben_progress_\(dateTag).csv"
+            filename = "primae_progress_\(dateTag).csv"
         case .tsv:
             data     = tsvData(from: snapshot, progress: progress)
-            filename = "buchstaben_progress_\(dateTag).tsv"
+            filename = "primae_progress_\(dateTag).tsv"
         case .json:
             data     = try jsonData(from: snapshot, progress: progress)
-            filename = "buchstaben_progress_\(dateTag).json"
+            filename = "primae_progress_\(dateTag).json"
         }
         let url = tempDirectory.appendingPathComponent(filename)
         do {

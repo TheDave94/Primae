@@ -84,7 +84,7 @@ struct DefaultDailyReminderPolicy: DailyReminderPolicy {
 
         return ReminderContent(
             identifier: "daily_practice_reminder",
-            title: "Buchstaben Lernen",
+            title: "Primae",
             body: body,
             hour: defaultHour,
             minute: defaultMinute
