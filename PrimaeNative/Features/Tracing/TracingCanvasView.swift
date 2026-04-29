@@ -478,6 +478,21 @@ private struct DirectPhaseDotsOverlay: View {
                             stroke: rawStrokes.strokes[idx],
                             gr: gr,
                             cellFrame: cellFrame)
+                        // `.id(idx)` makes SwiftUI treat each
+                        // next-expected dot as a distinct view, so
+                        // the outgoing one runs the exit transition
+                        // (scale up + fade) and the incoming one runs
+                        // the entry transition. Visual confirmation
+                        // of a registered tap that doesn't depend on
+                        // haptic / audio (iPad lacks the Taptic Engine
+                        // for impact haptics, and system sounds are
+                        // silenced by the ringer switch).
+                        .id(idx)
+                        .transition(reduceMotion
+                                    ? .opacity
+                                    : .asymmetric(
+                                        insertion: .scale(scale: 0.6).combined(with: .opacity),
+                                        removal: .scale(scale: 1.6).combined(with: .opacity)))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -497,9 +512,11 @@ private struct DirectPhaseDotsOverlay: View {
         }
         .onAppear {
             guard !reduceMotion else { return }
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                idlePulse = true
-            }
+            // Toggle the value so the .animation(_:value: idlePulse)
+            // modifier on the dot picks up a state change. Without
+            // wrapping in withAnimation here — the modifier carries
+            // the curve, and the value change is what triggers it.
+            idlePulse = true
         }
     }
 
@@ -522,13 +539,22 @@ private struct DirectPhaseDotsOverlay: View {
             // Idle breathing pulse on the next-expected dot draws
             // a 5-yr-old's eye. Wrong-tap pulse layers on top via
             // pulseToggle for the louder "look here" emphasis.
-            let baseScale: CGFloat = isNext && idlePulse ? 1.18 : 1.0
-            let emphasisScale: CGFloat = isNext && pulseToggle ? 1.3 : baseScale
+            let idleScale: CGFloat = isNext && idlePulse ? 1.18 : 1.0
+            let emphasisScale: CGFloat = isNext && pulseToggle ? 1.3 : idleScale
             ZStack {
                 Circle()
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                     .opacity(isTapped ? 0.85 : 0.80)
                     .scaleEffect(emphasisScale)
+                    // Two value-keyed animations layered: the slow
+                    // breathing curve drives idlePulse; the wrong-tap
+                    // emphasis snaps via pulseToggle. SwiftUI honours
+                    // both because each `.animation(_:value:)` is
+                    // scoped to its own state key.
+                    .animation(reduceMotion
+                                ? nil
+                                : .easeInOut(duration: 0.9).repeatForever(autoreverses: true),
+                               value: idlePulse)
                     .animation(reduceMotion
                                 ? nil
                                 : .spring(response: 0.25, dampingFraction: 0.5),
