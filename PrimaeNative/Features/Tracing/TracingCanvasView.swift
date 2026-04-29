@@ -436,7 +436,17 @@ private struct ProgressPill: View, Equatable {
 private struct DirectPhaseDotsOverlay: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Drives the wrong-tap "look here" emphasis pulse. Bound to
+    /// `vm.directPulsingDot` (currently never raised in practice
+    /// because the overlay only renders one dot at a time, but kept
+    /// for Reduce-Motion / a11y parity if the rendering policy ever
+    /// changes back to all-dots-at-once).
     @State private var pulseToggle = false
+    /// Drives the continuous attention-pulse on the next-expected
+    /// dot. Without it the dot just sits there static and a 5-yr-
+    /// old can scan past it; the slow breathing scale (1.0 ↔ 1.18)
+    /// reads as "tap me" without being distracting.
+    @State private var idlePulse = false
 
     var body: some View {
         GeometryReader { geo in
@@ -485,6 +495,12 @@ private struct DirectPhaseDotsOverlay: View {
                 pulseToggle = false
             }
         }
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                idlePulse = true
+            }
+        }
     }
 
     @ViewBuilder
@@ -503,11 +519,16 @@ private struct DirectPhaseDotsOverlay: View {
             // would hit-test the entire canvas. With multiple dots stacked via
             // ForEach, only the top-most (last) dot's handler would then fire for
             // every tap, leaving multi-stroke letters unable to advance.
+            // Idle breathing pulse on the next-expected dot draws
+            // a 5-yr-old's eye. Wrong-tap pulse layers on top via
+            // pulseToggle for the louder "look here" emphasis.
+            let baseScale: CGFloat = isNext && idlePulse ? 1.18 : 1.0
+            let emphasisScale: CGFloat = isNext && pulseToggle ? 1.3 : baseScale
             ZStack {
                 Circle()
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                     .opacity(isTapped ? 0.85 : 0.80)
-                    .scaleEffect(isNext && pulseToggle ? 1.3 : 1.0)
+                    .scaleEffect(emphasisScale)
                     .animation(reduceMotion
                                 ? nil
                                 : .spring(response: 0.25, dampingFraction: 0.5),

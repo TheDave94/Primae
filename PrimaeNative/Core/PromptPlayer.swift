@@ -109,6 +109,14 @@ final class PromptPlayer {
         AudioServicesPlaySystemSound(1322)
     }
 
+    /// Short confirmation tap, fired when the child taps a correct
+    /// numbered start-dot in the direct phase. Asset ID 1104 is the
+    /// system "key click" — a brief, low-pitched click that reads
+    /// as "registered" without competing with the letter audio.
+    func playTapChime() {
+        AudioServicesPlaySystemSound(1104)
+    }
+
     // MARK: - Bundle lookup
 
     /// Locate `<key>.mp3` in `Resources/Prompts/` of the SPM

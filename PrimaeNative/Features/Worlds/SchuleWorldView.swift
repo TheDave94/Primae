@@ -289,8 +289,40 @@ struct SchuleWorldView: View {
         HStack {
             letterPill
             Spacer()
+            if totalStars > 0 {
+                starCountBadge(count: totalStars)
+            }
         }
         .padding(.horizontal, 16)
+    }
+
+    /// Total stars across all letters — same computation the world
+    /// rail's Sterne badge uses so the two displays always agree.
+    private var totalStars: Int {
+        vm.allProgress.values.reduce(0) { acc, prog in
+            acc + LetterStars.stars(for: prog.phaseScores)
+        }
+    }
+
+    /// Persistent header pill: a yellow star + the running total.
+    /// Mirrors the world-rail badge styling so a child who has
+    /// noticed one recognises the other; placed in the top-right of
+    /// Schule so accumulating stars is visible without world-switching.
+    private func starCountBadge(count: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "star.fill")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(AppSurface.starGold)
+            Text(count > 99 ? "99+" : "\(count)")
+                .font(.display(FontSize.base, weight: .bold))
+                .foregroundStyle(Color.ink)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8)
+        .background(AppSurface.card, in: Capsule())
+        .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
+        .shadow(color: Color.ink.opacity(0.08), radius: 5, y: 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(count) Sterne gesamt")
     }
 
     private var letterPill: some View {

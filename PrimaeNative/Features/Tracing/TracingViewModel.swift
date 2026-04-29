@@ -1292,6 +1292,13 @@ public final class TracingViewModel {
             let isFirstTap = directTappedDots.isEmpty
             directTappedDots.insert(index)
             haptics.fire(.checkpointHit)
+            // Per-tap confirmation click — tied to the visible arrow
+            // so the child gets concurrent audio + visual + haptic
+            // feedback for the registered tap. The letter-name audio
+            // only plays on the first tap (replaying it on every dot
+            // turned into noise); the click stays per-tap so each
+            // confirmation is distinct.
+            prompts.playTapChime()
             // Replay the letter name only on the FIRST correct tap. Every
             // following dot still fires a haptic + directional arrow, but the
             // audio would just retrigger the same "Aaa"/"Emm" and turn into
