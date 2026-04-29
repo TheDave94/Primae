@@ -1,0 +1,9 @@
+{
+  "info": {
+    "author": "primae",
+    "version": 1
+  },
+  "properties": {
+    "provides-namespace": false
+  }
+}
