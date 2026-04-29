@@ -565,7 +565,15 @@ private struct DirectPhaseDotsOverlay: View {
             }
             .frame(width: r * 2, height: r * 2)
             .contentShape(Circle())
-            .onTapGesture { vm.tapDirectDot(index: idx) }
+            .onTapGesture {
+                // Wrap so the .id(idx) transition above (outgoing
+                // dot scales up + fades, incoming scales in) runs.
+                // The VM doesn't import SwiftUI, so the animation
+                // transaction lives here at the call site.
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.35)) {
+                    vm.tapDirectDot(index: idx)
+                }
+            }
             .position(x: screenX, y: screenY)
             .accessibilityLabel("Startpunkt \(idx + 1)")
             .accessibilityAddTraits(.isButton)

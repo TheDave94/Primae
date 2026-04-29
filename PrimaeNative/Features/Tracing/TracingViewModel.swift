@@ -1290,17 +1290,13 @@ public final class TracingViewModel {
 
         if index == directNextExpectedDotIndex {
             let isFirstTap = directTappedDots.isEmpty
-            // Wrap the state mutation so the dot overlay's `.id(idx)`
-            // transition (TracingCanvasView.DirectPhaseDotsOverlay)
-            // runs — outgoing dot scales up and fades, incoming dot
-            // scales in. Reliable visual confirmation that doesn't
-            // depend on haptic / audio capability (iPad lacks the
-            // Taptic Engine and the ringer switch silences system
-            // sounds, so the prior "haptic + chime" feedback was
-            // imperceptible on the user's device).
-            withAnimation(.easeOut(duration: 0.35)) {
-                directTappedDots.insert(index)
-            }
+            // The dot overlay's `.id(idx)` transition is run by the
+            // SwiftUI view (DirectPhaseDotsOverlay) — its tap handler
+            // wraps this method in `withAnimation`, so the state
+            // change here is observed inside an animation transaction.
+            // Don't import SwiftUI from the VM: the curve choice and
+            // wrapping live at the call site.
+            directTappedDots.insert(index)
             haptics.fire(.checkpointHit)
             // Per-tap confirmation click — tied to the visible arrow
             // so the child gets concurrent audio + visual + haptic
