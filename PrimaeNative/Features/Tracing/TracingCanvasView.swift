@@ -433,6 +433,14 @@ private struct ProgressPill: View, Equatable {
 
 /// Renders numbered start-dot circles for the direct phase and routes taps to the VM.
 /// Sits above the touch overlays so SwiftUI tap gestures win over the tracing handler.
+/// Bundle the scale + opacity values the keyframe animator
+/// drives. Plain struct so the keyframe tracks can address each
+/// property independently (`\.scale`, `\.alpha`).
+private struct DotPulseValues {
+    var scale: CGFloat = 1.0
+    var alpha: Double  = 1.0
+}
+
 private struct DirectPhaseDotsOverlay: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -455,49 +463,31 @@ private struct DirectPhaseDotsOverlay: View {
                 // canvas origin, so the path is unchanged for them.
                 let cellFrame = vm.multiCellActiveFrame
                 ?? CGRect(origin: .zero, size: geo.size)
-                // TimelineView drives a 60 Hz body re-eval so the
-                // pulse value is recomputed every frame from the wall
-                // clock — bypasses SwiftUI's `.animation(repeatForever)`
-                // path, which proved unreliable on this iOS 26 / Swift 6
-                // build (canonical pattern visually never started). The
-                // sine-wave maths is explicit and visible; Reduce Motion
-                // collapses the pulse to a static scale of 1.0.
-                TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: false)) { ctx in
-                    let elapsed = ctx.date.timeIntervalSinceReferenceDate
-                    // 1.2 s period (cycle = 0.6 s up + 0.6 s down).
-                    let phase = (sin(elapsed * .pi / 0.6) + 1) / 2 // 0…1
-                    let pulseScale: CGFloat = reduceMotion
-                        ? 1.0
-                        : CGFloat(1.0 + 0.35 * phase)            // 1.00…1.35
-                    if let rawStrokes = vm.rawGlyphStrokes,
-                       !rawStrokes.strokes.isEmpty,
-                       vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
-                       let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                           for: vm.currentLetterName,
-                           canvasSize: cellFrame.size,
-                           schriftArt: vm.schriftArt) {
-                        let idx = vm.directNextExpectedDotIndex
-                        dotView(idx: idx,
-                                stroke: rawStrokes.strokes[idx],
-                                gr: gr,
-                                cellFrame: cellFrame,
-                                pulseScale: pulseScale)
-                            // `.id(idx)` makes SwiftUI treat each
-                            // next-expected dot as a distinct view so
-                            // the outgoing one runs the exit transition
-                            // (scale up + fade) and the incoming one
-                            // runs entry. Visual confirmation of a
-                            // registered tap that doesn't depend on
-                            // haptic / audio (iPad-7-or-earlier lacks
-                            // the Taptic Engine; system sounds are
-                            // silenced by the ringer switch).
-                            .id(idx)
-                            .transition(reduceMotion
-                                        ? .opacity
-                                        : .asymmetric(
-                                            insertion: .scale(scale: 0.6).combined(with: .opacity),
-                                            removal: .scale(scale: 1.6).combined(with: .opacity)))
-                    }
+                if let rawStrokes = vm.rawGlyphStrokes,
+                   !rawStrokes.strokes.isEmpty,
+                   vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
+                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                       for: vm.currentLetterName,
+                       canvasSize: cellFrame.size,
+                       schriftArt: vm.schriftArt) {
+                    let idx = vm.directNextExpectedDotIndex
+                    dotView(idx: idx,
+                            stroke: rawStrokes.strokes[idx],
+                            gr: gr,
+                            cellFrame: cellFrame)
+                        // `.id(idx)` makes SwiftUI treat each
+                        // next-expected dot as a distinct view so
+                        // the outgoing one runs the exit transition
+                        // (scale up + fade) and the incoming one
+                        // runs entry. Visual confirmation of a
+                        // registered tap on a no-haptic device
+                        // (iPads have no Taptic Engine).
+                        .id(idx)
+                        .transition(reduceMotion
+                                    ? .opacity
+                                    : .asymmetric(
+                                        insertion: .scale(scale: 0.6).combined(with: .opacity),
+                                        removal: .scale(scale: 1.6).combined(with: .opacity)))
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -505,7 +495,7 @@ private struct DirectPhaseDotsOverlay: View {
     }
 
     @ViewBuilder
-    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, cellFrame: CGRect, pulseScale: CGFloat) -> some View {
+    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, cellFrame: CGRect) -> some View {
         if let first = stroke.checkpoints.first {
             // gr is normalised 0..1 relative to `cellFrame.size`; offset by
             // cellFrame origin so word-mode (multi-cell) draws the dot in
@@ -520,30 +510,49 @@ private struct DirectPhaseDotsOverlay: View {
             // would hit-test the entire canvas. With multiple dots stacked via
             // ForEach, only the top-most (last) dot's handler would then fire for
             // every tap, leaving multi-stroke letters unable to advance.
-            // Idle breathing pulse on the next-expected dot draws
-            // a 5-yr-old's eye. `pulseScale` is computed every frame
-            // by the parent's TimelineView from a sine wave on wall
-            // time, so the pulse value is fresh on every render.
-            let scale: CGFloat = isNext ? pulseScale : 1.0
             ZStack {
                 Circle()
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
-                    .opacity(isTapped ? 0.85 : 0.80)
-                    .scaleEffect(scale)
+                    .opacity(isTapped ? 0.85 : 0.85)
                 Text("\(idx + 1)")
                     .font(.system(size: r * 0.85, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: r * 2, height: r * 2)
+            // KeyframeAnimator drives a self-contained breathing
+            // pulse on the next-expected dot. Crucial that it lives
+            // INSIDE the dotView (not on a parent) so the animation
+            // is intrinsic to the view's lifecycle: the parent uses
+            // `.id(idx)` + `.transition()` for the tap-flash, which
+            // resets the child view tree on every idx change —
+            // parent-state-driven animations (TimelineView, Timer
+            // .publish, withAnimation+repeatForever) all lose their
+            // continuity at that reset. `keyframeAnimator(repeating:
+            // true)` is intrinsic, restarts cleanly on each new dot,
+            // and is iOS 17+ documented for exactly this case.
+            .keyframeAnimator(initialValue: DotPulseValues(),
+                              repeating: isNext && !reduceMotion) { content, values in
+                content
+                    .scaleEffect(values.scale)
+                    .opacity(values.alpha)
+            } keyframes: { _ in
+                KeyframeTrack(\.scale) {
+                    LinearKeyframe(1.0, duration: 0.0)
+                    CubicKeyframe(1.35, duration: 0.6)
+                    CubicKeyframe(1.0, duration: 0.6)
+                }
+                KeyframeTrack(\.alpha) {
+                    LinearKeyframe(1.0, duration: 0.0)
+                    CubicKeyframe(0.65, duration: 0.6)
+                    CubicKeyframe(1.0, duration: 0.6)
+                }
+            }
             .contentShape(Circle())
             .onTapGesture {
-                // Wrap so the .id(idx) transition above (outgoing
-                // dot scales up + fades, incoming scales in) runs.
-                // The VM doesn't import SwiftUI, so the animation
-                // transaction lives here at the call site. Duration
-                // chosen so the flash is unmissable for a 5-yr-old —
-                // shorter than this and the scale-up reads as a
-                // glitch rather than a confirmation.
+                // Wrap so the .id(idx) transition (outgoing dot
+                // scales up + fades, incoming scales in) runs. The
+                // VM doesn't import SwiftUI, so the animation
+                // transaction lives here at the call site.
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.55)) {
                     vm.tapDirectDot(index: idx)
                 }
