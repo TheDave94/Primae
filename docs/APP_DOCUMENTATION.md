@@ -84,8 +84,24 @@ casual user is never silently dropped into a degraded condition.
 #### `App/`
 | File | Lines | Role |
 |------|------:|------|
-| `PrimaeNativeApp.swift` | 24 | App entry. Creates the shared TracingViewModel and wires `scenePhase` → `appDidBecomeActive` / `appDidEnterBackground`. |
+| `PrimaeNativeApp.swift` | 24 | Library-side App stub used when the package is run standalone (Previews, swift-test). The shipping iPad host is `Primae/Primae/PrimaeApp.swift` in the Xcode wrapper, which adds the Primae font registration + appearance override on top of this stub. |
 | `ContentView.swift` | 382 | Pre-redesign root, marked `@available(*, deprecated)`. Retained for chrome reference; not instantiated. |
+
+#### `Theme/`
+SwiftUI port of the Primae design tokens (see [`design-system/`](../design-system/) at the repo root for the source-of-truth CSS).
+| File | Lines | Role |
+|------|------:|------|
+| `Colors.swift` | 137 | `Color` extension with every CSS hex from `colors_and_type.css` mapped to a *dynamic* SwiftUI Color (light + dark resolution via `UIColor(dynamicProvider:)`). Includes `Color.canvasGhost` / `.canvasInkStroke` / `.canvasGuide` for the documented canvas semantics. |
+| `Spacing.swift` | 29 | `Spacing.sp1..sp9` mirroring `--sp-*` (4–96 pt). |
+| `Radii.swift` | 24 | `Radii.sm..xxl` + `pill` mirroring `--r-*`. |
+| `Fonts.swift` | 132 | `Font.display(_:weight:) / .body(_:weight:) / .cursive(_:)` helpers + `FontSize.xs..glyph` (13–220 pt). PostScript-name resolver picks the bundled Primae / PrimaeText face for a given SwiftUI weight. |
+| `FontRegistration.swift` | 116 | `PrimaeFonts.registerAll()` — registers every bundled OTF/TTF with CoreText at app launch via `CTFontManagerRegisterFontsForURLs`. The load-bearing path because the fonts ship in `Bundle.module`, not the main bundle (where `INFOPLIST_KEY_UIAppFonts` would search). |
+| `Appearance.swift` | 24 | Resolver mapping the `@AppStorage("primaeAppearance")` string ("system" / "light" / "dark") to SwiftUI's `ColorScheme?` so the host app applies it via `.preferredColorScheme(...)` at the WindowGroup root. |
+
+#### `Components/`
+| File | Lines | Role |
+|------|------:|------|
+| `StickerButton.swift` | 60 | `StickerButtonStyle` ButtonStyle — pill capsule, 14×24 pt padding, white label, tint-coloured halo + ink drop shadow, scale + offset on press. Idiomatic SwiftUI port of `.btn-sticker*` from `design-system/ui_kits/ipad-app/styles.css`. Per-world variants via the `tint:` parameter (`.brand` / `.schule` / `.werkstatt` / `.fortschritte`). |
 
 #### `Core/` (data + algorithms; no SwiftUI)
 | File | Lines | Role |

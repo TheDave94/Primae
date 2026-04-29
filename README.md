@@ -1,6 +1,6 @@
 # Primae
 
-> An iPad app for Austrian first-graders to learn letter writing — built around a research-backed four-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional Schreibmotorik motor-skill assessment. (Repo + Swift Package + Xcode target names retain their pre-rebrand `Buchstaben*` prefixes for build-system stability.)
+> An iPad app that teaches **Austrian Volksschule 1. Klasse** children to write the alphabet by hand — through a research-backed four-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional *Schreibmotorik* motor-skill assessment.
 
 [![iOS Build & Test](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml)
 ![Platform](https://img.shields.io/badge/platform-iPadOS%2018%2B-blue)
@@ -10,9 +10,13 @@
 
 ## About
 
-The app teaches the Latin alphabet to 5–6 year-olds in **Austrian Volksschule 1. Klasse**, using a four-step pedagogical arc with adaptive scaffolding withdrawal, real-time audio + haptic feedback, on-device CoreML letter recognition, and a four-dimension *Schreibmotorik* motor-skill assessment (Marquardt & Söhl, 2016). Built as the practical artefact for a master's thesis comparing adaptive vs. non-adaptive handwriting instruction.
+***Primae*** (Latin: *the first ones*) — the child's first letters, the first strokes of school cursive, the first taste of literacy. The brand also shares its name with the bundled display typeface, the same Druckschrift the app renders on every glyph the child traces.
+
+The app teaches the Latin alphabet to 5–6 year-olds, using a four-step pedagogical arc with adaptive scaffolding withdrawal, real-time audio + haptic feedback, on-device CoreML letter recognition, and a four-dimension *Schreibmotorik* motor-skill assessment (Marquardt & Söhl, 2016). Built as the practical artefact for a master's thesis comparing adaptive vs. non-adaptive handwriting instruction.
 
 The child sees **only verbal evaluations and stars** — every numeric metric (Klarheit, Form, Tempo, Druck, Rhythmus, recognition confidence) lives behind a parental-gate research dashboard. Children at this age can't read fluently, so the app speaks every prompt aloud in German via `AVSpeechSynthesizer`.
+
+The visual identity — paper not glass, blue ghost / green child ink / amber guide dot, sticker-pill buttons, dark-mode-aware throughout — is documented in the bundled [`design-system/`](design-system/) (tokens, type ramp, components).
 
 ## Features
 
@@ -137,6 +141,7 @@ The repo intentionally keeps documentation small and role-separated:
 |------|---------|
 | [`docs/APP_DOCUMENTATION.md`](docs/APP_DOCUMENTATION.md) (+ [`.pdf`](docs/APP_DOCUMENTATION.pdf)) | **The single technical doc.** Architecture, scientific methods with citations, learning pipeline, data schemas, claim verification, bibliography. Includes appendices A (architecture quick reference), B (research export schema), C (phoneme audio authoring guide). |
 | [`ROADMAP.md`](ROADMAP.md) | **The single outstanding-work file.** Forward-looking only — items shipped are removed (commit history is the archive). Each item has effort estimate, file list, citations, failure modes. |
+| [`design-system/`](design-system/) | **Primae visual identity.** Color tokens (light + dark), type ramp, spacing scale, font files, sticker-button spec, preview HTML, and the iPad UI kit (`ui_kits/ipad-app/`). Source of truth for the SwiftUI tokens in `PrimaeNative/Theme/`. |
 | [`docs/LESSONS.md`](docs/LESSONS.md) | **Code-level invariants** — guardrails to read before touching `AudioEngine.swift`, `StrokeTracker.swift`, or the `load(letter:)` path. Kept separate so the next contributor reads it in full instead of skimming an appendix. |
 | [`CLAUDE.md`](CLAUDE.md) | Auto-loaded context for Claude Code agents. |
 
