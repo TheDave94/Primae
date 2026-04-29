@@ -83,6 +83,12 @@ final class TouchDispatcher {
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         guard let vm else { return }
+        #if DEBUG
+        print("[Primae.progress] beginTouch:",
+              "phase=\(vm.phaseController.currentPhase)",
+              "touchEnabled=\(vm.phaseController.isTouchEnabled)",
+              "alreadyActive=\(isSingleTouchInteractionActive)")
+        #endif
         guard vm.phaseController.isTouchEnabled       else { return }
         guard vm.phaseController.currentPhase != .direct else { return }  // handled by DirectPhaseDotsOverlay
         guard !isSingleTouchInteractionActive         else { return }

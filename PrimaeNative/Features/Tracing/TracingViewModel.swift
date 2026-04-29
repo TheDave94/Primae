@@ -903,6 +903,12 @@ public final class TracingViewModel {
 
     func loadLetter(name: String) {
         guard let idx = letters.firstIndex(where: { $0.name == name }) else { return }
+        #if DEBUG
+        print("[Primae.progress] loadLetter:",
+              "name=\(name)",
+              "wasInPhase=\(phaseController.currentPhase)",
+              "didComplete=\(didCompleteCurrentLetter)")
+        #endif
         letterIndex = idx
         load(letter: letters[idx])
         toast("Buchstabe: \(currentLetterName)")
@@ -1200,6 +1206,11 @@ public final class TracingViewModel {
     /// as a thin forwarder so TouchDispatcher and the SwiftUI views
     /// don't have to change.
     func advanceLearningPhase() {
+        #if DEBUG
+        print("[Primae.progress] advanceLearningPhase:",
+              "from=\(phaseController.currentPhase)",
+              "letter=\(currentLetterName)")
+        #endif
         phaseTransitions.advance()
     }
 
