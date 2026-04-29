@@ -135,15 +135,22 @@ enum ChildSpeechLibrary {
     /// Phase entry prompts spoken when a learning phase becomes
     /// active. Imperative + short — the child can't read the
     /// on-screen phase pill, so the spoken instruction has to
-    /// stand on its own. Three to five words each, action verb
-    /// first (the German child voice convention from the design
-    /// system), no fillers ("mal", "Jetzt") that don't add meaning.
+    /// stand on its own. Action verb first (the German child voice
+    /// convention from the design system), no fillers ("mal",
+    /// "Jetzt") that don't add meaning, and **kept brief enough
+    /// that the AVSpeechSynthesizer utterance finishes before the
+    /// child can plausibly touch the canvas** — the AudioEngine
+    /// reconfigures AVAudioSession on every touch-driven letter-
+    /// sound load, and that reconfiguration cuts in-flight TTS
+    /// short (observed: the freeWrite prompt was clipped on every
+    /// non-trivial letter — "I" was the only one short enough to
+    /// avoid the race).
     static func phaseEntry(_ phase: LearningPhase) -> String {
         switch phase {
         case .observe:    return "Schau genau hin."
         case .direct:     return "Tipp die Punkte der Reihe nach."
         case .guided:     return "Fahr die Linien nach."
-        case .freeWrite:  return "Schreib den Buchstaben jetzt selbst."
+        case .freeWrite:  return "Schreib jetzt allein."
         }
     }
 
