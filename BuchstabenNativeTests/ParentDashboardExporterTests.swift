@@ -175,10 +175,13 @@ struct ParentDashboardExporterTests {
                 "Post-enrolment row must survive — found:\n\(csv)")
     }
 
-    /// Legacy rows missing `recordedAt` (pre-D-3) survive the filter so
-    /// historical thesis data isn't accidentally erased when an export
-    /// runs after the upgrade.
-    @Test func csvKeepsLegacyRowsWithoutRecordedAt() {
+    /// D-8: legacy rows missing `recordedAt` (pre-D-3) are now filtered
+    /// when an `enrolledAt` exists — we can't prove they're post-
+    /// enrolment, and the decoder defaulted their condition to
+    /// `.threePhase`, which would silently inflate that arm. When no
+    /// `enrolledAt` is set (study not yet started), they survive so
+    /// pre-thesis dev/test data still appears in dev exports.
+    @Test func csvFiltersLegacyRowsWithoutRecordedAtWhenEnrolled() {
         let enrolledAt = Date(timeIntervalSince1970: 1_770_000_000)
         var snap = DashboardSnapshot()
         // Decoding a record from a JSON file without `recordedAt`
@@ -192,10 +195,16 @@ struct ParentDashboardExporterTests {
         """.data(using: .utf8)!
         let legacy = try! JSONDecoder().decode(PhaseSessionRecord.self, from: legacyJSON)
         snap.phaseSessionRecords.append(legacy)
-        let csv = String(data: ParentDashboardExporter.csvData(
+        // With enrolledAt set: legacy row is dropped (D-8).
+        let csvEnrolled = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: enrolledAt), encoding: .utf8)!
-        #expect(csv.contains("L,guided,true"),
-                "Legacy row without recordedAt must survive — found:\n\(csv)")
+        #expect(!csvEnrolled.contains("L,guided,true"),
+                "Legacy row without recordedAt must be filtered when enrolledAt is set — found:\n\(csvEnrolled)")
+        // Without enrolledAt: dev exports still see legacy rows.
+        let csvDev = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        #expect(csvDev.contains("L,guided,true"),
+                "Legacy row must survive in dev exports (enrolledAt: nil) — found:\n\(csvDev)")
     }
 
     // MARK: - D-6: speedTrend column on letter-aggregate rows
