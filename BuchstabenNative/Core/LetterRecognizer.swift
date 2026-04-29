@@ -152,8 +152,12 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     /// framework-agnostic `LetterClassification` type so the rest of
     /// the pipeline never touches Vision. Returns `[]` when the model
     /// can't be loaded — the caller treats empty as "skip recognition".
-    private static let defaultClassifier: Classifier = { image in
-        guard let model = Self.loadModelIfNeeded() else { return [] }
+    /// Spelled with the full closure type rather than the `Classifier`
+    /// typealias because Swift's stored-property-initializer rules
+    /// flag a covariant-Self reference when a typealias inside a final
+    /// class is used to type a `static let`.
+    private static let defaultClassifier: @Sendable (CGImage) -> [LetterClassification] = { image in
+        guard let model = CoreMLLetterRecognizer.loadModelIfNeeded() else { return [] }
         let request = VNCoreMLRequest(model: model)
         request.imageCropAndScaleOption = .centerCrop
         let handler = VNImageRequestHandler(cgImage: image, options: [:])
