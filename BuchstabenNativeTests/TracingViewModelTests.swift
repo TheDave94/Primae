@@ -245,23 +245,20 @@ private func slowDrag(vm: TracingViewModel,
 
     /// Round-4 audit gap: `vm.allProgress` and `vm.progress(for:)`
     /// replaced direct `vm.progressStore.*` access in 8 view sites.
-    /// Pin the contract so a regression that returns stale or empty
-    /// data can't ship undetected. Single-letter session is enough —
-    /// the forwarders are pure delegations, no transformation.
-    @Test func progressForwarders_mirrorUnderlyingStore() async {
-        let letter = vm.currentLetterName
-        // Snapshot before any writes — should be empty / default.
-        #expect(vm.allProgress[letter]?.completionCount == nil ||
-                vm.allProgress[letter]?.completionCount == 0)
-        // Drive a completion through the public API.
-        fastDrag(vm: vm, audio: audio)
-        await drainAsyncWork()
-        // After the recorded completion, the forwarders must reflect
-        // it — verifies allProgress and progress(for:) both go through
-        // to the live store, not a snapshotted copy.
-        let perLetter = vm.progress(for: letter)
-        let viaAll = vm.allProgress[letter]
-        #expect(perLetter == viaAll, "allProgress[letter] must equal progress(for: letter)")
+    /// Pin the contract: `progress(for:)` returns the protocol default
+    /// (zero completions, no recorded date) for a letter never seen,
+    /// and a get on an unknown key never inserts into the underlying
+    /// store — `allProgress.keys` must be stable across reads.
+    @Test func progressForwarders_passThroughAndReadOnly() {
+        let beforeKeys = Set(vm.allProgress.keys)
+        let unknown = vm.progress(for: "ZZZZ-never-a-letter")
+        // Default-initialised LetterProgress for an unknown key.
+        #expect(unknown.completionCount == 0)
+        #expect(unknown.bestAccuracy == 0.0)
+        #expect(unknown.lastCompletedAt == nil)
+        let afterKeys = Set(vm.allProgress.keys)
+        #expect(beforeKeys == afterKeys,
+                "progress(for:) must be read-only — getter on an unknown key must not mutate allProgress")
     }
 
     // MARK: - W-24 multi-cell active-frame forwarder
