@@ -13,6 +13,10 @@ struct SettingsView: View {
     @State private var useShortOnboarding: Bool = UserDefaults.standard.bool(
         forKey: "de.flamingistan.buchstaben.useShortOnboarding"
     )
+    /// Primae appearance override — "system" (follow iOS), "light",
+    /// or "dark". Applied at the app root via `.preferredColorScheme`.
+    /// Persisted under `primaeAppearance` per the design-system spec.
+    @AppStorage("primaeAppearance") private var appearance: String = "system"
 
     private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.buchstaben.letterOrdering"
@@ -107,6 +111,22 @@ struct SettingsView: View {
                 ))
                 .accessibilityHint("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens")
                 Text("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section("Erscheinungsbild") {
+                // Part C: manual appearance override. "System" follows
+                // the iOS Settings → Display & Brightness toggle;
+                // "Hell" / "Dunkel" lock the app regardless. Persisted
+                // under `primaeAppearance` and applied at the root via
+                // `.preferredColorScheme(...)` in `BuchstabenAppMain`.
+                Picker("Erscheinungsbild", selection: $appearance) {
+                    Text("System").tag("system")
+                    Text("Hell").tag("light")
+                    Text("Dunkel").tag("dark")
+                }
+                .accessibilityHint("Erzwingt hellen oder dunklen Modus, oder folgt der iOS-Einstellung.")
+                Text("Folgt iOS, wenn auf System gestellt.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

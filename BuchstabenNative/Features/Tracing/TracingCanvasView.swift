@@ -83,7 +83,7 @@ struct TracingCanvasView: View {
                                 x: ox + (gr.minX + cp.x * gr.width) * cellSize.width,
                                 y: oy + (gr.minY + cp.y * gr.height) * cellSize.height))
                         }
-                        context.stroke(ghostPath, with: .color(.blue.opacity(0.35)),
+                        context.stroke(ghostPath, with: .color(.canvasGhost.opacity(0.35)),
                                        style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
                     }
                 }
@@ -121,7 +121,7 @@ struct TracingCanvasView: View {
                 if retainedInk.count > 1 {
                     var path = Path()
                     path.addLines(retainedInk)
-                    context.stroke(path, with: .color(.green.opacity(0.9)),
+                    context.stroke(path, with: .color(.canvasInkStroke.opacity(0.9)),
                                    style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
                 }
 
@@ -135,7 +135,7 @@ struct TracingCanvasView: View {
                     var path = Path()
                     path.addLines(vm.activePath)
                     let inkWidth: CGFloat = vm.pencilPressure.map { 4 + $0 * 10 } ?? 8
-                    context.stroke(path, with: .color(.green),
+                    context.stroke(path, with: .color(.canvasInkStroke),
                                    style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
                 }
 
@@ -153,8 +153,11 @@ struct TracingCanvasView: View {
                     let r: CGFloat = 22
                     let dotRect   = CGRect(x: screenPt.x - r, y: screenPt.y - r, width: r * 2, height: r * 2)
                     let dot       = Path(ellipseIn: dotRect)
-                    context.fill(dot,   with: .color(.blue.opacity(0.75)))
-                    context.stroke(dot, with: .color(.white.opacity(0.60)), lineWidth: 2)
+                    // Animation guide dot — Primae design system pins
+                    // this as amber (`--guide`), not blue. Renders as
+                    // amber-500 in light, amber-400 in dark.
+                    context.fill(dot,   with: .color(.canvasGuide.opacity(0.85)))
+                    context.stroke(dot, with: .color(.canvasPaper.opacity(0.60)), lineWidth: 2)
                 }
 
                 // Directional arrow — ACTIVE cell only. Direct-phase cue
@@ -176,7 +179,7 @@ struct TracingCanvasView: View {
                     var linePath = Path()
                     linePath.move(to: from)
                     linePath.addLine(to: to)
-                    context.stroke(linePath, with: .color(.orange.opacity(0.9)),
+                    context.stroke(linePath, with: .color(.canvasGuide.opacity(0.9)),
                                    style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     let dx = to.x - from.x
                     let dy = to.y - from.y
@@ -192,7 +195,7 @@ struct TracingCanvasView: View {
                     headPath.addLine(to: b1)
                     headPath.move(to: to)
                     headPath.addLine(to: b2)
-                    context.stroke(headPath, with: .color(.orange.opacity(0.9)),
+                    context.stroke(headPath, with: .color(.canvasGuide.opacity(0.9)),
                                    style: StrokeStyle(lineWidth: 5, lineCap: .round))
                 }
             }
@@ -240,7 +243,7 @@ struct TracingCanvasView: View {
                             x: (gr.minX + cp.x * gr.width) * size.width,
                             y: (gr.minY + cp.y * gr.height) * size.height))
                     }
-                    context.stroke(refPath, with: .color(.blue.opacity(0.4)),
+                    context.stroke(refPath, with: .color(.canvasGhost.opacity(0.4)),
                                    style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
                 }
             }
@@ -253,7 +256,7 @@ struct TracingCanvasView: View {
                 for pt in pts.dropFirst() {
                     childPath.addLine(to: CGPoint(x: pt.x * size.width, y: pt.y * size.height))
                 }
-                context.stroke(childPath, with: .color(.green),
+                context.stroke(childPath, with: .color(.canvasInkStroke),
                                style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             }
         }
