@@ -1101,6 +1101,7 @@ public final class TracingViewModel {
             // later "Einführung wiederholen" runs leave it unchanged.
             onboardingStore.markComplete(variant: onboardingVariant)
             isOnboardingComplete = true
+            speakInitialPhaseCueAfterOnboarding()
             // Request notification permission and schedule reminder on onboarding completion
             Task { [weak self] in
                 guard let self else { return }
@@ -1121,6 +1122,21 @@ public final class TracingViewModel {
         onboardingStep = onboardingCoordinator.currentStep
         onboardingStore.markComplete(variant: onboardingVariant)
         isOnboardingComplete = true
+        speakInitialPhaseCueAfterOnboarding()
+    }
+
+    /// Play the phase-entry prompt for the currently-loaded letter
+    /// just after onboarding finishes. The original TTS at the end
+    /// of `load(letter:)` is gated on `isOnboardingComplete`, so the
+    /// cue gets skipped during the very-first VM init. Re-firing
+    /// it here lets the child hear "Pass jetzt gut auf!" exactly
+    /// when the onboarding cards drop and the canvas comes up —
+    /// the audio finally matches what the screen is showing.
+    private func speakInitialPhaseCueAfterOnboarding() {
+        prompts.play(
+            ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
+            fallbackText: ChildSpeechLibrary.phaseEntry(phaseController.currentPhase)
+        )
     }
 
     /// Reset onboarding so the intro flow replays on next launch / app foreground.
@@ -1613,17 +1629,30 @@ public final class TracingViewModel {
             // no observe-phase auto-play (it would loop silently behind onboarding
             // and start immediately on letter switch without any user action).
         }
-        // Speak the initial phase prompt once a fresh letter loads. Phase
-        // *transitions* are spoken from `advanceLearningPhase`; this site
-        // covers the very first phase a child sees per letter (typically
-        // observe, but can be guided when the thesis condition skips
-        // observe/direct or when an empty-strokes letter auto-skipped).
-        // Empty-strokes letters that vacuously land at .guided also land
-        // here, so a child still gets a verbal cue rather than silence.
-        prompts.play(
-            ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
-            fallbackText: ChildSpeechLibrary.phaseEntry(phaseController.currentPhase)
-        )
+        // Speak the initial phase prompt once a fresh letter loads.
+        // Phase *transitions* are spoken from `advanceLearningPhase`;
+        // this site covers the very first phase a child sees per
+        // letter (typically observe, but can be guided when the
+        // thesis condition skips observe/direct or when an empty-
+        // strokes letter auto-skipped). Empty-strokes letters that
+        // vacuously land at .guided also land here, so a child
+        // still gets a verbal cue rather than silence.
+        //
+        // Gated on onboarding completion: this method runs once
+        // during VM init (`load(letter: first)` in `init(_:)`),
+        // which fires *before* SwiftUI decides whether to show
+        // OnboardingView. Speaking here on a first-run install
+        // makes the welcome screen play 2 s of "Pass jetzt gut
+        // auf!" while the child looks at the onboarding cards —
+        // confusing audio for content the screen doesn't show.
+        // Once onboarding completes, every subsequent letter load
+        // is post-onboarding and the cue is welcome.
+        if isOnboardingComplete {
+            prompts.play(
+                ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
+                fallbackText: ChildSpeechLibrary.phaseEntry(phaseController.currentPhase)
+            )
+        }
     }
 
     private func randomAudioVariant() {
