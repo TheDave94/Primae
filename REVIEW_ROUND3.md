@@ -1,7 +1,7 @@
 # Review Round 3 — Council Synthesis
 
 Generated: 2026-04-28  
-Last updated: 2026-04-28 (post W-23 + cleanup pass)  
+Last updated: 2026-04-29 (post regression-check + deep-bug-hunt + test-audit continuation pass)  
 Source: Regression check + deep bug hunt + test audit + thesis data audit
 
 ---
@@ -204,6 +204,129 @@ These findings from the thesis data audit require larger structural changes or a
 
 ---
 
-## Zero 🔴 Findings, Zero 🟡 Code-Bug Findings Remaining
+## Zero 🔴 Findings, Zero 🟡 Code-Bug Findings Remaining (prior round)
 
 All four critical findings (C-1 through C-4) and every actionable warning are fixed. The remaining 🟡 entries (W-16, W-17, W-24) are by-design or pure-doc deferrals; the remaining 🟢 entry (I-2) is documentation only. The thesis-data findings D-2 through D-7 are tracked above with the rationale for each deferral.
+
+---
+
+## Continuation Pass — New Findings (2026-04-29)
+
+*Synthesised from regression-check, deep-bug-hunt, test-audit, and thesis-data-audit reports.*
+
+### New Critical Findings Fixed
+
+#### C-5 — Multi-cell freeWrite scores always 0 for pencil users ✅ FIXED
+
+`FreeWritePhaseRecorder.assess()` normalised canvas-space points by dividing by `canvasSize` (full canvas). The reference strokes in `strokeTracker.definition` are in cell-local 0–1 space (loaded by `reloadStrokeCheckpoints` using each cell's `frame.size`). For a 4-cell pencil layout (cell width = 256 px of 1024 px canvas), a child writing the letter centred in the last cell produces canvas-normalised x ≈ 0.875. The reference checkpoint for the glyph centre in cell-local space is x = 0.5. Fréchet score → 0 regardless of writing quality.
+
+**Fix:** Added `cellFrame: CGRect?` parameter to `assess()`. When provided, points are normalised as `(x − frame.minX) / frame.width`. `TracingViewModel.advanceLearningPhase()` passes `grid.activeCell.frame` when `grid.cells.count > 1`. Single-cell (finger) layout is unaffected.
+
+#### C-6 — "Selbst geschrieben" form feedback card never rendered ✅ FIXED
+
+`SchuleWorldView` gated the card on `vm.isPhaseSessionComplete == false`. `phaseController.advance()` sets `isLetterSessionComplete = true` before returning. By the time SwiftUI delivers the first re-render, `isPhaseSessionComplete` is already `true`, so the condition fails every time.
+
+**Fix:** Removed the `== false` guard. The remaining guards (`learningPhase == .freeWrite`, `!isQueueShowingKPOverlay`) are sufficient — the celebration modal is opaque and covers the card when it appears.
+
+---
+
+### New Warnings Fixed
+
+#### W-25 — Recognition badge appears after paperTransfer, not before ✅ FIXED
+
+`enqueueBeforeCelebration` inserted before `.celebration` in the queue, but `.paperTransfer` was already ahead of `.celebration`. Actual delivery order: `kpOverlay → paperTransfer → recognitionBadge → celebration`. Desired: `kpOverlay → recognitionBadge → paperTransfer → celebration`. Also unhandled: if CoreML finished after paperTransfer was already the *active* overlay.
+
+**Fix:** Updated `enqueueBeforeCelebration` to insert before the first `.paperTransfer` OR `.celebration` in the queue. Added `paperTransfer`-is-active handling alongside the existing `celebration`-is-active C-4 path (both now use the same interrupt-and-requeue logic via a shared `isBlocking` switch).
+
+#### W-28 — Untracked Tasks from rapid wrong taps in direct phase ✅ FIXED
+
+Wrong tap in direct phase spawned an untracked 700 ms Task to clear `directPulsingDot`. Rapid wrong taps (plausible for age 5–6) spawned N orphaned Tasks in flight, each setting `directPulsingDot = false` at arbitrary future times against potentially different phase state.
+
+**Fix:** Added `private var directPulsingTask: Task<Void, Never>?`. Each wrong tap cancels any prior task before spawning a new one. Task is also cancelled in `resetForPhaseTransition()` and `load(letter:)`.
+
+#### W-29 — Progress bar shows stale value after `schriftArt` switch ✅ FIXED
+
+`schriftArt.didSet` called `reloadStrokeCheckpoints`, which zeroed the tracker, but `progress` (a stored var) retained the previous font's value. Progress bar could show 70–90% while the tracker was freshly zeroed.
+
+**Fix:** Added `progress = 0` to `schriftArt.didSet` after `reloadStrokeCheckpoints`.
+
+#### W-30 — Freeform speech feedback always uses "wrong letter" path ✅ FIXED
+
+`recognizeFreeformLetter()` calls the recognizer with `expectedLetter: nil`, which causes `result.isCorrect = false` by construction. The subsequent `ChildSpeechLibrary.recognition(result, expected: result.predictedLetter)` call always takes the incorrect-recognition branch, saying "Das sieht aus wie ein A. Versuche nochmal das A." even for a perfectly recognised letter.
+
+**Fix:** In the freeform context there is no wrong answer — the prediction is the answer. Synthesise a `RecognitionResult` with `isCorrect: true` for the speech call. The raw `result` (with `isCorrect: false`) continues to be stored in `lastRecognitionResult` and passed to `recordFreeformCompletion`, so persistence and visual display are unaffected.
+
+---
+
+### New Warnings Fixed (comments/docs)
+
+#### W-31 — `threePhase` rawValue describes a 4-phase condition (documented)
+
+`ThesisCondition.threePhase.rawValue = "threePhase"` is emitted in all CSV/JSON exports but the condition now runs four phases. Changing the rawValue would corrupt existing persisted data.
+
+**Status:** Already documented in `ThesisCondition.swift:15–21` before this pass. No additional action taken; W-31 is verified documented.
+
+#### I-9 — No comment about kpOverlay being terminal/non-concurrent (documented ✅)
+
+**Fix:** Added comment to `OverlayQueueManager` header: kpOverlay is terminal — it is never shown concurrently with other overlays; it auto-advances after 3 s and the queue proceeds.
+
+---
+
+### Continuation Regression Check Updates
+
+| ID | Status in Regression Check | Verdict after Code Verification |
+|----|---------------------------|----------------------------------|
+| W-5 | ❌ progressStore not private | **Deferred** — 8+ view sites access `vm.progressStore` directly; adding `private` without forwarding methods breaks compilation. Requires a larger forwarder refactor |
+| W-16 | ⚠️ IUO with comment | **Accepted** — two-phase init constraint is real; comment documents it |
+| W-17 | ❌ No schema version in stores | **Deferred** — pair with D-2/D-3 schema refactor |
+| W-19 | ❌ AudioEngine comment not added | **Accepted skip** — `AudioEngine.swift` is `STABLE / DO NOT MODIFY` per CLAUDE.md |
+| W-24 (old) | ❌ memoryStabilityDays fixed | **Deferred** — Cepeda 2006 expanding-interval implementation |
+| W-36 | ❌ claimed "wrong toggle" | **VERIFIED FIXED** — `Text("Änderung…")` at line 46 is directly after the study-arm toggle (lines 38–45), not after paper-transfer; regression-check claim was incorrect |
+| W-43 (BUCH at difficulty 1) | ⚠️ Noted divergence | **Accepted** — 4-letter word at Easy tier alongside MAMA is linguistically correct |
+
+---
+
+### Open Items After Continuation Pass
+
+| ID | Area | Why Deferred |
+|----|------|--------------|
+| W-5 | `progressStore` visibility | 8+ view-site forwarder additions required |
+| W-16 | `playback` IUO | Two-phase init constraint; comment documents it |
+| W-17 | ProgressStore/StreakStore schema migration | Pair with D-2/D-3 timestamp schema change |
+| W-19 | `AudioEngine.swift` GCD comment | STABLE / DO NOT MODIFY |
+| W-24 (new) | `DirectPhaseDotsOverlay` misaligned in multi-cell | Companion to C-5; needs canvas renderer refactor |
+| W-24 (old) | `memoryStabilityDays = 7.0` | Cepeda 2006 expanding-interval not implemented |
+| W-26 | Word freeWrite scored against last letter only | Multi-cell per-letter scoring refactor |
+| W-27 | `PhaseSessionRecord` has no timestamp | Schema change + migration |
+
+---
+
+### Test Audit Gaps (informational — no code changes this pass)
+
+| Gap | Severity |
+|-----|----------|
+| `LearningPhaseController.advance()` for `.control` completes after one guided phase | High |
+| `LetterScheduler.automatizationBonus` speed-trend ordering | High |
+| `OverlayQueueManager.enqueueBeforeCelebration` C-4 branch (celebration already active) | High |
+| `JSONProgressStore.recordVariantUsed/recordPaperTransferScore` round-trip | High |
+| `FreeWriteScorer.formAccuracyShape()` untested | High |
+| `fastTouch_triggersPlay()` uses real 150 ms wall-clock sleep (flaky) | Medium |
+| `avAudioSessionInterruption_shouldResumeFalse_doesNotPlay` asserts `playCount <= before + 1` (too loose) | Medium |
+
+---
+
+### Thesis Data Pipeline Risks (informational — no code changes this pass)
+
+| ID | Risk | Severity |
+|----|------|----------|
+| D-1 | Backgrounding mid-freeWrite drops the entire letter session silently | 🔴 |
+| D-2 | `recognition_*` CSV columns always blank; no session-level Fréchet×recognition correlation | 🟡 |
+| D-3 | `phaseSessionRecords` have no date/timestamp | 🟡 |
+| D-4 | `speedTrend` retains only 5 values; speed trajectory unrecoverable | 🟡 |
+| D-5 | `letterStats.accuracySamples` has no condition tag | 🟡 |
+| D-6 | `pressureControl = 1.0` for all finger users; input device not exported | 🟡 |
+| D-7 | Aggregate CSV metrics mix conditions without filter | 🟡 |
+| D-8 | Pre-migration records decoded as `.threePhase` by fallback | 🟡 |
+| D-9 | Session dates in device-local timezone; no time-of-day in CSV | 🟡 |
+| D-10 | `schedulerEffectivenessProxy` invalid for `.control` (alphabetical priorities) | 🟡 |
+| D-11 | Word-mode sessions write multi-character `letter` keys into letterStats | 🟡 |

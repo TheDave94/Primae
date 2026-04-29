@@ -23,6 +23,12 @@ import Foundation
 /// Each overlay is dismissable by tap (`.dismiss()`); modal-style overlays
 /// (paperTransfer, celebration) carry a `nil` defaultDuration so they wait
 /// for an explicit dismiss instead of timing out from under the child.
+///
+/// I-9: `kpOverlay` is terminal in this sequence — it is never shown
+/// concurrently with any other overlay. It runs first and auto-advances
+/// after its 3 s window; the queue then proceeds to recognitionBadge,
+/// paperTransfer, and celebration in order. Nothing else is enqueued
+/// while kpOverlay is the active overlay.
 enum CanvasOverlay: Equatable, Sendable {
     /// Quick Fréchet-score confirmation chip ("Form 82 %"), 1.5 s.
     /// Currently unused — the inline form/guided feedback cards in
@@ -107,25 +113,25 @@ final class OverlayQueueManager {
     }
 
     /// Slot `overlay` into the queue immediately ahead of the first queued
-    /// `.celebration`, or append it if no celebration is queued. Lets a
-    /// late-arriving recognition badge land before the final celebration
-    /// even when the freeWrite scoring path enqueued kpOverlay, paperTransfer,
-    /// and celebration synchronously while the CoreML inference was still
-    /// running on a background Task. Without this, the celebration's
-    /// "Weiter" tap resets the queue and the badge is silently dropped.
+    /// `.paperTransfer` or `.celebration` (whichever comes first), or append
+    /// it if neither is queued. This ensures the canonical post-freeWrite
+    /// order `kpOverlay → recognitionBadge → paperTransfer → celebration`
+    /// even when CoreML inference finishes after the synchronous teardown
+    /// already enqueued kpOverlay, paperTransfer, and celebration (W-25).
     ///
-    /// C-4: also handles the case where celebration is *already* the active
-    /// overlay (CoreML inference took longer than kpOverlay + paperTransfer).
-    /// In that case the celebration is pushed back to queue position 0 and
-    /// the badge becomes the new currentOverlay, then auto-advances back
-    /// into the celebration when the badge timer fires.
+    /// C-4/W-25: also handles the case where paperTransfer or celebration is
+    /// *already* the active overlay (CoreML inference arrived very late).
+    /// In that case the blocking overlay is pushed back to queue position 0
+    /// and the badge becomes the new currentOverlay, then auto-advances.
     func enqueueBeforeCelebration(_ overlay: CanvasOverlay,
                                    duration: TimeInterval? = nil) {
         let d = duration ?? overlay.defaultDuration
-        if case .celebration = currentOverlay {
-            // Celebration is already on screen. Interrupt it: re-enqueue it at
-            // the front so it shows after the badge, then call advance() which
-            // will pop the badge first via the two inserts below.
+        // If a blocking modal (paperTransfer or celebration) is on screen,
+        // interrupt it: re-enqueue at front, insert badge ahead of it.
+        var isBlocking = false
+        if case .paperTransfer = currentOverlay { isBlocking = true }
+        if case .celebration   = currentOverlay { isBlocking = true }
+        if isBlocking {
             let saved = currentOverlay!
             advanceTask?.cancel()
             advanceTask = nil
@@ -136,6 +142,7 @@ final class OverlayQueueManager {
             return
         }
         if let idx = queue.firstIndex(where: { entry in
+            if case .paperTransfer = entry.overlay { return true }
             if case .celebration = entry.overlay { return true }
             return false
         }) {

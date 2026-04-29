@@ -45,6 +45,10 @@ public final class TracingViewModel {
                 letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
                 ?? PBMLoader.load(named: currentLetterImageName)
             reloadStrokeCheckpoints(for: letters[letterIndex])
+            // W-29: reloadStrokeCheckpoints resets the tracker to empty
+            // checkpoints; zero the progress bar immediately so it doesn't
+            // show the previous font's progress until the next updateTouch.
+            progress = 0
         }
     }
     /// Forwarded from `TransientMessagePresenter` so existing views keep binding via `vm.toastMessage`.
@@ -402,6 +406,9 @@ public final class TracingViewModel {
     private(set) var directTappedDots: Set<Int> = []
     /// True while the correct (next expected) dot should pulse to guide after a wrong tap.
     var directPulsingDot: Bool = false
+    /// Cancellation handle for the 700 ms timer that clears `directPulsingDot`.
+    /// Stored so rapid wrong taps don't accumulate orphaned Tasks (W-28).
+    private var directPulsingTask: Task<Void, Never>? = nil
     /// Index of the stroke whose directional arrow is briefly shown after a correct tap.
     var directArrowStrokeIndex: Int? = nil
 
@@ -1177,8 +1184,14 @@ public final class TracingViewModel {
             }
             // Recorder owns scoring — it has the buffers, sessionStart,
             // and canvasSize-normalised points all in one place.
+            // C-5: pass the active cell's frame for multi-cell (pencil)
+            // layouts so points are normalised to cell-local 0–1 space,
+            // matching the reference stroke coordinate system.
+            let activeCellFrame: CGRect? = grid.cells.count > 1
+                ? grid.activeCell.frame : nil
             score = freeWriteRecorder.assess(
-                reference: def, canvasSize: canvasSize
+                reference: def, canvasSize: canvasSize,
+                cellFrame: activeCellFrame
             ).overallScore
         }
 
@@ -1346,10 +1359,12 @@ public final class TracingViewModel {
             // Wrong dot — gentle haptic, pulse the correct one
             haptics.fire(.offPath)
             directPulsingDot = true
-            Task { [weak self] in
+            directPulsingTask?.cancel()
+            directPulsingTask = Task { [weak self] in
                 guard let self else { return }
                 try? await Task.sleep(for: .milliseconds(700))
                 self.directPulsingDot = false
+                self.directPulsingTask = nil
             }
         }
     }
@@ -1437,6 +1452,8 @@ public final class TracingViewModel {
             freeWriteRecorder.startGuidedSpeedTracking()
         }
         directTappedDots.removeAll()
+        directPulsingTask?.cancel()
+        directPulsingTask = nil
         directPulsingDot = false
         directArrowStrokeIndex = nil
         smoothedVelocity = 0
@@ -1598,6 +1615,8 @@ public final class TracingViewModel {
         activeRecognitionToken = nil
         overlayQueue.reset()
         directTappedDots.removeAll()
+        directPulsingTask?.cancel()
+        directPulsingTask = nil
         directPulsingDot = false
         directArrowStrokeIndex = nil
         showGhost                      = false
@@ -1943,8 +1962,19 @@ public final class TracingViewModel {
                     // child who can't read still hears whether the model
                     // recognised their letter. Empty string returns are
                     // intentional silence (low confidence).
+                    // W-30: recognizer was called with expectedLetter: nil,
+                    // so result.isCorrect is always false — ChildSpeechLibrary
+                    // would never take the positive "Du hast ein X geschrieben!"
+                    // branch. In freeform mode the prediction IS the answer
+                    // (there is no wrong letter), so synthesise a corrected
+                    // result that treats the top prediction as correct.
+                    let corrected = RecognitionResult(
+                        predictedLetter: result.predictedLetter,
+                        confidence: result.confidence,
+                        topThree: result.topThree,
+                        isCorrect: true)
                     let line = ChildSpeechLibrary.recognition(
-                        result, expected: result.predictedLetter)
+                        corrected, expected: result.predictedLetter)
                     if !line.isEmpty { self.speech.speak(line) }
                 } else {
                     self.freeform.lastFreeformFormScore = nil

@@ -62,12 +62,16 @@ struct SchuleWorldView: View {
                         .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                 }
                 if let assessment = vm.lastWritingAssessment,
-                   vm.isPhaseSessionComplete == false,
                    vm.learningPhase == .freeWrite,
                    !isQueueShowingKPOverlay {
                     // After the KP overlay dismisses but before the
-                    // celebration appears, show the form-accuracy row
-                    // so the child sees the Fréchet-based score.
+                    // celebration appears, show the form-accuracy row.
+                    // C-6: isPhaseSessionComplete guard removed — it was
+                    // always true by first re-render (phaseController.advance
+                    // sets the flag before returning), so the card never
+                    // rendered. The remaining guards (phase == .freeWrite,
+                    // no KP overlay) are sufficient; the celebration modal
+                    // is opaque and covers this card when it appears.
                     formFeedbackCard(score: assessment.formAccuracy)
                         .padding(.top, 8)
                         .transition(reduceMotion ? .opacity : .opacity)

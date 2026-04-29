@@ -106,13 +106,21 @@ final class FreeWritePhaseRecorder {
     /// `lastAssessment` for view forwarders and returns the assessment
     /// so the VM can also funnel the score into ProgressStore /
     /// PhaseSessionRecord without re-reading the recorder.
+    ///
+    /// `cellFrame` must be supplied for multi-cell (pencil) layouts.
+    /// The reference strokes are in cell-local 0–1 space; without the
+    /// frame offset the canvas-space points normalise to full-canvas
+    /// coordinates that never overlap the reference, producing a score
+    /// of 0 regardless of writing quality (C-5).
     @discardableResult
     func assess(reference: LetterStrokes,
                 canvasSize: CGSize,
+                cellFrame: CGRect? = nil,
                 now: CFTimeInterval = CACurrentMediaTime()) -> WritingAssessment {
+        let frame = cellFrame ?? CGRect(origin: .zero, size: canvasSize)
         let normalised = points.map { p in
-            CGPoint(x: p.x / max(canvasSize.width, 1),
-                    y: p.y / max(canvasSize.height, 1))
+            CGPoint(x: (p.x - frame.minX) / max(frame.width, 1),
+                    y: (p.y - frame.minY) / max(frame.height, 1))
         }
         let assessment = FreeWriteScorer.score(
             tracedPoints: normalised,
