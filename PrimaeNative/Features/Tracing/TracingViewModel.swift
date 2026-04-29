@@ -546,17 +546,7 @@ public final class TracingViewModel {
     /// `recordRetrievalAttempt`, `recordRecognitionSample`,
     /// `recordFreeformCompletion`, `recordVariantUsed`).
     func refreshProgressMirror() {
-        let snapshot = progressStore.allProgress
-        let totalStars = snapshot.values.reduce(0) { acc, prog in
-            acc + LetterStars.stars(for: prog.phaseScores)
-        }
-        #if DEBUG
-        print("[Primae.progress] refreshProgressMirror:",
-              "letters=\(snapshot.count)",
-              "totalStars=\(totalStars)",
-              "letterKeys=\(snapshot.keys.sorted())")
-        #endif
-        allProgress = snapshot
+        allProgress = progressStore.allProgress
     }
 
     /// Per-letter progress lookup. Mirrors `ProgressStoring.progress(for:)`.
@@ -903,12 +893,6 @@ public final class TracingViewModel {
 
     func loadLetter(name: String) {
         guard let idx = letters.firstIndex(where: { $0.name == name }) else { return }
-        #if DEBUG
-        print("[Primae.progress] loadLetter:",
-              "name=\(name)",
-              "wasInPhase=\(phaseController.currentPhase)",
-              "didComplete=\(didCompleteCurrentLetter)")
-        #endif
         letterIndex = idx
         load(letter: letters[idx])
         toast("Buchstabe: \(currentLetterName)")
@@ -1206,11 +1190,6 @@ public final class TracingViewModel {
     /// as a thin forwarder so TouchDispatcher and the SwiftUI views
     /// don't have to change.
     func advanceLearningPhase() {
-        #if DEBUG
-        print("[Primae.progress] advanceLearningPhase:",
-              "from=\(phaseController.currentPhase)",
-              "letter=\(currentLetterName)")
-        #endif
         phaseTransitions.advance()
     }
 

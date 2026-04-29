@@ -110,15 +110,9 @@ struct WorldSwitcherRail: View {
     /// quality-gated star count so the badge agrees with the celebration
     /// overlay and the letter gallery.
     private var starTotal: Int {
-        let total = vm.allProgress.values.reduce(0) { acc, prog in
+        vm.allProgress.values.reduce(0) { acc, prog in
             acc + LetterStars.stars(for: prog.phaseScores)
         }
-        #if DEBUG
-        print("[Primae.progress] WorldRail.starTotal eval:",
-              "letters=\(vm.allProgress.count)",
-              "total=\(total)")
-        #endif
-        return total
     }
 
     // MARK: - Gear long-press

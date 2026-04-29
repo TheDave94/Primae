@@ -243,13 +243,6 @@ final class PhaseTransitionCoordinator {
         // single-letter guided sessions that finish AFTER the recognizer
         // returns also populate the dashboard's confidence series.
         let rr = vm.lastRecognitionResult
-        #if DEBUG
-        print("[Primae.progress] commitCompletion:",
-              "letter=\(letter)",
-              "lettersToRecord=\(lettersToRecord)",
-              "accuracy=\(accuracy)",
-              "phaseScores=\(phaseScores ?? [:])")
-        #endif
         for l in lettersToRecord {
             vm.progressStore.recordCompletion(for: l, accuracy: accuracy,
                                               phaseScores: phaseScores, speed: speed,
