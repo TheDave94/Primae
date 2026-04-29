@@ -121,7 +121,8 @@ final class StubDashboardStore: ParentDashboardStoring {
 final class StubOnboardingStore: OnboardingStoring {
     var hasCompletedOnboarding: Bool { false }
     var savedStep: OnboardingStep? { nil }
-    func markComplete() {}
+    var variantUsed: OnboardingVariant? { nil }
+    func markComplete(variant: OnboardingVariant) {}
     func saveProgress(step: OnboardingStep) {}
     func reset() {}
 }

@@ -10,10 +10,14 @@ struct SettingsView: View {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.buchstaben.speechRate")
         return stored > 0 ? stored : 0.42
     }()
+    @State private var useShortOnboarding: Bool = UserDefaults.standard.bool(
+        forKey: "de.flamingistan.buchstaben.useShortOnboarding"
+    )
 
     private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.buchstaben.letterOrdering"
     fileprivate static let speechRateKey = "de.flamingistan.buchstaben.speechRate"
+    fileprivate static let shortOnboardingKey = "de.flamingistan.buchstaben.useShortOnboarding"
 
     var body: some View {
         Form {
@@ -33,6 +37,21 @@ struct SettingsView: View {
                     set: { vm.enableFreeformMode = $0 }
                 ))
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
+            }
+            Section("Schreibrichtung") {
+                // P5 (ROADMAP): reverse the direct-phase tap order so
+                // the child taps the LAST stroke first. Niche; off by
+                // default. Useful for motor-planning special-needs
+                // students (Spooner 2014). Affects only the direct
+                // phase — guided + freeWrite always run canonical order.
+                Toggle("Letzten Strich zuerst", isOn: Binding(
+                    get: { vm.enableBackwardChaining },
+                    set: { vm.enableBackwardChaining = $0 }
+                ))
+                .accessibilityHint("Vertauscht die Reihenfolge der Punkte in der Richtung-lernen-Phase: zuerst der letzte Strich, dann rückwärts. Hilft bei Schwierigkeiten mit der Bewegungsplanung.")
+                Text("Direkt-Phase nur. Bei Bewegungsplanungs-Schwierigkeiten (z. B. motorische Förderung) aktivieren.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             Section("Erinnerungstest") {
                 // P1 (ROADMAP): opt-in spaced-retrieval prompt before
@@ -131,6 +150,24 @@ struct SettingsView: View {
                 }
             }
             Section("Hilfe") {
+                // U4 (ROADMAP): A/B onboarding length. Default off (full
+                // 7-step flow). When on, "Einführung wiederholen"
+                // restarts with the compressed 3-step variant. The
+                // first-run variant is locked into OnboardingStore on
+                // initial completion so post-hoc CSV analysis can
+                // correlate engagement metrics with the variant the
+                // child actually saw, regardless of later parent toggles.
+                Toggle("Kurze Einführung", isOn: Binding(
+                    get: { useShortOnboarding },
+                    set: { newValue in
+                        useShortOnboarding = newValue
+                        UserDefaults.standard.set(newValue, forKey: Self.shortOnboardingKey)
+                    }
+                ))
+                .accessibilityHint("Aktiviert: 3-Schritte-Einführung statt 7. Wirksam ab dem nächsten App-Start oder über \"Einführung wiederholen\".")
+                Text("3 Schritte statt 7 (Begrüßung, Demo, Los geht's). Wirksam beim nächsten Start oder nach \"Einführung wiederholen\".")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 Button("Einführung wiederholen") { vm.restartOnboarding() }
                     .accessibilityHint("Startet die Einführung beim nächsten App-Start neu")
             }

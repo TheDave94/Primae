@@ -12,6 +12,43 @@ enum OnboardingStep: String, Codable, CaseIterable, Equatable {
     case complete
 }
 
+// MARK: - U4 (ROADMAP) — onboarding length variants for A/B comparison
+
+/// Two onboarding length variants. The thesis cohort can be split
+/// between them to measure first-day engagement / completion-rate
+/// against the two flows. The variant the child actually ran is
+/// recorded on `OnboardingState.variantUsed` so post-hoc CSV analysis
+/// can correlate retention/streak metrics with which onboarding ran.
+///
+/// `full` is the canonical 7-step flow with one demo per phase plus
+/// the reward-system intro.
+/// `short` is the compressed 3-step flow: welcome → guided demo → done.
+/// The compressed variant skips the per-phase concept demos; parents
+/// who want the long version can re-run via "Einführung wiederholen".
+enum OnboardingVariant: String, Codable, CaseIterable, Equatable {
+    case full
+    case short
+
+    /// German display label for the SettingsView picker.
+    var displayName: String {
+        switch self {
+        case .full:  return "Lang (7 Schritte)"
+        case .short: return "Kurz (3 Schritte)"
+        }
+    }
+
+    /// Step list that the OnboardingCoordinator should iterate through
+    /// when this variant is active. `complete` is always the terminator.
+    var steps: [OnboardingStep] {
+        switch self {
+        case .full:
+            return OnboardingStep.allCases
+        case .short:
+            return [.welcome, .guidedDemo, .complete]
+        }
+    }
+}
+
 // MARK: - Coordinator state machine
 
 struct OnboardingCoordinator: Equatable {
@@ -74,7 +111,12 @@ struct OnboardingCoordinator: Equatable {
 protocol OnboardingStoring {
     var hasCompletedOnboarding: Bool { get }
     var savedStep: OnboardingStep? { get }
-    func markComplete()
+    /// U4 (ROADMAP): which OnboardingVariant ran for this install. Read
+    /// on first complete and never overwritten so a post-hoc CSV
+    /// analysis can correlate the parent's choice with later
+    /// engagement metrics.
+    var variantUsed: OnboardingVariant? { get }
+    func markComplete(variant: OnboardingVariant)
     func saveProgress(step: OnboardingStep)
     func reset()
     /// Await any pending background disk write. Mirrors the pattern on the
@@ -86,11 +128,19 @@ protocol OnboardingStoring {
 
 extension OnboardingStoring {
     func flush() async {}
+    /// Backward-compat shim for callers that don't pass a variant.
+    /// Records as `.full` since that's what the historical 7-step flow was.
+    func markComplete() { markComplete(variant: .full) }
+    /// Default nil so older mocks compile unchanged.
+    var variantUsed: OnboardingVariant? { nil }
 }
 
 private struct OnboardingState: Codable {
     var completed: Bool = false
     var savedStepRaw: String? = nil
+    /// U4 (ROADMAP): variant the child actually ran. nil for legacy
+    /// state files written before the A/B framework landed.
+    var variantUsedRaw: String? = nil
 }
 
 final class JSONOnboardingStore: OnboardingStoring {
@@ -123,10 +173,21 @@ final class JSONOnboardingStore: OnboardingStoring {
         guard let raw = state.savedStepRaw else { return nil }
         return OnboardingStep(rawValue: raw)
     }
+    var variantUsed: OnboardingVariant? {
+        guard let raw = state.variantUsedRaw else { return nil }
+        return OnboardingVariant(rawValue: raw)
+    }
 
-    func markComplete() {
+    func markComplete(variant: OnboardingVariant) {
         state.completed = true
         state.savedStepRaw = nil
+        // Only record the variant on the FIRST complete — a re-run
+        // ("Einführung wiederholen") can change the variant in the
+        // settings, but the original-A/B-assignment shouldn't be
+        // overwritten or the post-hoc analysis can't correlate.
+        if state.variantUsedRaw == nil {
+            state.variantUsedRaw = variant.rawValue
+        }
         persist()
     }
 

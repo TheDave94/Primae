@@ -359,6 +359,18 @@ public final class TracingViewModel {
     /// counter persists across runs (the scheduler reads UserDefaults
     /// on init).
     let retrievalScheduler: RetrievalScheduler = RetrievalScheduler()
+    /// P5 (ROADMAP): reverse the direct-phase tap order so the child
+    /// taps the LAST stroke first. Off by default; opt-in for
+    /// motor-planning special-needs use (Spooner et al. 2014).
+    /// Affects only the direct phase — guided + freeWrite ignore this
+    /// setting and always run canonical stroke order. Persisted in
+    /// UserDefaults so the choice survives a relaunch.
+    var enableBackwardChaining: Bool = false {
+        didSet {
+            UserDefaults.standard.set(enableBackwardChaining,
+                forKey: "de.flamingistan.buchstaben.enableBackwardChaining")
+        }
+    }
 
     // MARK: - Recognition + freeform state (forwarded from FreeformController)
 
@@ -457,9 +469,17 @@ public final class TracingViewModel {
     var directArrowStrokeIndex: Int? = nil
 
     /// Index of the next dot the child must tap in the direct phase.
+    /// P5 (ROADMAP): when `enableBackwardChaining` is on, iterate the
+    /// stroke list in reverse — the child taps the LAST stroke first
+    /// and adds earlier strokes backward. Supports motor-planning
+    /// special-needs populations (Spooner et al. 2014). Default off;
+    /// guided/freeWrite phases always run canonical (forward) order.
     var directNextExpectedDotIndex: Int {
         guard let rawStrokes = rawGlyphStrokes else { return 0 }
-        for i in rawStrokes.strokes.indices where !directTappedDots.contains(i) { return i }
+        let indices: [Int] = enableBackwardChaining
+            ? Array(rawStrokes.strokes.indices).reversed()
+            : Array(rawStrokes.strokes.indices)
+        for i in indices where !directTappedDots.contains(i) { return i }
         return rawStrokes.strokes.count
     }
 
@@ -476,6 +496,14 @@ public final class TracingViewModel {
     var isOnboardingComplete: Bool = false
     /// Current onboarding step for presenting onboarding UI.
     private(set) var onboardingStep: OnboardingStep = .welcome
+    /// U4 (ROADMAP): the onboarding variant the current run is using.
+    /// Set in init based on the stored choice (or the parent's
+    /// UserDefaults preference for never-onboarded installs). Read by
+    /// `OnboardingView` so the UI can render only the steps that
+    /// belong to the active variant. Locked once `markComplete` runs
+    /// so a parent who later flips the Settings toggle doesn't change
+    /// the historical record.
+    var onboardingVariant: OnboardingVariant = .full
     /// Progress through onboarding steps (0–1).
     var onboardingProgress: Double { onboardingCoordinator.progress }
 
@@ -642,6 +670,7 @@ public final class TracingViewModel {
         self.enableFreeformMode     = deps.enableFreeformMode
         self.enablePhonemeMode      = deps.enablePhonemeMode
         self.enableRetrievalPrompts = deps.enableRetrievalPrompts
+        self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
         self.speech                 = deps.speech
         // Control condition uses fixed difficulty — no moving-average adaptation.
@@ -651,9 +680,20 @@ public final class TracingViewModel {
                 : MovingAverageAdaptationPolicy()
         )
 
-        // Resume onboarding from saved step if available
-        var coordinator = OnboardingCoordinator()
-        if let savedStep = deps.onboardingStore.savedStep {
+        // U4 (ROADMAP): pick the onboarding variant (full vs short) so
+        // the coordinator iterates the right step list. Reads the parent
+        // toggle from UserDefaults; if the install has already completed
+        // onboarding once and the variant was recorded, we honour that
+        // recorded variant on a re-run so the post-hoc analysis always
+        // sees the same first-encounter variant for that participant.
+        let useShort = UserDefaults.standard.bool(forKey: "de.flamingistan.buchstaben.useShortOnboarding")
+        let recordedVariant = deps.onboardingStore.variantUsed
+        let activeVariant: OnboardingVariant = recordedVariant ?? (useShort ? .short : .full)
+        self.onboardingVariant = activeVariant
+
+        var coordinator = OnboardingCoordinator(steps: activeVariant.steps)
+        if let savedStep = deps.onboardingStore.savedStep,
+           activeVariant.steps.contains(savedStep) {
             coordinator.resume(at: savedStep)
         }
         self.onboardingCoordinator = coordinator
@@ -1258,7 +1298,11 @@ public final class TracingViewModel {
         guard onboardingCoordinator.advance() else { return }
         onboardingStep = onboardingCoordinator.currentStep
         if onboardingCoordinator.isComplete {
-            onboardingStore.markComplete()
+            // U4: record which variant the child actually completed so
+            // post-hoc analysis can correlate engagement with onboarding
+            // length. Only the first-completion variant is recorded —
+            // later "Einführung wiederholen" runs leave it unchanged.
+            onboardingStore.markComplete(variant: onboardingVariant)
             isOnboardingComplete = true
             // Request notification permission and schedule reminder on onboarding completion
             Task { [weak self] in
@@ -1278,14 +1322,21 @@ public final class TracingViewModel {
     func skipOnboarding() {
         onboardingCoordinator.skip()
         onboardingStep = onboardingCoordinator.currentStep
-        onboardingStore.markComplete()
+        onboardingStore.markComplete(variant: onboardingVariant)
         isOnboardingComplete = true
     }
 
     /// Reset onboarding so the intro flow replays on next launch / app foreground.
+    /// U4: re-reads the current parent preference so a parent who flipped
+    /// the Settings toggle and then chose "Einführung wiederholen" gets
+    /// the new variant. The historically-recorded `variantUsed` on the
+    /// store is preserved (it only locks on the FIRST complete).
     func restartOnboarding() {
         onboardingStore.reset()
-        onboardingCoordinator = OnboardingCoordinator()
+        let useShort = UserDefaults.standard.bool(forKey: "de.flamingistan.buchstaben.useShortOnboarding")
+        let recordedVariant = onboardingStore.variantUsed
+        onboardingVariant = recordedVariant ?? (useShort ? .short : .full)
+        onboardingCoordinator = OnboardingCoordinator(steps: onboardingVariant.steps)
         onboardingStep = onboardingCoordinator.currentStep
         isOnboardingComplete = false
     }

@@ -41,6 +41,9 @@ struct TracingDependencies {
     /// P1 (ROADMAP): opt-in spaced-retrieval recognition prompt before
     /// every Nth letter selection. Default off — research feature.
     var enableRetrievalPrompts: Bool
+    /// P5 (ROADMAP): reverse the direct-phase tap order. Default off;
+    /// opt-in for motor-planning special-needs use (Spooner 2014).
+    var enableBackwardChaining: Bool
     /// CoreML-backed letter recognizer. Default is `CoreMLLetterRecognizer()`;
     /// tests inject `StubLetterRecognizer(result:)` to get deterministic output.
     var letterRecognizer: LetterRecognizerProtocol
@@ -137,6 +140,9 @@ struct TracingDependencies {
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.buchstaben.enableRetrievalPrompts"
         ),
+        enableBackwardChaining: Bool = UserDefaults.standard.bool(
+            forKey: "de.flamingistan.buchstaben.enableBackwardChaining"
+        ),
         letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
         speech: SpeechSynthesizing = AVSpeechSpeechSynthesizer(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
@@ -174,6 +180,7 @@ struct TracingDependencies {
         self.enableFreeformMode = enableFreeformMode
         self.enablePhonemeMode = enablePhonemeMode
         self.enableRetrievalPrompts = enableRetrievalPrompts
+        self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer
         self.speech = speech
         self.makePlaybackController = makePlaybackController
