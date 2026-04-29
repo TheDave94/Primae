@@ -1,0 +1,35 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>html,body{margin:0;background:var(--paper);font-family:var(--font-text)}
+.w{padding:22px 26px;display:flex;flex-direction:column;gap:14px}
+.canvas{background:var(--canvas-paper);border:3px solid var(--ink);border-radius:18px;padding:18px;display:flex;align-items:center;gap:24px}
+.svg{flex:0 0 240px}
+.legend{display:flex;flex-direction:column;gap:8px;flex:1}
+.row{display:flex;align-items:center;gap:10px;font-size:14px}
+.sw{width:28px;height:14px;border-radius:3px;border:1px solid var(--ink-soft)}
+.lab{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:700}
+.h{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft)}
+</style></head><body><div class="w">
+<div class="lab">Canvas stroke semantics — pinned by spec</div>
+<div class="canvas">
+  <svg class="svg" viewBox="0 0 200 200">
+    <!-- Letter A glyph faint -->
+    <text x="100" y="158" text-anchor="middle" font-family="Nunito" font-weight="800" font-size="180" fill="#ECE2C8">A</text>
+    <!-- ghost stroke (blue, opacity .4, w8) -->
+    <path d="M40 170 L100 30 L160 170" stroke="#4A86C7" stroke-opacity="0.4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path d="M62 120 L138 120" stroke="#4A86C7" stroke-opacity="0.4" stroke-width="8" stroke-linecap="round" fill="none"/>
+    <!-- child ink (green) -->
+    <path d="M44 168 L100 36 L156 162" stroke="#3FA060" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <!-- start dot -->
+    <circle cx="40" cy="170" r="6" fill="#2A241A"/>
+    <text x="40" y="187" text-anchor="middle" font-family="Nunito" font-weight="700" font-size="11" fill="#2A241A">1</text>
+    <!-- guide dot (orange) -->
+    <circle cx="80" cy="76" r="9" fill="#F08A2A" stroke="#2A241A" stroke-width="2"/>
+  </svg>
+  <div class="legend">
+    <div class="row"><div class="sw" style="background:rgba(74,134,199,.4)"></div><b>--ghost</b> &nbsp;<span class="h">reference / dotted line</span></div>
+    <div class="row"><div class="sw" style="background:#3FA060"></div><b>--ink-stroke</b> &nbsp;<span class="h">child's writing</span></div>
+    <div class="row"><div class="sw" style="background:#F08A2A"></div><b>--guide</b> &nbsp;<span class="h">animation dot</span></div>
+    <div class="row"><div class="sw" style="background:#2A241A"></div><b>--start-dot</b> &nbsp;<span class="h">numbered start point</span></div>
+  </div>
+</div>
+</div></body></html>

@@ -1,0 +1,350 @@
+/* Primae — UI Kit styles. Modern, fresh, kid-friendly. */
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; margin: 0; }
+
+body {
+  background: var(--paper-deep);
+  color: var(--ink);
+  font-family: var(--font-text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.app-shell {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  height: 100vh; width: 100vw;
+}
+
+/* ---------- World rail ---------- */
+.world-rail {
+  background: var(--paper);
+  border-right: 1px solid var(--paper-edge);
+  display: flex; flex-direction: column; align-items: center;
+  padding: 20px 0 16px; gap: 18px;
+}
+.world-rail__brand {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  background: var(--brand-soft);
+  border-radius: 18px;
+}
+.world-rail__brand img { display: block; }
+.world-rail__items {
+  display: flex; flex-direction: column;
+  gap: 10px; flex: 1; margin-top: 8px;
+}
+.world-rail__btn {
+  width: 72px; padding: 12px 6px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: transparent;
+  border: 0;
+  border-radius: 18px;
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.32,0.72,0.30,1);
+  --tint: var(--ink);
+  --tint-soft: var(--paper-deep);
+}
+.world-rail__btn svg { width: 26px; height: 26px; stroke-width: 2.2; }
+.world-rail__label {
+  font-family: var(--font-display);
+  font-size: 11px; font-weight: 600;
+}
+.world-rail__btn:hover { background: var(--paper-deep); color: var(--ink-soft); }
+.world-rail__btn.is-active {
+  background: var(--tint-soft);
+  color: var(--tint);
+}
+.world-rail__gear {
+  width: 56px; height: 56px;
+  display: grid; place-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 14px;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.world-rail__gear:hover { background: var(--paper-deep); color: var(--ink-soft); }
+.world-rail__gear svg { width: 22px; height: 22px; }
+
+/* ---------- World stage ---------- */
+.app-stage { position: relative; min-width: 0; min-height: 0; background: var(--paper-deep); }
+.world-main {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  height: 100%;
+}
+
+/* ---------- Header ---------- */
+.world-header {
+  background: var(--paper);
+  border-bottom: 1px solid var(--paper-edge);
+}
+.world-header__inner {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  padding: 16px 32px;
+  gap: 24px;
+}
+.world-header__title {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700; font-size: 22px;
+  color: var(--ink);
+}
+.world-header__title svg { width: 26px; height: 26px; }
+.world-header__meta {
+  display: flex; align-items: center; gap: 10px;
+  justify-content: flex-end;
+  color: var(--ink-soft);
+}
+.world-main--schule .world-header__title svg { color: var(--schule); }
+.world-main--werkstatt .world-header__title svg { color: var(--werkstatt); }
+.world-main--fortschritte .world-header__title svg { color: var(--fortschritte); }
+
+/* ---------- Phase indicator ---------- */
+.phase-ind {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--paper-deep);
+  border-radius: 999px;
+  padding: 8px 18px;
+}
+.phase-ind__dots { display: flex; gap: 8px; }
+.phase-ind__dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ink-ghost);
+  transition: all 200ms cubic-bezier(0.32,0.72,0.30,1);
+}
+.phase-ind__dot.is-done { background: var(--brand); }
+.phase-ind__dot.is-active { background: var(--brand); width: 24px; border-radius: 999px; }
+.phase-ind__label {
+  font-family: var(--font-display);
+  font-size: 13px; font-weight: 600;
+  color: var(--ink-soft);
+}
+
+/* ---------- Canvas area ---------- */
+.canvas-area {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 18px; padding: 24px;
+  min-height: 0;
+}
+.prompt {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 600;
+  color: var(--ink);
+}
+.canvas-stage {
+  width: min(540px, 70vmin);
+  aspect-ratio: 1 / 1;
+  background: var(--paper);
+  border-radius: 28px;
+  box-shadow: var(--sh-2);
+  position: relative;
+  overflow: hidden;
+}
+.canvas-svg { width: 100%; height: 100%; display: block; }
+.pulse-halo {
+  transform-origin: center;
+  animation: pulse 1.4s cubic-bezier(0.32,0.72,0.30,1) infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 0.8; transform: scale(1.15); }
+}
+.canvas-actions {
+  display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;
+}
+
+/* ---------- Sticker / pill button ---------- */
+.btn-sticker {
+  display: inline-flex; align-items: center; gap: 10px;
+  padding: 14px 24px;
+  font-family: var(--font-display);
+  font-size: 16px; font-weight: 700;
+  color: #fff;
+  background: var(--brand);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: var(--sh-sticker);
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.32,0.72,0.30,1);
+}
+.btn-sticker svg { width: 20px; height: 20px; stroke-width: 2.4; }
+.btn-sticker:hover { transform: translateY(-1px); box-shadow: 0 6px 16px rgba(37,99,235,0.30), 0 1px 3px rgba(15,23,42,0.08); }
+.btn-sticker:active { transform: translateY(1px); box-shadow: var(--sh-press); }
+.btn-sticker--brand        { background: var(--brand);       color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,0.25), 0 1px 3px rgba(15,23,42,0.08); }
+.btn-sticker--schule       { background: var(--schule);      color: #fff; box-shadow: 0 4px 12px rgba(37,99,235,0.25), 0 1px 3px rgba(15,23,42,0.08); }
+.btn-sticker--werkstatt    { background: var(--werkstatt);   color: #fff; box-shadow: 0 4px 12px rgba(245,158,11,0.30), 0 1px 3px rgba(15,23,42,0.08); }
+.btn-sticker--fortschritte { background: var(--fortschritte); color: #fff; box-shadow: 0 4px 12px rgba(236,72,153,0.30), 0 1px 3px rgba(15,23,42,0.08); }
+
+/* ---------- Star row ---------- */
+.star-row { display: inline-flex; gap: 3px; }
+
+/* ---------- Praise band ---------- */
+.praise-band {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 700;
+  color: var(--success);
+  animation: praiseIn 320ms cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes praiseIn {
+  from { transform: translateY(8px) scale(0.92); opacity: 0; }
+  to   { transform: translateY(0)    scale(1);    opacity: 1; }
+}
+
+/* ---------- Letter picker ---------- */
+.letter-picker {
+  display: flex; gap: 10px; padding: 14px 32px;
+  border-top: 1px solid var(--paper-edge);
+  background: var(--paper);
+  overflow-x: auto;
+}
+.letter-cell {
+  flex: 0 0 auto;
+  min-width: 64px;
+  padding: 10px 12px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  background: var(--paper-deep);
+  border: 0;
+  border-radius: 18px;
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.32,0.72,0.30,1);
+  color: var(--ink);
+}
+.letter-cell:hover { background: var(--paper-edge); transform: translateY(-2px); }
+.letter-cell.is-active {
+  background: var(--brand-soft);
+  box-shadow: 0 0 0 2px var(--brand) inset;
+}
+.letter-cell.is-active .letter-cell__glyph { color: var(--brand); }
+.letter-cell__glyph {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 800;
+  line-height: 1;
+}
+
+/* ---------- KP overlay ---------- */
+.kp-overlay {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid; place-items: center;
+  z-index: 50;
+  animation: fadeIn 200ms cubic-bezier(0.32,0.72,0.30,1);
+}
+.kp-overlay__inner {
+  background: var(--paper);
+  border-radius: 28px;
+  box-shadow: var(--sh-3);
+  padding: 18px;
+  width: min(540px, 70vmin);
+}
+.kp-overlay__svg {
+  width: 100%; aspect-ratio: 1/1;
+  background: var(--paper-deep);
+  border-radius: 20px;
+}
+.kp-overlay__caption {
+  font-family: var(--font-display);
+  font-size: 14px; font-weight: 600;
+  color: var(--ink-soft);
+  text-align: center; margin-top: 10px;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------- Celebrate ---------- */
+.celebrate-overlay {
+  position: absolute; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid; place-items: center;
+  z-index: 60;
+  animation: fadeIn 200ms cubic-bezier(0.32,0.72,0.30,1);
+}
+.celebrate-card {
+  background: var(--paper);
+  border-radius: 28px;
+  box-shadow: var(--sh-3);
+  padding: 32px 40px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  min-width: 340px;
+  animation: pop 520ms cubic-bezier(0.34,1.56,0.64,1);
+}
+.celebrate-card__title {
+  font-size: 56px; line-height: 1;
+  color: var(--brand);
+  font-weight: 800;
+}
+@keyframes pop {
+  0%   { transform: scale(0.7); opacity: 0; }
+  60%  { transform: scale(1.06); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* ---------- Fortschritte ---------- */
+.fortschritte-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 18px;
+  padding: 28px 36px;
+  align-items: start;
+}
+.streak-card {
+  background: var(--paper);
+  border-radius: 24px;
+  padding: 22px 26px;
+  box-shadow: var(--sh-1);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.big-number {
+  font-family: var(--font-display);
+  font-size: 56px; font-weight: 800;
+  line-height: 1;
+  color: var(--brand);
+}
+.letter-gallery {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
+  background: var(--paper);
+  border-radius: 24px;
+  padding: 18px;
+  box-shadow: var(--sh-1);
+}
+.letter-gallery__cell {
+  background: var(--paper-deep);
+  border-radius: 18px;
+  padding: 14px 10px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.letter-gallery__glyph {
+  font-family: var(--font-display);
+  font-size: 32px; font-weight: 800;
+  line-height: 1;
+}
+
+/* ---------- Parent overlay ---------- */
+.parent-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: grid; place-items: center;
+  z-index: 100;
+}
+.parent-card {
+  background: var(--paper);
+  border-radius: 28px;
+  padding: 32px 36px;
+  width: min(440px, 90vw);
+  display: flex; flex-direction: column; gap: 14px;
+  box-shadow: var(--sh-3);
+}
+.parent-card h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 28px; font-weight: 800;
+}

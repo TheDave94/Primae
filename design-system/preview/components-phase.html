@@ -1,0 +1,23 @@
+<!doctype html><html lang="de"><head><meta charset="utf-8"><link rel="stylesheet" href="../colors_and_type.css">
+<style>
+html,body{margin:0;background:var(--paper);font-family:var(--font-text);color:var(--ink)}
+.w{padding:22px 26px;display:flex;flex-direction:column;gap:14px}
+.lab{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:700}
+.phase{display:inline-flex;flex-direction:column;align-items:center;gap:6px;padding:10px 16px;background:var(--paper-edge);border:1px solid var(--paper-deep);border-radius:14px}
+.dots{display:flex;gap:8px}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--paper-deep)}
+.dot.done{background:var(--ink-soft)}
+.dot.active{background:var(--brand);transform:scale(1.4)}
+.title{font-family:"Nunito",system-ui;font-weight:700;font-size:14px}
+.row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.note{font-family:var(--font-mono);font-size:11px;color:var(--ink-soft)}
+</style></head><body><div class="w">
+<div class="lab">Phase indicator — 4-step pedagogy</div>
+<div class="row">
+  <div class="phase"><div class="dots"><span class="dot active"></span><span class="dot"></span><span class="dot"></span><span class="dot"></span></div><div class="title">Anschauen</div></div>
+  <div class="phase"><div class="dots"><span class="dot done"></span><span class="dot active"></span><span class="dot"></span><span class="dot"></span></div><div class="title">Richtung lernen</div></div>
+  <div class="phase"><div class="dots"><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span><span class="dot"></span></div><div class="title">Nachspuren</div></div>
+  <div class="phase"><div class="dots"><span class="dot done"></span><span class="dot done"></span><span class="dot done"></span><span class="dot active"></span></div><div class="title">Selbst schreiben</div></div>
+</div>
+<div class="note">observe → direct → guided → freeWrite. Active dot uses --brand at 1.4× scale.</div>
+</div></body></html>

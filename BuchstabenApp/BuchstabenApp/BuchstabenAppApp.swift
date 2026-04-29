@@ -21,10 +21,25 @@ struct BuchstabenAppMain: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var vm = TracingViewModel()
 
+    /// Primae appearance override (Part C). Stored in UserDefaults
+    /// under `primaeAppearance` by the parent-area Settings picker
+    /// ("system" / "light" / "dark"). `nil` resolution = follow iOS.
+    @AppStorage(PrimaeAppearance.storageKey) private var appearance: String = "system"
+
+    init() {
+        // Register the SPM-bundled Primae / PrimaeText / Playwrite
+        // faces with CoreText so SwiftUI `Font.custom(...)` resolves
+        // them by PostScript name. The `UIAppFonts` Info.plist key
+        // covers main-bundle fonts only; the SPM resource bundle
+        // needs `CTFontManagerRegisterFontsForURLs`. Idempotent.
+        PrimaeFonts.registerAll()
+    }
+
     var body: some Scene {
         WindowGroup {
             BuchstabenNative.MainAppView()
                 .environment(vm)
+                .preferredColorScheme(PrimaeAppearance.resolve(appearance))
         }
         .onChange(of: scenePhase) { _, newPhase in
             switch newPhase {

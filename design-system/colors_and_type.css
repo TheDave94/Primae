@@ -1,0 +1,380 @@
+/* Default light scheme + opt-in dark via [data-theme="dark"] or prefers-color-scheme */
+:root { color-scheme: light dark; }
+html[data-theme="dark"] { color-scheme: only dark; }
+html[data-theme="light"] { color-scheme: only light; }
+
+/* ==========================================================================
+   Primae Design System — Colors & Type
+   --------------------------------------------------------------------------
+   Source of truth derived from the app's documented canvas semantics:
+     - Reference / ghost strokes are blue (opacity 0.4, line width 8)
+     - Child ink is green (line width 4–8)
+     - Animation guide dot is orange
+     - Recognition tiles tint green = correct, orange = incorrect
+   The rest of the palette (paper, ink, world tints) is committed here so the
+   whole app reads like a warm Austrian schoolbook rather than a digital toy.
+   ========================================================================== */
+
+/* ----------  Fonts  ---------- */
+/* Both Primae (Druckschrift / display-print) and Playwrite AT
+   (Schreibschrift / Austrian school cursive) ship with the system. */
+
+/* Primae — display family (large titles, glyph render, prompts) */
+@font-face { font-family:"Primae"; src:url("fonts/Primae-Light.otf") format("opentype"); font-weight:300; font-style:normal; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-LightCursive.otf") format("opentype"); font-weight:300; font-style:italic; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-Semilight.otf") format("opentype"); font-weight:350; font-style:normal; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-SemilightCursive.otf") format("opentype"); font-weight:350; font-style:italic; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-Regular.otf") format("opentype"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-Cursive.otf") format("opentype"); font-weight:400; font-style:italic; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-Semibold.otf") format("opentype"); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-SemiboldCursive.otf") format("opentype"); font-weight:600; font-style:italic; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-Bold.otf") format("opentype"); font-weight:700; font-style:normal; font-display:swap; }
+@font-face { font-family:"Primae"; src:url("fonts/Primae-BoldCursive.otf") format("opentype"); font-weight:700; font-style:italic; font-display:swap; }
+
+/* PrimaeText — text-grade companion (body / labels / smaller sizes) */
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-Light.otf") format("opentype"); font-weight:300; font-style:normal; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-LightCursive.otf") format("opentype"); font-weight:300; font-style:italic; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-Semilight.otf") format("opentype"); font-weight:350; font-style:normal; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-SemilightCursive.otf") format("opentype"); font-weight:350; font-style:italic; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-Regular.otf") format("opentype"); font-weight:400; font-style:normal; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-Cursive.otf") format("opentype"); font-weight:400; font-style:italic; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-Semibold.otf") format("opentype"); font-weight:600; font-style:normal; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-SemiboldCursive.otf") format("opentype"); font-weight:600; font-style:italic; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-Bold.otf") format("opentype"); font-weight:700; font-style:normal; font-display:swap; }
+@font-face { font-family:"PrimaeText"; src:url("fonts/PrimaeText-BoldCursive.otf") format("opentype"); font-weight:700; font-style:italic; font-display:swap; }
+
+/* Playwrite AT — Austrian school cursive */
+@font-face { font-family:"Playwrite AT"; src:url("fonts/PlaywriteAT-Regular.ttf") format("truetype"); font-weight:400; font-style:normal; font-display:swap; }
+
+/* ==========================================================================
+   :root — base tokens
+   ========================================================================== */
+:root {
+  /* ----- Color: paper / ink (system base) ----- */
+  /* Modern, fresh, kid-friendly: crisp white surfaces, slate ink, primary blue + amber */
+  --paper:        #FFFFFF;  /* main app surface — clean white */
+  --paper-deep:   #F8FAFC;  /* recessed surface (slate-50) — subtle contrast */
+  --paper-edge:   #E2E8F0;  /* borders, dividers (slate-200) */
+  --ink:          #0F172A;  /* primary text (slate-900) */
+  --ink-soft:     #475569;  /* secondary text (slate-600) */
+  --ink-faint:    #94A3B8;  /* tertiary text, captions (slate-400) */
+  --ink-ghost:    #CBD5E1;  /* very-low-emphasis (slate-300) */
+
+  /* ----- Color: canvas semantics (kept conceptually; modernized hues) ----- */
+  --canvas-paper:   #F8FAFC;  /* the writing canvas surface (slate-50) */
+  --ghost:          #2563EB;  /* reference stroke blue (blue-600) */
+  --ghost-soft:     rgba(37, 99, 235, 0.35);
+  --ink-stroke:     #10B981;  /* child's green ink (emerald-500) */
+  --ink-stroke-deep:#059669;  /* committed stroke (emerald-600) */
+  --guide:          #F59E0B;  /* observe-phase amber dot (amber-500) */
+  --guide-soft:     rgba(245, 158, 11, 0.20);
+  --start-dot:      #0F172A;  /* numbered start dot — slate-900 */
+
+  /* ----- Color: brand / world tints ----- */
+  --brand:          #2563EB;  /* primary action — blue-600 */
+  --brand-deep:     #1D4ED8;  /* blue-700 */
+  --brand-soft:     #DBEAFE;  /* blue-100 */
+
+  --schule:         #2563EB;  /* World 1 — Schule — primary blue */
+  --schule-soft:    #DBEAFE;
+  --werkstatt:      #F59E0B;  /* World 2 — Werkstatt — amber */
+  --werkstatt-soft: #FEF3C7;
+  --fortschritte:   #EC4899;  /* World 3 — Sterne — fresh pink for celebration */
+  --fortschritte-soft:#FCE7F3;
+
+  /* ----- Color: feedback semantics ----- */
+  --success:        #10B981;  /* emerald-500 */
+  --success-soft:   #D1FAE5;
+  --warning:        #F59E0B;
+  --warning-soft:   #FEF3C7;
+  --danger:         #EF4444;  /* red-500, used sparingly */
+  --danger-soft:    #FEE2E2;
+  --info:           #2563EB;
+  --info-soft:      #DBEAFE;
+
+  /* ----- Color: stars ----- */
+  --star:           #F59E0B;  /* amber-500 */
+  --star-empty:     #E2E8F0;  /* slate-200 */
+
+  /* ----- Color: parent area (more clinical, slightly cooler) ----- */
+  --adult-paper:    #F8FAFC;
+  --adult-card:     #FFFFFF;
+  --adult-ink:      #0F172A;
+  --adult-ink-soft: #475569;
+}
+
+/* ==========================================================================
+   Dark theme — opt-in via [data-theme="dark"], or auto via prefers-color-scheme
+   --------------------------------------------------------------------------
+   Surfaces invert (slate-950 paper → near-white ink). Canvas semantics keep
+   their identities but shift to dark-mode-readable hues: ghost blue brightens
+   (blue-400), child ink brightens (emerald-400), amber guide brightens
+   (amber-400). Brand blue stays close to blue-500 so CTAs still read as
+   "the same color" in both themes.
+   ========================================================================== */
+
+html[data-theme="dark"] {
+  --paper:        #0B1220;  /* near-black slate, slightly warmer than pure black */
+  --paper-deep:   #111827;  /* recessed surface */
+  --paper-edge:   #1F2937;  /* borders / dividers */
+  --ink:          #F8FAFC;  /* primary text */
+  --ink-soft:     #CBD5E1;  /* secondary text */
+  --ink-faint:    #94A3B8;  /* tertiary text */
+  --ink-ghost:    #475569;  /* very-low-emphasis */
+
+  --canvas-paper:   #111827;  /* dark canvas surface */
+  --ghost:          #60A5FA;  /* blue-400 — bright on dark */
+  --ghost-soft:     rgba(96, 165, 250, 0.35);
+  --ink-stroke:     #34D399;  /* emerald-400 */
+  --ink-stroke-deep:#10B981;
+  --guide:          #FBBF24;  /* amber-400 */
+  --guide-soft:     rgba(251, 191, 36, 0.22);
+  --start-dot:      #F8FAFC;  /* invert: light dot on dark canvas */
+
+  --brand:          #3B82F6;  /* blue-500 — same family as light, slightly lifted */
+  --brand-deep:     #2563EB;
+  --brand-soft:     #1E3A8A;  /* blue-900 — soft tint surface in dark */
+
+  --schule:         #3B82F6;
+  --schule-soft:    #1E3A8A;
+  --werkstatt:      #FBBF24;
+  --werkstatt-soft: #78350F;  /* amber-900 */
+  --fortschritte:   #F472B6;  /* pink-400 — softer for dark */
+  --fortschritte-soft:#831843; /* pink-900 */
+
+  --success:        #34D399;
+  --success-soft:   #064E3B;  /* emerald-900 */
+  --warning:        #FBBF24;
+  --warning-soft:   #78350F;
+  --danger:         #F87171;  /* red-400 */
+  --danger-soft:    #7F1D1D;  /* red-900 */
+  --info:           #60A5FA;
+  --info-soft:      #1E3A8A;
+
+  --star:           #FBBF24;
+  --star-empty:     #1F2937;
+
+  --adult-paper:    #0B1220;
+  --adult-card:     #111827;
+  --adult-ink:      #F8FAFC;
+  --adult-ink-soft: #CBD5E1;
+}
+
+/* Auto dark — only when no explicit choice is set */
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme="light"]):not([data-theme="dark"]) {
+    --paper:        #0B1220;
+    --paper-deep:   #111827;
+    --paper-edge:   #1F2937;
+    --ink:          #F8FAFC;
+    --ink-soft:     #CBD5E1;
+    --ink-faint:    #94A3B8;
+    --ink-ghost:    #475569;
+    --canvas-paper: #111827;
+    --ghost:        #60A5FA;
+    --ghost-soft:   rgba(96, 165, 250, 0.35);
+    --ink-stroke:   #34D399;
+    --ink-stroke-deep:#10B981;
+    --guide:        #FBBF24;
+    --guide-soft:   rgba(251, 191, 36, 0.22);
+    --start-dot:    #F8FAFC;
+    --brand:        #3B82F6;
+    --brand-deep:   #2563EB;
+    --brand-soft:   #1E3A8A;
+    --schule:       #3B82F6;
+    --schule-soft:  #1E3A8A;
+    --werkstatt:    #FBBF24;
+    --werkstatt-soft:#78350F;
+    --fortschritte: #F472B6;
+    --fortschritte-soft:#831843;
+    --success:      #34D399;
+    --success-soft: #064E3B;
+    --warning:      #FBBF24;
+    --warning-soft: #78350F;
+    --danger:       #F87171;
+    --danger-soft:  #7F1D1D;
+    --info:         #60A5FA;
+    --info-soft:    #1E3A8A;
+    --star:         #FBBF24;
+    --star-empty:   #1F2937;
+    --adult-paper:  #0B1220;
+    --adult-card:   #111827;
+    --adult-ink:    #F8FAFC;
+    --adult-ink-soft:#CBD5E1;
+  }
+
+  /* ----- Type: families ----- */
+  --font-display:   "Primae", -apple-system, system-ui, sans-serif;
+  --font-text:      "PrimaeText", "Primae", -apple-system, system-ui, sans-serif;
+  --font-cursive:   "Playwrite AT", cursive;
+  --font-mono:      ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ----- Type: scale (iPad-first; readable to a 6-year-old) ----- */
+  --fz-xs:    13px;
+  --fz-sm:    15px;
+  --fz-base:  17px;
+  --fz-md:    20px;
+  --fz-lg:    24px;
+  --fz-xl:    32px;
+  --fz-2xl:   44px;
+  --fz-3xl:   64px;
+  --fz-4xl:   96px;
+  --fz-glyph: 220px;  /* the giant traceable letter on the canvas */
+
+  /* ----- Type: weight ----- */
+  --fw-light:    300;
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-semibold: 600;
+  --fw-bold:     700;
+  --fw-black:    800;
+
+  /* ----- Type: line height ----- */
+  --lh-tight: 1.1;
+  --lh-snug:  1.25;
+  --lh-base:  1.45;
+  --lh-loose: 1.6;
+
+  /* ----- Type: tracking ----- */
+  --ls-tight:  -0.02em;
+  --ls-normal:  0;
+  --ls-wide:    0.02em;
+  --ls-caps:    0.06em;
+
+  /* ----- Spacing (4px base, 8 used for primary rhythm) ----- */
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+  --sp-8:  64px;
+  --sp-9:  96px;
+
+  /* ----- Radii (generous for a kid app, not extreme) ----- */
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   20px;
+  --r-xl:   28px;
+  --r-2xl:  40px;
+  --r-pill: 9999px;
+
+  /* ----- Borders ----- */
+  --bw-1: 1px;
+  --bw-2: 2px;
+  --bw-3: 3px;   /* primary card outline — "drawn-on-paper" feel */
+  --bw-4: 4px;   /* heavy emphasis, e.g. selected state */
+
+  /* ----- Shadows: soft, paper-like, no heavy blur ----- */
+  --sh-1: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.05);
+  --sh-2: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 20px rgba(15, 23, 42, 0.07);
+  --sh-3: 0 4px 8px rgba(15, 23, 42, 0.06), 0 16px 32px rgba(15, 23, 42, 0.10);
+  --sh-press: 0 1px 2px rgba(15, 23, 42, 0.06);
+
+  /* soft elevated button shadow — modern, no hard offset */
+  --sh-sticker: 0 4px 12px rgba(37, 99, 235, 0.25), 0 1px 3px rgba(15, 23, 42, 0.08);
+
+  /* ----- Motion ----- */
+  --ease-soft:     cubic-bezier(0.32, 0.72, 0.30, 1.00); /* default ease */
+  --ease-bounce:   cubic-bezier(0.34, 1.56, 0.64, 1.00); /* praise / star pop */
+  --ease-pulse:    cubic-bezier(0.42, 0.00, 0.58, 1.00); /* in-out for pulsing dot */
+  --dur-1: 120ms;
+  --dur-2: 200ms;
+  --dur-3: 320ms;
+  --dur-4: 520ms;
+  --dur-arrow: 1200ms;  /* documented direct-phase arrow window */
+}
+
+/* ==========================================================================
+   Semantic typography classes — h1..p, plus child-vs-adult registers
+   ========================================================================== */
+
+.t-display {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fz-3xl);
+  line-height: var(--lh-tight);
+  letter-spacing: var(--ls-tight);
+  color: var(--ink);
+}
+.t-h1 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fz-2xl);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+}
+.t-h2 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-bold);
+  font-size: var(--fz-xl);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+}
+.t-h3 {
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fz-lg);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+}
+.t-prompt {           /* the big "Schau mal genau hin." child instruction */
+  font-family: var(--font-display);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fz-xl);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+}
+.t-body {
+  font-family: var(--font-text);
+  font-weight: var(--fw-regular);
+  font-size: var(--fz-base);
+  line-height: var(--lh-base);
+  color: var(--ink);
+}
+.t-body-md {
+  font-family: var(--font-text);
+  font-weight: var(--fw-regular);
+  font-size: var(--fz-md);
+  line-height: var(--lh-base);
+  color: var(--ink);
+}
+.t-label {            /* button / row labels */
+  font-family: var(--font-text);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fz-base);
+  line-height: var(--lh-snug);
+  color: var(--ink);
+}
+.t-caption {
+  font-family: var(--font-text);
+  font-weight: var(--fw-regular);
+  font-size: var(--fz-sm);
+  line-height: var(--lh-base);
+  color: var(--ink-soft);
+}
+.t-eyebrow {          /* small caps section label, parent-area only */
+  font-family: var(--font-text);
+  font-weight: var(--fw-semibold);
+  font-size: var(--fz-xs);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.t-cursive {          /* Schreibschrift specimen */
+  font-family: var(--font-cursive);
+  font-weight: 400;
+  color: var(--ink);
+}
+.t-mono {
+  font-family: var(--font-mono);
+  font-size: var(--fz-sm);
+  color: var(--ink-soft);
+}
+
+/* paragraph default */
+p { font-family: var(--font-text); color: var(--ink); margin: 0 0 var(--sp-3); }
+h1 { font: var(--fw-bold) var(--fz-2xl)/var(--lh-tight) var(--font-display); color: var(--ink); margin: 0 0 var(--sp-4); }
+h2 { font: var(--fw-bold) var(--fz-xl)/var(--lh-snug) var(--font-display); color: var(--ink); margin: 0 0 var(--sp-3); }
+h3 { font: var(--fw-semibold) var(--fz-lg)/var(--lh-snug) var(--font-display); color: var(--ink); margin: 0 0 var(--sp-3); }
