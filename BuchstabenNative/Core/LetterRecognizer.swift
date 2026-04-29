@@ -32,9 +32,13 @@ struct RecognitionResult: Equatable, Sendable {
     /// For freeform mode (no expectation), this is always `false`.
     let isCorrect: Bool
 
-    init(predictedLetter: String, confidence: CGFloat,
-         rawConfidence: CGFloat? = nil,
-         topThree: [TopCandidate], isCorrect: Bool) {
+    /// Nonisolated so the recognizer's `Task.detached` background context
+    /// can construct results without bouncing back to MainActor — the
+    /// package's `.defaultIsolation(MainActor.self)` would otherwise
+    /// pin a custom init to the main actor.
+    nonisolated init(predictedLetter: String, confidence: CGFloat,
+                     rawConfidence: CGFloat? = nil,
+                     topThree: [TopCandidate], isCorrect: Bool) {
         self.predictedLetter = predictedLetter
         self.confidence = confidence
         self.rawConfidence = rawConfidence
