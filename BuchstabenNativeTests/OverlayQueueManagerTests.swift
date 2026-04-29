@@ -67,15 +67,18 @@ private func sampleResult(_ predicted: String = "A",
         q.enqueue(.kpOverlay)
         q.enqueue(.paperTransfer(letter: "B"))
         q.enqueue(.celebration(stars: 3))
-        // Late-arriving badge: must sit ahead of the celebration so the
-        // child's last visible feedback is the celebration, not the badge.
+        // Late-arriving badge: must sit ahead of both `paperTransfer`
+        // and `celebration` so the canonical order is preserved
+        // (kpOverlay → recognitionBadge → paperTransfer → celebration).
+        // Inserting only ahead of `celebration` would push the badge
+        // past the paper-transfer self-assessment and break the
+        // recognition feedback's pre-paper position (review item W-25).
         q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("B")))
-        // Drain through KP and paperTransfer so we can read the rest.
         #expect(q.currentOverlay == .kpOverlay)
         q.dismiss()
-        #expect(q.currentOverlay == .paperTransfer(letter: "B"))
-        q.dismiss()
         #expect(q.currentOverlay == .recognitionBadge(sampleResult("B")))
+        q.dismiss()
+        #expect(q.currentOverlay == .paperTransfer(letter: "B"))
         q.dismiss()
         #expect(q.currentOverlay == .celebration(stars: 3))
     }
