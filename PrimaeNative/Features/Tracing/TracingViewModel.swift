@@ -773,7 +773,13 @@ public final class TracingViewModel {
             messages.show(toast: audioError)
         }
         guard let first = letters.first else { return }
-        load(letter: first)
+        // playPhaseCue: false — VM init runs before the audio
+        // session and SwiftUI scene have settled. Speaking here
+        // produces ~2 s of crackly half-rendered audio on launch
+        // (returning users go straight to Schule and hear it
+        // unprompted; first-run users had it gated on
+        // isOnboardingComplete already, but this is the real fix).
+        load(letter: first, playPhaseCue: false)
     }
 
     // MARK: - Toggles
@@ -1573,7 +1579,19 @@ public final class TracingViewModel {
 
     // MARK: - Private helpers
 
-    private func load(letter: LetterAsset) {
+    /// Load a letter into the canvas + reset phase state.
+    ///
+    /// `playPhaseCue: false` skips the spoken phase prompt at the
+    /// end of this method. The init-time call (`load(letter: first)`
+    /// from `init(_:)`) passes `false` because the audio engine
+    /// hasn't finished bringing up its session, AVSpeech / the
+    /// PromptPlayer would queue speech against a half-warm
+    /// pipeline, and the resulting clip is what plays as ~2 s of
+    /// crackle when a returning user opens the app straight to the
+    /// main screen. Subsequent loads (user picks a letter, the
+    /// scheduler advances after a celebration) all default to
+    /// `playPhaseCue: true` because by then the app is settled.
+    private func load(letter: LetterAsset, playPhaseCue: Bool = true) {
         phaseController.reset()
         freeWriteRecorder.clearAll()
         showingVariant = false
@@ -1682,7 +1700,7 @@ public final class TracingViewModel {
         // confusing audio for content the screen doesn't show.
         // Once onboarding completes, every subsequent letter load
         // is post-onboarding and the cue is welcome.
-        if isOnboardingComplete {
+        if isOnboardingComplete && playPhaseCue {
             prompts.play(
                 ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
                 fallbackText: ChildSpeechLibrary.phaseEntry(phaseController.currentPhase)
