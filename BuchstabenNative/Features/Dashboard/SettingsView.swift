@@ -28,6 +28,16 @@ struct SettingsView: View {
                 ))
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
+            Section("Anzeige") {
+                Toggle("Geisterbuchstabe anzeigen", isOn: Binding(
+                    get: { vm.showGhost },
+                    set: { vm.showGhost = $0 }
+                ))
+                .accessibilityHint("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens")
+                Text("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Forschung") {
                 Toggle("Schreiben auf Papier", isOn: Binding(
                     get: { vm.enablePaperTransfer },

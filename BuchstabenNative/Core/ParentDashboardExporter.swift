@@ -78,7 +78,12 @@ struct ParentDashboardExporter {
         // JSON-only. Surface it as a semicolon-joined list in the
         // letter-aggregate row so SPSS / R imports can reconstruct the
         // automatisation analysis without the JSON sidecar.
-        lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend"].joined(separator: sep))
+        // `freeformCompletionCount` (HIDDEN_FEATURES_AUDIT C.2): blank-canvas
+        // letter-recognition completions are counted separately from guided
+        // mastery so the analysis can distinguish exploration from
+        // gradual-release learning. nil for letters never written in
+        // freeform mode; emitted as empty string.
+        lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
             let avg = String(format: "%.4f", stat.averageAccuracy)
@@ -92,7 +97,8 @@ struct ParentDashboardExporter {
             let speedField = (prog?.speedTrend ?? [])
                 .map { String(format: "%.4f", $0) }
                 .joined(separator: ";")
-            lines.append([stat.letter, "\(cnt)", avg, tnd, "\(recCount)", recAvg, speedField].joined(separator: sep))
+            let freeformField = prog?.freeformCompletionCount.map { String($0) } ?? ""
+            lines.append([stat.letter, "\(cnt)", avg, tnd, "\(recCount)", recAvg, speedField, freeformField].joined(separator: sep))
         }
         lines.append("")
 

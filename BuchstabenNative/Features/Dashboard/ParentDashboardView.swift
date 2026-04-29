@@ -15,6 +15,7 @@ struct ParentDashboardView: View {
         NavigationStack {
             List {
                 ubersichtSection
+                schreibqualitaetDetailsSection
                 phasenSection
                 ubungsverlaufSection
                 starksteBuchstabenSection
@@ -95,6 +96,39 @@ struct ParentDashboardView: View {
                 }
             }
         }
+    }
+
+    /// Per-dimension Schreibmotorik breakdown (Form / Tempo / Druck /
+    /// Rhythmus). The composite percentage in `ubersichtSection` is a
+    /// 40/25/15/20 weighted blend of these four; surfacing each one
+    /// individually lets parents see which motor-skill dimension a
+    /// child is strong or weak in. Only emitted once at least one
+    /// completed freeWrite session has produced dimension data.
+    @ViewBuilder
+    private var schreibqualitaetDetailsSection: some View {
+        if let dims = snapshot.averageWritingDimensions {
+            Section("Schreibqualität – Details") {
+                dimensionRow(label: "Form",     value: dims.form)
+                dimensionRow(label: "Tempo",    value: dims.tempo)
+                dimensionRow(label: "Druck",    value: dims.pressure)
+                dimensionRow(label: "Rhythmus", value: dims.rhythm)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func dimensionRow(label: String, value: Double) -> some View {
+        let pct = Int((value * 100).rounded())
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(label)
+                Spacer()
+                Text("\(pct) %").monospacedDigit().foregroundStyle(.secondary)
+            }
+            ProgressView(value: max(0, min(1, value)))
+                .progressViewStyle(.linear)
+        }
+        .padding(.vertical, 2)
     }
 
     private var phasenSection: some View {

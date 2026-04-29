@@ -21,6 +21,7 @@ struct FortschritteWorldView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 header
+                rewardsBadgeRow
                 letterGallery
                 fluencyFooter
             }
@@ -94,6 +95,83 @@ struct FortschritteWorldView: View {
         .accessibilityLabel(vm.currentStreak == 1
                             ? "1 Tag hintereinander"
                             : "\(vm.currentStreak) Tage hintereinander")
+    }
+
+    // MARK: - Rewards
+
+    /// Achievement badges. Shows every `RewardEvent` case as a tile;
+    /// earned ones render in colour with a labelled emoji, unearned
+    /// ones render gray-scale so the child can see what's still ahead.
+    /// Surfaces data the StreakStore has been collecting since launch
+    /// but never displayed (HIDDEN_FEATURES_AUDIT C.6).
+    private var rewardsBadgeRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Auszeichnungen")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.primary)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(RewardEvent.allCases, id: \.self) { event in
+                        rewardBadge(event: event,
+                                     earned: vm.earnedRewards.contains(event))
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rewardBadge(event: RewardEvent, earned: Bool) -> some View {
+        VStack(spacing: 4) {
+            Text(rewardEmoji(event))
+                .font(.system(size: 32))
+                .saturation(earned ? 1 : 0)
+                .opacity(earned ? 1 : 0.45)
+            Text(rewardLabel(event))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(earned ? .primary : AppSurface.caption)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .frame(width: 78)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 4)
+        .frame(width: 88)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(AppSurface.cardEdge.opacity(earned ? 0.6 : 0.3), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(earned ? 0.05 : 0), radius: 6, y: 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(rewardLabel(event)). \(earned ? "Erreicht" : "Noch nicht erreicht")")
+    }
+
+    private func rewardEmoji(_ event: RewardEvent) -> String {
+        switch event {
+        case .firstLetter:         return "🌟"
+        case .dailyGoalMet:        return "🎯"
+        case .streakDay3:          return "🔥"
+        case .streakWeek:          return "🏅"
+        case .streakMonth:         return "🏆"
+        case .allLettersComplete:  return "🎉"
+        case .perfectAccuracy:     return "✨"
+        case .centuryClub:         return "💯"
+        }
+    }
+
+    private func rewardLabel(_ event: RewardEvent) -> String {
+        switch event {
+        case .firstLetter:         return "Erster Buchstabe"
+        case .dailyGoalMet:        return "Tagesziel"
+        case .streakDay3:          return "3 Tage Serie"
+        case .streakWeek:          return "7 Tage Serie"
+        case .streakMonth:         return "30 Tage Serie"
+        case .allLettersComplete:  return "Alle Buchstaben"
+        case .perfectAccuracy:     return "Perfekt"
+        case .centuryClub:         return "100 Buchstaben"
+        }
     }
 
     // MARK: - Gallery

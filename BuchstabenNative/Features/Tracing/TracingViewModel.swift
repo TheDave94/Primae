@@ -1658,6 +1658,10 @@ public final class TracingViewModel {
     var dashboardSnapshot: DashboardSnapshot { dashboardStore.snapshot }
     var currentStreak: Int { streakStore.currentStreak }
     var longestStreak: Int { streakStore.longestStreak }
+    /// Achievement events the child has unlocked. Forwarded for the
+    /// Fortschritte badge gallery — see HIDDEN_FEATURES_AUDIT C.6:
+    /// the data was collected since launch but never surfaced.
+    var earnedRewards: Set<RewardEvent> { streakStore.earnedRewards }
 
     enum SpeedTrendDirection { case improving, stable, declining }
 

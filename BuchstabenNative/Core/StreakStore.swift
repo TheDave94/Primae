@@ -21,6 +21,10 @@ protocol StreakStoring {
     var longestStreak: Int { get }
     var totalCompletions: Int { get }
     var completedLetters: Set<String> { get }
+    /// Set of `RewardEvent` cases the child has unlocked across all
+    /// sessions. Surfaced in the child-facing Fortschritte gallery as
+    /// achievement badges; gray-rendered for unearned events.
+    var earnedRewards: Set<RewardEvent> { get }
     /// Record a practice session. Returns any newly earned RewardEvents.
     @discardableResult
     func recordSession(date: Date, lettersCompleted: [String], accuracy: Double) -> [RewardEvent]
@@ -31,6 +35,9 @@ protocol StreakStoring {
 
 extension StreakStoring {
     func flush() async {}
+    /// Default empty set so older conformers that pre-date the badge UI
+    /// still compile. Production stores override with the persisted set.
+    var earnedRewards: Set<RewardEvent> { [] }
 }
 
 // MARK: - Persisted model
@@ -83,6 +90,9 @@ final class JSONStreakStore: StreakStoring {
     var longestStreak: Int { state.longestStreak }
     var totalCompletions: Int { state.totalCompletions }
     var completedLetters: Set<String> { state.completedLetters }
+    var earnedRewards: Set<RewardEvent> {
+        Set(state.earnedRewards.compactMap { RewardEvent(rawValue: $0) })
+    }
 
     @discardableResult
     func recordSession(date: Date, lettersCompleted: [String], accuracy: Double) -> [RewardEvent] {
