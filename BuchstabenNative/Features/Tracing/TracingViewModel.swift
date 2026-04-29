@@ -2180,13 +2180,19 @@ public final class TracingViewModel {
         // so the detached Task can look it up without re-entering the
         // VM's isolation. Activates the calibrator boost (review item
         // W-21) for whichever target letters the child has practised.
-        let historyByLetter: [String: [CGFloat]] = Dictionary(uniqueKeysWithValues:
+        // Words with repeated letters (e.g. "MAMA", "OMMA") map the
+        // same letter twice; both lookups return the same scores from
+        // progressStore, so collapsing duplicates with `{ first, _ in
+        // first }` is semantically equivalent and avoids the
+        // `Dictionary(uniqueKeysWithValues:)` duplicate-key trap.
+        let historyByLetter: [String: [CGFloat]] = Dictionary(
             targetLetters.map { ch -> (String, [CGFloat]) in
                 let key = String(ch)
                 let scores = (progressStore.progress(for: key).recognitionAccuracy ?? [])
                               .map { CGFloat($0) }
                 return (key, scores)
-            }
+            },
+            uniquingKeysWith: { first, _ in first }
         )
         let token = recognitionTokens.issue()
         Task { [weak self, letterRecognizer] in
