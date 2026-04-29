@@ -6,6 +6,9 @@ before touching `AudioEngine.swift`, `StrokeTracker.swift`, or the
 council-style automation pipeline's post-mortems; that pipeline is
 gone, so only the invariants survived the trim.)
 
+_Last audited 2026-04-29 against `main` after the ROADMAP_V5
+implementation pass + tier-1/2 branch merge._
+
 ## Audio + tracking
 
 ### `AudioEngine.swift` is stable and fragile
@@ -91,6 +94,34 @@ Testing** (`@Test`, `@Suite`, `#expect`) is for new test files only.
 Do not migrate existing XCTest suites. Mixing the two frameworks in
 one file produces confusing test discovery behaviour in Xcode.
 
+**Why the existing XCTest files can't be migrated** (verified
+2026-04-29 in `docs/ROADMAP_V5_DEFERRED_NOTES.md` D7 section):
+
+- `AudioEngineTests.swift` uses `throw XCTSkip(…)` in instance
+  `setUp` to mark the suite as skipped (not failed) when AVAudioSession
+  isn't routed on the simulator. Swift Testing's `.disabled(if:)`
+  evaluates at attribute time, not at runtime — there's no clean
+  equivalent for a runtime hardware-availability gate. Also uses
+  `XCTestExpectation` + `wait(for:timeout:)` for NotificationCenter
+  callback synchronisation; Swift Testing's `confirmation { }` has
+  different semantics.
+- `StrokeTrackerRegressionGateTests.swift` and
+  `PerformanceBenchmarkTests.swift` use
+  `measure(metrics: [XCTClockMetric, XCTCPUMetric, XCTMemoryMetric])`
+  to set CI performance regression baselines. **Swift Testing has no
+  `XCTMetric` equivalent as of Swift 6.x.** Re-implementing would
+  drop the regression gate or require a hand-rolled benchmark harness.
+
+The `.swiftLanguageMode(.v5)` carve-out on the test target
+(`Package.swift:32`) exists because `XCTestCase`'s inherited
+nonisolated init conflicts with the package's
+`.defaultIsolation(MainActor.self)` under Swift 6 strict checking.
+The carve-out is load-bearing as long as any XCTest file remains.
+
+If a future Swift Testing release ships an `XCTMetric` equivalent,
+revisit the perf files first, then `AudioEngineTests`. Until then
+the policy holds.
+
 ### Tests must match actual implementation behaviour
 When adding tests, first read the implementation to understand what it
 actually does. Do not write tests that describe desired future
@@ -100,19 +131,35 @@ changes need a separate commit.
 
 ## SwiftUI / Observation
 
-### Do not migrate `ObservableObject` to `@Observable` unprompted
-Existing `ObservableObject` types stay as-is unless explicitly asked.
-The migration touches every observer site and risks breaking Swift 6
-isolation invariants. New types use `@Observable`; existing ones don't
-change without a code-review-grade reason.
+### Use `@Observable`, not `ObservableObject` / `@Published`
+The migration is complete: `grep -r "ObservableObject\|@Published"
+BuchstabenNative/` returns zero matches (verified 2026-04-29).
+**Do not regress** any new type back to the `ObservableObject` /
+`@Published` shape — it would re-introduce isolation traps under
+Swift 6 strict-concurrency checking. Every new observable type uses
+`@MainActor @Observable final class`.
 
 ## Repo hygiene
 
-### Never modify `.github/workflows/`
-CI workflow files are infrastructure, not application code. Any
-proposal that modifies `.github/workflows/` is rejected. Invalid
-GitHub Actions syntax breaks every future run; deprecation warnings
-are handled by Dependabot PRs, not by hand-edits.
+### `.github/workflows/` modifications need explicit user approval
+CI workflow files are infrastructure, not application code. Invalid
+GitHub Actions syntax breaks every future run, so changes are
+high-risk. **Modify only when the user has explicitly approved the
+specific change.** Dependabot handles deprecation warnings.
+
+Approved-and-applied changes for the record:
+- `a6a8bc4` (D9 ROADMAP_V5): added `timeout-minutes: 20` /
+  `25` caps on the simulator + device-test jobs so a hung
+  `xcodebuild` can't sit at "in_progress" until GitHub's 6-hour
+  default kills it.
+- `1ac48be` (ROADMAP_V5 branch CI): added `roadmap-*` to the
+  `branches:` filter on push + pull_request triggers so
+  feature-roadmap branches get the same build + test treatment as
+  main without manual `workflow_dispatch`.
+
+Both were minimal, targeted, and validated by the next CI run. Future
+modifications should follow the same shape: small, reviewable, and
+the next CI run is the verification.
 
 ### `git revert` can truncate Swift files
 `git revert --no-commit` of multiple commits that touched the same
