@@ -30,12 +30,12 @@ import Foundation
 import os.log
 
 @MainActor
-public final class PromptPlayer {
+final class PromptPlayer {
 
     /// Stable identifiers for each pre-recorded phrase. The raw value
     /// is the filename stem inside `Resources/Prompts/<key>.mp3`.
     /// Keep in sync with `scripts/generate_prompts.py` PROMPTS table.
-    public enum PromptKey: String, CaseIterable {
+    enum PromptKey: String, CaseIterable {
         // Phase entries
         case phaseObserve   = "phase_observe"
         case phaseDirect    = "phase_direct"
@@ -64,7 +64,7 @@ public final class PromptPlayer {
     private var player: AVAudioPlayer?
     private let log = Logger(subsystem: "buchstaben.primae", category: "prompts")
 
-    public init(fallbackSpeech: SpeechSynthesizing) {
+    init(fallbackSpeech: SpeechSynthesizing) {
         self.speech = fallbackSpeech
     }
 
@@ -72,7 +72,7 @@ public final class PromptPlayer {
     /// `speech.speak(fallbackText)` when the bundled MP3 is missing.
     /// Stops any prompt currently playing first so a stream of
     /// phase transitions doesn't pile up overlapping audio.
-    public func play(_ key: PromptKey, fallbackText: String) {
+    func play(_ key: PromptKey, fallbackText: String) {
         guard let url = locate(key) else {
             // Asset missing — pre-asset-generation builds, or a
             // future addition that hasn't been generated yet.
@@ -93,7 +93,7 @@ public final class PromptPlayer {
     }
 
     /// Halt the current prompt. Mirrors `SpeechSynthesizing.stop()`.
-    public func stop() {
+    func stop() {
         player?.stop()
         speech.stop()
     }
@@ -105,7 +105,7 @@ public final class PromptPlayer {
     /// soft, kid-appropriate "complete" tone; swap for a designed
     /// chime later (drop a `success.mp3` next to the prompts and
     /// route through `play(_:fallbackText:)` instead).
-    public func playSuccessChime() {
+    func playSuccessChime() {
         AudioServicesPlaySystemSound(1322)
     }
 
