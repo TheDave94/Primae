@@ -1,6 +1,6 @@
-# Buchstaben-Lernen-App
+# Primae
 
-> An iPad app for Austrian first-graders to learn letter writing — built around a research-backed four-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional Schreibmotorik motor-skill assessment.
+> An iPad app for Austrian first-graders to learn letter writing — built around a research-backed four-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional Schreibmotorik motor-skill assessment. (Repo + Swift Package + Xcode target names retain their pre-rebrand `Buchstaben*` prefixes for build-system stability.)
 
 [![iOS Build & Test](https://github.com/TheDave94/Buchstaben-Lernen-App/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TheDave94/Buchstaben-Lernen-App/actions/workflows/ios-build.yml)
 ![Platform](https://img.shields.io/badge/platform-iPadOS%2018%2B-blue)

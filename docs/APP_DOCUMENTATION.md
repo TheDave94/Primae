@@ -1,4 +1,4 @@
-# Buchstaben-Lernen-App — Technical Foundation
+# Primae — Technical Foundation
 
 _A digital handwriting learning app for Austrian first-graders. Master's
 thesis technical documentation. All claims here are verifiable against

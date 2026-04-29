@@ -95,7 +95,7 @@ struct ParentDashboardExporterTests {
     @Test func exportFilenameContainsDate() throws {
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
         let url = try ParentDashboardExporter.exportFileURL(from: makeSnapshot(), format: .csv, tempDirectory: tmp)
-        #expect(url.lastPathComponent.contains("buchstaben_progress_"))
+        #expect(url.lastPathComponent.contains("primae_progress_"))
         try? FileManager.default.removeItem(at: url)
     }
 

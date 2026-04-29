@@ -1,4 +1,4 @@
-# Roadmap — Buchstaben-Lernen-App
+# Roadmap — Primae
 
 _Single forward-looking work log. Last updated 2026-04-29 against `main`. Only items still requiring work appear here — every shipped item has been removed. Shipped items live in commit history._
 

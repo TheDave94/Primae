@@ -1,4 +1,6 @@
-# CLAUDE.md — Buchstaben-Lernen-App (Letter Learning App)
+# CLAUDE.md — Primae (Letter Learning App)
+
+> Brand: **Primae** (formerly "Buchstaben-Lernen-App"). The repo, Xcode project (`BuchstabenApp`), and Swift Package target (`BuchstabenNative`) keep their pre-rebrand names for build-system stability — only user-facing strings, the bundle display name, and documentation use "Primae".
 
 ## Project Overview
 iPad app for teaching German children (ages 5-6) to trace letters. Built with SwiftUI, Swift 6.3, targeting iOS 18+. Academic thesis project.
