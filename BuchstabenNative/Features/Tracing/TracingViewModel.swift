@@ -1480,6 +1480,16 @@ public final class TracingViewModel {
         let scores: [String: Double] = Dictionary(
             uniqueKeysWithValues: phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
         )
+        // D-2: attach the latest recognition reading to the freeWrite row
+        // so per-session recognition is recoverable from the CSV. Other
+        // phases never produce a freeWrite recognition; pass nil there.
+        let freeWriteRecognition: RecognitionSample? = lastRecognitionResult.map { rr in
+            RecognitionSample(
+                predictedLetter: rr.predictedLetter,
+                confidence: Double(rr.confidence),
+                isCorrect: rr.isCorrect
+            )
+        }
         for (phase, phaseScore) in scores {
             dashboardStore.recordPhaseSession(
                 letter: currentLetterName,
@@ -1488,7 +1498,8 @@ public final class TracingViewModel {
                 score: phaseScore,
                 schedulerPriority: lastScheduledLetterPriority,
                 condition: thesisCondition,
-                assessment: phase == "freeWrite" ? lastWritingAssessment : nil
+                assessment: phase == "freeWrite" ? lastWritingAssessment : nil,
+                recognition: phase == "freeWrite" ? freeWriteRecognition : nil
             )
         }
         commitCompletion(letter: currentLetterName,

@@ -177,6 +177,44 @@ struct LetterSchedulerTests {
         #expect(control.recommendNext(available: letters, progress: [:], now: now) == "A")
     }
 
+    // MARK: - Expanding interval (review item W-24)
+
+    @Test("Practice + accuracy stretch the per-letter Ebbinghaus stability")
+    func expandingIntervalGrowsWithPracticeAndAccuracy() {
+        // W-24: a letter the child has practised many times with high
+        // accuracy should not feel as urgent, day-for-day, as a never-
+        // practised one. With fixed 7-day stability the urgency curves
+        // would be identical for the two; expanding-interval pushes the
+        // well-practised letter's curve further to the right.
+        let novice = LetterProgress(completionCount: 0,
+                                    bestAccuracy: 0.0,
+                                    lastCompletedAt: now.addingTimeInterval(-14 * 86400))
+        let expert = LetterProgress(completionCount: 20,
+                                    bestAccuracy: 0.95,
+                                    lastCompletedAt: now.addingTimeInterval(-14 * 86400))
+        #expect(scheduler.effectiveStabilityDays(for: novice) == 7.0)
+        #expect(scheduler.effectiveStabilityDays(for: expert) > scheduler.effectiveStabilityDays(for: novice),
+                "Well-practised, accurate letters must have a longer effective stability than novices")
+        #expect(scheduler.effectiveStabilityDays(for: expert) <= 60.0,
+                "Stability must not exceed `maxStabilityDays`")
+    }
+
+    @Test("Expanding interval bottoms at baseline for low accuracy")
+    func expandingIntervalBottomsForStrugglingLearner() {
+        // A child who has been completing a letter but writing it
+        // poorly (bestAccuracy = 0) should not have its stability
+        // stretched beyond baseline — they still need the practice.
+        let struggling = LetterProgress(completionCount: 10,
+                                        bestAccuracy: 0.0,
+                                        lastCompletedAt: now.addingTimeInterval(-14 * 86400))
+        // accuracyFactor = 0.5; practiceFactor ≈ 1 + ln(11) ≈ 3.4
+        // stretched ≈ 7 * 3.4 * 0.5 = 11.9; floor to baseline keeps
+        // urgency from collapsing for struggling learners.
+        let stability = scheduler.effectiveStabilityDays(for: struggling)
+        #expect(stability >= 7.0,
+                "Stability must never drop below the configured baseline")
+    }
+
     @Test("fixedOrder ignores Ebbinghaus recency and accuracy")
     func fixedOrderIgnoresScoringFactors() {
         // The control arm must not be influenced by accuracy / recency,

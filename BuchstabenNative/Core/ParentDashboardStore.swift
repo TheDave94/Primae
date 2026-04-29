@@ -15,25 +15,42 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// old records may be missing this field — custom decoder defaults to
     /// .threePhase for pre-migration records.
     let condition: ThesisCondition
+    /// D-3: wall-clock timestamp when the phase row was recorded. Lets
+    /// the CSV reconstruct dated learning curves and lets the exporter
+    /// filter pre-enrollment records (D-7). Optional only because pre-
+    /// D-3 records on disk don't carry it; new writes always populate.
+    let recordedAt: Date?
     /// Schreibmotorik dimensions (non-nil only for freeWrite sessions).
     let formAccuracy: Double?
     let tempoConsistency: Double?
     let pressureControl: Double?
     let rhythmScore: Double?
+    /// D-2: per-session recognition outcome captured at session-completion
+    /// time. Only meaningful for freeWrite rows; nil for the other phases
+    /// and for legacy records that pre-date D-2.
+    let recognitionPredicted: String?
+    let recognitionConfidence: Double?
+    let recognitionCorrect: Bool?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
-         assessment: WritingAssessment? = nil) {
+         recordedAt: Date = Date(),
+         assessment: WritingAssessment? = nil,
+         recognition: RecognitionSample? = nil) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
         self.score = max(0, min(1, score))
         self.schedulerPriority = schedulerPriority
         self.condition = condition
+        self.recordedAt = recordedAt
         self.formAccuracy     = assessment.map { Double($0.formAccuracy) }
         self.tempoConsistency = assessment.map { Double($0.tempoConsistency) }
         self.pressureControl  = assessment.map { Double($0.pressureControl) }
         self.rhythmScore      = assessment.map { Double($0.rhythmScore) }
+        self.recognitionPredicted  = recognition?.predictedLetter
+        self.recognitionConfidence = recognition?.confidence
+        self.recognitionCorrect    = recognition?.isCorrect
     }
 
     init(from decoder: Decoder) throws {
@@ -44,10 +61,14 @@ struct PhaseSessionRecord: Codable, Equatable {
         score = try c.decode(Double.self, forKey: .score)
         schedulerPriority = try c.decode(Double.self, forKey: .schedulerPriority)
         condition = (try? c.decode(ThesisCondition.self, forKey: .condition)) ?? .threePhase
+        recordedAt = try? c.decode(Date.self, forKey: .recordedAt)
         formAccuracy     = try? c.decode(Double.self, forKey: .formAccuracy)
         tempoConsistency = try? c.decode(Double.self, forKey: .tempoConsistency)
         pressureControl  = try? c.decode(Double.self, forKey: .pressureControl)
         rhythmScore      = try? c.decode(Double.self, forKey: .rhythmScore)
+        recognitionPredicted  = try? c.decode(String.self, forKey: .recognitionPredicted)
+        recognitionConfidence = try? c.decode(Double.self, forKey: .recognitionConfidence)
+        recognitionCorrect    = try? c.decode(Bool.self, forKey: .recognitionCorrect)
     }
 }
 
@@ -99,6 +120,8 @@ struct DashboardSnapshot: Codable, Equatable {
     var letterStats: [String: LetterAccuracyStat] = [:]
     var sessionDurations: [SessionDurationRecord] = []
     var phaseSessionRecords: [PhaseSessionRecord] = []
+    /// W-17: persisted schema version (see ProgressStore for the rationale).
+    var schemaVersion: Int? = dashboardSchemaVersion
 
     init(letterStats: [String: LetterAccuracyStat] = [:],
          sessionDurations: [SessionDurationRecord] = [],
@@ -114,6 +137,7 @@ struct DashboardSnapshot: Codable, Equatable {
         sessionDurations = try c.decode([SessionDurationRecord].self, forKey: .sessionDurations)
         // phaseSessionRecords was added after initial release; default to empty for old JSON files.
         phaseSessionRecords = (try? c.decode([PhaseSessionRecord].self, forKey: .phaseSessionRecords)) ?? []
+        schemaVersion = try? c.decode(Int.self, forKey: .schemaVersion)
     }
 
     /// Convenience: top 5 letters by average accuracy descending.
@@ -251,17 +275,21 @@ struct DashboardSnapshot: Codable, Equatable {
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?)
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
 }
 
 extension ParentDashboardStoring {
-    /// Backward-compatible overload for call sites that don't supply an assessment.
+    /// Backward-compatible overload for call sites that don't supply an assessment / recognition.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, assessment: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, assessment: nil, recognition: nil)
+    }
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, assessment: assessment, recognition: nil)
     }
     func flush() async {}
 }
@@ -341,7 +369,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         persist()
     }
 
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?) {
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?) {
         let record = PhaseSessionRecord(
             letter: LetterProgress.canonicalKey(letter),
             phase: phase,
@@ -349,7 +377,8 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             score: score,
             schedulerPriority: schedulerPriority,
             condition: condition,
-            assessment: assessment
+            assessment: assessment,
+            recognition: recognition
         )
         snapshot.phaseSessionRecords.append(record)
         if snapshot.phaseSessionRecords.count > Self.phaseSessionRecordsCap {
@@ -409,10 +438,21 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     }
 
     private static func load(from url: URL) -> DashboardSnapshot? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(DashboardSnapshot.self, from: data)
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(DashboardSnapshot.self, from: data)
+        else { return nil }
+        // W-17: see ProgressStore.load for the future-schema rationale.
+        if let v = decoded.schemaVersion, v > dashboardSchemaVersion {
+            storePersistenceLogger.warning(
+                "ParentDashboardStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(dashboardSchemaVersion); ignoring on-disk state.")
+            return nil
+        }
+        return decoded
     }
 }
+
+/// Current on-disk schema for `DashboardSnapshot`.
+let dashboardSchemaVersion = 1
 
 // MARK: - Helpers
 

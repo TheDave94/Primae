@@ -99,62 +99,116 @@ struct ParentDashboardExporterTests {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // MARK: - W-2: phase-row recognition columns must stay blank
+    // MARK: - D-2 / D-3: phase-row recognition + recordedAt are session-aligned
 
-    /// W-2: the rolling per-letter `recognitionSamples` window has no
-    /// session timestamps, so attaching its latest entry to every
-    /// per-phase row mis-correlates the most recent recognition with
-    /// phases that finished hours or days earlier. The exporter now
-    /// blanks all three recognition columns on per-phase rows; the
-    /// per-letter rows above retain the aggregate.
-    @Test func csvPhaseRowRecognitionColumnsBlankEvenWhenSamplePresent() {
+    /// D-2: when the VM passes a `RecognitionSample` to `recordPhaseSession`,
+    /// the per-phase row emits the actual session-aligned values. This
+    /// supersedes W-2's blank-column workaround now that `PhaseSessionRecord`
+    /// carries the recognition fields directly.
+    @Test func csvPhaseRowEmitsSessionAlignedRecognition() {
+        let recordedAt = Date(timeIntervalSince1970: 1_770_000_000)
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "A", phase: "freeWrite", completed: true,
-            score: 0.7, schedulerPriority: 0, condition: .threePhase
+            score: 0.7, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: recordedAt,
+            recognition: RecognitionSample(
+                predictedLetter: "O", confidence: 0.62, isCorrect: false
+            )
         ))
-        var prog = LetterProgress()
-        prog.recognitionSamples = [RecognitionSample(
-            predictedLetter: "O", confidence: 0.62, isCorrect: false
-        )]
-        prog.recognitionAccuracy = [0.62]
         let csv = String(data: ParentDashboardExporter.csvData(
-            from: snap, progress: ["A": prog]), encoding: .utf8)!
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let isoTs = ISO8601DateFormatter().string(from: recordedAt)
         // Phase row format: letter,phase,completed,score,prio,condition,
-        // recognition_predicted,recognition_confidence,recognition_correct,
-        // formAccuracy,tempoConsistency,pressureControl,rhythmScore
-        #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,,,,,,,"),
-                "Expected phase row recognition columns blank — found:\n\(csv)")
+        // recordedAt,recognition_predicted,recognition_confidence,
+        // recognition_correct,formAccuracy,tempoConsistency,pressureControl,rhythmScore
+        #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,\(isoTs),O,0.6200,false,,,,"),
+                "Expected session-aligned recognition + timestamp — found:\n\(csv)")
     }
 
-    /// Legacy installs that only persisted `recognitionAccuracy` are
-    /// covered by the same rule: nothing on the phase row uses that
-    /// data because it can't be session-aligned.
-    @Test func csvPhaseRowRecognitionColumnsBlankForLegacyConfidence() {
-        var snap = DashboardSnapshot()
-        snap.phaseSessionRecords.append(PhaseSessionRecord(
-            letter: "B", phase: "guided", completed: true,
-            score: 0.8, schedulerPriority: 0, condition: .control
-        ))
-        var prog = LetterProgress()
-        prog.recognitionAccuracy = [0.42]
-        prog.recognitionSamples  = nil
-        let csv = String(data: ParentDashboardExporter.csvData(
-            from: snap, progress: ["B": prog]), encoding: .utf8)!
-        #expect(csv.contains("B,guided,true,0.8000,0.0000,control,,,,,,,"),
-                "Expected phase row recognition columns blank under legacy schema — found:\n\(csv)")
-    }
-
-    @Test func csvRecognitionColumnsBlankWhenNoData() {
+    /// Phase rows without a recognition sample (guided / observe / direct,
+    /// or freeWrite that fired before the recogniser returned) still emit
+    /// blanks for the recognition columns — but `recordedAt` is always
+    /// populated for new records.
+    @Test func csvPhaseRowBlankRecognitionWhenNoneRecorded() {
+        let recordedAt = Date(timeIntervalSince1970: 1_770_000_000)
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "C", phase: "guided", completed: true,
-            score: 0.5, schedulerPriority: 0, condition: .threePhase
+            score: 0.5, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: recordedAt
         ))
-        // No progress entry for "C" → all three recognition columns blank.
         let csv = String(data: ParentDashboardExporter.csvData(
-            from: snap, progress: [:]), encoding: .utf8)!
-        #expect(csv.contains("C,guided,true,0.5000,0.0000,threePhase,,,"),
-                "Expected all recognition columns blank — found:\n\(csv)")
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let isoTs = ISO8601DateFormatter().string(from: recordedAt)
+        #expect(csv.contains("C,guided,true,0.5000,0.0000,threePhase,\(isoTs),,,,,,,"),
+                "Expected blank recognition columns + populated recordedAt — found:\n\(csv)")
+    }
+
+    // MARK: - D-7: pre-enrolment records are filtered
+
+    /// D-7: any phase-session row recorded before `ParticipantStore.enrolledAt`
+    /// is dropped at export time so pilot / sandbox activity doesn't get
+    /// silently attributed to the assigned thesis arm.
+    @Test func csvFiltersPreEnrolmentRows() {
+        let enrolledAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let earlier   = enrolledAt.addingTimeInterval(-86_400)
+        let later     = enrolledAt.addingTimeInterval( 86_400)
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "P", phase: "guided", completed: true,
+            score: 0.5, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: earlier
+        ))
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "Q", phase: "guided", completed: true,
+            score: 0.5, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: later
+        ))
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: enrolledAt), encoding: .utf8)!
+        #expect(csv.contains("# enrolledAt="))
+        #expect(!csv.contains("P,guided,true"),
+                "Pre-enrolment row must be discarded — found:\n\(csv)")
+        #expect(csv.contains("Q,guided,true"),
+                "Post-enrolment row must survive — found:\n\(csv)")
+    }
+
+    /// Legacy rows missing `recordedAt` (pre-D-3) survive the filter so
+    /// historical thesis data isn't accidentally erased when an export
+    /// runs after the upgrade.
+    @Test func csvKeepsLegacyRowsWithoutRecordedAt() {
+        let enrolledAt = Date(timeIntervalSince1970: 1_770_000_000)
+        var snap = DashboardSnapshot()
+        // Decoding a record from a JSON file without `recordedAt`
+        // produces nil there. Construct one manually via JSON to mirror
+        // the pre-D-3 wire format.
+        let legacyJSON = """
+        {
+          "letter": "L", "phase": "guided", "completed": true,
+          "score": 0.5, "schedulerPriority": 0.0, "condition": "threePhase"
+        }
+        """.data(using: .utf8)!
+        let legacy = try! JSONDecoder().decode(PhaseSessionRecord.self, from: legacyJSON)
+        snap.phaseSessionRecords.append(legacy)
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: enrolledAt), encoding: .utf8)!
+        #expect(csv.contains("L,guided,true"),
+                "Legacy row without recordedAt must survive — found:\n\(csv)")
+    }
+
+    // MARK: - D-6: speedTrend column on letter-aggregate rows
+
+    @Test func csvLetterAggregateContainsSpeedTrend() {
+        var snap = DashboardSnapshot()
+        snap.letterStats["A"] = LetterAccuracyStat(letter: "A", accuracySamples: [0.8])
+        var prog = LetterProgress()
+        prog.speedTrend = [1.2, 1.5, 1.8]
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: ["A": prog], enrolledAt: nil), encoding: .utf8)!
+        #expect(csv.contains("speedTrend"),
+                "Expected speedTrend column header")
+        #expect(csv.contains("1.2000;1.5000;1.8000"),
+                "Expected semicolon-joined speedTrend values — found:\n\(csv)")
     }
 }

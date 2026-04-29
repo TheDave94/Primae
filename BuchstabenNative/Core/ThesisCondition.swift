@@ -85,6 +85,11 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
 enum ParticipantStore {
     private static let key = "de.flamingistan.buchstaben.participantId"
     private static let enrolledKey = "de.flamingistan.buchstaben.thesisEnrolled"
+    /// D-7: timestamp captured when `isEnrolled` flips from `false` to
+    /// `true`. The CSV exporter filters phase-session rows older than
+    /// this date so pilot / sandbox / pre-enrollment activity doesn't
+    /// pollute the `.threePhase` arm at analysis time.
+    private static let enrolledAtKey = "de.flamingistan.buchstaben.thesisEnrolledAt"
 
     /// The participant's UUID, generated on first call and persisted thereafter.
     /// Reads from iCloud-KVS first, then UserDefaults, so a reinstall on the
@@ -138,10 +143,35 @@ enum ParticipantStore {
             return UserDefaults.standard.bool(forKey: enrolledKey)
         }
         set {
+            let wasEnrolled = isEnrolled
             UserDefaults.standard.set(newValue, forKey: enrolledKey)
             let icloud = NSUbiquitousKeyValueStore.default
             icloud.set(newValue, forKey: enrolledKey)
+            // D-7: stamp the enrolment timestamp the first time enrolment
+            // flips on. Don't overwrite once it's set — a parent who
+            // toggles the switch off and on again would otherwise lose
+            // the original cohort start date and a portion of legitimate
+            // study data would be incorrectly filtered as pre-enrollment.
+            if newValue, !wasEnrolled, enrolledAt == nil {
+                let now = Date()
+                UserDefaults.standard.set(now, forKey: enrolledAtKey)
+                icloud.set(now.timeIntervalSince1970, forKey: enrolledAtKey)
+            }
             icloud.synchronize()
         }
+    }
+
+    /// Wall-clock time the install joined the thesis study. `nil` for
+    /// installs that have never enrolled — those should never have any
+    /// thesis-arm data because `defaultForInstall` returns `.threePhase`
+    /// for `isEnrolled == false`. The CSV exporter discards phase-session
+    /// rows older than this date (review item D-7).
+    static var enrolledAt: Date? {
+        let icloud = NSUbiquitousKeyValueStore.default
+        let icloudTs = icloud.double(forKey: enrolledAtKey)
+        if icloudTs > 0 {
+            return Date(timeIntervalSince1970: icloudTs)
+        }
+        return UserDefaults.standard.object(forKey: enrolledAtKey) as? Date
     }
 }

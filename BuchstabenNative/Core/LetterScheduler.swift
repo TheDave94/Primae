@@ -43,10 +43,23 @@ struct LetterScheduler {
     /// How much novelty (low completion count) affects priority.
     var noveltyWeight: Double = 0.25
 
-    /// Ebbinghaus memory stability in days. Controls how fast urgency saturates —
-    /// shorter stability → faster rise toward 1.0. 7 days approximates the
-    /// half-decay observed in word-list memory for typical learners.
+    /// Baseline Ebbinghaus memory stability in days for a letter the
+    /// child has never completed. Acts as the lower bound — `effectiveStabilityDays`
+    /// expands this per-letter as completions and accuracy accrue
+    /// (W-24, the SuperMemo-style expanding-interval refinement). 7
+    /// days approximates the half-decay observed in word-list memory
+    /// for typical learners and is preserved for back-compat with the
+    /// previous fixed-stability behaviour when the child has zero
+    /// completions on a letter.
     var memoryStabilityDays: Double = 7.0
+
+    /// Maximum stability the expanding interval can reach for a
+    /// well-practised, high-accuracy letter. Caps the urgency-curve
+    /// flattening so the scheduler still surfaces a long-untouched
+    /// letter eventually rather than treating it as permanently
+    /// "owned". 60 days lines up with the upper end of typical
+    /// spaced-repetition intervals.
+    var maxStabilityDays: Double = 60.0
 
     /// Days assigned to letters never practised (treated as "very stale").
     var neverPracticedDays: Double = 30.0
@@ -152,7 +165,12 @@ struct LetterScheduler {
         // decays, matching the forgetting curve's exponential shape. Two letters
         // both long-untouched are treated as similarly urgent, rather than one
         // being twice as urgent as the other (which linear days would imply).
-        let recencyUrgency = 1.0 - exp(-daysSince / memoryStabilityDays)
+        // W-24: stability `S` expands per letter as completions + accuracy
+        // accrue, so a well-practised letter takes longer to feel "due"
+        // for repetition (matches the SuperMemo SM-2 expanding interval
+        // and Cepeda 2006 spacing meta-analysis).
+        let stability = effectiveStabilityDays(for: p)
+        let recencyUrgency = 1.0 - exp(-daysSince / stability)
 
         // Automatization adjustment: letters with increasing writing speed are being
         // automatized (KMK 2024 motor program formation) → lower priority so the
@@ -167,6 +185,27 @@ struct LetterScheduler {
                      + speedBonus
 
         return ScoredLetter(letter: letter, priority: priority)
+    }
+
+    /// Per-letter Ebbinghaus stability in days. Grows from
+    /// `memoryStabilityDays` toward `maxStabilityDays` as the child
+    /// builds up `completionCount` and demonstrates `bestAccuracy`
+    /// (W-24). The growth is logarithmic in completions so the first
+    /// few practice rounds widen the interval quickly (the early-
+    /// phase of motor-program formation) and later rounds nudge it
+    /// only modestly (the consolidation phase).
+    func effectiveStabilityDays(for p: LetterProgress) -> Double {
+        guard p.completionCount > 0 else { return memoryStabilityDays }
+        // Growth factor: 1 + ln(1 + completionCount). After 1
+        // completion → 1.69×; after 5 → 2.79×; after 20 → 4.04×.
+        let practiceFactor = 1.0 + log(1.0 + Double(p.completionCount))
+        // Accuracy factor in [0.5, 1.5]. A child still struggling
+        // (bestAccuracy = 0) holds the stability close to baseline so
+        // the scheduler keeps surfacing the letter; a child writing
+        // it cleanly stretches the interval out.
+        let accuracyFactor = 0.5 + p.bestAccuracy
+        let stretched = memoryStabilityDays * practiceFactor * accuracyFactor
+        return min(maxStabilityDays, max(memoryStabilityDays, stretched))
     }
 
     /// Returns a priority adjustment based on writing-speed trend.

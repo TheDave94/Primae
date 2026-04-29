@@ -109,7 +109,7 @@ final class StubStreakStore: StreakStoring {
 final class StubDashboardStore: ParentDashboardStoring {
     var snapshot: DashboardSnapshot { DashboardSnapshot() }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {}
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?) {}
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?) {}
     func reset() {}
 }
 

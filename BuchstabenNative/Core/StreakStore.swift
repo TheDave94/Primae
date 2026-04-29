@@ -45,7 +45,13 @@ private struct StreakState: Codable, Equatable {
     var lastPracticeDayString: String = ""
     /// Calendar day string of current streak start.
     var streakStartDayString: String = ""
+    /// W-17: persisted schema version (see ProgressStore for the
+    /// rationale). Absent from pre-W-17 files; new writes stamp it.
+    var schemaVersion: Int? = streakSchemaVersion
 }
+
+/// Current on-disk schema for `StreakState`.
+private let streakSchemaVersion = 1
 
 // MARK: - JSON-persisted implementation
 
@@ -189,7 +195,15 @@ final class JSONStreakStore: StreakStoring {
     }
 
     private static func load(from url: URL) -> StreakState? {
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(StreakState.self, from: data)
+        guard let data = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode(StreakState.self, from: data)
+        else { return nil }
+        // W-17: see ProgressStore.load for the future-schema rationale.
+        if let v = decoded.schemaVersion, v > streakSchemaVersion {
+            storePersistenceLogger.warning(
+                "StreakStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(streakSchemaVersion); ignoring on-disk state.")
+            return nil
+        }
+        return decoded
     }
 }

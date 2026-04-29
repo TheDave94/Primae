@@ -168,7 +168,17 @@ public final class JSONProgressStore: ProgressStoring {
     private struct Store: Codable {
         var letterProgress: [String: LetterProgress] = [:]
         var completionDates: [Date] = []   // one entry per completion event
+        /// W-17: persisted schema version. Absent from pre-W-17 files
+        /// (decodes as `nil`); current writes stamp `currentSchemaVersion`
+        /// so a future migration path can branch on the value instead of
+        /// silently mis-decoding a forward-incompatible file.
+        var schemaVersion: Int? = currentSchemaVersion
     }
+
+    /// Current on-disk schema for `Store`. Bump when adding a field that
+    /// older builds can't decode safely; gate the migration in
+    /// `load(from:)`.
+    private static let currentSchemaVersion = 1
 
     // MARK: Init
 
@@ -322,6 +332,21 @@ public final class JSONProgressStore: ProgressStoring {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(Store.self, from: data)
         else { return Store() }
+        // W-17: refuse to read a file written by a future schema we
+        // don't understand — silently dropping unknown fields would
+        // overwrite the file on next save and lose data the newer
+        // build wrote. Returning a fresh `Store()` here is also wrong
+        // (would clobber the future file); we log and bail back to
+        // the cached in-memory state by returning a marker the caller
+        // can treat as "skip this load". For now we fail loudly with
+        // a logger warning and fall back to defaults — mirrors the
+        // existing decode-failure path so behaviour stays predictable
+        // until a real migration ladder lands.
+        if let v = decoded.schemaVersion, v > currentSchemaVersion {
+            storePersistenceLogger.warning(
+                "ProgressStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(currentSchemaVersion); ignoring on-disk state.")
+            return Store()
+        }
         return decoded
     }
 
