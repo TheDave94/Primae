@@ -52,11 +52,18 @@ extension Font {
     /// Display family (Primae). Use for large titles, prompts, the
     /// canvas glyph, button labels. Falls back to the system font if
     /// the bundled OTF can't be located at runtime.
+    ///
+    /// Note: the weight argument selects a *PostScript variant*
+    /// (Light / Regular / Semibold / Bold) and the returned Font is
+    /// constructed directly with that PostScript name. We deliberately
+    /// don't chain `.weight(weight)` — none of the bundled OTFs are
+    /// variable fonts, and asking SwiftUI to nudge the weight axis on
+    /// a non-variable custom font triggers a SwiftUI bug-report log
+    /// ("Unable to update Font Descriptor's weight to Weight(value:
+    /// 0.0)") on every render.
     static func display(_ size: CGFloat,
                         weight: Font.Weight = .bold) -> Font {
-        let name = primaePostScriptName(for: weight, italic: false)
-        return Font.custom(name, size: size)
-            .weight(weight)
+        Font.custom(primaePostScriptName(for: weight, italic: false), size: size)
     }
 
     /// Display-cursive (Primae italic) — the cursive-axis variant of
@@ -64,18 +71,14 @@ extension Font {
     /// flourishes; the in-app cursive specimen uses Playwrite AT.
     static func displayCursive(_ size: CGFloat,
                                weight: Font.Weight = .regular) -> Font {
-        let name = primaePostScriptName(for: weight, italic: true)
-        return Font.custom(name, size: size)
-            .weight(weight)
+        Font.custom(primaePostScriptName(for: weight, italic: true), size: size)
     }
 
     /// Body / text family (PrimaeText) — companion text-grade weight
     /// of Primae, optimised for smaller sizes and longer prose.
     static func body(_ size: CGFloat,
                      weight: Font.Weight = .regular) -> Font {
-        let name = primaeTextPostScriptName(for: weight, italic: false)
-        return Font.custom(name, size: size)
-            .weight(weight)
+        Font.custom(primaeTextPostScriptName(for: weight, italic: false), size: size)
     }
 
     /// Austrian school cursive (Playwrite AT) — the *real* cursive
