@@ -546,7 +546,17 @@ public final class TracingViewModel {
     /// `recordRetrievalAttempt`, `recordRecognitionSample`,
     /// `recordFreeformCompletion`, `recordVariantUsed`).
     func refreshProgressMirror() {
-        allProgress = progressStore.allProgress
+        let snapshot = progressStore.allProgress
+        let totalStars = snapshot.values.reduce(0) { acc, prog in
+            acc + LetterStars.stars(for: prog.phaseScores)
+        }
+        #if DEBUG
+        print("[Primae.progress] refreshProgressMirror:",
+              "letters=\(snapshot.count)",
+              "totalStars=\(totalStars)",
+              "letterKeys=\(snapshot.keys.sorted())")
+        #endif
+        allProgress = snapshot
     }
 
     /// Per-letter progress lookup. Mirrors `ProgressStoring.progress(for:)`.
