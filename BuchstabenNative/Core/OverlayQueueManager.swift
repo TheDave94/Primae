@@ -54,6 +54,13 @@ enum CanvasOverlay: Equatable, Sendable {
     /// FortschritteWorldView are the persistent display; this overlay is
     /// the one-time "you just earned this" moment.
     case rewardCelebration(RewardEvent)
+    /// P1 (ROADMAP): spaced-retrieval recognition prompt. Plays the
+    /// letter's audio (or phoneme, if `enablePhonemeMode`) and shows
+    /// three candidate letters; the child picks one. Modal — child
+    /// must answer before tracing begins. The outcome lands on
+    /// `LetterProgress.retrievalAttempts` via
+    /// `progressStore.recordRetrievalAttempt`.
+    case retrievalPrompt(letter: String, distractors: [String])
 
     /// Default display duration chosen per overlay type so callers can
     /// enqueue without re-stating the timing at every site. `nil` means
@@ -67,6 +74,7 @@ enum CanvasOverlay: Equatable, Sendable {
         case .paperTransfer:      return nil   // modal: wait for child
         case .celebration:        return nil   // modal: wait for child
         case .rewardCelebration:  return 2.5
+        case .retrievalPrompt:    return nil   // modal: wait for child
         }
     }
 }

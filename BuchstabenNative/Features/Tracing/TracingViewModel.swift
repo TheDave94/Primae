@@ -343,6 +343,22 @@ public final class TracingViewModel {
             audioIndex = 0
         }
     }
+    /// P1 (ROADMAP): opt-in spaced-retrieval recognition prompts.
+    /// When on, every Nth letter selection presents a 3-button
+    /// "Welcher Buchstabe?" test before tracing begins. Cadence is
+    /// governed by `RetrievalScheduler.interval`. Off by default —
+    /// research feature; parents enable explicitly.
+    var enableRetrievalPrompts: Bool = false {
+        didSet {
+            UserDefaults.standard.set(enableRetrievalPrompts,
+                forKey: "de.flamingistan.buchstaben.enableRetrievalPrompts")
+        }
+    }
+    /// P1 (ROADMAP): the retrieval scheduler instance for this VM.
+    /// Built once in init and reused across letter selections so the
+    /// counter persists across runs (the scheduler reads UserDefaults
+    /// on init).
+    let retrievalScheduler: RetrievalScheduler = RetrievalScheduler()
 
     // MARK: - Recognition + freeform state (forwarded from FreeformController)
 
@@ -625,6 +641,7 @@ public final class TracingViewModel {
         self.enablePaperTransfer    = deps.enablePaperTransfer
         self.enableFreeformMode     = deps.enableFreeformMode
         self.enablePhonemeMode      = deps.enablePhonemeMode
+        self.enableRetrievalPrompts = deps.enableRetrievalPrompts
         self.letterRecognizer       = deps.letterRecognizer
         self.speech                 = deps.speech
         // Control condition uses fixed difficulty — no moving-average adaptation.
@@ -1549,6 +1566,60 @@ public final class TracingViewModel {
         letterIndex = idx
         load(letter: letters[idx])
         toast("Empfohlen: \(currentLetterName)")
+        // P1 (ROADMAP): if retrieval prompts are enabled and the
+        // scheduler decides this selection is a retrieval moment, slot
+        // the prompt onto the queue ahead of the tracing phases. The
+        // child answers, the recordRetrievalAttempt fires, and the
+        // queue's dismiss flows back into the canvas. Skip when the
+        // letter has fewer than the scheduler's minimum prior
+        // completions (testing on never-seen letters is just guessing).
+        if enableRetrievalPrompts {
+            let prog = progressStore.progress(for: best.letter)
+            if retrievalScheduler.shouldPrompt(for: best.letter, progress: prog) {
+                let distractors = retrievalDistractors(for: best.letter, from: available)
+                overlayQueue.enqueue(.retrievalPrompt(letter: best.letter, distractors: distractors))
+            }
+        }
+    }
+
+    /// P1 (ROADMAP): pick two distractors for the retrieval prompt.
+    /// Pulls from the same `motorSimilarity` cluster so the choice has
+    /// pedagogical value (visually-similar letters disambiguate the
+    /// child's recognition; arbitrary distractors are too easy).
+    /// Falls back to alphabetical neighbours when the visible-letter
+    /// pool can't supply two cluster-mates.
+    private func retrievalDistractors(for target: String, from pool: [String]) -> [String] {
+        let candidates = pool.filter { $0 != target }
+        guard !candidates.isEmpty else { return [] }
+        // Prefer letters within ±5 motor-similarity-rank of the target;
+        // reduces to "two random from the visible pool" when the pool
+        // is small (demo set with 7 letters).
+        let order = LetterOrderingStrategy.motorSimilarity.orderedLetters()
+        let rank: (String) -> Int = { letter in
+            order.firstIndex(of: letter) ?? Int.max
+        }
+        let targetRank = rank(target)
+        let near = candidates
+            .filter { abs(rank($0) - targetRank) <= 5 }
+            .shuffled()
+            .prefix(2)
+        if near.count == 2 { return Array(near) }
+        return Array(candidates.shuffled().prefix(2))
+    }
+
+    /// P1 (ROADMAP): callback for the RetrievalPromptView. Records the
+    /// outcome on the progress store and dismisses the overlay so the
+    /// queue can advance into the tracing phases.
+    func submitRetrievalAnswer(letter: String, correct: Bool) {
+        progressStore.recordRetrievalAttempt(letter: letter, correct: correct)
+        haptics.fire(correct ? .letterCompleted : .offPath)
+        // Brief delay so the colour-coded reveal renders before the
+        // overlay dismisses. The view animates the result inline; the
+        // queue advances after a 0.6 s window.
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(600))
+            await MainActor.run { self?.overlayQueue.dismiss() }
+        }
     }
 
     /// The 7 demo letters for thesis scope.

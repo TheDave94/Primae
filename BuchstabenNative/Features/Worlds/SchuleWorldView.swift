@@ -169,6 +169,21 @@ struct SchuleWorldView: View {
                 .onTapGesture { vm.overlayQueue.dismiss() }
                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .zIndex(25)
+        case .retrievalPrompt(let letter, let distractors):
+            // P1 (ROADMAP): spaced-retrieval recognition. Modal — child
+            // must answer before tracing begins. Audio cue plays the
+            // active letter's audio (name or phoneme depending on the
+            // existing P6 toggle) via vm.replayAudio.
+            RetrievalPromptView(
+                target: letter,
+                distractors: distractors,
+                onPlayAudio: { vm.replayAudio() },
+                onAnswer: { _, correct in
+                    vm.submitRetrievalAnswer(letter: letter, correct: correct)
+                }
+            )
+            .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+            .zIndex(22)
         case .kpOverlay:
             // KP overlay is rendered by `TracingCanvasView` itself (it
             // needs the canvas geometry and reference-stroke data) — the

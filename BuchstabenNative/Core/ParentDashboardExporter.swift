@@ -89,7 +89,11 @@ struct ParentDashboardExporter {
         // mastery so the analysis can distinguish exploration from
         // gradual-release learning. nil for letters never written in
         // freeform mode; emitted as empty string.
-        lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount"].joined(separator: sep))
+        // P1 (ROADMAP): `retrievalAccuracy` is the rolling mean of
+        // `LetterProgress.retrievalAttempts` (cap 10). Empty when the
+        // parent hasn't enabled the Erinnerungstest, or for letters
+        // never tested.
+        lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount","retrievalAccuracy"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
             let avg = String(format: "%.4f", stat.averageAccuracy)
@@ -104,7 +108,12 @@ struct ParentDashboardExporter {
                 .map { String(format: "%.4f", $0) }
                 .joined(separator: ";")
             let freeformField = prog?.freeformCompletionCount.map { String($0) } ?? ""
-            lines.append([stat.letter, "\(cnt)", avg, tnd, "\(recCount)", recAvg, speedField, freeformField].joined(separator: sep))
+            let retrievalField: String = {
+                guard let attempts = prog?.retrievalAttempts, !attempts.isEmpty else { return "" }
+                let acc = Double(attempts.filter { $0 }.count) / Double(attempts.count)
+                return String(format: "%.4f", acc)
+            }()
+            lines.append([stat.letter, "\(cnt)", avg, tnd, "\(recCount)", recAvg, speedField, freeformField, retrievalField].joined(separator: sep))
         }
         lines.append("")
 

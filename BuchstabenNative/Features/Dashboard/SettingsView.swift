@@ -34,6 +34,19 @@ struct SettingsView: View {
                 ))
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
+            Section("Erinnerungstest") {
+                // P1 (ROADMAP): opt-in spaced-retrieval prompt before
+                // every Nth letter selection. Roediger & Karpicke 2006 —
+                // retrieval-practice effect. Default off; research feature.
+                Toggle("Erinnerungstest aktivieren", isOn: Binding(
+                    get: { vm.enableRetrievalPrompts },
+                    set: { vm.enableRetrievalPrompts = $0 }
+                ))
+                .accessibilityHint("Vor manchen Buchstaben fragt die App, welcher Buchstabe gehört wurde, mit drei Antwortmöglichkeiten. Stärkt das Gedächtnis.")
+                Text("Vor jedem dritten Buchstaben fragt die App: Welcher Buchstabe? Drei Wahlknöpfe. Stärkt das Langzeitgedächtnis (Roediger & Karpicke 2006).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Section("Lautwert") {
                 // P6 (ROADMAP_V5): opt-in phoneme playback. When on,
                 // the audio gesture (tap, replay, two-finger swipe) plays

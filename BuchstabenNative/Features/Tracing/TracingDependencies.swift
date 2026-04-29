@@ -38,6 +38,9 @@ struct TracingDependencies {
     /// off; falls back to name audio for letters without phoneme
     /// recordings even when on.
     var enablePhonemeMode: Bool
+    /// P1 (ROADMAP): opt-in spaced-retrieval recognition prompt before
+    /// every Nth letter selection. Default off — research feature.
+    var enableRetrievalPrompts: Bool
     /// CoreML-backed letter recognizer. Default is `CoreMLLetterRecognizer()`;
     /// tests inject `StubLetterRecognizer(result:)` to get deterministic output.
     var letterRecognizer: LetterRecognizerProtocol
@@ -131,6 +134,9 @@ struct TracingDependencies {
         enablePhonemeMode: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.buchstaben.enablePhonemeMode"
         ),
+        enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
+            forKey: "de.flamingistan.buchstaben.enableRetrievalPrompts"
+        ),
         letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
         speech: SpeechSynthesizing = AVSpeechSpeechSynthesizer(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
@@ -167,6 +173,7 @@ struct TracingDependencies {
         self.enablePaperTransfer = enablePaperTransfer
         self.enableFreeformMode = enableFreeformMode
         self.enablePhonemeMode = enablePhonemeMode
+        self.enableRetrievalPrompts = enableRetrievalPrompts
         self.letterRecognizer = letterRecognizer
         self.speech = speech
         self.makePlaybackController = makePlaybackController
