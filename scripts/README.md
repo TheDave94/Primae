@@ -54,6 +54,25 @@ git — pick the favourite voice's files and copy them into
 > Phonemes, not letter names. `M` is recorded as "mmmh", not "Em" — the
 > Anlauttabelle approach used in Austrian Volksschule 1. Klasse.
 
+### `gen_colorsets.py`
+Regenerate the design-token Asset Catalog colorsets from a hex table
+that mirrors `design-system/colors_and_type.css` (`:root` block for
+light + `html[data-theme="dark"]` block for dark). 38 tokens —
+paper / ink / canvas semantics / brand / world tints / feedback /
+stars / adult area — each emitted as a `*.colorset/Contents.json`
+pair (universal-light + appearance-dark luminosity variant).
+
+```bash
+python3 scripts/gen_colorsets.py
+```
+
+Output: `Primae/Primae/Assets.xcassets/Colors/<token>.colorset/Contents.json`.
+
+The runtime side reads these via `Color("name")` from
+`PrimaeNative/Theme/Colors.swift`. Do **not** hand-edit the
+generated JSON — re-run the script after a design-system update so
+hexes stay in sync.
+
 ### `gen_appicon.py`
 Render the app-icon PNG set (light / dark / monochrome) into the Xcode
 asset catalogue. The icon shows the same three-stroke "A" the child

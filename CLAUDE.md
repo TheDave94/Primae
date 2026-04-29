@@ -90,6 +90,7 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 - Do NOT change `.defaultIsolation(MainActor.self)` in the main target
 - Do NOT modify the strokes.json coordinate format
 - Do NOT modify `StrokeTracker.swift` unless the task explicitly targets it
+- Do NOT use `UIColor(dynamicProvider:)` for design tokens — under Swift 6 default isolation the closure inherits MainActor and traps when SwiftUI samples it from `com.apple.SwiftUI.AsyncRenderer`. Design tokens go through Asset-Catalog colorsets (see `Primae/Primae/Assets.xcassets/Colors/` + `scripts/gen_colorsets.py`), which iOS resolves per trait collection without invoking any Swift code.
 
 ## Conventions
 - All new views go in `Features/Tracing/` unless they're core infrastructure
@@ -97,3 +98,5 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 - Animations use SwiftUI `.transition()` and `withAnimation {}`
 - Debug features gated on `vm.showDebug`
 - German UI text (the app is for German-speaking children)
+- Child-facing screens (Schule / Werkstatt / Fortschritte / Onboarding / overlays during practice) must work via icons + animation + TTS, not text — the target audience is 5–6 yr-old Volksschule 1. Klasse children who can't or barely read. Text is fine for parent-area screens (Settings, ParentDashboard, ResearchDashboard, Datenexport).
+- Design tokens: read from `PrimaeNative/Theme/{Colors, Spacing, Radii, Fonts}.swift`. Color values are auto-flipping light/dark via `Color("name")` (Asset-Catalog colorsets); fonts via `Font.display(_:weight:)` / `Font.body(_:weight:)` / `Font.cursive(_:)`. The picker for the appearance override lives in the parent area as "Erscheinungsbild" (System / Hell / Dunkel).

@@ -6,8 +6,10 @@ before touching `AudioEngine.swift`, `StrokeTracker.swift`, or the
 council-style automation pipeline's post-mortems; that pipeline is
 gone, so only the invariants survived the trim.)
 
-_Last audited 2026-04-29 against `main` after the ROADMAP_V5
-implementation pass + tier-1/2 branch merge._
+_Last audited 2026-04-29 against `main` after the Primae rebrand
++ design-system rollout + U11 dark-mode parity (Asset-Catalog
+colorsets) — added the `UIColor(dynamicProvider:)` invariant under
+Concurrency._
 
 ## Audio + tracking
 
@@ -71,6 +73,33 @@ Adding a Task wrapper causes ordering issues with debounce timers.
 Reserve `Task { @MainActor in }` for callbacks delivered from
 genuinely non-isolated contexts (delegate callbacks, completion
 handlers from background frameworks).
+
+### `UIColor(dynamicProvider:)` traps on AsyncRenderer
+The Primae design tokens originally lived in `Color.dynamic(light:dark:)`
+which wrapped each value with `UIColor(dynamicProvider:)`. Under
+Swift 6 with `.defaultIsolation(MainActor.self)`, that closure
+inherits MainActor isolation. SwiftUI samples dynamic colors from
+`com.apple.SwiftUI.AsyncRenderer` (a non-main thread) during async
+view-body evaluation, and the strict-concurrency runtime traps the
+isolation mismatch as `EXC_BREAKPOINT`. The app crashes the moment
+any view body re-evaluates that token — i.e. every tab switch,
+picker toggle, animation tick.
+
+**Use Asset-Catalog colorsets instead.** Each colorset has explicit
+light + dark `appearance` variants and is compiled into the
+host's `.car`; iOS resolves the active variant from the trait
+collection without invoking any Swift code.
+
+```
+Primae/Primae/Assets.xcassets/Colors/<token>.colorset/Contents.json
+PrimaeNative/Theme/Colors.swift  → static let token = Color("<token>")
+scripts/gen_colorsets.py         → regenerate the JSON from the
+                                    light/dark hex table
+```
+
+If you ever need a quick one-off colour that doesn't ship in the
+catalog, use `Color(hex: 0xRRGGBB)` (defined in `Colors.swift`) —
+it's a pure-arithmetic init with no closure, safe on any thread.
 
 ### `OSLog.Logger` has no `.shared` singleton
 ```swift

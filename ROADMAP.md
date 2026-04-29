@@ -19,7 +19,6 @@ _Single forward-looking work log. Last updated 2026-04-29 against `main`. Only i
 
 | Item | What I need from you | Why it can't be autonomous |
 |---|---|---|
-| **U11** dark-mode parity | iPad + 1 hour of paired tonal validation | Card surfaces need re-toning from `Color.white` to `secondarySystemGroupedBackground`; failure modes are visible only on device |
 | **D8** canvas redraw profile | iPad + Instruments time-profile of a high-velocity guided session | No measured evidence of a problem; pre-optimising could break a currently-correct redraw path |
 
 Everything in the **post-thesis** section (F1–F10) waits until the thesis ships.
@@ -32,7 +31,7 @@ This list is intentionally collapsed; the detail lives in commit messages. Remov
 
 - **Thesis data correctness:** condition-tagged samples, timezone header, wallClockSeconds, raw recognition confidence, researcher arm override, input-mode on durations, EXPORT_SCHEMA appendix.
 - **Pedagogical features:** self-explanation re-animation on misrecognition, errorless first-3-sessions ramp, daily goal pill, spaced-retrieval testing prompts (P1 — `RetrievalScheduler`, `RetrievalPromptView`, opt-in toggle, motorSimilarity-cluster distractors, `retrievalAccuracy` CSV column), backward-chaining direct-phase toggle (P5), onboarding A/B variants with first-completion lock (U4), phoneme audio infrastructure (P6 — toggle + filename convention + scanner partition).
-- **UX:** reward-celebration overlay, Schreibmotorik dimension sparklines, gold-tint token unification, celebration haptic, speech-rate slider, Bob-the-dog start-cue dwell.
+- **UX:** reward-celebration overlay, Schreibmotorik dimension sparklines, gold-tint token unification, celebration haptic, speech-rate slider, Bob-the-dog start-cue dwell, **full Primae rebrand** (repo + Xcode project + bundle ID + every screen restyled), **dark-mode parity (U11) via Asset-Catalog colorsets** (38 tokens; light + dark variants per colorset; flips via the parent-area Erscheinungsbild picker — System / Hell / Dunkel).
 - **Tech debt:** `SchemaMigrator` framework, `PaperTransferView` deterministic timing seam, CoreML classifier-closure protocol seam (D3) with 7 pipeline tests, **VM God-object decomposition (D1) fully shipped**: `RecognitionTokenTracker` (D1a, recognition tokens off the VM), `TouchDispatcher` (D1b, touch-session state + `beginTouch`/`updateTouch`/`endTouch` flow + 5 helpers + `mapVelocityToSpeed`), `PhaseTransitionCoordinator` (D1c, `advanceLearningPhase` + post-phase pipeline + `commitCompletion`). VM down from 2350+ to ~2030 lines; CI timeout caps; accessibility partial (Schreibqualität rows collapse to single VoiceOver elements).
 
 ---
@@ -133,39 +132,6 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 
 ---
 
-### U11 — Dark-mode parity
-**Effort:** M (~1 day code + ≥2 hr device validation) · **Priority:** P3
-
-**Why deferred.** `FortschritteWorldView` and the freeform writing canvas pin `.preferredColorScheme(.light)` because their card surfaces use opaque `Color.white`. In dark mode without the pin, the cards turn near-black but the text styles (which rely on `.primary`) flip to white — the white text on white-because-pinned-light cards already works, but the card edges and shadows lose contrast.
-
-`SchuleWorldView`, `WerkstattWorldView`, and the parent dashboards adapt fine in dark mode; only Fortschritte and Freeform are pinned.
-
-**The change.**
-
-```swift
-// Today
-.background(Color.white, in: RoundedRectangle(cornerRadius: 24))
-
-// After
-.background(
-    Color(uiColor: .secondarySystemGroupedBackground),
-    in: RoundedRectangle(cornerRadius: 24)
-)
-```
-
-`secondarySystemGroupedBackground` is white in light mode, dark grey in dark mode — auto-adapts. After the swap, remove the `.preferredColorScheme(.light)` pin.
-
-**Affected files.**
-- `Features/Worlds/FortschritteWorldView.swift` — 4 cards (starCount, streak, dailyGoal, fluencyFooter) + the rewards row
-- `Features/Tracing/FreeformWritingView.swift` — canvas chrome + result popups
-- Possibly `Features/Tracing/CompletionCelebrationOverlay.swift` — gradient stays; white scrim opacity might need tuning
-
-**Failure modes.** `AppSurface.starGold` pops against white but might look harsh on dark grey. Letter glyph rendered as `Color.primary` over the card → white-on-grey in dark mode (verify legibility for a 5-year-old: 7:1 body-text contrast, 3:1 large-text). Material backgrounds inside `List` already adapt; double-adapting can render weirdly.
-
-**Recommendation.** Worth doing post-thesis. Children use the app in classroom / daylight conditions; the dark-mode population is parents reviewing the dashboard at night. Low pedagogical priority.
-
----
-
 ## 4. TECHNICAL DEBT
 
 ### D8 — Canvas redraw frequency profile
@@ -248,7 +214,7 @@ The at-a-glance table at the top of this file is the authoritative version. Repe
 2. **P6 phoneme recordings** — runs in parallel with T1 since it's pure ElevenLabs work + drop-into-bundle.
 3. **U5 + U10 device validation** — same iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
 
-**U11 dark-mode parity** and **D8 canvas redraw profile** are post-thesis polish — schedule once the demo set ships and there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F10** are post-thesis full features.
+**D8 canvas redraw profile** is post-thesis polish — schedule once the demo set ships and there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F10** are post-thesis full features.
 
 ---
 

@@ -91,12 +91,12 @@ casual user is never silently dropped into a degraded condition.
 SwiftUI port of the Primae design tokens (see [`design-system/`](../design-system/) at the repo root for the source-of-truth CSS).
 | File | Lines | Role |
 |------|------:|------|
-| `Colors.swift` | 137 | `Color` extension with every CSS hex from `colors_and_type.css` mapped to a *dynamic* SwiftUI Color (light + dark resolution via `UIColor(dynamicProvider:)`). Includes `Color.canvasGhost` / `.canvasInkStroke` / `.canvasGuide` for the documented canvas semantics. |
+| `Colors.swift` | 138 | `Color` extension where every named token resolves through the host app's Asset Catalog (`Primae/Primae/Assets.xcassets/Colors/<name>.colorset/`). Each colorset has explicit light + dark variants, so iOS / SwiftUI flip per trait collection without invoking any Swift closure. Replaces an earlier `UIColor(dynamicProvider:)` design that crashed under Swift 6 strict concurrency on the SwiftUI AsyncRenderer thread (see `docs/LESSONS.md`). Re-run `scripts/gen_colorsets.py` to regenerate the colorsets after a design-system update. |
 | `Spacing.swift` | 29 | `Spacing.sp1..sp9` mirroring `--sp-*` (4–96 pt). |
 | `Radii.swift` | 24 | `Radii.sm..xxl` + `pill` mirroring `--r-*`. |
 | `Fonts.swift` | 132 | `Font.display(_:weight:) / .body(_:weight:) / .cursive(_:)` helpers + `FontSize.xs..glyph` (13–220 pt). PostScript-name resolver picks the bundled Primae / PrimaeText face for a given SwiftUI weight. |
 | `FontRegistration.swift` | 116 | `PrimaeFonts.registerAll()` — registers every bundled OTF/TTF with CoreText at app launch via `CTFontManagerRegisterFontsForURLs`. The load-bearing path because the fonts ship in `Bundle.module`, not the main bundle (where `INFOPLIST_KEY_UIAppFonts` would search). |
-| `Appearance.swift` | 24 | Resolver mapping the `@AppStorage("primaeAppearance")` string ("system" / "light" / "dark") to SwiftUI's `ColorScheme?` so the host app applies it via `.preferredColorScheme(...)` at the WindowGroup root. |
+| `Appearance.swift` | 24 | Resolver mapping the `@AppStorage("primaeAppearance")` string ("system" / "light" / "dark") to SwiftUI's `ColorScheme?` so the host app applies it via `.preferredColorScheme(...)` at the WindowGroup root. The parent-area "Erscheinungsbild" picker writes to this key; flipping it re-renders against the asset-catalog colorsets. |
 
 #### `Components/`
 | File | Lines | Role |
