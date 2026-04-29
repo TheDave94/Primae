@@ -30,7 +30,7 @@ struct LetterPickerBar: View {
     }
 
     private func completionState(for name: String) -> LetterCompletionState {
-        let prog = vm.progressStore.progress(for: name)
+        let prog = vm.progress(for: name)
         if prog.completionCount > 0 { return .complete }
         if prog.bestAccuracy > 0 { return .partial }
         return .notStarted

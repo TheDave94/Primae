@@ -91,6 +91,18 @@ public final class TracingViewModel {
     /// guide dot) — other cells render static ghost + dots only.
     var gridActiveCellIndex: Int { grid.activeCellIndex }
 
+    /// Active-cell frame in canvas-pixel coordinates, only when the grid
+    /// is multi-cell (word mode). Single-cell sessions return `nil` so the
+    /// canvas overlays default to full-canvas geometry. Used by overlays
+    /// that need to map normalized glyph coordinates (e.g.
+    /// DirectPhaseDotsOverlay) into the active cell instead of the whole
+    /// canvas — without this they draw in the wrong place for word mode
+    /// (W-24 follow-up to C-5: same root cause as the freeWrite scorer
+    /// fix, applied to the direct-phase dot renderer).
+    var multiCellActiveFrame: CGRect? {
+        grid.cells.count > 1 ? grid.activeCell.frame : nil
+    }
+
     /// Rendered word layout (image + per-character frames). Non-nil only
     /// for `.word` sequences after a successful CoreText layout — the
     /// canvas uses it to blit the whole word as one connected run so
@@ -462,7 +474,20 @@ public final class TracingViewModel {
     private let detector = InputModeDetector()
     private let audio: AudioControlling
     private let haptics: HapticEngineProviding
-    let progressStore: ProgressStoring
+    /// Persistent letter-progress store. Private so the VM remains the
+    /// only mutator; views consume the read-only `allProgress` /
+    /// `progress(for:)` forwarders below (W-5).
+    private let progressStore: ProgressStoring
+
+    /// Read-only snapshot of all letter progress. Views bind here instead
+    /// of reaching into `progressStore` directly so persistence stays
+    /// encapsulated and writes remain VM-mediated.
+    var allProgress: [String: LetterProgress] { progressStore.allProgress }
+
+    /// Per-letter progress lookup. Mirrors `ProgressStoring.progress(for:)`.
+    func progress(for letter: String) -> LetterProgress {
+        progressStore.progress(for: letter)
+    }
     private let streakStore: StreakStoring
     private let dashboardStore: ParentDashboardStoring
     private let thesisCondition: ThesisCondition
@@ -497,7 +522,18 @@ public final class TracingViewModel {
     private var audioIndex                       = 0
     private var lastPoint: CGPoint?
     private var lastTimestamp: CFTimeInterval?
-    private var letterLoadTime: CFTimeInterval?  // for session-duration tracking
+    /// Wall-clock start of the *current* foreground window for the active
+    /// letter. Reset on every `load(letter:)` and on every foreground return
+    /// (`appDidBecomeActive`). Cleared on backgrounding so the timer doesn't
+    /// keep ticking while the iPad sits idle (D-1: the device only sleeps
+    /// after several minutes, so a "4-minute" session would otherwise
+    /// silently include the time spent backgrounded).
+    private var letterLoadTime: CFTimeInterval?
+    /// Accumulated foreground-only practice time across background returns
+    /// for the current letter. The reported session duration is
+    /// `letterActiveTimeAccumulated + (now − letterLoadTime)`. Resets on
+    /// every `load(letter:)`.
+    private var letterActiveTimeAccumulated: TimeInterval = 0
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
     /// Scheduler priority captured at letter selection time (loadRecommendedLetter).
@@ -1042,6 +1078,14 @@ public final class TracingViewModel {
         playback.appIsForeground = false
         playback.cancelPending()
         endTouch()
+        // D-1: stop the session-duration timer so the backgrounded window
+        // doesn't get attributed to "active practice". Whatever the child
+        // had practised so far is folded into the accumulator and survives
+        // the round-trip; the next foreground return restarts the live slice.
+        if let start = letterLoadTime {
+            letterActiveTimeAccumulated += CACurrentMediaTime() - start
+            letterLoadTime = nil
+        }
         let cmd = playback.transition(to: .idle)
         playback.apply(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
@@ -1064,6 +1108,12 @@ public final class TracingViewModel {
     public func appDidBecomeActive() {
         playback.appIsForeground = true
         audio.resumeAfterLifecycle()
+        // D-1: restart the live slice of session-duration tracking so the
+        // current foreground window contributes to `duration` again. The
+        // pre-background slice is already in `letterActiveTimeAccumulated`.
+        if letterLoadTime == nil, !didCompleteCurrentLetter {
+            letterLoadTime = CACurrentMediaTime()
+        }
         if playback.resumeIntent {
             playback.request(playback.state, immediate: true)
         }
@@ -1187,12 +1237,33 @@ public final class TracingViewModel {
             // C-5: pass the active cell's frame for multi-cell (pencil)
             // layouts so points are normalised to cell-local 0–1 space,
             // matching the reference stroke coordinate system.
-            let activeCellFrame: CGRect? = grid.cells.count > 1
-                ? grid.activeCell.frame : nil
-            score = freeWriteRecorder.assess(
-                reference: def, canvasSize: canvasSize,
-                cellFrame: activeCellFrame
-            ).overallScore
+            // W-26: word mode (multi-cell) splits the trace by cell so
+            // each letter is scored against its own reference, then the
+            // four Schreibmotorik dimensions are averaged. The single-
+            // cell fall-through preserves the existing finger-mode
+            // contract (one tracker definition over the whole canvas).
+            if grid.cells.count > 1 {
+                let cellRefs = grid.cells.compactMap { cell -> (frame: CGRect, reference: LetterStrokes)? in
+                    guard let ref = cell.tracker.definition else { return nil }
+                    return (frame: cell.frame, reference: ref)
+                }
+                if cellRefs.isEmpty {
+                    score = freeWriteRecorder.assess(
+                        reference: def, canvasSize: canvasSize,
+                        cellFrame: grid.activeCell.frame
+                    ).overallScore
+                } else {
+                    score = freeWriteRecorder.assess(
+                        cellReferences: cellRefs,
+                        canvasSize: canvasSize
+                    ).overallScore
+                }
+            } else {
+                score = freeWriteRecorder.assess(
+                    reference: def, canvasSize: canvasSize,
+                    cellFrame: nil
+                ).overallScore
+            }
         }
 
         let wasInFreeWrite = phaseController.currentPhase == .freeWrite
@@ -1476,7 +1547,9 @@ public final class TracingViewModel {
         // approximately how well they did without seeing any percentage.
         speech.speak(ChildSpeechLibrary.praise(starsEarned: phaseController.starsEarned))
         let accuracy = Double(phaseController.overallScore)
-        let duration = letterLoadTime.map { CACurrentMediaTime() - $0 } ?? 0
+        let now = CACurrentMediaTime()
+        let liveSlice = letterLoadTime.map { now - $0 } ?? 0
+        let duration = letterActiveTimeAccumulated + liveSlice
         let scores: [String: Double] = Dictionary(
             uniqueKeysWithValues: phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
         )
@@ -1649,6 +1722,7 @@ public final class TracingViewModel {
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
         letterLoadTime                 = CACurrentMediaTime()
+        letterActiveTimeAccumulated    = 0
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
         isSingleTouchInteractionActive = false

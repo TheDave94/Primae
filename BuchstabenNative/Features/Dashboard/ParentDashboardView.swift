@@ -139,7 +139,7 @@ struct ParentDashboardView: View {
 
     @ViewBuilder
     private var papierUebertragungSection: some View {
-        let entries = vm.progressStore.allProgress
+        let entries = vm.allProgress
             .compactMap { letter, prog -> (String, Double)? in
                 guard let score = prog.paperTransferScore else { return nil }
                 return (letter, score)
@@ -164,7 +164,7 @@ struct ParentDashboardView: View {
 
     @ViewBuilder
     private var erkennungsGenauigkeitSection: some View {
-        let entries = vm.progressStore.allProgress
+        let entries = vm.allProgress
             .compactMap { letter, prog -> (String, [Double])? in
                 guard let acc = prog.recognitionAccuracy, !acc.isEmpty else { return nil }
                 return (letter, acc)
@@ -232,7 +232,7 @@ struct ParentDashboardView: View {
                 shareURL = try ParentDashboardExporter.exportFileURL(
                     from: snapshot,
                     format: .csv,
-                    progress: vm.progressStore.allProgress
+                    progress: vm.allProgress
                 )
             } catch {
                 showExportError = true

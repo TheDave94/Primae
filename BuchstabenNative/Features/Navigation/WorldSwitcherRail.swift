@@ -110,7 +110,7 @@ struct WorldSwitcherRail: View {
     /// quality-gated star count so the badge agrees with the celebration
     /// overlay and the letter gallery.
     private var starTotal: Int {
-        vm.progressStore.allProgress.values.reduce(0) { acc, prog in
+        vm.allProgress.values.reduce(0) { acc, prog in
             acc + LetterStars.stars(for: prog.phaseScores)
         }
     }

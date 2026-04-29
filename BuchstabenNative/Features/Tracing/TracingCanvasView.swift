@@ -445,15 +445,25 @@ private struct DirectPhaseDotsOverlay: View {
                 // one at a time also matches the phase's pedagogy: tap the
                 // current start → watch the direction arrow → the next start
                 // appears, possibly at the exact same spot, which is correct.
+                // W-24: in word mode the glyph rect must be computed
+                // against the active *cell*, not the whole canvas — the
+                // strokes are cell-local. Single-cell layouts (the default
+                // for every letter session) keep using `geo.size` and the
+                // canvas origin, so the path is unchanged for them.
+                let cellFrame = vm.multiCellActiveFrame
+                ?? CGRect(origin: .zero, size: geo.size)
                 if let rawStrokes = vm.rawGlyphStrokes,
                    !rawStrokes.strokes.isEmpty,
                    vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
                    let gr = PrimaeLetterRenderer.normalizedGlyphRect(
                        for: vm.currentLetterName,
-                       canvasSize: geo.size,
+                       canvasSize: cellFrame.size,
                        schriftArt: vm.schriftArt) {
                     let idx = vm.directNextExpectedDotIndex
-                    dotView(idx: idx, stroke: rawStrokes.strokes[idx], gr: gr, size: geo.size)
+                    dotView(idx: idx,
+                            stroke: rawStrokes.strokes[idx],
+                            gr: gr,
+                            cellFrame: cellFrame)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -474,10 +484,13 @@ private struct DirectPhaseDotsOverlay: View {
     }
 
     @ViewBuilder
-    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, size: CGSize) -> some View {
+    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, cellFrame: CGRect) -> some View {
         if let first = stroke.checkpoints.first {
-            let screenX = (gr.minX + first.x * gr.width) * size.width
-            let screenY = (gr.minY + first.y * gr.height) * size.height
+            // gr is normalised 0..1 relative to `cellFrame.size`; offset by
+            // cellFrame origin so word-mode (multi-cell) draws the dot in
+            // the active cell instead of the canvas origin (W-24).
+            let screenX = cellFrame.minX + (gr.minX + first.x * gr.width) * cellFrame.width
+            let screenY = cellFrame.minY + (gr.minY + first.y * gr.height) * cellFrame.height
             let isTapped = vm.directTappedDots.contains(idx)
             let isNext   = !isTapped && idx == vm.directNextExpectedDotIndex
             let r: CGFloat = isNext ? 22 : 18

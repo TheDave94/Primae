@@ -101,6 +101,63 @@ final class FreeWritePhaseRecorder {
         checkpointsPerSecond = CGFloat(completedCheckpoints) / CGFloat(elapsed)
     }
 
+    /// Multi-cell scoring for word mode (W-26). Splits the recorded
+    /// freeWrite trace by which cell frame each point falls into, scores
+    /// every cell against its own reference, and averages the four
+    /// Schreibmotorik dimensions across cells that produced any ink.
+    /// Cells with fewer than two points are excluded so a child who only
+    /// wrote part of the word doesn't get a divide-by-zero or a score
+    /// dragged to 0 by empty cells.
+    ///
+    /// Falls back to single-cell scoring against the last reference if
+    /// no cell collected enough samples — that keeps the prior behaviour
+    /// of scoring against the active cell instead of returning 0.
+    @discardableResult
+    func assess(cellReferences: [(frame: CGRect, reference: LetterStrokes)],
+                canvasSize: CGSize,
+                now: CFTimeInterval = CACurrentMediaTime()) -> WritingAssessment {
+        guard let lastCell = cellReferences.last else {
+            // No cells supplied at all — preserve the single-cell shape
+            // by scoring against an empty reference (overall = 0).
+            return assess(reference: LetterStrokes(strokes: []),
+                          canvasSize: canvasSize, now: now)
+        }
+        var perCell: [WritingAssessment] = []
+        for cell in cellReferences {
+            var pts: [CGPoint] = []
+            var ts: [CFTimeInterval] = []
+            var fs: [CGFloat] = []
+            for i in points.indices where cell.frame.contains(points[i]) {
+                let p = points[i]
+                pts.append(CGPoint(
+                    x: (p.x - cell.frame.minX) / max(cell.frame.width, 1),
+                    y: (p.y - cell.frame.minY) / max(cell.frame.height, 1)
+                ))
+                if i < timestamps.count { ts.append(timestamps[i]) }
+                if i < forces.count { fs.append(forces[i]) }
+            }
+            guard pts.count >= 2 else { continue }
+            perCell.append(FreeWriteScorer.score(
+                tracedPoints: pts, reference: cell.reference,
+                timestamps: ts, forces: fs,
+                sessionStart: sessionStart, sessionEnd: now))
+        }
+        guard !perCell.isEmpty else {
+            return assess(reference: lastCell.reference,
+                          canvasSize: canvasSize,
+                          cellFrame: lastCell.frame, now: now)
+        }
+        let n = CGFloat(perCell.count)
+        let avg = WritingAssessment(
+            formAccuracy:     perCell.map(\.formAccuracy).reduce(0, +) / n,
+            tempoConsistency: perCell.map(\.tempoConsistency).reduce(0, +) / n,
+            pressureControl:  perCell.map(\.pressureControl).reduce(0, +) / n,
+            rhythmScore:      perCell.map(\.rhythmScore).reduce(0, +) / n
+        )
+        lastAssessment = avg
+        return avg
+    }
+
     /// Score the captured trace against `reference` strokes mapped into
     /// canvas-normalised coordinates. Stores the result in
     /// `lastAssessment` for view forwarders and returns the assessment

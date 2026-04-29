@@ -87,7 +87,7 @@ struct ResearchDashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(title: "KI-Erkennung",
                           subtitle: "Prediction vs. Expected je Buchstabe (letzte Stichprobe)")
-            let entries = vm.progressStore.allProgress
+            let entries = vm.allProgress
                 .compactMap { (letter, p) -> (String, RecognitionSample)? in
                     guard let s = p.recognitionSamples?.last else { return nil }
                     return (letter, s)
@@ -204,7 +204,7 @@ struct ResearchDashboardView: View {
                 VStack(spacing: 0) {
                     headerRow(["Buchstabe", "Sitzungen", "Ø Genauigkeit", "Trend", "KI Ø"])
                     ForEach(stats, id: \.letter) { stat in
-                        let recAcc = vm.progressStore.progress(for: stat.letter).recognitionAccuracy ?? []
+                        let recAcc = vm.progress(for: stat.letter).recognitionAccuracy ?? []
                         let recAvg = recAcc.isEmpty ? "—" : String(format: "%.2f", recAcc.reduce(0, +) / Double(recAcc.count))
                         dataRow([
                             stat.letter,

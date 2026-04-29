@@ -102,7 +102,7 @@ struct SchuleWorldView: View {
                     currentLetter: vm.currentLetterName,
                     starCount: { name in
                         LetterStars.stars(
-                            for: vm.progressStore.progress(for: name).phaseScores)
+                            for: vm.progress(for: name).phaseScores)
                     },
                     onSelect: { letter in
                         vm.loadLetter(name: letter)
