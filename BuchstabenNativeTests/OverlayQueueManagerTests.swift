@@ -99,6 +99,40 @@ private func sampleResult(_ predicted: String = "A",
         #expect(q.pendingCount == 0)
     }
 
+    /// Round-3 test-audit gap (C-4 branch): when CoreML inference
+    /// finishes after the celebration is already the active overlay,
+    /// the badge must interrupt — push the celebration back to position
+    /// 0 in the queue, become the new currentOverlay, and let the queue
+    /// resume to the celebration after the badge auto-advances.
+    @Test func enqueueBeforeCelebration_whenCelebrationAlreadyActive() {
+        let q = OverlayQueueManager()
+        q.enqueue(.celebration(stars: 2))
+        // Celebration is now the active overlay (modal, no auto-advance).
+        #expect(q.currentOverlay == .celebration(stars: 2))
+        q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("Z")))
+        // Badge interrupts — celebration is queued behind it.
+        #expect(q.currentOverlay == .recognitionBadge(sampleResult("Z")))
+        #expect(q.pendingCount == 1)
+        q.dismiss()
+        #expect(q.currentOverlay == .celebration(stars: 2))
+    }
+
+    /// W-25 follow-up: same interrupt path when paperTransfer is the
+    /// already-active modal. Badge must come ahead of paperTransfer so
+    /// the canonical post-freeWrite order
+    /// (kpOverlay → recognitionBadge → paperTransfer → celebration) is
+    /// preserved no matter how late inference returns.
+    @Test func enqueueBeforeCelebration_whenPaperTransferAlreadyActive() {
+        let q = OverlayQueueManager()
+        q.enqueue(.paperTransfer(letter: "Z"))
+        #expect(q.currentOverlay == .paperTransfer(letter: "Z"))
+        q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("Z")))
+        #expect(q.currentOverlay == .recognitionBadge(sampleResult("Z")))
+        #expect(q.pendingCount == 1)
+        q.dismiss()
+        #expect(q.currentOverlay == .paperTransfer(letter: "Z"))
+    }
+
     @Test func enqueueBeforeCelebration_picksFirstCelebrationWhenMany() {
         let q = OverlayQueueManager()
         q.enqueue(.kpOverlay)

@@ -58,7 +58,12 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test func fastTouch_triggersPlay() async {
         simulateFastTouch(t0: 1000)
-        try? await Task.sleep(for: .milliseconds(150))
+        // Round-3 test-audit gap: the prior wall-clock sleep made this
+        // test flaky on slow CI runners (debounce can fire late under
+        // load). Await the controller's exposed pendingTransition task
+        // so the assertion fires deterministically when the debounce
+        // resolves, regardless of runner pressure.
+        await vm.awaitPlaybackDebounce()
         #expect(audio.hasEvent(.play), "Fast touch must trigger audio.play()")
         #expect(vm.isPlaying)
     }

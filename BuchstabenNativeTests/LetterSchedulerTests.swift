@@ -215,6 +215,32 @@ struct LetterSchedulerTests {
                 "Stability must never drop below the configured baseline")
     }
 
+    /// Round-3 test-audit gap: the automatisation bonus reads the
+    /// `speedTrend` array as "prefix half = older, suffix half = newer"
+    /// and lowers a letter's priority when the child is *speeding up*
+    /// on it (i.e., automatising — needs less practice). A letter with
+    /// declining speed should therefore be recommended before one with
+    /// improving speed when both share completion count, recency, and
+    /// accuracy. Tests the observable behaviour through `recommendNext`
+    /// because `automatizationBonus` is private to the scheduler.
+    @Test("Improving speed ranks below declining speed (automatizationBonus)")
+    func automatisationBonusOrdersByTrend() {
+        // Both letters: 6 completions, fully accurate, last practiced 14
+        // days ago — Ebbinghaus recency and accuracy contributions are
+        // equal. Only the speed trend differs.
+        let twoWeeksAgo = now.addingTimeInterval(-14 * 86400)
+        let improving = LetterProgress(completionCount: 6, bestAccuracy: 1.0,
+                                        lastCompletedAt: twoWeeksAgo,
+                                        speedTrend: [0.6, 0.7, 0.8, 1.4, 1.5, 1.6])
+        let declining  = LetterProgress(completionCount: 6, bestAccuracy: 1.0,
+                                        lastCompletedAt: twoWeeksAgo,
+                                        speedTrend: [1.6, 1.5, 1.4, 0.8, 0.7, 0.6])
+        let progress: [String: LetterProgress] = ["I": improving, "D": declining]
+        let next = scheduler.recommendNext(available: ["I", "D"], progress: progress, now: now)
+        #expect(next == "D",
+                "Declining speed should outrank improving speed when other factors tie")
+    }
+
     @Test("fixedOrder ignores Ebbinghaus recency and accuracy")
     func fixedOrderIgnoresScoringFactors() {
         // The control arm must not be influenced by accuracy / recency,

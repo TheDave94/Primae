@@ -153,6 +153,36 @@ import Foundation
         #expect(store.progress(for: "T").speedTrend == [1.5])
     }
 
+    // MARK: - Round-3 audit gap: paperTransfer + variant round-trip
+
+    /// Round-3 test-audit gap: `recordPaperTransferScore` was untested
+    /// for round-trip persistence — a regression that nil'd the field
+    /// could ship without breaking any test.
+    @Test func recordPaperTransferScore_persistsAndReloads() async {
+        store.recordPaperTransferScore(for: "P", score: 0.5)
+        #expect(store.progress(for: "P").paperTransferScore == 0.5)
+        await store.flush()
+        let reloaded = JSONProgressStore(fileURL: tempURL)
+        #expect(reloaded.progress(for: "P").paperTransferScore == 0.5)
+    }
+
+    /// Round-trip for `recordVariantUsed` so a regression that loses
+    /// the variant ID after an app restart can't sneak through. nil
+    /// resets the field — also exercised so the "child reverted to
+    /// standard form" path stays correct.
+    @Test func recordVariantUsed_persistsAndReloads() async {
+        store.recordVariantUsed(for: "G", variantID: "open-loop")
+        #expect(store.progress(for: "G").lastVariantUsed == "open-loop")
+        await store.flush()
+        let reloaded = JSONProgressStore(fileURL: tempURL)
+        #expect(reloaded.progress(for: "G").lastVariantUsed == "open-loop")
+        // Setting back to nil clears the field on the next flush.
+        reloaded.recordVariantUsed(for: "G", variantID: nil)
+        await reloaded.flush()
+        let again = JSONProgressStore(fileURL: tempURL)
+        #expect(again.progress(for: "G").lastVariantUsed == nil)
+    }
+
     // MARK: - Recognition samples (F1)
 
     @Test func recordCompletion_storesFullRecognitionSample() {

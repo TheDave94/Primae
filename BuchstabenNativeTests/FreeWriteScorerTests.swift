@@ -125,6 +125,65 @@ struct FreeWriteScorerTests {
         #expect(FreeWriteScorer.score(tracedPoints: traced, reference: strokes).formAccuracy == 0)
     }
 
+    // MARK: - formAccuracyShape (round-3 audit gap)
+
+    /// `formAccuracyShape` is the freeform-mode scorer (blank canvas:
+    /// stroke order, pen-lift count, absolute position all irrelevant)
+    /// and was previously untested directly. The order-free Hausdorff
+    /// guarantee is the meaningful contract — verify it explicitly.
+    @Test("formAccuracyShape: identical trace and reference scores high")
+    func formAccuracyShapeIdentical() {
+        let strokes = LetterStrokes(letter: "I", checkpointRadius: 0.05, strokes: [
+            StrokeDefinition(id: 1, checkpoints: [
+                Checkpoint(x: 0.5, y: 0.2), Checkpoint(x: 0.5, y: 0.8)
+            ])
+        ])
+        let traced = (0...20).map { CGPoint(x: 0.5, y: 0.2 + 0.6 * Double($0) / 20) }
+        #expect(FreeWriteScorer.formAccuracyShape(tracedPoints: traced, reference: strokes) > 0.85)
+    }
+
+    @Test("formAccuracyShape: scribble far from reference scores near zero")
+    func formAccuracyShapeScribble() {
+        let strokes = LetterStrokes(letter: "I", checkpointRadius: 0.05, strokes: [
+            StrokeDefinition(id: 1, checkpoints: [
+                Checkpoint(x: 0.5, y: 0.2), Checkpoint(x: 0.5, y: 0.8)
+            ])
+        ])
+        // Random clump in upper-left corner with no relation to the I.
+        let traced = (0...20).map { i -> CGPoint in
+            let t = Double(i) / 20
+            return CGPoint(x: 0.05 + 0.05 * t, y: 0.05 + 0.05 * sin(t * 6))
+        }
+        #expect(FreeWriteScorer.formAccuracyShape(tracedPoints: traced, reference: strokes) < 0.5)
+    }
+
+    @Test("formAccuracyShape: order-free — reversed trace scores the same")
+    func formAccuracyShapeOrderFree() {
+        let strokes = LetterStrokes(letter: "I", checkpointRadius: 0.05, strokes: [
+            StrokeDefinition(id: 1, checkpoints: [
+                Checkpoint(x: 0.5, y: 0.2), Checkpoint(x: 0.5, y: 0.8)
+            ])
+        ])
+        let forward = (0...20).map { CGPoint(x: 0.5, y: 0.2 + 0.6 * Double($0) / 20) }
+        let reversed = forward.reversed().map { $0 }
+        let s1 = FreeWriteScorer.formAccuracyShape(tracedPoints: forward, reference: strokes)
+        let s2 = FreeWriteScorer.formAccuracyShape(tracedPoints: reversed, reference: strokes)
+        #expect(abs(s1 - s2) < 1e-6, "Hausdorff is order-free; reversed trace must score identically")
+    }
+
+    @Test("formAccuracyShape: empty inputs return zero")
+    func formAccuracyShapeEmpty() {
+        let strokes = LetterStrokes(letter: "I", checkpointRadius: 0.05, strokes: [
+            StrokeDefinition(id: 1, checkpoints: [
+                Checkpoint(x: 0.5, y: 0.2), Checkpoint(x: 0.5, y: 0.8)
+            ])
+        ])
+        #expect(FreeWriteScorer.formAccuracyShape(tracedPoints: [], reference: strokes) == 0)
+        let emptyRef = LetterStrokes(letter: "X", checkpointRadius: 0.04, strokes: [])
+        let traced = [CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.6)]
+        #expect(FreeWriteScorer.formAccuracyShape(tracedPoints: traced, reference: emptyRef) == 0)
+    }
+
     // MARK: - Fréchet distance
 
     @Test("Identical curves have zero Fréchet distance")

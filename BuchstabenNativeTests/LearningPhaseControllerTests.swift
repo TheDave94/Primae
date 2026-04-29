@@ -97,6 +97,20 @@ struct LearningPhaseControllerTests {
         #expect(sut.starsEarned == 1)
     }
 
+    /// Round-3 test-audit gap: the `.control` arm runs guided-only,
+    /// just like `.guidedOnly`. The plumbing differs (fixedOrder()
+    /// scheduler etc.) but the phase controller contract is identical:
+    /// one advance ends the session with one star earned.
+    @Test("Control completes after one phase")
+    func controlCompletesAfterOne() {
+        var sut = LearningPhaseController(condition: .control)
+        let advanced = sut.advance(score: 0.9)
+        #expect(!advanced)
+        #expect(sut.isLetterSessionComplete)
+        #expect(sut.starsEarned == 1)
+        #expect(sut.maxStars == 1, "control arm has only one phase, max stars must match")
+    }
+
     // MARK: - Reset
 
     @Test("Reset clears all state")

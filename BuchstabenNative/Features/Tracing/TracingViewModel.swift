@@ -1687,6 +1687,13 @@ public final class TracingViewModel {
     /// dashboard's debug-only Forschungsmetriken section so a researcher can
     /// confirm at a glance which arm the device is on.
     var thesisConditionRawName: String { thesisCondition.rawValue }
+
+    /// Test-only deterministic await for the playback debounce window.
+    /// Lets integration tests skip the real wall-clock sleep that made
+    /// `fastTouch_triggersPlay` flaky on slow CI runners.
+    func awaitPlaybackDebounce() async {
+        await playback.pendingTransition?.value
+    }
     #endif
 
     // MARK: - Private helpers

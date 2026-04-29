@@ -148,12 +148,18 @@ import AVFoundation
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
+        // Round-3 audit gap: drain the debounced play BEFORE snapshotting
+        // `playsBefore` so the post-background assertion can be strict
+        // (`== playsBefore`) instead of tolerating an off-by-one race.
+        await vm.awaitPlaybackDebounce()
         let playsBefore = audio.playCount
         await vm.appDidEnterBackground()
         let stopAfterInterrupt = audio.stopCount
         vm.endTouch(); vm.appDidBecomeActive()
+        await vm.awaitPlaybackDebounce()
         #expect(stopAfterInterrupt > 0)
-        #expect(audio.playCount <= playsBefore + 1, "Rapid taps should trigger at most 1 play, got \(audio.playCount - playsBefore)")
+        #expect(audio.playCount == playsBefore,
+                "shouldResume=false must NOT auto-play on return; got \(audio.playCount - playsBefore) extra play(s)")
     }
 
     @Test func avAudioSessionInterruption_shouldResumeTrue_resumesOnNewIntent() async {
