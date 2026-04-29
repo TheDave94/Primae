@@ -75,6 +75,12 @@ struct LetterProgress: Codable, Equatable {
     /// feature was used. Kept separate from `completionCount` so the parent
     /// dashboard can distinguish guided mastery from exploratory writing.
     var freeformCompletionCount: Int?
+    /// P1 (ROADMAP_V5): rolling boolean log of retrieval-practice
+    /// outcomes. `true` = child correctly identified the letter on a
+    /// recognition test; `false` = wrong choice. Capped at 10 entries
+    /// per letter (latest only). Drives the retrieval-accuracy column
+    /// in the thesis CSV alongside form accuracy.
+    var retrievalAttempts: [Bool]?
 }
 
 extension LetterProgress {
@@ -113,6 +119,10 @@ protocol ProgressStoring {
     /// already committed — the session counts are already in place, we
     /// just want the confidence data to show up in the dashboard trend.
     func recordRecognitionSample(letter: String, result: RecognitionResult)
+    /// P1 (ROADMAP_V5): record one retrieval-practice outcome for a
+    /// letter. Capped at 10 entries (latest only). Default extension
+    /// is a no-op so older mocks continue to conform.
+    func recordRetrievalAttempt(letter: String, correct: Bool)
     func resetAll()
     var allProgress: [String: LetterProgress] { get }
     /// Total letters completed across all sessions.
@@ -132,6 +142,9 @@ extension ProgressStoring {
     /// Default 0 so older mocks (StubProgressStore in test fixtures)
     /// keep conforming without retrofit.
     var completionsToday: Int { 0 }
+
+    /// Default no-op for stubs that don't surface retrieval data.
+    func recordRetrievalAttempt(letter: String, correct: Bool) {}
 
     func recordCompletion(for letter: String, accuracy: Double) {
         recordCompletion(for: letter, accuracy: accuracy,
@@ -297,6 +310,20 @@ public final class JSONProgressStore: ProgressStoring {
         let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         Self.appendRecognition(result, into: &p)
+        store.letterProgress[key] = p
+        save()
+    }
+
+    /// P1 (ROADMAP_V5): retrieval-practice outcome (correct ↔ wrong).
+    /// Capped at 10 entries — the dashboard trend only reads the
+    /// trailing window so longer histories are noise.
+    func recordRetrievalAttempt(letter: String, correct: Bool) {
+        let key = Self.canonicalKey(letter)
+        var p = store.letterProgress[key] ?? LetterProgress()
+        var attempts = p.retrievalAttempts ?? []
+        attempts.append(correct)
+        if attempts.count > 10 { attempts.removeFirst(attempts.count - 10) }
+        p.retrievalAttempts = attempts
         store.letterProgress[key] = p
         save()
     }

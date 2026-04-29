@@ -293,7 +293,8 @@ struct TracingCanvasView: View {
                         vm.pencilAzimuth  = azimuth
                         vm.updateTouch(at: pt, t: t, canvasSize: size)
                     },
-                    onEnded:  { vm.endTouch() }
+                    onEnded:  { vm.endTouch() },
+                    onPencilSqueeze: { vm.replayAudio() }
                 )
                 // Tracing input is suspended while calibrating so dragging a
                 // dot doesn't also fire proximity audio / stroke progress on
@@ -683,15 +684,22 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let onBegan:  (CGPoint, CFTimeInterval) -> Void
     let onMoved:  (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
     let onEnded:  () -> Void
+    /// U5 (ROADMAP_V5): Apple Pencil 2 squeeze handler. Replays the
+    /// letter audio so a child writing one-handed can hear it again
+    /// without taking the pencil off the canvas. nil on devices that
+    /// don't expose `UIPencilInteraction` (older iPad mini / iPad).
+    let onPencilSqueeze: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded)
+        Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded,
+                    onPencilSqueeze: onPencilSqueeze)
     }
 
     func makeUIView(context: Context) -> TouchTrackingView {
         let v = TouchTrackingView()
         v.backgroundColor = .clear
         v.coordinator     = context.coordinator
+        v.installPencilInteraction()
         return v
     }
 
@@ -700,22 +708,44 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
         uiView.canvasSize  = canvasSize
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, UIPencilInteractionDelegate {
         let onBegan: (CGPoint, CFTimeInterval) -> Void
         let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
         let onEnded: () -> Void
+        let onPencilSqueeze: (() -> Void)?
         init(onBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
              onMoved: @escaping (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
-             onEnded: @escaping () -> Void) {
+             onEnded: @escaping () -> Void,
+             onPencilSqueeze: (() -> Void)?) {
             self.onBegan = onBegan
             self.onMoved = onMoved
             self.onEnded = onEnded
+            self.onPencilSqueeze = onPencilSqueeze
+        }
+
+        // U5: legacy double-tap callback (Pencil 2 default action).
+        // Mapped to the same "replay audio" intent as squeeze so users
+        // on either gesture get the same outcome.
+        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+            onPencilSqueeze?()
         }
     }
 
     final class TouchTrackingView: UIView {
         var coordinator: Coordinator?
         var canvasSize: CGSize = .zero
+        private var pencilInteraction: UIPencilInteraction?
+
+        /// U5: lazily install a UIPencilInteraction the first time the
+        /// view appears in a window. Safe to call multiple times — only
+        /// the first install actually adds the interaction.
+        func installPencilInteraction() {
+            guard pencilInteraction == nil else { return }
+            let interaction = UIPencilInteraction()
+            interaction.delegate = coordinator
+            addInteraction(interaction)
+            pencilInteraction = interaction
+        }
 
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
             guard let touch = event?.allTouches?.first else { return nil }
