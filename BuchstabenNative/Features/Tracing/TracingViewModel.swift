@@ -190,7 +190,9 @@ public final class TracingViewModel {
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
-    private(set) var currentDifficultyTier: DifficultyTier = .standard
+    /// Adapted by `PhaseTransitionCoordinator.commitCompletion` after
+    /// every session — coordinator needs write access (D1c).
+    var currentDifficultyTier: DifficultyTier = .standard
 
     // MARK: - Learning phase state
 
@@ -513,13 +515,16 @@ public final class TracingViewModel {
     /// event from the overlays; its `effectiveKind` will drive grid preset
     /// promotion from commit 3 onward. Nothing observes it yet in this
     /// commit — detection runs, rendering is unchanged.
-    private let detector = InputModeDetector()
+    let detector = InputModeDetector()
     let audio: AudioControlling
     let haptics: HapticEngineProviding
-    /// Persistent letter-progress store. Private so the VM remains the
-    /// only mutator; views consume the read-only `allProgress` /
-    /// `progress(for:)` forwarders below (W-5).
-    private let progressStore: ProgressStoring
+    /// Persistent letter-progress store. The W-5 contract still
+    /// stands: external readers consume the read-only `allProgress` /
+    /// `progress(for:)` forwarders below. The store is `internal`
+    /// (not private) so `PhaseTransitionCoordinator` can mutate it
+    /// in-process; the coordinator is part of the VM's internal
+    /// machinery, not an external collaborator.
+    let progressStore: ProgressStoring
 
     /// Read-only snapshot of all letter progress. Views bind here instead
     /// of reaching into `progressStore` directly so persistence stays
@@ -546,13 +551,13 @@ public final class TracingViewModel {
             UserDefaults.standard.set(max(1, newValue), forKey: "de.flamingistan.buchstaben.dailyGoal")
         }
     }
-    private let streakStore: StreakStoring
-    private let dashboardStore: ParentDashboardStoring
-    private let thesisCondition: ThesisCondition
+    let streakStore: StreakStoring
+    let dashboardStore: ParentDashboardStoring
+    let thesisCondition: ThesisCondition
     private let onboardingStore: OnboardingStoring
     private let notificationScheduler: LocalNotificationScheduler
-    private let syncCoordinator: SyncCoordinator
-    private var adaptationPolicy: any AdaptationPolicy
+    let syncCoordinator: SyncCoordinator
+    var adaptationPolicy: any AdaptationPolicy
     private var onboardingCoordinator: OnboardingCoordinator
     var phaseController: LearningPhaseController
     private let letterScheduler: LetterScheduler
@@ -584,23 +589,23 @@ public final class TracingViewModel {
     /// keep ticking while the iPad sits idle (D-1: the device only sleeps
     /// after several minutes, so a "4-minute" session would otherwise
     /// silently include the time spent backgrounded).
-    private var letterLoadTime: CFTimeInterval?
+    var letterLoadTime: CFTimeInterval?
     /// Accumulated foreground-only practice time across background returns
     /// for the current letter. The reported session duration is
     /// `letterActiveTimeAccumulated + (now − letterLoadTime)`. Resets on
     /// every `load(letter:)`.
-    private var letterActiveTimeAccumulated: TimeInterval = 0
+    var letterActiveTimeAccumulated: TimeInterval = 0
     /// Wall-clock `Date` when the current letter was loaded. Used for
     /// T4 (ROADMAP_V5) so the session record can carry wall-clock time
     /// alongside the active-time `durationSeconds`. Distinct from
     /// `letterLoadTime` (CACurrentMediaTime) because we need a stable
     /// timestamp that survives background/foreground cycles.
-    private var letterLoadedDate: Date?
+    var letterLoadedDate: Date?
     var didCompleteCurrentLetter         = false
     /// Scheduler priority captured at letter selection time (loadRecommendedLetter).
     /// Forwarded to recordPhaseSession so schedulerEffectivenessProxy is non-zero.
     /// C-3: was hardcoded 0, making the Pearson correlation permanently 0.
-    private var lastScheduledLetterPriority: Double = 0
+    var lastScheduledLetterPriority: Double = 0
     /// W-16: was previously an IUO because `init` needed to capture
     /// `[weak self]` while constructing `PlaybackController`, which under
     /// Swift's two-phase init rules requires every stored property to
@@ -628,6 +633,12 @@ public final class TracingViewModel {
     /// without `self`, assigned, then the back-reference is set once the
     /// VM is fully initialised.
     let touchDispatcher: TouchDispatcher
+
+    /// D1c (ROADMAP): owns the phase-transition pipeline (scoring,
+    /// post-freeWrite overlay queue, controller advance, completion
+    /// pipeline). Same two-phase init pattern as `playback` and
+    /// `touchDispatcher`.
+    let phaseTransitions: PhaseTransitionCoordinator
 
     // MARK: - Init
 
@@ -702,13 +713,17 @@ public final class TracingViewModel {
         // precisely for this seam.
         let pb = deps.makePlaybackController(deps.audio) { _ in }
         self.playback = pb
-        // D1b: same two-phase pattern as `playback`. Build a vm-less
-        // dispatcher, assign it to the stored property so `self` is
-        // fully initialised, then wire the closures + back-reference.
+        // D1b + D1c: same two-phase pattern as `playback`. Build the
+        // vm-less collaborators, assign them to the stored properties
+        // so `self` is fully initialised, then wire the closures +
+        // back-references.
         let td = TouchDispatcher()
         self.touchDispatcher = td
+        let ptc = PhaseTransitionCoordinator()
+        self.phaseTransitions = ptc
         pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }
         td.vm = self
+        ptc.vm = self
         letters = repo.loadLettersFast()
         // Surface a startup audio failure as a brief German toast so a parent
         // notices the device is silent on purpose (not because the child got
@@ -1117,101 +1132,13 @@ public final class TracingViewModel {
 
     // MARK: - Learning phase control
 
-    /// Advance to the next learning phase for the current letter.
+    /// D1c (ROADMAP): the phase-transition pipeline (scoring +
+    /// post-freeWrite overlay queue + controller advance + completion
+    /// pipeline) lives on `PhaseTransitionCoordinator` now. This stays
+    /// as a thin forwarder so TouchDispatcher and the SwiftUI views
+    /// don't have to change.
     func advanceLearningPhase() {
-        let score: CGFloat
-        switch phaseController.currentPhase {
-        case .observe:
-            score = 1.0
-        case .direct:
-            score = 1.0  // pass/fail
-        case .guided:
-            score = progress
-        case .freeWrite:
-            guard let def = strokeTracker.definition else {
-                freeWriteRecorder.clearAll()
-                score = 0
-                break
-            }
-            // Recorder owns scoring — it has the buffers, sessionStart,
-            // and canvasSize-normalised points all in one place.
-            // C-5: pass the active cell's frame for multi-cell (pencil)
-            // layouts so points are normalised to cell-local 0–1 space,
-            // matching the reference stroke coordinate system.
-            // W-26: word mode (multi-cell) splits the trace by cell so
-            // each letter is scored against its own reference, then the
-            // four Schreibmotorik dimensions are averaged. The single-
-            // cell fall-through preserves the existing finger-mode
-            // contract (one tracker definition over the whole canvas).
-            if grid.cells.count > 1 {
-                let cellRefs = grid.cells.compactMap { cell -> (frame: CGRect, reference: LetterStrokes)? in
-                    guard let ref = cell.tracker.definition else { return nil }
-                    return (frame: cell.frame, reference: ref)
-                }
-                if cellRefs.isEmpty {
-                    score = freeWriteRecorder.assess(
-                        reference: def, canvasSize: canvasSize,
-                        cellFrame: grid.activeCell.frame
-                    ).overallScore
-                } else {
-                    score = freeWriteRecorder.assess(
-                        cellReferences: cellRefs,
-                        canvasSize: canvasSize
-                    ).overallScore
-                }
-            } else {
-                score = freeWriteRecorder.assess(
-                    reference: def, canvasSize: canvasSize,
-                    cellFrame: nil
-                ).overallScore
-            }
-        }
-
-        let wasInFreeWrite = phaseController.currentPhase == .freeWrite
-        let wasInGuided = phaseController.currentPhase == .guided
-
-        // Kick the CoreML recognizer off BEFORE the phase advance so it
-        // runs in parallel with the Fréchet-based scoring above and the
-        // phase-transition side effects below. The result lands on
-        // `lastRecognitionResult` when inference finishes; the badge
-        // slots into the queue *before* the celebration regardless of
-        // how long inference takes — see `enqueueBeforeCelebration`.
-        if wasInFreeWrite {
-            runRecognizerForFreeWrite()
-        }
-        if wasInGuided {
-            // Capture the guided score before the phase advance so the
-            // Schule world can show a verbal feedback band during the
-            // transition into freeWrite. Cleared on letter load.
-            freeWriteRecorder.lastGuidedScore = score
-        }
-
-        // Queue post-freeWrite feedback in canonical order BEFORE we
-        // advance the phase controller — `recordPhaseSessionCompletion`
-        // (called below for the final phase) enqueues `.celebration`,
-        // which we want to come last. The recognition badge enqueue
-        // happens asynchronously on the recognizer Task; it slots ahead
-        // of the celebration via `enqueueBeforeCelebration`.
-        if wasInFreeWrite {
-            overlayQueue.enqueue(.kpOverlay)
-            if enablePaperTransfer {
-                overlayQueue.enqueue(.paperTransfer(letter: currentLetterName))
-            }
-        }
-
-        if phaseController.advance(score: score) {
-            resetForPhaseTransition()
-            if phaseController.currentPhase == .observe {
-                startGuideAnimation()
-            }
-            toast(phaseController.currentPhase.displayName)
-            // Verbal phase prompt — spoken every transition so a child
-            // who can't read the on-screen "Anschauen / Richtung lernen"
-            // pill still knows what's happening next.
-            speech.speak(ChildSpeechLibrary.phaseEntry(phaseController.currentPhase))
-        } else {
-            recordPhaseSessionCompletion()
-        }
+        phaseTransitions.advance()
     }
 
     /// Fire-and-forget recognizer pass for the completed freeWrite phase.
@@ -1221,7 +1148,7 @@ public final class TracingViewModel {
     /// lands ahead of the final celebration even when CoreML inference
     /// finishes after the synchronous freeWrite teardown has already
     /// enqueued kpOverlay + paperTransfer + celebration.
-    private func runRecognizerForFreeWrite() {
+    func runRecognizerForFreeWrite() {
         let pts = freeWritePoints
         let size = canvasSize
         let expected = currentLetterName
@@ -1472,7 +1399,7 @@ public final class TracingViewModel {
         strokeTracker.progress.indices.contains(index) && strokeTracker.progress[index].complete
     }
 
-    private func resetForPhaseTransition() {
+    func resetForPhaseTransition() {
         strokeTracker.reset()
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])
@@ -1517,132 +1444,12 @@ public final class TracingViewModel {
         isPlaying = false
     }
 
-    private func recordPhaseSessionCompletion() {
-        overlayQueue.enqueue(.celebration(stars: phaseController.starsEarned))
-        // Verbal celebration. Stars-tier praise so the child hears
-        // approximately how well they did without seeing any percentage.
-        speech.speak(ChildSpeechLibrary.praise(starsEarned: phaseController.starsEarned))
-        let accuracy = Double(phaseController.overallScore)
-        let now = CACurrentMediaTime()
-        let liveSlice = letterLoadTime.map { now - $0 } ?? 0
-        let duration = letterActiveTimeAccumulated + liveSlice
-        let scores: [String: Double] = Dictionary(
-            uniqueKeysWithValues: phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
-        )
-        // D-2: attach the latest recognition reading to the freeWrite row
-        // so per-session recognition is recoverable from the CSV. Other
-        // phases never produce a freeWrite recognition; pass nil there.
-        let freeWriteRecognition: RecognitionSample? = lastRecognitionResult.map { rr in
-            RecognitionSample(
-                predictedLetter: rr.predictedLetter,
-                confidence: Double(rr.confidence),
-                isCorrect: rr.isCorrect
-            )
-        }
-        // D-6: capture the input mode in effect for the row so a finger
-        // session's pressureControl == 1.0 (no force data) is
-        // distinguishable from a low-variance pencil session in the export.
-        let device = detector.effectiveKind.rawValue
-        for (phase, phaseScore) in scores {
-            dashboardStore.recordPhaseSession(
-                letter: currentLetterName,
-                phase: phase,
-                completed: true,
-                score: phaseScore,
-                schedulerPriority: lastScheduledLetterPriority,
-                condition: thesisCondition,
-                assessment: phase == "freeWrite" ? lastWritingAssessment : nil,
-                recognition: phase == "freeWrite" ? freeWriteRecognition : nil,
-                inputDevice: device
-            )
-        }
-        commitCompletion(letter: currentLetterName,
-                         accuracy: accuracy,
-                         duration: duration,
-                         phaseScores: scores)
-    }
-
-    /// Shared completion side-effects: durable progress + streak + dashboard
-    /// row, background cloud sync, difficulty-tier adaptation, completion HUD.
-    /// Both the per-letter stroke-completion path and the multi-phase session
-    /// completion path go through here so the side-effect set can never drift
-    /// between the two — every store-write addition lands in one place.
-    private func commitCompletion(letter: String,
-                                  accuracy: Double,
-                                  duration: TimeInterval,
-                                  phaseScores: [String: Double]? = nil) {
-        // Word sequences fan out per-cell for progress + streak so each
-        // letter that appears in a word counts toward its own mastery
-        // tracking, while the dashboard + adaptation row uses the word
-        // title so thesis analytics can distinguish word sessions from
-        // single-letter sessions by the field length. Single-letter and
-        // repetition sequences take the pre-word path unchanged.
-        let lettersToRecord: [String]
-        let dashboardLabel: String
-        let isWordSequence: Bool
-        if case .word(let word) = grid.sequence.kind {
-            lettersToRecord = grid.cells.map(\.item.letter)
-            dashboardLabel = word
-            isWordSequence = true
-        } else {
-            lettersToRecord = [letter]
-            dashboardLabel = letter
-            isWordSequence = false
-        }
-
-        let speed: Double? = checkpointsPerSecond > 0 ? Double(checkpointsPerSecond) : nil
-        // Recognition result lands asynchronously in parallel with phase
-        // advance — it's often still nil here. Pass whatever's latched so
-        // single-letter guided sessions that finish AFTER the recognizer
-        // returns also populate the dashboard's confidence series.
-        let rr = lastRecognitionResult
-        for l in lettersToRecord {
-            progressStore.recordCompletion(for: l, accuracy: accuracy,
-                                           phaseScores: phaseScores, speed: speed,
-                                           recognitionResult: rr)
-        }
-        // Variant tracking is single-letter only — loadWord doesn't
-        // preserve showingVariant state across word entries.
-        if !isWordSequence, showingVariant, letters.indices.contains(letterIndex),
-           let variantID = letters[letterIndex].variants?.first {
-            progressStore.recordVariantUsed(for: letter, variantID: variantID)
-        }
-        let newRewards = streakStore.recordSession(
-            date: Date(),
-            lettersCompleted: lettersToRecord,
-            accuracy: accuracy
-        )
-        // U1 (ROADMAP_V5): surface freshly-unlocked achievements as a
-        // one-time overlay before the celebration the child is already
-        // expecting. `enqueueBeforeCelebration` slots each badge ahead
-        // of the celebration regardless of where in the queue the
-        // celebration currently sits (queued / about to fire / active).
-        for event in newRewards {
-            overlayQueue.enqueueBeforeCelebration(.rewardCelebration(event))
-        }
-        // T4: wall-clock duration includes any backgrounded interval and
-        // is reconstructed from the load Date stamp; the active-time
-        // `duration` parameter excludes it (D-1 accumulator).
-        // T7: device tag so the export can split duration by input mode.
-        let wallClock = letterLoadedDate.map { Date().timeIntervalSince($0) }
-        let device = detector.effectiveKind.rawValue
-        dashboardStore.recordSession(letter: dashboardLabel, accuracy: accuracy,
-                                      durationSeconds: duration,
-                                      wallClockSeconds: wallClock,
-                                      date: Date(),
-                                      condition: thesisCondition,
-                                      inputDevice: device)
-        Task { [weak self] in try? await self?.syncCoordinator.pushAll() }
-
-        let adaptSample = AdaptationSample(letter: dashboardLabel,
-                                           accuracy: CGFloat(accuracy),
-                                           completionTime: duration)
-        adaptationPolicy.record(adaptSample)
-        currentDifficultyTier         = adaptationPolicy.currentTier
-        strokeTracker.radiusMultiplier = currentDifficultyTier.radiusMultiplier
-
-        showCompletionHUD()
-    }
+    // D1c (ROADMAP): `recordPhaseSessionCompletion` and
+    // `commitCompletion` were moved to PhaseTransitionCoordinator
+    // along with `advanceLearningPhase`. The coordinator's
+    // `commitCompletion(...)` stays public so any future per-letter
+    // shared-completion site can call it directly via
+    // `vm.phaseTransitions.commitCompletion(...)`.
 
     // MARK: - Parent dashboard access
 
@@ -1816,7 +1623,7 @@ public final class TracingViewModel {
         playback.request(.idle, immediate: true)
     }
 
-    private func showCompletionHUD() {
+    func showCompletionHUD() {
         messages.show(completion: "🎉 \(currentLetterName) geschafft!")
     }
 
@@ -1906,7 +1713,7 @@ public final class TracingViewModel {
         reloadStrokeCheckpoints(for: letters[letterIndex])
     }
 
-    private func toast(_ text: String) {
+    func toast(_ text: String) {
         messages.show(toast: text)
     }
 
