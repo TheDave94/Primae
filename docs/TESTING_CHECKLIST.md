@@ -1,11 +1,17 @@
 # Primae — Manual Test Checklist
 
-A tickable end-to-end checklist for verifying the iPad app works as
-expected after a fresh build. Open this file on
-[github.com/TheDave94/Primae](https://github.com/TheDave94/Primae/blob/main/docs/TESTING_CHECKLIST.md)
-or in any Markdown previewer (VS Code, Bear, Obsidian) that renders
-GitHub-flavoured checkboxes — every `- [ ]` becomes a clickable box
-you can tick as you confirm a behaviour.
+A manual end-to-end checklist for verifying the iPad app works as
+expected after a fresh build.
+
+> **For the interactive (clickable + auto-saving) version, open
+> [`testing_checklist.html`](testing_checklist.html)** directly from
+> Finder. GitHub-Markdown checkboxes are only clickable inside
+> Issues / PRs / Discussions, NOT inside repo `.md` files — the
+> HTML page has real `<input type="checkbox">`es backed by
+> `localStorage`, a sticky progress counter, and a "Copy unchecked"
+> button that drops the unticked items onto your clipboard ready to
+> paste back. Regenerate it after editing this file with
+> `python3 scripts/render_checklist.py`.
 
 If a box doesn't tick (i.e. a behaviour is broken), copy the
 **failure pointer** under that item back to me and I'll cut the
