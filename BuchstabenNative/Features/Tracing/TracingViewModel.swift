@@ -1700,6 +1700,14 @@ public final class TracingViewModel {
     func awaitPlaybackDebounce() async {
         await playback.pendingTransition?.value
     }
+
+    /// Test-only inspection of the D-1 active-time accumulator.
+    /// Exposed so the suite can pin the
+    /// background-pauses-the-timer / foreground-resumes-it contract
+    /// without the integration overhead of a full session-complete
+    /// path. nil when a foreground window is currently open.
+    var debugLetterLoadTime: CFTimeInterval? { letterLoadTime }
+    var debugLetterActiveTimeAccumulated: TimeInterval { letterActiveTimeAccumulated }
     #endif
 
     // MARK: - Private helpers

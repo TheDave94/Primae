@@ -240,4 +240,63 @@ private func slowDrag(vm: TracingViewModel,
         }
         #expect(last > 0)
     }
+
+    // MARK: - W-5 progressStore forwarders
+
+    /// Round-4 audit gap: `vm.allProgress` and `vm.progress(for:)`
+    /// replaced direct `vm.progressStore.*` access in 8 view sites.
+    /// Pin the contract so a regression that returns stale or empty
+    /// data can't ship undetected. Single-letter session is enough —
+    /// the forwarders are pure delegations, no transformation.
+    @Test func progressForwarders_mirrorUnderlyingStore() async {
+        let letter = vm.currentLetterName
+        // Snapshot before any writes — should be empty / default.
+        #expect(vm.allProgress[letter]?.completionCount == nil ||
+                vm.allProgress[letter]?.completionCount == 0)
+        // Drive a completion through the public API.
+        fastDrag(vm: vm, audio: audio)
+        await drainAsyncWork()
+        // After the recorded completion, the forwarders must reflect
+        // it — verifies allProgress and progress(for:) both go through
+        // to the live store, not a snapshotted copy.
+        let perLetter = vm.progress(for: letter)
+        let viaAll = vm.allProgress[letter]
+        #expect(perLetter == viaAll, "allProgress[letter] must equal progress(for: letter)")
+    }
+
+    // MARK: - W-24 multi-cell active-frame forwarder
+
+    /// Round-4 audit gap: `vm.multiCellActiveFrame` returns nil for
+    /// single-cell sessions and the active cell's frame for multi-cell.
+    /// DirectPhaseDotsOverlay reads this to map glyph coordinates into
+    /// the active cell instead of the canvas origin (W-24).
+    @Test func multiCellActiveFrame_isNilForSingleLetter() {
+        // Default VM init loads a single-letter session — frame should
+        // be nil so the overlay falls back to full-canvas geometry.
+        #expect(vm.multiCellActiveFrame == nil)
+    }
+
+    // MARK: - D-1 active-time accumulator
+
+    /// Round-4 audit gap: backgrounding pauses the session-duration
+    /// clock. The wall clock keeps ticking while iOS suspends the app
+    /// (mach_absolute_time stops only in deep device sleep), so a
+    /// "5-minute" session would otherwise silently include the
+    /// backgrounded interval. Asserts the accumulator pauses on
+    /// background and resumes on foreground.
+    @Test func d1_activeTimeAccumulator_pausesOnBackground() async {
+        // A live foreground window: letterLoadTime is set, accumulator is 0.
+        #expect(vm.debugLetterLoadTime != nil)
+        #expect(vm.debugLetterActiveTimeAccumulated == 0)
+        await vm.appDidEnterBackground()
+        // Backgrounding folds the live slice into the accumulator and
+        // clears letterLoadTime so the clock stops ticking.
+        #expect(vm.debugLetterLoadTime == nil)
+        #expect(vm.debugLetterActiveTimeAccumulated >= 0)
+        vm.appDidBecomeActive()
+        // Foregrounding restarts the live window. Accumulator remains
+        // at whatever it was (we don't reset it — it only resets on
+        // letter load).
+        #expect(vm.debugLetterLoadTime != nil)
+    }
 }

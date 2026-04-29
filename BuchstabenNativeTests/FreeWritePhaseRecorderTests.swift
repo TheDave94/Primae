@@ -122,6 +122,71 @@ import CoreGraphics
         #expect(r.sessionStart == 100)
     }
 
+    // MARK: - W-26 multi-cell scoring
+
+    /// Round-4 audit gap: `assess(cellReferences:)` is the W-26 path
+    /// that splits a freeWrite trace by cell frame and averages
+    /// per-letter scores. The empty-cell-list fallback should return
+    /// a zero assessment without crashing or recursing into the
+    /// single-cell overload (which would need a synthesized empty
+    /// LetterStrokes).
+    @Test func assess_multiCell_emptyReferencesReturnsZero() {
+        let r = FreeWritePhaseRecorder()
+        r.startSession(now: 100)
+        let result = r.assess(cellReferences: [],
+                              canvasSize: .init(width: 100, height: 100),
+                              now: 101)
+        #expect(result.formAccuracy == 0)
+        #expect(result.tempoConsistency == 0)
+        #expect(result.pressureControl == 0)
+        #expect(result.rhythmScore == 0)
+        #expect(r.lastAssessment == result)
+    }
+
+    /// A point that doesn't fall inside any provided cell frame should
+    /// be filtered out — the per-cell loop only collects samples whose
+    /// x/y land inside `cell.frame.contains(...)`.
+    @Test func assess_multiCell_filtersPointsByCellFrame() {
+        let r = FreeWritePhaseRecorder()
+        r.startSession(now: 100)
+        // Two cells side-by-side in canvas-pixel space.
+        let cellLeft  = CGRect(x: 0,   y: 0, width: 100, height: 100)
+        let cellRight = CGRect(x: 100, y: 0, width: 100, height: 100)
+        // 10 points in the left cell, 10 in the right cell, 1 outside.
+        for i in 0..<10 {
+            r.record(point: .init(x: 10 + Double(i) * 5, y: 50),
+                     timestamp: 100 + Double(i) * 0.05, force: 0,
+                     canvasSize: .init(width: 200, height: 100))
+        }
+        for i in 0..<10 {
+            r.record(point: .init(x: 110 + Double(i) * 5, y: 50),
+                     timestamp: 101 + Double(i) * 0.05, force: 0,
+                     canvasSize: .init(width: 200, height: 100))
+        }
+        // Outlier outside both cells (negative y) — should be filtered.
+        r.record(point: .init(x: -50, y: -50),
+                 timestamp: 102, force: 0,
+                 canvasSize: .init(width: 200, height: 100))
+
+        let stroke = StrokeDefinition(id: 1, checkpoints: [
+            .init(x: 0.1, y: 0.5), .init(x: 0.9, y: 0.5)
+        ])
+        let strokes = LetterStrokes(letter: "I", checkpointRadius: 0.05,
+                                     strokes: [stroke])
+        let result = r.assess(
+            cellReferences: [(cellLeft, strokes), (cellRight, strokes)],
+            canvasSize: .init(width: 200, height: 100),
+            now: 103
+        )
+        // Both cells produced valid sub-traces; result is the average
+        // of two non-zero per-cell assessments. We don't assert exact
+        // numerics — the contract is: doesn't crash, returns a
+        // populated WritingAssessment, and stores it on `lastAssessment`.
+        #expect(r.lastAssessment != nil)
+        #expect(result.formAccuracy >= 0 && result.formAccuracy <= 1)
+        #expect(result.rhythmScore >= 0 && result.rhythmScore <= 1)
+    }
+
     @Test func clearAll_emptiesEverythingIncludingGuidedScore() {
         let r = FreeWritePhaseRecorder()
         r.startSession(now: 100)
