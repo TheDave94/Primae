@@ -179,38 +179,70 @@ The **full alphabet** is 26 lowercase + 19 missing uppercase + 4 umlauts/ß = 49
 
 ---
 
-## D7 — XCTest → Swift Testing migration: thorough evaluation
+## D7 — XCTest → Swift Testing migration: thorough evaluation (REVISED)
+
+> **The earlier verdict in this document said "do it" — that was wrong.**
+> A direct read of the three XCTest files shows they use features Swift
+> Testing has no equivalent for as of Swift 6.x. The LESSONS.md policy
+> is correct, not stale. **D7 verified-skip.** The investigation log
+> is preserved below for future operators who reopen this question.
 
 ### What's actually in XCTest today
 
 The test target uses **Swift Testing** (`@Test`, `@Suite`, `#expect`) for the bulk of new tests. A small number of files retained from before the framework switch use `XCTestCase`. The carve-out exists because under Swift 6 strict isolation, `XCTestCase`'s inherited `nonisolated` initialiser conflicts with the package's `.defaultIsolation(MainActor.self)` — so the test target sets `.swiftLanguageMode(.v5)` to opt out of strict isolation **for the test target only**.
 
-Let me actually count the XCTest files. Looking at the test directory listing from earlier in this conversation:
-- 46 test files, 647 `@Test` declarations after rounds 3 and 4
-- The 647 `@Test` count is Swift Testing only (the macro doesn't apply to XCTest)
-
-The XCTest files are presumably ~3–5 in number, holding maybe 20–40 `XCTestCase` methods. Let me verify.
-
 ### Verification (run from branch root)
 
 ```bash
-grep -rl "XCTestCase\|import XCTest" BuchstabenNativeTests/
-grep -rln "XCTSkipIf\|XCTAssert" BuchstabenNativeTests/
+grep -rl "import Testing" BuchstabenNativeTests/   # Swift Testing files
+grep -rl "import XCTest"  BuchstabenNativeTests/   # XCTest files
 ```
 
 **Actual count, verified 2026-04-29 on `roadmap-v5-tier12`:**
 
-Files with `XCTestCase` or `import XCTest`:
-- `GlyphStrokeExtractorTests.swift`
-- `StrokeTrackerRegressionGateTests.swift`
-- `PerformanceBenchmarkTests.swift`
-- `AudioEngineTests.swift`
+- **43 files** use Swift Testing (`import Testing`).
+- **3 files** use XCTest (`import XCTest`):
+  - `AudioEngineTests.swift`
+  - `StrokeTrackerRegressionGateTests.swift`
+  - `PerformanceBenchmarkTests.swift`
 
-Files using `XCTSkipIf` or `XCTAssert*`:
-- `AudioEngineTests.swift`
-- `StrokeTrackerRegressionGateTests.swift`
+(Earlier I listed `GlyphStrokeExtractorTests.swift` as XCTest. That was wrong — it uses Swift Testing. The grep matched a comment that mentioned `XCTestCase` as a runtime detection sentinel inside the production code path it tests.)
 
-So 4 files import XCTest; 2 of them actually use the legacy assertion / skip APIs. The other 2 (`GlyphStrokeExtractorTests`, `PerformanceBenchmarkTests`) are likely importing XCTest only for the test-runner integration and could drop the import once the Swift Testing migration is complete.
+### Why each XCTest file genuinely needs XCTest
+
+**`AudioEngineTests.swift`** — uses `throw XCTSkip("…")` in instance `setUp` to mark the whole test as skipped (not failed) when the simulator lacks AVAudioSession routing. Also uses `XCTestExpectation` + `wait(for:timeout:)` to synchronise with NotificationCenter callbacks delivered on the main run loop.
+
+Swift Testing's `.disabled(if: ...)` evaluates *at attribute time*, not inside a body — so a runtime check that requires AVFoundation initialisation can't gate the suite. There's also no exact `expectation(description:)` / `wait(for:timeout:)` equivalent; the closest API is `confirmation { }` which has different semantics (counts confirmations rather than waiting for an expectation to fulfil). Migrating the audio-interruption + route-change tests would mean re-architecting them to poll-with-timeout, losing the precise notification-delivery semantics they currently exercise.
+
+**`StrokeTrackerRegressionGateTests.swift`** — uses `measure(metrics: [XCTClockMetric(), XCTCPUMetric(), XCTMemoryMetric()])` to set a CI performance regression gate. The metrics ship as part of XCTest; their baselines persist in the `.xcresult` bundle. The CI fails the build when throughput drops beyond the measured baseline.
+
+Swift Testing has **no equivalent** for `measure` / `XCTMetric` as of Swift 6.x. Re-implementing this would mean either (a) dropping the regression gate (loss of the only automated stroke-tracker performance protection), or (b) hand-rolling a benchmark harness with `clock_gettime` + manually-stored baselines + a custom CI threshold check. (b) is a multi-day project, not a migration.
+
+**`PerformanceBenchmarkTests.swift`** — same pattern. Five `measure { }` blocks for StrokeTracker hit-testing and LetterRepository load time. Same blocker.
+
+### What `LESSONS.md` says
+
+> ### Do not mix `@Test` and `XCTestCase` in the same file
+> Existing test files written in **XCTest** stay XCTest. **Swift
+> Testing** is the framework for *new* tests.
+> Do not migrate existing XCTest suites. Mixing the two frameworks in
+> one file leads to runner confusion. Keep the boundary at the file.
+
+This policy is **correct**: each of the three XCTest files has a header comment explicitly explaining why it can't migrate (`measure() / XCTMetric` for the two perf files; `XCTSkip in setUp + expectation/wait` for AudioEngineTests). The LESSONS.md text and the per-file annotations are aligned.
+
+### What the test-target Swift-language-mode carve-out is for
+
+`Package.swift:32` sets `.swiftLanguageMode(.v5)` on the test target. The reason is that `XCTestCase` declares its initialiser `nonisolated`, which conflicts with the package's `.defaultIsolation(MainActor.self)` under Swift 6 strict checking. The test target opts out of strict isolation for that reason alone — every Swift Testing file in the target compiles fine under v5 mode (`@Test` with explicit `@MainActor` annotations on the few suites that need main-actor state).
+
+If we ever migrated **all** XCTest files away (which would require replacing `XCTMetric`, etc.), the v5 carve-out could be removed. As long as any XCTest file remains, the carve-out is load-bearing.
+
+### Verdict
+
+**Skip — verified.** The three XCTest files are intentionally retained, and the `.swiftLanguageMode(.v5)` carve-out is the minimum-blast-radius way to keep them compiling alongside the Swift Testing majority. The LESSONS.md policy stays.
+
+**The earlier verdict in this doc was wrong** because it assumed the four flagged files were generic XCTest with `XCTSkipIf`/`XCTAssert` and that runtime conditional traits in Swift Testing were a drop-in replacement. Direct inspection showed two of the four were already Swift Testing (false positive) and the remaining three depend on `XCTMetric` / class-level skip / `expectation`-`wait` — none of which Swift Testing replicates.
+
+If a future Swift Testing release ships an `XCTMetric` equivalent, **revisit the perf files first**, then `AudioEngineTests` if there's also a `XCTSkip`-in-setUp parallel. Until then, the policy holds.
 
 ### What "migration" would actually mean
 

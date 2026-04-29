@@ -219,7 +219,7 @@ W-25 renamed the recorder property to `checkpointsPerSecond` but kept a `strokes
 - **Files:** `App/ContentView.swift` (delete), Xcode project/Package.swift if it references it explicitly.
 - **Dependencies:** none.
 
-### D7 (P3, S) — Migrate remaining XCTest files to Swift Testing ⏭ deferred (LESSONS.md policy says don't; user check first)
+### D7 (P3, S) — Migrate remaining XCTest files to Swift Testing ✅ verified-skip (917a28f → updated in 2nd commit on `roadmap-v5-tier12`; the 3 XCTest files use `XCTMetric` / `expectation-wait` / class-level `XCTSkip`, none of which Swift Testing has an equivalent for as of Swift 6.x — LESSONS.md policy is correct)
 `LESSONS.md` says "don't migrate existing XCTest" but the test target's v5 Swift carve-out exists *because* of the XCTest inheritance constraint. Once the last XCTest file is migrated, the test target can move to Swift 6 strict isolation, matching the main target.
 - **Files:** any remaining `XCTestCase` files in `BuchstabenNativeTests/` (probably 1–2).
 - **Dependencies:** none — but check `LESSONS.md` policy with the user before flipping.
