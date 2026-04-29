@@ -1,11 +1,48 @@
 # Roadmap — Buchstaben-Lernen-App
 
-_Single forward-looking work log. Last updated 2026-04-29 against `main`. Only items still requiring work appear here — every shipped item has been removed. Where a row says "infrastructure shipped, asset work pending", the code-side foundation is in place and the remaining work is content authoring (audio, glyph definitions) on your side._
+_Single forward-looking work log. Last updated 2026-04-29 against `main`. Only items still requiring work appear here — every shipped item has been removed. Shipped items live in commit history._
 
-Each item has a short summary line plus a deeper-context section below it (effort, file list, citations, failure modes).
+---
+
+## At a glance — what's next
+
+### Your ball (asset work + device validation)
+
+| Item | Owner action | Why it matters | Effort |
+|---|---|---|---|
+| **T1** lowercase strokes for `a f i k l m o` | Author stroke definitions on iPad via the calibration overlay; record name audio (3 takes/letter); export to `Resources/Letters/<x>/` | Thesis-floor — the four-phase pedagogy currently doesn't run for lowercase, and a reviewer who picks `q` lands on the empty-strokes fallback | **14–21 hours** |
+| **P6** phoneme audio recordings | Generate 90 phoneme recordings via ElevenLabs (3 takes × 30 letters) using the prompt template + IPA table in Appendix C of `docs/APP_DOCUMENTATION.md`; drop into `Resources/Letters/<base>/` as `<base>_phoneme<n>.mp3` | Phonemic awareness ↔ reading acquisition (Adams 1990); the "Lautwert wiedergeben" toggle is already shipped — without recordings it falls back silently | **XL** (recording-time-bound) |
+| **U5** Pencil 2 squeeze validation | iPad with Apple Pencil 2 — confirm squeeze + double-tap fire `replayAudio()` and don't double-fire with finger taps | Code is shipped; just needs verifying the gesture lands as intended on real hardware | **0–1 days on device** |
+| **U10** VoiceOver walkthrough | iPad with VoiceOver enabled — walk every screen, watch for skipped elements / misordered focus / Switch Control routing / Dynamic Type clipping | Required before submitting the thesis externally; the partial in-code audit shipped, but the device walkthrough is the load-bearing part | **2–3 hours on device** |
+
+### Engineering ball (in-loop sessions with me)
+
+| Item | What I need from you | Why it can't be autonomous |
+|---|---|---|
+| **D1b** extract `TouchDispatcher` from VM | A focused review session — one PR, ~300 lines moved, you confirm the touch-debounce + audio-gate + stroke-completion behaviour is intact between commits | `updateTouch` is the hottest code path; runtime regressions there don't surface in the existing test suite |
+| **D1c** extract `PhaseTransitionCoordinator` | Similar review session, after D1b is stable for ~24 hours | Same risk profile: the post-transition side-effect block touches every store and the overlay queue |
+| **U11** dark-mode parity | iPad + 1 hour of paired tonal validation | Card surfaces need re-toning from `Color.white` to `secondarySystemGroupedBackground`; failure modes are visible only on device |
+| **D8** canvas redraw profile | iPad + Instruments time-profile of a high-velocity guided session | No measured evidence of a problem; pre-optimising could break a currently-correct redraw path |
+
+Everything in the **post-thesis** section (F1–F10) waits until the thesis ships.
+
+---
+
+## What's already shipped this session (for context — not action)
+
+This list is intentionally collapsed; the detail lives in commit messages. Removing the duplication that previously lived in `docs/ROADMAP_V5_DEFERRED_NOTES.md`.
+
+- **Thesis data correctness:** condition-tagged samples, timezone header, wallClockSeconds, raw recognition confidence, researcher arm override, input-mode on durations, EXPORT_SCHEMA appendix.
+- **Pedagogical features:** self-explanation re-animation on misrecognition, errorless first-3-sessions ramp, daily goal pill, spaced-retrieval testing prompts (P1 — `RetrievalScheduler`, `RetrievalPromptView`, opt-in toggle, motorSimilarity-cluster distractors, `retrievalAccuracy` CSV column), backward-chaining direct-phase toggle (P5), onboarding A/B variants with first-completion lock (U4), phoneme audio infrastructure (P6 — toggle + filename convention + scanner partition).
+- **UX:** reward-celebration overlay, Schreibmotorik dimension sparklines, gold-tint token unification, celebration haptic, speech-rate slider, Bob-the-dog start-cue dwell.
+- **Tech debt:** `SchemaMigrator` framework, `PaperTransferView` deterministic timing seam, CoreML classifier-closure protocol seam (D3) with 7 pipeline tests, `RecognitionTokenTracker` extracted (D1a — first VM-decomposition slice), CI timeout caps, accessibility partial (Schreibqualität rows collapse to single VoiceOver elements).
+
+---
 
 Effort key: **S** = under 1 day · **M** = 1–3 days · **L** = 3+ days · **XL** = multi-week
 Priority key: **P1** = thesis-blocking · **P2** = thesis-strengthening · **P3** = post-thesis polish
+
+Detail sections follow with effort, file list, citations, failure modes per item.
 
 ---
 
@@ -230,12 +267,15 @@ For motor-impaired children, expose the direct-phase dot tap as a Switch Control
 
 ## Recommended ordering for the next sprint
 
-1. **T1 demo lowercase set** (14–21 hours, your iPad + ElevenLabs) — minimum thesis floor for the four-phase claim.
-2. **P6 recordings** (your ElevenLabs work, parallel with T1) — unlocks the phonemic-awareness toggle that's already wired.
-3. **D1b TouchDispatcher** (1 PR with in-loop review) — second VM-extraction slice, lighter risk than the recognition-orchestration cut.
-4. **D1c PhaseTransitionCoordinator** (1 PR after D1b is stable for ~24 hr).
+The at-a-glance table at the top of this file is the authoritative version. Repeated here as a flow:
 
-U5 / U10 / U11 / D8 are post-thesis polish. F1–F10 are post-thesis full features.
+1. **T1 demo lowercase set** — block out an iPad session: open the calibration overlay (long-press phase indicator → long-press again), author stroke checkpoints for `a f i k l m o`, export to `Resources/Letters/<x>/strokes.json`. ElevenLabs the matching audio in parallel.
+2. **P6 phoneme recordings** — runs in parallel with T1 since it's pure ElevenLabs work + drop-into-bundle.
+3. **U5 + U10 device validation** — same iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
+4. **D1b TouchDispatcher** — schedule a focused engineering session with me; one PR, ~300 lines extracted, you review the diff before D1c starts.
+5. **D1c PhaseTransitionCoordinator** — after D1b has been on `main` for ~24 hours with no regression reports.
+
+**U11 dark-mode parity** and **D8 canvas redraw profile** are post-thesis polish — schedule once the demo set ships and there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F10** are post-thesis full features.
 
 ---
 

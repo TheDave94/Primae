@@ -111,11 +111,13 @@ casual user is never silently dropped into a degraded condition.
 | `ParentDashboardExporter.swift` | 354 | CSV / TSV / JSON exporter. 15-column per-phase rows; per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`); `letterByArm` block (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
 | `StreakStore.swift` | 219 | Daily-streak JSON store + `RewardEvent` enum. `earnedRewards: Set<RewardEvent>` exposed on the protocol so the Fortschritte gallery can render achievement badges. Schema-versioned (W-17). |
 | `LocalNotificationScheduler.swift` | small | Daily reminder with quiet hours + streak-aware copy. |
-| `OnboardingCoordinator.swift` | 165 | 7-step state machine. |
+| `OnboardingCoordinator.swift` | 220 | 7-step state machine. U4 adds an `OnboardingVariant` enum (`.full` 7-step, `.short` 3-step) so the cohort can A/B compare onboarding length. The variant the child actually completed is locked into `OnboardingState.variantUsedRaw` on first complete (re-runs don't overwrite) so post-hoc analysis can correlate engagement metrics with the original variant. |
 | `CloudSyncService.swift` | small | Protocol + NullSyncService + SyncCoordinator (CloudKit-ready, not live). |
 | `LetterScheduler.swift` | 152 | Spaced-repetition prioritiser. Ebbinghaus-style decay. |
+| `RetrievalScheduler.swift` | 75 | P1 — every-Nth-letter cadence for retrieval-practice prompts (Roediger & Karpicke 2006). Persisted counter survives relaunch; minimum-prior-completions guard skips testing on never-seen letters. Drives `RetrievalPromptView` via `OverlayQueueManager.retrievalPrompt`. |
+| `SchemaMigrator.swift` | 65 | D2 — step-walking framework for forward-incompatible store-schema migrations. Today's stores are all at v1 and the framework is dormant; the load path can register `[Int: (Data) -> Data]` migrations when v2+ ships. |
 | `LetterStars.swift` | small | phaseScores → 0…4 star count. |
-| `LetterRecognizer.swift` | 354 | `CoreMLLetterRecognizer` + `StubLetterRecognizer`. nonisolated, runs on `Task.detached`. |
+| `LetterRecognizer.swift` | 380 | `CoreMLLetterRecognizer` + `StubLetterRecognizer`. nonisolated, runs on `Task.detached`. D3 added a closure-injected classifier seam and the `LetterClassification` framework-agnostic intermediate type so tests can swap a deterministic stub without bundling a `.mlpackage`. |
 | `ConfidenceCalibrator.swift` | 119 | Confusable-pair penalty + history boost shim. |
 | `FreeWriteScorer.swift` | 372 | Discrete Fréchet, four-dimension `WritingAssessment`, Hausdorff form-accuracy. |
 | `FreeformWordList.swift` | small | Demo word library for freeform-word mode. |
@@ -128,7 +130,8 @@ casual user is never silently dropped into a degraded condition.
 #### `Features/Tracing/`
 | File | Lines | Role |
 |------|------:|------|
-| `TracingViewModel.swift` | 2277 | `@MainActor @Observable` central coordinator. Touch dispatch, phase advance, scoring, recognition orchestration. `progressStore` is private with read-only `allProgress` / `progress(for:)` forwarders (W-5); `playback` is non-optional `let` after the W-16 init reshuffle. Tracks active practice time across background/foreground (D-1). |
+| `TracingViewModel.swift` | 2490 | `@MainActor @Observable` central coordinator. Touch dispatch, phase advance, scoring, recognition orchestration. `progressStore` is private with read-only `allProgress` / `progress(for:)` forwarders (W-5); `playback` is non-optional `let` after the W-16 init reshuffle. Tracks active practice time across background/foreground (D-1). Owns toggles for retrieval prompts (P1), backward chaining (P5), onboarding variant (U4), phoneme mode (P6). |
+| `RecognitionTokenTracker.swift` | 60 | Tiny `@MainActor` reference type that owns the UUID token marking the currently-authoritative recognition request. Replaces the duplicated issueToken/stillActive guards previously hand-rolled at three async dispatch sites (D1a, first VM-decomposition slice). |
 | `TracingDependencies.swift` | small | DI bundle. `.live` defaults; `.stub` swaps for tests. |
 | `TracingCanvasView.swift` | 697 | SwiftUI Canvas: glyph + ghost + ink + KP overlay. Pencil + finger UIKit overlays. |
 | `FreeformController.swift` | 113 | Owns freeform state (mode, sub-mode, target word, drawing buffers, recognition state, debounce task). |
@@ -1892,6 +1895,7 @@ One row per letter the child has practised.
 | `recognitionAvg` | float | mean of `recognitionAccuracy` | 0–1 | Mean **calibrated** confidence. |
 | `speedTrend` | float-list (`;` joined) | `LetterProgress.speedTrend` | up to 50 | D-4 raised cap from 5 → 50. |
 | `freeformCompletionCount` | int / blank | `LetterProgress.freeformCompletionCount` | ≥ 0 | Werkstatt-mode completions. |
+| `retrievalAccuracy` | float / blank | mean of `LetterProgress.retrievalAttempts` (cap 10) | 0–1 | P1 — fraction of retrieval-prompt answers that were correct. Empty for letters never tested or when the parent's "Erinnerungstest" toggle was off. |
 
 ## Section 2 — Per-day session durations
 
