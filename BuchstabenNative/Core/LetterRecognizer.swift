@@ -20,11 +20,27 @@ struct RecognitionResult: Equatable, Sendable {
     let predictedLetter: String
     /// Calibrated confidence (0–1) for the top label.
     let confidence: CGFloat
+    /// T5 (ROADMAP_V5): pre-calibration softmax confidence. Lets the
+    /// thesis report the calibrator's effect on classification decisions
+    /// (raw vs adjusted, decision flip rate) instead of only the
+    /// post-calibration figure. Optional so synthesised results from
+    /// stubs / tests / freeform-mode placeholders remain unaffected.
+    let rawConfidence: CGFloat?
     /// Top-3 labels with calibrated confidences, descending.
     let topThree: [TopCandidate]
     /// True when `predictedLetter` matches `expectedLetter` case-insensitively.
     /// For freeform mode (no expectation), this is always `false`.
     let isCorrect: Bool
+
+    init(predictedLetter: String, confidence: CGFloat,
+         rawConfidence: CGFloat? = nil,
+         topThree: [TopCandidate], isCorrect: Bool) {
+        self.predictedLetter = predictedLetter
+        self.confidence = confidence
+        self.rawConfidence = rawConfidence
+        self.topThree = topThree
+        self.isCorrect = isCorrect
+    }
 
     struct TopCandidate: Equatable, Sendable {
         let letter: String
@@ -269,6 +285,7 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         return RecognitionResult(
             predictedLetter: rawTopLetter,
             confidence: calibratedTopConfidence,
+            rawConfidence: CGFloat(top.confidence),
             topThree: topThree,
             isCorrect: isCorrect
         )

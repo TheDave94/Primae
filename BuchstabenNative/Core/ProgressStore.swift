@@ -22,10 +22,22 @@ struct RecognitionSample: Codable, Equatable, Sendable {
     var predictedLetter: String
     /// Calibrated confidence 0–1 of the top prediction.
     var confidence: Double
+    /// T5 (ROADMAP_V5): pre-calibration softmax confidence so the
+    /// thesis can report the calibrator's effect (raw vs adjusted,
+    /// decision-flip rate). Optional for legacy rows.
+    var rawConfidence: Double?
     /// Whether the prediction matched what the child was supposed to write.
     /// `false` for freeform-letter sessions (no expected letter — we don't
     /// know what they were aiming for).
     var isCorrect: Bool
+
+    init(predictedLetter: String, confidence: Double,
+         rawConfidence: Double? = nil, isCorrect: Bool) {
+        self.predictedLetter = predictedLetter
+        self.confidence = confidence
+        self.rawConfidence = rawConfidence
+        self.isCorrect = isCorrect
+    }
 }
 
 /// Persisted stats for a single letter.
@@ -296,6 +308,7 @@ public final class JSONProgressStore: ProgressStoring {
         samples.append(RecognitionSample(
             predictedLetter: result.predictedLetter,
             confidence: Double(result.confidence),
+            rawConfidence: result.rawConfidence.map { Double($0) },
             isCorrect: result.isCorrect
         ))
         if samples.count > 10 { samples.removeFirst(samples.count - 10) }

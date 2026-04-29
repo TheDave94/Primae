@@ -108,7 +108,11 @@ final class StubStreakStore: StreakStoring {
 // MARK: - No-op dashboard store
 final class StubDashboardStore: ParentDashboardStoring {
     var snapshot: DashboardSnapshot { DashboardSnapshot() }
-    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {}
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?) {}
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?) {}
     func reset() {}
 }

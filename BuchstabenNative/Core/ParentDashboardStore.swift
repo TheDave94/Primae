@@ -30,6 +30,9 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// and for legacy records that pre-date D-2.
     let recognitionPredicted: String?
     let recognitionConfidence: Double?
+    /// T5 (ROADMAP_V5): pre-calibration softmax confidence. Lets the
+    /// thesis quantify the ConfidenceCalibrator's effect.
+    let recognitionConfidenceRaw: Double?
     let recognitionCorrect: Bool?
     /// D-6: input device in effect for the session ("finger" / "pencil").
     /// Lets the analysis distinguish a `pressureControl == 1.0` that's a
@@ -54,10 +57,11 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.tempoConsistency = assessment.map { Double($0.tempoConsistency) }
         self.pressureControl  = assessment.map { Double($0.pressureControl) }
         self.rhythmScore      = assessment.map { Double($0.rhythmScore) }
-        self.recognitionPredicted  = recognition?.predictedLetter
-        self.recognitionConfidence = recognition?.confidence
-        self.recognitionCorrect    = recognition?.isCorrect
-        self.inputDevice           = inputDevice
+        self.recognitionPredicted    = recognition?.predictedLetter
+        self.recognitionConfidence   = recognition?.confidence
+        self.recognitionConfidenceRaw = recognition?.rawConfidence
+        self.recognitionCorrect      = recognition?.isCorrect
+        self.inputDevice             = inputDevice
     }
 
     init(from decoder: Decoder) throws {
@@ -73,10 +77,11 @@ struct PhaseSessionRecord: Codable, Equatable {
         tempoConsistency = try? c.decode(Double.self, forKey: .tempoConsistency)
         pressureControl  = try? c.decode(Double.self, forKey: .pressureControl)
         rhythmScore      = try? c.decode(Double.self, forKey: .rhythmScore)
-        recognitionPredicted  = try? c.decode(String.self, forKey: .recognitionPredicted)
-        recognitionConfidence = try? c.decode(Double.self, forKey: .recognitionConfidence)
-        recognitionCorrect    = try? c.decode(Bool.self, forKey: .recognitionCorrect)
-        inputDevice           = try? c.decode(String.self, forKey: .inputDevice)
+        recognitionPredicted     = try? c.decode(String.self, forKey: .recognitionPredicted)
+        recognitionConfidence    = try? c.decode(Double.self, forKey: .recognitionConfidence)
+        recognitionConfidenceRaw = try? c.decode(Double.self, forKey: .recognitionConfidenceRaw)
+        recognitionCorrect       = try? c.decode(Bool.self, forKey: .recognitionCorrect)
+        inputDevice              = try? c.decode(String.self, forKey: .inputDevice)
     }
 }
 
@@ -84,6 +89,27 @@ struct LetterAccuracyStat: Codable, Equatable {
     let letter: String
     /// Per-session accuracy samples (0–1), chronological order.
     let accuracySamples: [Double]
+    /// T2 (ROADMAP_V5): parallel array of the thesis condition active when
+    /// each `accuracySamples[i]` was recorded. Length matches
+    /// `accuracySamples.count` for new writes; nil for legacy rows that
+    /// pre-date this field (the exporter falls back to per-row condition
+    /// derivation from `phaseSessionRecords` for those).
+    let accuracyConditions: [ThesisCondition]?
+
+    init(letter: String, accuracySamples: [Double],
+         accuracyConditions: [ThesisCondition]? = nil) {
+        self.letter = letter
+        self.accuracySamples = accuracySamples
+        self.accuracyConditions = accuracyConditions
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        letter = try c.decode(String.self, forKey: .letter)
+        accuracySamples = try c.decode([Double].self, forKey: .accuracySamples)
+        accuracyConditions = try? c.decode([ThesisCondition].self, forKey: .accuracyConditions)
+    }
+
     var averageAccuracy: Double {
         guard !accuracySamples.isEmpty else { return 0 }
         return accuracySamples.reduce(0, +) / Double(accuracySamples.count)
@@ -105,8 +131,13 @@ struct LetterAccuracyStat: Codable, Equatable {
 struct SessionDurationRecord: Codable, Equatable {
     /// ISO-8601 date string "yyyy-MM-dd"
     let dateString: String
-    /// Duration in seconds.
+    /// Active practice time in seconds. Pauses while the app is
+    /// backgrounded (D-1) so this measures actual on-task time.
     let durationSeconds: TimeInterval
+    /// T4 (ROADMAP_V5): wall-clock duration including backgrounded
+    /// intervals. Lets the analysis distinguish "engaged with the app"
+    /// from "actively practising". Optional for legacy rows.
+    let wallClockSeconds: TimeInterval?
     /// Thesis condition active during this session.
     let condition: ThesisCondition
     /// D-9: full wall-clock timestamp captured at session-record time so
@@ -115,22 +146,33 @@ struct SessionDurationRecord: Codable, Equatable {
     /// because pre-D-9 records on disk don't carry it; new writes
     /// always populate.
     let recordedAt: Date?
+    /// T7 (ROADMAP_V5): input device in effect for this session
+    /// ("finger" / "pencil"). Lets aggregate
+    /// "minutes practised by device" be reconstructed without joining
+    /// across record types. Optional for legacy rows.
+    let inputDevice: String?
 
     init(dateString: String, durationSeconds: TimeInterval,
+         wallClockSeconds: TimeInterval? = nil,
          condition: ThesisCondition = .threePhase,
-         recordedAt: Date? = Date()) {
+         recordedAt: Date? = Date(),
+         inputDevice: String? = nil) {
         self.dateString = dateString
         self.durationSeconds = durationSeconds
+        self.wallClockSeconds = wallClockSeconds
         self.condition = condition
         self.recordedAt = recordedAt
+        self.inputDevice = inputDevice
     }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         dateString = try c.decode(String.self, forKey: .dateString)
         durationSeconds = try c.decode(TimeInterval.self, forKey: .durationSeconds)
+        wallClockSeconds = try? c.decode(TimeInterval.self, forKey: .wallClockSeconds)
         condition = (try? c.decode(ThesisCondition.self, forKey: .condition)) ?? .threePhase
         recordedAt = try? c.decode(Date.self, forKey: .recordedAt)
+        inputDevice = try? c.decode(String.self, forKey: .inputDevice)
     }
 }
 
@@ -292,7 +334,14 @@ struct DashboardSnapshot: Codable, Equatable {
 @MainActor
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
-    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
+    /// Records one completed letter session. T4/T7: pass `wallClockSeconds`
+    /// (including backgrounded time) and `inputDevice` so the export can
+    /// distinguish active practice from engagement and split by device.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?)
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
@@ -312,6 +361,18 @@ extension ParentDashboardStoring {
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
                            schedulerPriority: schedulerPriority, condition: condition, assessment: assessment, recognition: recognition, inputDevice: nil)
+    }
+    /// Backward-compatible recordSession that doesn't pass wallClockSeconds /
+    /// inputDevice. Existing tests and any non-VM callers continue to work;
+    /// the new fields populate as nil.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval, date: Date,
+                       condition: ThesisCondition) {
+        recordSession(letter: letter, accuracy: accuracy,
+                      durationSeconds: durationSeconds,
+                      wallClockSeconds: nil,
+                      date: date, condition: condition,
+                      inputDevice: nil)
     }
     func flush() async {}
 }
@@ -363,7 +424,11 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     /// three years of headroom for the trailing-window export.
     private static let sessionDurationsCap = 1000
 
-    func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval? = nil,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String? = nil) {
         let key = LetterProgress.canonicalKey(letter)
         // D-11: word-mode sessions arrive with multi-character keys
         // (`"BUCH"`). Adding those to `letterStats` corrupts the
@@ -373,17 +438,25 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         // multi-character keys but still record the duration once for
         // the whole word.
         if key.count == 1 {
-            let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
+            let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [], accuracyConditions: [])
             var samples = existing.accuracySamples
             samples.append(accuracy)
+            // T2: maintain a parallel-length condition array. Pre-T2
+            // legacy rows decoded `accuracyConditions == nil`; promote
+            // them to a back-filled array so subsequent writes line up.
+            var conditions = existing.accuracyConditions
+                ?? Array(repeating: ThesisCondition.threePhase, count: existing.accuracySamples.count)
+            conditions.append(condition)
             if samples.count > Self.accuracySamplesCap {
-                samples.removeFirst(samples.count - Self.accuracySamplesCap)
+                let drop = samples.count - Self.accuracySamplesCap
+                samples.removeFirst(drop)
+                conditions.removeFirst(drop)
             }
-            let updated = LetterAccuracyStat(
+            snapshot.letterStats[key] = LetterAccuracyStat(
                 letter: existing.letter,
-                accuracySamples: samples
+                accuracySamples: samples,
+                accuracyConditions: conditions
             )
-            snapshot.letterStats[key] = updated
         }
 
         if durationSeconds > 0 {
@@ -391,8 +464,10 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             snapshot.sessionDurations.append(
                 SessionDurationRecord(dateString: day,
                                        durationSeconds: durationSeconds,
+                                       wallClockSeconds: wallClockSeconds,
                                        condition: condition,
-                                       recordedAt: date)
+                                       recordedAt: date,
+                                       inputDevice: inputDevice)
             )
             if snapshot.sessionDurations.count > Self.sessionDurationsCap {
                 snapshot.sessionDurations.removeFirst(

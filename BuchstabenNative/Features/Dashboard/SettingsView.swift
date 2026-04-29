@@ -5,6 +5,7 @@ struct SettingsView: View {
     @State private var selectedSchriftArt: SchriftArt = .druckschrift
     @State private var selectedOrdering: LetterOrderingStrategy = .motorSimilarity
     @State private var thesisEnrolled: Bool = ParticipantStore.isEnrolled
+    @State private var conditionOverride: ThesisCondition? = ParticipantStore.conditionOverride
 
     private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.buchstaben.letterOrdering"
@@ -56,6 +57,26 @@ struct SettingsView: View {
                 Text("Änderung wird beim nächsten App-Start wirksam.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                if thesisEnrolled {
+                    // T6 (ROADMAP_V5): manual researcher override so small
+                    // cohorts can be exactly balanced (e.g. 8/8/8 instead
+                    // of the byte-modulo's ~uniform-in-expectation
+                    // imbalance for n < 30). "Automatisch" leaves the
+                    // assignment to ThesisCondition.assign(participantId:).
+                    Picker("Studienarm überschreiben",
+                           selection: Binding(
+                            get: { conditionOverride },
+                            set: {
+                                conditionOverride = $0
+                                ParticipantStore.conditionOverride = $0
+                            })) {
+                        Text("Automatisch").tag(ThesisCondition?.none)
+                        ForEach(ThesisCondition.allCases, id: \.self) { arm in
+                            Text(arm.displayName).tag(ThesisCondition?.some(arm))
+                        }
+                    }
+                    .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einer bestimmten Studienbedingung zu, anstatt die automatische Zuweisung zu verwenden — für ausgewogene Stichproben.")
+                }
             }
             Section("Hilfe") {
                 Button("Einführung wiederholen") { vm.restartOnboarding() }
@@ -68,6 +89,7 @@ struct SettingsView: View {
             selectedSchriftArt = vm.schriftArt
             selectedOrdering = vm.letterOrdering
             thesisEnrolled = ParticipantStore.isEnrolled
+            conditionOverride = ParticipantStore.conditionOverride
         }
     }
 

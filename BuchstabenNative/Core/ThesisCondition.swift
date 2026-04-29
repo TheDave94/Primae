@@ -44,7 +44,16 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
     /// property so it's testable without instantiating the full
     /// `TracingDependencies` graph (AudioEngine, JSONProgressStore, etc.).
     static var defaultForInstall: ThesisCondition {
-        ParticipantStore.isEnrolled
+        // T6 (ROADMAP_V5): manual researcher override for small cohorts
+        // wins over the byte-modulo derivation. Lets a thesis with n < 30
+        // achieve exact between-arms balance (e.g. 8/8/8) rather than
+        // accepting the ~uniform-in-expectation imbalance produced by
+        // byte%3. The override is settable from SettingsView's research
+        // section and persists in UserDefaults + iCloud-KVS.
+        if let manual = ParticipantStore.conditionOverride {
+            return manual
+        }
+        return ParticipantStore.isEnrolled
             ? .assign(participantId: ParticipantStore.participantId)
             : .threePhase
     }
@@ -90,6 +99,38 @@ enum ParticipantStore {
     /// this date so pilot / sandbox / pre-enrollment activity doesn't
     /// pollute the `.threePhase` arm at analysis time.
     private static let enrolledAtKey = "de.flamingistan.buchstaben.thesisEnrolledAt"
+    private static let conditionOverrideKey = "de.flamingistan.buchstaben.thesisConditionOverride"
+
+    /// Researcher-set thesis arm. When non-nil, `defaultForInstall`
+    /// returns this value verbatim, ignoring the byte-modulo assignment.
+    /// Used for stratified-block balancing in small-n thesis cohorts
+    /// (T6 ROADMAP_V5). Mirrored to iCloud-KVS so a reinstall preserves
+    /// the explicit assignment alongside the participant UUID.
+    static var conditionOverride: ThesisCondition? {
+        get {
+            let icloud = NSUbiquitousKeyValueStore.default
+            if let raw = icloud.string(forKey: conditionOverrideKey),
+               let arm = ThesisCondition(rawValue: raw) {
+                return arm
+            }
+            if let raw = UserDefaults.standard.string(forKey: conditionOverrideKey),
+               let arm = ThesisCondition(rawValue: raw) {
+                return arm
+            }
+            return nil
+        }
+        set {
+            let icloud = NSUbiquitousKeyValueStore.default
+            if let value = newValue {
+                UserDefaults.standard.set(value.rawValue, forKey: conditionOverrideKey)
+                icloud.set(value.rawValue, forKey: conditionOverrideKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: conditionOverrideKey)
+                icloud.removeObject(forKey: conditionOverrideKey)
+            }
+            icloud.synchronize()
+        }
+    }
 
     /// The participant's UUID, generated on first call and persisted thereafter.
     /// Reads from iCloud-KVS first, then UserDefaults, so a reinstall on the

@@ -70,6 +70,12 @@ struct ParentDashboardExporter {
         if let enrolledAt {
             lines.append("# enrolledAt=\(ISO8601DateFormatter().string(from: enrolledAt))")
         }
+        // T3 (ROADMAP_V5): timezone metadata so downstream analytics can
+        // interpret `recordedAt` columns correctly across devices that
+        // travel timezones or run in DST. ISO-8601 timestamps already
+        // carry an offset, but the timezone identifier is a more useful
+        // analyst-facing label.
+        lines.append("# timezone=\(TimeZone.current.identifier)")
         let isoFormatter = ISO8601DateFormatter()
         lines.append("")
 
@@ -104,13 +110,18 @@ struct ParentDashboardExporter {
 
         // D-9: emit the full ISO-8601 timestamp alongside the day-level
         // dateString so the analysis can recover time-of-day signal
-        // (morning vs evening practice). Legacy rows that pre-date D-9
-        // have no `recordedAt` and emit an empty timestamp column.
-        lines.append(["date","recordedAt","durationSeconds","condition"].joined(separator: sep))
+        // (morning vs evening practice). T4 adds wallClockSeconds (total
+        // wall-clock time including backgrounded intervals) so the
+        // engagement-vs-practice split is recoverable. T7 adds
+        // inputDevice. Legacy rows emit empty strings for new columns.
+        lines.append(["date","recordedAt","durationSeconds","wallClockSeconds","condition","inputDevice"].joined(separator: sep))
         for rec in snapshot.sessionDurations.sorted(by: { $0.dateString < $1.dateString }) {
             let recordedAtField = rec.recordedAt.map { isoFormatter.string(from: $0) } ?? ""
+            let wallField = rec.wallClockSeconds.map { String(format: "%.3f", $0) } ?? ""
             lines.append([rec.dateString, recordedAtField,
-                          "\(rec.durationSeconds)", rec.condition.rawValue].joined(separator: sep))
+                          String(format: "%.3f", rec.durationSeconds),
+                          wallField, rec.condition.rawValue,
+                          rec.inputDevice ?? ""].joined(separator: sep))
         }
         lines.append("")
 
@@ -128,7 +139,10 @@ struct ParentDashboardExporter {
         // downstream tooling already handles.
         // D-6: `inputDevice` ("finger"/"pencil") so a `pressureControl == 1.0`
         // row is distinguishable from a real low-variance pencil session.
-        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice"].joined(separator: sep))
+        // T5: `recognition_confidence_raw` is the pre-calibration softmax
+        // probability so the thesis can quantify the calibrator's effect
+        // on classification decisions.
+        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice"].joined(separator: sep))
         for rec in snapshot.phaseSessionRecords {
             // D-7: discard rows recorded before this install joined the
             // study so pilot / sandbox / pre-enrolment activity isn't
@@ -149,6 +163,7 @@ struct ParentDashboardExporter {
             let recordedAtField = rec.recordedAt.map { isoFormatter.string(from: $0) } ?? ""
             let recLabel = rec.recognitionPredicted ?? ""
             let recConf  = rec.recognitionConfidence.map { String(format: "%.4f", $0) } ?? ""
+            let recConfRaw = rec.recognitionConfidenceRaw.map { String(format: "%.4f", $0) } ?? ""
             let recRight = rec.recognitionCorrect.map { String($0) } ?? ""
             let dimForm   = rec.formAccuracy.map     { String(format: "%.4f", $0) } ?? ""
             let dimTempo  = rec.tempoConsistency.map { String(format: "%.4f", $0) } ?? ""
@@ -157,7 +172,7 @@ struct ParentDashboardExporter {
             lines.append([
                 rec.letter, rec.phase, "\(rec.completed)", score, prio,
                 rec.condition.rawValue, recordedAtField,
-                recLabel, recConf, recRight,
+                recLabel, recConf, recConfRaw, recRight,
                 dimForm, dimTempo, dimPress, dimRhythm,
                 rec.inputDevice ?? ""
             ].joined(separator: sep))

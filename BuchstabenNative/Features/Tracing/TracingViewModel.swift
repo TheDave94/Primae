@@ -534,6 +534,12 @@ public final class TracingViewModel {
     /// `letterActiveTimeAccumulated + (now − letterLoadTime)`. Resets on
     /// every `load(letter:)`.
     private var letterActiveTimeAccumulated: TimeInterval = 0
+    /// Wall-clock `Date` when the current letter was loaded. Used for
+    /// T4 (ROADMAP_V5) so the session record can carry wall-clock time
+    /// alongside the active-time `durationSeconds`. Distinct from
+    /// `letterLoadTime` (CACurrentMediaTime) because we need a stable
+    /// timestamp that survives background/foreground cycles.
+    private var letterLoadedDate: Date?
     private var isSingleTouchInteractionActive   = false
     private var didCompleteCurrentLetter         = false
     /// Scheduler priority captured at letter selection time (loadRecommendedLetter).
@@ -1638,9 +1644,18 @@ public final class TracingViewModel {
             progressStore.recordVariantUsed(for: letter, variantID: variantID)
         }
         streakStore.recordSession(date: Date(), lettersCompleted: lettersToRecord, accuracy: accuracy)
+        // T4: wall-clock duration includes any backgrounded interval and
+        // is reconstructed from the load Date stamp; the active-time
+        // `duration` parameter excludes it (D-1 accumulator).
+        // T7: device tag so the export can split duration by input mode.
+        let wallClock = letterLoadedDate.map { Date().timeIntervalSince($0) }
+        let device = detector.effectiveKind.rawValue
         dashboardStore.recordSession(letter: dashboardLabel, accuracy: accuracy,
-                                      durationSeconds: duration, date: Date(),
-                                      condition: thesisCondition)
+                                      durationSeconds: duration,
+                                      wallClockSeconds: wallClock,
+                                      date: Date(),
+                                      condition: thesisCondition,
+                                      inputDevice: device)
         Task { [weak self] in try? await self?.syncCoordinator.pushAll() }
 
         let adaptSample = AdaptationSample(letter: dashboardLabel,
@@ -1753,6 +1768,7 @@ public final class TracingViewModel {
         didCompleteCurrentLetter       = false
         letterLoadTime                 = CACurrentMediaTime()
         letterActiveTimeAccumulated    = 0
+        letterLoadedDate               = Date()
         messages.clearCompletionState()
         activePath.removeAll(keepingCapacity: true)
         isSingleTouchInteractionActive = false
