@@ -226,7 +226,7 @@ struct FortschritteWorldView: View {
                     ForEach(0..<4, id: \.self) { idx in
                         Image(systemName: idx < stars ? "star.fill" : "star")
                             .font(.system(size: 10))
-                            .foregroundStyle(idx < stars ? .orange : Color.gray.opacity(0.5))
+                            .foregroundStyle(idx < stars ? AppSurface.starGold : Color.gray.opacity(0.5))
                     }
                 }
             }

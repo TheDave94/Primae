@@ -46,7 +46,7 @@ struct CompletionCelebrationOverlay: View {
                         Image(systemName: index <= starsEarned ? "star.fill" : "star")
                             .font(.system(size: 40))
                             .foregroundStyle(index <= starsEarned
-                                ? Color.yellow
+                                ? AppSurface.starGold
                                 : Color.white.opacity(0.55))
                     }
                 }

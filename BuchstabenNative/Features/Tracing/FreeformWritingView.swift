@@ -527,7 +527,7 @@ struct FreeformWritingView: View {
                         let filled = idx < stars
                         Image(systemName: filled ? "star.fill" : "star")
                             .font(.system(size: 26))
-                            .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.45))
+                            .foregroundStyle(filled ? AppSurface.starGold : Color.gray.opacity(0.45))
                     }
                 }
                 .accessibilityLabel("\(stars) von 3 Sternen für die Form")

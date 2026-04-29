@@ -92,4 +92,9 @@ enum AppSurface {
     /// touches WorldPalette instead of grepping for hardcoded RGB.
     static let railTop    = Color(red: 0.99, green: 0.98, blue: 0.96)
     static let railBottom = Color(red: 0.96, green: 0.97, blue: 0.99)
+    /// U9 (ROADMAP_V5): unified gold/star tint. Was previously `Color.yellow`
+    /// in the celebration overlay and `Color.orange` in the gallery / picker
+    /// / SchuleWorld rows; the visual mismatch made a "mastered" letter
+    /// look slightly different in two places. One value per surface.
+    static let starGold = Color(red: 1.00, green: 0.62, blue: 0.10)
 }

@@ -245,7 +245,7 @@ struct SchuleWorldView: View {
                     let filled = idx < starsEarned
                     Image(systemName: filled ? "star.fill" : "star")
                         .font(.footnote)
-                        .foregroundStyle(filled ? Color.orange : Color.gray.opacity(0.55))
+                        .foregroundStyle(filled ? AppSurface.starGold : Color.gray.opacity(0.55))
                 }
             }
         }

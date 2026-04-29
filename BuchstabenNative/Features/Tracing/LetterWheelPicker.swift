@@ -113,7 +113,7 @@ struct LetterWheelPicker: View {
                     .font(.system(size: 7))
                     .foregroundStyle(highlighted
                                       ? Color.white.opacity(idx < stars ? 1 : 0.5)
-                                      : (idx < stars ? Color.orange : Color.gray.opacity(0.4)))
+                                      : (idx < stars ? AppSurface.starGold : Color.gray.opacity(0.4)))
             }
         }
     }

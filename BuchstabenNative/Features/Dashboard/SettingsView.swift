@@ -6,9 +6,14 @@ struct SettingsView: View {
     @State private var selectedOrdering: LetterOrderingStrategy = .motorSimilarity
     @State private var thesisEnrolled: Bool = ParticipantStore.isEnrolled
     @State private var conditionOverride: ThesisCondition? = ParticipantStore.conditionOverride
+    @State private var speechRate: Float = {
+        let stored = UserDefaults.standard.float(forKey: "de.flamingistan.buchstaben.speechRate")
+        return stored > 0 ? stored : 0.42
+    }()
 
     private static let defaultsKey = "de.flamingistan.buchstaben.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.buchstaben.letterOrdering"
+    fileprivate static let speechRateKey = "de.flamingistan.buchstaben.speechRate"
 
     var body: some View {
         Form {
@@ -28,6 +33,24 @@ struct SettingsView: View {
                     set: { vm.enableFreeformMode = $0 }
                 ))
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
+            }
+            Section("Sprache") {
+                // U8 (ROADMAP_V5): three-position rate picker so a parent
+                // can slow the TTS for younger / less verbal children.
+                // Persisted in UserDefaults; applied to vm.speech on
+                // every appear and on change.
+                Picker("Sprechgeschwindigkeit", selection: Binding(
+                    get: { speechRate },
+                    set: { newValue in
+                        speechRate = newValue
+                        UserDefaults.standard.set(newValue, forKey: Self.speechRateKey)
+                        vm.speech.setRate(newValue)
+                    })) {
+                    Text("Langsam").tag(Float(0.36))
+                    Text("Normal").tag(Float(0.42))
+                    Text("Schnell").tag(Float(0.50))
+                }
+                .accessibilityHint("Wie schnell die App spricht. Für jüngere Kinder \"Langsam\" wählen.")
             }
             Section("Anzeige") {
                 Toggle("Geisterbuchstabe anzeigen", isOn: Binding(
@@ -90,6 +113,9 @@ struct SettingsView: View {
             selectedOrdering = vm.letterOrdering
             thesisEnrolled = ParticipantStore.isEnrolled
             conditionOverride = ParticipantStore.conditionOverride
+            let storedRate = UserDefaults.standard.float(forKey: Self.speechRateKey)
+            speechRate = storedRate > 0 ? storedRate : 0.42
+            vm.speech.setRate(speechRate)
         }
     }
 

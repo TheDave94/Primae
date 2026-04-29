@@ -34,6 +34,16 @@ protocol SpeechSynthesizing {
     /// world or when an overlay sequence resets so the child doesn't
     /// hear stale feedback after switching context.
     func stop()
+    /// U8 (ROADMAP_V5): parent-tunable rate so a 5-year-old who needs a
+    /// slower tempo can be accommodated. Default `nil` means leave the
+    /// production rate (0.42) untouched. Bound to a 3-position slider in
+    /// SettingsView with values: 0.36 langsam / 0.42 normal / 0.50 schnell.
+    func setRate(_ rate: Float?)
+}
+
+extension SpeechSynthesizing {
+    /// Default no-op so older mocks compile without retrofitting.
+    func setRate(_ rate: Float?) {}
 }
 
 // MARK: - Production implementation
@@ -49,8 +59,13 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     /// Tunable speech rate. AVSpeechUtterance defaults to ~0.5 which
     /// reads too quickly for a 5-year-old; 0.42 is comfortably slow
-    /// without sounding artificially dragged.
+    /// without sounding artificially dragged. Override via
+    /// `setRate(_:)` (U8 — Settings slider).
     var rate: Float = 0.42
+
+    func setRate(_ rate: Float?) {
+        self.rate = rate ?? 0.42
+    }
     /// Tunable pitch. 1.0 is the default; we shift slightly above to
     /// match the warm, child-friendly tone the recorded letter audio
     /// uses.

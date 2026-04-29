@@ -1467,6 +1467,11 @@ public final class TracingViewModel {
 
     /// Load the letter recommended by spaced repetition.
     func loadRecommendedLetter() {
+        // U6 (ROADMAP_V5): confirmation haptic on the celebration's
+        // "Weiter" tap. The rest of the app uses haptics consistently
+        // (begin/checkpoint/stroke/letter); this seam was the lone tap
+        // that produced no feedback.
+        haptics.fire(.letterCompleted)
         let available = visibleLetterNames
         let scored = letterScheduler.prioritized(available: available,
                                                   progress: progressStore.allProgress)
