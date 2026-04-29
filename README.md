@@ -143,6 +143,7 @@ The repo intentionally keeps documentation small and role-separated:
 | [`ROADMAP.md`](ROADMAP.md) | **The single outstanding-work file.** Forward-looking only — items shipped are removed (commit history is the archive). Each item has effort estimate, file list, citations, failure modes. |
 | [`design-system/`](design-system/) | **Primae visual identity.** Color tokens (light + dark), type ramp, spacing scale, font files, sticker-button spec, preview HTML, and the iPad UI kit (`ui_kits/ipad-app/`). Source of truth for the SwiftUI tokens in `PrimaeNative/Theme/`. |
 | [`docs/LESSONS.md`](docs/LESSONS.md) | **Code-level invariants** — guardrails to read before touching `AudioEngine.swift`, `StrokeTracker.swift`, or the `load(letter:)` path. Kept separate so the next contributor reads it in full instead of skimming an appendix. |
+| [`docs/TESTING_CHECKLIST.md`](docs/TESTING_CHECKLIST.md) | **Browser-tickable manual test checklist.** Open in any GitHub-flavoured Markdown previewer; each `- [ ]` becomes a real checkbox. Sections cover launch, onboarding, three worlds, parent area, dark mode, audio, lifecycle, accessibility, visual identity. Each failure points back to the file/symbol that owns the broken behaviour, so a tick-back can be paired to a precise fix. |
 | [`CLAUDE.md`](CLAUDE.md) | Auto-loaded context for Claude Code agents. |
 
 ## Acknowledgments
