@@ -153,6 +153,12 @@ struct ParentDashboardView: View {
                 .progressViewStyle(.linear)
         }
         .padding(.vertical, 2)
+        // U10 (ROADMAP_V5) partial: collapse the row into one VoiceOver
+        // element so the dimension label, percentage, and progress bar
+        // read as a single phrase ("Form, 78 Prozent") instead of three
+        // separate focuses. Sparkline is already hidden above.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label), \(pct) Prozent")
     }
 }
 

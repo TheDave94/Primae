@@ -49,8 +49,22 @@ final class AnimationGuideController {
         guard !guide.steps.isEmpty else { return }
 
         task = Task { [weak self, sleeper] in
+            // P4 (ROADMAP_V5): "Bob the dog" start cue. Park the guide
+            // dot at the first step's position for ~1 s before the loop
+            // begins so a 5-year-old has a chance to see WHERE the
+            // trace starts before the dot starts moving (Mayer 2009
+            // pre-attentive cueing). Skipped on subsequent loop
+            // iterations — only the very first step gets the dwell.
+            let firstHoldRequested = !Task.isCancelled
+            var heldFirst = false
             while !Task.isCancelled {
                 guard let self else { return }
+                if !heldFirst, firstHoldRequested, let firstStep = guide.steps.first {
+                    self.guidePoint = firstStep.point
+                    try? await sleeper(.seconds(1.0))
+                    heldFirst = true
+                    if Task.isCancelled { break }
+                }
                 for step in guide.steps {
                     guard !Task.isCancelled else { break }
                     self.guidePoint = step.point
