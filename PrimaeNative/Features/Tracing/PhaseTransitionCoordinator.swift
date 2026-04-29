@@ -156,15 +156,17 @@ final class PhaseTransitionCoordinator {
     private func recordSessionCompletion() {
         guard let vm else { return }
         vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
-        // Verbal celebration. Stars-tier praise so the child hears
-        // approximately how well they did without seeing any
-        // percentage. Pre-recorded ElevenLabs takes via PromptPlayer
-        // when bundled; AVSpeechSynthesizer fallback otherwise.
-        let stars = vm.phaseController.starsEarned
-        vm.prompts.play(
-            ChildSpeechLibrary.praisePromptKey(starsEarned: stars),
-            fallbackText: ChildSpeechLibrary.praise(starsEarned: stars)
-        )
+        // Letter-completion celebration: short positive chime +
+        // the warm "Super gemacht!" voice line. The N-of-4 star
+        // row in CompletionCelebrationOverlay is the visual
+        // differentiator; the audio is the same regardless of
+        // star count, so a child who barely scraped 1 star still
+        // hears genuine encouragement. Pre-recorded ElevenLabs
+        // take via PromptPlayer when bundled; AVSpeech fallback
+        // otherwise.
+        vm.prompts.playSuccessChime()
+        vm.prompts.play(.celebration,
+                        fallbackText: ChildSpeechLibrary.celebration)
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()
         let liveSlice = vm.letterLoadTime.map { now - $0 } ?? 0

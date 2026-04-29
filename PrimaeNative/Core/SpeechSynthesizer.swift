@@ -203,6 +203,13 @@ enum ChildSpeechLibrary {
     /// letter. Mirrors the on-screen text exactly.
     static let retrievalQuestion = "Welchen Buchstaben hörst du?"
 
+    /// Letter-completion celebration phrase. Spoken after every
+    /// letter completes, regardless of how many stars the child
+    /// earned — the N-of-4 star row in
+    /// `CompletionCelebrationOverlay` is the visual differentiator;
+    /// the audio is always the same warm "Super gemacht!".
+    static let celebration = "Super gemacht!"
+
     // MARK: - PromptPlayer mapping
 
     /// Map a learning phase to its `PromptPlayer.PromptKey` so

@@ -19,6 +19,7 @@ Filenames match `PromptPlayer.PromptKey.rawValue`:
 - `paper_write.mp3`       · "Jetzt schreibst du den Buchstaben auf Papier."
 - `paper_assess.mp3`      · "Wie ist dein Buchstabe geworden?"
 - `retrieval_question.mp3` · "Welchen Buchstaben hörst du?"
+- `celebration.mp3`        · "Super gemacht!" (paired with a system success chime in `PromptPlayer.playSuccessChime`)
 
 Generate with:
 

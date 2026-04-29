@@ -24,6 +24,7 @@
 // concern (gated as "DO NOT modify" in CLAUDE.md). The change is
 // purely quality.
 
+import AudioToolbox
 import AVFoundation
 import Foundation
 import os.log
@@ -52,6 +53,11 @@ public final class PromptPlayer {
         case paperAssess = "paper_assess"
         // Retrieval prompt headline
         case retrievalQuestion = "retrieval_question"
+        // Letter-completion celebration (plays after the final
+        // phase of every letter, regardless of star count — the
+        // visual N-of-4 star row in CompletionCelebrationOverlay
+        // carries the gradation; the audio is always positive).
+        case celebration = "celebration"
     }
 
     private let speech: SpeechSynthesizing
@@ -90,6 +96,17 @@ public final class PromptPlayer {
     public func stop() {
         player?.stop()
         speech.stop()
+    }
+
+    /// Play a short positive chime via the system sound services —
+    /// independent of AVAudioEngine, so it can fire even while the
+    /// letter-sound pipeline is mid-reconfigure. Used as the
+    /// celebration cue at letter completion. Asset ID 1322 is a
+    /// soft, kid-appropriate "complete" tone; swap for a designed
+    /// chime later (drop a `success.mp3` next to the prompts and
+    /// route through `play(_:fallbackText:)` instead).
+    public func playSuccessChime() {
+        AudioServicesPlaySystemSound(1322)
     }
 
     // MARK: - Bundle lookup

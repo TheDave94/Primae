@@ -104,6 +104,10 @@ PROMPTS: dict[str, str] = {
     "paper_assess": "Wie ist dein Buchstabe geworden?",
     # Retrieval prompt
     "retrieval_question": "Welchen Buchstaben hörst du?",
+    # Letter-completion celebration (paired with a system success
+    # chime in PromptPlayer.playSuccessChime; the voice line is
+    # always the same regardless of star count)
+    "celebration": "Super gemacht!",
 }
 
 OUTPUT_ROOT = Path("audio_variants")
