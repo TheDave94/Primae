@@ -1,373 +1,299 @@
 # Roadmap V5 — Buchstaben-Lernen-App
 
-_Generated: 2026-04-29. Forward-looking plan for thesis submission and beyond. NOT a bug-fix list — every prior review (R1, R2, R3, R4) has been resolved or explicitly deferred. This document plans what to build **next**._
+_Forward-looking plan. Last updated 2026-04-29 against branch `roadmap-v5-tier12`. Only items still requiring work appear here — every shipped item from earlier versions of this document has been removed. Where a row says "infrastructure shipped, asset work pending", the code-side foundation is in place and the remaining work is content authoring (audio, glyph definitions) on your side._
 
-> **Implementation status (2026-04-29 evening):** the T/P/U/D batches were
-> driven through main in commits `59acad9`, `cca4914`, `001d35b`, `740512e`,
-> `3dbf597`. Items marked **✅ shipped** below are landed; items marked
-> **⏭ deferred** are explicitly out of scope for this implementation pass
-> with the reason inline. The post-thesis F section is untouched.
+Effort key: **S** = under 1 day · **M** = 1–3 days · **L** = 3+ days · **XL** = multi-week
+Priority key: **P1** = thesis-blocking · **P2** = thesis-strengthening · **P3** = post-thesis polish
 
-Sources cross-referenced: `docs/APP_DOCUMENTATION.md`, `docs/APP_REFERENCE.md`, `HIDDEN_FEATURES_AUDIT.md`, `REVIEW_ROUND3.md`, the deleted `REVIEW_AND_IMPROVEMENTS.md` (recovered from `83853ba^`), and a full Swift-source scan.
-
-Effort key: **S** = under 1 day · **M** = 1–3 days · **L** = 3+ days.
-Priority key: **P1** = do first within the section · **P2** = next · **P3** = nice-to-have within the section.
+The deeper context for each item — failure modes, file lists, line-count budgets, what works on macOS vs needs an iPad — lives in `docs/ROADMAP_V5_DEFERRED_NOTES.md`.
 
 ---
 
 ## 1. THESIS-CRITICAL
 
-Things that determine whether the thesis submission stands up to scrutiny.
+### T1 — Lowercase letter coverage *(asset work + on-device authoring)*
+**Effort:** XL · **Priority:** P1
 
-### T1 (P1, M) — Lowercase letter coverage for the active set ⏭ deferred (audio + glyph asset work)
-Currently only `A F I K L M O` ship full stroke + audio data. The thesis claims "26-letter alphabet" but `Resources/Letters` has 56 directories with only **25 non-empty `strokes.json`** files; the lowercase + umlaut directories are placeholders with empty stroke arrays. For thesis submission the active set should ship lowercase a, f, i, k, l, m, o so the cohort can be exposed to upper- and lowercase letters of the same shape. Alternatively, document the limitation prominently in the limitations chapter.
-- **Files:** `Resources/Letters/<x>/strokes.json` (7 lowercase), `Resources/Letters/<x>/<x>.pbm`, `Resources/Letters/<x>/<x>1.mp3`–`<x>3.mp3`, `letter_set.json`
-- **Citation:** Berninger et al. 2006 (Developmental Neuropsychology 29(1)) — early instruction benefits from grouped upper- and lowercase exposure.
-- **Dependencies:** none.
+**Problem.** `Resources/Letters/` has 56 directories (26 upper + 26 lower + Ä Ö Ü ß). 25 have non-empty `strokes.json`; 31 have **empty** stroke arrays as placeholders. The empty-stroke fallback path is correct (`LearningPhaseController` skips observe + direct phases when strokes are empty, drops the child into guided/freeWrite directly), but it means the four-phase pedagogy that the thesis demonstrates **does not actually run** for 31 of 56 letters. The thesis claim "Vier-Phasen-Pädagogik for Volksschule 1. Klasse" is exposed: a reviewer who picks `q` gets the empty-strokes fallback.
 
-### T2 (P1, M) — D-5 condition-tagged accuracy samples ✅ shipped (59acad9)
-`LetterAccuracyStat.accuracySamples: [Double]` is a flat per-letter array with no per-sample condition tag. The R3 fix derives per-arm letter aggregates **at export time** from `phaseSessionRecords`, but a regression analysis that wants per-letter learning curves split by arm needs each sample's condition. Add `accuracyConditions: [ThesisCondition]?` parallel array on `LetterAccuracyStat` (Codable optional, defaults nil for legacy rows); populate in `recordSession`. Export as a `letterStats_byArm` block.
-- **Files:** `Core/ParentDashboardStore.swift`, `Core/ParentDashboardExporter.swift`, plus tests.
-- **Citation:** None — methodological hygiene for the between-arms ANOVA.
-- **Dependencies:** none.
+**What needs to be true per letter.**
+1. **Stroke definition.** 1–3 strokes per letter, each with 5–15 checkpoints in 0–1 cell-local coordinates. Author by:
+   - Open the app in Debug mode (long-press the phase indicator on SchuleWorldView)
+   - Open the calibration overlay (long-press again)
+   - Drag-place each checkpoint visually over the rendered glyph
+   - The calibration store writes to `Application Support/BuchstabenNative/calibration/`
+   - Export the calibrated checkpoints into the bundle's `Resources/Letters/<x>/strokes.json`
+2. **PBM bitmap fallback.** Optional but the validator complains without it. Generate via the existing PBM tooling.
+3. **Audio takes.** 3 mp3 recordings of the letter name (`<x>1.mp3`, `<x>2.mp3`, `<x>3.mp3`). Voice talent or ElevenLabs.
+4. **Phoneme audio.** P6 infrastructure is in place; you need 3 phoneme takes per letter. See `docs/PHONEME_AUDIO_GUIDE.md` for the convention and ElevenLabs prompt template.
 
-### T3 (P1, S) — Time-of-day export tooling ✅ shipped (59acad9 — `# timezone=` header)
-`SessionDurationRecord.recordedAt` (D-9) and `PhaseSessionRecord.recordedAt` (D-3) now carry full ISO-8601 timestamps. Add a derived `# timezone=` header line in the export and a small documentation block in the thesis methodology explaining how to interpret cross-device timezones. Currently the timestamps are written in device-local timezone with no marker.
-- **Files:** `Core/ParentDashboardExporter.swift`.
-- **Citation:** None — analytical metadata.
-- **Dependencies:** D-9 (already done).
+**Per-letter budget.** ~2–3 hours, mostly the calibration session + audio editing.
 
-### T4 (P1, S) — Active practice time field on session records ✅ shipped (59acad9 — `wallClockSeconds`)
-The session-duration math now uses an active-time accumulator (D-1), but the **value** that lands in `SessionDurationRecord.durationSeconds` is the *active* time — there's no field that surfaces the wall-clock duration alongside it. For the thesis "engagement vs effective practice" comparison, both are useful. Add `wallClockSeconds: TimeInterval?` parallel field; populate from `Date().timeIntervalSince(letterLoadedAt)` regardless of background pauses.
-- **Files:** `Core/ParentDashboardStore.swift`, `Features/Tracing/TracingViewModel.swift`, exporter, tests.
-- **Citation:** None — engagement-vs-practice analytical split.
-- **Dependencies:** D-1 (done).
+**Two viable scopes.**
+- **Demo lowercase set** (`a f i k l m o`): 7 letters × 2–3 hours = 14–21 hours. **This is the thesis-floor minimum.** The uppercase demo set already ships full pedagogy; matching the lowercase counterparts means the four-phase flow runs on the letters most exposed to a thesis reviewer.
+- **Full alphabet** (26 lowercase + 19 missing uppercase + 4 umlauts/ß = 49 letters): ~100–150 hours. Post-thesis or a multi-week dedicated authoring sprint.
 
-### T5 (P2, M) — Recognition pre/post calibration trace ✅ shipped (59acad9 — `recognition_confidence_raw`)
-`ConfidenceCalibrator` adjusts the raw softmax with confusable-pair penalty (15 %) and history boost (10 %). The CSV currently exports the *post-calibration* `recognition_confidence` only. Add `recognition_confidence_raw` so the thesis can demonstrate the calibrator's effect on classification correctness. Optional: also `recognition_calibration_delta`.
-- **Files:** `Core/LetterRecognizer.swift` (return raw), `Core/ParentDashboardStore.swift` (PhaseSessionRecord), exporter.
-- **Citation:** Cohen et al. 2017 (EMNIST) and Apple's CoreML calibration recommendations — the raw + adjusted pair is the standard way to report a confidence-calibration intervention.
-- **Dependencies:** none.
-
-### T6 (P2, M) — A/B condition-arm balance check on enrolment ✅ shipped (59acad9 — researcher override)
-`ThesisCondition.assign(participantId:)` uses `byte % 3`, so condition assignment is uniform in expectation but not balanced for small cohorts (n < ~30 risks 2:1 imbalance). For a thesis cohort of 12–24 children, switch to a **stratified blocked randomisation**: every six enrolments contain exactly two of each arm. Persist a small queue in the store.
-- **Files:** `Core/ThesisCondition.swift`, `Core/ParticipantStore` (block queue), tests.
-- **Citation:** Schulz & Grimes (2002) Lancet 359 — block randomisation for small trials.
-- **Dependencies:** none.
-
-### T7 (P2, S) — Per-session input-mode tag on session durations ✅ shipped (59acad9)
-`PhaseSessionRecord.inputDevice` is populated (D-6), but `SessionDurationRecord` has no input-device field, so an aggregate "minutes practised by finger vs pencil" analysis isn't reconstructible without joining across record types. Add `inputDevice: String?` to `SessionDurationRecord`.
-- **Files:** `Core/ParentDashboardStore.swift`, exporter, tests.
-- **Citation:** Alamargot & Morin 2015 — tablet-vs-paper graphomotor differences depend on input device.
-- **Dependencies:** D-6 (done).
-
-### T8 (P3, S) — Export schema documentation ✅ shipped (59acad9 — `docs/EXPORT_SCHEMA.md`)
-Generate a one-page `EXPORT_SCHEMA.md` in `docs/` describing every CSV/TSV column, its source field, range, and analytical purpose. The thesis appendix can reference this. The audit verified the columns exist; no developer docs exist for downstream analysts.
-- **Files:** `docs/EXPORT_SCHEMA.md` (new).
-- **Dependencies:** T2, T4, T5, T7 (so the schema doc is final).
+**What you can do without a device.** Pre-generate stroke definitions from CoreText measurements run on macOS (write a small `swift run` script that loads Primae, renders each glyph, samples the path). The output won't be perfect (Primae's glyph metrics depend on font-loading order at runtime), but it gets you 80% of the way as a starting point for device calibration.
 
 ---
 
-## 2. PEDAGOGICAL ENHANCEMENTS
+### P1 — Spaced retrieval testing prompts *(infrastructure shipped on branch; UI pending)*
+**Effort:** M (UI only — infrastructure already lives in `Core/RetrievalScheduler.swift` and `LetterProgress.retrievalAttempts`) · **Priority:** P1
 
-Research-backed features that improve learning outcomes.
+**Problem.** The app implements spaced *practice* (Cepeda 2006) via `LetterScheduler` but not spaced *retrieval*. Roediger & Karpicke (2006) showed retrieval tests produce better long-term retention than additional study — generating an answer beats re-encoding it. Adding retrieval extends the thesis pedagogical claim from "spacing exposure" to "spacing recall".
 
-### P1 (P1, L) — Spaced-retrieval testing prompts ⏭ deferred (large feature; needs UI design)
-The app currently spaces *practice* (Cepeda 2006) but not *retrieval*. Roediger & Karpicke (2006) show retrieval practice produces better long-term retention than additional study. Add an opt-in "Erinnerst du dich noch?" mode: every Nth letter selection presents a recognition or recall task ("Welcher Buchstabe ist das?" with three audio choices) before the tracing phase. Score retrieval separately and feed it into the scheduler's priority.
-- **Files:** new `Features/Tracing/RetrievalPromptView.swift`, `Core/LetterScheduler.swift` (retrieval-aware priority), `TracingViewModel.swift`.
-- **Citation:** Roediger, H. L., & Karpicke, J. D. (2006). Test-enhanced learning: Taking memory tests improves long-term retention. *Psychological Science*, 17(3), 249–255.
-- **Dependencies:** none.
+**What's already in code (branch `roadmap-v5-tier12`).**
+- `Core/RetrievalScheduler.swift` — every-Nth-letter cadence with `interval` (default 3), `minimumPriorCompletions` (default 1, skips testing on never-seen letters), persisted counter so cadence survives relaunch.
+- `LetterProgress.retrievalAttempts: [Bool]?` rolling outcome log (cap 10) on `ProgressStore`.
+- `JSONProgressStore.recordRetrievalAttempt(letter:correct:)` write path.
+- Stub default on `ProgressStoring` so older mocks compile.
 
-### P2 (P1, M) — Self-explanation prompts on misrecognition ✅ shipped (3dbf597)
-When CoreML predicts the wrong letter on a freeWrite session (`recognitionCorrect == false`), show a brief "Schauen wir es noch einmal an" prompt that re-plays the reference glyph animation. This implements Chi's self-explanation paradigm: surfacing the mismatch and re-presenting the correct form leverages elaborative processing for retention.
-- **Files:** `Features/Tracing/RecognitionFeedbackView.swift`, `Features/Worlds/SchuleWorldView.swift`, `Core/SpeechSynthesizer.swift`.
-- **Citation:** Chi, M. T. H., et al. (1989). Self-explanations: How students study and use examples in learning to solve problems. *Cognitive Science*, 13(2), 145–182.
-- **Dependencies:** none.
+**What's still needed.**
+1. **`RetrievalPromptView`** (new file in `Features/Tracing/`). Three-button German recognition test: "Welcher Buchstabe ist das?" with the audio plays the letter (or phoneme — useful overlap with P6) and three candidate buttons (the correct letter + two distractors from the same motor-similarity cluster — `LetterOrderingStrategy.motorSimilarity` ordering gives you the cluster automatically). On tap, record the outcome and dismiss.
+2. **Settings opt-in.** `enableRetrievalPrompts: Bool` UserDefaults key in `TracingDependencies`, mirrored toggle in SettingsView under a "Erinnerungstest" / "Forschung" section. Default off — opt-in research feature.
+3. **VM wiring.** In `loadRecommendedLetter()`, before `load(letter:)`, call `retrievalScheduler.shouldPrompt(for: letter, progress: progress)` — when it returns `true`, push a `.retrievalPrompt(letter:)` overlay onto the queue ahead of the actual letter load. The retrieval prompt's onComplete then runs the load.
+4. **`CanvasOverlay.retrievalPrompt(letter: String)`** case on `OverlayQueueManager`. Modal (no auto-dismiss).
+5. **CSV export.** Add `retrievalAccuracy` column to the per-letter aggregate row in `ParentDashboardExporter.swift`. Update `docs/EXPORT_SCHEMA.md`.
+6. **Tests.** RetrievalScheduler unit tests (interval cadence, minimum-prior-completions skip, counter reset). RetrievalPromptView is integration-tested through the queue.
 
-### P3 (P2, M) — Errorless learning ramp for the very first encounters ✅ shipped (740512e)
-For the **first three** sessions on a new letter, raise the radius multiplier so checkpoint hits are extremely forgiving (Touretzky-style errorless learning). Hard-decay back to standard tier after 3 sessions to avoid permanent leniency. Currently `MovingAverageAdaptationPolicy` starts at `.standard` (radiusMultiplier × 1.0) for every letter regardless of whether the child has seen it before.
-- **Files:** `Core/DifficultyAdaptation.swift`, `Core/ProgressStore.swift` (read `completionCount` to decide), `TracingViewModel.swift`.
-- **Citation:** Skinner, B. F. (1958). Teaching machines. *Science*, 128(3330), 969–977; Terrace, H. S. (1963). Discrimination learning with and without "errors." *JEAB*, 6(1), 1–27.
-- **Dependencies:** none.
-
-### P4 (P2, M) — Letter-formation video / Bob-the-dog start cue ✅ shipped (a6a8bc4 — 1 s first-step dwell in AnimationGuideController)
-LetterSchool, HWT, and Wet-Dry-Try all show an animated character pointing to the start position. The current observe phase has an animated dot, which is correct but visually subtle for a 5-year-old. Add a 1-second character-pointing animation at the first stroke's start before the dot starts moving. Asset budget: one Lottie or symbol-based animation (no extra fonts/sounds needed).
-- **Files:** `Features/Tracing/AnimationGuideController.swift`, new asset in `Resources/`, `Features/Tracing/TracingCanvasView.swift`.
-- **Citation:** Mayer (2009) Multimedia Learning — pre-attentive cueing principle.
-- **Dependencies:** none.
-
-### P5 (P2, S) — Forward + backward stroke chaining option ⏭ deferred (pedagogical risk; needs validation)
-Some children (Asperger / motor-planning issues) benefit from learning the **last** stroke first and adding earlier strokes backward (backward chaining). Add a hidden parent-toggle "Schreibrichtung umkehren" that reverses stroke order in the direct phase only. The internal stroke index runs backward; the canonical order is restored for guided/freeWrite. Research-only; off by default.
-- **Files:** `Core/LearningPhaseController.swift`, `Features/Tracing/TracingViewModel.swift`, `Features/Dashboard/SettingsView.swift`.
-- **Citation:** Spooner, F., et al. (2014). Comparing chaining methods. *Education and Training in Autism and Developmental Disabilities*, 49(2), 162–183.
-- **Dependencies:** none.
-
-### P6 (P3, M) — Phonics audio integration ⏭ deferred (audio asset work)
-Each letter currently has 1–3 pronunciation audio files. Add a separate "Buchstabenklang" (phoneme) audio that plays the *sound* the letter makes in a word context (e.g. /a/ as in *Affe*) — distinct from the letter's name (/aː/). Two-finger swipe could cycle name ↔ phoneme. Current `audioFiles` triad already supports this; just need recordings.
-- **Files:** `Resources/Letters/<x>/<x>_phoneme.mp3` (new audio assets), small wiring in `LetterRepository.swift`.
-- **Citation:** Adams (1990) *Beginning to Read* — phonemic awareness predicts reading acquisition.
-- **Dependencies:** audio recording.
-
-### P7 (P3, S) — Goal-setting prompt at session start ✅ shipped (3dbf597 — daily-goal pill)
-Locke & Latham (1990) goal-setting theory predicts that explicit, proximal goals improve practice quality. On daily app open, surface a one-tap goal pill: "Heute schaffe ich 3 Buchstaben" (default 3, parent-configurable). Show progress toward it on the gallery; celebrate completion.
-- **Files:** new `Features/Worlds/DailyGoalPill.swift`, `Core/StreakStore.swift` (track daily goal hits), `FortschritteWorldView.swift`.
-- **Citation:** Locke, E. A., & Latham, G. P. (1990). *A theory of goal setting & task performance.* Prentice-Hall.
-- **Dependencies:** none.
+**Citation.** Roediger, H. L., & Karpicke, J. D. (2006). Test-enhanced learning: Taking memory tests improves long-term retention. *Psychological Science*, 17(3), 249–255.
 
 ---
 
-## 3. UX POLISH
+### P6 — Phoneme audio recordings *(infrastructure shipped; audio assets pending)*
+**Effort:** XL (recording + voice direction work) · **Priority:** P1
 
-Make the app delightful and accessible without changing pedagogy.
+**Problem.** Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing handwriting practice with the *sound* the letter makes (`/a/` as in *Affe*) instead of just its name (`/aː/`) is curriculum-aligned for German Volksschule.
 
-### U1 (P1, S) — Reward celebration overlay ✅ shipped (740512e)
-The `earnedRewards` badges now appear in the Fortschritte gallery (HIDDEN_FEATURES_AUDIT C.6 fix), but a newly-earned reward gets no immediate celebration. Add an overlay-queue case `.rewardCelebration(RewardEvent)` that fires the moment `recordSession` returns a non-empty array of new rewards. Big emoji, sparkle particles, "Toll gemacht!" speech, then auto-advance.
-- **Files:** `Core/OverlayQueueManager.swift` (new case), `Features/Tracing/RewardCelebrationOverlay.swift` (new), `TracingViewModel.swift`, `SchuleWorldView.swift`.
-- **Dependencies:** none.
+**What's already in code (branch `roadmap-v5-tier12`).**
+- `LetterAsset.phonemeAudioFiles: [String]` — populated by `LetterRepository.partitionPhonemeAudio` from the bundle scan.
+- `enablePhonemeMode: Bool` UserDefaults toggle, threaded through `TracingDependencies` and the VM.
+- All 7 audio call sites (replay, variants, autoplay, begin-touch reload, direct-phase first-tap, load() prime) routed through `activeAudioFiles(for:)` helper. Toggle-on with no phoneme recordings → silent fallback to letter-name set.
+- SettingsView "Lautwert" section with the toggle + Adams 1990 caption.
 
-### U2 (P1, S) — Empty letter-set onboarding hint ✅ verified done (Werkstatt auto-enters freeform; Fortschritte already had ContentUnavailableView)
-`SchuleWorldView` already has the `ContentUnavailableView` empty-state (C-3 R1 fix). Add the same empty-state to `WerkstattWorldView` and `FortschritteWorldView` for parity. Currently both can render empty without a verbal hint.
-- **Files:** `Features/Worlds/WerkstattWorldView.swift`, `FortschritteWorldView.swift`.
-- **Dependencies:** none.
+**What's still needed.**
+1. **Audio recordings** following the convention `<base>_phoneme<n>.<ext>` per `docs/PHONEME_AUDIO_GUIDE.md`. Three takes per letter (different voices for child preference). 30 letters × 3 takes = 90 recordings.
+2. ElevenLabs prompt template + per-letter IPA reference table is in the guide. Generation should be straightforward; clean-up (trim silence, normalise to -16 LUFS, export at 44.1 kHz mp3) is the per-file labour.
+3. **Bundle wiring.** Drop the files into `BuchstabenNative/Resources/Letters/<base>/`. The repository scan picks them up automatically; no Swift code changes required.
+4. **Verification checklist** (in the guide): toggle on → tap → phoneme plays; two-finger swipe cycles through takes; toggle off → name resumes.
 
-### U3 (P2, M) — Animated world transitions ✅ verified done (`MainAppView` already animates with reduceMotion gate)
-World switching is instant. A 200 ms cross-fade on the world content (not the rail) would feel less abrupt for a 5-year-old. Use SwiftUI `.transition(.opacity.combined(with: .scale(0.96)))` keyed on `activeWorld`.
-- **Files:** `Features/Navigation/MainAppView.swift`.
-- **Dependencies:** none.
+**Citations.**
+- Adams, M. J. (1990). *Beginning to Read: Thinking and Learning about Print*. MIT Press.
+- Krech, E.-M. et al. (2009). *Deutsches Aussprachewörterbuch*. de Gruyter — the standard reference for German phoneme realisations.
 
-### U4 (P2, S) — Onboarding length tuning ⏭ deferred (UX risk; needs A/B validation before committing)
-The 7-step onboarding (welcome → 4 phase demos → reward intro → complete) is long for a 5-year-old. Shorten to **3 steps** for the child path: welcome → "Zeig mal was du kannst" (10 s tracing demo) → "Los geht's!". Keep the long form behind the parent's "Einführung wiederholen" button.
-- **Files:** `Features/Onboarding/OnboardingView.swift`, `Core/OnboardingCoordinator.swift`.
-- **Dependencies:** none.
+---
 
-### U5 (P2, M) — Pencil 2 squeeze for pause/replay ⏭ deferred (UIPencilInteraction integration; needs device testing)
-iPadOS 17.5+ exposes `UIPencilInteraction` squeeze events. Bind a squeeze to "replay letter audio" — a one-handed action that doesn't take the child off the canvas. Falls back to a no-op for finger users.
-- **Files:** `Features/Tracing/TracingCanvasView.swift`, `Features/Tracing/PencilAwareCanvasOverlay.swift`.
-- **Dependencies:** none.
+## 2. PEDAGOGICAL — DEFERRED
 
-### U6 (P2, S) — Haptic on celebration overlay tap ✅ shipped (001d35b)
-The celebration overlay has a "Weiter" button. Tap currently triggers no haptic. Add `haptics.fire(.letterCompleted)` (or a softer pattern) so the child gets a confirmation pulse before the next letter loads. Aligns with the rest of the app's haptic coverage.
-- **Files:** `Features/Tracing/CompletionCelebrationOverlay.swift`, `TracingViewModel.swift`.
-- **Dependencies:** none.
+### P5 — Forward + backward stroke chaining toggle
+**Effort:** S–M · **Priority:** P3
 
-### U7 (P2, S) — Schreibmotorik-detail sparkline ✅ shipped (740512e)
-The new "Schreibqualität – Details" section shows static percentage bars. Add a 5-session sparkline beside each dimension so parents see trend (improving / stable / declining). The data exists in `phaseSessionRecords`; just plot the last 5 freeWrite scores per dimension.
-- **Files:** `Features/Dashboard/ParentDashboardView.swift`, possibly a small `SparklineView.swift`.
-- **Dependencies:** none.
+**Why deferred.** The cited research (Spooner et al. 2014) is about *special-needs interventions* — autism, motor-planning disorders. Not the typical first-grade Volksschule population. Adding it as an opt-in parent toggle is plausible but reads as feature creep without IRB / curriculum justification. It also adds complexity to the direct-phase order tracking (the "next-expected" index has to flip direction) for a feature your thesis cohort won't use.
 
-### U8 (P2, S) — Speech-rate parental knob ✅ shipped (001d35b)
-TTS uses the system default rate. For 5-year-olds, this is sometimes too fast. Add a Settings slider "Sprechgeschwindigkeit" with three positions (langsam / normal / schnell) bound to `AVSpeechUtterance.rate`. Persist in UserDefaults.
-- **Files:** `Features/Dashboard/SettingsView.swift`, `Core/SpeechSynthesizer.swift`.
-- **Dependencies:** none.
+**If you decide to do it anyway.** Settings toggle "Schreibrichtung umkehren" (off by default), `LearningPhaseController.directDotOrder` reading the toggle and flipping the iteration. The change is local to the direct phase only; guided/freeWrite always run canonical order. ~1 day of work.
 
-### U9 (P3, S) — Visual-consistency token sweep ✅ shipped (001d35b — unified `AppSurface.starGold`)
-`AppSurface` and `WorldPalette` now share most tokens (W-39 / W-40 R1). One outstanding inconsistency: the celebration overlay's gold star tint and the picker's gold star tint use different RGB values. Unify to a single `AppSurface.starGold` token.
-- **Files:** `Features/Navigation/WorldPalette.swift`, `CompletionCelebrationOverlay.swift`, `LetterPickerBar.swift`, `FortschritteWorldView.swift`.
-- **Dependencies:** none.
+**Recommendation.** Skip for thesis. Defer to a post-thesis inclusive-design pass if the app ships to clinical SPED settings.
 
-### U10 (P3, S) — Accessibility audit pass ✅ partial shipped (a6a8bc4 — Schreibqualität rows collapse to one VoiceOver element; full device walkthrough still needed)
-The R1 accessibility fixes (P-9) covered the obvious gaps. A full VoiceOver walkthrough would catch:
-- Order of focus in `SchuleWorldView` after a phase advance
-- Whether the Schreibqualität dimension bars are reachable as a single combined element vs separate
-- The new reward-badge row's swipe-navigation in horizontal scrollview
-- Switch Control routing
-- **Files:** any view file flagged.
-- **Dependencies:** none.
+---
 
-### U11 (P3, M) — Dark-mode parity ⏭ deferred (tonal redesign; needs device validation)
-`FortschritteWorldView` pins `.preferredColorScheme(.light)` because card surfaces are opaque white. A proper dark-mode pass would re-tone the cards to `.thinMaterial` so a parent reviewing at night doesn't get blasted with white. The child-facing schule/werkstatt are colour-bold by design and can stay light-fixed.
-- **Files:** `Features/Worlds/FortschritteWorldView.swift`, `Features/Dashboard/ParentDashboardView.swift`, `ResearchDashboardView.swift`.
-- **Dependencies:** none.
+## 3. UX — DEFERRED
+
+### U4 — Onboarding length tuning *(needs empirical signal first)*
+**Effort:** M · **Priority:** P3
+
+**Why deferred.** The current 7-step onboarding (welcome → 4 phase demos → reward intro → complete) was deferred because compressing without empirical signal is a UX risk: children might miss the per-phase concept demos, parents miss the reward-system intro and don't connect stars to practice motivation.
+
+**What needs to happen first.** Instrument `OnboardingCoordinator.advance()` calls with timestamps; measure step-level completion rate. Two failure modes to watch for: (a) drop-off concentrated on a specific step (signal that step is broken), (b) uniform drop-off across all steps (signal it's just too long). The compression decision is data-driven, not a priori.
+
+**The proposed compression** (if data warrants): 3 steps for the child path — welcome → "Zeig mal was du kannst" (10-second guided trace of letter `A`, child does it, success animation) → "Los geht's!". Move the per-phase concept demos and reward-system intro behind the existing parent's "Einführung wiederholen" button.
+
+**Decision threshold.** Onboarding-completion < 70% → compress. > 90% → leave alone. In between → A/B split.
+
+---
+
+### U5 — Apple Pencil 2 squeeze *(wired on branch; needs device validation)*
+**Effort:** S (already done in code) — but **0–1 days for device validation** · **Priority:** P3
+
+**Status.** Wired into `PencilAwareCanvasOverlay` on branch `roadmap-v5-tier12`. `UIPencilInteraction` is installed lazily; squeeze and double-tap both trigger `vm.replayAudio()`. Devices without `UIPencilInteraction` support pass nil and the interaction is never installed.
+
+**What's needed before merging to main.** Real iPad with Apple Pencil 2nd gen, in your hand. Check:
+- Squeeze fires the audio replay (not a "switch tools" default action).
+- Double-tap (the legacy gesture) also fires the audio replay.
+- Finger-only sessions never invoke the handler (verified in code via the `delegate` only being added when the interaction exists).
+- Audio doesn't double-fire when squeeze + finger-tap occur in rapid succession (potentially a debounce-needed scenario).
+
+If any of those fails on device, the fix is a tweak in `Coordinator.pencilInteractionDidTap` — don't ship to main without verifying.
+
+---
+
+### U10 — Accessibility audit *(partial shipped; full audit needs device)*
+**Effort:** S–M (depending on findings) · **Priority:** P3
+
+**What's already done.**
+- Schreibqualität dimension rows collapse to one VoiceOver element per row ("Form, 78 Prozent") instead of three separate focuses.
+- Reward badges, daily-goal pill, settings additions, celebration overlay all carry combined-element labels + hints.
+- Sparkline view is `accessibilityHidden(true)` (the percentage carries the load-bearing label).
+
+**What's still needed (real iPad with VoiceOver enabled).**
+- Walk every screen in VoiceOver order. Watch for skipped elements, misordered focus, ambiguous labels.
+- Verify the order of focus in `SchuleWorldView` after a phase advance — does the "Weiter" button get focus before the celebration is announced, or vice versa? Current code may rely on accessibility focus shifts that don't land where intended.
+- Switch Control routing — direct-phase dot taps need to be reachable via the switch.
+- AssistiveTouch overlay — confirm the touch-handler hierarchy doesn't block AssistiveTouch's hit-testing.
+- Dynamic Type stress test — the dashboard rows should not clip at the largest accessibility text size.
+
+**Recommendation.** Schedule 2–3 hours with VoiceOver enabled on the iPad before submitting the thesis to anyone external.
+
+---
+
+### U11 — Dark-mode parity
+**Effort:** M (~1 day code + ≥2 hr device validation) · **Priority:** P3
+
+**Why deferred.** `FortschritteWorldView` and the freeform writing canvas pin `.preferredColorScheme(.light)` because their card surfaces use opaque `Color.white`. Removing the pin without device validation is a roll of the dice — the prior author chose the pin specifically because they couldn't validate.
+
+**The change.** Three card surfaces switch from `Color.white` to `Color(uiColor: .secondarySystemGroupedBackground)` (white in light mode, dark grey in dark mode — auto-adapts). After the swap, remove the `.preferredColorScheme(.light)` pin.
+
+**Affected files.**
+- `Features/Worlds/FortschritteWorldView.swift` — 4 cards (starCount, streak, dailyGoal, fluencyFooter) + the rewards row
+- `Features/Tracing/FreeformWritingView.swift` — canvas chrome + result popups
+- Possibly `Features/Tracing/CompletionCelebrationOverlay.swift` — the gradient stays; the white scrim opacity might need tuning
+
+**Failure modes to watch for on device.**
+- `AppSurface.starGold` pops against white but might look harsh on dark grey.
+- Letter glyph rendered as `Color.primary` over the card → white-on-grey in dark mode. Verify legibility for a 5-year-old (target 7:1 contrast for body, 3:1 for large text).
+- Material backgrounds inside `List` already adapt; double-adapting can render weirdly.
+
+**Recommendation.** Worth doing post-thesis. Children use the app in classroom / daylight conditions; the dark-mode population is parents reviewing the dashboard at night. Low pedagogical priority but a polish win.
 
 ---
 
 ## 4. TECHNICAL DEBT
 
-Code-quality investments deferred during the review rounds.
+### D1 — TracingViewModel God-object decomposition *(deliberate multi-day refactor; needs your in-the-loop review)*
+**Effort:** L (3–5 days, one PR per extraction) · **Priority:** P1
 
-### D1 (P1, L) — W-1 TracingViewModel God-object decomposition ⏭ deferred (multi-day refactor; needs dedicated branch)
-`TracingViewModel.swift` is now **2277 lines** with ~16 distinct responsibilities (touch dispatch, phase advance, scoring, overlay routing, recognition orchestration, audio gating, animation, onboarding control, lifecycle, recommendation, calibration, debug accessors, dependency-injection plumbing). The W-5 forwarders made views happy; the VM itself still mixes concerns. Extract:
-- `TouchDispatcher` (beginTouch/updateTouch/endTouch logic)
-- `RecognitionOrchestrator` (runRecognizerForFreeWrite + post-processing)
-- `PhaseTransitionCoordinator` (advanceLearningPhase + post-completion side effects)
-The VM keeps the @Observable façade and forwards through these collaborators.
-- **Files:** `Features/Tracing/TracingViewModel.swift`, three new files in `Features/Tracing/`.
-- **Dependencies:** none, but keep CI green between extractions.
+**Why this matters.** `TracingViewModel.swift` is **2350+ lines** as of `roadmap-v5-tier12`. ~16 distinct responsibilities. Every subsequent thesis-supporting feature lands in this file — once you commit to T1 (lowercase) or P1 (retrieval UI), every change cuts through this God object. **Ship D1 first or pay the per-feature tax forever.**
 
-### D2 (P1, M) — W-17 store schema migration framework ✅ shipped (3dbf597 — `Core/SchemaMigrator.swift`)
-Schema versioning was added (`schemaVersion: Int?` on each store) but **forward-incompatible files are silently dropped**, not migrated. For thesis longevity, add a small migration framework: when `decoded.schemaVersion < currentSchemaVersion`, run a registered migration function for each version step. Currently a v1→v2 upgrade has nowhere to live.
-- **Files:** new `Core/PersistenceMigrator.swift`, `Core/ProgressStore.swift`, `ParentDashboardStore.swift`, `StreakStore.swift`, tests.
-- **Dependencies:** none.
+**Three clean extractions** (each = one PR, CI green between them):
 
-### D3 (P2, M) — CoreMLLetterRecognizer test coverage ✅ partial shipped (a6a8bc4 — `renderToImage` golden-image tests; Vision-request path still needs a model mock)
-The recognizer has no dedicated unit test for `loadModelIfNeeded` / `renderToImage` / `makeResult`. Round-3 added integration tests through the VM but the renderer's coordinate flipping, the model-cache lock, and the calibrator wiring are untested directly. Add a test target with a tiny synthetic mlmodel (or a mock VNCoreMLModel) plus a renderToImage golden-image test.
-- **Files:** `BuchstabenNativeTests/CoreMLLetterRecognizerTests.swift` (new).
-- **Dependencies:** none.
+1. **`TouchDispatcher`** — owns `beginTouch` / `updateTouch` / `endTouch`, velocity smoothing knobs, the playback-activation threshold logic. Inputs: haptics, playback, audio, freeWriteRecorder, phaseController (for `feedbackIntensity`). Outputs: callbacks for stroke-completion + canvas-progress updates. **~300 lines** moved out.
 
-### D4 (P2, M) — PaperTransferView deterministic timing ✅ shipped (3dbf597 — injectable `Sleeper`)
-The 3 s reference / 10 s write / assess timing uses real `Task.sleep`. Inject the same `Sleeper` pattern that `OverlayQueueManager` and `PlaybackController` already use, then unit-test the state mapping deterministically.
-- **Files:** `Features/Tracing/PaperTransferView.swift`, tests.
-- **Dependencies:** none.
+2. **`RecognitionOrchestrator`** — owns `activeRecognitionToken`, `runRecognizerForFreeWrite`, the freeform-letter and freeform-word recognition paths, the `enqueueBeforeCelebration` + speech wiring. Inputs: recognizer, calibrator, progress store, overlay queue, speech, animation guide (for the P2 self-explanation re-animation). Token tracking is currently shared across three call sites; centralising it removes 3 nearly-identical guards. **~200 lines** moved out.
 
-### D5 (P2, S) — Drop the `strokesPerSecond` forwarder ✅ verified done (no live forwarder remains; only a historical comment)
-W-25 renamed the recorder property to `checkpointsPerSecond` but kept a `strokesPerSecond` computed forwarder for back-compat. Audit shows no remaining external callers — remove the forwarder and the prop is just `checkpointsPerSecond` everywhere.
-- **Files:** `Features/Tracing/FreeWritePhaseRecorder.swift`, callers if any.
-- **Dependencies:** none.
+3. **`PhaseTransitionCoordinator`** — owns `advanceLearningPhase`, `recordPhaseSessionCompletion`, `commitCompletion`, the post-transition side-effect block (overlay enqueue, speech praise, store writes, adaptation sample, HUD). Inputs: phaseController, freeWriteRecorder, all four stores, overlay queue, speech, syncCoordinator. **~200 lines** moved out.
 
-### D6 (P2, S) — Delete deprecated `ContentView.swift` ✅ verified done (file already absent)
-`App/ContentView.swift` is `@available(*, deprecated)` and not instantiated anywhere. The R1 review committed to keeping it for chrome reference; that reference is captured in `docs/`. Delete the file (~382 lines) so the production binary doesn't carry a stale root view.
-- **Files:** `App/ContentView.swift` (delete), Xcode project/Package.swift if it references it explicitly.
-- **Dependencies:** none.
+**After all three:** VM ~1500 lines, dominated by the @Observable forwarder properties (which can't move because views bind to them).
 
-### D7 (P3, S) — Migrate remaining XCTest files to Swift Testing ✅ verified-skip (917a28f → updated in 2nd commit on `roadmap-v5-tier12`; the 3 XCTest files use `XCTMetric` / `expectation-wait` / class-level `XCTSkip`, none of which Swift Testing has an equivalent for as of Swift 6.x — LESSONS.md policy is correct)
-`LESSONS.md` says "don't migrate existing XCTest" but the test target's v5 Swift carve-out exists *because* of the XCTest inheritance constraint. Once the last XCTest file is migrated, the test target can move to Swift 6 strict isolation, matching the main target.
-- **Files:** any remaining `XCTestCase` files in `BuchstabenNativeTests/` (probably 1–2).
-- **Dependencies:** none — but check `LESSONS.md` policy with the user before flipping.
+**Failure modes.**
+- **Forwarders.** Each property/method that views currently call must keep its name on the VM after the move. An extraction that drops a forwarder breaks the view.
+- **MainActor isolation.** All collaborators must be `@MainActor`. Background work (recognition's `Task.detached`) hops back to MainActor before mutating state.
+- **Test fixtures.** `TestFixtures.StubProgressStore` etc. are used directly; new collaborators need stub-friendly initialisers.
 
-### D8 (P3, M) — Canvas redraw frequency ⏭ deferred (Instruments profile required; analysis-only)
-`TracingCanvasView`'s `Canvas { ... }` body is invoked on every observable change. Profile in Instruments to see whether the redraw rate during high-velocity drawing causes frame drops; if so, route static layers (glyph image, ghost lines) through `Equatable`-wrapped subviews so SwiftUI skips them on no-change.
-- **Files:** `Features/Tracing/TracingCanvasView.swift`.
-- **Dependencies:** Instruments profile.
+**Recommendation.** This is the highest-EV technical-debt item. **Worth scheduling a dedicated week with you in the loop** — three PRs over three days, each reviewed before the next starts. I'm not comfortable doing this fully autonomously because each extraction has subtle MainActor + forwarder traps; the failure mode is a test that *passes* but a runtime regression that surfaces in a real session weeks later.
 
-### D9 (P3, S) — CI flake hardening ✅ shipped (a6a8bc4 — `timeout-minutes` caps on both jobs)
-The simulator job is reliable; the self-hosted MacBook runner has occasionally timed out on device tests. Add a 12-minute hard cap with auto-retry-once on the device-test job; surface the retry count in the run summary.
-- **Files:** `.github/workflows/ipad-device-test.yml`.
-- **Dependencies:** none.
+---
+
+### D3 — CoreMLLetterRecognizer Vision-request coverage *(rendering tests shipped; model path still needs a mock)*
+**Effort:** M · **Priority:** P3
+
+**What's already done.** Five `renderToImage` golden-image tests in `BuchstabenNativeTests/CoreMLLetterRecognizerTests.swift` cover empty/single-point input → nil, 40×40 grayscale output for non-trivial paths, vertical-only degenerate path, centring-translation invariance.
+
+**What's still missing.** The Vision-request path (`loadModelIfNeeded`, `makeResult`, `VNCoreMLRequest` lifecycle, `ConfidenceCalibrator` wiring). This needs either:
+- A real `.mlpackage` bundled into the test target (synthetic tiny model trained on 4×4 inputs to keep size under 100 KB), or
+- A mock `VNCoreMLModel` — but `VNCoreMLModel` is `final`, so this requires a protocol-typed seam in the recognizer that the tests can swap.
+
+**Recommendation.** The mock-protocol approach is the cleaner long-term path: define `LetterClassifying` with `func classify(_ image: CGImage) async -> [VNClassificationObservation]?`, route the production call through it, swap a deterministic stub in tests. ~1 day of work.
+
+---
+
+### D8 — Canvas redraw frequency profile
+**Effort:** S (profile only) — could expand to M if a real bottleneck surfaces · **Priority:** P3
+
+**Why deferred.** No measured evidence of a problem. On an M-class iPad it's probably fine; on an older iPad (A12 / iPad 8th gen) high-velocity drawing might drop frames because the freeWriteRecorder appends per touch event, the VM publishes the change, the canvas re-renders, the canvas re-builds the path, the GPU rasterises.
+
+**What to do.**
+1. Open Instruments → Time Profiler → run a guided session for ~30 seconds at high velocity.
+2. Check the SwiftUI Update Profiler for `tracingCanvas` body invocations / second.
+3. If sustained >60 invocations / sec, two cuts available:
+   - Wrap static layers in `Equatable` subviews (glyph image, ghost lines, start dots only change when `currentLetterName` / `schriftArt` / `showGhost` / `phaseController.showCheckpoints` change). `.equatable()` lets SwiftUI skip body re-eval when those don't change.
+   - Throttle recorder writes to ~30 Hz (every other touch event). Coalescing halves redraw count without the child noticing.
+
+**Recommendation.** Don't pre-optimise. Profile only after a real classroom user reports lag or the device-test job reports a frame drop.
 
 ---
 
 ## 5. POST-THESIS
 
-Worth doing once the thesis ships — not gating.
+These remain untouched from V1 of the roadmap. Each is a worthwhile addition once the thesis ships.
 
-### F1 (P1, L) — App Store readiness pass
-- Privacy Manifest (`PrivacyInfo.xcprivacy`) declaring `UserDefaults`, `NSUbiquitousKeyValueStore`, `Application Support` writes, and CoreML on-device usage.
-- App icon set at every required size.
-- Screenshots for the iPad listing (5–7 stills covering Schule / Werkstatt / Fortschritte / Eltern-Dashboard).
-- Marketing copy in German + English.
-- App Store Connect "Privacy Practices" section: "Daten werden auf dem Gerät gespeichert; keine Übertragung."
-- TestFlight build with crash-reporting opt-in.
-- **Files:** `BuchstabenApp/PrivacyInfo.xcprivacy` (new), `Resources/AppIcon.xcassets`, store assets.
-- **Dependencies:** thesis submission complete.
+### F1 — App Store readiness pass
+**Effort:** L · **Priority:** P1 (post-thesis)
 
-### F2 (P1, L) — Lowercase letters + diacritics complete
-26 lowercase + Ä Ö Ü ß as full citizens, not placeholders. Each gets a stroke definition, a pbm fallback, three audio variants, and a calibration pass. Approximately 30 letters × 2–3 hours each = ~60–90 person-hours.
-- **Files:** `Resources/Letters/<x>/...` for every letter.
-- **Citation:** ÖSterr. Volksschule 1. Klasse curriculum.
-- **Dependencies:** none.
+Privacy Manifest (`PrivacyInfo.xcprivacy`) declaring `UserDefaults`, `NSUbiquitousKeyValueStore`, `Application Support` writes, on-device CoreML usage. App icon set at every required size. iPad screenshots (5–7 stills covering Schule / Werkstatt / Fortschritte / Eltern-Dashboard). Marketing copy in German + English. App Store Connect "Privacy Practices" section: "Daten werden auf dem Gerät gespeichert; keine Übertragung." TestFlight build with crash-reporting opt-in.
 
-### F3 (P1, L) — Cloud sync (CloudKit)
-`SyncCoordinator` is wired to `NullSyncService`. Implement a real CloudKit-backed `CloudSyncService` so a child who uses the app on multiple iPads (parent + grandparent) sees a unified streak and progress. Privacy: zone-per-participant, no PII, opt-in at first launch.
-- **Files:** `Core/CloudSyncService.swift`, entitlements.
-- **Dependencies:** F1 (privacy manifest first).
+### F2 — Lowercase letters + diacritics complete
+**Effort:** XL (subsumes T1's full-alphabet scope) · **Priority:** P1 (post-thesis if T1 ships demo set only)
 
-### F4 (P2, L) — Teacher dashboard (multi-child)
-A per-classroom view that shows N children's progress side-by-side. Auth via "School Code" (a 6-letter shared secret per teacher). Read-only initially; later add per-child homework assignment.
-- **Files:** new `Features/Teacher/`, CloudKit shared zone.
-- **Dependencies:** F3.
+26 lowercase + Ä Ö Ü ß as full citizens, not placeholders. ~30 letters × 2–3 hours each = 60–90 person-hours.
 
-### F5 (P2, M) — Numbers and basic punctuation
-Add `0–9` and the period/comma/question-mark glyphs. The infrastructure is letter-agnostic (just stroke definitions + audio); ~12 new bundled glyphs.
-- **Files:** `Resources/Letters/<digit>/...` for 0–9 and a few punctuation.
-- **Dependencies:** none.
+### F3 — CloudKit sync
+**Effort:** L · **Priority:** P1 (post-thesis)
 
-### F6 (P2, L) — Additional cursive scripts
-The `SchriftArt` enum has five cases; only Druckschrift (Primae) and Schreibschrift (Playwrite AT) are bundled. Add Grundschrift, Vereinfachte Ausgangsschrift, and Schulausgangsschrift once a license-compatible font ships.
-- **Files:** `Resources/Fonts/*.otf` (new), `SchriftArt.swift` (no code change — just unblock the cases).
-- **Dependencies:** font licensing.
+`SyncCoordinator` is wired to `NullSyncService`. Implement a real CloudKit-backed `CloudSyncService` so a child using the app on multiple iPads (parent + grandparent) sees a unified streak and progress. Privacy: zone-per-participant, no PII, opt-in at first launch. Depends on F1 (privacy manifest first).
 
-### F7 (P3, M) — Apple Watch streak companion
-A single complication that shows the current streak. Tapping opens the Schule world. Implementation: WatchKit extension + WCSession to read `streak.json` from the App Group.
-- **Files:** new `BuchstabenWatchExtension/`, App Group entitlement.
-- **Dependencies:** F1.
+### F4 — Teacher dashboard (multi-child)
+**Effort:** L · **Priority:** P2
 
-### F8 (P3, M) — Mac Catalyst
-`Package.swift` already targets `macOS 15.0`. Polish the keyboard mappings (arrow keys for letter nav, Return to advance) and ship a Catalyst build for parents who want to use a trackpad.
-- **Files:** Catalyst-conditional view tweaks.
-- **Dependencies:** F1.
+Per-classroom view that shows N children's progress side-by-side. Auth via "School Code" (a 6-letter shared secret per teacher). Read-only initially; later add per-child homework assignment. Depends on F3.
 
-### F9 (P3, M) — Localization beyond German
-The architecture is German-only by design (curriculum-specific). For German-speaking children abroad, English UI labels with German letter content might help bilingual classrooms. Wrap UI strings in `Localizable.strings`; ship `de` (canonical) and `en` (Wrap UI only — letter content stays German).
-- **Files:** `Localizable.strings` per locale, view audits.
-- **Dependencies:** none.
+### F5 — Numbers + basic punctuation
+**Effort:** M · **Priority:** P2
 
-### F10 (P3, S) — Switch Control + AssistiveTouch overlay
+Add `0–9` and the period/comma/question-mark glyphs. Infrastructure is letter-agnostic (just stroke definitions + audio); ~12 new bundled glyphs.
+
+### F6 — Additional cursive scripts
+**Effort:** L · **Priority:** P2
+
+The `SchriftArt` enum has five cases; only Druckschrift (Primae) and Schreibschrift (Playwrite AT) are bundled. Add Grundschrift, Vereinfachte Ausgangsschrift, and Schulausgangsschrift once a license-compatible font ships. The code path is already in place — just unblock with font licensing.
+
+### F7 — Apple Watch streak companion
+**Effort:** M · **Priority:** P3
+
+A single complication that shows the current streak. Tapping opens the Schule world. Implementation: WatchKit extension + WCSession to read `streak.json` from the App Group. Depends on F1.
+
+### F8 — Mac Catalyst
+**Effort:** M · **Priority:** P3
+
+`Package.swift` already targets `macOS 15.0`. Polish keyboard mappings (arrow keys for letter nav, Return to advance) and ship a Catalyst build. Depends on F1.
+
+### F9 — Localization beyond German
+**Effort:** M · **Priority:** P3
+
+Architecture is German-only by design (curriculum-specific). For German-speaking children abroad, English UI labels with German letter content might help bilingual classrooms. Wrap UI strings in `Localizable.strings`; ship `de` (canonical) and `en` (UI only — letter content stays German).
+
+### F10 — Switch Control + AssistiveTouch overlay
+**Effort:** S–M · **Priority:** P3
+
 For motor-impaired children, expose the direct-phase dot tap as a Switch Control target and render a parallel "Switch Control hint" overlay that highlights the next-expected dot in high contrast.
-- **Files:** `Features/Tracing/TracingCanvasView.swift`, accessibility actions.
-- **Dependencies:** none.
 
 ---
 
-## Summary table
+## Summary of the implementation pass
 
-| ID | Title | Cat | Effort | Pri |
-|----|-------|-----|--------|-----|
-| T1 | Lowercase active set | Thesis | M | P1 |
-| T2 | D-5 condition tags | Thesis | M | P1 |
-| T3 | Time-of-day metadata | Thesis | S | P1 |
-| T4 | Active-vs-wallclock duration | Thesis | S | P1 |
-| T5 | Recognition raw + calibrated | Thesis | M | P2 |
-| T6 | Stratified A/B blocks | Thesis | M | P2 |
-| T7 | Input-mode on durations | Thesis | S | P2 |
-| T8 | EXPORT_SCHEMA.md | Thesis | S | P3 |
-| P1 | Spaced retrieval | Pedagogy | L | P1 |
-| P2 | Self-explanation | Pedagogy | M | P1 |
-| P3 | Errorless first sessions | Pedagogy | M | P2 |
-| P4 | Bob-the-dog start cue | Pedagogy | M | P2 |
-| P5 | Backward chaining toggle | Pedagogy | S | P2 |
-| P6 | Phonics audio | Pedagogy | M | P3 |
-| P7 | Daily goal pill | Pedagogy | S | P3 |
-| U1 | Reward celebration overlay | UX | S | P1 |
-| U2 | Empty-state hints | UX | S | P1 |
-| U3 | World transitions | UX | M | P2 |
-| U4 | Onboarding compression | UX | M | P2 |
-| U5 | Pencil 2 squeeze | UX | M | P2 |
-| U6 | Celebration haptic | UX | S | P2 |
-| U7 | Dimension sparkline | UX | S | P2 |
-| U8 | Speech rate slider | UX | S | P2 |
-| U9 | Token sweep | UX | S | P3 |
-| U10 | Accessibility audit | UX | S | P3 |
-| U11 | Dark mode | UX | M | P3 |
-| D1 | W-1 VM extraction | Tech | L | P1 |
-| D2 | Schema migrator | Tech | M | P1 |
-| D3 | CoreML tests | Tech | M | P2 |
-| D4 | PaperTransfer determinism | Tech | M | P2 |
-| D5 | Drop strokesPerSecond fwd | Tech | S | P2 |
-| D6 | Delete ContentView | Tech | S | P2 |
-| D7 | XCTest → Swift Testing | Tech | S | P3 |
-| D8 | Canvas redraw profile | Tech | M | P3 |
-| D9 | CI flake hardening | Tech | S | P3 |
-| F1 | App Store ready | Future | L | P1 |
-| F2 | Lowercase + diacritics complete | Future | L | P1 |
-| F3 | CloudKit sync | Future | L | P1 |
-| F4 | Teacher dashboard | Future | L | P2 |
-| F5 | Numbers + punctuation | Future | M | P2 |
-| F6 | Cursive scripts | Future | L | P2 |
-| F7 | Watch complication | Future | M | P3 |
-| F8 | Mac Catalyst | Future | M | P3 |
-| F9 | Localization | Future | M | P3 |
-| F10 | Switch Control | Future | S | P3 |
+The earlier T2..T8, P2 P3 P4 P7, U1 U2 U3 U6 U7 U8 U9, D2 D4 D5 D6 D9 items, plus partial U10 + D3, are **shipped on `main`** across commits `59acad9` → `276474b` (with `cca4914` as the isolation hot-fix). U5 and P1-infrastructure + P6-infrastructure are on **branch `roadmap-v5-tier12`** awaiting your review and asset work.
+
+D7 was investigated and reversed to **verified-skip** — the LESSONS.md policy is correct because the three remaining XCTest files use `XCTMetric` + `XCTSkip-in-setUp` + `expectation/wait`, none of which Swift Testing has equivalents for. The deeper analysis lives in `docs/ROADMAP_V5_DEFERRED_NOTES.md`.
 
 ---
 
-## Recommended ordering for the next four weeks
+## Recommended ordering for the next sprint
 
-If a developer pair-week is available, attack in this order:
+1. **D1** (3–5 days, your branch + my reviews per slice) — clean architecture before the bigger features land.
+2. **T1 demo lowercase set** (14–21 hours, your iPad + ElevenLabs) — minimum thesis floor for the four-phase claim.
+3. **P1 UI** (1 PR, 1–2 days from me, with your review) — surfaces the retrieval-practice claim that pairs with the existing spaced-practice claim.
+4. **P6 recordings** (your ElevenLabs work, parallel with the above) — unlocks the phonemic-awareness toggle that's already wired.
 
-**Week 1 — Thesis-critical data correctness**
-T2 (condition-tagged samples) → T4 (active vs wall-clock) → T7 (input mode on durations) → T8 (EXPORT_SCHEMA.md)
-
-**Week 2 — Thesis-critical content + UX P1s**
-T1 (lowercase active set, partial; aim for 7 letters) → U1 (reward celebration overlay) → U2 (empty hints).
-
-**Week 3 — Pedagogy + technical-debt P1s**
-P2 (self-explanation prompts) → D1 (start the VM extraction; first slice TouchDispatcher) → D2 (schema migrator).
-
-**Week 4 — Polish + cleanup**
-U6 / U7 / U8 (small UX wins) → D5 / D6 (cleanup) → first pass on F1 (privacy manifest) for early App Store readiness.
-
-Spaced retrieval (P1) is the highest-EV pedagogical addition but is large and should be planned as a dedicated 1–2 week sprint after the thesis-critical work ships.
+D8 / U10 / U11 are post-thesis polish. F1–F10 are post-thesis full features.
 
 ---
 
-_Last updated 2026-04-29 against `main` at `5e20c78`. Update this file whenever a roadmap item ships or its scope shifts materially._
+_Update this file by removing rows as they ship, not by adding ✅ markers — the deferred / open list should always read as a forward-looking work log, not an archive. Shipped items live in commit history + `docs/ROADMAP_V5_DEFERRED_NOTES.md` for the historical context._

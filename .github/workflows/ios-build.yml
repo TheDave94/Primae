@@ -1,9 +1,9 @@
 name: "iOS Build & Test"
 on:
   push:
-    branches: ["main", "ux/**"]
+    branches: ["main", "ux/**", "roadmap-*"]
   pull_request:
-    branches: ["main", "ux/**"]
+    branches: ["main", "ux/**", "roadmap-*"]
   workflow_dispatch:
 
 env:
