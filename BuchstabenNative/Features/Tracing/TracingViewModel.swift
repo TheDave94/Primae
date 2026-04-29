@@ -394,31 +394,13 @@ public final class TracingViewModel {
     /// recognition result whose dispatch preceded the clear is silently
     /// dropped instead of writing into the new context.
     ///
-    /// Use the named helpers `issueRecognitionToken()` and
-    /// `recognitionStillActive(_:)` rather than touching this directly —
-    /// they keep the three dispatch / completion sites uniform.
-    private var activeRecognitionToken: UUID?
-
-    /// Stamp a fresh recognition token and return it. The caller is
-    /// responsible for capturing the returned token in its dispatch
-    /// closure and gating the completion handler with
-    /// `recognitionStillActive(_:)`. Replaces the previous hand-rolled
-    /// `let token = UUID(); self.activeRecognitionToken = token` block
-    /// at each of the three recognition entry points.
-    private func issueRecognitionToken() -> UUID {
-        let token = UUID()
-        self.activeRecognitionToken = token
-        return token
-    }
-
-    /// True if `token` still represents the active recognition session.
-    /// Returns false once a state-clearing transition has reset
-    /// `activeRecognitionToken` or a newer dispatch has stamped a fresh
-    /// token. Use as the first guard inside any recognition Task's
-    /// `MainActor.run` completion handler.
-    private func recognitionStillActive(_ token: UUID) -> Bool {
-        activeRecognitionToken == token
-    }
+    /// D1a (ROADMAP): the recognition-token machinery is now owned by
+    /// `RecognitionTokenTracker` — the VM keeps a non-optional reference
+    /// and forwards `issue()` / `isStillActive(_:)` calls. State-
+    /// clearing transitions (letter load, phase transition, canvas
+    /// clear) call `recognitionTokens.cancel()` to nil the token so
+    /// any late-arriving completion is dropped.
+    private let recognitionTokens = RecognitionTokenTracker()
 
     var writingMode: WritingMode {
         get { freeform.writingMode }
@@ -1462,14 +1444,14 @@ public final class TracingViewModel {
         let history = (progressStore.progress(for: expected)
                        .recognitionAccuracy ?? [])
                       .map { CGFloat($0) }
-        let token = issueRecognitionToken()
+        let token = recognitionTokens.issue()
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: expected,
                 historicalFormScores: history)
             guard let self else { return }
             await MainActor.run {
-                guard self.recognitionStillActive(token) else { return }
+                guard self.recognitionTokens.isStillActive(token) else { return }
                 self.freeform.isRecognizing = false
                 self.lastRecognitionResult = result
                 // commitCompletion already wrote the guided-mode session
@@ -1705,7 +1687,7 @@ public final class TracingViewModel {
         progress = 0
         activePath.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
-        activeRecognitionToken = nil
+        recognitionTokens.cancel()
         // Always clear the recorder when a phase transition fires —
         // a stale freeWritePath from a previous freeWrite session must
         // not leak into the next one if the controller lands on a
@@ -1941,7 +1923,7 @@ public final class TracingViewModel {
         // freeform buffers as part of letter load resets it alongside.
         freeform.clearBuffers()
         lastRecognitionResult = nil
-        activeRecognitionToken = nil
+        recognitionTokens.cancel()
         overlayQueue.reset()
         directTappedDots.removeAll()
         directPulsingTask?.cancel()
@@ -2211,7 +2193,7 @@ public final class TracingViewModel {
     func clearFreeformCanvas() {
         freeform.clearBuffers()
         lastRecognitionResult = nil
-        activeRecognitionToken = nil
+        recognitionTokens.cancel()
     }
 
     /// Pick the next target word for freeform word mode.
@@ -2289,13 +2271,13 @@ public final class TracingViewModel {
             ? freeform.freeformCanvasSize : canvasSize
         freeform.isRecognizing = true
         freeform.hasRecognitionCompleted = false
-        let token = issueRecognitionToken()
+        let token = recognitionTokens.issue()
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: nil)
             guard let self else { return }
             await MainActor.run {
-                guard self.recognitionStillActive(token) else { return }
+                guard self.recognitionTokens.isStillActive(token) else { return }
                 self.freeform.isRecognizing = false
                 self.freeform.hasRecognitionCompleted = true
                 self.lastRecognitionResult = result
@@ -2423,7 +2405,7 @@ public final class TracingViewModel {
                 return (key, scores)
             }
         )
-        let token = issueRecognitionToken()
+        let token = recognitionTokens.issue()
         Task { [weak self, letterRecognizer] in
             var slots: [RecognitionResult?] = []
             for i in 0..<targetLetters.count {
@@ -2437,7 +2419,7 @@ public final class TracingViewModel {
             }
             guard let self else { return }
             await MainActor.run {
-                guard self.recognitionStillActive(token) else { return }
+                guard self.recognitionTokens.isStillActive(token) else { return }
                 self.freeform.isRecognizing = false
                 self.freeform.hasRecognitionCompleted = true
                 let present = slots.compactMap { $0 }
