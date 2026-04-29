@@ -45,22 +45,11 @@ private extension Color {
     /// instance re-evaluates whenever the system or override
     /// `userInterfaceStyle` changes — including under SwiftUI's
     /// `.preferredColorScheme()` overrides.
-    ///
-    /// Implementation note: the two endpoint UIColors are
-    /// pre-computed *outside* the dynamic-provider closure and
-    /// captured by reference (UIColor is a class). Constructing a
-    /// fresh UIColor inside the closure on every trait query showed
-    /// up as a recurring crash under Swift 6 strict concurrency
-    /// (the closure inherits `.defaultIsolation(MainActor.self)`,
-    /// while UIKit can sample the dynamic provider from contexts
-    /// that don't satisfy that isolation). The pre-computed-then-
-    /// captured form sidesteps the issue: the closure body only
-    /// reads two captured references and a bool.
     static func dynamic(light: UInt32, dark: UInt32, alpha: Double = 1.0) -> Color {
-        let lightUI = UIColor(hex: light, alpha: CGFloat(alpha))
-        let darkUI  = UIColor(hex: dark,  alpha: CGFloat(alpha))
-        return Color(uiColor: UIColor { trait in
-            trait.userInterfaceStyle == .dark ? darkUI : lightUI
+        Color(uiColor: UIColor { trait in
+            trait.userInterfaceStyle == .dark
+                ? UIColor(hex: dark,  alpha: CGFloat(alpha))
+                : UIColor(hex: light, alpha: CGFloat(alpha))
         })
     }
 }
