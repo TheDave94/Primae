@@ -89,7 +89,7 @@ struct ParentDashboardView: View {
                     case .improving:
                         Text("↑ zunehmend").foregroundStyle(.green)
                     case .stable:
-                        Text("→ stabil").foregroundStyle(.secondary)
+                        Text("→ stabil").foregroundStyle(Color.inkSoft)
                     case .declining:
                         Text("↓ abnehmend").foregroundStyle(.orange)
                     }
@@ -147,7 +147,7 @@ struct ParentDashboardView: View {
                         .frame(width: 56, height: 16)
                         .accessibilityHidden(true)
                 }
-                Text("\(pct) %").monospacedDigit().foregroundStyle(.secondary)
+                Text("\(pct) %").monospacedDigit().foregroundStyle(Color.inkSoft)
             }
             ProgressView(value: max(0, min(1, value)))
                 .progressViewStyle(.linear)
@@ -205,7 +205,7 @@ extension ParentDashboardView {
             let top = snapshot.topLetters
             if top.isEmpty {
                 Text("Noch keine Daten vorhanden.")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             } else {
                 ForEach(top, id: \.letter) { stat in
                     LetterStatRow(stat: stat, phaseScores: snapshot.phaseScores(for: stat.letter))
@@ -219,7 +219,7 @@ extension ParentDashboardView {
             let weak = snapshot.lettersBelow(accuracy: 0.70)
             if weak.isEmpty {
                 Text("Alle Buchstaben über 70 % – weiter so!")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             } else {
                 ForEach(weak, id: \.letter) { stat in
                     LetterStatRow(stat: stat, phaseScores: snapshot.phaseScores(for: stat.letter))
@@ -360,7 +360,7 @@ private struct LetterStatRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 12) {
                 Text(stat.letter)
-                    .font(.headline)
+                    .font(.body(FontSize.md, weight: .semibold))
                     .frame(width: 32, alignment: .leading)
 
                 Text("\(Int(stat.averageAccuracy * 100)) %")
@@ -416,7 +416,7 @@ private struct LetterStatRow: View {
                     .frame(width: 6, height: 6)
                 Text("\(abbreviation(for: phase)) \(Int((value * 100).rounded()))%")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
             .accessibilityLabel("\(phase.displayName) \(Int((value * 100).rounded())) Prozent")
         }
@@ -441,7 +441,7 @@ private struct LetterStatRow: View {
                 .accessibilityLabel("fallend")
         } else {
             Image(systemName: "arrow.right")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSoft)
                 .accessibilityLabel("stabil")
         }
     }

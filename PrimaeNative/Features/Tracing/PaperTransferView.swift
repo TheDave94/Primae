@@ -31,7 +31,7 @@ struct PaperTransferView: View {
                 case .showLetter:
                     Text(letter)
                         .font(.system(size: 180, weight: .bold, design: .rounded))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.ink)
                         .transition(.opacity)
                         .accessibilityLabel("Buchstabe \(letter)")
 
@@ -42,7 +42,7 @@ struct PaperTransferView: View {
                             .foregroundStyle(.blue)
                             .accessibilityHidden(true)
                         Text("Schreibe den Buchstaben jetzt auf Papier!")
-                            .font(.title2.bold())
+                            .font(.display(FontSize.lg, weight: .bold))
                             .multilineTextAlignment(.center)
                     }
                     .accessibilityElement(children: .combine)
@@ -51,7 +51,7 @@ struct PaperTransferView: View {
                 case .assess:
                     VStack(spacing: 24) {
                         Text("Ist dir der Buchstabe gut gelungen?")
-                            .font(.title2.bold())
+                            .font(.display(FontSize.lg, weight: .bold))
                             .multilineTextAlignment(.center)
                         HStack(spacing: 20) {
                             assessButton(emoji: "😟", label: "nochmal üben", score: 0.0)
@@ -92,8 +92,8 @@ struct PaperTransferView: View {
                 Text(emoji)
                     .font(.system(size: 56))
                 Text(label)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
+                    .font(.body(FontSize.md, weight: .semibold))
+                    .foregroundStyle(Color.ink)
             }
             .padding(.vertical, 12)
             .padding(.horizontal, 16)

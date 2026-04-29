@@ -31,10 +31,6 @@ struct FortschritteWorldView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(WorldPalette.background(for: .fortschritte).ignoresSafeArea())
-        // Letter gallery / fluency cards use opaque white surfaces, so
-        // pin to light mode to keep `.primary` resolving to dark text
-        // even when the system theme is dark.
-        .preferredColorScheme(.light)
     }
 
     // MARK: - Header
@@ -62,14 +58,14 @@ struct FortschritteWorldView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(done) / \(goal)")
                     .font(.system(.title, design: .rounded).weight(.bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                 Text(achieved ? "Tagesziel!" : "heute geschafft")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(achieved ? AppSurface.masteredText : AppSurface.caption)
             }
         }
         .padding(20)
-        .background(achieved ? AppSurface.mastered : Color.white,
+        .background(achieved ? AppSurface.mastered : Color.paper,
                     in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -86,18 +82,18 @@ struct FortschritteWorldView: View {
         HStack(spacing: 12) {
             Image(systemName: "star.fill")
                 .font(.system(size: 44))
-                .foregroundStyle(.yellow)
+                .foregroundStyle(Color.star)
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(totalStars) Sterne")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                 Text("gesammelt")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppSurface.caption)
             }
         }
         .padding(20)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(Color.paper, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)
@@ -113,14 +109,14 @@ struct FortschritteWorldView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("\(vm.currentStreak) \(vm.currentStreak == 1 ? "Tag" : "Tage")")
                     .font(.system(.largeTitle, design: .rounded).weight(.bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                 Text(vm.currentStreak <= 1 ? "Weiter so!" : "hintereinander")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(AppSurface.caption)
             }
         }
         .padding(20)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .background(Color.paper, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 24, style: .continuous)
                 .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)
@@ -143,7 +139,7 @@ struct FortschritteWorldView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Auszeichnungen")
                 .font(.title2.weight(.bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.ink)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(RewardEvent.allCases, id: \.self) { event in
@@ -173,7 +169,7 @@ struct FortschritteWorldView: View {
         .padding(.vertical, 8)
         .padding(.horizontal, 4)
         .frame(width: 88)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(Color.paper, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .stroke(AppSurface.cardEdge.opacity(earned ? 0.6 : 0.3), lineWidth: 1)
@@ -215,7 +211,7 @@ struct FortschritteWorldView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Deine Buchstaben")
                 .font(.title2.weight(.bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.ink)
             if vm.visibleLetterNames.isEmpty {
                 // Defensive empty state — shouldn't happen in practice
                 // (letter list is bundled), but a parent who's somehow
@@ -249,19 +245,19 @@ struct FortschritteWorldView: View {
             // looks identical in the picker and the gallery.
             if stars >= LetterStars.maxStars { return AppSurface.mastered }
             if stars >= 1 { return Color(red: 1.00, green: 0.88, blue: 0.60) }
-            return Color.gray.opacity(0.15)
+            return Color.paperEdge.opacity(0.5)
         }()
 
         Button { onLetterSelected(letter) } label: {
             VStack(spacing: 6) {
                 Text(letter)
                     .font(.system(size: 42, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                 HStack(spacing: 2) {
                     ForEach(0..<4, id: \.self) { idx in
                         Image(systemName: idx < stars ? "star.fill" : "star")
                             .font(.system(size: 10))
-                            .foregroundStyle(idx < stars ? AppSurface.starGold : Color.gray.opacity(0.5))
+                            .foregroundStyle(idx < stars ? AppSurface.starGold : Color.starEmpty)
                     }
                 }
             }
@@ -270,7 +266,7 @@ struct FortschritteWorldView: View {
             .background(tint, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.black.opacity(0.05), lineWidth: 1)
+                    .stroke(Color.ink.opacity(0.05), lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -288,14 +284,14 @@ struct FortschritteWorldView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Schreibflüssigkeit")
                 .font(.headline.weight(.bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.ink)
             Text(fluencyMessage)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(fluencyColor)
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color.paper, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
                 .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)

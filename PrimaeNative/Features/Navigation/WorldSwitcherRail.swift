@@ -73,10 +73,10 @@ struct WorldSwitcherRail: View {
                 VStack(spacing: 3) {
                     Image(systemName: world.icon)
                         .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(isActive ? Color.white : accent)
+                        .foregroundStyle(isActive ? Color.paper : accent)
                     Text(world.label)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(isActive ? Color.white : accent)
+                        .font(.display(10, weight: .semibold))
+                        .foregroundStyle(isActive ? Color.paper : accent)
                 }
                 .frame(width: 44, height: 56)
 
@@ -94,11 +94,11 @@ struct WorldSwitcherRail: View {
 
     private func starBadge(count: Int) -> some View {
         Text(badgeText(for: count))
-            .font(.system(size: 9, weight: .bold))
-            .foregroundStyle(.white)
+            .font(.body(FontSize.xs, weight: .bold))
+            .foregroundStyle(Color.paper)
             .padding(.horizontal, 4).padding(.vertical, 1)
-            .background(Color.orange, in: Capsule())
-            .overlay(Capsule().stroke(Color.white, lineWidth: 1))
+            .background(Color.star, in: Capsule())
+            .overlay(Capsule().stroke(Color.paper, lineWidth: 1))
             .accessibilityLabel("\(count) Sterne")
     }
 
@@ -121,17 +121,17 @@ struct WorldSwitcherRail: View {
     private var gearButton: some View {
         ZStack {
             Circle()
-                .stroke(Color.gray.opacity(0.25), lineWidth: 2)
+                .stroke(Color.paperEdge, lineWidth: 2)
                 .frame(width: 44, height: 44)
             Circle()
                 .trim(from: 0, to: gearHoldProgress)
-                .stroke(Color.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .stroke(Color.brand, style: StrokeStyle(lineWidth: 2, lineCap: .round))
                 .frame(width: 44, height: 44)
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.1), value: gearHoldProgress)
             Image(systemName: "gear")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(AppSurface.prompt)
+                .foregroundStyle(Color.inkSoft)
         }
         // 44×44 ring + a 4pt invisible padding on each side gives a 48pt
         // hit area, matching iOS HIG for primary nav while leaving the

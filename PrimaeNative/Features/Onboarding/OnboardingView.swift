@@ -37,7 +37,7 @@ struct OnboardingView: View {
 
                 Text("Für Eltern: gedrückt halten zum Überspringen")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
                     .padding(.bottom, 24)
                     .contentShape(Rectangle())
                     .onLongPressGesture(minimumDuration: 1.5) { vm.skipOnboarding() }
@@ -45,7 +45,6 @@ struct OnboardingView: View {
                     .accessibilityHint("Gedrückt halten, nur für Erwachsene")
             }
         }
-        .preferredColorScheme(.light)
     }
 
     @ViewBuilder
@@ -78,7 +77,7 @@ private struct OnboardingProgressBar: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.black.opacity(0.08))
+                    .fill(Color.ink.opacity(0.08))
                     .frame(height: 6)
                 Capsule()
                     .fill(Color.blue)
@@ -130,20 +129,20 @@ private struct WelcomeStepView: View {
                 .font(.system(size: 80))
 
             Text("Willkommen!")
-                .font(.largeTitle.bold())
-                .foregroundStyle(.primary)
+                .font(.display(FontSize.xxl, weight: .bold))
+                .foregroundStyle(Color.ink)
 
             Text("Lerne Buchstaben zu schreiben")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+                .font(.display(FontSize.md))
+                .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
             Button(action: onNext) {
                 Text("Los geht's!")
-                    .font(.headline)
+                    .font(.body(FontSize.md, weight: .semibold))
                     .frame(maxWidth: 240)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(StickerButtonStyle())
             .controlSize(.large)
             .accessibilityLabel("Los geht's")
             .accessibilityHint("Startet die Einführung")
@@ -163,12 +162,12 @@ private struct TraceDemoStepView: View {
                 .font(.system(size: 64))
 
             Text("Anschauen")
-                .font(.title.bold())
-                .foregroundStyle(.primary)
+                .font(.display(FontSize.xl, weight: .bold))
+                .foregroundStyle(Color.ink)
 
             Text("Schau, wie der Buchstabe\ngeschrieben wird!")
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.body(FontSize.base))
+                .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
             TimelineView(.animation) { timeline in
@@ -178,7 +177,7 @@ private struct TraceDemoStepView: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(0.6))
+                        .fill(Color.paper.opacity(0.6))
                         .frame(width: 200, height: 200)
 
                     Text("A")
@@ -191,7 +190,7 @@ private struct TraceDemoStepView: View {
             }
 
             Button("Weiter", action: onNext)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StickerButtonStyle())
                 .controlSize(.large)
                 .accessibilityLabel("Weiter")
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
@@ -220,7 +219,7 @@ private struct ObserveDemoLayer: View {
                 p.move(to: scaled(stroke.from, in: size))
                 p.addLine(to: scaled(stroke.to, in: size))
                 context.stroke(p.trimmedPath(from: 0, to: t),
-                               with: .color(.blue),
+                               with: .color(.canvasGhost),
                                style: StrokeStyle(lineWidth: 5, lineCap: .round))
             }
 
@@ -234,7 +233,7 @@ private struct ObserveDemoLayer: View {
             let r: CGFloat = 7
             context.fill(
                 Circle().path(in: CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)),
-                with: .color(.orange))
+                with: .color(.canvasGuide))
         }
     }
 }
@@ -250,12 +249,12 @@ private struct DirectDemoStepView: View {
                 .font(.system(size: 64))
 
             Text("Richtung lernen")
-                .font(.title.bold())
-                .foregroundStyle(.primary)
+                .font(.display(FontSize.xl, weight: .bold))
+                .foregroundStyle(Color.ink)
 
             Text("Tippe die Punkte\nder Reihe nach an!")
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.body(FontSize.base))
+                .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
             TimelineView(.animation) { timeline in
@@ -265,7 +264,7 @@ private struct DirectDemoStepView: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(0.6))
+                        .fill(Color.paper.opacity(0.6))
                         .frame(width: 200, height: 200)
 
                     Text("A")
@@ -278,7 +277,7 @@ private struct DirectDemoStepView: View {
             }
 
             Button("Weiter", action: onNext)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StickerButtonStyle())
                 .controlSize(.large)
                 .accessibilityLabel("Weiter")
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
@@ -374,7 +373,7 @@ private struct DirectDemoLayer: View {
         var line = Path()
         line.move(to: from)
         line.addLine(to: to)
-        context.stroke(line, with: .color(.orange),
+        context.stroke(line, with: .color(.canvasGuide),
                        style: StrokeStyle(lineWidth: 5, lineCap: .round))
         let angle = atan2(dy, dx)
         let tipLen: CGFloat = 11
@@ -386,7 +385,7 @@ private struct DirectDemoLayer: View {
         var head = Path()
         head.move(to: to); head.addLine(to: b1)
         head.move(to: to); head.addLine(to: b2)
-        context.stroke(head, with: .color(.orange),
+        context.stroke(head, with: .color(.canvasGuide),
                        style: StrokeStyle(lineWidth: 5, lineCap: .round))
     }
 }
@@ -402,12 +401,12 @@ private struct GuidedDemoStepView: View {
                 .font(.system(size: 64))
 
             Text("Nachspuren")
-                .font(.title.bold())
-                .foregroundStyle(.primary)
+                .font(.display(FontSize.xl, weight: .bold))
+                .foregroundStyle(Color.ink)
 
             Text("Fahre mit dem Finger\nüber die Linie!")
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.body(FontSize.base))
+                .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
             TimelineView(.animation) { timeline in
@@ -417,7 +416,7 @@ private struct GuidedDemoStepView: View {
 
                 ZStack {
                     RoundedRectangle(cornerRadius: 20)
-                        .fill(Color.white.opacity(0.6))
+                        .fill(Color.paper.opacity(0.6))
                         .frame(width: 200, height: 200)
 
                     Text("A")
@@ -430,7 +429,7 @@ private struct GuidedDemoStepView: View {
             }
 
             Button("Weiter", action: onNext)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StickerButtonStyle())
                 .controlSize(.large)
                 .accessibilityLabel("Weiter")
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
@@ -464,7 +463,7 @@ private struct GuidedDemoLayer: View {
                 var p = Path()
                 p.move(to: scaled(stroke.from, in: size))
                 p.addLine(to: scaled(stroke.to, in: size))
-                context.stroke(p, with: .color(.green),
+                context.stroke(p, with: .color(.canvasInkStroke),
                                style: StrokeStyle(lineWidth: 6, lineCap: .round))
             }
 
@@ -478,7 +477,7 @@ private struct GuidedDemoLayer: View {
             var partial = Path()
             partial.move(to: start)
             partial.addLine(to: fingerPt)
-            context.stroke(partial, with: .color(.green),
+            context.stroke(partial, with: .color(.canvasInkStroke),
                            style: StrokeStyle(lineWidth: 6, lineCap: .round))
 
             let finger = Text("👆").font(.system(size: 34))
@@ -499,17 +498,17 @@ private struct FreeWriteDemoStepView: View {
                 .font(.system(size: 64))
 
             Text("Selbst schreiben")
-                .font(.title.bold())
-                .foregroundStyle(.primary)
+                .font(.display(FontSize.xl, weight: .bold))
+                .foregroundStyle(Color.ink)
 
             Text("Zum Schluss schreibst du\nden Buchstaben alleine!")
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.body(FontSize.base))
+                .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
             ZStack {
                 RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.white.opacity(0.6))
+                    .fill(Color.paper.opacity(0.6))
                     .frame(width: 200, height: 200)
 
                 Text("A")
@@ -518,7 +517,7 @@ private struct FreeWriteDemoStepView: View {
             }
 
             Button("Weiter", action: onNext)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StickerButtonStyle())
                 .controlSize(.large)
                 .accessibilityLabel("Weiter")
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
@@ -538,29 +537,29 @@ private struct RewardIntroStepView: View {
                 .font(.system(size: 64))
 
             Text("Sammle Sterne!")
-                .font(.title.bold())
-                .foregroundStyle(.primary)
+                .font(.display(FontSize.xl, weight: .bold))
+                .foregroundStyle(Color.ink)
 
             Text("Für jeden Buchstaben bekommst du\nbis zu 4 Sterne!")
-                .font(.body)
-                .foregroundStyle(.secondary)
+                .font(.body(FontSize.base))
+                .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
             HStack(spacing: 12) {
                 ForEach(LearningPhase.allCases, id: \.self) { phase in
                     VStack(spacing: 6) {
                         Text(phase.icon)
-                            .font(.title)
+                            .font(.display(FontSize.xl))
                         Text(phase.displayName)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.inkSoft)
                     }
                 }
             }
             .padding(.vertical, 8)
 
             Button("Fertig!", action: onNext)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(StickerButtonStyle())
                 .controlSize(.large)
                 .accessibilityLabel("Fertig")
                 .accessibilityHint("Schließt die Einführung ab und beginnt die Buchstaben-Schule")

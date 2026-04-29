@@ -25,10 +25,10 @@ struct RecognitionFeedbackView: View {
             if let style = feedbackStyle {
                 HStack(spacing: 12) {
                     Image(systemName: style.icon)
-                        .font(.title2)
+                        .font(.display(FontSize.lg))
                         .foregroundStyle(.white)
                     Text(style.message)
-                        .font(.headline)
+                        .font(.body(FontSize.md, weight: .semibold))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.leading)
                 }

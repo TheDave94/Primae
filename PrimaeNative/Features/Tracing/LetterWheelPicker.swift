@@ -31,7 +31,7 @@ struct LetterWheelPicker: View {
             // focus order is deterministic — the previous scrim-as-
             // button left the focus ordering ambiguous, sometimes
             // hitting the scrim before the grid and sometimes after.
-            Color.black.opacity(0.35)
+            Color.ink.opacity(0.35)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
                 .onTapGesture(perform: onDismiss)
@@ -83,19 +83,19 @@ struct LetterWheelPicker: View {
             VStack(spacing: 4) {
                 Text(letter)
                     .font(.system(size: letterFontSize, weight: .bold, design: .rounded))
-                    .foregroundStyle(isCurrent ? Color.white : Color.primary)
+                    .foregroundStyle(isCurrent ? Color.white : Color.ink)
                 starRow(stars: stars, highlighted: isCurrent)
             }
             .frame(width: tileSize, height: tileSize)
             .background(
                 isCurrent
-                    ? Color.blue
-                    : Color(red: 0.94, green: 0.96, blue: 0.99),
+                    ? Color.brand
+                    : Color.brandSoft,
                 in: RoundedRectangle(cornerRadius: 14, style: .continuous)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isCurrent ? Color.blue : Color.black.opacity(0.06),
+                    .stroke(isCurrent ? Color.brand : Color.ink.opacity(0.06),
                             lineWidth: isCurrent ? 2 : 1)
             )
         }

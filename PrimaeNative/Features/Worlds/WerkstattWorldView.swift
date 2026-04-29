@@ -31,9 +31,6 @@ struct WerkstattWorldView: View {
                 vm.enterFreeformMode(subMode: .letter)
             }
         }
-        // Freeform canvas is hard-coded `Color.white`; pin the chrome
-        // to light mode so .primary stays black even in dark mode.
-        .preferredColorScheme(.light)
     }
 
     // MARK: - Mode panel (left 140pt)
@@ -58,7 +55,7 @@ struct WerkstattWorldView: View {
         .padding(.top, 20)
         .frame(width: 140)
         .frame(maxHeight: .infinity)
-        .background(Color.white.opacity(0.6))
+        .background(Color.paper.opacity(0.6))
     }
 
     @ViewBuilder
@@ -80,14 +77,14 @@ struct WerkstattWorldView: View {
             VStack(spacing: 8) {
                 Image(systemName: systemImage)
                     .font(.system(size: 36, weight: .semibold))
-                    .foregroundStyle(isActive ? Color.white : Color.blue)
+                    .foregroundStyle(isActive ? Color.paper : Color.werkstatt)
                 Text(title)
-                    .font(.headline.weight(.bold))
-                    .foregroundStyle(isActive ? Color.white : Color.primary)
+                    .font(.display(FontSize.base, weight: .bold))
+                    .foregroundStyle(isActive ? Color.paper : Color.ink)
                 Text(subtitle)
-                    .font(.caption.weight(.medium))
+                    .font(.body(FontSize.xs, weight: .medium))
                     .foregroundStyle(isActive
-                                      ? Color.white.opacity(0.95)
+                                      ? Color.paper.opacity(0.95)
                                       : AppSurface.caption)
                     .multilineTextAlignment(.center)
             }
@@ -95,15 +92,15 @@ struct WerkstattWorldView: View {
             .frame(height: 120)
             .padding(.horizontal, 8)
             .background(
-                isActive ? Color.blue : AppSurface.card,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                isActive ? Color.werkstatt : AppSurface.card,
+                in: RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(isActive ? Color.blue : AppSurface.cardEdge,
+                RoundedRectangle(cornerRadius: Radii.md, style: .continuous)
+                    .stroke(isActive ? Color.werkstatt : AppSurface.cardEdge,
                             lineWidth: isActive ? 2 : 1)
             )
-            .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+            .shadow(color: Color.ink.opacity(0.06), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
@@ -119,8 +116,9 @@ struct WerkstattWorldView: View {
             FreeformWritingView()
         } else {
             // Transient state while enterFreeformMode finishes on first
-            // onAppear. Keep the area white so it doesn't flash grey.
-            Color.white
+            // onAppear. Keep the area on the canvas paper so it
+            // doesn't flash grey + matches the freeform canvas.
+            Color.canvasPaper
         }
     }
 }

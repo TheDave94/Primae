@@ -48,6 +48,10 @@ public struct MainAppView: View {
                 )
                 worldContent
             }
+            // Primae paper canvas behind the whole shell. Each world
+            // overlays its own soft tinted band on top via
+            // WorldPalette.background(for:).
+            .background(Color.paperDeep.ignoresSafeArea())
             .ignoresSafeArea()
             .fullScreenCover(isPresented: $showParentArea) {
                 ParentAreaView()

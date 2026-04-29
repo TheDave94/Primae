@@ -486,7 +486,7 @@ private struct ExportSheet: View {
             VStack(spacing: 12) {
                 Text("JSON in diese Datei kopieren:")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
                 Text("Letters/\(letterName)/strokes.json")
                     .font(.system(.body, design: .monospaced))
                     .bold()

@@ -23,23 +23,22 @@ struct SchuleWorldView: View {
                 systemImage: "exclamationmark.triangle",
                 description: Text("Bitte die App neu starten.")
             )
-            .preferredColorScheme(.light)
         } else {
         ZStack {
             WorldPalette.background(for: .schule)
                 .ignoresSafeArea()
 
             TracingCanvasView()
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .background(Color.canvasPaper)
+                .clipShape(RoundedRectangle(cornerRadius: Radii.xl, style: .continuous))
                 .overlay(
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: Radii.xl, style: .continuous)
+                        .stroke(Color.paperEdge, lineWidth: 1)
                 )
                 .padding(.horizontal, 16)
                 .padding(.top, 64)
                 .padding(.bottom, 86)
-                .shadow(color: .black.opacity(0.08), radius: 18, y: 4)
+                .shadow(color: Color.ink.opacity(0.08), radius: 18, y: 4)
 
             if vm.learningPhase == .observe, !vm.isCalibrating {
                 observeOverlay
@@ -84,12 +83,12 @@ struct SchuleWorldView: View {
             if let toast = vm.toastMessage {
                 VStack {
                     Text(toast)
-                        .font(.headline)
-                        .foregroundStyle(.primary)
+                        .font(.body(FontSize.base, weight: .semibold))
+                        .foregroundStyle(Color.ink)
                         .padding(.horizontal, 14).padding(.vertical, 8)
                         .background(AppSurface.card, in: Capsule())
                         .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
-                        .shadow(color: .black.opacity(0.1), radius: 6, y: 2)
+                        .shadow(color: Color.ink.opacity(0.10), radius: 6, y: 2)
                         .padding(.top, 80)
                     Spacer()
                 }
@@ -119,10 +118,9 @@ struct SchuleWorldView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.overlayQueue.currentOverlay)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
-        // Tracing canvas is hard-coded `Color.white`; pin the surrounding
-        // chrome to light mode so `.primary` resolves to black instead of
-        // disappearing into the canvas in dark mode.
-        .preferredColorScheme(.light)
+        // Canvas now uses Color.canvasPaper (Primae token, dynamic),
+        // so the world participates in the user's chosen appearance
+        // (Hell / Dunkel / System) — no light-mode lock required.
         } // end else
     }
 
@@ -253,14 +251,14 @@ struct SchuleWorldView: View {
                 Image(systemName: starsEarned >= 2
                                   ? "hand.thumbsup.fill"
                                   : "sparkles")
-                    .font(.title3)
+                    .font(.display(FontSize.md))
                     .foregroundStyle(tint)
             }
             .frame(width: 48, height: 48)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
-                Text(praise).font(.caption.weight(.medium)).foregroundStyle(AppSurface.caption)
+                Text(title).font(.body(FontSize.sm, weight: .bold)).foregroundStyle(Color.ink)
+                Text(praise).font(.body(FontSize.xs, weight: .medium)).foregroundStyle(AppSurface.caption)
             }
             Spacer()
             HStack(spacing: 2) {
@@ -268,14 +266,14 @@ struct SchuleWorldView: View {
                     let filled = idx < starsEarned
                     Image(systemName: filled ? "star.fill" : "star")
                         .font(.footnote)
-                        .foregroundStyle(filled ? AppSurface.starGold : Color.gray.opacity(0.55))
+                        .foregroundStyle(filled ? AppSurface.starGold : Color.starEmpty)
                 }
             }
         }
         .padding(.horizontal, 14).padding(.vertical, 10)
-        .background(AppSurface.card, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).stroke(tint.opacity(0.55), lineWidth: 1))
-        .shadow(color: .black.opacity(0.08), radius: 6, y: 2)
+        .background(AppSurface.card, in: RoundedRectangle(cornerRadius: Radii.md))
+        .overlay(RoundedRectangle(cornerRadius: Radii.md).stroke(tint.opacity(0.55), lineWidth: 1))
+        .shadow(color: Color.ink.opacity(0.08), radius: 6, y: 2)
         .padding(.horizontal, 16)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title): \(praise) \(subtitle)")
@@ -297,8 +295,8 @@ struct SchuleWorldView: View {
         } label: {
             HStack(spacing: 8) {
                 Text(vm.currentLetterName)
-                    .font(.system(.title, design: .rounded).weight(.bold))
-                    .foregroundStyle(.primary)
+                    .font(.display(FontSize.lg, weight: .bold))
+                    .foregroundStyle(Color.ink)
                 Image(systemName: "chevron.down")
                     .font(.footnote.weight(.bold))
                     .foregroundStyle(AppSurface.prompt)
@@ -306,7 +304,7 @@ struct SchuleWorldView: View {
             .padding(.horizontal, 16).padding(.vertical, 10)
             .background(AppSurface.card, in: Capsule())
             .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
-            .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
+            .shadow(color: Color.ink.opacity(0.08), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
@@ -329,15 +327,15 @@ struct SchuleWorldView: View {
             Spacer()
             VStack(spacing: 12) {
                 Text("👁️  Schau zu!")
-                    .font(.title2.bold())
+                    .font(.display(FontSize.lg, weight: .bold))
                     .foregroundStyle(.white)
                 Text("👆  Tippen")
-                    .font(.title3)
+                    .font(.display(FontSize.md, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
             }
             .padding(.horizontal, 28).padding(.vertical, 18)
-            .background(.blue.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
-            .shadow(radius: 8)
+            .background(Color.brand, in: RoundedRectangle(cornerRadius: Radii.md))
+            .shadow(color: Color.brand.opacity(0.30), radius: 12, y: 4)
             .padding(.bottom, 100)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -359,7 +357,7 @@ struct SchuleWorldView: View {
                 .padding(.horizontal, 16).padding(.vertical, 10)
                 .background(AppSurface.card, in: Capsule())
                 .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
-                .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
+                .shadow(color: Color.ink.opacity(0.08), radius: 5, y: 2)
             navArrow(systemName: "chevron.right",
                      label: "Nächster Buchstabe") { vm.nextLetter() }
         }
@@ -372,11 +370,11 @@ struct SchuleWorldView: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.ink)
                 .frame(width: 44, height: 44)
                 .background(AppSurface.card, in: Circle())
                 .overlay(Circle().stroke(AppSurface.cardEdge, lineWidth: 1))
-                .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
+                .shadow(color: Color.ink.opacity(0.08), radius: 5, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

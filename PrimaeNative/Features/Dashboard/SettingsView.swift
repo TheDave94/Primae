@@ -55,7 +55,7 @@ struct SettingsView: View {
                 .accessibilityHint("Vertauscht die Reihenfolge der Punkte in der Richtung-lernen-Phase: zuerst der letzte Strich, dann rückwärts. Hilft bei Schwierigkeiten mit der Bewegungsplanung.")
                 Text("Direkt-Phase nur. Bei Bewegungsplanungs-Schwierigkeiten (z. B. motorische Förderung) aktivieren.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
             Section("Erinnerungstest") {
                 // P1 (ROADMAP): opt-in spaced-retrieval prompt before
@@ -68,7 +68,7 @@ struct SettingsView: View {
                 .accessibilityHint("Vor manchen Buchstaben fragt die App, welcher Buchstabe gehört wurde, mit drei Antwortmöglichkeiten. Stärkt das Gedächtnis.")
                 Text("Vor jedem dritten Buchstaben fragt die App: Welcher Buchstabe? Drei Wahlknöpfe. Stärkt das Langzeitgedächtnis (Roediger & Karpicke 2006).")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
             Section("Lautwert") {
                 // P6 (ROADMAP_V5): opt-in phoneme playback. When on,
@@ -84,7 +84,7 @@ struct SettingsView: View {
                 .accessibilityHint("Spielt den Lautwert (z. B. /a/ wie in Affe) statt des Buchstabennamens (z. B. \"Aaa\"). Hilfreich für die phonologische Bewusstheit.")
                 Text("Spielt den Laut (/a/ wie in Affe) statt des Namens (/aː/). Phonologische Bewusstheit nach Adams 1990.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
             Section("Sprache") {
                 // U8 (ROADMAP_V5): three-position rate picker so a parent
@@ -112,7 +112,7 @@ struct SettingsView: View {
                 .accessibilityHint("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens")
                 Text("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
             Section("Erscheinungsbild") {
                 // Part C: manual appearance override. "System" follows
@@ -128,7 +128,7 @@ struct SettingsView: View {
                 .accessibilityHint("Erzwingt hellen oder dunklen Modus, oder folgt der iOS-Einstellung.")
                 Text("Folgt iOS, wenn auf System gestellt.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
             Section("Forschung") {
                 Toggle("Schreiben auf Papier", isOn: Binding(
@@ -147,7 +147,7 @@ struct SettingsView: View {
                 .accessibilityHint("Nur für Forschung aktivieren. Weist das Gerät stabil einer Studienbedingung zu; andernfalls erhält jedes Kind die volle Vier-Phasen-Lernabfolge. Änderung wird beim nächsten App-Start wirksam.")
                 Text("Änderung wird beim nächsten App-Start wirksam.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
                 if thesisEnrolled {
                     // T6 (ROADMAP_V5): manual researcher override so small
                     // cohorts can be exactly balanced (e.g. 8/8/8 instead
@@ -187,7 +187,7 @@ struct SettingsView: View {
                 .accessibilityHint("Aktiviert: 3-Schritte-Einführung statt 7. Wirksam ab dem nächsten App-Start oder über \"Einführung wiederholen\".")
                 Text("3 Schritte statt 7 (Begrüßung, Demo, Los geht's). Wirksam beim nächsten Start oder nach \"Einführung wiederholen\".")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
                 Button("Einführung wiederholen") { vm.restartOnboarding() }
                     .accessibilityHint("Startet die Einführung beim nächsten App-Start neu")
             }
@@ -214,7 +214,7 @@ struct SettingsView: View {
         } label: {
             HStack {
                 Text(strategy.displayName)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                 Spacer()
                 if selectedOrdering == strategy {
                     Image(systemName: "checkmark")
@@ -233,7 +233,7 @@ struct SettingsView: View {
         } label: {
             HStack {
                 Text(art.displayName)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                 Spacer()
                 if selectedSchriftArt == art {
                     Image(systemName: "checkmark")

@@ -59,7 +59,7 @@ struct FreeformWritingView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                Color.white
+                Color.canvasPaper
                     .ignoresSafeArea()
 
                 // Header + canvas pinned to the top edge. They live in
@@ -93,11 +93,11 @@ struct FreeformWritingView: View {
                 }
             }
         }
-        // Canvas is hard-coded `Color.white`, so pin the rest of the
+        // Canvas is hard-coded `Color.canvasPaper`, so pin the rest of the
         // view to light mode too — otherwise `.primary`/`.secondary`
         // resolve to white-ish in dark mode and disappear into the
         // canvas, exactly the white-on-white symptom in IMG_0337–0340.
-        .preferredColorScheme(.light)
+        
         .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82),
                    value: shouldShowResultPopup)
         .onChange(of: vm.freeformPoints.count) { _, newValue in
@@ -137,7 +137,7 @@ struct FreeformWritingView: View {
                     vm.exitFreeformMode()
                 } label: {
                     Label("Zurück", systemImage: "chevron.left")
-                        .font(.headline)
+                        .font(.body(FontSize.md, weight: .semibold))
                 }
                 .buttonStyle(.bordered)
                 .tint(.gray)
@@ -168,7 +168,7 @@ struct FreeformWritingView: View {
                     vm.clearFreeformCanvas()
                 } label: {
                     Label("Nochmal", systemImage: "arrow.counterclockwise")
-                        .font(.headline)
+                        .font(.body(FontSize.md, weight: .semibold))
                 }
                 .buttonStyle(.bordered)
                 .tint(.orange)
@@ -186,7 +186,7 @@ struct FreeformWritingView: View {
                             .foregroundStyle(FreeformSurface.prompt)
                         Text(target.word)
                             .font(.system(size: targetWordFontSize, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(Color.ink)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Zielwort \(target.word)")
@@ -223,7 +223,7 @@ struct FreeformWritingView: View {
                         Text(word.word)
                             .font(.system(.headline, design: .rounded).weight(.semibold))
                             .foregroundStyle(isSelected
-                                             ? Color.white
+                                             ? Color.canvasPaper
                                              : FreeformSurface.pillIdleText)
                             // Lift to ≥ 44 pt total height (HIG minimum
                             // touch target) — review item W-31. headline
@@ -405,10 +405,10 @@ struct FreeformWritingView: View {
                               subtitle: String) -> some View {
         HStack(spacing: 14) {
             Image(systemName: icon)
-                .font(.title)
+                .font(.display(FontSize.xl))
                 .foregroundStyle(tint)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline).foregroundStyle(.primary)
+                Text(title).font(.body(FontSize.md, weight: .semibold)).foregroundStyle(Color.ink)
                 Text(subtitle)
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(FreeformSurface.prompt)
@@ -436,7 +436,7 @@ struct FreeformWritingView: View {
         return HStack(spacing: 14) {
             Text(result.predictedLetter)
                 .font(.system(size: 56, weight: .bold, design: .rounded))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.ink)
                 .frame(width: 72, height: 72)
                 .background(tint.opacity(0.20), in: RoundedRectangle(cornerRadius: 14))
                 .overlay(
@@ -444,8 +444,8 @@ struct FreeformWritingView: View {
                         .stroke(tint.opacity(0.55), lineWidth: 1)
                 )
             Text(headline)
-                .font(.headline)
-                .foregroundStyle(.primary)
+                .font(.body(FontSize.md, weight: .semibold))
+                .foregroundStyle(Color.ink)
             Spacer()
             // Re-open the popup so the child can see the written
             // evaluation again on demand.
@@ -453,7 +453,7 @@ struct FreeformWritingView: View {
                 dismissedResultLetter = nil
             } label: {
                 Image(systemName: "info.circle.fill")
-                    .font(.title2)
+                    .font(.display(FontSize.lg))
                     .foregroundStyle(tint)
             }
             .buttonStyle(.plain)
@@ -508,7 +508,7 @@ struct FreeformWritingView: View {
             VStack(spacing: 18) {
                 Text(result.predictedLetter)
                     .font(.system(size: 96, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                     .frame(width: 132, height: 132)
                     .background(tint.opacity(0.22),
                                 in: RoundedRectangle(cornerRadius: 26))
@@ -519,7 +519,7 @@ struct FreeformWritingView: View {
 
                 Text(headline(for: result))
                     .font(.title2.weight(.bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color.ink)
                     .multilineTextAlignment(.center)
 
                 HStack(spacing: 6) {
@@ -545,7 +545,7 @@ struct FreeformWritingView: View {
                         dismissPopup(for: result)
                     } label: {
                         Label("Nochmal", systemImage: "arrow.counterclockwise")
-                            .font(.headline)
+                            .font(.body(FontSize.md, weight: .semibold))
                             .padding(.horizontal, 12)
                     }
                     .buttonStyle(.bordered)
@@ -555,7 +555,7 @@ struct FreeformWritingView: View {
                         dismissPopup(for: result)
                     } label: {
                         Label("Weiter", systemImage: "checkmark")
-                            .font(.headline)
+                            .font(.body(FontSize.md, weight: .semibold))
                             .padding(.horizontal, 12)
                     }
                     .buttonStyle(.borderedProminent)
@@ -656,7 +656,7 @@ struct FreeformWritingView: View {
                     vm.submitFreeformWord()
                 } label: {
                     Label("Fertig", systemImage: "checkmark.seal.fill")
-                        .font(.headline)
+                        .font(.body(FontSize.md, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
@@ -682,8 +682,8 @@ struct FreeformWritingView: View {
                 }
             }
             Text("Erkannt: \(recognized.isEmpty ? "—" : recognized)")
-                .font(.headline)
-                .foregroundStyle(.primary)
+                .font(.body(FontSize.md, weight: .semibold))
+                .foregroundStyle(Color.ink)
             Text(recognized.uppercased() == target.uppercased()
                  ? "🎉 Super, du hast das Wort richtig geschrieben!"
                  : "Gut versucht! Vergleiche mit dem Zielwort oben.")
@@ -694,7 +694,7 @@ struct FreeformWritingView: View {
                     vm.clearFreeformCanvas()
                 } label: {
                     Label("Nochmal", systemImage: "arrow.counterclockwise")
-                        .font(.headline)
+                        .font(.body(FontSize.md, weight: .semibold))
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
@@ -703,7 +703,7 @@ struct FreeformWritingView: View {
                     vm.exitFreeformMode()
                 } label: {
                     Label("Zurück", systemImage: "chevron.left")
-                        .font(.headline)
+                        .font(.body(FontSize.md, weight: .semibold))
                 }
                 .buttonStyle(.bordered)
                 .tint(.gray)
@@ -725,7 +725,7 @@ struct FreeformWritingView: View {
         let shown = result?.predictedLetter ?? "·"
         let tint: Color = result == nil ? .gray : (correct ? .green : .orange)
         VStack(spacing: 2) {
-            Text(expected).font(.caption.weight(.semibold)).foregroundStyle(.primary)
+            Text(expected).font(.caption.weight(.semibold)).foregroundStyle(Color.ink)
             Text(shown)
                 .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(.white)

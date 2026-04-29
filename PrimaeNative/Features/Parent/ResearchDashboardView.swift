@@ -40,13 +40,13 @@ struct ResearchDashboardView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Teilnehmer-ID")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSoft)
             Text(ParticipantStore.participantId.uuidString)
                 .font(.system(.footnote, design: .monospaced))
                 .textSelection(.enabled)
             Text("Studienarm: \(conditionLabel(vm.dashboardSnapshot.phaseSessionRecords.last?.condition))")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSoft)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -73,7 +73,7 @@ struct ResearchDashboardView: View {
                 if let last = vm.lastWritingAssessment {
                     Text("Zuletzt: Form \(pct(last.formAccuracy)), Tempo \(pct(last.tempoConsistency)), Druck \(pct(last.pressureControl)), Rhythmus \(pct(last.rhythmScore)) — Gewichtetes Gesamt \(pct(last.overallScore))")
                         .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.inkSoft)
                 }
             } else {
                 emptyHint("Noch keine freeWrite-Session abgeschlossen.")
@@ -128,7 +128,7 @@ struct ResearchDashboardView: View {
                         Spacer()
                         Text("\(counts[condition] ?? 0) Sessions")
                             .font(.callout.monospacedDigit())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color.inkSoft)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -157,7 +157,7 @@ struct ResearchDashboardView: View {
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
             Text("Positive Werte: Scheduler priorisiert korrekt schwächere Buchstaben. Werte um 0 deuten an, dass Empfehlungen keine systematische Wirkung zeigen.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSoft)
         }
     }
 
@@ -225,10 +225,10 @@ struct ResearchDashboardView: View {
     private func sectionHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(.headline)
+                .font(.body(FontSize.md, weight: .semibold))
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSoft)
         }
     }
 
@@ -236,13 +236,13 @@ struct ResearchDashboardView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.inkSoft)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text(String(format: "%.3f", value))
                     .font(.system(.title3, design: .rounded).monospacedDigit().weight(.semibold))
                 Text("(× \(String(format: "%.2f", weight)))")
                     .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -255,7 +255,7 @@ struct ResearchDashboardView: View {
             ForEach(Array(cells.enumerated()), id: \.offset) { _, c in
                 Text(c)
                     .font(.caption.weight(.bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.inkSoft)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -285,7 +285,7 @@ struct ResearchDashboardView: View {
     private func emptyHint(_ message: String) -> some View {
         Text(message)
             .font(.callout)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.inkSoft)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(12)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
