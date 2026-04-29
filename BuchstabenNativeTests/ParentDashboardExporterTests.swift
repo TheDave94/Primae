@@ -39,7 +39,7 @@ struct ParentDashboardExporterTests {
 
     @Test func csvContainsDurationSection() {
         let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
-        #expect(csv.contains("date,durationSeconds,condition"))
+        #expect(csv.contains("date,recordedAt,durationSeconds,condition"))
         #expect(csv.contains("2026-03-01"))
     }
 
@@ -55,7 +55,7 @@ struct ParentDashboardExporterTests {
             participantId: UUID(uuidString: "00000000-0000-0000-0000-0000000000AB")!
         ), encoding: .utf8)!
         #expect(csv.contains("# participantId=00000000-0000-0000-0000-0000000000AB"))
-        #expect(csv.contains("date,durationSeconds,condition"))
+        #expect(csv.contains("date,recordedAt,durationSeconds,condition"))
         #expect(csv.contains("letter,phase,completed,score,schedulerPriority,condition"))
     }
 
@@ -121,8 +121,9 @@ struct ParentDashboardExporterTests {
         let isoTs = ISO8601DateFormatter().string(from: recordedAt)
         // Phase row format: letter,phase,completed,score,prio,condition,
         // recordedAt,recognition_predicted,recognition_confidence,
-        // recognition_correct,formAccuracy,tempoConsistency,pressureControl,rhythmScore
-        #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,\(isoTs),O,0.6200,false,,,,"),
+        // recognition_correct,formAccuracy,tempoConsistency,pressureControl,
+        // rhythmScore,inputDevice (D-6 added the trailing column)
+        #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,\(isoTs),O,0.6200,false,,,,,"),
                 "Expected session-aligned recognition + timestamp — found:\n\(csv)")
     }
 
@@ -141,7 +142,7 @@ struct ParentDashboardExporterTests {
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
         let isoTs = ISO8601DateFormatter().string(from: recordedAt)
-        #expect(csv.contains("C,guided,true,0.5000,0.0000,threePhase,\(isoTs),,,,,,,"),
+        #expect(csv.contains("C,guided,true,0.5000,0.0000,threePhase,\(isoTs),,,,,,,,"),
                 "Expected blank recognition columns + populated recordedAt — found:\n\(csv)")
     }
 

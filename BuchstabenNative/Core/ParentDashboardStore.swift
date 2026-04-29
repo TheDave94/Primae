@@ -31,12 +31,18 @@ struct PhaseSessionRecord: Codable, Equatable {
     let recognitionPredicted: String?
     let recognitionConfidence: Double?
     let recognitionCorrect: Bool?
+    /// D-6: input device in effect for the session ("finger" / "pencil").
+    /// Lets the analysis distinguish a `pressureControl == 1.0` that's a
+    /// real finger session (no force data) from a low-variance pencil
+    /// session. Optional only because pre-D-6 records lack it.
+    let inputDevice: String?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
          recordedAt: Date = Date(),
          assessment: WritingAssessment? = nil,
-         recognition: RecognitionSample? = nil) {
+         recognition: RecognitionSample? = nil,
+         inputDevice: String? = nil) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
@@ -51,6 +57,7 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.recognitionPredicted  = recognition?.predictedLetter
         self.recognitionConfidence = recognition?.confidence
         self.recognitionCorrect    = recognition?.isCorrect
+        self.inputDevice           = inputDevice
     }
 
     init(from decoder: Decoder) throws {
@@ -69,6 +76,7 @@ struct PhaseSessionRecord: Codable, Equatable {
         recognitionPredicted  = try? c.decode(String.self, forKey: .recognitionPredicted)
         recognitionConfidence = try? c.decode(Double.self, forKey: .recognitionConfidence)
         recognitionCorrect    = try? c.decode(Bool.self, forKey: .recognitionCorrect)
+        inputDevice           = try? c.decode(String.self, forKey: .inputDevice)
     }
 }
 
@@ -101,11 +109,20 @@ struct SessionDurationRecord: Codable, Equatable {
     let durationSeconds: TimeInterval
     /// Thesis condition active during this session.
     let condition: ThesisCondition
+    /// D-9: full wall-clock timestamp captured at session-record time so
+    /// the export can recover time-of-day signal (morning vs evening
+    /// practice) on top of the day-level aggregation. Optional only
+    /// because pre-D-9 records on disk don't carry it; new writes
+    /// always populate.
+    let recordedAt: Date?
 
-    init(dateString: String, durationSeconds: TimeInterval, condition: ThesisCondition = .threePhase) {
+    init(dateString: String, durationSeconds: TimeInterval,
+         condition: ThesisCondition = .threePhase,
+         recordedAt: Date? = Date()) {
         self.dateString = dateString
         self.durationSeconds = durationSeconds
         self.condition = condition
+        self.recordedAt = recordedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -113,6 +130,7 @@ struct SessionDurationRecord: Codable, Equatable {
         dateString = try c.decode(String.self, forKey: .dateString)
         durationSeconds = try c.decode(TimeInterval.self, forKey: .durationSeconds)
         condition = (try? c.decode(ThesisCondition.self, forKey: .condition)) ?? .threePhase
+        recordedAt = try? c.decode(Date.self, forKey: .recordedAt)
     }
 }
 
@@ -275,21 +293,25 @@ struct DashboardSnapshot: Codable, Equatable {
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition)
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?)
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
 }
 
 extension ParentDashboardStoring {
-    /// Backward-compatible overload for call sites that don't supply an assessment / recognition.
+    /// Backward-compatible overload for call sites that don't supply an assessment / recognition / inputDevice.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, assessment: nil, recognition: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, assessment: nil, recognition: nil, inputDevice: nil)
     }
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, assessment: assessment, recognition: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, assessment: assessment, recognition: nil, inputDevice: nil)
+    }
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, assessment: assessment, recognition: recognition, inputDevice: nil)
     }
     func flush() async {}
 }
@@ -343,22 +365,34 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
 
     func recordSession(letter: String, accuracy: Double, durationSeconds: TimeInterval, date: Date, condition: ThesisCondition) {
         let key = LetterProgress.canonicalKey(letter)
-        let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
-        var samples = existing.accuracySamples
-        samples.append(accuracy)
-        if samples.count > Self.accuracySamplesCap {
-            samples.removeFirst(samples.count - Self.accuracySamplesCap)
+        // D-11: word-mode sessions arrive with multi-character keys
+        // (`"BUCH"`). Adding those to `letterStats` corrupts the
+        // per-letter accuracy/trend table — the per-letter contribution
+        // for words is already recorded via `progressStore.recordCompletion`
+        // for each cell letter. Skip the letterStats update for
+        // multi-character keys but still record the duration once for
+        // the whole word.
+        if key.count == 1 {
+            let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [])
+            var samples = existing.accuracySamples
+            samples.append(accuracy)
+            if samples.count > Self.accuracySamplesCap {
+                samples.removeFirst(samples.count - Self.accuracySamplesCap)
+            }
+            let updated = LetterAccuracyStat(
+                letter: existing.letter,
+                accuracySamples: samples
+            )
+            snapshot.letterStats[key] = updated
         }
-        let updated = LetterAccuracyStat(
-            letter: existing.letter,
-            accuracySamples: samples
-        )
-        snapshot.letterStats[key] = updated
 
         if durationSeconds > 0 {
             let day = dayKey(for: date, calendar: calendar)
             snapshot.sessionDurations.append(
-                SessionDurationRecord(dateString: day, durationSeconds: durationSeconds, condition: condition)
+                SessionDurationRecord(dateString: day,
+                                       durationSeconds: durationSeconds,
+                                       condition: condition,
+                                       recordedAt: date)
             )
             if snapshot.sessionDurations.count > Self.sessionDurationsCap {
                 snapshot.sessionDurations.removeFirst(
@@ -369,7 +403,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         persist()
     }
 
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?) {
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil) {
         let record = PhaseSessionRecord(
             letter: LetterProgress.canonicalKey(letter),
             phase: phase,
@@ -378,7 +412,8 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             schedulerPriority: schedulerPriority,
             condition: condition,
             assessment: assessment,
-            recognition: recognition
+            recognition: recognition,
+            inputDevice: inputDevice
         )
         snapshot.phaseSessionRecords.append(record)
         if snapshot.phaseSessionRecords.count > Self.phaseSessionRecordsCap {

@@ -1563,6 +1563,10 @@ public final class TracingViewModel {
                 isCorrect: rr.isCorrect
             )
         }
+        // D-6: capture the input mode in effect for the row so a finger
+        // session's pressureControl == 1.0 (no force data) is
+        // distinguishable from a low-variance pencil session in the export.
+        let device = detector.effectiveKind.rawValue
         for (phase, phaseScore) in scores {
             dashboardStore.recordPhaseSession(
                 letter: currentLetterName,
@@ -1572,7 +1576,8 @@ public final class TracingViewModel {
                 schedulerPriority: lastScheduledLetterPriority,
                 condition: thesisCondition,
                 assessment: phase == "freeWrite" ? lastWritingAssessment : nil,
-                recognition: phase == "freeWrite" ? freeWriteRecognition : nil
+                recognition: phase == "freeWrite" ? freeWriteRecognition : nil,
+                inputDevice: device
             )
         }
         commitCompletion(letter: currentLetterName,

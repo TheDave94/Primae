@@ -238,7 +238,12 @@ public final class JSONProgressStore: ProgressStoring {
         if let s = speed {
             var trend = p.speedTrend ?? []
             trend.append(s)
-            if trend.count > 5 { trend.removeFirst(trend.count - 5) }
+            // D-4: keep the full automatisation trajectory (up to 50
+            // samples) instead of clipping to 5. The scheduler's
+            // `automatizationBonus` only reads the trend halves so
+            // longer histories don't distort the bonus, but the thesis
+            // export needs the full trajectory to plot speed-up curves.
+            if trend.count > 50 { trend.removeFirst(trend.count - 50) }
             p.speedTrend = trend
         }
         if let rr = recognitionResult {

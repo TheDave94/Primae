@@ -125,19 +125,24 @@ import Foundation
         #expect(!all.keys.contains("Q"))
     }
 
-    // MARK: - speedTrend cap (V3-006)
+    // MARK: - speedTrend cap (D-4)
 
-    @Test func speedTrend_capsAtFiveEntries() {
-        for s in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1] {
+    @Test func speedTrend_capsAtFiftyEntries() {
+        // D-4 raised the cap from 5 to 50 so the thesis export has the
+        // full automatisation trajectory. The scheduler's
+        // `automatizationBonus` only reads halves so longer histories
+        // don't distort the bonus.
+        let speeds: [Double] = (0..<60).map { Double($0) * 0.1 + 0.1 }
+        for s in speeds {
             store.recordCompletion(for: "S", accuracy: 0.9,
                                    phaseScores: nil, speed: s)
         }
         let trend = store.progress(for: "S").speedTrend ?? []
-        #expect(trend.count == 5, "speedTrend exceeded the documented 5-entry cap")
-        // Oldest two entries (0.5, 0.6) should have been dropped — cap keeps
-        // the most recent five so the trend reflects the latest sessions.
-        #expect(trend.first == 0.7)
-        #expect(trend.last  == 1.1)
+        #expect(trend.count == 50, "speedTrend exceeded the documented 50-entry cap")
+        // Oldest 10 entries should have been dropped — cap keeps the most
+        // recent 50 so the trend reflects the latest sessions.
+        #expect(trend.first == speeds[10])
+        #expect(trend.last  == speeds.last)
     }
 
     @Test func speedTrend_isNilUntilFirstSpeedRecorded() {
