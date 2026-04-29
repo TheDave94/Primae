@@ -88,7 +88,7 @@ struct RecognitionFeedbackView: View {
             return Style(
                 tint: .orange,
                 icon: "arrow.triangle.2.circlepath",
-                message: "Das sieht aus wie ein \(result.predictedLetter) — versuche nochmal \(expectedLetter)!"
+                message: "Das sieht eher nach \(result.predictedLetter) aus — schreib nochmal ein \(expectedLetter)!"
             )
         }
         // conf in (0.4, 0.7] but wrong — model isn't confident enough to

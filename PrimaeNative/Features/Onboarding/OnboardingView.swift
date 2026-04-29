@@ -132,7 +132,7 @@ private struct WelcomeStepView: View {
                 .font(.display(FontSize.xxl, weight: .bold))
                 .foregroundStyle(Color.ink)
 
-            Text("Lerne Buchstaben zu schreiben")
+            Text("Lerne, Buchstaben zu schreiben!")
                 .font(.display(FontSize.md))
                 .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)

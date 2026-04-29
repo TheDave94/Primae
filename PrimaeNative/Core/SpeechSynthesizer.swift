@@ -143,21 +143,26 @@ enum ChildSpeechLibrary {
     }
 
     /// Spoken on any guided / freeWrite stroke completion that earned a
-    /// star. Three variants cycle so the child doesn't hear the same
-    /// phrase twice in a row.
+    /// star. Praise is intentionally short and never patronising —
+    /// children at this age can't read percentages and don't need
+    /// long sentences after a successful trace. The 0-star case
+    /// stays warm: "probier nochmal" without any judgement.
     static func praise(starsEarned: Int) -> String {
         switch starsEarned {
         case 4: return "Wow, das war perfekt! Super gemacht."
         case 3: return "Toll gemacht!"
-        case 2: return "Gut gemacht. Beim nächsten Mal noch ein bisschen genauer."
-        case 1: return "Du schaffst das. Probier es nochmal."
-        default: return "Probier den Buchstaben gleich nochmal."
+        case 2: return "Gut gemacht!"
+        case 1: return "Schon gut! Probier's nochmal."
+        default: return "Probier's gleich nochmal."
         }
     }
 
     /// Recognition badge announcement. Mirrors the German strings in
     /// `RecognitionFeedbackView` so what the child sees is identical to
     /// what they hear, without any percentages or technical wording.
+    /// Imperative phrasing for corrections ("schreib nochmal ein A")
+    /// is more concrete for a 5-year-old than the abstract "versuche
+    /// nochmal das A" — the child can act on the verb directly.
     static func recognition(_ result: RecognitionResult, expected: String) -> String {
         if result.isCorrect {
             if result.confidence > 0.7 {
@@ -167,7 +172,7 @@ enum ChildSpeechLibrary {
             }
         }
         if result.confidence > 0.7 {
-            return "Das sieht aus wie ein \(result.predictedLetter). Versuche nochmal das \(expected)."
+            return "Das sieht eher nach \(result.predictedLetter) aus. Schreib nochmal ein \(expected)."
         }
         // Low confidence + wrong: stay silent at the badge level so the
         // child isn't confused. Caller already gates on confidence.

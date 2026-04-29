@@ -326,10 +326,10 @@ struct SchuleWorldView: View {
         VStack {
             Spacer()
             VStack(spacing: 12) {
-                Text("👁️  Schau zu!")
+                Text("👁️  Schau genau hin!")
                     .font(.display(FontSize.lg, weight: .bold))
                     .foregroundStyle(.white)
-                Text("👆  Tippen")
+                Text("👆  Tippen, um weiterzumachen")
                     .font(.display(FontSize.md, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.9))
             }
