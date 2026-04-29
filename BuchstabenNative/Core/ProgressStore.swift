@@ -117,6 +117,11 @@ protocol ProgressStoring {
     var allProgress: [String: LetterProgress] { get }
     /// Total letters completed across all sessions.
     var totalCompletions: Int { get }
+    /// P7 (ROADMAP_V5): completions that landed today (calendar day).
+    /// Drives the daily-goal pill in `FortschritteWorldView`. Default
+    /// extension returns 0 so test stubs that don't surface this signal
+    /// keep compiling.
+    var completionsToday: Int { get }
     /// Await any pending background write. Callers that need to guarantee
     /// disk durability (e.g. before process suspension) must invoke this
     /// before the tick ends. Default is no-op for in-memory mocks.
@@ -124,6 +129,10 @@ protocol ProgressStoring {
 }
 
 extension ProgressStoring {
+    /// Default 0 so older mocks (StubProgressStore in test fixtures)
+    /// keep conforming without retrofit.
+    var completionsToday: Int { 0 }
+
     func recordCompletion(for letter: String, accuracy: Double) {
         recordCompletion(for: letter, accuracy: accuracy,
                          phaseScores: nil, speed: nil, recognitionResult: nil)
@@ -342,6 +351,18 @@ public final class JSONProgressStore: ProgressStoring {
 
     var totalCompletions: Int {
         store.letterProgress.values.reduce(0) { $0 + $1.completionCount }
+    }
+
+    /// P7 (ROADMAP_V5): how many letter completions landed today.
+    /// Drives the daily-goal pill on Fortschritte. Reads
+    /// `completionDates` (cap 1000, plenty of headroom for a single
+    /// day) and counts entries that fall within today's calendar day.
+    var completionsToday: Int {
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: Date())
+        return store.completionDates.filter {
+            cal.isDate($0, inSameDayAs: today)
+        }.count
     }
 
     // MARK: Persistence

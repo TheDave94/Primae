@@ -488,6 +488,22 @@ public final class TracingViewModel {
     func progress(for letter: String) -> LetterProgress {
         progressStore.progress(for: letter)
     }
+
+    /// P7 (ROADMAP_V5): completions that landed today. Drives the
+    /// daily-goal pill in `FortschritteWorldView`.
+    var completionsToday: Int { progressStore.completionsToday }
+    /// P7: parent-configurable daily-completion goal. Persisted in
+    /// UserDefaults so a parent can adjust it; default 3 is a low bar
+    /// designed to be hit on most weekdays for a 5-year-old.
+    var dailyGoal: Int {
+        get {
+            let v = UserDefaults.standard.integer(forKey: "de.flamingistan.buchstaben.dailyGoal")
+            return v > 0 ? v : 3
+        }
+        set {
+            UserDefaults.standard.set(max(1, newValue), forKey: "de.flamingistan.buchstaben.dailyGoal")
+        }
+    }
     private let streakStore: StreakStoring
     private let dashboardStore: ParentDashboardStoring
     private let thesisCondition: ThesisCondition
@@ -1375,6 +1391,20 @@ public final class TracingViewModel {
                         let line = ChildSpeechLibrary.recognition(
                             r, expected: expected)
                         if !line.isEmpty { self.speech.speak(line) }
+                    }
+                    // P2 (ROADMAP_V5): self-explanation prompt on a
+                    // confident-but-wrong recognition. Re-presenting
+                    // the canonical reference glyph leverages
+                    // Chi 1989's elaborative-processing effect — the
+                    // child sees the mismatch and the correct form
+                    // back-to-back. Gated on `confidence >= 0.5` so
+                    // borderline-noisy predictions don't trigger the
+                    // re-animation; gated on `currentLetterName ==
+                    // expected` so a fast letter-switch race doesn't
+                    // animate the wrong glyph.
+                    if !r.isCorrect, r.confidence >= 0.5,
+                       self.currentLetterName == expected {
+                        self.startGuideAnimation()
                     }
                 }
             }

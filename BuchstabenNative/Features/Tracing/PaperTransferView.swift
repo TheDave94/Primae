@@ -8,10 +8,18 @@ struct PaperTransferView: View {
     @Environment(TracingViewModel.self) private var vm
     let letter: String
     let onComplete: (Double) -> Void
+    /// D4 (ROADMAP_V5): injectable sleeper so the 3 s reference / 10 s
+    /// write-paper timing is testable deterministically. Production
+    /// keeps the wall-clock `Task.sleep`; the test target swaps in an
+    /// instant-resume closure, asserts the phase rotation, and skips
+    /// the 13-second wall-clock wait.
+    var sleep: @Sendable (Duration) async throws -> Void = {
+        try await Task.sleep(for: $0)
+    }
 
     @State private var phase: Phase = .showLetter
 
-    private enum Phase { case showLetter, writePaper, assess }
+    enum Phase: Equatable { case showLetter, writePaper, assess }
 
     var body: some View {
         ZStack {
@@ -66,10 +74,10 @@ struct PaperTransferView: View {
             // pre-reader gets the same instruction aurally.
             vm.speech.speak(ChildSpeechLibrary.paperTransferShow)
             do {
-                try await Task.sleep(for: .seconds(3))
+                try await sleep(.seconds(3))
                 withAnimation { phase = .writePaper }
                 vm.speech.speak(ChildSpeechLibrary.paperTransferWrite)
-                try await Task.sleep(for: .seconds(10))
+                try await sleep(.seconds(10))
                 withAnimation { phase = .assess }
                 vm.speech.speak(ChildSpeechLibrary.paperTransferAssess)
             } catch {}

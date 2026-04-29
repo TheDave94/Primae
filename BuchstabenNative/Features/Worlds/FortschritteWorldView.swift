@@ -43,8 +43,43 @@ struct FortschritteWorldView: View {
         HStack(spacing: 20) {
             starCountCard
             streakCard
+            dailyGoalCard
             Spacer()
         }
+    }
+
+    /// P7 (ROADMAP_V5): daily-goal pill. Goal-setting theory (Locke &
+    /// Latham 1990) predicts that explicit, proximal goals improve
+    /// practice quality. Default goal = 3 letters/day; parent can
+    /// adjust via UserDefaults. Tile turns green once the goal is hit.
+    private var dailyGoalCard: some View {
+        let done = vm.completionsToday
+        let goal = vm.dailyGoal
+        let achieved = done >= goal
+        return HStack(spacing: 12) {
+            Text(achieved ? "🎯" : "📅").font(.system(size: 38))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(done) / \(goal)")
+                    .font(.system(.title, design: .rounded).weight(.bold))
+                    .foregroundStyle(.primary)
+                Text(achieved ? "Tagesziel!" : "heute geschafft")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(achieved ? AppSurface.masteredText : AppSurface.caption)
+            }
+        }
+        .padding(20)
+        .background(achieved ? AppSurface.mastered : Color.white,
+                    in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(AppSurface.cardEdge.opacity(0.6), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.06), radius: 12, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(achieved
+            ? "Tagesziel erreicht: \(done) von \(goal) Buchstaben"
+            : "\(done) von \(goal) Buchstaben heute")
     }
 
     private var starCountCard: some View {
