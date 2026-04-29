@@ -130,8 +130,11 @@ struct FreeformWritingView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            // Row 1: Zurück / mode picker / Nochmal. Fixed layout so
-            // buttons can never crash into each other (see IMG_0334).
+            // Row 1: Zurück / Nochmal. The mode picker (Buchstabe /
+            // Wort) lives on the WerkstattWorldView left rail —
+            // exposing it again here as a horizontal segmented
+            // picker created two ways to do the same thing on the
+            // same screen, so the horizontal one is gone.
             HStack(alignment: .center, spacing: 12) {
                 Button {
                     vm.exitFreeformMode()
@@ -142,25 +145,6 @@ struct FreeformWritingView: View {
                 .buttonStyle(.bordered)
                 .tint(.gray)
                 .accessibilityHint("Zurück zum geführten Modus")
-
-                Spacer()
-
-                Picker("Modus", selection: Binding(
-                    get: { vm.freeformSubMode },
-                    set: { newValue in
-                        if newValue == .word, vm.freeformTargetWord == nil {
-                            vm.selectFreeformWord(FreeformWordList.all.first ?? FreeformWord(word: "OMA", difficulty: 1))
-                        } else {
-                            vm.freeformSubMode = newValue
-                            vm.clearFreeformCanvas()
-                        }
-                    }
-                )) {
-                    Text("Buchstabe").tag(FreeformSubMode.letter)
-                    Text("Wort").tag(FreeformSubMode.word)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
 
                 Spacer()
 
