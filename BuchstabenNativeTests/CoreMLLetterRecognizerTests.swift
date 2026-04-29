@@ -77,3 +77,129 @@ import CoreGraphics
         #expect(a?.height == b?.height)
     }
 }
+
+@Suite struct CoreMLLetterRecognizerPipelineTests {
+
+    /// Deterministic stub classifier — returns canned classifications
+    /// regardless of input. Lets the rest of the pipeline (calibrator,
+    /// makeResult, isCorrect comparison, raw-vs-calibrated tracking)
+    /// be exercised end-to-end without bundling a real `.mlpackage`.
+    private func stub(_ canned: [LetterClassification]) -> CoreMLLetterRecognizer.Classifier {
+        { _ in canned }
+    }
+
+    private let diagonal: [CGPoint] = (0...20).map {
+        CGPoint(x: 80 + Double($0) * 12, y: 80 + Double($0) * 12)
+    }
+    private let canvas = CGSize(width: 400, height: 400)
+
+    @Test("recognize routes the top classification's identifier verbatim")
+    func recognizeReturnsTopIdentifier() async {
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: stub([
+                LetterClassification(identifier: "A", confidence: 0.92),
+                LetterClassification(identifier: "H", confidence: 0.05)
+            ])
+        )
+        let r = await recognizer.recognize(
+            points: diagonal, canvasSize: canvas,
+            expectedLetter: "A", historicalFormScores: []
+        )
+        #expect(r?.predictedLetter == "A")
+        #expect(r?.isCorrect == true)
+    }
+
+    @Test("isCorrect compares case-insensitively against expectedLetter")
+    func isCorrectCaseInsensitive() async {
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: stub([LetterClassification(identifier: "a", confidence: 0.8)])
+        )
+        let r = await recognizer.recognize(
+            points: diagonal, canvasSize: canvas,
+            expectedLetter: "A", historicalFormScores: []
+        )
+        #expect(r?.isCorrect == true)
+    }
+
+    @Test("isCorrect is false when expectedLetter is nil (freeform mode)")
+    func freeformAlwaysIncorrect() async {
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: stub([LetterClassification(identifier: "X", confidence: 0.9)])
+        )
+        let r = await recognizer.recognize(
+            points: diagonal, canvasSize: canvas,
+            expectedLetter: nil, historicalFormScores: []
+        )
+        #expect(r?.isCorrect == false)
+        #expect(r?.predictedLetter == "X")
+    }
+
+    @Test("rawConfidence preserves the pre-calibration value (T5)")
+    func rawConfidencePreserved() async {
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: stub([LetterClassification(identifier: "C", confidence: 0.75)])
+        )
+        let r = await recognizer.recognize(
+            points: diagonal, canvasSize: canvas,
+            expectedLetter: "C", historicalFormScores: []
+        )
+        #expect(r?.rawConfidence != nil)
+        // 0.75 within float-rounding tolerance.
+        #expect(abs((r?.rawConfidence ?? 0) - 0.75) < 1e-4)
+    }
+
+    @Test("topThree carries the calibrated confidences for up to 3 candidates")
+    func topThreeCarriesCandidates() async {
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: stub([
+                LetterClassification(identifier: "A", confidence: 0.7),
+                LetterClassification(identifier: "H", confidence: 0.2),
+                LetterClassification(identifier: "K", confidence: 0.05),
+                LetterClassification(identifier: "M", confidence: 0.03)
+            ])
+        )
+        let r = await recognizer.recognize(
+            points: diagonal, canvasSize: canvas,
+            expectedLetter: "A", historicalFormScores: []
+        )
+        #expect(r?.topThree.count == 3)
+        #expect(r?.topThree.first?.letter == "A")
+    }
+
+    @Test("Empty classifier output → nil result (model-missing fallback path)")
+    func emptyClassifierReturnsNil() async {
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: stub([])
+        )
+        let r = await recognizer.recognize(
+            points: diagonal, canvasSize: canvas,
+            expectedLetter: "A", historicalFormScores: []
+        )
+        #expect(r == nil)
+    }
+
+    @Test("Short input (< 2 points) skips classifier entirely")
+    func shortInputBypassesClassifier() async {
+        // The classifier should never be called for a single point,
+        // so a stub that fatals-on-call would fail this test if
+        // recognize doesn't short-circuit.
+        let recognizer = CoreMLLetterRecognizer(
+            calibrator: ConfidenceCalibrator(),
+            classifier: { _ in
+                Issue.record("classifier should not be called for < 2 points")
+                return [LetterClassification(identifier: "X", confidence: 1.0)]
+            }
+        )
+        let r = await recognizer.recognize(
+            points: [.init(x: 0, y: 0)], canvasSize: canvas,
+            expectedLetter: "A", historicalFormScores: []
+        )
+        #expect(r == nil)
+    }
+}

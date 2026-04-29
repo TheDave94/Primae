@@ -12,6 +12,17 @@ import Foundation
 import OSLog
 import Vision
 
+// MARK: - Classifier intermediate type
+
+/// D3 (ROADMAP): framework-agnostic projection of a Vision
+/// `VNClassificationObservation`. Lets the rest of the recognizer
+/// pipeline stay free of Vision dependencies and lets tests inject a
+/// deterministic classifier without bundling a real `.mlpackage`.
+struct LetterClassification: Equatable, Sendable {
+    let identifier: String
+    let confidence: Float
+}
+
 // MARK: - Result type
 
 /// Outcome of a single recognition call.
@@ -118,11 +129,44 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     private static let loadLock = NSLock()
 
     private let calibrator: ConfidenceCalibrator
+    /// D3 (ROADMAP): the classification step is the only piece of the
+    /// recognize() pipeline that needs Vision. By taking it as an
+    /// injectable closure, tests can swap in a deterministic stub
+    /// without bundling a `.mlpackage` into the test target — the
+    /// rendering step (renderToImage) and the post-processing step
+    /// (makeResult + ConfidenceCalibrator) become testable
+    /// end-to-end.
+    typealias Classifier = @Sendable (CGImage) -> [LetterClassification]
+    private let classify: Classifier
 
     // MARK: Init
 
-    init(calibrator: ConfidenceCalibrator = ConfidenceCalibrator()) {
+    init(calibrator: ConfidenceCalibrator = ConfidenceCalibrator(),
+         classifier: Classifier? = nil) {
         self.calibrator = calibrator
+        self.classify = classifier ?? Self.defaultClassifier
+    }
+
+    /// Production classifier: lazy-load the bundled `.mlpackage`, run a
+    /// `VNCoreMLRequest`, project the observations onto the
+    /// framework-agnostic `LetterClassification` type so the rest of
+    /// the pipeline never touches Vision. Returns `[]` when the model
+    /// can't be loaded — the caller treats empty as "skip recognition".
+    private static let defaultClassifier: Classifier = { image in
+        guard let model = Self.loadModelIfNeeded() else { return [] }
+        let request = VNCoreMLRequest(model: model)
+        request.imageCropAndScaleOption = .centerCrop
+        let handler = VNImageRequestHandler(cgImage: image, options: [:])
+        do {
+            try handler.perform([request])
+            let observations = request.results as? [VNClassificationObservation] ?? []
+            return observations.map {
+                LetterClassification(identifier: $0.identifier, confidence: $0.confidence)
+            }
+        } catch {
+            recognizerLogger.warning("Vision request failed: \(error.localizedDescription)")
+            return []
+        }
     }
 
     // MARK: LetterRecognizerProtocol
@@ -148,32 +192,24 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         let expected = expectedLetter
         let calibratorCopy = calibrator
         let history = historicalFormScores
+        let classifier = classify
         // The entire hot path — model load on first call, 40×40 CGContext
         // rasterization, VNImageRequestHandler.perform — is CPU-heavy and
         // must NOT execute on the MainActor. A detached Task runs on the
         // cooperative thread pool and does not inherit the caller's
         // isolation, so every synchronous call inside happens off-main.
         return await Task.detached(priority: .userInitiated) {
-            guard let model = Self.loadModelIfNeeded() else { return nil }
             guard let image = Self.renderToImage(points: points, canvasSize: canvasSize) else {
                 return nil
             }
-            let request = VNCoreMLRequest(model: model)
-            request.imageCropAndScaleOption = .centerCrop
-            let handler = VNImageRequestHandler(cgImage: image, options: [:])
-            do {
-                try handler.perform([request])
-                let classifications = request.results as? [VNClassificationObservation] ?? []
-                return Self.makeResult(
-                    from: classifications,
-                    expectedLetter: expected,
-                    calibrator: calibratorCopy,
-                    historicalFormScores: history
-                )
-            } catch {
-                recognizerLogger.warning("Vision request failed: \(error.localizedDescription)")
-                return nil
-            }
+            let classifications = classifier(image)
+            guard !classifications.isEmpty else { return nil }
+            return Self.makeResult(
+                from: classifications,
+                expectedLetter: expected,
+                calibrator: calibratorCopy,
+                historicalFormScores: history
+            )
         }.value
     }
 
@@ -253,8 +289,8 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
 
     // MARK: - Result post-processing
 
-    private static func makeResult(
-        from classifications: [VNClassificationObservation],
+    static func makeResult(
+        from classifications: [LetterClassification],
         expectedLetter: String?,
         calibrator: ConfidenceCalibrator,
         historicalFormScores: [CGFloat]
