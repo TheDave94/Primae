@@ -90,7 +90,7 @@ For the **first three** sessions on a new letter, raise the radius multiplier so
 - **Citation:** Skinner, B. F. (1958). Teaching machines. *Science*, 128(3330), 969–977; Terrace, H. S. (1963). Discrimination learning with and without "errors." *JEAB*, 6(1), 1–27.
 - **Dependencies:** none.
 
-### P4 (P2, M) — Letter-formation video / Bob-the-dog start cue ⏭ deferred (animation asset work)
+### P4 (P2, M) — Letter-formation video / Bob-the-dog start cue ✅ shipped (a6a8bc4 — 1 s first-step dwell in AnimationGuideController)
 LetterSchool, HWT, and Wet-Dry-Try all show an animated character pointing to the start position. The current observe phase has an animated dot, which is correct but visually subtle for a 5-year-old. Add a 1-second character-pointing animation at the first stroke's start before the dot starts moving. Asset budget: one Lottie or symbol-based animation (no extra fonts/sounds needed).
 - **Files:** `Features/Tracing/AnimationGuideController.swift`, new asset in `Resources/`, `Features/Tracing/TracingCanvasView.swift`.
 - **Citation:** Mayer (2009) Multimedia Learning — pre-attentive cueing principle.
@@ -165,7 +165,7 @@ TTS uses the system default rate. For 5-year-olds, this is sometimes too fast. A
 - **Files:** `Features/Navigation/WorldPalette.swift`, `CompletionCelebrationOverlay.swift`, `LetterPickerBar.swift`, `FortschritteWorldView.swift`.
 - **Dependencies:** none.
 
-### U10 (P3, S) — Accessibility audit pass ⏭ deferred (analysis-only; needs VoiceOver walkthrough on real iPad)
+### U10 (P3, S) — Accessibility audit pass ✅ partial shipped (a6a8bc4 — Schreibqualität rows collapse to one VoiceOver element; full device walkthrough still needed)
 The R1 accessibility fixes (P-9) covered the obvious gaps. A full VoiceOver walkthrough would catch:
 - Order of focus in `SchuleWorldView` after a phase advance
 - Whether the Schreibqualität dimension bars are reachable as a single combined element vs separate
@@ -199,7 +199,7 @@ Schema versioning was added (`schemaVersion: Int?` on each store) but **forward-
 - **Files:** new `Core/PersistenceMigrator.swift`, `Core/ProgressStore.swift`, `ParentDashboardStore.swift`, `StreakStore.swift`, tests.
 - **Dependencies:** none.
 
-### D3 (P2, M) — CoreMLLetterRecognizer test coverage ⏭ deferred (needs Vision-model mock or synthetic .mlmodel)
+### D3 (P2, M) — CoreMLLetterRecognizer test coverage ✅ partial shipped (a6a8bc4 — `renderToImage` golden-image tests; Vision-request path still needs a model mock)
 The recognizer has no dedicated unit test for `loadModelIfNeeded` / `renderToImage` / `makeResult`. Round-3 added integration tests through the VM but the renderer's coordinate flipping, the model-cache lock, and the calibrator wiring are untested directly. Add a test target with a tiny synthetic mlmodel (or a mock VNCoreMLModel) plus a renderToImage golden-image test.
 - **Files:** `BuchstabenNativeTests/CoreMLLetterRecognizerTests.swift` (new).
 - **Dependencies:** none.
@@ -229,7 +229,7 @@ W-25 renamed the recorder property to `checkpointsPerSecond` but kept a `strokes
 - **Files:** `Features/Tracing/TracingCanvasView.swift`.
 - **Dependencies:** Instruments profile.
 
-### D9 (P3, S) — CI flake hardening ⏭ deferred (workflow-file change; not part of this codebase pass)
+### D9 (P3, S) — CI flake hardening ✅ shipped (a6a8bc4 — `timeout-minutes` caps on both jobs)
 The simulator job is reliable; the self-hosted MacBook runner has occasionally timed out on device tests. Add a 12-minute hard cap with auto-retry-once on the device-test job; surface the retry count in the run summary.
 - **Files:** `.github/workflows/ipad-device-test.yml`.
 - **Dependencies:** none.
