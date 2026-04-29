@@ -254,6 +254,11 @@ final class PhaseTransitionCoordinator {
            let variantID = vm.letters[vm.letterIndex].variants?.first {
             vm.progressStore.recordVariantUsed(for: letter, variantID: variantID)
         }
+        // Refresh the VM's @Observable allProgress mirror so the
+        // world-rail star badge + Fortschritte gallery pick up the
+        // new completion. The store itself isn't @Observable, so
+        // this call is the bridge that fires SwiftUI updates.
+        vm.refreshProgressMirror()
         let newRewards = vm.streakStore.recordSession(
             date: Date(),
             lettersCompleted: lettersToRecord,

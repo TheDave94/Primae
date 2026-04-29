@@ -526,10 +526,28 @@ public final class TracingViewModel {
     /// machinery, not an external collaborator.
     let progressStore: ProgressStoring
 
-    /// Read-only snapshot of all letter progress. Views bind here instead
-    /// of reaching into `progressStore` directly so persistence stays
-    /// encapsulated and writes remain VM-mediated.
-    var allProgress: [String: LetterProgress] { progressStore.allProgress }
+    /// Read-only snapshot of all letter progress. Views bind here
+    /// instead of reaching into `progressStore` directly so
+    /// persistence stays encapsulated and writes remain VM-mediated.
+    ///
+    /// Stored, not computed: the underlying `progressStore` is a
+    /// plain `final class` (not `@Observable`), so mutations to it
+    /// don't trigger `@Observable` updates on the VM. SwiftUI
+    /// surfaces that read `vm.allProgress` (the world-rail star
+    /// badge, the Fortschritte gallery) would never re-render
+    /// after a letter completion. Holding the dict here as a
+    /// tracked property + calling `refreshProgressMirror()` after
+    /// every store mutation re-fires Observation correctly.
+    private(set) var allProgress: [String: LetterProgress] = [:]
+
+    /// Resync the @Observable mirror from `progressStore`. Call
+    /// after any code that mutates the store
+    /// (`recordCompletion`, `recordPaperTransferScore`,
+    /// `recordRetrievalAttempt`, `recordRecognitionSample`,
+    /// `recordFreeformCompletion`, `recordVariantUsed`).
+    func refreshProgressMirror() {
+        allProgress = progressStore.allProgress
+    }
 
     /// Per-letter progress lookup. Mirrors `ProgressStoring.progress(for:)`.
     func progress(for letter: String) -> LetterProgress {
@@ -733,6 +751,10 @@ public final class TracingViewModel {
         td.vm = self
         ptc.vm = self
         letters = repo.loadLettersFast()
+        // Seed the @Observable allProgress mirror from the persisted
+        // store so the world-rail star badge + Fortschritte gallery
+        // pick up any pre-existing progress on first render.
+        allProgress = progressStore.allProgress
         // Surface a startup audio failure as a brief German toast so a parent
         // notices the device is silent on purpose (not because the child got
         // lost). The toast auto-clears via TransientMessagePresenter's normal
@@ -1205,6 +1227,7 @@ public final class TracingViewModel {
                 if let r = result {
                     self.progressStore.recordRecognitionSample(
                         letter: expected, result: r)
+                    self.refreshProgressMirror()
                     if r.confidence >= 0.4 {
                         self.overlayQueue.enqueueBeforeCelebration(.recognitionBadge(r))
                         // Verbal mirror of the on-screen badge — same
@@ -1239,6 +1262,7 @@ public final class TracingViewModel {
     /// the overlay queue to the next overlay (typically the celebration).
     func submitPaperTransfer(score: Double) {
         progressStore.recordPaperTransferScore(for: currentLetterName, score: score)
+        refreshProgressMirror()
         overlayQueue.dismiss()
     }
 
@@ -1388,6 +1412,7 @@ public final class TracingViewModel {
     /// queue can advance into the tracing phases.
     func submitRetrievalAnswer(letter: String, correct: Bool) {
         progressStore.recordRetrievalAttempt(letter: letter, correct: correct)
+        refreshProgressMirror()
         haptics.fire(correct ? .letterCompleted : .offPath)
         // Brief delay so the colour-coded reveal renders before the
         // overlay dismisses. The view animates the result inline; the
@@ -2076,6 +2101,7 @@ public final class TracingViewModel {
         // they were trying to write — the latter is nil in freeform).
         let label = result.predictedLetter.uppercased()
         progressStore.recordFreeformCompletion(letter: label, result: result)
+        refreshProgressMirror()
     }
 
     private func recordFreeformWordCompletion(target: FreeformWord,
@@ -2084,6 +2110,7 @@ public final class TracingViewModel {
             let label = r.predictedLetter.uppercased()
             progressStore.recordFreeformCompletion(letter: label, result: r)
         }
+        refreshProgressMirror()
     }
 
     // MARK: - Segmentation

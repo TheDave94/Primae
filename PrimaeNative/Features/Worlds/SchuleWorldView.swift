@@ -100,8 +100,12 @@ struct SchuleWorldView: View {
                     letters: vm.visibleLetterNames,
                     currentLetter: vm.currentLetterName,
                     starCount: { name in
+                        // Read via the @Observable allProgress
+                        // mirror (not progress(for:)) so the
+                        // picker chip refreshes after a fresh
+                        // completion without dismissing-+-reopening.
                         LetterStars.stars(
-                            for: vm.progress(for: name).phaseScores)
+                            for: (vm.allProgress[name] ?? LetterProgress()).phaseScores)
                     },
                     onSelect: { letter in
                         vm.loadLetter(name: letter)

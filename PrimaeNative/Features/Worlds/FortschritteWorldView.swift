@@ -238,7 +238,11 @@ struct FortschritteWorldView: View {
 
     @ViewBuilder
     private func letterCard(letter: String) -> some View {
-        let prog = vm.progress(for: letter)
+        // Read through `vm.allProgress` (the @Observable mirror)
+        // not `vm.progress(for:)` (a forwarder to the non-Observable
+        // store) so the cell re-renders when a fresh completion
+        // bumps the star count.
+        let prog = vm.allProgress[letter] ?? LetterProgress()
         let stars = LetterStars.stars(for: prog.phaseScores)
         let tint: Color = {
             // Shared token with LetterPickerBar so a "mastered" letter
