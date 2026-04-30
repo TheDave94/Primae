@@ -585,7 +585,7 @@ struct ChildSpeechLibraryTests {
         #expect(ChildSpeechLibrary.phaseEntry(.observe).contains("Pass"))
         #expect(ChildSpeechLibrary.phaseEntry(.direct).contains("Punkte"))
         #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("Linie"))
-        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("alleine"))
+        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("ohne Hilfe"))
     }
 
     @Test("Praise tier maps to encouraging German phrases")
