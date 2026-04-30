@@ -29,8 +29,38 @@ import AVFoundation
 import Foundation
 import os.log
 
+/// Public surface of `PromptPlayer`. Lets tests inject a no-op
+/// (`NullPromptPlayer`) so the test loop doesn't pay the cost of real
+/// `AVAudioPlayer.play()` calls — those have enough setup overhead in
+/// the simulator (~10–20 ms each, especially without an active
+/// `.playback` AVAudioSession) to push the rapid-tap test past the
+/// `PlaybackController.playIntentDebounceSeconds` wall-clock window.
 @MainActor
-final class PromptPlayer {
+protocol PromptPlaying: AnyObject {
+    func play(_ key: PromptPlayer.PromptKey, fallbackText: String)
+    func stop()
+    func playSuccessChime()
+    func playTapChime()
+    func playWrongTapChime()
+    func playCheckpointTick()
+    func playStrokeTick()
+}
+
+/// Test/stub implementation. Every method is a no-op so unit tests
+/// don't drive real audio. Production code path is `PromptPlayer`.
+@MainActor
+final class NullPromptPlayer: PromptPlaying {
+    func play(_ key: PromptPlayer.PromptKey, fallbackText: String) {}
+    func stop() {}
+    func playSuccessChime() {}
+    func playTapChime() {}
+    func playWrongTapChime() {}
+    func playCheckpointTick() {}
+    func playStrokeTick() {}
+}
+
+@MainActor
+final class PromptPlayer: PromptPlaying {
 
     /// Stable identifiers for each pre-recorded phrase. The raw value
     /// is the filename stem inside `Resources/Prompts/<key>.mp3`.
@@ -62,31 +92,25 @@ final class PromptPlayer {
 
     private let speech: SpeechSynthesizing
     private var player: AVAudioPlayer?
-    /// Pre-loaded short-effect player for the direct-phase tap chime
-    /// (and any future short UI sounds). Kept separate from `player`
-    /// so a long phase-prompt MP3 doesn't get cancelled by a per-tap
-    /// click. AVAudioPlayer inherits the existing `.playback` session
-    /// the AudioEngine sets up, so it bypasses the iPad ringer/silent
+    /// Lazily-loaded short-effect players keyed by asset name.
+    /// AVAudioPlayer inherits the existing `.playback` session the
+    /// AudioEngine sets up, so these bypass the iPad ringer/silent
     /// switch — a regression vs. AudioServicesPlaySystemSound which
     /// the user couldn't hear with mute on.
-    private var tapPlayer: AVAudioPlayer?
-    /// Pre-loaded wrong-tap buzz player (low-pitched dissonant pair).
-    /// Same mute-bypass rationale as `tapPlayer`.
-    private var wrongTapPlayer: AVAudioPlayer?
-    /// Subtle per-checkpoint tick during guided-phase tracing —
-    /// audible stand-in for the haptic feedback iPad hardware can't
-    /// produce (no Taptic Engine on any iPad).
-    private var checkpointTickPlayer: AVAudioPlayer?
-    /// Slightly louder/lower stroke-completion tick.
-    private var strokeTickPlayer: AVAudioPlayer?
+    ///
+    /// Lazy loading matters for tests: pre-loading 4+ AVAudioPlayer
+    /// instances at init shifts the timing of subsequent operations
+    /// enough to push past the playback debounce window in the rapid-
+    /// taps test, which previously passed when only 2 effects existed.
+    /// First play() incurs a one-time load; subsequent plays reuse.
+    private var effectPlayers: [String: AVAudioPlayer] = [:]
+    /// Names that we tried to load and failed — cached so we don't
+    /// re-probe the bundle on every play() call.
+    private var missingEffects: Set<String> = []
     private let log = Logger(subsystem: "buchstaben.primae", category: "prompts")
 
     init(fallbackSpeech: SpeechSynthesizing) {
         self.speech = fallbackSpeech
-        tapPlayer = loadEffectPlayer(name: "tap")
-        wrongTapPlayer = loadEffectPlayer(name: "tap_wrong")
-        checkpointTickPlayer = loadEffectPlayer(name: "tick_checkpoint")
-        strokeTickPlayer = loadEffectPlayer(name: "tick_stroke")
     }
 
     /// Play the prompt audio for `key`. Falls back to
@@ -138,12 +162,7 @@ final class PromptPlayer {
     /// device is muted; AudioServicesPlaySystemSound was silenced).
     /// Falls back to the system sound only if the asset is missing.
     func playTapChime() {
-        if let p = tapPlayer {
-            p.currentTime = 0
-            p.play()
-        } else {
-            AudioServicesPlaySystemSound(1104)
-        }
+        playEffect(name: "tap", systemFallback: 1104)
     }
 
     /// Distinct wrong-tap sound: a low-pitched 120 ms buzz (220 Hz +
@@ -152,12 +171,7 @@ final class PromptPlayer {
     /// `playTapChime()`. Falls back to the system "tock" if the
     /// asset isn't bundled.
     func playWrongTapChime() {
-        if let p = wrongTapPlayer {
-            p.currentTime = 0
-            p.play()
-        } else {
-            AudioServicesPlaySystemSound(1053)
-        }
+        playEffect(name: "tap_wrong", systemFallback: 1053)
     }
 
     /// Subtle per-checkpoint tick during guided-phase tracing.
@@ -167,24 +181,42 @@ final class PromptPlayer {
     /// checkpoint. Quiet on purpose — fired potentially dozens of
     /// times per stroke.
     func playCheckpointTick() {
-        guard let p = checkpointTickPlayer else { return }
-        p.currentTime = 0
-        p.play()
+        playEffect(name: "tick_checkpoint", systemFallback: nil)
     }
 
     /// Stroke-completion tick — louder + lower than the checkpoint
     /// tick so the child hears a clear "this stroke is done" beat.
     func playStrokeTick() {
-        guard let p = strokeTickPlayer else { return }
-        p.currentTime = 0
-        p.play()
+        playEffect(name: "tick_stroke", systemFallback: nil)
+    }
+
+    /// Lazy effect playback. Loads the AVAudioPlayer on first call
+    /// for `name`, caches it, and reuses on subsequent calls. Falls
+    /// back to `systemFallback` (a SystemSoundID) when the asset
+    /// isn't bundled; pass nil to silently skip the play.
+    private func playEffect(name: String, systemFallback: SystemSoundID?) {
+        if let p = effectPlayers[name] {
+            p.currentTime = 0
+            p.play()
+            return
+        }
+        if missingEffects.contains(name) {
+            if let id = systemFallback { AudioServicesPlaySystemSound(id) }
+            return
+        }
+        if let p = loadEffectPlayer(name: name) {
+            effectPlayers[name] = p
+            p.play()
+        } else {
+            missingEffects.insert(name)
+            if let id = systemFallback { AudioServicesPlaySystemSound(id) }
+        }
     }
 
     /// One-time effect-player setup. Bundle lookup mirrors
     /// `locate(_:)` (probes `.module` and `.main` with the
     /// `Resources/Prompts` and `Prompts` subdirs). Returns nil if
-    /// the asset isn't bundled — callers fall back to a system
-    /// sound in that case.
+    /// the asset isn't bundled.
     private func loadEffectPlayer(name: String) -> AVAudioPlayer? {
         let bundles: [Bundle] = [.module, .main]
         let subdirs: [String?] = ["Resources/Prompts", "Prompts", nil]

@@ -185,7 +185,11 @@ extension TracingDependencies {
             ),
             thesisCondition:      .guidedOnly,
             letterRecognizer:     StubLetterRecognizer(),
-            speech:               NullSpeechSynthesizer()
+            speech:               NullSpeechSynthesizer(),
+            // Real AVAudioPlayer.play() in PromptPlayer adds enough
+            // simulator overhead per call to push the rapid-tap test
+            // past its 100 ms wall-clock playIntent debounce.
+            makePromptPlayer:     { _ in NullPromptPlayer() }
         )
     }
 

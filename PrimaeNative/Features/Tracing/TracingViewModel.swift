@@ -596,7 +596,7 @@ public final class TracingViewModel {
     /// covers builds before `scripts/generate_prompts.py` has run.
     /// Dynamic per-letter content (recognition templates) still
     /// goes through `speech` directly.
-    let prompts: PromptPlayer
+    let prompts: any PromptPlaying
     /// Owns the freeWrite buffers + session timing + scoring. Lives on
     /// the VM so views can keep reading via the existing forwarders;
     /// extracting it cleared the four-buffer churn out of the VM body.
@@ -693,7 +693,7 @@ public final class TracingViewModel {
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
         self.speech                 = deps.speech
-        self.prompts                = PromptPlayer(fallbackSpeech: deps.speech)
+        self.prompts                = deps.makePromptPlayer(deps.speech)
         // Control condition uses fixed difficulty — no moving-average adaptation.
         self.adaptationPolicy       = deps.adaptationPolicy ?? (
             deps.thesisCondition == .control

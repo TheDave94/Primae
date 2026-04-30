@@ -62,6 +62,13 @@ struct TracingDependencies {
     /// because the controller calls it from its own `@MainActor` context.
     var makePlaybackController: (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController
 
+    /// Factory for the per-VM PromptPlayer. Production builds the real
+    /// `PromptPlayer` (bundled MP3 + WAV playback via AVAudioPlayer);
+    /// tests inject `NullPromptPlayer` to skip real audio — repeated
+    /// `AVAudioPlayer.play()` calls on the simulator have enough setup
+    /// overhead to push the rapid-tap test past its wall-clock debounce.
+    var makePromptPlayer: (SpeechSynthesizing) -> any PromptPlaying
+
     /// Factory for the per-VM transient message presenter. Override with
     /// `{ TransientMessagePresenter(sleep: { _ in }) }` in tests that need
     /// the auto-clear timers to fire deterministically.
@@ -148,6 +155,9 @@ struct TracingDependencies {
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
+        makePromptPlayer: @escaping (SpeechSynthesizing) -> any PromptPlaying = {
+            PromptPlayer(fallbackSpeech: $0)
+        },
         makeMessagePresenter: @escaping () -> TransientMessagePresenter = { TransientMessagePresenter() },
         makeAnimationGuide:   @escaping () -> AnimationGuideController   = { AnimationGuideController() },
         makeCalibrationStore: @escaping () -> CalibrationStore           = { CalibrationStore() },
@@ -184,6 +194,7 @@ struct TracingDependencies {
         self.letterRecognizer = letterRecognizer
         self.speech = speech
         self.makePlaybackController = makePlaybackController
+        self.makePromptPlayer       = makePromptPlayer
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide
         self.makeCalibrationStore   = makeCalibrationStore
