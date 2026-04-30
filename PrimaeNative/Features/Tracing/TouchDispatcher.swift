@@ -311,8 +311,13 @@ final class TouchDispatcher {
         if vm.strokeTracker.progress.indices.contains(prevStrokeIndex)
             && vm.strokeTracker.progress[prevStrokeIndex].complete {
             vm.haptics.fire(.strokeCompleted)
+            // iPad has no Taptic Engine so the haptic is silently a
+            // no-op; play the stroke-tick alongside it so the child
+            // gets some feedback that the stroke just completed.
+            vm.prompts.playStrokeTick()
         } else {
             vm.haptics.fire(.checkpointHit)
+            vm.prompts.playCheckpointTick()
         }
     }
 

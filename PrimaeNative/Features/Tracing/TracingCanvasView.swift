@@ -648,6 +648,20 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         }
         required init?(coder: NSCoder) { fatalError() }
 
+        /// Mirror of `PencilAwareCanvasOverlay.TouchTrackingView.hitTest`:
+        /// reject pencil touches so they fall through to the pencil
+        /// overlay below. Without this, this view (which sits on top
+        /// of the pencil overlay) claims the pencil's hit-test, then
+        /// `Coordinator.touchesBegan` filters pencil out internally,
+        /// leaving the pencil event nowhere to land — pencil tracing
+        /// silently no-ops in Schule. Werkstatt's TouchView has no
+        /// pencil filter at all (accepts every touch), so pencil
+        /// works there.
+        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+            guard let touch = event?.allTouches?.first else { return nil }
+            return touch.type == .pencil ? nil : self
+        }
+
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             coordinator.touchesBegan(touches, with: event, in: self)
         }

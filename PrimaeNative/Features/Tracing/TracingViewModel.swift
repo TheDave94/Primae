@@ -209,16 +209,20 @@ public final class TracingViewModel {
     var showCheckpoints: Bool { phaseController.showCheckpoints }
 
     /// Whether the ghost guide-line should render because of the current phase.
-    /// Composed with the user's `showGhost` toggle in views: phase-driven
-    /// scaffolding is now ON only in observe (the intro animation) so the
-    /// child sees stroke direction being demonstrated. In direct / guided
-    /// / freeWrite the fat blue ghost lines are off by default and the
-    /// child sees only the letter glyph + dots — the user's Hilfslinien
-    /// toggle can add them back on demand for struggling sessions.
+    /// Composed with the user's `showGhost` toggle in views.
+    /// - observe: ON — the intro animation scans the stroke path, ghost
+    ///   shows direction being demonstrated.
+    /// - guided: ON — testing-checklist 4.3 explicitly requires a
+    ///   "ghost letter (faint blue stroke) drawn on the canvas as a
+    ///   tracing target." 5-yr-olds can't read the toggle in the
+    ///   parent area, so guided needs the ghost on by default.
+    /// - direct / freeWrite: OFF — direct uses the numbered dots +
+    ///   directional arrow as scaffolding; freeWrite withdraws all
+    ///   scaffolding per Schmidt & Lee's Guidance Hypothesis.
     var showGhostForPhase: Bool {
         switch phaseController.currentPhase {
-        case .observe:                         return true
-        case .direct, .guided, .freeWrite:     return false
+        case .observe, .guided:    return true
+        case .direct, .freeWrite:  return false
         }
     }
 

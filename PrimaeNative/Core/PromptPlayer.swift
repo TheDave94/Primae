@@ -73,12 +73,20 @@ final class PromptPlayer {
     /// Pre-loaded wrong-tap buzz player (low-pitched dissonant pair).
     /// Same mute-bypass rationale as `tapPlayer`.
     private var wrongTapPlayer: AVAudioPlayer?
+    /// Subtle per-checkpoint tick during guided-phase tracing —
+    /// audible stand-in for the haptic feedback iPad hardware can't
+    /// produce (no Taptic Engine on any iPad).
+    private var checkpointTickPlayer: AVAudioPlayer?
+    /// Slightly louder/lower stroke-completion tick.
+    private var strokeTickPlayer: AVAudioPlayer?
     private let log = Logger(subsystem: "buchstaben.primae", category: "prompts")
 
     init(fallbackSpeech: SpeechSynthesizing) {
         self.speech = fallbackSpeech
         tapPlayer = loadEffectPlayer(name: "tap")
         wrongTapPlayer = loadEffectPlayer(name: "tap_wrong")
+        checkpointTickPlayer = loadEffectPlayer(name: "tick_checkpoint")
+        strokeTickPlayer = loadEffectPlayer(name: "tick_stroke")
     }
 
     /// Play the prompt audio for `key`. Falls back to
@@ -150,6 +158,26 @@ final class PromptPlayer {
         } else {
             AudioServicesPlaySystemSound(1053)
         }
+    }
+
+    /// Subtle per-checkpoint tick during guided-phase tracing.
+    /// Plays alongside the haptic event from `HapticEngine`, but
+    /// since iPad hardware has no Taptic Engine, this is the only
+    /// feedback the child actually receives for crossing each
+    /// checkpoint. Quiet on purpose — fired potentially dozens of
+    /// times per stroke.
+    func playCheckpointTick() {
+        guard let p = checkpointTickPlayer else { return }
+        p.currentTime = 0
+        p.play()
+    }
+
+    /// Stroke-completion tick — louder + lower than the checkpoint
+    /// tick so the child hears a clear "this stroke is done" beat.
+    func playStrokeTick() {
+        guard let p = strokeTickPlayer else { return }
+        p.currentTime = 0
+        p.play()
     }
 
     /// One-time effect-player setup. Bundle lookup mirrors
