@@ -67,12 +67,19 @@ struct RecognitionResult: Equatable, Sendable {
 
 /// Async recognition seam. Swap `StubLetterRecognizer` in tests.
 protocol LetterRecognizerProtocol: Sendable {
-    /// Recognise the rasterised stroke. `historicalFormScores` is the
-    /// child's prior recognition-accuracy history for the expected
-    /// letter — the calibrator uses it to award a small confidence
-    /// boost on letters the child has practised reliably (review item
-    /// W-21 / P-4). Empty array disables the boost (default).
+    /// Recognise the rasterised stroke. `strokeStartIndices` lists
+    /// indices into `points` where a fresh stroke begins (after a
+    /// finger-up between strokes); the rasterizer breaks the polyline
+    /// at those indices so multi-stroke letters (F, E, H, …) aren't
+    /// drawn with phantom diagonals connecting the strokes — that
+    /// silhouette read as a different glyph (F → P) on the model.
+    /// Pass `[]` (or use the convenience overload below) when there
+    /// are no breaks. `historicalFormScores` is the child's prior
+    /// recognition-accuracy history for the expected letter — the
+    /// calibrator uses it to award a small confidence boost on letters
+    /// the child has practised reliably (review item W-21 / P-4).
     func recognize(points: [CGPoint],
+                   strokeStartIndices: [Int],
                    canvasSize: CGSize,
                    expectedLetter: String?,
                    historicalFormScores: [CGFloat]) async -> RecognitionResult?
@@ -84,17 +91,19 @@ protocol LetterRecognizerProtocol: Sendable {
 }
 
 extension LetterRecognizerProtocol {
-    /// Convenience that omits `historicalFormScores` — equivalent to
-    /// passing `[]`. Lets callers that don't have a progress store on
-    /// hand (e.g. ad-hoc tests, the freeform-letter pipeline that has
-    /// no `expectedLetter`) keep the older two-argument shape.
+    /// Convenience that omits stroke breaks (single-stroke letters,
+    /// freeform mode where stroke separation isn't tracked yet) and
+    /// `historicalFormScores`. Lets older call sites keep the
+    /// 3-argument shape.
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
-                   expectedLetter: String?) async -> RecognitionResult? {
+                   expectedLetter: String?,
+                   historicalFormScores: [CGFloat] = []) async -> RecognitionResult? {
         await recognize(points: points,
+                        strokeStartIndices: [],
                         canvasSize: canvasSize,
                         expectedLetter: expectedLetter,
-                        historicalFormScores: [])
+                        historicalFormScores: historicalFormScores)
     }
 }
 
@@ -187,6 +196,7 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     }
 
     func recognize(points: [CGPoint],
+                   strokeStartIndices: [Int],
                    canvasSize: CGSize,
                    expectedLetter: String?,
                    historicalFormScores: [CGFloat]) async -> RecognitionResult? {
@@ -197,13 +207,16 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         let calibratorCopy = calibrator
         let history = historicalFormScores
         let classifier = classify
+        let breaks = strokeStartIndices
         // The entire hot path — model load on first call, 40×40 CGContext
         // rasterization, VNImageRequestHandler.perform — is CPU-heavy and
         // must NOT execute on the MainActor. A detached Task runs on the
         // cooperative thread pool and does not inherit the caller's
         // isolation, so every synchronous call inside happens off-main.
         return await Task.detached(priority: .userInitiated) {
-            guard let image = Self.renderToImage(points: points, canvasSize: canvasSize) else {
+            guard let image = Self.renderToImage(points: points,
+                                                  strokeStartIndices: breaks,
+                                                  canvasSize: canvasSize) else {
                 return nil
             }
             let classifications = classifier(image)
@@ -341,7 +354,9 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     /// matching the training data distribution: black background, white
     /// strokes, centered with a small padding, line width 2.5 at model
     /// resolution. Returns nil when the path has no extent.
-    static func renderToImage(points: [CGPoint], canvasSize: CGSize) -> CGImage? {
+    static func renderToImage(points: [CGPoint],
+                               strokeStartIndices: [Int] = [],
+                               canvasSize: CGSize) -> CGImage? {
         guard points.count >= 2 else { return nil }
         let targetSize = CGSize(width: 40, height: 40)
 
@@ -385,17 +400,29 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         context.setLineCap(.round)
         context.setLineJoin(.round)
 
+        // Break the polyline at every stroke-start index so multi-
+        // stroke letters render as N disjoint polylines instead of
+        // one zig-zag with phantom diagonals across the lifts. The
+        // implicit start at index 0 is added to the front of the
+        // breaks list so the loop body is uniform.
+        let breaks = ([0] + strokeStartIndices.filter { $0 > 0 && $0 < points.count })
+            .sorted()
         let path = CGMutablePath()
-        let first = points[0]
-        path.move(to: CGPoint(
-            x: offsetX + (first.x - minX) * scale,
-            y: offsetY + (first.y - minY) * scale
-        ))
-        for p in points.dropFirst() {
-            path.addLine(to: CGPoint(
-                x: offsetX + (p.x - minX) * scale,
-                y: offsetY + (p.y - minY) * scale
+        for (b, breakIdx) in breaks.enumerated() {
+            let endIdx = (b + 1 < breaks.count) ? breaks[b + 1] : points.count
+            guard breakIdx < endIdx else { continue }
+            let first = points[breakIdx]
+            path.move(to: CGPoint(
+                x: offsetX + (first.x - minX) * scale,
+                y: offsetY + (first.y - minY) * scale
             ))
+            for i in (breakIdx + 1)..<endIdx {
+                let p = points[i]
+                path.addLine(to: CGPoint(
+                    x: offsetX + (p.x - minX) * scale,
+                    y: offsetY + (p.y - minY) * scale
+                ))
+            }
         }
         context.addPath(path)
         context.strokePath()
@@ -432,13 +459,15 @@ struct StubLetterRecognizer: LetterRecognizerProtocol {
     }
 
     func recognize(points: [CGPoint],
+                   strokeStartIndices: [Int],
                    canvasSize: CGSize,
                    expectedLetter: String?,
                    historicalFormScores: [CGFloat]) async -> RecognitionResult? {
-        // historicalFormScores is intentionally ignored: the stub
-        // returns its pre-configured result regardless of input, so the
-        // calibrator boost wouldn't actually change anything observable.
+        // historicalFormScores + strokeStartIndices intentionally
+        // ignored: the stub returns its pre-configured result
+        // regardless of input.
         _ = historicalFormScores
+        _ = strokeStartIndices
         // Truthfulness check (DEBUG only). The pre-configured
         // `result.isCorrect` should match
         // `result.predictedLetter == expectedLetter` when the caller

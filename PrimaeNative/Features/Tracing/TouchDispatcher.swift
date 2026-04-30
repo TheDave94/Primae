@@ -104,6 +104,14 @@ final class TouchDispatcher {
         lastTimestamp                  = t
         vm.activePath                  = [p]
         wasInBounds                    = true
+        // Stroke-boundary marker for freeWrite recognition: the
+        // CoreML rasterizer breaks the polyline at these indices so
+        // multi-stroke letters (F, E, H) aren't drawn with phantom
+        // diagonals across the lifts that would otherwise read as
+        // a different glyph (F→P, etc.).
+        if vm.phaseController.currentPhase == .freeWrite {
+            vm.freeWriteRecorder.beginStroke()
+        }
         // Gate on `feedbackIntensity > 0` so freeWrite (which fades all
         // real-time feedback per Schmidt & Lee 2005 Guidance Hypothesis)
         // doesn't fire a stroke-begin haptic. Every other haptic + audio

@@ -34,6 +34,16 @@ final class FreeWritePhaseRecorder {
     /// Same path normalised to 0–1 over the canvas — used by the KP
     /// overlay so it can render at any geometry without re-mapping.
     private(set) var path: [CGPoint] = []
+    /// Indices into `points` (and `path`) at which a fresh stroke
+    /// begins after a finger-up / finger-down between strokes. Lets
+    /// downstream consumers (the CoreML rasterizer in particular)
+    /// break the polyline at lifts so multi-stroke letters like F /
+    /// E / H aren't rendered with a phantom diagonal connecting the
+    /// end of one stroke to the start of the next — that phantom
+    /// silhouette was making F look like P to the recognizer.
+    /// Index 0 is implicit (every recorded session starts a stroke
+    /// at point 0); only subsequent stroke starts are stored.
+    private(set) var strokeStartIndices: [Int] = []
     /// `CACurrentMediaTime()` at session start. Drives `rhythmScore`.
     private(set) var sessionStart: CFTimeInterval = 0
     /// `CACurrentMediaTime()` when the active guided / freeWrite phase
@@ -58,11 +68,21 @@ final class FreeWritePhaseRecorder {
         points.removeAll(keepingCapacity: true)
         timestamps.removeAll(keepingCapacity: true)
         forces.removeAll(keepingCapacity: true)
+        strokeStartIndices.removeAll(keepingCapacity: true)
         sessionStart = now
         activePhaseStart = now
         checkpointsPerSecond = 0
         lastDistance = 0
         lastAssessment = nil
+    }
+
+    /// Mark that a new stroke is starting — the next `record(...)`
+    /// call kicks off a fresh polyline. Call from the touch dispatcher
+    /// at every `beginTouch` while in freeWrite. No-op for the very
+    /// first stroke of the session (the implicit index-0 start).
+    func beginStroke() {
+        guard !points.isEmpty else { return }
+        strokeStartIndices.append(points.count)
     }
 
     /// Begin the speed-tracking window without resetting freeWrite
@@ -203,6 +223,7 @@ final class FreeWritePhaseRecorder {
         timestamps.removeAll(keepingCapacity: true)
         forces.removeAll(keepingCapacity: true)
         path.removeAll(keepingCapacity: true)
+        strokeStartIndices.removeAll(keepingCapacity: true)
         sessionStart = 0
         activePhaseStart = 0
         checkpointsPerSecond = 0

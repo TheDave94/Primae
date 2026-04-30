@@ -1209,6 +1209,7 @@ public final class TracingViewModel {
     /// stroke the child drew.
     func runRecognizerForFreeWrite(score: CGFloat) {
         let pts = freeWritePoints
+        let breaks = freeWriteRecorder.strokeStartIndices
         let size = canvasSize
         let expected = currentLetterName
         // FreeformController owns the isRecognizing flag — both freeform
@@ -1225,7 +1226,8 @@ public final class TracingViewModel {
         let token = recognitionTokens.issue()
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
-                points: pts, canvasSize: size, expectedLetter: expected,
+                points: pts, strokeStartIndices: breaks,
+                canvasSize: size, expectedLetter: expected,
                 historicalFormScores: history)
             guard let self else { return }
             await MainActor.run {
