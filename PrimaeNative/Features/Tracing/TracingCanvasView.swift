@@ -431,16 +431,36 @@ private struct ProgressPill: View, Equatable {
 
 // MARK: - Direct phase dot overlay
 
-/// Renders numbered start-dot circles for the direct phase and routes taps to the VM.
-/// Sits above the touch overlays so SwiftUI tap gestures win over the tracing handler.
-/// Bundle the scale + opacity values the keyframe animator
-/// drives. Plain struct so the keyframe tracks can address each
-/// property independently (`\.scale`, `\.alpha`).
-private struct DotPulseValues {
-    var scale: CGFloat = 1.0
-    var alpha: Double  = 1.0
+/// Self-contained breathing pulse for the next-expected dot.
+///
+/// The dot view is keyed by `.id(idx)` and wrapped by `.transition`
+/// for the tap-flash, which means SwiftUI tears down and rebuilds
+/// the view on every tap. Parent-state-driven animations
+/// (`TimelineView`, `Timer.publish`, `withAnimation+repeatForever`)
+/// lose continuity at that reset and produced no visible pulse on
+/// the user's device. `keyframeAnimator(repeating:)` over a single
+/// `Double` survives the rebuild because the animation is intrinsic
+/// to the modified view: each new dot mounts and starts its own
+/// keyframe cycle. `Double` is unambiguously `Animatable`, avoiding
+/// an inferred-conformance failure that left the prior attempt's
+/// custom struct rendering as an invisible dot.
+private struct DotPulseModifier: ViewModifier {
+    let active: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .keyframeAnimator(initialValue: 1.0,
+                              repeating: active) { view, scale in
+                view.scaleEffect(scale)
+            } keyframes: { _ in
+                CubicKeyframe(1.35, duration: 0.6)
+                CubicKeyframe(1.0, duration: 0.6)
+            }
+    }
 }
 
+/// Renders numbered start-dot circles for the direct phase and routes taps to the VM.
+/// Sits above the touch overlays so SwiftUI tap gestures win over the tracing handler.
 private struct DirectPhaseDotsOverlay: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -513,40 +533,25 @@ private struct DirectPhaseDotsOverlay: View {
             ZStack {
                 Circle()
                     .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
-                    .opacity(isTapped ? 0.85 : 0.85)
+                    .opacity(0.85)
                 Text("\(idx + 1)")
                     .font(.system(size: r * 0.85, weight: .bold))
                     .foregroundStyle(.white)
             }
             .frame(width: r * 2, height: r * 2)
-            // KeyframeAnimator drives a self-contained breathing
-            // pulse on the next-expected dot. Crucial that it lives
-            // INSIDE the dotView (not on a parent) so the animation
-            // is intrinsic to the view's lifecycle: the parent uses
-            // `.id(idx)` + `.transition()` for the tap-flash, which
-            // resets the child view tree on every idx change —
-            // parent-state-driven animations (TimelineView, Timer
-            // .publish, withAnimation+repeatForever) all lose their
-            // continuity at that reset. `keyframeAnimator(repeating:
-            // true)` is intrinsic, restarts cleanly on each new dot,
-            // and is iOS 17+ documented for exactly this case.
-            .keyframeAnimator(initialValue: DotPulseValues(),
-                              repeating: isNext && !reduceMotion) { content, values in
-                content
-                    .scaleEffect(values.scale)
-                    .opacity(values.alpha)
-            } keyframes: { _ in
-                KeyframeTrack(\.scale) {
-                    LinearKeyframe(1.0, duration: 0.0)
-                    CubicKeyframe(1.35, duration: 0.6)
-                    CubicKeyframe(1.0, duration: 0.6)
-                }
-                KeyframeTrack(\.alpha) {
-                    LinearKeyframe(1.0, duration: 0.0)
-                    CubicKeyframe(0.65, duration: 0.6)
-                    CubicKeyframe(1.0, duration: 0.6)
-                }
-            }
+            // KeyframeAnimator with a plain `Double` scale value.
+            // The previous attempt used a custom struct and produced
+            // an invisible dot — likely because the inferred
+            // Animatable conformance failed. Single-property Double
+            // is unambiguously Animatable and is the form Apple's
+            // own samples use. Lives INSIDE the dotView so the
+            // animation is intrinsic to the view's lifecycle: the
+            // parent uses `.id(idx)` + `.transition()` for the
+            // tap-flash, which resets the child view tree on every
+            // idx change — parent-state-driven animations
+            // (TimelineView, Timer.publish, withAnimation +
+            // repeatForever) all lose continuity at that reset.
+            .modifier(DotPulseModifier(active: isNext && !reduceMotion))
             .contentShape(Circle())
             .onTapGesture {
                 // Wrap so the .id(idx) transition (outgoing dot
