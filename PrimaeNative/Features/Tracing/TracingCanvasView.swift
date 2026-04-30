@@ -431,31 +431,53 @@ private struct ProgressPill: View, Equatable {
 
 // MARK: - Direct phase dot overlay
 
-/// Self-contained breathing pulse for the next-expected dot.
+/// Self-contained pulsing dot for the direct phase. Encapsulated
+/// as its own View so it has independent @State and onAppear, which
+/// — crucially — fire on each remount triggered by the parent's
+/// `.id(idx)` change. Each new instance starts its own infinite
+/// animation. This is the iOS 26 / Swift 6.2 regression workaround:
+/// `withAnimation` from `@MainActor` contexts requires a hop through
+/// `DispatchQueue.main.async` for the animation pipeline to actually
+/// observe and replay the value transition (Yago de Martín,
+/// "iOS 26 Animation Regression: @MainActor, Swift 6.2 …", 2025).
 ///
-/// The dot view is keyed by `.id(idx)` and wrapped by `.transition`
-/// for the tap-flash, which means SwiftUI tears down and rebuilds
-/// the view on every tap. Parent-state-driven animations
-/// (`TimelineView`, `Timer.publish`, `withAnimation+repeatForever`)
-/// lose continuity at that reset and produced no visible pulse on
-/// the user's device. `keyframeAnimator(repeating:)` over a single
-/// `Double` survives the rebuild because the animation is intrinsic
-/// to the modified view: each new dot mounts and starts its own
-/// keyframe cycle. `Double` is unambiguously `Animatable`, avoiding
-/// an inferred-conformance failure that left the prior attempt's
-/// custom struct rendering as an invisible dot.
-private struct DotPulseModifier: ViewModifier {
-    let active: Bool
+/// `keyframeAnimator(repeating:)` was tried first per Apple's docs
+/// but produced no visible pulse on the user's device, consistent
+/// with the iOS 26 keyframe regression noted on Apple Developer
+/// Forums thread 805693.
+private struct PulsingDot: View {
+    let isNext: Bool
+    let isTapped: Bool
+    let label: String
+    let radius: CGFloat
+    let reduceMotion: Bool
 
-    func body(content: Content) -> some View {
-        content
-            .keyframeAnimator(initialValue: 1.0,
-                              repeating: active) { view, scale in
-                view.scaleEffect(scale)
-            } keyframes: { _ in
-                CubicKeyframe(1.35, duration: 0.6)
-                CubicKeyframe(1.0, duration: 0.6)
+    @State private var scale: CGFloat = 1.0
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
+                .opacity(0.85)
+            Text(label)
+                .font(.system(size: radius * 0.85, weight: .bold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: radius * 2, height: radius * 2)
+        .scaleEffect(scale)
+        .onAppear {
+            guard isNext, !reduceMotion else { return }
+            // Hop through `DispatchQueue.main.async` so the animation
+            // pipeline picks up the value change in a fresh main-loop
+            // tick. Without this hop, MainActor-isolated state
+            // updates inside `.onAppear` are observed by the renderer
+            // but not by the animation system on iOS 26 + Swift 6.2.
+            DispatchQueue.main.async {
+                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                    scale = 1.35
+                }
             }
+        }
     }
 }
 
@@ -530,41 +552,24 @@ private struct DirectPhaseDotsOverlay: View {
             // would hit-test the entire canvas. With multiple dots stacked via
             // ForEach, only the top-most (last) dot's handler would then fire for
             // every tap, leaving multi-stroke letters unable to advance.
-            ZStack {
-                Circle()
-                    .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
-                    .opacity(0.85)
-                Text("\(idx + 1)")
-                    .font(.system(size: r * 0.85, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            .frame(width: r * 2, height: r * 2)
-            // KeyframeAnimator with a plain `Double` scale value.
-            // The previous attempt used a custom struct and produced
-            // an invisible dot — likely because the inferred
-            // Animatable conformance failed. Single-property Double
-            // is unambiguously Animatable and is the form Apple's
-            // own samples use. Lives INSIDE the dotView so the
-            // animation is intrinsic to the view's lifecycle: the
-            // parent uses `.id(idx)` + `.transition()` for the
-            // tap-flash, which resets the child view tree on every
-            // idx change — parent-state-driven animations
-            // (TimelineView, Timer.publish, withAnimation +
-            // repeatForever) all lose continuity at that reset.
-            .modifier(DotPulseModifier(active: isNext && !reduceMotion))
-            .contentShape(Circle())
-            .onTapGesture {
-                // Wrap so the .id(idx) transition (outgoing dot
-                // scales up + fades, incoming scales in) runs. The
-                // VM doesn't import SwiftUI, so the animation
-                // transaction lives here at the call site.
-                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.55)) {
-                    vm.tapDirectDot(index: idx)
+            PulsingDot(isNext: isNext,
+                       isTapped: isTapped,
+                       label: "\(idx + 1)",
+                       radius: r,
+                       reduceMotion: reduceMotion)
+                .contentShape(Circle())
+                .onTapGesture {
+                    // Wrap so the .id(idx) transition (outgoing dot
+                    // scales up + fades, incoming scales in) runs.
+                    // The VM doesn't import SwiftUI, so the animation
+                    // transaction lives here at the call site.
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.55)) {
+                        vm.tapDirectDot(index: idx)
+                    }
                 }
-            }
-            .position(x: screenX, y: screenY)
-            .accessibilityLabel("Startpunkt \(idx + 1)")
-            .accessibilityAddTraits(.isButton)
+                .position(x: screenX, y: screenY)
+                .accessibilityLabel("Startpunkt \(idx + 1)")
+                .accessibilityAddTraits(.isButton)
         }
     }
 }
