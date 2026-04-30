@@ -444,14 +444,23 @@ private struct ProgressPill: View, Equatable {
 /// mutation triggers SwiftUI re-renders unconditionally, side-
 /// stepping the broken animation transaction path entirely.
 ///
-/// Reduce Motion suppresses the pulse: the dot still renders at
-/// full size, just without the breathing oscillation.
+/// Reduce Motion is intentionally NOT respected here: the breathing
+/// pulse is a functional attention cue for pre-readers (they can't
+/// read the dot's numeric label, so the pulse is the "tap me next"
+/// signal — without it, a 5-yr-old can scan past the dot). The
+/// 35 % scale range is small enough that motion-sensitive adult
+/// users in the parent area won't be affected; the dot only ever
+/// appears on the child-facing direct-phase canvas.
+///
+/// `emphasis` driver: when `true` (set by the VM after a wrong tap
+/// for ~700 ms), the pulse range expands to 1.0…1.55 so the correct
+/// dot reads as "look here" louder than the idle breathing.
 private struct PulsingDot: View {
     let isNext: Bool
     let isTapped: Bool
+    let emphasis: Bool
     let label: String
     let radius: CGFloat
-    let reduceMotion: Bool
 
     @State private var scale: CGFloat = 1.0
 
@@ -469,12 +478,13 @@ private struct PulsingDot: View {
         .onReceive(
             Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
         ) { date in
-            guard isNext, !reduceMotion else { scale = 1.0; return }
+            guard isNext else { scale = 1.0; return }
             // 1.2 s sine cycle on wall-clock time. Direct state
             // mutation — no withAnimation, no keyframeAnimator.
             let t = date.timeIntervalSinceReferenceDate
             let phase = (sin(t * .pi / 0.6) + 1) / 2       // 0…1
-            scale = 1.0 + 0.35 * CGFloat(phase)              // 1.0…1.35
+            let amplitude: CGFloat = emphasis ? 0.55 : 0.35
+            scale = 1.0 + amplitude * CGFloat(phase)         // 1.0…1.35 (or 1.0…1.55 in emphasis)
         }
     }
 }
@@ -488,14 +498,18 @@ private struct DirectPhaseDotsOverlay: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Render only the next-expected dot. Many letters have two
-                // strokes that start at the same glyph-relative point (e.g. A's
-                // two diagonals share the apex, F's vertical and horizontal
-                // share the top-left), so drawing every stroke's start dot at
-                // once stacks unreadable circles on top of each other. Showing
-                // one at a time also matches the phase's pedagogy: tap the
-                // current start → watch the direction arrow → the next start
-                // appears, possibly at the exact same spot, which is correct.
+                // Render ALL numbered start-dots so the testing-
+                // checklist 4.3 wrong-tap path is reachable: tap a
+                // dot that isn't the next-expected one → off-path
+                // haptic + the correct dot pulses harder. Tapped
+                // dots show green, the next-expected shows blue and
+                // breathes, others stay gray. ForEach order is
+                // stroke order, so when two dots share a glyph point
+                // (A's apex, F's corner) the higher-index one
+                // renders on top. After tapping dot 0 there, dot 1
+                // becomes next-expected (blue, pulsing) and sits
+                // visually above the green tapped dot 0 — readable
+                // even when stacked.
                 // W-24: in word mode the glyph rect must be computed
                 // against the active *cell*, not the whole canvas — the
                 // strokes are cell-local. Single-cell layouts (the default
@@ -505,29 +519,16 @@ private struct DirectPhaseDotsOverlay: View {
                 ?? CGRect(origin: .zero, size: geo.size)
                 if let rawStrokes = vm.rawGlyphStrokes,
                    !rawStrokes.strokes.isEmpty,
-                   vm.directNextExpectedDotIndex < rawStrokes.strokes.count,
                    let gr = PrimaeLetterRenderer.normalizedGlyphRect(
                        for: vm.currentLetterName,
                        canvasSize: cellFrame.size,
                        schriftArt: vm.schriftArt) {
-                    let idx = vm.directNextExpectedDotIndex
-                    dotView(idx: idx,
-                            stroke: rawStrokes.strokes[idx],
-                            gr: gr,
-                            cellFrame: cellFrame)
-                        // `.id(idx)` makes SwiftUI treat each
-                        // next-expected dot as a distinct view so
-                        // the outgoing one runs the exit transition
-                        // (scale up + fade) and the incoming one
-                        // runs entry. Visual confirmation of a
-                        // registered tap on a no-haptic device
-                        // (iPads have no Taptic Engine).
-                        .id(idx)
-                        .transition(reduceMotion
-                                    ? .opacity
-                                    : .asymmetric(
-                                        insertion: .scale(scale: 0.6).combined(with: .opacity),
-                                        removal: .scale(scale: 1.6).combined(with: .opacity)))
+                    ForEach(Array(rawStrokes.strokes.enumerated()), id: \.offset) { idx, stroke in
+                        dotView(idx: idx,
+                                stroke: stroke,
+                                gr: gr,
+                                cellFrame: cellFrame)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -552,9 +553,9 @@ private struct DirectPhaseDotsOverlay: View {
             // every tap, leaving multi-stroke letters unable to advance.
             PulsingDot(isNext: isNext,
                        isTapped: isTapped,
+                       emphasis: isNext && vm.directPulsingDot,
                        label: "\(idx + 1)",
-                       radius: r,
-                       reduceMotion: reduceMotion)
+                       radius: r)
                 .contentShape(Circle())
                 .onTapGesture {
                     // Wrap so the .id(idx) transition (outgoing dot
