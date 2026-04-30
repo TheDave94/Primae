@@ -1511,6 +1511,13 @@ public final class TracingViewModel {
             freeWriteRecorder.startSession()
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
+            // Animate the guide dot scanning the stroke path while the
+            // child traces in guided. Same animator the observe phase
+            // uses; the auto-advance-after-2-cycles trigger inside
+            // startGuideAnimation is gated on `currentPhase == .observe`,
+            // so calling it here runs the visual scan without affecting
+            // phase progression.
+            startGuideAnimation()
         }
         directTappedDots.removeAll()
         directPulsingTask?.cancel()
@@ -1698,6 +1705,7 @@ public final class TracingViewModel {
             freeWriteRecorder.startSession()
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
+            startGuideAnimation()
         }
         if let firstAudio = activeAudioFiles(for: letter).first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)

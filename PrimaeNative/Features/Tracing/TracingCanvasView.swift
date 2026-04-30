@@ -281,29 +281,15 @@ struct TracingCanvasView: View {
             }
             .onAppear { vm.canvasSize = geo.size }
             .onChange(of: geo.size) { _, newSize in vm.canvasSize = newSize }
-            .overlay(
-                PencilAwareCanvasOverlay(
-                    canvasSize: geo.size,
-                    onBegan:  { pt, t in
-                        // Feed the input-mode detector first so a pencil
-                        // session flips to the pencil preset before the
-                        // touch kicks off any grid-preset-dependent work.
-                        vm.pencilDidTouchDown()
-                        vm.beginTouch(at: pt, t: t)
-                    },
-                    onMoved:  { pt, t, pressure, azimuth, size in
-                        vm.pencilPressure = pressure
-                        vm.pencilAzimuth  = azimuth
-                        vm.updateTouch(at: pt, t: t, canvasSize: size)
-                    },
-                    onEnded:  { vm.endTouch() },
-                    onPencilSqueeze: { vm.replayAudio() }
-                )
-                // Tracing input is suspended while calibrating so dragging a
-                // dot doesn't also fire proximity audio / stroke progress on
-                // the underlying tracker.
-                .allowsHitTesting(!vm.isCalibrating)
-            )
+            // Overlay ordering: UnifiedTouchOverlay BELOW (added
+            // first), PencilAwareCanvasOverlay ABOVE (added second).
+            // Pencil's `hitTest` returns self for pencil and nil
+            // otherwise, so finger touches fall through it to the
+            // unified overlay underneath; pencil touches land on
+            // pencil directly. This ordering means we don't need a
+            // matching pencil-rejecting hitTest on the unified
+            // overlay (which broke during SwiftUI's pre-touch
+            // hit-test pass when `event` is nil).
             .overlay(
                 // Finger tracing only: 1-finger → trace. Letter / audio /
                 // ghost navigation routed through the visible world-bar
@@ -334,6 +320,29 @@ struct TracingCanvasView: View {
                     onTwoFingerSwipeDown: { vm.previousAudioVariant() }
                 )
                 .allowsHitTesting(vm.learningPhase != .direct && !vm.isCalibrating)
+            )
+            .overlay(
+                PencilAwareCanvasOverlay(
+                    canvasSize: geo.size,
+                    onBegan:  { pt, t in
+                        // Feed the input-mode detector first so a pencil
+                        // session flips to the pencil preset before the
+                        // touch kicks off any grid-preset-dependent work.
+                        vm.pencilDidTouchDown()
+                        vm.beginTouch(at: pt, t: t)
+                    },
+                    onMoved:  { pt, t, pressure, azimuth, size in
+                        vm.pencilPressure = pressure
+                        vm.pencilAzimuth  = azimuth
+                        vm.updateTouch(at: pt, t: t, canvasSize: size)
+                    },
+                    onEnded:  { vm.endTouch() },
+                    onPencilSqueeze: { vm.replayAudio() }
+                )
+                // Tracing input is suspended while calibrating so dragging a
+                // dot doesn't also fire proximity audio / stroke progress on
+                // the underlying tracker.
+                .allowsHitTesting(!vm.isCalibrating)
             )
             .overlay(
                 Group {
@@ -648,19 +657,16 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         }
         required init?(coder: NSCoder) { fatalError() }
 
-        /// Mirror of `PencilAwareCanvasOverlay.TouchTrackingView.hitTest`:
-        /// reject pencil touches so they fall through to the pencil
-        /// overlay below. Without this, this view (which sits on top
-        /// of the pencil overlay) claims the pencil's hit-test, then
-        /// `Coordinator.touchesBegan` filters pencil out internally,
-        /// leaving the pencil event nowhere to land — pencil tracing
-        /// silently no-ops in Schule. Werkstatt's TouchView has no
-        /// pencil filter at all (accepts every touch), so pencil
-        /// works there.
-        override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            guard let touch = event?.allTouches?.first else { return nil }
-            return touch.type == .pencil ? nil : self
-        }
+        // No hitTest override: this view accepts every touch by
+        // default. Pencil routing instead relies on the overlay
+        // ordering — `PencilAwareCanvasOverlay` sits ABOVE this view
+        // and rejects non-pencil at its own hitTest, so finger
+        // touches fall through to here while pencil touches land on
+        // the pencil overlay first. (A hitTest override that
+        // returned nil for pencil broke the SwiftUI pre-touch
+        // hit-test pass — `event` is nil in that pass, so the override
+        // returned nil for everything and silently swallowed all
+        // input.)
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             coordinator.touchesBegan(touches, with: event, in: self)
