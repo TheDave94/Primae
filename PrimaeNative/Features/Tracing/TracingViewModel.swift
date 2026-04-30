@@ -1510,6 +1510,11 @@ public final class TracingViewModel {
         let savedGuidedScore = freeWriteRecorder.lastGuidedScore
         freeWriteRecorder.clearAll()
         freeWriteRecorder.lastGuidedScore = savedGuidedScore
+        // Stop any in-flight guide animation from the previous phase
+        // before deciding whether to (re)start it. Without this the
+        // animation kept scanning into freeWrite and direct, where
+        // the canvas should be free of scaffolding.
+        stopGuideAnimation()
         if phaseController.currentPhase == .freeWrite {
             freeWriteRecorder.startSession()
         } else if phaseController.currentPhase == .guided {
