@@ -100,11 +100,6 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
 
     func speak(_ text: String) {
         guard !text.isEmpty else { return }
-        // Cancel anything still playing so phase transitions feel snappy
-        // and a slow recogniser callback can't talk over a fresh utterance.
-        if synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .immediate)
-        }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = germanVoice
         utterance.rate = rate
@@ -113,12 +108,13 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
         // sound so the child hears both: ducked verbal feedback layered
         // over the proximity-triggered phoneme.
         utterance.volume = 0.9
-        // Optimistically flip the gate true *before* asking the
-        // synthesizer to speak so the very next TouchDispatcher tick
-        // (which can fire within a millisecond on a held finger)
-        // sees the active state and skips letter-audio activation.
-        // The delegate callbacks below correct the flag on actual
-        // start / finish.
+        // Don't stopSpeaking() before queuing: AVSpeechSynthesizer's
+        // own utterance queue plays them in delivery order, so
+        // back-to-back calls (recognition feedback → celebration
+        // praise after freeWrite) play sequentially instead of the
+        // second cutting the first off mid-word. Callers that
+        // genuinely need to interrupt (letter load, retry path)
+        // call `stop()` explicitly.
         isSpeaking = true
         synthesizer.speak(utterance)
     }
@@ -191,7 +187,7 @@ enum ChildSpeechLibrary {
         case .observe:    return "Pass jetzt gut auf!"
         case .direct:     return "Tipp die Punkte der Reihe nach an."
         case .guided:     return "Fahr die Linie nach."
-        case .freeWrite:  return "Und jetzt du alleine."
+        case .freeWrite:  return "Und jetzt ohne Hilfe."
         }
     }
 

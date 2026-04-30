@@ -176,12 +176,17 @@ final class PhaseTransitionCoordinator {
         vm.overlayQueue.enqueue(.kpOverlay)
         if let r = result, r.confidence >= 0.4 {
             vm.overlayQueue.enqueueBeforeCelebration(.recognitionBadge(r))
-            // Verbal mirror of the on-screen badge — a 5–6 yr-old
-            // who can't read the chip text still hears the same
-            // wording.
-            let line = ChildSpeechLibrary.recognition(r, expected: vm.currentLetterName)
-            if !line.isEmpty { vm.speech.speak(line) }
         }
+        // Schule freeWrite gets a generic "Gut gemacht!" instead of
+        // the letter-specific recognition feedback ("Du hast ein K
+        // geschrieben!") — that letter-naming feedback belongs in
+        // Werkstatt's freeform recognition, where naming the letter
+        // the model saw is the whole point of the exercise. The
+        // celebration "Super gemacht!" follows from
+        // `recordSessionCompletion`; AVSpeechSynthesizer queues the
+        // two utterances natively now (the explicit `stopSpeaking`
+        // was removed) so they play in sequence without cutting.
+        vm.speech.speak("Gut gemacht!")
         if vm.enablePaperTransfer {
             vm.overlayQueue.enqueue(.paperTransfer(letter: vm.currentLetterName))
         }
@@ -194,13 +199,14 @@ final class PhaseTransitionCoordinator {
 
     private func requestFreeWriteRetry(result: RecognitionResult) {
         guard let vm else { return }
-        // Show the recognition badge so the child sees what the
-        // model thought they wrote (orange "looks like O — write A
-        // again") before the retry prompt lands.
+        // Visual badge stays so the child can see what the model
+        // thought ("looks like O" → orange chip). The verbal mirror
+        // ("Das sieht eher nach O aus, schreib nochmal A") is
+        // intentionally NOT spoken in Schule — that style of
+        // letter-naming feedback belongs in Werkstatt. The toast +
+        // "Probier's nochmal" below is the audio retry cue.
         if result.confidence >= 0.4 {
             vm.overlayQueue.enqueue(.recognitionBadge(result))
-            let line = ChildSpeechLibrary.recognition(result, expected: vm.currentLetterName)
-            if !line.isEmpty { vm.speech.speak(line) }
         }
         // Reset freeWrite state so the next stroke starts from a
         // clean slate — recorder, ink trail, stroke tracker all
