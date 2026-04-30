@@ -146,25 +146,27 @@ final class PhaseTransitionCoordinator {
     // MARK: - FreeWrite recognizer-gated completion
 
     /// Called from `TracingViewModel.runRecognizerForFreeWrite(score:)`
-    /// once the CoreML recognizer returns. Routes to the celebration
-    /// path if the result is "green" (correct + confidence > 0.7) or
-    /// the recognizer is unavailable, and to the retry path otherwise.
+    /// once the CoreML recognizer returns. Routes to retry only when
+    /// the model is *confident the letter is wrong* (RecognitionFeedback
+    /// "orange" tier: `!isCorrect && confidence > 0.7`). Green, yellow
+    /// (correct + low confidence), low-confidence noise, and a missing
+    /// recognizer all flow into the celebration — gating strictly on
+    /// "model agrees with green confidence" locked the child out when
+    /// the model was uncertain on perfectly-acceptable handwriting.
     func completePostFreeWriteRecognition(score: CGFloat,
                                           result: RecognitionResult?) {
         guard let vm else { return }
-        let isGreen: Bool
+        _ = vm  // silence unused warning while only `result` is read here
+        let triggerRetry: Bool
         if let r = result {
-            isGreen = r.isCorrect && r.confidence > 0.7
+            triggerRetry = !r.isCorrect && r.confidence > 0.7
         } else {
-            // No result (model missing / inference failed): fall back
-            // to celebration so dev / test builds without the CoreML
-            // model still progress through the flow.
-            isGreen = true
+            triggerRetry = false
         }
-        if isGreen {
+        if triggerRetry {
+            requestFreeWriteRetry(result: result!)
+        } else {
             celebrateFreeWrite(score: score, result: result)
-        } else if let r = result {
-            requestFreeWriteRetry(result: r)
         }
     }
 
