@@ -1336,8 +1336,14 @@ public final class TracingViewModel {
                 }
             }
         } else {
-            // Wrong dot — gentle haptic, pulse the correct one
+            // Wrong dot — gentle haptic, distinct buzz, pulse the
+            // correct one. The buzz mirrors the correct-tap chime's
+            // mute-bypass path (AVAudioPlayer through AudioEngine's
+            // `.playback` session) so it's audible even with the
+            // ringer switch on, just at a lower pitch so the child
+            // hears the contrast.
             haptics.fire(.offPath)
+            prompts.playWrongTapChime()
             directPulsingDot = true
             directPulsingTask?.cancel()
             directPulsingTask = Task { [weak self] in

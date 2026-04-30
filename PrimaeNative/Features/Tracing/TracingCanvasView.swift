@@ -523,9 +523,26 @@ private struct DirectPhaseDotsOverlay: View {
                        for: vm.currentLetterName,
                        canvasSize: cellFrame.size,
                        schriftArt: vm.schriftArt) {
+                    let nextIdx = vm.directNextExpectedDotIndex
+                    // Render order: non-next dots first (bottom), then
+                    // the next-expected dot last (top). Many letters
+                    // have strokes that start at the same glyph point
+                    // (A's apex, F's top-left, M's two top peaks), so
+                    // when dot N is layered above dot N-1 at the same
+                    // position the user can't tap dot N-1. Putting the
+                    // next-expected dot on top guarantees the tap
+                    // gesture's hit-test reaches it first.
                     ForEach(Array(rawStrokes.strokes.enumerated()), id: \.offset) { idx, stroke in
-                        dotView(idx: idx,
-                                stroke: stroke,
+                        if idx != nextIdx {
+                            dotView(idx: idx,
+                                    stroke: stroke,
+                                    gr: gr,
+                                    cellFrame: cellFrame)
+                        }
+                    }
+                    if nextIdx < rawStrokes.strokes.count {
+                        dotView(idx: nextIdx,
+                                stroke: rawStrokes.strokes[nextIdx],
                                 gr: gr,
                                 cellFrame: cellFrame)
                     }

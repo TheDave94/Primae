@@ -70,11 +70,15 @@ final class PromptPlayer {
     /// switch — a regression vs. AudioServicesPlaySystemSound which
     /// the user couldn't hear with mute on.
     private var tapPlayer: AVAudioPlayer?
+    /// Pre-loaded wrong-tap buzz player (low-pitched dissonant pair).
+    /// Same mute-bypass rationale as `tapPlayer`.
+    private var wrongTapPlayer: AVAudioPlayer?
     private let log = Logger(subsystem: "buchstaben.primae", category: "prompts")
 
     init(fallbackSpeech: SpeechSynthesizing) {
         self.speech = fallbackSpeech
-        tapPlayer = loadTapPlayer()
+        tapPlayer = loadEffectPlayer(name: "tap")
+        wrongTapPlayer = loadEffectPlayer(name: "tap_wrong")
     }
 
     /// Play the prompt audio for `key`. Falls back to
@@ -134,23 +138,37 @@ final class PromptPlayer {
         }
     }
 
-    /// One-time tap-chime player setup. Bundle lookup mirrors
+    /// Distinct wrong-tap sound: a low-pitched 120 ms buzz (220 Hz +
+    /// 233 Hz dissonant pair) so the child hears "not that one"
+    /// without it being harsh. Same mute-bypass path as
+    /// `playTapChime()`. Falls back to the system "tock" if the
+    /// asset isn't bundled.
+    func playWrongTapChime() {
+        if let p = wrongTapPlayer {
+            p.currentTime = 0
+            p.play()
+        } else {
+            AudioServicesPlaySystemSound(1053)
+        }
+    }
+
+    /// One-time effect-player setup. Bundle lookup mirrors
     /// `locate(_:)` (probes `.module` and `.main` with the
     /// `Resources/Prompts` and `Prompts` subdirs). Returns nil if
-    /// the asset isn't bundled — `playTapChime()` falls back to a
-    /// system sound in that case.
-    private func loadTapPlayer() -> AVAudioPlayer? {
+    /// the asset isn't bundled — callers fall back to a system
+    /// sound in that case.
+    private func loadEffectPlayer(name: String) -> AVAudioPlayer? {
         let bundles: [Bundle] = [.module, .main]
         let subdirs: [String?] = ["Resources/Prompts", "Prompts", nil]
         for bundle in bundles {
             for subdir in subdirs {
                 let url: URL?
                 if let subdir {
-                    url = bundle.url(forResource: "tap",
+                    url = bundle.url(forResource: name,
                                      withExtension: "wav",
                                      subdirectory: subdir)
                 } else {
-                    url = bundle.url(forResource: "tap",
+                    url = bundle.url(forResource: name,
                                      withExtension: "wav")
                 }
                 if let url, let p = try? AVAudioPlayer(contentsOf: url) {
@@ -159,7 +177,7 @@ final class PromptPlayer {
                 }
             }
         }
-        log.info("tap.wav not bundled — falling back to system sound for direct-phase tap chime.")
+        log.info("\(name, privacy: .public).wav not bundled — falling back to system sound.")
         return nil
     }
 
