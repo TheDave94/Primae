@@ -433,20 +433,19 @@ private struct ProgressPill: View, Equatable {
 
 /// Self-contained pulsing dot for the direct phase.
 ///
-/// Diagnostic build: drives the scale via a 60 Hz Timer so the
-/// animation does NOT depend on SwiftUI's animation transaction
-/// system. Reduce Motion is INTENTIONALLY ignored here — this
-/// version exists to verify that the dot animates at all on the
-/// user's device. If the dot pulses with this approach, the prior
-/// failures were the iOS 26 + Swift 6.2 animation-system regression
-/// (see Apple Developer Forums 805693 and Yago de Martín's article).
-/// If the dot still doesn't pulse, the issue is something in the
-/// parent view hierarchy suppressing renders.
+/// Drives the scale via a 30 Hz `Timer.publish` rather than any of
+/// SwiftUI's animation primitives (`withAnimation`,
+/// `.animation(_:value:)`, `TimelineView`, `keyframeAnimator`).
+/// We tried each of those — none produced a visible pulse on iOS 26
+/// + Swift 6.2 with the package's `.defaultIsolation(MainActor.self)`
+/// setting, consistent with the regressions documented on Apple
+/// Developer Forums 805693 and Yago de Martín's "iOS 26 Animation
+/// Regression: @MainActor, Swift 6.2" article (2025). Direct state
+/// mutation triggers SwiftUI re-renders unconditionally, side-
+/// stepping the broken animation transaction path entirely.
 ///
-/// Also draws a yellow ring behind the dot at FIXED scale 1.5 so we
-/// can distinguish layout-from-animation: if the yellow ring is
-/// visible but the blue dot doesn't pulse, layout is fine and only
-/// animation is broken; if neither shows, layout is the issue.
+/// Reduce Motion suppresses the pulse: the dot still renders at
+/// full size, just without the breathing oscillation.
 private struct PulsingDot: View {
     let isNext: Bool
     let isTapped: Bool
@@ -458,14 +457,6 @@ private struct PulsingDot: View {
 
     var body: some View {
         ZStack {
-            // Static reference: yellow ring at fixed 1.5× scale.
-            // If the user sees this but the blue dot doesn't pulse,
-            // layout/sizing is fine and only animation is broken.
-            if isNext {
-                Circle()
-                    .stroke(Color.yellow, lineWidth: 4)
-                    .frame(width: radius * 2 * 1.5, height: radius * 2 * 1.5)
-            }
             Circle()
                 .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                 .opacity(0.85)
@@ -478,15 +469,12 @@ private struct PulsingDot: View {
         .onReceive(
             Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
         ) { date in
-            guard isNext else { scale = 1.0; return }
-            // 1.2 s period sine wave on wall-clock time. Bypasses
-            // SwiftUI's animation transaction system — the state
-            // update directly mutates `scale` and triggers a render.
-            // No `withAnimation`, no `keyframeAnimator`, no
-            // `.repeatForever` — pure state-driven re-render.
+            guard isNext, !reduceMotion else { scale = 1.0; return }
+            // 1.2 s sine cycle on wall-clock time. Direct state
+            // mutation — no withAnimation, no keyframeAnimator.
             let t = date.timeIntervalSinceReferenceDate
-            let phase = (sin(t * .pi / 0.6) + 1) / 2     // 0…1
-            scale = 1.0 + 0.35 * CGFloat(phase)            // 1.0…1.35
+            let phase = (sin(t * .pi / 0.6) + 1) / 2       // 0…1
+            scale = 1.0 + 0.35 * CGFloat(phase)              // 1.0…1.35
         }
     }
 }
