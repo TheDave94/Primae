@@ -319,6 +319,13 @@ public final class TracingViewModel {
     /// Kept for the KP overlay that shows where the child deviated.
     /// Forwarded from FreeWritePhaseRecorder.
     var freeWritePath: [CGPoint] { freeWriteRecorder.path }
+    /// Indices in `freeWritePath` where a fresh stroke begins after
+    /// a finger-up between strokes. Forwarded so the canvas's KP
+    /// overlay can break its polyline at the lifts (instead of
+    /// drawing one zig-zag with phantom diagonals across the air
+    /// gaps — what the user perceived as "tracking my finger
+    /// between strokes").
+    var freeWriteStrokeStartIndices: [Int] { freeWriteRecorder.strokeStartIndices }
     /// Whether the user is currently tracing the variant stroke form.
     var showingVariant: Bool = false
     /// Whether the paper-transfer phase is enabled (thesis setting).

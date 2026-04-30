@@ -248,13 +248,30 @@ struct TracingCanvasView: View {
                 }
             }
 
-            // Child's freeWrite path in green (lineWidth 4)
+            // Child's freeWrite path in green (lineWidth 4). Break
+            // the polyline at every stroke-start so multi-stroke
+            // letters (F, E, H, …) render as N disjoint strokes
+            // rather than one zig-zag with phantom diagonals
+            // bridging the lifts — that connected silhouette was
+            // what the child read as "the app is tracking my
+            // finger between strokes."
             let pts = vm.freeWritePath
+            let breaks = vm.freeWriteStrokeStartIndices
             if pts.count > 1 {
                 var childPath = Path()
-                childPath.move(to: CGPoint(x: pts[0].x * size.width, y: pts[0].y * size.height))
-                for pt in pts.dropFirst() {
-                    childPath.addLine(to: CGPoint(x: pt.x * size.width, y: pt.y * size.height))
+                let segmentStarts = ([0] + breaks.filter { $0 > 0 && $0 < pts.count })
+                    .sorted()
+                for (b, startIdx) in segmentStarts.enumerated() {
+                    let endIdx = (b + 1 < segmentStarts.count) ? segmentStarts[b + 1] : pts.count
+                    guard startIdx < endIdx else { continue }
+                    childPath.move(to: CGPoint(
+                        x: pts[startIdx].x * size.width,
+                        y: pts[startIdx].y * size.height))
+                    for i in (startIdx + 1)..<endIdx {
+                        childPath.addLine(to: CGPoint(
+                            x: pts[i].x * size.width,
+                            y: pts[i].y * size.height))
+                    }
                 }
                 context.stroke(childPath, with: .color(.canvasInkStroke),
                                style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
