@@ -42,8 +42,8 @@ protocol PromptPlaying: AnyObject {
     func playSuccessChime()
     func playTapChime()
     func playWrongTapChime()
-    func playCheckpointTick()
     func playStrokeTick()
+    func playOutOfBoundsChime()
 }
 
 /// Test/stub implementation. Every method is a no-op so unit tests
@@ -55,8 +55,8 @@ final class NullPromptPlayer: PromptPlaying {
     func playSuccessChime() {}
     func playTapChime() {}
     func playWrongTapChime() {}
-    func playCheckpointTick() {}
     func playStrokeTick() {}
+    func playOutOfBoundsChime() {}
 }
 
 @MainActor
@@ -174,20 +174,21 @@ final class PromptPlayer: PromptPlaying {
         playEffect(name: "tap_wrong", systemFallback: 1053)
     }
 
-    /// Subtle per-checkpoint tick during guided-phase tracing.
-    /// Plays alongside the haptic event from `HapticEngine`, but
-    /// since iPad hardware has no Taptic Engine, this is the only
-    /// feedback the child actually receives for crossing each
-    /// checkpoint. Quiet on purpose — fired potentially dozens of
-    /// times per stroke.
-    func playCheckpointTick() {
-        playEffect(name: "tick_checkpoint", systemFallback: nil)
-    }
-
-    /// Stroke-completion tick — louder + lower than the checkpoint
-    /// tick so the child hears a clear "this stroke is done" beat.
+    /// Stroke-completion tick — clear "this stroke is done" beat,
+    /// fired by `TouchDispatcher.fireMovementHaptics` when the
+    /// strokeTracker flips a stroke complete.
     func playStrokeTick() {
         playEffect(name: "tick_stroke", systemFallback: nil)
+    }
+
+    /// Warning chime fired when the touch leaves the canvas mid-
+    /// stroke. Reuses the wrong-tap buzz (220 Hz + 233 Hz dissonant
+    /// pair, 120 ms) — same "you've gone wrong" semantics as the
+    /// direct-phase miss. Drop a dedicated `out_of_bounds.wav` next
+    /// to the prompts and switch the asset name here when a
+    /// distinct sound is desired.
+    func playOutOfBoundsChime() {
+        playEffect(name: "tap_wrong", systemFallback: 1053)
     }
 
     /// Lazy effect playback. Loads the AVAudioPlayer on first call

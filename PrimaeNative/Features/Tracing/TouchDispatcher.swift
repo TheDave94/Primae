@@ -79,6 +79,12 @@ final class TouchDispatcher {
     private var freeWriteAutoAdvanceTask: Task<Void, Never>?
     private let freeWriteQuietSeconds: TimeInterval = 2.0
 
+    /// Tracks whether the previous in-stroke sample was inside the
+    /// canvas, so we only fire the out-of-bounds warning + audio stop
+    /// once on the rising edge (in→out) instead of every frame the
+    /// finger is held outside.
+    private var wasInBounds: Bool = true
+
     // MARK: - Public API (forwarded from VM)
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
@@ -97,6 +103,7 @@ final class TouchDispatcher {
         lastPoint                      = p
         lastTimestamp                  = t
         vm.activePath                  = [p]
+        wasInBounds                    = true
         // Gate on `feedbackIntensity > 0` so freeWrite (which fades all
         // real-time feedback per Schmidt & Lee 2005 Guidance Hypothesis)
         // doesn't fire a stroke-begin haptic. Every other haptic + audio
@@ -123,6 +130,19 @@ final class TouchDispatcher {
 
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 && p.x <= canvasSize.width && p.y <= canvasSize.height
+
+        // Out-of-bounds rising edge: stop the letter audio + play a
+        // warning chime so the child gets explicit feedback that
+        // they've drifted off the writing surface. Only fires once
+        // per crossing (state cleared by `wasInBounds`).
+        if wasInBounds && !isWithinCanvasBounds {
+            vm.audio.stop()
+            vm.isPlaying = false
+            vm.playback.cancelPending()
+            vm.playback.forceIdle()
+            vm.prompts.playOutOfBoundsChime()
+        }
+        wasInBounds = isWithinCanvasBounds
 
         let dx       = p.x - lastPoint.x
         let dy       = p.y - lastPoint.y
@@ -308,16 +328,13 @@ final class TouchDispatcher {
             ? vm.strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
         guard prevNextCheckpoint != newNextCheckpoint
               || newStrokeIndex != prevStrokeIndex else { return }
+        // Per-user request: only the stroke-completion tick remains.
+        // The per-checkpoint haptic + audio fired potentially dozens
+        // of times per stroke and the user found it distracting.
         if vm.strokeTracker.progress.indices.contains(prevStrokeIndex)
             && vm.strokeTracker.progress[prevStrokeIndex].complete {
             vm.haptics.fire(.strokeCompleted)
-            // iPad has no Taptic Engine so the haptic is silently a
-            // no-op; play the stroke-tick alongside it so the child
-            // gets some feedback that the stroke just completed.
             vm.prompts.playStrokeTick()
-        } else {
-            vm.haptics.fire(.checkpointHit)
-            vm.prompts.playCheckpointTick()
         }
     }
 
