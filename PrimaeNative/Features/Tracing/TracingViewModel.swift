@@ -227,7 +227,10 @@ public final class TracingViewModel {
     }
 
     /// Guidance-fading intensity (Schmidt & Lee, 2005): reducing feedback over
-    /// time improves motor-learning retention.
+    /// time improves motor-learning retention. Used to gate haptics and the
+    /// PromptPlayer checkpoint/stroke ticks — NOT the letter-sound audio,
+    /// which plays in every phase including freeWrite (the phoneme is the
+    /// glyph's auditory anchor, not a guidance signal that should fade).
     /// observe=1.0, direct=1.0, guided=0.6 (moderate), freeWrite=0.0 (post-hoc only).
     var feedbackIntensity: CGFloat {
         switch phaseController.currentPhase {

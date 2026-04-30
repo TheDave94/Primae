@@ -335,10 +335,15 @@ final class TouchDispatcher {
         let hBias = Float(max(-1.0, min(1.0, (canvasNormalized.x * 2.0 - 1.0) + azimuthBias)))
         vm.audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
+        // No `feedbackIntensity > 0.3` gate: the letter sound is the
+        // phonemic anchor for the glyph, not "guidance feedback" in
+        // the Schmidt & Lee sense (the haptics + checkpoint ticks
+        // that DO fade in freeWrite are gated separately). Children
+        // need the audio cue throughout, including freeWrite where
+        // the rest of the scaffolding is gone.
         let shouldPlayForStroke = vm.strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke
                                   && smoothedVelocity >= playbackActivationVelocityThreshold
-                                  && vm.feedbackIntensity > 0.3
         vm.playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
     }
 
