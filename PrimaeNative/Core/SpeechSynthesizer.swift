@@ -34,6 +34,12 @@ protocol SpeechSynthesizing {
     /// world or when an overlay sequence resets so the child doesn't
     /// hear stale feedback after switching context.
     func stop()
+    /// True between `speak(_:)` and the moment the synthesizer
+    /// actually finishes (or is cancelled). Read by TouchDispatcher
+    /// to mute letter-sound playback during a verbal prompt — the
+    /// AudioEngine's per-touch AVAudioSession reconfiguration
+    /// otherwise clips in-flight TTS short.
+    var isSpeaking: Bool { get }
     /// U8 (ROADMAP_V5): parent-tunable rate so a 5-year-old who needs a
     /// slower tempo can be accommodated. Default `nil` means leave the
     /// production rate (0.42) untouched. Bound to a 3-position slider in
@@ -52,10 +58,17 @@ extension SpeechSynthesizing {
 /// at instantiation. If no German voice is present the synthesizer
 /// silently no-ops so a missing voice asset never crashes the app.
 @MainActor
-final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
+final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSynthesizerDelegate {
 
     private let synthesizer = AVSpeechSynthesizer()
     private let germanVoice: AVSpeechSynthesisVoice?
+    /// Tracked via the synthesizer delegate. Goes true on
+    /// `didStart` and false on `didFinish` / `didCancel`. The
+    /// AVSpeechSynthesizer's own `isSpeaking` flag drops a beat too
+    /// late on iOS 18+ for the gate's purposes — by the time the
+    /// next touch event reads it the utterance has already been
+    /// truncated by AudioEngine's session reconfig.
+    private(set) var isSpeaking: Bool = false
 
     /// Tunable speech rate. AVSpeechUtterance defaults to ~0.5 which
     /// reads too quickly for a 5-year-old; 0.42 is comfortably slow
@@ -71,7 +84,7 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
     /// uses.
     var pitchMultiplier: Float = 1.05
 
-    init() {
+    override init() {
         // Prefer an enhanced German voice when one is installed (more
         // natural prosody), then fall back to the default `de-DE`. Some
         // installs only ship the smaller default voice; both work.
@@ -81,6 +94,8 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         self.germanVoice = enhanced
             ?? germanVoices.first
             ?? AVSpeechSynthesisVoice(language: "de-DE")
+        super.init()
+        synthesizer.delegate = self
     }
 
     func speak(_ text: String) {
@@ -98,6 +113,13 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         // sound so the child hears both: ducked verbal feedback layered
         // over the proximity-triggered phoneme.
         utterance.volume = 0.9
+        // Optimistically flip the gate true *before* asking the
+        // synthesizer to speak so the very next TouchDispatcher tick
+        // (which can fire within a millisecond on a held finger)
+        // sees the active state and skips letter-audio activation.
+        // The delegate callbacks below correct the flag on actual
+        // start / finish.
+        isSpeaking = true
         synthesizer.speak(utterance)
     }
 
@@ -105,6 +127,24 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
+        isSpeaking = false
+    }
+
+    // MARK: - AVSpeechSynthesizerDelegate
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                        didStart utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.isSpeaking = true }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                        didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.isSpeaking = false }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                        didCancel utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in self?.isSpeaking = false }
     }
 }
 
@@ -117,6 +157,7 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 final class NullSpeechSynthesizer: SpeechSynthesizing {
     private(set) var spokenLines: [String] = []
     private(set) var stopCount: Int = 0
+    var isSpeaking: Bool { false }
 
     func speak(_ text: String) { spokenLines.append(text) }
     func stop() { stopCount += 1 }

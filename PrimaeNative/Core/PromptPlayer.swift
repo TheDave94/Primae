@@ -43,6 +43,14 @@ protocol PromptPlaying: AnyObject {
     func playTapChime()
     func playWrongTapChime()
     func playStrokeTick()
+    /// True while a long-form prompt MP3 is on the player (phase
+    /// entries, praise, paper transfer, retrieval question,
+    /// celebration). Read by TouchDispatcher to mute letter-sound
+    /// playback during the prompt — AudioEngine's session reconfig
+    /// otherwise clips the MP3. Short SFX (tap / wrong tap / stroke
+    /// tick) intentionally don't flip this — they're <100 ms and
+    /// shouldn't gate writing at all.
+    var isPlayingLongPrompt: Bool { get }
 }
 
 /// Test/stub implementation. Every method is a no-op so unit tests
@@ -55,10 +63,11 @@ final class NullPromptPlayer: PromptPlaying {
     func playTapChime() {}
     func playWrongTapChime() {}
     func playStrokeTick() {}
+    var isPlayingLongPrompt: Bool { false }
 }
 
 @MainActor
-final class PromptPlayer: PromptPlaying {
+final class PromptPlayer: NSObject, PromptPlaying, AVAudioPlayerDelegate {
 
     /// Stable identifiers for each pre-recorded phrase. The raw value
     /// is the filename stem inside `Resources/Prompts/<key>.mp3`.
@@ -106,9 +115,18 @@ final class PromptPlayer: PromptPlaying {
     /// re-probe the bundle on every play() call.
     private var missingEffects: Set<String> = []
     private let log = Logger(subsystem: "buchstaben.primae", category: "prompts")
+    /// Mirrors AVAudioPlayer.isPlaying for the long-prompt slot
+    /// (`player`). Flipped true synchronously on `play(_:fallbackText:)`
+    /// — same optimistic-flip rationale as
+    /// `AVSpeechSpeechSynthesizer.isSpeaking` — and back to false
+    /// either by the AVAudioPlayer delegate or, in the TTS-fallback
+    /// case, by mirroring `speech.isSpeaking` at read time.
+    private var mp3IsPlaying: Bool = false
+    var isPlayingLongPrompt: Bool { mp3IsPlaying || speech.isSpeaking }
 
     init(fallbackSpeech: SpeechSynthesizing) {
         self.speech = fallbackSpeech
+        super.init()
     }
 
     /// Play the prompt audio for `key`. Falls back to
@@ -126,7 +144,9 @@ final class PromptPlayer: PromptPlaying {
         do {
             player?.stop()
             let p = try AVAudioPlayer(contentsOf: url)
+            p.delegate = self
             p.prepareToPlay()
+            mp3IsPlaying = true
             p.play()
             player = p
         } catch {
@@ -137,6 +157,7 @@ final class PromptPlayer: PromptPlaying {
 
     /// Halt the current prompt. Mirrors `SpeechSynthesizing.stop()`.
     func stop() {
+        mp3IsPlaying = false
         player?.stop()
         speech.stop()
     }
@@ -256,5 +277,17 @@ final class PromptPlayer: PromptPlaying {
             }
         }
         return nil
+    }
+
+    // MARK: - AVAudioPlayerDelegate
+
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer,
+                                                  successfully flag: Bool) {
+        Task { @MainActor [weak self] in self?.mp3IsPlaying = false }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer,
+                                                     error: Error?) {
+        Task { @MainActor [weak self] in self?.mp3IsPlaying = false }
     }
 }

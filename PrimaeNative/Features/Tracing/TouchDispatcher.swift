@@ -365,9 +365,18 @@ final class TouchDispatcher {
         // that DO fade in freeWrite are gated separately). Children
         // need the audio cue throughout, including freeWrite where
         // the rest of the scaffolding is gone.
+        //
+        // Also gate on `!verbalPromptActive`: AudioEngine reconfigures
+        // the AVAudioSession on every `audio.play()` call, and that
+        // reconfig clips in-flight TTS / prompt MP3s. Holding letter
+        // audio idle while a verbal prompt is speaking lets phrases
+        // like "Und jetzt du alleine." play to completion before
+        // the first proximity-triggered phoneme fires.
+        let verbalPromptActive = vm.speech.isSpeaking || vm.prompts.isPlayingLongPrompt
         let shouldPlayForStroke = vm.strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke
                                   && smoothedVelocity >= playbackActivationVelocityThreshold
+                                  && !verbalPromptActive
         vm.playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
     }
 
