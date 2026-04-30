@@ -26,20 +26,13 @@ import Foundation
 /// AVSpeechSynthesizer-backed implementation.
 @MainActor
 protocol SpeechSynthesizing {
-    /// Speak `text` in German. Cancels any ongoing utterance first so
-    /// rapid feedback events ("Anschauen" → "Richtung lernen") don't
-    /// queue up and overlap the next phase prompt.
+    /// Speak `text` in German. AVSpeechSynthesizer queues utterances
+    /// natively, so back-to-back calls play in delivery order.
     func speak(_ text: String)
     /// Halt any in-flight utterance. Called when the canvas leaves a
     /// world or when an overlay sequence resets so the child doesn't
     /// hear stale feedback after switching context.
     func stop()
-    /// True between `speak(_:)` and the moment the synthesizer
-    /// actually finishes (or is cancelled). Read by TouchDispatcher
-    /// to mute letter-sound playback during a verbal prompt — the
-    /// AudioEngine's per-touch AVAudioSession reconfiguration
-    /// otherwise clips in-flight TTS short.
-    var isSpeaking: Bool { get }
     /// U8 (ROADMAP_V5): parent-tunable rate so a 5-year-old who needs a
     /// slower tempo can be accommodated. Default `nil` means leave the
     /// production rate (0.42) untouched. Bound to a 3-position slider in
@@ -58,17 +51,10 @@ extension SpeechSynthesizing {
 /// at instantiation. If no German voice is present the synthesizer
 /// silently no-ops so a missing voice asset never crashes the app.
 @MainActor
-final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSynthesizerDelegate {
+final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     private let synthesizer = AVSpeechSynthesizer()
     private let germanVoice: AVSpeechSynthesisVoice?
-    /// Tracked via the synthesizer delegate. Goes true on
-    /// `didStart` and false on `didFinish` / `didCancel`. The
-    /// AVSpeechSynthesizer's own `isSpeaking` flag drops a beat too
-    /// late on iOS 18+ for the gate's purposes — by the time the
-    /// next touch event reads it the utterance has already been
-    /// truncated by AudioEngine's session reconfig.
-    private(set) var isSpeaking: Bool = false
 
     /// Tunable speech rate. AVSpeechUtterance defaults to ~0.5 which
     /// reads too quickly for a 5-year-old; 0.42 is comfortably slow
@@ -84,7 +70,7 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
     /// uses.
     var pitchMultiplier: Float = 1.05
 
-    override init() {
+    init() {
         // Prefer an enhanced German voice when one is installed (more
         // natural prosody), then fall back to the default `de-DE`. Some
         // installs only ship the smaller default voice; both work.
@@ -94,8 +80,17 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
         self.germanVoice = enhanced
             ?? germanVoices.first
             ?? AVSpeechSynthesisVoice(language: "de-DE")
-        super.init()
-        synthesizer.delegate = self
+        // Decouple AVSpeechSynthesizer from the app's shared
+        // AVAudioSession so AudioEngine's per-touch
+        // setActive(true) / category re-asserts can't clip in-flight
+        // utterances. With this flag false the synthesizer manages
+        // its own short-lived session and CoreAudio no longer treats
+        // AudioEngine's session-state events as a reason to truncate
+        // spoken audio. Per the Apple-engineer response in
+        // developer.apple.com/forums/thread/759553 (FB14444620,
+        // 2024), this is the canonical fix when one subsystem
+        // already owns session lifecycle.
+        synthesizer.usesApplicationAudioSession = false
     }
 
     func speak(_ text: String) {
@@ -109,13 +104,9 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
         // over the proximity-triggered phoneme.
         utterance.volume = 0.9
         // Don't stopSpeaking() before queuing: AVSpeechSynthesizer's
-        // own utterance queue plays them in delivery order, so
-        // back-to-back calls (recognition feedback → celebration
-        // praise after freeWrite) play sequentially instead of the
-        // second cutting the first off mid-word. Callers that
-        // genuinely need to interrupt (letter load, retry path)
-        // call `stop()` explicitly.
-        isSpeaking = true
+        // own utterance queue plays back-to-back calls in delivery
+        // order. Callers that genuinely need to interrupt (letter
+        // load, retry path) call `stop()` explicitly.
         synthesizer.speak(utterance)
     }
 
@@ -123,24 +114,6 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
-        isSpeaking = false
-    }
-
-    // MARK: - AVSpeechSynthesizerDelegate
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                        didStart utterance: AVSpeechUtterance) {
-        Task { @MainActor [weak self] in self?.isSpeaking = true }
-    }
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                        didFinish utterance: AVSpeechUtterance) {
-        Task { @MainActor [weak self] in self?.isSpeaking = false }
-    }
-
-    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
-                                        didCancel utterance: AVSpeechUtterance) {
-        Task { @MainActor [weak self] in self?.isSpeaking = false }
     }
 }
 
@@ -153,7 +126,6 @@ final class AVSpeechSpeechSynthesizer: NSObject, SpeechSynthesizing, AVSpeechSyn
 final class NullSpeechSynthesizer: SpeechSynthesizing {
     private(set) var spokenLines: [String] = []
     private(set) var stopCount: Int = 0
-    var isSpeaking: Bool { false }
 
     func speak(_ text: String) { spokenLines.append(text) }
     func stop() { stopCount += 1 }
