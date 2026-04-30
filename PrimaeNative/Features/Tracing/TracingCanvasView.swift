@@ -431,20 +431,22 @@ private struct ProgressPill: View, Equatable {
 
 // MARK: - Direct phase dot overlay
 
-/// Self-contained pulsing dot for the direct phase. Encapsulated
-/// as its own View so it has independent @State and onAppear, which
-/// — crucially — fire on each remount triggered by the parent's
-/// `.id(idx)` change. Each new instance starts its own infinite
-/// animation. This is the iOS 26 / Swift 6.2 regression workaround:
-/// `withAnimation` from `@MainActor` contexts requires a hop through
-/// `DispatchQueue.main.async` for the animation pipeline to actually
-/// observe and replay the value transition (Yago de Martín,
-/// "iOS 26 Animation Regression: @MainActor, Swift 6.2 …", 2025).
+/// Self-contained pulsing dot for the direct phase.
 ///
-/// `keyframeAnimator(repeating:)` was tried first per Apple's docs
-/// but produced no visible pulse on the user's device, consistent
-/// with the iOS 26 keyframe regression noted on Apple Developer
-/// Forums thread 805693.
+/// Diagnostic build: drives the scale via a 60 Hz Timer so the
+/// animation does NOT depend on SwiftUI's animation transaction
+/// system. Reduce Motion is INTENTIONALLY ignored here — this
+/// version exists to verify that the dot animates at all on the
+/// user's device. If the dot pulses with this approach, the prior
+/// failures were the iOS 26 + Swift 6.2 animation-system regression
+/// (see Apple Developer Forums 805693 and Yago de Martín's article).
+/// If the dot still doesn't pulse, the issue is something in the
+/// parent view hierarchy suppressing renders.
+///
+/// Also draws a yellow ring behind the dot at FIXED scale 1.5 so we
+/// can distinguish layout-from-animation: if the yellow ring is
+/// visible but the blue dot doesn't pulse, layout is fine and only
+/// animation is broken; if neither shows, layout is the issue.
 private struct PulsingDot: View {
     let isNext: Bool
     let isTapped: Bool
@@ -456,27 +458,35 @@ private struct PulsingDot: View {
 
     var body: some View {
         ZStack {
+            // Static reference: yellow ring at fixed 1.5× scale.
+            // If the user sees this but the blue dot doesn't pulse,
+            // layout/sizing is fine and only animation is broken.
+            if isNext {
+                Circle()
+                    .stroke(Color.yellow, lineWidth: 4)
+                    .frame(width: radius * 2 * 1.5, height: radius * 2 * 1.5)
+            }
             Circle()
                 .fill(isTapped ? Color.green : (isNext ? Color.blue : Color.gray))
                 .opacity(0.85)
+                .frame(width: radius * 2, height: radius * 2)
+                .scaleEffect(scale)
             Text(label)
                 .font(.system(size: radius * 0.85, weight: .bold))
                 .foregroundStyle(.white)
         }
-        .frame(width: radius * 2, height: radius * 2)
-        .scaleEffect(scale)
-        .onAppear {
-            guard isNext, !reduceMotion else { return }
-            // Hop through `DispatchQueue.main.async` so the animation
-            // pipeline picks up the value change in a fresh main-loop
-            // tick. Without this hop, MainActor-isolated state
-            // updates inside `.onAppear` are observed by the renderer
-            // but not by the animation system on iOS 26 + Swift 6.2.
-            DispatchQueue.main.async {
-                withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                    scale = 1.35
-                }
-            }
+        .onReceive(
+            Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
+        ) { date in
+            guard isNext else { scale = 1.0; return }
+            // 1.2 s period sine wave on wall-clock time. Bypasses
+            // SwiftUI's animation transaction system — the state
+            // update directly mutates `scale` and triggers a render.
+            // No `withAnimation`, no `keyframeAnimator`, no
+            // `.repeatForever` — pure state-driven re-render.
+            let t = date.timeIntervalSinceReferenceDate
+            let phase = (sin(t * .pi / 0.6) + 1) / 2     // 0…1
+            scale = 1.0 + 0.35 * CGFloat(phase)            // 1.0…1.35
         }
     }
 }
