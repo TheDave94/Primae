@@ -1200,14 +1200,14 @@ public final class TracingViewModel {
         phaseTransitions.advance()
     }
 
-    /// Fire-and-forget recognizer pass for the completed freeWrite phase.
-    /// Uses the absolute-canvas-space points already accumulated during
-    /// updateTouch so the model sees the same stroke the child drew.
-    /// The badge enqueues via `enqueueBeforeCelebration` so it always
-    /// lands ahead of the final celebration even when CoreML inference
-    /// finishes after the synchronous freeWrite teardown has already
-    /// enqueued kpOverlay + paperTransfer + celebration.
-    func runRecognizerForFreeWrite() {
+    /// Recognizer pass for the completed freeWrite phase. Drives the
+    /// post-recognition routing in `PhaseTransitionCoordinator`: a
+    /// "green" result (correct + confidence > 0.7) triggers the
+    /// celebration; anything else triggers the retry prompt and a
+    /// freeWrite reset. Uses the absolute-canvas-space points already
+    /// accumulated during updateTouch so the model sees the same
+    /// stroke the child drew.
+    func runRecognizerForFreeWrite(score: CGFloat) {
         let pts = freeWritePoints
         let size = canvasSize
         let expected = currentLetterName
@@ -1232,41 +1232,13 @@ public final class TracingViewModel {
                 guard self.recognitionTokens.isStillActive(token) else { return }
                 self.freeform.isRecognizing = false
                 self.lastRecognitionResult = result
-                // commitCompletion already wrote the guided-mode session
-                // record with a nil recognitionResult — by the time the
-                // recognizer finishes, the progressStore entry exists but
-                // doesn't know about this confidence. Append it now so the
-                // dashboard trend reflects actual recognizer readings.
                 if let r = result {
                     self.progressStore.recordRecognitionSample(
                         letter: expected, result: r)
                     self.refreshProgressMirror()
-                    if r.confidence >= 0.4 {
-                        self.overlayQueue.enqueueBeforeCelebration(.recognitionBadge(r))
-                        // Verbal mirror of the on-screen badge — same
-                        // German wording RecognitionFeedbackView shows,
-                        // so a pre-reader hears what they otherwise
-                        // could only see. Empty string returns from low-
-                        // confidence wrong cases stay silent on purpose.
-                        let line = ChildSpeechLibrary.recognition(
-                            r, expected: expected)
-                        if !line.isEmpty { self.speech.speak(line) }
-                    }
-                    // P2 (ROADMAP_V5): self-explanation prompt on a
-                    // confident-but-wrong recognition. Re-presenting
-                    // the canonical reference glyph leverages
-                    // Chi 1989's elaborative-processing effect — the
-                    // child sees the mismatch and the correct form
-                    // back-to-back. Gated on `confidence >= 0.5` so
-                    // borderline-noisy predictions don't trigger the
-                    // re-animation; gated on `currentLetterName ==
-                    // expected` so a fast letter-switch race doesn't
-                    // animate the wrong glyph.
-                    if !r.isCorrect, r.confidence >= 0.5,
-                       self.currentLetterName == expected {
-                        self.startGuideAnimation()
-                    }
                 }
+                self.phaseTransitions.completePostFreeWriteRecognition(
+                    score: score, result: result)
             }
         }
     }

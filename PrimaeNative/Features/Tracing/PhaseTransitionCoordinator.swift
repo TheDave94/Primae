@@ -102,15 +102,6 @@ final class PhaseTransitionCoordinator {
         let wasInFreeWrite = vm.phaseController.currentPhase == .freeWrite
         let wasInGuided = vm.phaseController.currentPhase == .guided
 
-        // Kick the CoreML recognizer off BEFORE the phase advance so it
-        // runs in parallel with the Fréchet-based scoring above and the
-        // phase-transition side effects below. The result lands on
-        // `lastRecognitionResult` when inference finishes; the badge
-        // slots into the queue *before* the celebration regardless of
-        // how long inference takes — see `enqueueBeforeCelebration`.
-        if wasInFreeWrite {
-            vm.runRecognizerForFreeWrite()
-        }
         if wasInGuided {
             // Capture the guided score before the phase advance so the
             // Schule world can show a verbal feedback band during the
@@ -118,17 +109,15 @@ final class PhaseTransitionCoordinator {
             vm.freeWriteRecorder.lastGuidedScore = score
         }
 
-        // Queue post-freeWrite feedback in canonical order BEFORE we
-        // advance the phase controller — `recordSessionCompletion`
-        // (called below for the final phase) enqueues `.celebration`,
-        // which we want to come last. The recognition badge enqueue
-        // happens asynchronously on the recognizer Task; it slots ahead
-        // of the celebration via `enqueueBeforeCelebration`.
+        // FreeWrite final phase: defer the post-freeWrite UI + the
+        // session-completion record until the CoreML recognizer
+        // returns. The recognition outcome decides whether the child
+        // gets the "Geschafft!" celebration (correct + confidence
+        // > 0.7) or has to retrace the freeform — neither of which
+        // we know synchronously here.
         if wasInFreeWrite {
-            vm.overlayQueue.enqueue(.kpOverlay)
-            if vm.enablePaperTransfer {
-                vm.overlayQueue.enqueue(.paperTransfer(letter: vm.currentLetterName))
-            }
+            vm.runRecognizerForFreeWrite(score: score)
+            return
         }
 
         if vm.phaseController.advance(score: score) {
@@ -147,8 +136,82 @@ final class PhaseTransitionCoordinator {
                 fallbackText: ChildSpeechLibrary.phaseEntry(vm.phaseController.currentPhase)
             )
         } else {
+            // Non-freeWrite final phase (.guidedOnly / .control
+            // conditions land here at end-of-guided). No recognizer
+            // run for those; celebrate unconditionally.
             recordSessionCompletion()
         }
+    }
+
+    // MARK: - FreeWrite recognizer-gated completion
+
+    /// Called from `TracingViewModel.runRecognizerForFreeWrite(score:)`
+    /// once the CoreML recognizer returns. Routes to the celebration
+    /// path if the result is "green" (correct + confidence > 0.7) or
+    /// the recognizer is unavailable, and to the retry path otherwise.
+    func completePostFreeWriteRecognition(score: CGFloat,
+                                          result: RecognitionResult?) {
+        guard let vm else { return }
+        let isGreen: Bool
+        if let r = result {
+            isGreen = r.isCorrect && r.confidence > 0.7
+        } else {
+            // No result (model missing / inference failed): fall back
+            // to celebration so dev / test builds without the CoreML
+            // model still progress through the flow.
+            isGreen = true
+        }
+        if isGreen {
+            celebrateFreeWrite(score: score, result: result)
+        } else if let r = result {
+            requestFreeWriteRetry(result: r)
+        }
+    }
+
+    private func celebrateFreeWrite(score: CGFloat,
+                                    result: RecognitionResult?) {
+        guard let vm else { return }
+        vm.overlayQueue.enqueue(.kpOverlay)
+        if let r = result, r.confidence >= 0.4 {
+            vm.overlayQueue.enqueueBeforeCelebration(.recognitionBadge(r))
+            // Verbal mirror of the on-screen badge — a 5–6 yr-old
+            // who can't read the chip text still hears the same
+            // wording.
+            let line = ChildSpeechLibrary.recognition(r, expected: vm.currentLetterName)
+            if !line.isEmpty { vm.speech.speak(line) }
+        }
+        if vm.enablePaperTransfer {
+            vm.overlayQueue.enqueue(.paperTransfer(letter: vm.currentLetterName))
+        }
+        // Final-phase advance — sets isLetterSessionComplete = true
+        // but leaves currentPhase at .freeWrite. Returns false; we
+        // never reach the mid-phase branch from this path.
+        _ = vm.phaseController.advance(score: score)
+        recordSessionCompletion()
+    }
+
+    private func requestFreeWriteRetry(result: RecognitionResult) {
+        guard let vm else { return }
+        // Show the recognition badge so the child sees what the
+        // model thought they wrote (orange "looks like O — write A
+        // again") before the retry prompt lands.
+        if result.confidence >= 0.4 {
+            vm.overlayQueue.enqueue(.recognitionBadge(result))
+            let line = ChildSpeechLibrary.recognition(result, expected: vm.currentLetterName)
+            if !line.isEmpty { vm.speech.speak(line) }
+        }
+        // Reset freeWrite state so the next stroke starts from a
+        // clean slate — recorder, ink trail, stroke tracker all
+        // wiped, recorder session re-armed for the retry.
+        vm.strokeTracker.reset()
+        if vm.letters.indices.contains(vm.letterIndex) {
+            vm.reloadStrokeCheckpoints(for: vm.letters[vm.letterIndex])
+        }
+        vm.freeWriteRecorder.clearAll()
+        vm.freeWriteRecorder.startSession()
+        vm.activePath.removeAll(keepingCapacity: true)
+        vm.toast("Probier's nochmal")
+        vm.speech.speak("Probier's nochmal")
     }
 
     // MARK: - Final-phase pipeline
