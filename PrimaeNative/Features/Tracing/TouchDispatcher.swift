@@ -131,16 +131,23 @@ final class TouchDispatcher {
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 && p.x <= canvasSize.width && p.y <= canvasSize.height
 
-        // Out-of-bounds rising edge: stop the letter audio + play a
-        // warning chime so the child gets explicit feedback that
-        // they've drifted off the writing surface. Only fires once
-        // per crossing (state cleared by `wasInBounds`).
+        // Out-of-bounds rising edge: stop the letter audio, wipe the
+        // partial stroke + ink trail, and tell the child to retrace.
+        // Toast covers the on-screen prompt; speech.speak handles
+        // the audio (5–6 yr-olds can't reliably read the toast). The
+        // partial-progress reset means the touch has to retrace the
+        // current stroke from its first checkpoint when the finger
+        // re-enters the canvas. Fires once per crossing (state
+        // cleared by `wasInBounds`).
         if wasInBounds && !isWithinCanvasBounds {
             vm.audio.stop()
             vm.isPlaying = false
             vm.playback.cancelPending()
             vm.playback.forceIdle()
-            vm.prompts.playOutOfBoundsChime()
+            vm.strokeTracker.resetCurrentStroke()
+            vm.activePath.removeAll(keepingCapacity: true)
+            vm.toast("Probier's nochmal")
+            vm.speech.speak("Probier's nochmal")
         }
         wasInBounds = isWithinCanvasBounds
 

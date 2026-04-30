@@ -43,7 +43,6 @@ protocol PromptPlaying: AnyObject {
     func playTapChime()
     func playWrongTapChime()
     func playStrokeTick()
-    func playOutOfBoundsChime()
 }
 
 /// Test/stub implementation. Every method is a no-op so unit tests
@@ -56,7 +55,6 @@ final class NullPromptPlayer: PromptPlaying {
     func playTapChime() {}
     func playWrongTapChime() {}
     func playStrokeTick() {}
-    func playOutOfBoundsChime() {}
 }
 
 @MainActor
@@ -179,16 +177,6 @@ final class PromptPlayer: PromptPlaying {
     /// strokeTracker flips a stroke complete.
     func playStrokeTick() {
         playEffect(name: "tick_stroke", systemFallback: nil)
-    }
-
-    /// Warning chime fired when the touch leaves the canvas mid-
-    /// stroke. Reuses the wrong-tap buzz (220 Hz + 233 Hz dissonant
-    /// pair, 120 ms) — same "you've gone wrong" semantics as the
-    /// direct-phase miss. Drop a dedicated `out_of_bounds.wav` next
-    /// to the prompts and switch the asset name here when a
-    /// distinct sound is desired.
-    func playOutOfBoundsChime() {
-        playEffect(name: "tap_wrong", systemFallback: 1053)
     }
 
     /// Lazy effect playback. Loads the AVAudioPlayer on first call

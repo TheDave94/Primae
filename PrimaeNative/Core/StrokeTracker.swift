@@ -70,6 +70,18 @@ final class StrokeTracker {
         onStrokeCompleted = nil
         isNearStroke = false
     }
+
+    /// Wipe partial progress on the in-flight stroke without clearing
+    /// the definition or already-completed strokes. Used when the
+    /// touch leaves the canvas mid-stroke — the child has to retrace
+    /// that stroke from its first checkpoint.
+    func resetCurrentStroke() {
+        let idx = currentStrokeIndex
+        guard progress.indices.contains(idx) else { return }
+        progress[idx].nextCheckpoint = 0
+        progress[idx].complete = false
+        isNearStroke = false
+    }
     func update(normalizedPoint p: CGPoint) {
         guard p.x.isFinite && p.y.isFinite else { return }
         guard (0...1).contains(p.x) && (0...1).contains(p.y) else { return }
