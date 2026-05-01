@@ -80,17 +80,15 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         self.germanVoice = enhanced
             ?? germanVoices.first
             ?? AVSpeechSynthesisVoice(language: "de-DE")
-        // Decouple AVSpeechSynthesizer from the app's shared
-        // AVAudioSession so AudioEngine's per-touch
-        // setActive(true) / category re-asserts can't clip in-flight
-        // utterances. With this flag false the synthesizer manages
-        // its own short-lived session and CoreAudio no longer treats
-        // AudioEngine's session-state events as a reason to truncate
-        // spoken audio. Per the Apple-engineer response in
-        // developer.apple.com/forums/thread/759553 (FB14444620,
-        // 2024), this is the canonical fix when one subsystem
-        // already owns session lifecycle.
-        synthesizer.usesApplicationAudioSession = false
+        // Default `usesApplicationAudioSession = true`: synthesizer
+        // shares the app's AVAudioSession set up by AudioEngine.
+        // Briefly tried `false` here (Stage 1) to dodge per-touch
+        // cutoff, but that left AudioEngine's session in an
+        // incompatible state — letter sounds went silent. The
+        // cutoff source was AudioEngine deactivating the shared
+        // session in `finishStop()`; that line is now removed so
+        // the synth and engine coexist on a single, always-active
+        // session.
     }
 
     func speak(_ text: String) {

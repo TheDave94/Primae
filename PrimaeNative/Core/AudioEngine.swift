@@ -237,6 +237,16 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// Synchronous tail of `stop()` — runs after the optional fade ramp
     /// completes (or immediately when no fade is needed). Restores
     /// `player.volume` so the next `play()` doesn't start at the faded value.
+    ///
+    /// Intentionally does NOT call `setActive(false)` on the shared
+    /// AVAudioSession. `stop()` fires every time the user lifts a
+    /// finger from the canvas (and on phase / letter transitions);
+    /// deactivating the shared session at that frequency cut every
+    /// in-flight `AVSpeechSynthesizer` utterance short, because the
+    /// synth shares this session by default. The session stays
+    /// active for AudioEngine's lifetime — `suspendForLifecycle` and
+    /// the deinit observer-cleanup handle the genuinely-needed
+    /// teardown points (background, interruption, dealloc).
     private func finishStop(restoreVolume: Float) {
         shouldResumePlayback           = false
         isPlaying                      = false
@@ -246,11 +256,6 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         player.stop()
         player.volume = restoreVolume
         currentFile = nil
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            log.error("Stop failed to deactivate session: \(error.localizedDescription)")
-        }
     }
 
     func restart() {
