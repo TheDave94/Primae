@@ -10,7 +10,12 @@ public final class TracingViewModel {
     // MARK: - Public observable state
 
     var showGhost           = false
-    var showAllLetters      = false
+    /// True = picker shows every letter the bundle ships. False = limit
+    /// to the 7 demo letters (A, F, I, K, L, M, O) used in the thesis
+    /// pilot. Defaults true now so the full alphabet is reachable; the
+    /// flag stays so a future "thesis demo" mode can re-enable the
+    /// reduced set without re-introducing the filter logic.
+    var showAllLetters      = true
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
     var showDebug           = false
