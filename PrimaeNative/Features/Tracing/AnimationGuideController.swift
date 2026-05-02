@@ -57,6 +57,13 @@ final class AnimationGuideController {
             // iterations — only the very first step gets the dwell.
             let firstHoldRequested = !Task.isCancelled
             var heldFirst = false
+            // 60 Hz interpolation budget: each segment between two
+            // consecutive checkpoints in the same stroke is split into
+            // N frames so the dot glides instead of snapping. Across
+            // stroke boundaries we teleport (no interpolation) so the
+            // viewer doesn't see a phantom diagonal between e.g. the
+            // top of the A's left leg and the top of the right leg.
+            let frameInterval: TimeInterval = 1.0 / 60.0
             while !Task.isCancelled {
                 guard let self else { return }
                 if !heldFirst, firstHoldRequested, let firstStep = guide.steps.first {
@@ -65,10 +72,30 @@ final class AnimationGuideController {
                     heldFirst = true
                     if Task.isCancelled { break }
                 }
+                var previousStep: AnimationStep? = nil
                 for step in guide.steps {
                     guard !Task.isCancelled else { break }
-                    self.guidePoint = step.point
-                    try? await sleeper(.seconds(guide.duration(for: step)))
+                    let duration = guide.duration(for: step)
+                    if let prev = previousStep, prev.strokeIndex == step.strokeIndex {
+                        let frames = max(1, Int((duration / frameInterval).rounded()))
+                        let dx = step.point.x - prev.point.x
+                        let dy = step.point.y - prev.point.y
+                        for f in 1...frames {
+                            if Task.isCancelled { break }
+                            let t = CGFloat(f) / CGFloat(frames)
+                            self.guidePoint = CGPoint(x: prev.point.x + dx * t,
+                                                      y: prev.point.y + dy * t)
+                            try? await sleeper(.seconds(frameInterval))
+                        }
+                    } else {
+                        // First step of the cycle or a new stroke —
+                        // teleport and dwell for the segment duration
+                        // so cross-stroke transitions read as discrete
+                        // pen lifts rather than diagonal slides.
+                        self.guidePoint = step.point
+                        try? await sleeper(.seconds(duration))
+                    }
+                    previousStep = step
                 }
                 if !Task.isCancelled {
                     self.guidePoint = nil
