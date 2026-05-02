@@ -1,0 +1,368 @@
+#!/usr/bin/env python3
+"""
+Generate strokes.json files with checkpoints centered on the rendered glyph.
+
+Per-stroke spec is just (start, end), with optional `via` waypoints to
+disambiguate paths through closed loops or where two strokes share their
+endpoints (e.g., D's vertical and arc both run from top-left to bottom-left
+of the glyph; the arc needs a `via` near its rightmost point).
+
+Algorithm
+---------
+1. Rasterize the letter from `Primae-Regular.otf` at 512×512 with 10% pad
+   (matches `scripts/generate_pbm.py` so results align with what the app
+   actually renders).
+2. Skeletonize the glyph mask (Zhang-Suen via scikit-image).
+3. For each stroke spec: BFS along the skeleton from the nearest skeleton
+   pixel to `start`, through each `via`, to the nearest pixel to `end`.
+4. Sample N evenly-spaced checkpoints along that pixel path and write
+   them to `strokes.json` as normalized [0, 1] coordinates.
+
+Endpoints in the JSON keep the user-supplied normalized coords exactly
+(they often sit just off the skeleton — e.g., F's serifs — and we want
+the start dot to render where the spec says, not at the snapped skeleton
+pixel).
+
+Usage
+-----
+    pip install Pillow numpy scikit-image
+    python scripts/generate_strokes_centerline.py            # all letters
+    python scripts/generate_strokes_centerline.py A E O      # subset
+    python scripts/generate_strokes_centerline.py --no-overwrite  # skip existing
+
+Edit `LETTER_SPECS` below to change a stroke shape. Add `via` waypoints
+when the BFS picks the wrong path; add `count` to override the auto-
+derived checkpoint count.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+from collections import deque
+from pathlib import Path
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+from skimage.morphology import skeletonize
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+FONT_PATH = REPO_ROOT / "design-system/fonts/Primae-Regular.otf"
+OUTPUT_BASE = REPO_ROOT / "PrimaeNative/Resources/Letters"
+
+# Raster size matches `generate_pbm.py` so checkpoints land where the
+# rendered glyph (512×512 PBM ghost) actually is.
+SIZE = 512
+PAD = 0.10
+DEFAULT_RADIUS = 0.06
+
+
+# Per-stroke spec.
+#   start, end:  required, normalized [0, 1] (x→right, y→down).
+#   via:         optional list of waypoints to route through (in order).
+#                Use when start+end alone don't pick the right skeleton path
+#                (closed loops like O, or two strokes that share endpoints
+#                like D's | and arc).
+#   count:       optional explicit checkpoint count. Default auto-derives
+#                from path length (~1 cp per 50 px, clamped 3..12).
+#   comment:     optional human-readable note copied through to the JSON.
+LETTER_SPECS: dict[str, list[dict]] = {
+    "A": [
+        {"start": [0.58, 0.04], "end": [0.06, 0.96], "via": [[0.34, 0.44]], "comment": "Left leg: apex down-left"},
+        {"start": [0.58, 0.04], "end": [0.94, 0.96], "via": [[0.76, 0.50]], "comment": "Right leg: apex down-right"},
+        {"start": [0.25, 0.60], "end": [0.80, 0.60], "comment": "Crossbar: left to right"},
+    ],
+    "B": [
+        {"start": [0.35, 0.15], "end": [0.35, 0.85], "comment": "Vertical spine"},
+        {"start": [0.35, 0.15], "end": [0.35, 0.50], "via": [[0.62, 0.28]], "comment": "Top bowl"},
+        {"start": [0.35, 0.50], "end": [0.35, 0.85], "via": [[0.65, 0.65]], "comment": "Bottom bowl"},
+    ],
+    "C": [
+        {"start": [0.72, 0.28], "end": [0.72, 0.75], "via": [[0.20, 0.50]], "comment": "Open arc (CCW)"},
+    ],
+    "D": [
+        {"start": [0.35, 0.15], "end": [0.35, 0.85], "comment": "Vertical spine"},
+        {"start": [0.35, 0.15], "end": [0.35, 0.85], "via": [[0.70, 0.50]], "comment": "Right arc"},
+    ],
+    "E": [
+        {"start": [0.65, 0.15], "end": [0.35, 0.15], "comment": "Top bar"},
+        {"start": [0.35, 0.15], "end": [0.35, 0.85], "comment": "Vertical spine"},
+        {"start": [0.35, 0.50], "end": [0.60, 0.50], "comment": "Mid bar"},
+        {"start": [0.35, 0.85], "end": [0.65, 0.85], "comment": "Bottom bar"},
+    ],
+    "F": [
+        {"start": [0.19, 0.04], "end": [0.08, 0.96], "via": [[0.11, 0.66]], "comment": "Spine: top to bottom"},
+        {"start": [0.19, 0.04], "end": [0.96, 0.04], "comment": "Top bar: left to right"},
+        {"start": [0.14, 0.48], "end": [0.78, 0.48], "comment": "Mid bar: left to right"},
+    ],
+    "G": [
+        {"start": [0.72, 0.28], "end": [0.52, 0.55], "via": [[0.22, 0.65], [0.72, 0.55]], "comment": "Arc + inner bar"},
+    ],
+    "H": [
+        {"start": [0.30, 0.15], "end": [0.30, 0.85], "comment": "Left spine"},
+        {"start": [0.30, 0.50], "end": [0.70, 0.50], "comment": "Crossbar"},
+        {"start": [0.70, 0.15], "end": [0.70, 0.85], "comment": "Right spine"},
+    ],
+    "I": [
+        {"start": [0.70, 0.04], "end": [0.26, 0.97], "via": [[0.50, 0.50]], "comment": "Stem (italic)"},
+    ],
+    "J": [
+        {"start": [0.60, 0.15], "end": [0.28, 0.72], "via": [[0.45, 0.85]], "comment": "Stem with hook"},
+    ],
+    "K": [
+        {"start": [0.16, 0.04], "end": [0.07, 0.95], "via": [[0.10, 0.64]], "comment": "Spine: top to bottom"},
+        {"start": [0.27, 0.48], "end": [0.93, 0.04], "via": [[0.62, 0.24]], "comment": "Upper arm"},
+        {"start": [0.27, 0.48], "end": [0.85, 0.95], "via": [[0.51, 0.69]], "comment": "Lower arm"},
+    ],
+    "L": [
+        {"start": [0.21, 0.05], "end": [0.09, 0.95], "via": [[0.13, 0.62]], "comment": "Spine"},
+        {"start": [0.10, 0.95], "end": [0.95, 0.95], "comment": "Foot"},
+    ],
+    "M": [
+        {"start": [0.20, 0.05], "end": [0.04, 0.97], "via": [[0.10, 0.59]], "comment": "Left spine"},
+        {"start": [0.20, 0.05], "end": [0.49, 0.91], "via": [[0.37, 0.54]], "comment": "Left diagonal"},
+        {"start": [0.49, 0.91], "end": [0.91, 0.04], "via": [[0.79, 0.27]], "comment": "Right diagonal"},
+        {"start": [0.91, 0.04], "end": [0.95, 0.95], "via": [[0.94, 0.63]], "comment": "Right spine"},
+    ],
+    "N": [
+        {"start": [0.28, 0.15], "end": [0.28, 0.85], "comment": "Left spine"},
+        {"start": [0.28, 0.15], "end": [0.70, 0.85], "comment": "Diagonal"},
+        {"start": [0.70, 0.15], "end": [0.70, 0.85], "comment": "Right spine"},
+    ],
+    "O": [
+        {"start": [0.27, 0.13], "end": [0.27, 0.13], "via": [[0.81, 0.80]], "comment": "Oval (CCW via bottom-right)"},
+    ],
+    "P": [
+        {"start": [0.33, 0.15], "end": [0.33, 0.85], "comment": "Vertical spine"},
+        {"start": [0.33, 0.15], "end": [0.33, 0.50], "via": [[0.65, 0.40]], "comment": "Top bowl"},
+    ],
+    "R": [
+        {"start": [0.33, 0.15], "end": [0.33, 0.85], "comment": "Vertical spine"},
+        {"start": [0.33, 0.15], "end": [0.33, 0.50], "via": [[0.65, 0.40]], "comment": "Top bowl"},
+        {"start": [0.33, 0.50], "end": [0.65, 0.85], "comment": "Diagonal leg"},
+    ],
+    "S": [
+        {"start": [0.68, 0.25], "end": [0.25, 0.75], "via": [[0.50, 0.50]], "comment": "S-curve"},
+    ],
+    "T": [
+        {"start": [0.25, 0.15], "end": [0.75, 0.15], "comment": "Top bar"},
+        {"start": [0.50, 0.15], "end": [0.50, 0.85], "comment": "Stem"},
+    ],
+    "U": [
+        {"start": [0.28, 0.15], "end": [0.72, 0.15], "via": [[0.55, 0.87]], "comment": "U-bend"},
+    ],
+    "V": [
+        {"start": [0.28, 0.15], "end": [0.50, 0.85], "comment": "Left diagonal"},
+        {"start": [0.72, 0.15], "end": [0.50, 0.85], "comment": "Right diagonal"},
+    ],
+    "W": [
+        {"start": [0.18, 0.15], "end": [0.30, 0.85], "comment": "Left diagonal down"},
+        {"start": [0.30, 0.85], "end": [0.50, 0.45], "comment": "Up to mid peak"},
+        {"start": [0.50, 0.45], "end": [0.70, 0.85], "comment": "Down to right valley"},
+        {"start": [0.70, 0.85], "end": [0.82, 0.15], "comment": "Up to top right"},
+    ],
+    "X": [
+        {"start": [0.25, 0.15], "end": [0.75, 0.85], "comment": "TL→BR diagonal"},
+        {"start": [0.75, 0.15], "end": [0.25, 0.85], "comment": "TR→BL diagonal"},
+    ],
+    "Y": [
+        {"start": [0.25, 0.15], "end": [0.50, 0.50], "comment": "Left arm to junction"},
+        {"start": [0.75, 0.15], "end": [0.50, 0.50], "comment": "Right arm to junction"},
+        {"start": [0.50, 0.50], "end": [0.50, 0.85], "comment": "Stem"},
+    ],
+    "Z": [
+        {"start": [0.25, 0.15], "end": [0.75, 0.15], "comment": "Top bar"},
+        {"start": [0.75, 0.15], "end": [0.25, 0.85], "comment": "Diagonal"},
+        {"start": [0.25, 0.85], "end": [0.75, 0.85], "comment": "Bottom bar"},
+    ],
+}
+
+
+def rasterize(letter: str) -> np.ndarray:
+    """Render `letter` to a 512×512 binary mask (True = glyph pixel)."""
+    avail = int(SIZE * (1 - 2 * PAD))
+    font = ImageFont.truetype(str(FONT_PATH), avail)
+    bbox = font.getbbox(letter)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    if w <= 0 or h <= 0:
+        raise ValueError(f"Empty glyph for {letter!r}")
+    scale = min(avail / w, avail / h)
+    font = ImageFont.truetype(str(FONT_PATH), int(avail * scale))
+    bbox = font.getbbox(letter)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    x = (SIZE - w) // 2 - bbox[0]
+    y = (SIZE - h) // 2 - bbox[1]
+    img = Image.new("L", (SIZE, SIZE), 255)
+    ImageDraw.Draw(img).text((x, y), letter, font=font, fill=0)
+    return np.array(img) < 128
+
+
+def to_pixel(pt: list[float]) -> tuple[int, int]:
+    return (int(round(pt[0] * (SIZE - 1))), int(round(pt[1] * (SIZE - 1))))
+
+
+def to_normalized(col: int, row: int) -> tuple[float, float]:
+    return (col / (SIZE - 1), row / (SIZE - 1))
+
+
+def nearest_skeleton_pixel(skel: np.ndarray, target: tuple[int, int]) -> tuple[int, int]:
+    rows, cols = np.where(skel)
+    if rows.size == 0:
+        raise ValueError("Skeleton is empty")
+    tcol, trow = target
+    d2 = (rows - trow) ** 2 + (cols - tcol) ** 2
+    i = int(np.argmin(d2))
+    return (int(cols[i]), int(rows[i]))
+
+
+def bfs_segment(skel: np.ndarray, start: tuple[int, int], end: tuple[int, int],
+                blocked: set[tuple[int, int]] | None = None) -> list[tuple[int, int]]:
+    """8-connected BFS shortest path on the skeleton.
+
+    `blocked` is a set of pixels we may not revisit — used by the loop
+    routing in `route_path` so that a segment from start back to start
+    (closed-loop letters) doesn't immediately stop at the start node.
+    """
+    h, w = skel.shape
+    sc, sr = start
+    ec, er = end
+    if not skel[sr, sc] or not skel[er, ec]:
+        raise ValueError(f"Endpoints {start}, {end} must lie on the skeleton")
+    came_from: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+    queue: deque[tuple[int, int]] = deque([start])
+    found = False
+    while queue:
+        c, r = queue.popleft()
+        if (c, r) == end:
+            found = True
+            break
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                if dr == 0 and dc == 0:
+                    continue
+                nc, nr = c + dc, r + dr
+                if not (0 <= nc < w and 0 <= nr < h):
+                    continue
+                if not skel[nr, nc]:
+                    continue
+                if (nc, nr) in came_from:
+                    continue
+                if blocked and (nc, nr) in blocked:
+                    continue
+                came_from[(nc, nr)] = (c, r)
+                queue.append((nc, nr))
+    if not found:
+        raise ValueError(f"No skeleton path between {start} and {end}")
+    path: list[tuple[int, int]] = []
+    cur: tuple[int, int] | None = end
+    while cur is not None:
+        path.append(cur)
+        cur = came_from[cur]
+    path.reverse()
+    return path
+
+
+def route_path(skel: np.ndarray, anchors: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Concatenate BFS segments through the ordered anchors.
+
+    For closed loops (anchors[0] == anchors[-1]) we forbid revisiting the
+    final segment's already-walked pixels (except the endpoint itself) so
+    BFS doesn't immediately collapse start→end into a zero-length path.
+    """
+    if len(anchors) < 2:
+        raise ValueError("Need at least start + end")
+    full: list[tuple[int, int]] = []
+    closed = anchors[0] == anchors[-1]
+    for i in range(len(anchors) - 1):
+        is_closing = closed and i == len(anchors) - 2
+        blocked: set[tuple[int, int]] | None = None
+        if is_closing and full:
+            # Forbid revisiting the walked interior so BFS goes the
+            # OTHER way around the loop, but keep the destination
+            # reachable (it's the same pixel as anchors[0], which is
+            # in `full`).
+            blocked = set(full) - {anchors[i + 1]}
+        seg = bfs_segment(skel, anchors[i], anchors[i + 1], blocked=blocked)
+        if i == 0:
+            full.extend(seg)
+        else:
+            full.extend(seg[1:])  # skip duplicate join pixel
+    return full
+
+
+def auto_count(path_length: int) -> int:
+    return max(3, min(12, path_length // 50))
+
+
+def sample_evenly(path: list[tuple[int, int]], count: int) -> list[tuple[int, int]]:
+    if count < 2 or len(path) <= count:
+        return path
+    idx = np.linspace(0, len(path) - 1, count).round().astype(int)
+    return [path[i] for i in idx]
+
+
+def generate_for_letter(letter: str, specs: list[dict],
+                        radius: float = DEFAULT_RADIUS) -> dict:
+    mask = rasterize(letter)
+    skel = skeletonize(mask)
+    out_strokes: list[dict] = []
+    for i, spec in enumerate(specs, start=1):
+        start_n = spec["start"]
+        end_n = spec["end"]
+        via_n = spec.get("via", [])
+        anchors_n = [start_n, *via_n, end_n]
+        anchors_px = [nearest_skeleton_pixel(skel, to_pixel(p)) for p in anchors_n]
+        path = route_path(skel, anchors_px)
+        count = spec.get("count") or auto_count(len(path))
+        sampled = sample_evenly(path, count)
+        # Replace the first/last sampled pixels with the user-supplied
+        # normalized coords. The skeleton can be a few pixels off the
+        # nominal start/end (e.g., serifs sit outside the skeleton);
+        # rendering the start dot on the spec keeps the visual aligned.
+        cps: list[dict] = [{"x": round(start_n[0], 3), "y": round(start_n[1], 3)}]
+        for col, row in sampled[1:-1]:
+            x, y = to_normalized(col, row)
+            cps.append({"x": round(x, 3), "y": round(y, 3)})
+        cps.append({"x": round(end_n[0], 3), "y": round(end_n[1], 3)})
+        stroke: dict = {"id": i}
+        if "comment" in spec:
+            stroke["comment"] = spec["comment"]
+        stroke["checkpoints"] = cps
+        out_strokes.append(stroke)
+    return {"letter": letter, "checkpointRadius": radius, "strokes": out_strokes}
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Centerline-aligned strokes.json generator.")
+    ap.add_argument("letters", nargs="*", help="Letters to (re)generate. Default: all in spec.")
+    ap.add_argument("--out", default=str(OUTPUT_BASE), help="Output base directory")
+    ap.add_argument("--no-overwrite", action="store_true",
+                    help="Skip letters whose strokes.json already exists")
+    args = ap.parse_args()
+
+    targets = args.letters or sorted(LETTER_SPECS.keys())
+    out_base = Path(args.out)
+    failures = 0
+    for letter in targets:
+        if letter not in LETTER_SPECS:
+            print(f"  {letter}: no spec — skipping")
+            continue
+        out_file = out_base / letter / "strokes.json"
+        if args.no_overwrite and out_file.exists():
+            print(f"  {letter}: exists (skipped)")
+            continue
+        try:
+            data = generate_for_letter(letter, LETTER_SPECS[letter])
+        except Exception as e:
+            print(f"  {letter}: FAILED — {e}")
+            failures += 1
+            continue
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+        cp_count = sum(len(s["checkpoints"]) for s in data["strokes"])
+        print(f"  {letter}: ✓ {len(data['strokes'])} strokes, {cp_count} checkpoints")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
