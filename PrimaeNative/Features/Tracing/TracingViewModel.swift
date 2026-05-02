@@ -1282,7 +1282,6 @@ public final class TracingViewModel {
         guard index < total, !directTappedDots.contains(index) else { return }
 
         if index == directNextExpectedDotIndex {
-            let isFirstTap = directTappedDots.isEmpty
             // The dot overlay's `.id(idx)` transition is run by the
             // SwiftUI view (DirectPhaseDotsOverlay) — its tap handler
             // wraps this method in `withAnimation`, so the state
@@ -1298,17 +1297,12 @@ public final class TracingViewModel {
             // turned into noise); the click stays per-tap so each
             // confirmation is distinct.
             prompts.playTapChime()
-            // Replay the letter name only on the FIRST correct tap. Every
-            // following dot still fires a haptic + directional arrow, but the
-            // audio would just retrigger the same "Aaa"/"Emm" and turn into
-            // noise — the child already heard it; now they need direction,
-            // not another repetition of the name.
-            if isFirstTap, letters.indices.contains(letterIndex) {
-                let files = activeAudioFiles(for: letters[letterIndex])
-                if files.indices.contains(audioIndex) {
-                    audio.loadAudioFile(named: files[audioIndex], autoplay: true)
-                }
-            }
+            // No letter-name audio in the direct phase: the tap chime
+            // + haptic + directional arrow already provide three
+            // concurrent confirmation channels, and replaying the
+            // phoneme on dot taps was reading as duplicate / noisy
+            // (it already plays on the observe demo and during
+            // guided tracing).
             // Show directional arrow briefly along the stroke path.
             directArrowStrokeIndex = index
             // On the final dot, the old code advanced the phase synchronously,
