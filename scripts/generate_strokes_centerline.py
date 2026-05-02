@@ -43,6 +43,7 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+from skimage.measure import label as cc_label
 from skimage.morphology import skeletonize
 
 
@@ -175,6 +176,162 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.75, 0.15], "end": [0.25, 0.85], "comment": "Diagonal"},
         {"start": [0.25, 0.85], "end": [0.75, 0.85], "comment": "Bottom bar"},
     ],
+    "Q": [
+        # Body via sits in the middle of the right-side body skeleton
+        # (col ≈ 0.70) rather than at (0.81, 0.80) where the tail's
+        # endpoint lives — otherwise nearest-pixel snapping picks the
+        # tail tip and the closing segment dead-ends.
+        {"start": [0.27, 0.13], "end": [0.27, 0.13], "via": [[0.71, 0.50]], "comment": "Oval body"},
+        {"start": [0.55, 0.65], "end": [0.85, 0.95], "comment": "Tail"},
+    ],
+    # Austrian uppercase umlauts: 2 dots + base letter body. The base
+    # letter is rendered smaller to make room for the dots, so its
+    # normalized coords are pushed down vs. the standalone uppercase.
+    "Ä": [
+        {"start": [0.45, 0.14], "end": [0.45, 0.14], "comment": "Left dot"},
+        {"start": [0.61, 0.14], "end": [0.61, 0.14], "comment": "Right dot"},
+        {"start": [0.50, 0.30], "end": [0.28, 0.87], "via": [[0.39, 0.60]], "comment": "Left leg"},
+        {"start": [0.50, 0.30], "end": [0.67, 0.87], "via": [[0.58, 0.60]], "comment": "Right leg"},
+        {"start": [0.34, 0.68], "end": [0.61, 0.68], "comment": "Crossbar"},
+    ],
+    "Ö": [
+        {"start": [0.46, 0.14], "end": [0.46, 0.14], "comment": "Left dot"},
+        {"start": [0.62, 0.14], "end": [0.62, 0.14], "comment": "Right dot"},
+        {"start": [0.40, 0.30], "end": [0.40, 0.30], "via": [[0.65, 0.85]], "comment": "Oval body"},
+    ],
+    "Ü": [
+        {"start": [0.45, 0.14], "end": [0.45, 0.14], "comment": "Left dot"},
+        {"start": [0.61, 0.14], "end": [0.61, 0.14], "comment": "Right dot"},
+        {"start": [0.34, 0.30], "end": [0.66, 0.30], "via": [[0.50, 0.85]], "comment": "U-bend"},
+    ],
+    "ß": [
+        {"start": [0.40, 0.14], "end": [0.40, 0.86], "comment": "Vertical spine"},
+        {"start": [0.40, 0.14], "end": [0.40, 0.50], "via": [[0.65, 0.30]], "comment": "Top bowl"},
+        {"start": [0.40, 0.50], "end": [0.55, 0.86], "via": [[0.66, 0.70]], "comment": "Bottom curve"},
+    ],
+    # Lowercase. Coordinates are normalized within each glyph's own
+    # rendered bounding box (so 0.0..1.0 covers the full rasterized
+    # glyph including ascenders / descenders, not the x-height alone).
+    "a": [
+        {"start": [0.70, 0.40], "end": [0.70, 0.80], "via": [[0.30, 0.55], [0.55, 0.80]], "comment": "Bowl + tail (one stroke)"},
+    ],
+    "b": [
+        {"start": [0.40, 0.16], "end": [0.40, 0.85], "comment": "Vertical spine"},
+        {"start": [0.40, 0.45], "end": [0.40, 0.85], "via": [[0.65, 0.65]], "comment": "Bowl"},
+    ],
+    "c": [
+        {"start": [0.72, 0.30], "end": [0.72, 0.75], "via": [[0.30, 0.50]], "comment": "Open arc"},
+    ],
+    "d": [
+        {"start": [0.45, 0.45], "end": [0.45, 0.85], "via": [[0.35, 0.65]], "comment": "Bowl"},
+        {"start": [0.65, 0.16], "end": [0.65, 0.85], "comment": "Vertical spine"},
+    ],
+    "e": [
+        {"start": [0.30, 0.55], "end": [0.70, 0.55], "comment": "Mid bar"},
+        {"start": [0.70, 0.55], "end": [0.70, 0.75], "via": [[0.30, 0.45], [0.30, 0.75]], "comment": "Arc + tail"},
+    ],
+    "f": [
+        {"start": [0.62, 0.16], "end": [0.45, 0.85], "via": [[0.50, 0.55]], "comment": "Spine (with hook)"},
+        {"start": [0.40, 0.42], "end": [0.62, 0.42], "comment": "Crossbar"},
+    ],
+    "g": [
+        {"start": [0.65, 0.40], "end": [0.65, 0.65], "via": [[0.35, 0.55]], "comment": "Bowl"},
+        {"start": [0.65, 0.40], "end": [0.40, 0.86], "via": [[0.55, 0.85]], "comment": "Descender"},
+    ],
+    "h": [
+        {"start": [0.40, 0.16], "end": [0.40, 0.85], "comment": "Vertical spine"},
+        {"start": [0.40, 0.50], "end": [0.65, 0.85], "via": [[0.60, 0.45]], "comment": "Arch"},
+    ],
+    "i": [
+        {"start": [0.50, 0.40], "end": [0.50, 0.85], "comment": "Stem"},
+        {"start": [0.50, 0.16], "end": [0.50, 0.16], "comment": "Dot"},
+    ],
+    "j": [
+        {"start": [0.55, 0.30], "end": [0.40, 0.86], "via": [[0.50, 0.85]], "comment": "Stem with descender hook"},
+        {"start": [0.55, 0.14], "end": [0.55, 0.14], "comment": "Dot"},
+    ],
+    "k": [
+        {"start": [0.40, 0.14], "end": [0.40, 0.85], "comment": "Vertical spine"},
+        {"start": [0.40, 0.55], "end": [0.66, 0.50], "comment": "Upper arm"},
+        {"start": [0.46, 0.65], "end": [0.65, 0.85], "comment": "Lower arm"},
+    ],
+    "l": [
+        {"start": [0.50, 0.14], "end": [0.50, 0.85], "comment": "Stem"},
+    ],
+    "m": [
+        {"start": [0.22, 0.32], "end": [0.22, 0.70], "comment": "Left stem"},
+        {"start": [0.22, 0.35], "end": [0.50, 0.70], "via": [[0.45, 0.32]], "comment": "Left arch"},
+        {"start": [0.50, 0.35], "end": [0.78, 0.70], "via": [[0.72, 0.32]], "comment": "Right arch"},
+    ],
+    "n": [
+        {"start": [0.27, 0.20], "end": [0.27, 0.80], "comment": "Left stem"},
+        {"start": [0.27, 0.25], "end": [0.72, 0.80], "via": [[0.65, 0.22]], "comment": "Arch"},
+    ],
+    "o": [
+        {"start": [0.30, 0.20], "end": [0.30, 0.20], "via": [[0.70, 0.80]], "comment": "Closed loop"},
+    ],
+    "p": [
+        {"start": [0.40, 0.30], "end": [0.40, 0.86], "comment": "Vertical with descender"},
+        {"start": [0.40, 0.30], "end": [0.40, 0.65], "via": [[0.65, 0.45]], "comment": "Bowl"},
+    ],
+    "q": [
+        {"start": [0.65, 0.30], "end": [0.65, 0.65], "via": [[0.35, 0.45]], "comment": "Bowl"},
+        {"start": [0.65, 0.30], "end": [0.65, 0.86], "comment": "Vertical with descender"},
+    ],
+    "r": [
+        {"start": [0.40, 0.20], "end": [0.40, 0.80], "comment": "Stem"},
+        {"start": [0.40, 0.30], "end": [0.70, 0.30], "comment": "Flag"},
+    ],
+    "s": [
+        {"start": [0.65, 0.25], "end": [0.30, 0.75], "via": [[0.45, 0.50]], "comment": "S-curve"},
+    ],
+    "t": [
+        {"start": [0.50, 0.16], "end": [0.50, 0.85], "comment": "Stem"},
+        {"start": [0.38, 0.40], "end": [0.62, 0.40], "comment": "Crossbar"},
+    ],
+    "u": [
+        {"start": [0.30, 0.25], "end": [0.70, 0.25], "via": [[0.50, 0.78]], "comment": "U-bend"},
+        {"start": [0.70, 0.25], "end": [0.70, 0.80], "comment": "Right stem"},
+    ],
+    "v": [
+        {"start": [0.30, 0.20], "end": [0.50, 0.80], "comment": "Left diagonal"},
+        {"start": [0.70, 0.20], "end": [0.50, 0.80], "comment": "Right diagonal"},
+    ],
+    "w": [
+        {"start": [0.22, 0.30], "end": [0.35, 0.70], "comment": "Down-left"},
+        {"start": [0.35, 0.70], "end": [0.50, 0.45], "comment": "Up to mid"},
+        {"start": [0.50, 0.45], "end": [0.65, 0.70], "comment": "Down to right"},
+        {"start": [0.65, 0.70], "end": [0.78, 0.30], "comment": "Up to top right"},
+    ],
+    "x": [
+        {"start": [0.25, 0.20], "end": [0.75, 0.80], "comment": "TL→BR"},
+        {"start": [0.75, 0.20], "end": [0.25, 0.80], "comment": "TR→BL"},
+    ],
+    "y": [
+        {"start": [0.35, 0.25], "end": [0.55, 0.65], "comment": "Left arm"},
+        {"start": [0.65, 0.25], "end": [0.40, 0.86], "via": [[0.50, 0.85]], "comment": "Right arm with descender"},
+    ],
+    "z": [
+        {"start": [0.30, 0.25], "end": [0.70, 0.25], "comment": "Top bar"},
+        {"start": [0.70, 0.25], "end": [0.30, 0.75], "comment": "Diagonal"},
+        {"start": [0.30, 0.75], "end": [0.70, 0.75], "comment": "Bottom bar"},
+    ],
+    "ä": [
+        {"start": [0.45, 0.16], "end": [0.45, 0.16], "comment": "Left dot"},
+        {"start": [0.64, 0.16], "end": [0.64, 0.16], "comment": "Right dot"},
+        {"start": [0.70, 0.50], "end": [0.70, 0.82], "via": [[0.35, 0.62], [0.55, 0.82]], "comment": "Bowl + tail"},
+    ],
+    "ö": [
+        {"start": [0.45, 0.16], "end": [0.45, 0.16], "comment": "Left dot"},
+        {"start": [0.63, 0.16], "end": [0.63, 0.16], "comment": "Right dot"},
+        {"start": [0.35, 0.40], "end": [0.35, 0.40], "via": [[0.65, 0.82]], "comment": "Closed loop"},
+    ],
+    "ü": [
+        {"start": [0.43, 0.16], "end": [0.43, 0.16], "comment": "Left dot"},
+        {"start": [0.62, 0.16], "end": [0.62, 0.16], "comment": "Right dot"},
+        {"start": [0.32, 0.42], "end": [0.68, 0.42], "via": [[0.50, 0.83]], "comment": "U-bend"},
+        {"start": [0.68, 0.42], "end": [0.68, 0.82], "comment": "Right stem"},
+    ],
 }
 
 
@@ -205,10 +362,16 @@ def to_normalized(col: int, row: int) -> tuple[float, float]:
     return (col / (SIZE - 1), row / (SIZE - 1))
 
 
-def nearest_skeleton_pixel(skel: np.ndarray, target: tuple[int, int]) -> tuple[int, int]:
-    rows, cols = np.where(skel)
+def nearest_skeleton_pixel(skel: np.ndarray, target: tuple[int, int],
+                           mask: np.ndarray | None = None) -> tuple[int, int]:
+    """Nearest skeleton pixel to `target`. When `mask` is supplied,
+    restrict the search to pixels where mask is True (used for
+    component-aware anchor snapping in letters like K whose spine and
+    arms skeletonize into separate connected components)."""
+    src = mask if mask is not None else skel
+    rows, cols = np.where(src)
     if rows.size == 0:
-        raise ValueError("Skeleton is empty")
+        raise ValueError("Skeleton (or mask) is empty")
     tcol, trow = target
     d2 = (rows - trow) ** 2 + (cols - tcol) ** 2
     i = int(np.argmin(d2))
@@ -305,13 +468,30 @@ def generate_for_letter(letter: str, specs: list[dict],
                         radius: float = DEFAULT_RADIUS) -> dict:
     mask = rasterize(letter)
     skel = skeletonize(mask)
+    labels = cc_label(skel)
     out_strokes: list[dict] = []
     for i, spec in enumerate(specs, start=1):
         start_n = spec["start"]
         end_n = spec["end"]
         via_n = spec.get("via", [])
         anchors_n = [start_n, *via_n, end_n]
-        anchors_px = [nearest_skeleton_pixel(skel, to_pixel(p)) for p in anchors_n]
+        # Pick a target connected component by majority vote: each
+        # anchor's globally-nearest skeleton pixel reports its
+        # component, the most-popular component wins, and all anchors
+        # snap into THAT component. Without this, K's arm strokes
+        # snap their `start` (which sits visually at the spine
+        # junction) to the spine — a different component from the
+        # arm's via — and BFS can't find a path between disjoint
+        # components.
+        comp_votes: dict[int, int] = {}
+        for pt in anchors_n:
+            sk = nearest_skeleton_pixel(skel, to_pixel(pt))
+            cid = int(labels[sk[1], sk[0]])
+            comp_votes[cid] = comp_votes.get(cid, 0) + 1
+        chosen_comp = max(comp_votes.items(), key=lambda kv: kv[1])[0]
+        comp_mask = (labels == chosen_comp)
+        anchors_px = [nearest_skeleton_pixel(skel, to_pixel(p), mask=comp_mask)
+                      for p in anchors_n]
         path = route_path(skel, anchors_px)
         count = spec.get("count") or auto_count(len(path))
         sampled = sample_evenly(path, count)
