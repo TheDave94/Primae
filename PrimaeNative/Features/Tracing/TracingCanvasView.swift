@@ -44,19 +44,18 @@ struct TracingCanvasView: View {
                 let cellLetter = vm.gridCellLetter(at: i) ?? vm.currentLetterName
                 let isActiveCell = (i == activeIndex)
 
-                // Background: render the cell's own letter at cell size.
-                // Skipped in word mode — the whole-word image was already
-                // drawn above so the ligatures connect across cells.
-                // Falls back to the VM's shared currentLetterImage when
-                // rendering fails (missing font glyph) so the single-letter
-                // path still shows its PBM backup.
-                if wordRendering == nil {
-                    if let img = PrimaeLetterRenderer.render(
-                        letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt) {
-                        context.draw(Image(uiImage: img), in: cellFrame)
-                    } else if let img = vm.currentLetterImage, cellLetter == vm.currentLetterName {
-                        context.draw(Image(uiImage: img), in: cellFrame)
-                    }
+                // Background: fill the glyph as a vector path from the
+                // OTF outline directly. Resolution-independent, so this
+                // renders crisply at any iPad size without any
+                // pre-rasterised PBM ghost. Skipped in word mode — the
+                // whole-word image was already drawn above so the
+                // ligatures connect across cells.
+                if wordRendering == nil,
+                   let glyph = PrimaeLetterRenderer.glyphPath(
+                       letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt) {
+                    let positioned = glyph.applying(
+                        CGAffineTransform(translationX: ox, y: oy))
+                    context.fill(positioned, with: .color(.ink.opacity(0.78)))
                 }
 
                 // Ghost scaffolding: phase drives default visibility (observe/guided = on,

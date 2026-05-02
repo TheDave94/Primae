@@ -46,9 +46,10 @@ public final class TracingViewModel {
                 showingVariant = false
                 variantStrokeCache = nil
             }
-            currentLetterImage = PrimaeLetterRenderer.render(
-                letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
-                ?? PBMLoader.load(named: currentLetterImageName)
+            // The canvas now renders the glyph as a vector path on every
+            // frame (`PrimaeLetterRenderer.glyphPath`), so script changes
+            // need no image refresh — the next Canvas redraw picks up
+            // the new font automatically.
             reloadStrokeCheckpoints(for: letters[letterIndex])
             // W-29: reloadStrokeCheckpoints resets the tracker to empty
             // checkpoints; zero the progress bar immediately so it doesn't
@@ -59,8 +60,6 @@ public final class TracingViewModel {
     /// Forwarded from `TransientMessagePresenter` so existing views keep binding via `vm.toastMessage`.
     var toastMessage: String? { messages.toastMessage }
     var currentLetterName   = "A"
-    var currentLetterImageName = ""
-    var currentLetterImage: UIImage? = nil
     var canvasSize: CGSize  = CGSize(width: 1024, height: 1024) {
         didSet {
             guard oldValue != canvasSize,
@@ -73,10 +72,6 @@ public final class TracingViewModel {
             // load(letter:) was called at init with the default 1024×1024 size; the
             // view updates canvasSize to the actual device size on first layout.
             reloadStrokeCheckpoints(for: letters[letterIndex])
-            // Also re-render the letter image at the correct canvas size.
-            currentLetterImage = PrimaeLetterRenderer.render(
-                letter: currentLetterName, size: canvasSize, schriftArt: schriftArt)
-                ?? PBMLoader.load(named: currentLetterImageName)
         }
     }
 
@@ -1629,8 +1624,6 @@ public final class TracingViewModel {
         directArrowStrokeIndex = nil
         showGhost                      = false
         currentLetterName              = letter.name
-        currentLetterImageName         = letter.imageName
-        currentLetterImage             = PrimaeLetterRenderer.render(letter: letter.name, size: canvasSize, schriftArt: schriftArt) ?? PBMLoader.load(named: letter.imageName)
         // Only point at which the detector can downgrade from .pencil
         // back to .finger — see InputModeDetector for the hysteresis
         // rule. Runs BEFORE reapplyGridPreset so the grid reflects

@@ -1,4 +1,5 @@
 import UIKit
+import SwiftUI
 import CoreText
 import CoreGraphics
 
@@ -180,6 +181,46 @@ public enum PrimaeLetterRenderer {
         let image = UIImage(cgImage: cgImage, scale: scale, orientation: .up)
         return WordRendering(image: image, characterFrames: characterFrames)
     }
+    /// Returns the glyph as a SwiftUI `Path`, positioned and scaled so
+    /// its bounding box sits centred inside `size` with the same 10 %
+    /// padding the rasterised path uses. Coordinates are top-left
+    /// origin (UIKit / SwiftUI convention) so the caller can hand the
+    /// path straight to `Canvas` `context.fill(_:with:)` or any
+    /// `.fill(_:)` modifier without further transformation.
+    ///
+    /// Vector replacement for the old PBM ghost: resolution-independent,
+    /// re-renders crisply at any iPad size, and trims ~1 MB of
+    /// pre-rasterised assets from the bundle. Returns nil only when
+    /// the font / glyph isn't available (test environment) or `size`
+    /// is degenerate.
+    public static func glyphPath(letter: String, size: CGSize,
+                                 schriftArt: SchriftArt = .druckschrift) -> Path? {
+        guard size.width > 0, size.height > 0, !letter.isEmpty,
+              !isRunningTests else { return nil }
+        let probe: CGFloat = 800
+        guard let font = makeFont(size: probe, fontName: schriftArt.fontFileName),
+              var glyph = getGlyph(for: letter, in: font) else { return nil }
+        let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
+        guard bbox.width > 0, bbox.height > 0,
+              let cgPath = CTFontCreatePathForGlyph(font, glyph, nil) else { return nil }
+        let pad: CGFloat = 0.10
+        let availW = size.width  * (1 - 2 * pad)
+        let availH = size.height * (1 - 2 * pad)
+        let scale  = min(availW / bbox.width, availH / bbox.height)
+        // Compose: shift bbox-centre to origin → scale (negative Y to
+        // flip CoreText's bottom-left origin into UIKit top-left) →
+        // translate to canvas centre. CGAffineTransform's chained
+        // builder applies operations such that the LAST .translatedBy
+        // is the FIRST applied to a point — so reading bottom-up
+        // matches the visual order above.
+        var transform = CGAffineTransform.identity
+            .translatedBy(x: size.width / 2, y: size.height / 2)
+            .scaledBy(x: scale, y: -scale)
+            .translatedBy(x: -bbox.midX, y: -bbox.midY)
+        guard let positioned = cgPath.copy(using: &transform) else { return nil }
+        return Path(positioned)
+    }
+
     /// Returns the normalized ink bounding rect (0–1 in each axis) for the given letter
     /// as rendered by PrimaeLetterRenderer at the given canvas size.
     /// Used by TracingCanvasView and StrokeCalibrationOverlay to map normalised
