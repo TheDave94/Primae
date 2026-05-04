@@ -1,17 +1,16 @@
 // RetrievalPromptView.swift
 // PrimaeNative
 //
-// P1 (ROADMAP): spaced-retrieval recognition prompt. Roediger &
-// Karpicke (2006) showed that retrieval tests produce better long-
-// term retention than additional study — generating an answer beats
-// re-encoding it. Every Nth letter selection (cadence governed by
-// `RetrievalScheduler`), the parent-opt-in flow shows this overlay
-// before the tracing phases begin: play the letter's audio (or
-// phoneme), show three candidate letters, child picks one.
-//
-// The outcome lands on `LetterProgress.retrievalAttempts` via the
-// VM's onAnswer callback. Modal — the queue waits for the child to
-// answer (or, for impatient parents, tap-and-hold "Überspringen").
+// Spaced-retrieval recognition prompt. Roediger & Karpicke (2006):
+// retrieval tests produce better long-term retention than additional
+// study — generating an answer beats re-encoding it. Every Nth letter
+// selection (cadence governed by `RetrievalScheduler`) the parent-
+// opt-in flow shows this overlay before the tracing phases begin:
+// play the letter's audio (or phoneme), show three candidate letters,
+// child picks one. The outcome lands on
+// `LetterProgress.retrievalAttempts` via the VM's onAnswer callback.
+// Modal — the queue waits for the child to answer, or for an
+// impatient parent to tap-and-hold "Überspringen".
 
 import SwiftUI
 
@@ -20,7 +19,7 @@ struct RetrievalPromptView: View {
     let target: String
     let distractors: [String]
     /// Replays the audio cue. The VM wires this to `replayAudio()` so
-    /// the existing name/phoneme toggle (P6) is honoured automatically.
+    /// the parent's name / phoneme toggle is honoured automatically.
     let onPlayAudio: () -> Void
     /// Fires once on the first tap; child's choice (`tapped`) is the
     /// raw label they picked; `correct` is whether it matched `target`.

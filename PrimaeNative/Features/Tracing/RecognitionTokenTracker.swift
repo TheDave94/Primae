@@ -1,29 +1,16 @@
 // RecognitionTokenTracker.swift
 // PrimaeNative
 //
-// D1a (ROADMAP) — first slice of the TracingViewModel decomposition.
 // Tracks "which recognition request is currently authoritative" so the
 // three async recognizer call sites (freeWrite, freeform-letter,
 // freeform-word) can each gate their completion handlers against a
 // state-clearing event (letter load, phase transition, canvas clear)
 // that happened while inference was in flight.
 //
-// Before this slice, every entry point hand-rolled the same pair of
-// helpers on the VM (`issueRecognitionToken` / `recognitionStillActive`)
-// against a `private var activeRecognitionToken: UUID?` field. Pulling
-// it into a small reference-typed helper centralises the contract: the
-// VM no longer cares whether the token is a UUID or some other id, and
-// the helper can grow (e.g. to expose cancellation reasons or per-mode
-// tokens) without touching the call sites.
-//
-// Intentionally narrow: this slice does NOT extract the recognition
-// orchestration itself (the freeWrite/freeform-letter/word dispatch +
-// completion routing). That's still recommended in ROADMAP but needs
-// careful in-loop review — the 3 entry points have distinct side
-// effects (lastRecognitionResult, freeform.isRecognizing, paper-
-// transfer enqueue, speech wiring, P2 self-explanation re-animation)
-// and a one-shot extraction has too many coupling points for safe
-// autonomous work.
+// Centralising the contract behind a small reference-typed helper
+// keeps the VM out of the business of token bookkeeping; new
+// signalling (cancellation reasons, per-mode tokens) can grow here
+// without touching the call sites.
 
 import Foundation
 

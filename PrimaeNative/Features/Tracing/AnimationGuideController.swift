@@ -1,11 +1,10 @@
 // AnimationGuideController.swift
 // PrimaeNative
 //
-// Drives the "blue dot follows the stroke path" animation used during the
-// observe phase and the onboarding trace-demo. Pure UI-side concern: owns
-// the animation point + looping Task, with no audio, touch, or phase
-// knowledge. Extracted from TracingViewModel to keep its God-object scope
-// smaller.
+// Drives the "blue dot follows the stroke path" animation used during
+// the observe phase and the onboarding trace demo. Owns the animation
+// point and looping Task; deliberately knows nothing about audio,
+// touch, or phase logic.
 
 import CoreGraphics
 import Foundation
@@ -49,12 +48,11 @@ final class AnimationGuideController {
         guard !guide.steps.isEmpty else { return }
 
         task = Task { [weak self, sleeper] in
-            // P4 (ROADMAP_V5): "Bob the dog" start cue. Park the guide
-            // dot at the first step's position for ~1 s before the loop
-            // begins so a 5-year-old has a chance to see WHERE the
-            // trace starts before the dot starts moving (Mayer 2009
-            // pre-attentive cueing). Skipped on subsequent loop
-            // iterations — only the very first step gets the dwell.
+            // Pre-attentive start cue: park the guide dot at the first
+            // step's position for ~1 s before the loop begins so a
+            // 5-year-old has a chance to see WHERE the trace starts
+            // before the dot starts moving (Mayer 2009). Only fires on
+            // the first iteration; subsequent loops skip the dwell.
             let firstHoldRequested = !Task.isCancelled
             var heldFirst = false
             // 60 Hz interpolation budget: each segment between two
@@ -110,8 +108,8 @@ final class AnimationGuideController {
         }
     }
 
-    /// Begin the animation after a delay. Used when a new letter loads so
-    /// the dot doesn't race ahead of the PBM fade-in.
+    /// Begin the animation after a delay so the dot doesn't race
+    /// ahead of the letter ghost fade-in on a fresh letter load.
     func startAfterDelay(_ seconds: TimeInterval, strokes: LetterStrokes) {
         startTask?.cancel()
         startTask = Task { [weak self, sleeper] in

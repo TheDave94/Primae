@@ -8,11 +8,10 @@ struct PaperTransferView: View {
     @Environment(TracingViewModel.self) private var vm
     let letter: String
     let onComplete: (Double) -> Void
-    /// D4 (ROADMAP_V5): injectable sleeper so the 3 s reference / 10 s
-    /// write-paper timing is testable deterministically. Production
-    /// keeps the wall-clock `Task.sleep`; the test target swaps in an
-    /// instant-resume closure, asserts the phase rotation, and skips
-    /// the 13-second wall-clock wait.
+    /// Injectable sleeper so the 3 s reference / 10 s write-paper
+    /// timing is testable deterministically. Production keeps
+    /// `Task.sleep`; tests substitute an instant-resume closure to
+    /// skip the 13-second wall-clock wait.
     var sleep: @Sendable (Duration) async throws -> Void = {
         try await Task.sleep(for: $0)
     }
