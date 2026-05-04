@@ -22,8 +22,8 @@ import UIKit
 // invisible). These tones give every label and chip a predictable
 // background to sit on regardless of system colour scheme.
 /// Freeform-mode-specific tokens that don't have an `AppSurface`
-/// equivalent. Card / edge / prompt now alias `AppSurface` directly so
-/// a re-skin only touches one file (review item W-38).
+/// equivalent. Card / edge / prompt alias `AppSurface` directly so a
+/// re-skin only touches one file.
 private enum FreeformSurface {
     /// Toolbar and prompt strip behind Zurück / mode picker / Nochmal.
     static let header   = Color(red: 0.94, green: 0.94, blue: 0.97)
@@ -175,8 +175,8 @@ struct FreeformWritingView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Zielwort \(target.word)")
                 } else {
-                    // Match the in-canvas prompt at line 385 (same wording,
-                    // terminal period) — review item W-29.
+                    // Mirror the in-canvas prompt verbatim so the
+                    // header and the canvas hint never drift.
                     Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift.")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(FreeformSurface.prompt)
@@ -209,9 +209,8 @@ struct FreeformWritingView: View {
                             .foregroundStyle(isSelected
                                              ? Color.canvasPaper
                                              : FreeformSurface.pillIdleText)
-                            // Lift to ≥ 44 pt total height (HIG minimum
-                            // touch target) — review item W-31. headline
-                            // line height ≈ 22 pt + 2×14 pt vertical = ≥ 50 pt.
+                            // 44 pt minimum touch target (HIG): headline
+                            // line height ≈ 22 pt + 2×14 pt = ≥ 50 pt.
                             .padding(.horizontal, 14).padding(.vertical, 14)
                             .background(
                                 isSelected

@@ -37,12 +37,10 @@ struct RecognitionFeedbackView: View {
                 .background(style.tint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
                 .onTapGesture { onDismiss() }
-                // Auto-dismiss is owned by OverlayQueueManager (3 s for the
-                // .recognitionBadge case). The view-level .task previously
-                // here was dead code: the queue fires first, SwiftUI tears
-                // the view down, the .task is cancelled. Removing it so a
-                // future "fix" that aligns the queue duration with the
-                // (wrong) 4 s comment doesn't introduce a second timer.
+                // Auto-dismiss is owned by OverlayQueueManager (3 s for
+                // `.recognitionBadge`). Don't add a view-level `.task`
+                // here — the queue fires first and tears the view down,
+                // so a second timer would just race the queue.
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(style.message)
                 .accessibilityAddTraits(.isButton)

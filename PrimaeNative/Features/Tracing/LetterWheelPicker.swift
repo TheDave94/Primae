@@ -27,10 +27,10 @@ struct LetterWheelPicker: View {
     var body: some View {
         ZStack {
             // Sighted users tap the scrim to dismiss; VoiceOver users
-            // get an explicit "Abbrechen" button (review item W-34) so
-            // focus order is deterministic — the previous scrim-as-
-            // button left the focus ordering ambiguous, sometimes
-            // hitting the scrim before the grid and sometimes after.
+            // get an explicit "Abbrechen" button so focus order stays
+            // deterministic. Treating the scrim as the dismiss button
+            // for VoiceOver leaves focus ordering ambiguous (scrim vs
+            // grid race).
             Color.ink.opacity(0.35)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())

@@ -1,35 +1,33 @@
 // PhaseTransitionCoordinator.swift
 // PrimaeNative
 //
-// D1c (ROADMAP) — third VM-decomposition slice. Owns the post-phase
-// pipeline that runs whenever the learner completes a phase or the
-// whole letter session:
+// Owns the post-phase pipeline that runs when the learner completes
+// a phase or the whole letter session:
 //
 //   `advance()` — score the just-completed phase, queue the post-
 //   freeWrite kpOverlay + paperTransfer, advance the controller, and
 //   route to either `toast` + `speech` (mid-cycle phase entry) or
 //   `recordSessionCompletion()` (final phase reached).
 //
-//   `recordSessionCompletion()` (private) — celebration overlay +
-//   praise speech, write one PhaseSessionRecord per phase to the
-//   dashboard, hand off to `commitCompletion`.
+//   `recordSessionCompletion()` — celebration overlay + praise
+//   speech, write one PhaseSessionRecord per phase to the dashboard,
+//   hand off to `commitCompletion`.
 //
 //   `commitCompletion(...)` — durable progress, streak update +
-//   reward overlays, dashboard session record, cloud sync push,
-//   difficulty-tier adaptation, completion HUD. Called both from the
-//   end-of-phase pipeline and from per-cell completion sites that
-//   need the same shared side-effect set.
+//   reward overlays, dashboard session record, cloud-sync push,
+//   difficulty-tier adaptation, completion HUD. Called from both the
+//   end-of-phase pipeline and per-cell completion sites that need
+//   the same shared side-effect set.
 //
-// Communicates back to the VM via a weak reference (no retain cycle:
+// Holds a weak reference back to the VM. Retain ownership goes:
 // VM strong-owns the coordinator; coordinator weakly references the
-// VM). State the coordinator reads/writes during a transition lives
-// on the VM (phaseController, freeWriteRecorder, the four stores,
-// overlayQueue, speech, syncCoordinator, …) — those go through the
-// weak ref. The coordinator is stateless beyond the back-reference.
+// VM. State touched during a transition lives on the VM
+// (phaseController, freeWriteRecorder, the four stores, overlayQueue,
+// speech, syncCoordinator, …) and is reached through the weak ref.
+// The coordinator is stateless beyond the back-reference.
 //
-// Same shape as TouchDispatcher (D1b): the VM keeps thin forwarders
-// (`advanceLearningPhase`) so SwiftUI views and TouchDispatcher
-// don't have to change.
+// Views still call into `vm.advanceLearningPhase` so the SwiftUI
+// binding surface and tests don't change — the VM forwards.
 
 import Foundation
 import QuartzCore
@@ -335,18 +333,19 @@ final class PhaseTransitionCoordinator {
             lettersCompleted: lettersToRecord,
             accuracy: accuracy
         )
-        // U1 (ROADMAP_V5): surface freshly-unlocked achievements as a
-        // one-time overlay before the celebration the child is already
-        // expecting. `enqueueBeforeCelebration` slots each badge ahead
-        // of the celebration regardless of where in the queue the
-        // celebration currently sits (queued / about to fire / active).
+        // Surface freshly-unlocked achievements as a one-time overlay
+        // before the celebration the child is already expecting.
+        // `enqueueBeforeCelebration` slots each badge ahead of the
+        // celebration regardless of where in the queue the
+        // celebration currently sits.
         for event in newRewards {
             vm.overlayQueue.enqueueBeforeCelebration(.rewardCelebration(event))
         }
-        // T4: wall-clock duration includes any backgrounded interval and
-        // is reconstructed from the load Date stamp; the active-time
-        // `duration` parameter excludes it (D-1 accumulator).
-        // T7: device tag so the export can split duration by input mode.
+        // `wallClock` includes any backgrounded interval and is
+        // reconstructed from the load timestamp; the active-time
+        // `duration` parameter excludes backgrounded time.
+        // `device` tags the input mode so the export can split
+        // duration by finger / pencil.
         let wallClock = vm.letterLoadedDate.map { Date().timeIntervalSince($0) }
         let device = vm.detector.effectiveKind.rawValue
         vm.dashboardStore.recordSession(letter: dashboardLabel, accuracy: accuracy,

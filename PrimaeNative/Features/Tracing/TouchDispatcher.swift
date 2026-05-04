@@ -1,25 +1,22 @@
 // TouchDispatcher.swift
 // PrimaeNative
 //
-// D1b (ROADMAP) — second VM-decomposition slice. Owns the touch-
-// session state (`isSingleTouchInteractionActive`, last point /
-// timestamp, smoothed velocity, the three tuning knobs) and the
-// touch-handling control flow (`beginTouch` / `updateTouch` /
-// `endTouch` plus the five private helpers that used to clutter the
-// VM body).
+// Owns the touch-session state
+// (`isSingleTouchInteractionActive`, last point + timestamp,
+// smoothed velocity, the three tuning knobs) and the touch-handling
+// control flow (`beginTouch` / `updateTouch` / `endTouch` plus the
+// private helpers).
 //
-// Communicates back to the VM via a weak reference (no retain cycle:
-// VM strong-owns the dispatcher; dispatcher weakly references the VM
-// it was constructed for). Most state the dispatcher reads/writes
-// during a touch is on the VM (audio, playback, haptics,
-// freeWriteRecorder, strokeTracker, grid, phaseController, letters,
-// activePath, progress, …) — those go through the weak ref. The
-// dispatcher OWNS the small state that's purely about the in-flight
-// touch session.
+// Holds a weak reference back to the VM. Retain ownership goes:
+// VM strong-owns the dispatcher; dispatcher weakly references the
+// VM. State the dispatcher reads/writes during a touch (audio,
+// playback, haptics, freeWriteRecorder, strokeTracker, grid,
+// phaseController, letters, activePath, progress, …) lives on the
+// VM and is reached through the weak ref. The dispatcher owns only
+// the small state that's purely about the in-flight touch session.
 //
-// Touch entry from views still goes through the VM (`vm.beginTouch`
-// etc.) so the SwiftUI binding surface and tests don't change. The
-// VM's methods are now thin forwarders that route to this dispatcher.
+// Views still call into `vm.beginTouch` etc. so the SwiftUI binding
+// surface and tests don't change — the VM forwards to the dispatcher.
 
 import CoreGraphics
 import Foundation
@@ -112,11 +109,10 @@ final class TouchDispatcher {
         if vm.phaseController.currentPhase == .freeWrite {
             vm.freeWriteRecorder.beginStroke()
         }
-        // Gate on `feedbackIntensity > 0` so freeWrite (which fades all
-        // real-time feedback per Schmidt & Lee 2005 Guidance Hypothesis)
-        // doesn't fire a stroke-begin haptic. Every other haptic + audio
-        // channel already respects this gate; this site was the lone
-        // exception (review item W-20 / P-10).
+        // Gate on `feedbackIntensity > 0` so freeWrite (which fades
+        // all real-time feedback per Schmidt & Lee 2005's Guidance
+        // Hypothesis) doesn't fire a stroke-begin haptic. Every other
+        // haptic + audio channel already respects this gate.
         if vm.feedbackIntensity > 0 { vm.haptics.fire(.strokeBegan) }
         // Reload audio file — stop() in endTouch clears currentFile, so
         // play() would silently fail on subsequent touches without
