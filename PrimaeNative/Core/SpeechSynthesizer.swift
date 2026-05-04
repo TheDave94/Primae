@@ -1,94 +1,74 @@
 // SpeechSynthesizer.swift
 // PrimaeNative
 //
-// German voice playback for child-facing verbal feedback. The thesis app
-// targets 5-6 year-olds who can't read fluently yet, so every numeric
-// score (Klarheit, Form, Tempo, Druck, Rhythmus) stays inside the
-// research dashboard while the *child* hears short German encouragement
-// spoken by the system TTS instead.
+// German voice playback for child-facing verbal feedback. Built on
+// AVSpeechSynthesizer for on-device German voices (Anna/Petra/Markus
+// when installed) — no network calls, no API keys.
 //
-// Built on top of `AVSpeechSynthesizer` so we get on-device German
-// voices (the iPad ships with multiple "de-DE" voices including
-// Anna/Petra/Markus). No network call, no API key, no extra dependency.
-//
-// IMPORTANT: AudioEngine.swift remains the canonical interactive
-// audio path (proximity-triggered letter sounds). This synthesizer
-// uses a separate AVSpeechSynthesizer instance so the two pipelines
-// can coexist — speech does not flow through the AVAudioEngine graph.
+// PromptPlayer is the canonical path for the static recorded phrases;
+// this synthesizer owns the dynamic templated phrases (recognition
+// outcomes, retrieval correction) and acts as the fallback for
+// PromptPlayer when an MP3 is missing.
 
 import AVFoundation
 import Foundation
 
 // MARK: - Protocol seam
 
-/// Async-free TTS API for child-facing verbal feedback. The protocol
-/// lets tests substitute a recording stub while production uses the
-/// AVSpeechSynthesizer-backed implementation.
+/// Async-free TTS API for child-facing verbal feedback. Tests
+/// substitute `NullSpeechSynthesizer`, which records spoken lines so
+/// assertions can verify what the child would have heard.
 @MainActor
 protocol SpeechSynthesizing {
     /// Speak `text` in German. AVSpeechSynthesizer queues utterances
-    /// natively, so back-to-back calls play in delivery order.
+    /// natively — back-to-back calls play in delivery order. Callers
+    /// that need to interrupt must call `stop()` first.
     func speak(_ text: String)
-    /// Halt any in-flight utterance. Called when the canvas leaves a
-    /// world or when an overlay sequence resets so the child doesn't
-    /// hear stale feedback after switching context.
+    /// Halt any in-flight or queued utterance.
     func stop()
-    /// U8 (ROADMAP_V5): parent-tunable rate so a 5-year-old who needs a
-    /// slower tempo can be accommodated. Default `nil` means leave the
-    /// production rate (0.42) untouched. Bound to a 3-position slider in
-    /// SettingsView with values: 0.36 langsam / 0.42 normal / 0.50 schnell.
+    /// Parent-tunable rate. `nil` restores the default. Bound to a
+    /// 3-position slider in SettingsView (0.36 langsam / 0.42 normal
+    /// / 0.50 schnell).
     func setRate(_ rate: Float?)
 }
 
 extension SpeechSynthesizing {
-    /// Default no-op so older mocks compile without retrofitting.
     func setRate(_ rate: Float?) {}
 }
 
 // MARK: - Production implementation
 
-/// AVSpeechSynthesizer-backed TTS. Picks the best installed German voice
-/// at instantiation. If no German voice is present the synthesizer
-/// silently no-ops so a missing voice asset never crashes the app.
+/// AVSpeechSynthesizer-backed TTS. Picks the best installed German
+/// voice at instantiation. If no German voice is present the
+/// synthesizer silently no-ops.
 @MainActor
 final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     private let synthesizer = AVSpeechSynthesizer()
     private let germanVoice: AVSpeechSynthesisVoice?
 
-    /// Tunable speech rate. AVSpeechUtterance defaults to ~0.5 which
-    /// reads too quickly for a 5-year-old; 0.42 is comfortably slow
-    /// without sounding artificially dragged. Override via
-    /// `setRate(_:)` (U8 — Settings slider).
+    /// Default 0.5 reads too fast for a 5-year-old; 0.42 is comfortably
+    /// slow without sounding artificially dragged.
     var rate: Float = 0.42
 
     func setRate(_ rate: Float?) {
         self.rate = rate ?? 0.42
     }
-    /// Tunable pitch. 1.0 is the default; we shift slightly above to
-    /// match the warm, child-friendly tone the recorded letter audio
-    /// uses.
+    /// Slight upward shift to match the warm child-friendly tone the
+    /// recorded letter audio uses.
     var pitchMultiplier: Float = 1.05
 
     init() {
-        // Prefer an enhanced German voice when one is installed (more
-        // natural prosody), then fall back to the default `de-DE`. Some
-        // installs only ship the smaller default voice; both work.
         let germanVoices = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix("de") }
         let enhanced = germanVoices.first(where: { $0.quality == .enhanced })
         self.germanVoice = enhanced
             ?? germanVoices.first
             ?? AVSpeechSynthesisVoice(language: "de-DE")
-        // Default `usesApplicationAudioSession = true`: synthesizer
-        // shares the app's AVAudioSession set up by AudioEngine.
-        // Briefly tried `false` here (Stage 1) to dodge per-touch
-        // cutoff, but that left AudioEngine's session in an
-        // incompatible state — letter sounds went silent. The
-        // cutoff source was AudioEngine deactivating the shared
-        // session in `finishStop()`; that line is now removed so
-        // the synth and engine coexist on a single, always-active
-        // session.
+        // The synthesizer uses the default `usesApplicationAudioSession
+        // = true`, so it shares the AudioEngine's `.playback` session.
+        // Setting it to false would put the synth on a private session
+        // incompatible with the AudioEngine letter-sound pipeline.
     }
 
     func speak(_ text: String) {
@@ -97,14 +77,9 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         utterance.voice = germanVoice
         utterance.rate = rate
         utterance.pitchMultiplier = pitchMultiplier
-        // Default volume of 1.0 sits below the AudioEngine's letter
-        // sound so the child hears both: ducked verbal feedback layered
-        // over the proximity-triggered phoneme.
+        // 0.9 keeps the spoken feedback slightly under the AudioEngine's
+        // letter sound so the child hears both layered.
         utterance.volume = 0.9
-        // Don't stopSpeaking() before queuing: AVSpeechSynthesizer's
-        // own utterance queue plays back-to-back calls in delivery
-        // order. Callers that genuinely need to interrupt (letter
-        // load, retry path) call `stop()` explicitly.
         synthesizer.speak(utterance)
     }
 
@@ -117,9 +92,7 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
 // MARK: - Null implementation (tests, previews)
 
-/// No-op TTS used by tests and SwiftUI previews. Records every spoken
-/// phrase so test assertions can verify the right verbal feedback fired
-/// without driving the real audio pipeline.
+/// Records every spoken line for test assertions; drives no audio.
 @MainActor
 final class NullSpeechSynthesizer: SpeechSynthesizing {
     private(set) var spokenLines: [String] = []
@@ -132,26 +105,17 @@ final class NullSpeechSynthesizer: SpeechSynthesizing {
 
 // MARK: - Phrase library
 
-/// Centralised German feedback phrases. Keeping the strings here (vs.
-/// scattered across views) means the research team can review every
-/// utterance the child hears in one place, and copywriters can iterate
-/// without touching view layout. Each phrase is short and uses
-/// kindergarten-level vocabulary.
+/// Centralised German feedback phrases. Co-locating every phrase the
+/// child hears makes copy review tractable for the research team and
+/// keeps view layout free of hardcoded strings.
 enum ChildSpeechLibrary {
 
-    /// Phase entry prompts spoken when a learning phase becomes
-    /// active. Imperative + short — the child can't read the
-    /// on-screen phase pill, so the spoken instruction has to
-    /// stand on its own. Action verb first (the German child voice
-    /// convention from the design system), no fillers ("mal",
-    /// "Jetzt") that don't add meaning, and **kept brief enough
-    /// that the AVSpeechSynthesizer utterance finishes before the
-    /// child can plausibly touch the canvas** — the AudioEngine
-    /// reconfigures AVAudioSession on every touch-driven letter-
-    /// sound load, and that reconfiguration cuts in-flight TTS
-    /// short (observed: the freeWrite prompt was clipped on every
-    /// non-trivial letter — "I" was the only one short enough to
-    /// avoid the race).
+    /// Phase entry prompts. Imperative + short — the child can't read
+    /// the on-screen phase pill, so the spoken instruction has to
+    /// stand on its own. Kept brief enough that the utterance finishes
+    /// before the child can plausibly touch the canvas, since the
+    /// AudioEngine's per-touch session reconfiguration cuts in-flight
+    /// TTS short.
     static func phaseEntry(_ phase: LearningPhase) -> String {
         switch phase {
         case .observe:    return "Pass jetzt gut auf!"
@@ -161,11 +125,8 @@ enum ChildSpeechLibrary {
         }
     }
 
-    /// Spoken on any guided / freeWrite stroke completion that earned a
-    /// star. Praise is intentionally short and never patronising —
-    /// children at this age can't read percentages and don't need
-    /// long sentences after a successful trace. The 0-star case
-    /// stays warm: "probier nochmal" without any judgement.
+    /// Praise spoken on guided / freeWrite stroke completion. The
+    /// 0-star case stays warm — "probier nochmal" without judgement.
     static func praise(starsEarned: Int) -> String {
         switch starsEarned {
         case 4: return "Wow, das war perfekt! Super gemacht."
@@ -176,12 +137,9 @@ enum ChildSpeechLibrary {
         }
     }
 
-    /// Recognition badge announcement. Mirrors the German strings in
-    /// `RecognitionFeedbackView` so what the child sees is identical to
-    /// what they hear, without any percentages or technical wording.
-    /// Imperative phrasing for corrections ("schreib nochmal ein A")
-    /// is more concrete for a 5-year-old than the abstract "versuche
-    /// nochmal das A" — the child can act on the verb directly.
+    /// Recognition badge announcement. Imperative phrasing for
+    /// corrections ("schreib nochmal ein A") gives a 5-year-old a
+    /// concrete next action; abstract "versuche nochmal" doesn't.
     static func recognition(_ result: RecognitionResult, expected: String) -> String {
         if result.isCorrect {
             if result.confidence > 0.7 {
@@ -193,35 +151,27 @@ enum ChildSpeechLibrary {
         if result.confidence > 0.7 {
             return "Das sieht eher nach \(result.predictedLetter) aus. Schreib nochmal ein \(expected)."
         }
-        // Low confidence + wrong: stay silent at the badge level so the
-        // child isn't confused. Caller already gates on confidence.
+        // Low-confidence misses stay silent at the badge level. Caller
+        // is expected to gate on confidence before speaking.
         return ""
     }
 
-    /// Paper-transfer prompt spoken in two parts so the reference letter
-    /// is visible while the child hears the instruction. Matches the
-    /// `PaperTransferView` UI text exactly.
+    /// Paper-transfer prompts spoken alongside the matching screen.
     static let paperTransferShow = "Schau dir den Buchstaben gut an."
     static let paperTransferWrite = "Jetzt schreibst du den Buchstaben auf Papier."
     static let paperTransferAssess = "Wie ist dein Buchstabe geworden?"
 
-    /// Headline of the spaced-retrieval modal — spoken on appear so
-    /// the child knows the screen is asking them to identify a
-    /// letter. Mirrors the on-screen text exactly.
+    /// Spaced-retrieval modal headline — spoken on appear.
     static let retrievalQuestion = "Welchen Buchstaben hörst du?"
 
-    /// Letter-completion celebration phrase. Spoken after every
-    /// letter completes, regardless of how many stars the child
-    /// earned — the N-of-4 star row in
-    /// `CompletionCelebrationOverlay` is the visual differentiator;
-    /// the audio is always the same warm "Super gemacht!".
+    /// Spoken after every letter completes. The N-of-4 star row in
+    /// `CompletionCelebrationOverlay` carries the gradation; the
+    /// audio is always a warm "Super gemacht!".
     static let celebration = "Super gemacht!"
 
     // MARK: - PromptPlayer mapping
 
-    /// Map a learning phase to its `PromptPlayer.PromptKey` so
-    /// `vm.prompts.play(...)` can play the recorded ElevenLabs MP3
-    /// (when bundled) instead of the AVSpeechSynthesizer voice.
+    /// Map a learning phase to the PromptKey for its bundled MP3.
     static func phaseEntryPromptKey(_ phase: LearningPhase) -> PromptPlayer.PromptKey {
         switch phase {
         case .observe:   return .phaseObserve
@@ -232,7 +182,7 @@ enum ChildSpeechLibrary {
     }
 
     /// Map a star count (0–4) to its praise prompt key. Out-of-range
-    /// counts collapse to the 0-star "probier's nochmal" tier.
+    /// counts collapse to the 0-star tier.
     static func praisePromptKey(starsEarned: Int) -> PromptPlayer.PromptKey {
         switch starsEarned {
         case 4: return .praise4
