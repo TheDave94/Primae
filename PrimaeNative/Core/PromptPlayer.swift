@@ -115,7 +115,18 @@ final class PromptPlayer: PromptPlaying {
     /// `speech.speak(fallbackText)` when the bundled MP3 is missing.
     /// Stops any prompt currently playing first so a stream of
     /// phase transitions doesn't pile up overlapping audio.
+    ///
+    /// Both the AVAudioPlayer (MP3 path) and the AVSpeechSynthesizer
+    /// (fallback path) must be stopped here, not just the one we're
+    /// about to use: skipping rapidly through letters before the
+    /// prompt MP3s are bundled means every call falls into the
+    /// fallback, and `AVSpeechSynthesizer.speak()` *queues* utterances
+    /// rather than replacing them — without `speech.stop()` the
+    /// child hears "Pass jetzt gut auf!" once per skip + 1 as the
+    /// queue drains.
     func play(_ key: PromptKey, fallbackText: String) {
+        player?.stop()
+        speech.stop()
         guard let url = locate(key) else {
             // Asset missing — pre-asset-generation builds, or a
             // future addition that hasn't been generated yet.
@@ -124,7 +135,6 @@ final class PromptPlayer: PromptPlaying {
             return
         }
         do {
-            player?.stop()
             let p = try AVAudioPlayer(contentsOf: url)
             p.prepareToPlay()
             p.play()

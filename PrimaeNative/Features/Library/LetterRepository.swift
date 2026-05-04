@@ -279,24 +279,26 @@ private extension LetterRepository {
             let allAudio = findAudioAssets(for: base)
             if allAudio.isEmpty {
                 issues.append(.init(letter: base, message: "No audio files found in bundle for letter"))
-                return nil
+                // The letter is still surfaced — it has valid strokes
+                // and a glyph the child can trace. Audio is optional;
+                // letters without recordings simply stay silent during
+                // proximity events. Dropping them here is what made
+                // only the seven recorded letters reachable in the
+                // picker.
             }
-            // P6 (ROADMAP_V5): partition into letter-name and phoneme
-            // tracks. Phoneme files use the suffix convention
-            // `<base>_phoneme<n>.<ext>` (case-insensitive) so a single
-            // bundle scan picks up both populations and the parent's
-            // "Lautwert wiedergeben" toggle decides which plays.
+            // Phoneme recordings follow the `<base>_phoneme<n>.<ext>`
+            // suffix convention and are partitioned out so the parent's
+            // "Lautwert wiedergeben" toggle can pick which population
+            // plays.
             let (audio, phonemeAudio) = partitionPhonemeAudio(allAudio)
 
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
-            // `variants` is for alternate stroke ORDERS of the same letter
-            // within the same script — e.g. German primary-school F where
-            // the horizontal bars can be drawn in either of two sequences.
-            // Scripts (Schreibschrift, Grundschrift, …) are NOT variants;
-            // they flow through SchriftArt.bundleVariantID / activeScriptStrokes.
-            // Conflating them meant tapping Variante on Druckschrift A loaded
-            // the Schreibschrift strokes on top of the Primae glyph.
+            // `variants` describes alternate stroke *orders* of the same
+            // letter within the same script (e.g. German primary-school F,
+            // whose horizontal bars can be drawn in two sequences).
+            // Scripts (Druckschrift, Schreibschrift, …) are NOT variants —
+            // they flow through SchriftArt.bundleVariantID instead.
             var variantIDs: [String] = []
             if bundleHasResource(at: "Letters/\(base)/strokes_variant.json") { variantIDs.append("variant") }
             let variants: [String]? = variantIDs.isEmpty ? nil : variantIDs
@@ -418,12 +420,22 @@ private extension LetterRepository {
         }.sorted()
     }
 
+    /// Names matched by `findAudioAssets`'s hasPrefix fallback that
+    /// aren't actually letter recordings. Without this list the UI tap
+    /// effect `tap.wav` becomes the "letter audio" for T (matches
+    /// `t...`), which then plays in place of the real letter sound on
+    /// every guided-phase proximity event for that letter.
+    private static let nonLetterAudioBasenames: Set<String> = [
+        "tap.wav", "tap_wrong.wav", "tick_stroke.wav", "hmmm.wav"
+    ]
+
     func isLikelyStaleAudioReference(_ path: String) -> Bool {
         let lower = path.lowercased()
-        if lower.contains("elevenlabs_")               { return true }
-        if lower.contains("friendly and approachable") { return true }
-        if lower.contains("hmmm")                      { return true }
-        if lower.contains(" (1).")                     { return true }
+        let leaf = ((lower as NSString).lastPathComponent)
+        if Self.nonLetterAudioBasenames.contains(leaf)  { return true }
+        if lower.contains("elevenlabs_")                { return true }
+        if lower.contains("friendly and approachable")  { return true }
+        if lower.contains(" (1).")                      { return true }
         return false
     }
 
