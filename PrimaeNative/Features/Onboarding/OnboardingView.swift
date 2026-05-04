@@ -121,6 +121,7 @@ private func scaled(_ pt: CGPoint, in size: CGSize) -> CGPoint {
 // MARK: - Step 1: Welcome
 
 private struct WelcomeStepView: View {
+    @Environment(TracingViewModel.self) private var vm
     let onNext: () -> Void
 
     var body: some View {
@@ -148,12 +149,18 @@ private struct WelcomeStepView: View {
             .accessibilityHint("Startet die Einführung")
         }
         .padding(32)
+        .onAppear {
+            vm.speech.stop()
+            vm.speech.speak("Willkommen! Lerne mit mir, Buchstaben zu schreiben. Tippe auf Los geht's.")
+        }
+        .onDisappear { vm.speech.stop() }
     }
 }
 
 // MARK: - Step 2: Anschauen (observe)
 
 private struct TraceDemoStepView: View {
+    @Environment(TracingViewModel.self) private var vm
     let onNext: () -> Void
 
     var body: some View {
@@ -188,6 +195,7 @@ private struct TraceDemoStepView: View {
                         .frame(width: 160, height: 160)
                 }
             }
+            .allowsHitTesting(false)
 
             Button("Weiter", action: onNext)
                 .buttonStyle(StickerButtonStyle())
@@ -196,6 +204,11 @@ private struct TraceDemoStepView: View {
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
+        .onAppear {
+            vm.speech.stop()
+            vm.speech.speak("Anschauen! Schau zuerst genau zu, wie der Buchstabe geschrieben wird.")
+        }
+        .onDisappear { vm.speech.stop() }
     }
 }
 
@@ -241,6 +254,7 @@ private struct ObserveDemoLayer: View {
 // MARK: - Step 3: Richtung lernen (direct)
 
 private struct DirectDemoStepView: View {
+    @Environment(TracingViewModel.self) private var vm
     let onNext: () -> Void
 
     var body: some View {
@@ -259,7 +273,11 @@ private struct DirectDemoStepView: View {
 
             TimelineView(.animation) { timeline in
                 let elapsed = timeline.date.timeIntervalSinceReferenceDate
-                let cycle = 4.5
+                // Three strokes × ~1.4 s + 0.6 s pause before the cycle
+                // restarts. The breathing pulse on the next-expected dot
+                // runs on the absolute clock so it stays in phase with
+                // the real PulsingDot in TracingCanvasView.
+                let cycle = 5.0
                 let progress = CGFloat((elapsed.truncatingRemainder(dividingBy: cycle)) / cycle)
 
                 ZStack {
@@ -271,10 +289,11 @@ private struct DirectDemoStepView: View {
                         .font(.system(size: 100, weight: .bold, design: .rounded))
                         .foregroundStyle(.gray.opacity(0.15))
 
-                    DirectDemoLayer(progress: progress)
+                    DirectDemoLayer(progress: progress, clock: elapsed)
                         .frame(width: 160, height: 160)
                 }
             }
+            .allowsHitTesting(false)
 
             Button("Weiter", action: onNext)
                 .buttonStyle(StickerButtonStyle())
@@ -283,59 +302,115 @@ private struct DirectDemoStepView: View {
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
+        .onAppear {
+            vm.speech.stop()
+            vm.speech.speak("Richtung lernen! Tippe die Punkte der Reihe nach an. So lernst du, in welcher Richtung der Buchstabe geschrieben wird.")
+        }
+        .onDisappear { vm.speech.stop() }
     }
 }
 
-/// Cycles through each stroke: pulse the numbered dot, simulate a tap,
-/// then draw an orange arrow along the stroke. Mirrors the real direct
-/// phase's pulse → tap → arrow feedback loop.
+/// Mirrors the real direct phase as it appears in the app today:
+/// all numbered start-dots are visible from the start (gray = future,
+/// blue with continuous breathing pulse = next-expected, green = tapped).
+/// When the next-expected dot is "tapped" it switches to green and the
+/// directional arrow flashes in along the stroke for ~1.2 s, then the
+/// next dot lights up. No press-down shrink animation — the real phase
+/// uses an `.id`-based cross-fade that scale-pops the new state in.
 private struct DirectDemoLayer: View {
     let progress: CGFloat
+    /// Absolute reference-date clock used for the breathing pulse so
+    /// the dot pulses in lockstep with the real PulsingDot (1.2 s
+    /// sine cycle, scale 1.0…1.35).
+    let clock: TimeInterval
 
     var body: some View {
         Canvas { context, size in
+            // Faint stroke guides so the demo viewer can see where each
+            // dot leads even before the corresponding tap fires. The
+            // real canvas doesn't draw these lines in the direct phase
+            // (only the dots + arrow), but for the 160pt onboarding
+            // preview we keep them at very low opacity to make the
+            // "the second dot starts here, ends there" relationship
+            // legible without animation.
             for stroke in aDemoStrokes {
                 var p = Path()
                 p.move(to: scaled(stroke.from, in: size))
                 p.addLine(to: scaled(stroke.to, in: size))
-                context.stroke(p, with: .color(.gray.opacity(0.15)), lineWidth: 4)
+                context.stroke(p, with: .color(.gray.opacity(0.10)), lineWidth: 3)
             }
 
-            let seg = progress * CGFloat(aDemoStrokes.count)
-            let currentIdx = min(Int(seg), aDemoStrokes.count - 1)
+            let total = CGFloat(aDemoStrokes.count)
+            // Reserve the trailing 12 % of the cycle as a quiet beat
+            // (all dots green, no arrow) so the loop reads as
+            // "complete → restart" rather than snapping mid-arrow.
+            let activePortion: CGFloat = 0.88
+            let active = min(progress / activePortion, 1.0)
+            let seg = active * total
+            let currentIdx = min(Int(seg), Int(total) - 1)
             let sub = seg - CGFloat(currentIdx)
+            let isCycleSettling = progress >= activePortion
 
-            // Per-stroke sub-phase thresholds. Pulse for the first ~third,
-            // "tap" press-down in the middle, then draw the arrow.
-            let pulseEnd: CGFloat = 0.35
-            let tapEnd: CGFloat = 0.5
+            // Arrow lifetime (matches the real 1.2 s lingering arrow
+            // observed on every successful tap) — but normalised to
+            // the per-stroke sub-progress: the arrow appears the moment
+            // the dot turns green and stays for the rest of the
+            // sub-step before the next dot becomes next-expected.
+            let arrowOnsetSub: CGFloat = 0.0
 
             for (idx, stroke) in aDemoStrokes.enumerated() {
                 let start = scaled(stroke.from, in: size)
                 let end = scaled(stroke.to, in: size)
 
-                if idx < currentIdx {
-                    drawGreenDot(context: context, at: start, number: idx + 1)
-                    drawArrow(context: context, from: start, to: end)
+                let isTapped: Bool
+                let isNext: Bool
+                if isCycleSettling {
+                    isTapped = true
+                    isNext = false
+                } else if idx < currentIdx {
+                    isTapped = true; isNext = false
                 } else if idx == currentIdx {
-                    if sub < pulseEnd {
-                        let pulse = 1.0 + 0.25 * sin(sub / pulseEnd * .pi * 3)
-                        drawBlueDot(context: context, at: start, number: idx + 1, scale: pulse)
-                    } else if sub < tapEnd {
-                        let t = (sub - pulseEnd) / (tapEnd - pulseEnd)
-                        let scale = 1.0 - 0.35 * t
-                        drawBlueDot(context: context, at: start, number: idx + 1, scale: scale)
-                    } else {
-                        let t = (sub - tapEnd) / (1.0 - tapEnd)
-                        drawGreenDot(context: context, at: start, number: idx + 1)
-                        let tip = CGPoint(
-                            x: start.x + (end.x - start.x) * t,
-                            y: start.y + (end.y - start.y) * t
-                        )
-                        drawArrow(context: context, from: start, to: tip)
-                    }
+                    isTapped = false; isNext = true
                 } else {
-                    drawGrayDot(context: context, at: start, number: idx + 1)
+                    isTapped = false; isNext = false
+                }
+
+                // Breathing pulse driven by wall-clock time — same shape
+                // and amplitude as `PulsingDot` (TracingCanvasView.swift:510)
+                // so the onboarding preview reads as a faithful sample
+                // of the real direct-phase dot.
+                let pulseScale: CGFloat
+                if isNext {
+                    let phase = (sin(clock * .pi / 0.6) + 1) / 2  // 0…1
+                    pulseScale = 1.0 + 0.35 * CGFloat(phase)
+                } else {
+                    pulseScale = 1.0
+                }
+
+                let color: Color
+                if isTapped { color = .green }
+                else if isNext { color = .blue }
+                else { color = .gray.opacity(0.45) }
+
+                drawNumbered(context: context, at: start, color: color,
+                             number: idx + 1, scale: pulseScale)
+
+                // Arrow: drawn for the active stroke once it transitions
+                // into "tapped" state, and persists on every previously-
+                // completed stroke so the demo viewer can read the
+                // direction of every segment that's been tapped so far.
+                let drawArrowForThis: Bool
+                if isCycleSettling {
+                    drawArrowForThis = true
+                } else if idx < currentIdx {
+                    drawArrowForThis = true
+                } else if idx == currentIdx {
+                    drawArrowForThis = sub >= arrowOnsetSub && isTapped
+                } else {
+                    drawArrowForThis = false
+                }
+                if drawArrowForThis {
+                    drawArrow(context: context, from: start, to: end)
                 }
             }
         }
@@ -343,27 +418,14 @@ private struct DirectDemoLayer: View {
 
     private func drawNumbered(context: GraphicsContext, at pt: CGPoint, color: Color,
                               number: Int, scale: CGFloat = 1.0) {
-        let r: CGFloat = 13 * scale
+        let r: CGFloat = 14 * scale
         context.fill(
             Circle().path(in: CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)),
-            with: .color(color))
+            with: .color(color.opacity(0.85)))
         let label = Text("\(number)")
             .font(.system(size: 13 * scale, weight: .bold, design: .rounded))
             .foregroundStyle(.white)
         context.draw(label, at: pt, anchor: .center)
-    }
-
-    private func drawBlueDot(context: GraphicsContext, at pt: CGPoint,
-                             number: Int, scale: CGFloat = 1.0) {
-        drawNumbered(context: context, at: pt, color: .blue, number: number, scale: scale)
-    }
-
-    private func drawGreenDot(context: GraphicsContext, at pt: CGPoint, number: Int) {
-        drawNumbered(context: context, at: pt, color: .green, number: number)
-    }
-
-    private func drawGrayDot(context: GraphicsContext, at pt: CGPoint, number: Int) {
-        drawNumbered(context: context, at: pt, color: .gray.opacity(0.4), number: number)
     }
 
     private func drawArrow(context: GraphicsContext, from: CGPoint, to: CGPoint) {
@@ -373,7 +435,7 @@ private struct DirectDemoLayer: View {
         var line = Path()
         line.move(to: from)
         line.addLine(to: to)
-        context.stroke(line, with: .color(.canvasGuide),
+        context.stroke(line, with: .color(.canvasGuide.opacity(0.9)),
                        style: StrokeStyle(lineWidth: 5, lineCap: .round))
         let angle = atan2(dy, dx)
         let tipLen: CGFloat = 11
@@ -385,7 +447,7 @@ private struct DirectDemoLayer: View {
         var head = Path()
         head.move(to: to); head.addLine(to: b1)
         head.move(to: to); head.addLine(to: b2)
-        context.stroke(head, with: .color(.canvasGuide),
+        context.stroke(head, with: .color(.canvasGuide.opacity(0.9)),
                        style: StrokeStyle(lineWidth: 5, lineCap: .round))
     }
 }
@@ -393,6 +455,7 @@ private struct DirectDemoLayer: View {
 // MARK: - Step 4: Nachspuren (guided)
 
 private struct GuidedDemoStepView: View {
+    @Environment(TracingViewModel.self) private var vm
     let onNext: () -> Void
 
     var body: some View {
@@ -427,6 +490,7 @@ private struct GuidedDemoStepView: View {
                         .frame(width: 160, height: 160)
                 }
             }
+            .allowsHitTesting(false)
 
             Button("Weiter", action: onNext)
                 .buttonStyle(StickerButtonStyle())
@@ -435,6 +499,11 @@ private struct GuidedDemoStepView: View {
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
+        .onAppear {
+            vm.speech.stop()
+            vm.speech.speak("Nachspuren! Fahre mit dem Finger über die Linie. Versuche, immer auf der Linie zu bleiben.")
+        }
+        .onDisappear { vm.speech.stop() }
     }
 }
 
@@ -490,6 +559,7 @@ private struct GuidedDemoLayer: View {
 // MARK: - Step 5: Selbst schreiben (freeWrite)
 
 private struct FreeWriteDemoStepView: View {
+    @Environment(TracingViewModel.self) private var vm
     let onNext: () -> Void
 
     var body: some View {
@@ -506,15 +576,25 @@ private struct FreeWriteDemoStepView: View {
                 .foregroundStyle(Color.inkSoft)
                 .multilineTextAlignment(.center)
 
-            ZStack {
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(Color.paper.opacity(0.6))
-                    .frame(width: 200, height: 200)
+            TimelineView(.animation) { timeline in
+                let elapsed = timeline.date.timeIntervalSinceReferenceDate
+                let cycle = 5.0
+                let progress = CGFloat((elapsed.truncatingRemainder(dividingBy: cycle)) / cycle)
 
-                Text("A")
-                    .font(.system(size: 100, weight: .bold, design: .rounded))
-                    .foregroundStyle(.green.opacity(0.85))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 20)
+                        .fill(Color.paper.opacity(0.6))
+                        .frame(width: 200, height: 200)
+
+                    Text("A")
+                        .font(.system(size: 100, weight: .bold, design: .rounded))
+                        .foregroundStyle(.gray.opacity(0.15))
+
+                    FreeWriteDemoLayer(progress: progress)
+                        .frame(width: 160, height: 160)
+                }
             }
+            .allowsHitTesting(false)
 
             Button("Weiter", action: onNext)
                 .buttonStyle(StickerButtonStyle())
@@ -523,12 +603,144 @@ private struct FreeWriteDemoStepView: View {
                 .accessibilityHint("Geht zum nächsten Einführungsschritt")
         }
         .padding(32)
+        .onAppear {
+            vm.speech.stop()
+            vm.speech.speak("Selbst schreiben! Zum Schluss schreibst du den Buchstaben ganz alleine. Du schaffst das!")
+        }
+        .onDisappear { vm.speech.stop() }
+    }
+}
+
+/// Mirrors the freeWrite phase as the child sees it: a faint blue
+/// reference of the letter (no checkpoint dots, no rail) plus the
+/// child's organic green ink path drawn on top. We simulate the child
+/// writing the three strokes of A in sequence with a slight wobble so
+/// the demo viewer can tell this is freehand, not snapped tracing. A
+/// small ⭐ sparkles in once all three strokes finish to communicate
+/// "complete → reward" without requiring the viewer to read text.
+private struct FreeWriteDemoLayer: View {
+    let progress: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            // Faint blue reference — same role as
+            // `freeWriteKPOverlay`'s reference strokes
+            // (TracingCanvasView.swift:228) at opacity 0.4 / lineWidth 8.
+            for stroke in aDemoStrokes {
+                var p = Path()
+                p.move(to: scaled(stroke.from, in: size))
+                p.addLine(to: scaled(stroke.to, in: size))
+                context.stroke(p, with: .color(.canvasGhost.opacity(0.4)),
+                               style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+            }
+
+            // Reserve the trailing 18 % for a "done" beat where all
+            // strokes are visible and a star pops in.
+            let writingPortion: CGFloat = 0.82
+            let writing = min(progress / writingPortion, 1.0)
+            let total = CGFloat(aDemoStrokes.count)
+            let seg = writing * total
+            let currentIdx = min(Int(seg), Int(total) - 1)
+            let sub = seg - CGFloat(currentIdx)
+            let isCelebrating = progress >= writingPortion
+
+            // Completed strokes — solid green ink, locked in.
+            for idx in 0..<currentIdx {
+                let stroke = aDemoStrokes[idx]
+                drawWobblyStroke(context: context, size: size,
+                                 from: stroke.from, to: stroke.to,
+                                 t: 1.0, seed: idx)
+            }
+
+            // Active stroke — green ink growing from start to current
+            // tip with a subtle wobble so it reads as a freehand line,
+            // not a metronomic glide (which would look like the guided
+            // phase's snap-to-checkpoint trace).
+            if !isCelebrating {
+                let stroke = aDemoStrokes[currentIdx]
+                drawWobblyStroke(context: context, size: size,
+                                 from: stroke.from, to: stroke.to,
+                                 t: sub, seed: currentIdx)
+
+                // Pen tip — a small green disc at the current ink head
+                // so the viewer can see "the child is writing here".
+                let from = scaled(stroke.from, in: size)
+                let to = scaled(stroke.to, in: size)
+                let tipPt = CGPoint(x: from.x + (to.x - from.x) * sub,
+                                    y: from.y + (to.y - from.y) * sub)
+                let r: CGFloat = 6
+                context.fill(
+                    Circle().path(in: CGRect(x: tipPt.x - r, y: tipPt.y - r,
+                                             width: r * 2, height: r * 2)),
+                    with: .color(.canvasInkStroke))
+            } else {
+                // Final stroke fully drawn during the celebration beat.
+                let stroke = aDemoStrokes.last!
+                drawWobblyStroke(context: context, size: size,
+                                 from: stroke.from, to: stroke.to,
+                                 t: 1.0, seed: aDemoStrokes.count - 1)
+
+                // Star pops in to communicate "you finished the letter"
+                // without text. Scale-up over the first half of the
+                // celebration beat, hold for the rest.
+                let celebT = (progress - writingPortion) / (1.0 - writingPortion)
+                let starScale = min(CGFloat(celebT) * 2.0, 1.0)
+                let starPt = CGPoint(x: size.width * 0.5, y: size.height * 0.18)
+                context.draw(
+                    Text("⭐")
+                        .font(.system(size: 28 * starScale)),
+                    at: starPt, anchor: .center)
+            }
+        }
+    }
+
+    /// Draws a slightly-wobbly polyline from `from` to `to` (glyph-
+    /// relative) over [0, t] of its length. The wobble is a deterministic
+    /// per-seed sine whose phase is keyed off the segment fraction so
+    /// the path looks the same every loop and reads as "freehand" but
+    /// not chaotic. Plain lerp would read as a guided rail.
+    private func drawWobblyStroke(context: GraphicsContext, size: CGSize,
+                                  from: CGPoint, to: CGPoint,
+                                  t: CGFloat, seed: Int) {
+        guard t > 0.001 else { return }
+        let from = scaled(from, in: size)
+        let to = scaled(to, in: size)
+        let dx = to.x - from.x
+        let dy = to.y - from.y
+        let length = sqrt(dx * dx + dy * dy)
+        guard length > 0.5 else { return }
+        // Perpendicular unit vector for sideways wobble.
+        let perpX = -dy / length
+        let perpY = dx / length
+        let wobbleAmp: CGFloat = 1.6  // tiny — child writing is mostly straight
+        let phaseShift = CGFloat(seed) * 1.3
+
+        var path = Path()
+        let steps = max(8, Int(length / 4))
+        let lastIdx = max(1, Int((CGFloat(steps) * t).rounded()))
+        for i in 0...min(lastIdx, steps) {
+            let f = CGFloat(i) / CGFloat(steps)
+            let baseX = from.x + dx * f
+            let baseY = from.y + dy * f
+            // Window the wobble so it tapers near the endpoints — keeps
+            // the start/end exactly on the reference, which is what
+            // freehand writing actually looks like at this age.
+            let edgeWindow = sin(f * .pi)  // 0 at ends, 1 in middle
+            let wob = sin(f * 6.0 + phaseShift) * wobbleAmp * edgeWindow
+            let x = baseX + perpX * wob
+            let y = baseY + perpY * wob
+            if i == 0 { path.move(to: CGPoint(x: x, y: y)) }
+            else      { path.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        context.stroke(path, with: .color(.canvasInkStroke),
+                       style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
     }
 }
 
 // MARK: - Step 6: Reward Intro
 
 private struct RewardIntroStepView: View {
+    @Environment(TracingViewModel.self) private var vm
     let onNext: () -> Void
 
     var body: some View {
@@ -565,5 +777,10 @@ private struct RewardIntroStepView: View {
                 .accessibilityHint("Schließt die Einführung ab und beginnt die Buchstaben-Schule")
         }
         .padding(32)
+        .onAppear {
+            vm.speech.stop()
+            vm.speech.speak("Sammle Sterne! Für jeden Buchstaben bekommst du bis zu vier Sterne. Tippe auf Fertig und los geht's!")
+        }
+        .onDisappear { vm.speech.stop() }
     }
 }
