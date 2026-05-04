@@ -180,7 +180,15 @@ final class LetterRepository {
     /// Storage key for the bundle-version sentinel paired with the
     /// cache file. Versioning the cache by app build is the standard
     /// resource-cache bust idiom.
-    private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion"
+    ///
+    /// The trailing `.vN` suffix is a manual bust knob: dev builds
+    /// reuse the same `CFBundleVersion` between commits, so a stroke-
+    /// data refactor that changes the on-disk JSON shape would keep
+    /// serving the old cached strokes indefinitely. Bump the suffix
+    /// any time the stroke generator's output convention changes
+    /// (regenerated checkpoints, coordinate-space rules, etc.) so
+    /// existing installs read the bundle fresh once and re-cache.
+    private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion.v2"
 
     /// Identifier for the build that produced the cache. Combines
     /// marketing version and build number so the cache busts on
