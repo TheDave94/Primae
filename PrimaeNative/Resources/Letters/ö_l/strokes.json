@@ -1,56 +1,56 @@
 {
   "letter": "ö",
-  "checkpointRadius": 0.06,
+  "checkpointRadius": 0.04,
   "strokes": [
     {
       "id": 1,
-      "comment": "Left dot",
       "checkpoints": [
         {
-          "x": 0.47,
+          "x": 0.472,
           "y": 0.317
+        },
+        {
+          "x": 0.47,
+          "y": 0.319
+        },
+        {
+          "x": 0.469,
+          "y": 0.32
         }
-      ]
+      ],
+      "comment": "vertical"
     },
     {
       "id": 2,
-      "comment": "Right dot",
       "checkpoints": [
         {
-          "x": 0.568,
+          "x": 0.472,
           "y": 0.317
+        },
+        {
+          "x": 0.47,
+          "y": 0.319
+        },
+        {
+          "x": 0.469,
+          "y": 0.32
         }
-      ]
+      ],
+      "comment": "vertical"
     },
     {
       "id": 3,
-      "comment": "Closed loop",
       "checkpoints": [
         {
-          "x": 0.436,
-          "y": 0.464
+          "x": 0.472,
+          "y": 0.317
         },
         {
-          "x": 0.403,
-          "y": 0.593
-        },
-        {
-          "x": 0.497,
-          "y": 0.675
-        },
-        {
-          "x": 0.591,
-          "y": 0.575
-        },
-        {
-          "x": 0.566,
-          "y": 0.444
-        },
-        {
-          "x": 0.436,
-          "y": 0.464
+          "x": 0.472,
+          "y": 0.317
         }
-      ]
+      ],
+      "comment": "loop"
     }
   ]
 }

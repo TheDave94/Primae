@@ -1,34 +1,42 @@
 {
   "letter": "i",
-  "checkpointRadius": 0.06,
+  "checkpointRadius": 0.04,
   "strokes": [
     {
       "id": 1,
-      "comment": "Stem",
       "checkpoints": [
         {
-          "x": 0.509,
-          "y": 0.432
+          "x": 0.503,
+          "y": 0.492
         },
         {
-          "x": 0.499,
-          "y": 0.554
+          "x": 0.5,
+          "y": 0.549
         },
         {
-          "x": 0.491,
-          "y": 0.673
+          "x": 0.497,
+          "y": 0.607
         }
-      ]
+      ],
+      "comment": "vertical"
     },
     {
       "id": 2,
-      "comment": "Dot",
       "checkpoints": [
+        {
+          "x": 0.518,
+          "y": 0.318
+        },
         {
           "x": 0.517,
           "y": 0.319
+        },
+        {
+          "x": 0.516,
+          "y": 0.32
         }
-      ]
+      ],
+      "comment": "vertical"
     }
   ]
 }

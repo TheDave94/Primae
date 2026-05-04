@@ -188,7 +188,7 @@ final class LetterRepository {
     /// any time the stroke generator's output convention changes
     /// (regenerated checkpoints, coordinate-space rules, etc.) so
     /// existing installs read the bundle fresh once and re-cache.
-    private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion.v3"
+    private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion.v4"
 
     /// Identifier for the build that produced the cache. Combines
     /// marketing version and build number so the cache busts on

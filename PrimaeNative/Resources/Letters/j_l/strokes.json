@@ -1,42 +1,49 @@
 {
   "letter": "j",
-  "checkpointRadius": 0.06,
+  "checkpointRadius": 0.04,
   "strokes": [
     {
       "id": 1,
-      "comment": "Stem with descender hook",
       "checkpoints": [
         {
           "x": 0.542,
-          "y": 0.429
+          "y": 0.43
+        },
+        {
+          "x": 0.535,
+          "y": 0.502
         },
         {
           "x": 0.53,
-          "y": 0.558
+          "y": 0.574
         },
         {
-          "x": 0.521,
-          "y": 0.687
+          "x": 0.525,
+          "y": 0.646
         },
         {
-          "x": 0.513,
-          "y": 0.814
+          "x": 0.52,
+          "y": 0.717
         },
         {
-          "x": 0.415,
-          "y": 0.853
+          "x": 0.515,
+          "y": 0.79
+        },
+        {
+          "x": 0.498,
+          "y": 0.861
+        },
+        {
+          "x": 0.426,
+          "y": 0.865
         }
-      ]
+      ],
+      "comment": "arc"
     },
     {
       "id": 2,
-      "comment": "Dot",
-      "checkpoints": [
-        {
-          "x": 0.55,
-          "y": 0.317
-        }
-      ]
+      "checkpoints": [],
+      "comment": "vertical"
     }
   ]
 }

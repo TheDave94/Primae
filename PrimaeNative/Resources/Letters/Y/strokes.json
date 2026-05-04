@@ -1,60 +1,68 @@
 {
   "letter": "Y",
-  "checkpointRadius": 0.06,
+  "checkpointRadius": 0.04,
   "strokes": [
     {
       "id": 1,
-      "comment": "Left arm: top-left down to junction",
       "checkpoints": [
         {
           "x": 0.372,
-          "y": 0.233
+          "y": 0.237
         },
         {
-          "x": 0.429,
-          "y": 0.37
+          "x": 0.41,
+          "y": 0.326
+        },
+        {
+          "x": 0.45,
+          "y": 0.416
         },
         {
           "x": 0.487,
-          "y": 0.501
+          "y": 0.5
         }
-      ]
+      ],
+      "comment": "arc"
     },
     {
       "id": 2,
-      "comment": "Right arm: top-right down to junction",
       "checkpoints": [
         {
           "x": 0.644,
-          "y": 0.243
+          "y": 0.241
         },
         {
-          "x": 0.562,
-          "y": 0.376
+          "x": 0.589,
+          "y": 0.33
+        },
+        {
+          "x": 0.535,
+          "y": 0.42
         },
         {
           "x": 0.487,
-          "y": 0.501
+          "y": 0.5
         }
-      ]
+      ],
+      "comment": "arc"
     },
     {
       "id": 3,
-      "comment": "Stem: junction down",
       "checkpoints": [
         {
           "x": 0.487,
-          "y": 0.501
+          "y": 0.5
         },
         {
-          "x": 0.481,
+          "x": 0.482,
           "y": 0.587
         },
         {
-          "x": 0.474,
+          "x": 0.475,
           "y": 0.673
         }
-      ]
+      ],
+      "comment": "arc"
     }
   ]
 }
