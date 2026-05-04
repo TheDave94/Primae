@@ -188,7 +188,7 @@ final class LetterRepository {
     /// any time the stroke generator's output convention changes
     /// (regenerated checkpoints, coordinate-space rules, etc.) so
     /// existing installs read the bundle fresh once and re-cache.
-    private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion.v2"
+    private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion.v3"
 
     /// Identifier for the build that produced the cache. Combines
     /// marketing version and build number so the cache busts on
@@ -261,16 +261,37 @@ private extension LetterRepository {
                 return nil
             }
 
-            let base: String
+            // Folder name (or the `<x>_strokes.json` filename stem)
+            // determines which letter this row belongs to. Lowercase
+            // folders carry a `_l` suffix so they don't collide with
+            // their uppercase counterparts on case-insensitive APFS
+            // / HFS+ (the iPad's filesystem folds `A` and `a` into
+            // the same node, which would otherwise overwrite the
+            // strokes for one with the other at install time).
+            let folderName: String
             if filename.hasSuffix("_strokes.json") {
-                base = url.deletingPathExtension().lastPathComponent
+                folderName = url.deletingPathExtension().lastPathComponent
                     .replacingOccurrences(of: "_strokes", with: "")
             } else {
-                base = url.deletingLastPathComponent().lastPathComponent
+                folderName = url.deletingLastPathComponent().lastPathComponent
             }
+            let isLowercaseFolder = folderName.hasSuffix("_l") && folderName.count > 1
+            let base: String = isLowercaseFolder
+                ? String(folderName.dropLast(2))   // strip "_l"
+                : folderName
             guard !base.isEmpty, base.count <= 2 else { return nil }
 
-            let imageCandidates = ["Letters/\(base)/\(base).pbm", "\(base)/\(base).pbm", "\(base).pbm"]
+            // PBM glyph fallback (kept for legacy installs); vector
+            // path is always preferred at render time. The lookup
+            // walks both the case-suffixed folder and the bare name
+            // so legacy uppercase folders without a suffix keep
+            // resolving.
+            let imageBase = isLowercaseFolder ? "\(base)_l" : base
+            let imageCandidates = [
+                "Letters/\(imageBase)/\(base).pbm",
+                "\(imageBase)/\(base).pbm",
+                "\(base).pbm"
+            ]
             let imageName = imageCandidates.first(where: { bundleHasResource(at: $0) }) ?? "\(base).pbm"
 
             if !bundleHasResource(at: imageName) {
@@ -291,17 +312,23 @@ private extension LetterRepository {
             // plays.
             let (audio, phonemeAudio) = partitionPhonemeAudio(allAudio)
 
+            // The user-facing letter name keeps its original case
+            // (the picker renders `A` vs `a` correctly), the
+            // baseLetter keys the progress / audio store (always
+            // uppercase or `ß`), and `letterCase` captures upper /
+            // lower from the folder convention rather than guessing.
+            let displayName = isLowercaseFolder ? base.lowercased() : base
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
-            let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
+            let letterCase: LetterAsset.LetterCase = isLowercaseFolder ? .lower : .upper
             // `variants` describes alternate stroke *orders* of the
             // same letter within the same script (e.g. F's two
             // horizontal-bar sequences). Scripts themselves
             // (Druckschrift, Schreibschrift, …) are not variants —
             // they flow through `SchriftArt.bundleVariantID`.
             var variantIDs: [String] = []
-            if bundleHasResource(at: "Letters/\(base)/strokes_variant.json") { variantIDs.append("variant") }
+            if bundleHasResource(at: "Letters/\(imageBase)/strokes_variant.json") { variantIDs.append("variant") }
             let variants: [String]? = variantIDs.isEmpty ? nil : variantIDs
-            return LetterAsset(id: base, name: base,
+            return LetterAsset(id: imageBase, name: displayName,
                                baseLetter: baseLetter, letterCase: letterCase,
                                imageName: imageName, audioFiles: audio, strokes: strokes,
                                variants: variants,
@@ -560,12 +587,25 @@ private extension LetterRepository {
 
 extension LetterRepository {
     /// Load alternative stroke data for a given letter and variant ID.
-    /// Reads `Letters/{letter}/strokes_{variantID}.json` from the bundle.
+    /// Reads `Letters/{letter}/strokes_{variantID}.json` from the
+    /// bundle. Lowercase folders carry a `_l` suffix to avoid case
+    /// collisions on case-insensitive filesystems, so probe both the
+    /// suffixed and bare folder names.
     func loadVariantStrokes(for letter: String, variantID: String) -> LetterStrokes? {
-        let paths = [
-            "Letters/\(letter)/strokes_\(variantID).json",
-            "\(letter)/strokes_\(variantID).json"
-        ]
+        let folderCandidates: [String]
+        if letter == letter.uppercased() && letter != letter.lowercased() {
+            folderCandidates = [letter]                    // uppercase
+        } else if letter == letter.lowercased() && letter != letter.uppercased() {
+            folderCandidates = ["\(letter)_l", letter]     // lowercase
+        } else {
+            folderCandidates = [letter]                    // ß / specials
+        }
+        let paths = folderCandidates.flatMap { folder in
+            [
+                "Letters/\(folder)/strokes_\(variantID).json",
+                "\(folder)/strokes_\(variantID).json"
+            ]
+        }
         let decoder = JSONDecoder()
         for path in paths {
             guard let url = resources.resourceURL(for: path),

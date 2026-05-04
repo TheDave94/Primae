@@ -556,7 +556,13 @@ def main() -> int:
         if letter not in LETTER_SPECS:
             print(f"  {letter}: no spec — skipping")
             continue
-        out_file = out_base / letter / "strokes.json"
+        # Lowercase folders carry a `_l` suffix so their JSON files
+        # don't collide with their uppercase counterparts on case-
+        # insensitive filesystems (macOS / iOS APFS). Uppercase and
+        # special characters keep their bare name.
+        is_lower = letter == letter.lower() and letter != letter.upper()
+        folder_name = f"{letter}_l" if is_lower else letter
+        out_file = out_base / folder_name / "strokes.json"
         if args.no_overwrite and out_file.exists():
             print(f"  {letter}: exists (skipped)")
             continue
