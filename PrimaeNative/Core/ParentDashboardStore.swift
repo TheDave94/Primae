@@ -25,19 +25,19 @@ struct PhaseSessionRecord: Codable, Equatable {
     let tempoConsistency: Double?
     let pressureControl: Double?
     let rhythmScore: Double?
-    /// D-2: per-session recognition outcome captured at session-completion
-    /// time. Only meaningful for freeWrite rows; nil for the other phases
-    /// and for legacy records that pre-date D-2.
+    /// Per-session recognition outcome captured at session-completion
+    /// time. Only meaningful for freeWrite rows; nil for the other
+    /// phases and for legacy records written before this field existed.
     let recognitionPredicted: String?
     let recognitionConfidence: Double?
-    /// T5 (ROADMAP_V5): pre-calibration softmax confidence. Lets the
-    /// thesis quantify the ConfidenceCalibrator's effect.
+    /// Pre-calibration softmax confidence so the thesis can quantify
+    /// the ConfidenceCalibrator's effect.
     let recognitionConfidenceRaw: Double?
     let recognitionCorrect: Bool?
-    /// D-6: input device in effect for the session ("finger" / "pencil").
-    /// Lets the analysis distinguish a `pressureControl == 1.0` that's a
-    /// real finger session (no force data) from a low-variance pencil
-    /// session. Optional only because pre-D-6 records lack it.
+    /// Input device in effect for the session ("finger" / "pencil").
+    /// Lets the analysis distinguish a `pressureControl == 1.0` from
+    /// a real finger session (no force data) from a low-variance
+    /// pencil session. Optional for legacy rows.
     let inputDevice: String?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
@@ -89,11 +89,11 @@ struct LetterAccuracyStat: Codable, Equatable {
     let letter: String
     /// Per-session accuracy samples (0–1), chronological order.
     let accuracySamples: [Double]
-    /// T2 (ROADMAP_V5): parallel array of the thesis condition active when
-    /// each `accuracySamples[i]` was recorded. Length matches
-    /// `accuracySamples.count` for new writes; nil for legacy rows that
-    /// pre-date this field (the exporter falls back to per-row condition
-    /// derivation from `phaseSessionRecords` for those).
+    /// Parallel array of the thesis condition active when each
+    /// `accuracySamples[i]` was recorded. Length matches
+    /// `accuracySamples.count` for new writes. Nil for legacy rows;
+    /// the exporter falls back to per-row condition derivation from
+    /// `phaseSessionRecords` for those.
     let accuracyConditions: [ThesisCondition]?
 
     init(letter: String, accuracySamples: [Double],
@@ -132,24 +132,22 @@ struct SessionDurationRecord: Codable, Equatable {
     /// ISO-8601 date string "yyyy-MM-dd"
     let dateString: String
     /// Active practice time in seconds. Pauses while the app is
-    /// backgrounded (D-1) so this measures actual on-task time.
+    /// backgrounded so this reflects actual on-task time.
     let durationSeconds: TimeInterval
-    /// T4 (ROADMAP_V5): wall-clock duration including backgrounded
-    /// intervals. Lets the analysis distinguish "engaged with the app"
-    /// from "actively practising". Optional for legacy rows.
+    /// Wall-clock duration including backgrounded intervals. Lets the
+    /// analysis distinguish "engaged with the app" from "actively
+    /// practising". Optional for legacy rows.
     let wallClockSeconds: TimeInterval?
     /// Thesis condition active during this session.
     let condition: ThesisCondition
-    /// D-9: full wall-clock timestamp captured at session-record time so
+    /// Full wall-clock timestamp captured at session-record time so
     /// the export can recover time-of-day signal (morning vs evening
-    /// practice) on top of the day-level aggregation. Optional only
-    /// because pre-D-9 records on disk don't carry it; new writes
-    /// always populate.
+    /// practice) on top of the day-level aggregation. Optional for
+    /// legacy rows.
     let recordedAt: Date?
-    /// T7 (ROADMAP_V5): input device in effect for this session
-    /// ("finger" / "pencil"). Lets aggregate
-    /// "minutes practised by device" be reconstructed without joining
-    /// across record types. Optional for legacy rows.
+    /// Input device in effect for this session ("finger" / "pencil").
+    /// Lets "minutes practised by device" be aggregated without
+    /// joining across record types. Optional for legacy rows.
     let inputDevice: String?
 
     init(dateString: String, durationSeconds: TimeInterval,
@@ -180,7 +178,7 @@ struct DashboardSnapshot: Codable, Equatable {
     var letterStats: [String: LetterAccuracyStat] = [:]
     var sessionDurations: [SessionDurationRecord] = []
     var phaseSessionRecords: [PhaseSessionRecord] = []
-    /// W-17: persisted schema version (see ProgressStore for the rationale).
+    /// Persisted schema version (see ProgressStore for the rationale).
     var schemaVersion: Int? = dashboardSchemaVersion
 
     init(letterStats: [String: LetterAccuracyStat] = [:],
@@ -410,13 +408,10 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     /// enough history for a generous trailing-window analysis.
     private static let accuracySamplesCap = 200
 
-    /// Hard ceiling on phase-session records. The dashboard summaries
-    /// (phaseCompletionRates, schedulerEffectivenessProxy, recent table
-    /// in ResearchDashboardView) all work over recent windows, never
-    /// scan the full history. Long-running thesis devices were
-    /// previously accumulating one record per phase × ~5 letters per
-    /// session × multiple sessions per day — fine for a year, but
-    /// unbounded growth on a multi-year deployment.
+    /// Hard ceiling on phase-session records. Dashboard summaries
+    /// only ever read recent windows, so unbounded accumulation on
+    /// multi-year thesis deployments would grow the JSON file without
+    /// improving any visible signal.
     private static let phaseSessionRecordsCap = 2000
 
     /// Hard ceiling on per-day session durations. PracticeTrendChart
@@ -430,20 +425,20 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                        date: Date, condition: ThesisCondition,
                        inputDevice: String? = nil) {
         let key = LetterProgress.canonicalKey(letter)
-        // D-11: word-mode sessions arrive with multi-character keys
-        // (`"BUCH"`). Adding those to `letterStats` corrupts the
-        // per-letter accuracy/trend table — the per-letter contribution
-        // for words is already recorded via `progressStore.recordCompletion`
-        // for each cell letter. Skip the letterStats update for
-        // multi-character keys but still record the duration once for
-        // the whole word.
+        // Word-mode sessions arrive with multi-character keys
+        // (`"BUCH"`). Adding those to `letterStats` would corrupt the
+        // per-letter accuracy / trend table. Per-letter contributions
+        // for words already land via `progressStore.recordCompletion`
+        // on each cell letter; skip the letterStats update here for
+        // multi-character keys but record the duration once for the
+        // whole word.
         if key.count == 1 {
             let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [], accuracyConditions: [])
             var samples = existing.accuracySamples
             samples.append(accuracy)
-            // T2: maintain a parallel-length condition array. Pre-T2
-            // legacy rows decoded `accuracyConditions == nil`; promote
-            // them to a back-filled array so subsequent writes line up.
+            // Maintain a parallel-length condition array. Legacy rows
+            // decoded `accuracyConditions == nil`; promote them to a
+            // back-filled array so subsequent writes line up.
             var conditions = existing.accuracyConditions
                 ?? Array(repeating: ThesisCondition.threePhase, count: existing.accuracySamples.count)
             conditions.append(condition)
@@ -507,23 +502,21 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     // MARK: Private
 
     private func persist() {
-        // Encode on main, write off main. JSON encoding of the
-        // DashboardSnapshot value type is bounded (caps in DashboardSnapshot
-        // keep it well under 100 KB), and main-actor encoding sidesteps the
-        // Swift 6 strict-concurrency restriction on calling MainActor-
-        // isolated Encodable conformances from a nonisolated detached Task.
-        // The atomic disk write — the heavier I/O — still runs off main.
+        // Encode on main, write off main. The bounded value-type
+        // snapshot (caps keep it well under 100 KB) sidesteps the
+        // Swift 6 restriction on calling a MainActor-isolated
+        // Encodable from a detached Task; only the atomic write
+        // runs off main.
         //
-        // Rapid-fire batching note (review item #9): when several persist()
-        // calls happen synchronously in one runloop tick — e.g.
-        // `recordPhaseSessionCompletion` writes one PhaseSessionRecord per
-        // phase — the cancel-and-replace chain coalesces them into a single
-        // disk write. Each successor cancels its predecessor; each
-        // predecessor's `guard !Task.isCancelled` short-circuits before
-        // reaching the atomic write. Only the final task hits the disk.
-        // The value-type DashboardSnapshot in `data` already captures the
-        // accumulated state. See ParentDashboardStoreTests for a regression
-        // guard pinning this behaviour.
+        // Rapid-fire batching: when several persist() calls happen
+        // in one runloop tick (e.g. `recordPhaseSessionCompletion`
+        // writes one record per phase) the cancel-and-replace chain
+        // coalesces them into a single disk write — each successor
+        // cancels its predecessor and the `guard !Task.isCancelled`
+        // short-circuits before the atomic write. Only the final
+        // snapshot lands on disk; the value-type captures everything
+        // accumulated up to that point. See
+        // ParentDashboardStoreTests for the regression guard.
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = fileURL
         // Coalesce + order: see ProgressStore.save() for rationale.
@@ -551,7 +544,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(DashboardSnapshot.self, from: data)
         else { return nil }
-        // W-17: see ProgressStore.load for the future-schema rationale.
+        // See ProgressStore.load for the future-schema rationale.
         if let v = decoded.schemaVersion, v > dashboardSchemaVersion {
             storePersistenceLogger.warning(
                 "ParentDashboardStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(dashboardSchemaVersion); ignoring on-disk state.")

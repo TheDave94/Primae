@@ -227,9 +227,10 @@ public enum PrimaeLetterRenderer {
     /// ghost / stroke coordinates from calibration space to the actual font-rendered
     /// glyph rect on screen.
     ///
-    /// Memoized by (letter, canvasSize, schriftArt) — TracingCanvasView calls this
-    /// up to 3× per frame on the 60 fps render loop, and each call previously ran a
-    /// CTFontGetBoundingRectsForGlyphs CoreText roundtrip.
+    /// Memoized by (letter, canvasSize, schriftArt). The canvas calls
+    /// this up to 3× per frame on the 60 fps render loop and each
+    /// uncached call costs a CTFontGetBoundingRectsForGlyphs CoreText
+    /// roundtrip.
     public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) -> CGRect? {
         guard !isRunningTests, !letter.isEmpty,
               canvasSize.width > 0, canvasSize.height > 0 else { return nil }

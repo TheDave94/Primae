@@ -63,36 +63,34 @@ struct ParentDashboardExporter {
     ) -> Data {
         var lines: [String] = []
         lines.append("# participantId=\(participantId.uuidString)")
-        // D-7: surface the enrolment timestamp in the export header so
-        // downstream consumers can reproduce the exporter's pre-
-        // enrollment filtering rule and audit which records were
-        // skipped at export time.
+        // Surface the enrolment timestamp so downstream consumers can
+        // reproduce the exporter's pre-enrollment filtering rule and
+        // audit which records were skipped at export time.
         if let enrolledAt {
             lines.append("# enrolledAt=\(ISO8601DateFormatter().string(from: enrolledAt))")
         }
-        // T3 (ROADMAP_V5): timezone metadata so downstream analytics can
-        // interpret `recordedAt` columns correctly across devices that
-        // travel timezones or run in DST. ISO-8601 timestamps already
-        // carry an offset, but the timezone identifier is a more useful
-        // analyst-facing label.
+        // Timezone identifier alongside the offset-carrying ISO-8601
+        // timestamps — analyst-facing label for cross-timezone /
+        // DST-aware interpretation.
         lines.append("# timezone=\(TimeZone.current.identifier)")
         let isoFormatter = ISO8601DateFormatter()
         lines.append("")
 
-        // D-6: speedTrend (the rolling per-letter writing-speed series
-        // used by the scheduler's automatisation bonus) was previously
-        // JSON-only. Surface it as a semicolon-joined list in the
-        // letter-aggregate row so SPSS / R imports can reconstruct the
-        // automatisation analysis without the JSON sidecar.
-        // `freeformCompletionCount` (HIDDEN_FEATURES_AUDIT C.2): blank-canvas
-        // letter-recognition completions are counted separately from guided
-        // mastery so the analysis can distinguish exploration from
-        // gradual-release learning. nil for letters never written in
-        // freeform mode; emitted as empty string.
-        // P1 (ROADMAP): `retrievalAccuracy` is the rolling mean of
-        // `LetterProgress.retrievalAttempts` (cap 10). Empty when the
-        // parent hasn't enabled the Erinnerungstest, or for letters
-        // never tested.
+        // Letter-aggregate row schema:
+        //   speedTrend            — semicolon-joined per-letter writing-
+        //                           speed series the scheduler uses for
+        //                           the automatisation bonus.
+        //   freeformCompletionCount — blank-canvas recognition completions
+        //                           tracked separately from guided
+        //                           mastery so analysis can distinguish
+        //                           exploration from gradual-release
+        //                           learning. Empty for letters never
+        //                           written in freeform mode.
+        //   retrievalAccuracy     — rolling mean of
+        //                           `LetterProgress.retrievalAttempts`
+        //                           (cap 10). Empty when the parent
+        //                           hasn't enabled the Erinnerungstest
+        //                           or for letters never tested.
         lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount","retrievalAccuracy"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
