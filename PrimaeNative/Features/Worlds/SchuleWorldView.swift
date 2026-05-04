@@ -164,18 +164,18 @@ struct SchuleWorldView: View {
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(20)
         case .rewardCelebration(let event):
-            // U1 (ROADMAP_V5): timed (2.5 s) one-shot achievement
-            // celebration. Auto-dismisses through the queue's own
-            // timer; tap-to-dismiss for impatient users.
+            // Timed (2.5 s) one-shot achievement celebration.
+            // Auto-dismisses through the queue's own timer;
+            // tap-to-dismiss for impatient users.
             RewardCelebrationOverlay(event: event)
                 .onTapGesture { vm.overlayQueue.dismiss() }
                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .zIndex(25)
         case .retrievalPrompt(let letter, let distractors):
-            // P1 (ROADMAP): spaced-retrieval recognition. Modal — child
-            // must answer before tracing begins. Audio cue plays the
+            // Spaced-retrieval recognition prompt. Modal — child must
+            // answer before tracing begins. Audio cue plays the
             // active letter's audio (name or phoneme depending on the
-            // existing P6 toggle) via vm.replayAudio.
+            // parent's toggle) via `vm.replayAudio`.
             RetrievalPromptView(
                 target: letter,
                 distractors: distractors,

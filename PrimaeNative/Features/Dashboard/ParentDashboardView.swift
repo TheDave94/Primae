@@ -124,9 +124,9 @@ struct ParentDashboardView: View {
         }
     }
 
-    /// U7 (ROADMAP_V5): pull the last 5 non-nil values for one Schreibmotorik
-    /// dimension across all completed freeWrite phase records, so the row
-    /// can render a tiny trend sparkline next to the average.
+    /// Pull the last 5 non-nil values for a single Schreibmotorik
+    /// dimension across all completed freeWrite phase records so the
+    /// row can render a small trend sparkline next to the average.
     private func dimensionTrend(_ keyPath: KeyPath<PhaseSessionRecord, Double?>) -> [Double] {
         snapshot.phaseSessionRecords
             .filter { $0.phase == "freeWrite" && $0.completed }
@@ -153,19 +153,18 @@ struct ParentDashboardView: View {
                 .progressViewStyle(.linear)
         }
         .padding(.vertical, 2)
-        // U10 (ROADMAP_V5) partial: collapse the row into one VoiceOver
-        // element so the dimension label, percentage, and progress bar
-        // read as a single phrase ("Form, 78 Prozent") instead of three
-        // separate focuses. Sparkline is already hidden above.
+        // Collapse the row into one VoiceOver element so the
+        // dimension label, percentage, and progress bar read as a
+        // single phrase ("Form, 78 Prozent") rather than three focus
+        // stops. Sparkline is hidden above.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(pct) Prozent")
     }
 }
 
-/// U7 (ROADMAP_V5): minimal inline sparkline. Renders a polyline
-/// over the supplied 0–1 values, scaled to fit the assigned frame.
-/// Single-value series fall through; the row caller already gates
-/// on `count >= 2`.
+/// Minimal inline sparkline. Renders a polyline over the supplied
+/// 0–1 values, scaled to fit the assigned frame. Single-value series
+/// fall through; the row caller already gates on `count >= 2`.
 private struct Sparkline: View, Equatable {
     let values: [Double]
     var body: some View {

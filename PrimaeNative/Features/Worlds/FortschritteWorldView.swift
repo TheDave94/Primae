@@ -44,10 +44,10 @@ struct FortschritteWorldView: View {
         }
     }
 
-    /// P7 (ROADMAP_V5): daily-goal pill. Goal-setting theory (Locke &
-    /// Latham 1990) predicts that explicit, proximal goals improve
-    /// practice quality. Default goal = 3 letters/day; parent can
-    /// adjust via UserDefaults. Tile turns green once the goal is hit.
+    /// Daily-goal pill — Goal-setting theory (Locke & Latham 1990)
+    /// predicts that explicit proximal goals improve practice
+    /// quality. Default 3 letters/day; parent adjusts via
+    /// UserDefaults. Tile turns green once the goal is hit.
     private var dailyGoalCard: some View {
         let done = vm.completionsToday
         let goal = vm.dailyGoal

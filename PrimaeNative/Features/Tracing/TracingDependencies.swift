@@ -14,11 +14,11 @@ struct TracingDependencies {
     var progressStore: ProgressStoring
     var haptics: HapticEngineProviding
     /// Difficulty adaptation policy. `nil` lets the VM pick a default
-    /// based on `thesisCondition`: `.control` gets a `FixedAdaptationPolicy`
-    /// (no live adaptation, so the difficulty manipulation can't confound
-    /// the phase-progression IV), and the other arms get a
+    /// from `thesisCondition`: `.control` gets a `FixedAdaptationPolicy`
+    /// (no live adaptation so the difficulty manipulation can't
+    /// confound the phase-progression IV) and the other arms get a
     /// `MovingAverageAdaptationPolicy`. Tests inject explicit policies
-    /// to pin behaviour (review item I-2).
+    /// to pin behaviour deterministically.
     var adaptationPolicy: (any AdaptationPolicy)?
     var repo: LetterRepository
     var streakStore: StreakStoring
@@ -33,16 +33,15 @@ struct TracingDependencies {
     /// Whether the parent has enabled the freeform writing mode (default: on).
     /// Controls the visibility of the "Freies Schreiben" entry in the picker bar.
     var enableFreeformMode: Bool
-    /// P6 (ROADMAP_V5): play the *phoneme* (sound the letter makes)
-    /// instead of the letter *name* when the parent enables it. Default
-    /// off; falls back to name audio for letters without phoneme
-    /// recordings even when on.
+    /// Play the *phoneme* (sound the letter makes) instead of the
+    /// letter *name* when the parent enables it. Default off; falls
+    /// back to name audio for letters without phoneme recordings.
     var enablePhonemeMode: Bool
-    /// P1 (ROADMAP): opt-in spaced-retrieval recognition prompt before
-    /// every Nth letter selection. Default off — research feature.
+    /// Opt-in spaced-retrieval recognition prompt before every Nth
+    /// letter selection. Default off — research feature.
     var enableRetrievalPrompts: Bool
-    /// P5 (ROADMAP): reverse the direct-phase tap order. Default off;
-    /// opt-in for motor-planning special-needs use (Spooner 2014).
+    /// Reverse the direct-phase tap order. Default off; opt-in for
+    /// motor-planning special-needs use (Spooner 2014).
     var enableBackwardChaining: Bool
     /// CoreML-backed letter recognizer. Default is `CoreMLLetterRecognizer()`;
     /// tests inject `StubLetterRecognizer(result:)` to get deterministic output.
@@ -200,9 +199,9 @@ struct TracingDependencies {
         self.makeCalibrationStore   = makeCalibrationStore
         // Default scheduler is condition-aware: `.control` gets a
         // fixed-order scheduler so the scheduling effect doesn't
-        // confound the phase-progression manipulation (review item
-        // W-23). Other conditions get the full Ebbinghaus-weighted
-        // scheduler. Tests can still pass an explicit factory.
+        // confound the phase-progression manipulation. Other
+        // conditions get the full Ebbinghaus-weighted scheduler.
+        // Tests can still pass an explicit factory.
         if let factory = makeLetterScheduler {
             self.makeLetterScheduler = factory
         } else {
@@ -217,8 +216,8 @@ struct TracingDependencies {
 
     /// The default production configuration.
     ///
-    /// Initialisation contract (review item W-6): this `static let`
-    /// reads `UserDefaults` and `ParticipantStore` exactly **once**,
+    /// Initialisation contract: this `static let` reads
+    /// `UserDefaults` and `ParticipantStore` exactly **once**,
     /// when first accessed (typically at app launch from
     /// `PrimaeNativeApp.init`). Subsequent settings changes — e.g.
     /// the parent toggling `Schriftart` in `SettingsView` — bypass this

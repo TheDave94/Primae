@@ -787,10 +787,9 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let onBegan:  (CGPoint, CFTimeInterval) -> Void
     let onMoved:  (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
     let onEnded:  () -> Void
-    /// U5 (ROADMAP_V5): Apple Pencil 2 squeeze handler. Replays the
-    /// letter audio so a child writing one-handed can hear it again
-    /// without taking the pencil off the canvas. nil on devices that
-    /// don't expose `UIPencilInteraction` (older iPad mini / iPad).
+    /// Apple Pencil 2 squeeze handler. Replays the letter audio so a
+    /// child writing one-handed can hear it again without lifting the
+    /// pencil. nil on devices that don't expose `UIPencilInteraction`.
     let onPencilSqueeze: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {

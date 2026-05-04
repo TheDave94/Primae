@@ -76,7 +76,7 @@ enum AppSurface {
     /// not glass.
     static let railTop    = Color.paper
     static let railBottom = Color.paperDeep
-    /// U9 (ROADMAP_V5): unified gold/star tint. Routes through `--star`
-    /// in the design system (amber-500 light / amber-400 dark).
+    /// Unified gold / star tint. Routes through the design system's
+    /// `--star` token (amber-500 light, amber-400 dark).
     static let starGold = Color.star
 }
