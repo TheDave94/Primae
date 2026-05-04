@@ -190,7 +190,7 @@ public final class TracingViewModel {
     var isPlaying           = false
     var activePath: [CGPoint] = []
     /// Adapted by `PhaseTransitionCoordinator.commitCompletion` after
-    /// every session — coordinator needs write access (D1c).
+    /// every session — internal so the coordinator can write it.
     var currentDifficultyTier: DifficultyTier = .standard
 
     // MARK: - Learning phase state

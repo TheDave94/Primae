@@ -37,8 +37,8 @@ final class PhaseTransitionCoordinator {
     /// The VM that constructed this coordinator. Weak so the
     /// coordinator doesn't retain its parent. Set once by
     /// `TracingViewModel.init` after `self.phaseTransitions = pc` to
-    /// satisfy two-phase init — same trick used for `playback` (W-16)
-    /// and `touchDispatcher` (D1b).
+    /// satisfy two-phase init — the same pattern as `playback` and
+    /// `touchDispatcher`.
     weak var vm: TracingViewModel?
 
     // MARK: - Public entry (forwarded from VM)
