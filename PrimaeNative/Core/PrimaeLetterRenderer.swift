@@ -295,11 +295,21 @@ public enum PrimaeLetterRenderer {
     }
 
     static func getGlyph(for letter: String, in font: CTFont) -> CGGlyph? {
-        guard let first = letter.unicodeScalars.first else { return nil }
-        var c = UniChar(first.value & 0xFFFF)
-        var g = CGGlyph(0)
-        guard CTFontGetGlyphsForCharacters(font, &c, &g, 1), g != 0 else { return nil }
-        return g
+        // NFC-normalise so umlauts arrive as their precomposed
+        // codepoints (ä = U+00E4) instead of decomposed pairs
+        // (a + U+0308). The latter would make the loop below pick up
+        // the base-letter glyph and silently render "a/o/u" in place
+        // of "ä/ö/ü". Then walk every UTF-16 unit so a surrogate-
+        // pair codepoint also resolves to its glyph.
+        let normalised = letter.precomposedStringWithCanonicalMapping
+        for unit in normalised.utf16 {
+            var c = unit
+            var g = CGGlyph(0)
+            if CTFontGetGlyphsForCharacters(font, &c, &g, 1), g != 0 {
+                return g
+            }
+        }
+        return nil
     }
 
     private static func draw(letter: String, size: CGSize, fontName: String = "Primae-Regular") -> UIImage? {

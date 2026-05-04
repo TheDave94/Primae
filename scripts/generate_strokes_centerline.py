@@ -202,11 +202,11 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.25, 0.85], "end": [0.75, 0.85], "comment": "Bottom bar"},
     ],
     "Q": [
-        # Body via sits in the middle of the right-side body skeleton
-        # (col ≈ 0.70) rather than at (0.81, 0.80) where the tail's
-        # endpoint lives — otherwise nearest-pixel snapping picks the
-        # tail tip and the closing segment dead-ends.
-        {"start": [0.27, 0.13], "end": [0.27, 0.13], "via": [[0.71, 0.50]], "comment": "Oval body"},
+        # Worksheet: ← at the top → CCW oval starting at top-centre
+        # going LEFT first, like O. Routing the BFS via the LEFT-
+        # side body skeleton forces the start→via leg to take the
+        # upper-left arc.
+        {"start": [0.50, 0.10], "end": [0.50, 0.10], "via": [[0.20, 0.50]], "comment": "Oval body (CCW from top via left)"},
         {"start": [0.55, 0.65], "end": [0.85, 0.95], "comment": "Tail"},
     ],
     # Austrian uppercase umlauts: 2 dots + base letter body. The base
@@ -521,15 +521,18 @@ def generate_for_letter(letter: str, specs: list[dict],
         path = route_path(skel, anchors_px)
         count = spec.get("count") or auto_count(len(path))
         sampled = sample_evenly(path, count)
-        # Replace the first/last sampled pixels with the user-supplied
-        # normalized coords. The skeleton can be a few pixels off the
-        # nominal start/end (e.g., serifs sit outside the skeleton);
-        # rendering the start dot on the spec keeps the visual aligned.
-        cps: list[dict] = [{"x": round(start_n[0], 3), "y": round(start_n[1], 3)}]
-        for col, row in sampled[1:-1]:
+        # Use the skeleton-snapped pixel positions for every
+        # checkpoint, including start and end. The earlier version
+        # wrote `start_n` and `end_n` verbatim so serif tips could
+        # render on their own coord — but those spec coords are
+        # hand-guessed and frequently land *inside* the rendered
+        # glyph rather than on the visible ink, leaving the start
+        # dot floating off the stroke. Snapping every point keeps
+        # the rendered checkpoints on the glyph centerline.
+        cps: list[dict] = []
+        for col, row in sampled:
             x, y = to_normalized(col, row)
             cps.append({"x": round(x, 3), "y": round(y, 3)})
-        cps.append({"x": round(end_n[0], 3), "y": round(end_n[1], 3)})
         stroke: dict = {"id": i}
         if "comment" in spec:
             stroke["comment"] = spec["comment"]
