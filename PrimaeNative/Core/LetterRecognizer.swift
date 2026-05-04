@@ -14,9 +14,9 @@ import Vision
 
 // MARK: - Classifier intermediate type
 
-/// D3 (ROADMAP): framework-agnostic projection of a Vision
-/// `VNClassificationObservation`. Lets the rest of the recognizer
-/// pipeline stay free of Vision dependencies and lets tests inject a
+/// Framework-agnostic projection of a Vision
+/// `VNClassificationObservation`. Keeps the rest of the recognizer
+/// pipeline free of Vision dependencies and lets tests inject a
 /// deterministic classifier without bundling a real `.mlpackage`.
 struct LetterClassification: Equatable, Sendable {
     let identifier: String
@@ -31,11 +31,10 @@ struct RecognitionResult: Equatable, Sendable {
     let predictedLetter: String
     /// Calibrated confidence (0–1) for the top label.
     let confidence: CGFloat
-    /// T5 (ROADMAP_V5): pre-calibration softmax confidence. Lets the
-    /// thesis report the calibrator's effect on classification decisions
-    /// (raw vs adjusted, decision flip rate) instead of only the
-    /// post-calibration figure. Optional so synthesised results from
-    /// stubs / tests / freeform-mode placeholders remain unaffected.
+    /// Pre-calibration softmax confidence. Lets the thesis report the
+    /// calibrator's effect (raw vs adjusted, decision-flip rate)
+    /// alongside the post-calibration figure. Optional so synthesised
+    /// results from stubs / tests / freeform mode stay unaffected.
     let rawConfidence: CGFloat?
     /// Top-3 labels with calibrated confidences, descending.
     let topThree: [TopCandidate]
@@ -70,14 +69,14 @@ protocol LetterRecognizerProtocol: Sendable {
     /// Recognise the rasterised stroke. `strokeStartIndices` lists
     /// indices into `points` where a fresh stroke begins (after a
     /// finger-up between strokes); the rasterizer breaks the polyline
-    /// at those indices so multi-stroke letters (F, E, H, …) aren't
-    /// drawn with phantom diagonals connecting the strokes — that
-    /// silhouette read as a different glyph (F → P) on the model.
-    /// Pass `[]` (or use the convenience overload below) when there
-    /// are no breaks. `historicalFormScores` is the child's prior
-    /// recognition-accuracy history for the expected letter — the
-    /// calibrator uses it to award a small confidence boost on letters
-    /// the child has practised reliably (review item W-21 / P-4).
+    /// there so multi-stroke letters (F, E, H, …) aren't drawn with
+    /// phantom diagonals connecting the strokes — that silhouette
+    /// reads as a different glyph (F → P) on the model. Pass `[]` (or
+    /// the convenience overload below) when there are no breaks.
+    /// `historicalFormScores` is the child's prior recognition-
+    /// accuracy history for the expected letter; the calibrator uses
+    /// it to award a small confidence boost on letters the child has
+    /// practised reliably.
     func recognize(points: [CGPoint],
                    strokeStartIndices: [Int],
                    canvasSize: CGSize,
@@ -138,13 +137,12 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     private static let loadLock = NSLock()
 
     private let calibrator: ConfidenceCalibrator
-    /// D3 (ROADMAP): the classification step is the only piece of the
-    /// recognize() pipeline that needs Vision. By taking it as an
-    /// injectable closure, tests can swap in a deterministic stub
-    /// without bundling a `.mlpackage` into the test target — the
-    /// rendering step (renderToImage) and the post-processing step
-    /// (makeResult + ConfidenceCalibrator) become testable
-    /// end-to-end.
+    /// The classification step is the only piece of `recognize()`
+    /// that needs Vision. Taking it as an injectable closure lets
+    /// tests swap in a deterministic stub without bundling a
+    /// `.mlpackage` into the test target, so the rendering step
+    /// (renderToImage) and the post-processing step (makeResult +
+    /// ConfidenceCalibrator) become testable end-to-end.
     typealias Classifier = @Sendable (CGImage) -> [LetterClassification]
     private let classify: Classifier
 

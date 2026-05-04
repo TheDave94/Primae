@@ -48,16 +48,16 @@ enum CanvasOverlay: Equatable, Sendable {
     /// Phase-complete / letter-complete celebration. Modal: no auto-dismiss,
     /// child taps "Weiter" to load the next recommended letter.
     case celebration(stars: Int)
-    /// U1 (ROADMAP_V5): newly-unlocked achievement (firstLetter, 7-day
-    /// streak, allLetters, etc). Auto-advances after 2.5 s so the queue
-    /// keeps flowing into the celebration that follows. The badges in
-    /// FortschritteWorldView are the persistent display; this overlay is
-    /// the one-time "you just earned this" moment.
+    /// Newly-unlocked achievement (firstLetter, 7-day streak,
+    /// allLetters, …). Auto-advances after 2.5 s so the queue keeps
+    /// flowing into the celebration that follows; the persistent
+    /// display lives in FortschritteWorldView, this overlay is the
+    /// one-time "you just earned this" moment.
     case rewardCelebration(RewardEvent)
-    /// P1 (ROADMAP): spaced-retrieval recognition prompt. Plays the
-    /// letter's audio (or phoneme, if `enablePhonemeMode`) and shows
-    /// three candidate letters; the child picks one. Modal — child
-    /// must answer before tracing begins. The outcome lands on
+    /// Spaced-retrieval recognition prompt. Plays the letter's audio
+    /// (or phoneme, if `enablePhonemeMode`) and shows three candidate
+    /// letters; the child picks one. Modal — child must answer
+    /// before tracing begins. The outcome lands on
     /// `LetterProgress.retrievalAttempts` via
     /// `progressStore.recordRetrievalAttempt`.
     case retrievalPrompt(letter: String, distractors: [String])

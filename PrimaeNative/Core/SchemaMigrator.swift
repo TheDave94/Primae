@@ -1,32 +1,23 @@
 // SchemaMigrator.swift
 // PrimaeNative
 //
-// D2 (ROADMAP_V5): a thin migration framework so the persistence
-// stores have a place to put forward upgrades when their on-disk
-// schemas evolve. The W-17 work added `schemaVersion` sentinels to
-// `ProgressStore.Store`, `DashboardSnapshot`, and `StreakState`, but
-// there was no path from v(N) → v(N+1) — a forward-incompatible
-// file just got refused at load and logged. With this framework,
-// each store can register a migration block keyed by target version
-// and call `SchemaMigrator.migrate` in its load path.
-//
-// Today, all three stores are at v1 and the framework is a no-op.
-// When a store needs to upgrade, add a migration block here:
+// Thin migration framework for the JSON persistence stores. Each
+// store registers a migration block keyed by target version and
+// calls `migrate` in its load path:
 //
 //     let migrations: [Int: SchemaMigrator.Migration] = [
-//         2: { data in
-//             // Decode as v1 shape, transform, re-encode as v2 shape.
-//             return try migrateProgressV1ToV2(data)
-//         }
+//         2: { data in try migrateProgressV1ToV2(data) }
 //     ]
-//
-// The load path then becomes:
 //
 //     guard let upgraded = SchemaMigrator.migrate(
 //         data, from: decoded.schemaVersion ?? 0,
 //         to: currentSchemaVersion, migrations: migrations)
 //     else { return nil }
 //     return try? JSONDecoder().decode(Store.self, from: upgraded)
+//
+// All three stores currently sit at v1, so the framework is a no-op
+// in production. It exists so the upgrade lever is in place when
+// the first schema bump lands.
 
 import Foundation
 

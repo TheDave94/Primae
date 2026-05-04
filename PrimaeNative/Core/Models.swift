@@ -8,13 +8,12 @@ struct LetterAsset: Identifiable, Equatable {
     let letterCase: LetterCase
     let imageName: String
     let audioFiles: [String]
-    /// P6 (ROADMAP_V5): phoneme recordings — the *sound* the letter
-    /// makes (/a/ as in *Affe*) rather than its name (/aː/). Filename
-    /// convention: `<base>_phoneme<n>.mp3` in the per-letter directory.
-    /// Cycles independently from `audioFiles` when the parent enables
-    /// "Lautwert wiedergeben" in Settings. Empty array for letters
-    /// without phoneme recordings — the audio path falls back to the
-    /// letter-name `audioFiles`.
+    /// Phoneme recordings — the *sound* the letter makes (/a/ as in
+    /// *Affe*) rather than its name (/aː/). Filename convention is
+    /// `<base>_phoneme<n>.mp3` in the per-letter directory. Cycles
+    /// independently from `audioFiles` when the parent enables
+    /// "Lautwert wiedergeben" in Settings. Empty when no phoneme
+    /// recordings exist — the audio path falls back to `audioFiles`.
     let phonemeAudioFiles: [String]
     let strokes: LetterStrokes
     /// Variant IDs for which a strokes_{id}.json exists alongside strokes.json.

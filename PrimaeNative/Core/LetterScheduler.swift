@@ -43,14 +43,11 @@ struct LetterScheduler {
     /// How much novelty (low completion count) affects priority.
     var noveltyWeight: Double = 0.25
 
-    /// Baseline Ebbinghaus memory stability in days for a letter the
-    /// child has never completed. Acts as the lower bound — `effectiveStabilityDays`
-    /// expands this per-letter as completions and accuracy accrue
-    /// (W-24, the SuperMemo-style expanding-interval refinement). 7
-    /// days approximates the half-decay observed in word-list memory
-    /// for typical learners and is preserved for back-compat with the
-    /// previous fixed-stability behaviour when the child has zero
-    /// completions on a letter.
+    /// Baseline Ebbinghaus memory stability in days. Acts as the lower
+    /// bound — `effectiveStabilityDays` expands per-letter as
+    /// completions and accuracy accrue (SuperMemo-style expanding
+    /// interval). 7 days approximates the half-decay observed in
+    /// word-list memory for typical learners.
     var memoryStabilityDays: Double = 7.0
 
     /// Maximum stability the expanding interval can reach for a
@@ -67,9 +64,8 @@ struct LetterScheduler {
     /// When true, `prioritized` ignores Ebbinghaus/accuracy/novelty
     /// scoring and ranks letters purely by `-completionCount`, giving
     /// round-robin delivery through the available pool. Used by the
-    /// `.control` thesis condition so the scheduling effect doesn't
-    /// confound the phase-progression manipulation (review item W-23).
-    /// Default: false (full Ebbinghaus-weighted scheduling).
+    /// `.control` thesis arm so the scheduling effect doesn't confound
+    /// the phase-progression manipulation. Default: false.
     var fixedOrder: Bool = false
 
     /// Builds a "control" scheduler that walks letters round-robin by
@@ -99,14 +95,13 @@ struct LetterScheduler {
         now: Date = Date()
     ) -> [ScoredLetter] {
         if fixedOrder {
-            // W-23: priority = -completionCount so less-practised letters
-            // bubble up. The result still has to be `.sorted()` like the
-            // standard branch — `prioritized`'s contract is "ordered by
-            // practice priority (highest first)" and `recommendNext`
-            // takes `.first` on faith. Swift's stable sort preserves
-            // caller order on ties (e.g. on first launch when every
-            // letter has count 0), giving round-robin delivery as the
-            // .control thesis arm requires.
+            // priority = -completionCount: less-practised letters
+            // bubble up. The result still has to be `.sorted()` —
+            // `prioritized`'s contract is "ordered by practice
+            // priority (highest first)" and `recommendNext` takes
+            // `.first` on faith. Swift's stable sort preserves
+            // caller order on ties so first-launch (all counts 0)
+            // gives round-robin delivery as the .control arm needs.
             return available.map { letter in
                 let count = progress[letter]?.completionCount ?? 0
                 return ScoredLetter(letter: letter, priority: -Double(count))
