@@ -12,19 +12,18 @@ enum OnboardingStep: String, Codable, CaseIterable, Equatable {
     case complete
 }
 
-// MARK: - U4 (ROADMAP) — onboarding length variants for A/B comparison
+// MARK: - Onboarding length variants
 
-/// Two onboarding length variants. The thesis cohort can be split
-/// between them to measure first-day engagement / completion-rate
-/// against the two flows. The variant the child actually ran is
-/// recorded on `OnboardingState.variantUsed` so post-hoc CSV analysis
-/// can correlate retention/streak metrics with which onboarding ran.
+/// Two onboarding length variants used for A/B comparison in the
+/// thesis cohort. The variant the child actually ran is recorded on
+/// `OnboardingState.variantUsed` so post-hoc CSV analysis can correlate
+/// retention/streak metrics with which onboarding ran.
 ///
-/// `full` is the canonical 7-step flow with one demo per phase plus
-/// the reward-system intro.
-/// `short` is the compressed 3-step flow: welcome → guided demo → done.
-/// The compressed variant skips the per-phase concept demos; parents
-/// who want the long version can re-run via "Einführung wiederholen".
+/// `full` — canonical 7-step flow with one demo per phase plus the
+/// reward-system intro.
+/// `short` — compressed 3-step flow: welcome → guided demo → done.
+/// Parents who want the long version can re-run via
+/// "Einführung wiederholen".
 enum OnboardingVariant: String, Codable, CaseIterable, Equatable {
     case full
     case short
@@ -111,35 +110,29 @@ struct OnboardingCoordinator: Equatable {
 protocol OnboardingStoring {
     var hasCompletedOnboarding: Bool { get }
     var savedStep: OnboardingStep? { get }
-    /// U4 (ROADMAP): which OnboardingVariant ran for this install. Read
-    /// on first complete and never overwritten so a post-hoc CSV
-    /// analysis can correlate the parent's choice with later
-    /// engagement metrics.
+    /// Which `OnboardingVariant` ran for this install. Set on first
+    /// complete and never overwritten so post-hoc CSV analysis can
+    /// correlate the original variant with later engagement metrics.
     var variantUsed: OnboardingVariant? { get }
     func markComplete(variant: OnboardingVariant)
     func saveProgress(step: OnboardingStep)
     func reset()
-    /// Await any pending background disk write. Mirrors the pattern on the
-    /// other JSON-backed stores so a future awaited app-suspension flush can
-    /// guarantee the onboarding step is durable before the process suspends.
-    /// Default no-op for in-memory mocks.
+    /// Await any pending background disk write so an app-suspension
+    /// flush can guarantee the onboarding step is durable before the
+    /// process suspends.
     func flush() async
 }
 
 extension OnboardingStoring {
     func flush() async {}
-    /// Backward-compat shim for callers that don't pass a variant.
-    /// Records as `.full` since that's what the historical 7-step flow was.
     func markComplete() { markComplete(variant: .full) }
-    /// Default nil so older mocks compile unchanged.
     var variantUsed: OnboardingVariant? { nil }
 }
 
 private struct OnboardingState: Codable {
     var completed: Bool = false
     var savedStepRaw: String? = nil
-    /// U4 (ROADMAP): variant the child actually ran. nil for legacy
-    /// state files written before the A/B framework landed.
+    /// nil on state files written before the variant field existed.
     var variantUsedRaw: String? = nil
 }
 
@@ -181,10 +174,10 @@ final class JSONOnboardingStore: OnboardingStoring {
     func markComplete(variant: OnboardingVariant) {
         state.completed = true
         state.savedStepRaw = nil
-        // Only record the variant on the FIRST complete — a re-run
-        // ("Einführung wiederholen") can change the variant in the
-        // settings, but the original-A/B-assignment shouldn't be
-        // overwritten or the post-hoc analysis can't correlate.
+        // Only record on the FIRST complete: a parent re-run via
+        // "Einführung wiederholen" can change the variant, but the
+        // original A/B assignment must not be overwritten or the
+        // post-hoc analysis can't correlate.
         if state.variantUsedRaw == nil {
             state.variantUsedRaw = variant.rawValue
         }
@@ -202,15 +195,15 @@ final class JSONOnboardingStore: OnboardingStoring {
     }
 
     private func persist() {
-        // Encode on main, write off main: see ProgressStore.save() for the
-        // same pattern and the rationale.
+        // Encode on main, write off main — keeps disk I/O off the
+        // MainActor while still letting the encoded snapshot reflect
+        // the state at the moment of the call.
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = fileURL
-        // Same coalesce-and-await pattern as the other JSON stores: each
-        // call cancels and supersedes the previous pending write since the
-        // encoded data is already the full latest copy. Ordering is
-        // preserved by awaiting the previous task before this one's write
-        // hits the disk.
+        // Coalesce-and-await: each call cancels and supersedes the
+        // previous pending write (the encoded data is already the
+        // latest snapshot). Ordering is preserved by awaiting the
+        // previous task before this one writes.
         let previous = pendingSave
         previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {

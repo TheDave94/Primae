@@ -55,20 +55,18 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     }
 
     func resourceURL(for relativePath: String) -> URL? {
-        // Resources can land in any of three layouts depending on how the
-        // package is consumed:
+        // Resources can land in any of three layouts depending on how
+        // the package is consumed, so probe every one:
         //   1. SPM module bundle with `.copy("Resources")` →
         //      <bundle>/Resources/Letters/A/strokes_schulschrift.json
         //   2. SPM module bundle with `.process(_:)` (flattened) →
         //      <bundle>/Letters/A/strokes_schulschrift.json
-        //   3. Xcode app target copying files directly to the .app →
+        //   3. Xcode app target copying files into the .app directly →
         //      <Bundle.main>/Letters/A/strokes_schulschrift.json or
-        //      <Bundle.main>/A/strokes_schulschrift.json depending on group.
-        // Every Schreibschrift file lookup was silently hitting nil on
-        // layout (1) because the old code only probed (2) and (3). We now
-        // try every layout, then fall back to an enumerator-based suffix
-        // match as a last resort so the app never silently serves the
-        // wrong variant file.
+        //      <Bundle.main>/A/strokes_schulschrift.json
+        // The enumerator-based suffix match at the end is a last
+        // resort that guarantees the app never silently serves the
+        // wrong variant file just because the bundling layout shifted.
         let pathCandidates = [relativePath, "Resources/\(relativePath)"]
         for b in searchBundles {
             guard let root = b.resourceURL else { continue }
@@ -162,13 +160,12 @@ final class LetterRepository {
         return .failure(.noAssetsFound)
     }
 
-    /// Warm-launch optimisation: return the cached letters when they were
-    /// written by the same app build the user is now running. Any app update
-    /// (which always bumps CFBundleVersion in App Store builds) invalidates
-    /// the cache automatically — no hardcoded letter count to keep in sync
-    /// when the bundle gains lowercase / umlaut / digit assets.
-    /// Falls back to the canonical bundle path when the cache is missing,
-    /// stale, or its bundle-version sentinel is unavailable.
+    /// Warm-launch optimisation: return the cached letters when they
+    /// were written by the same app build that's currently running.
+    /// App updates bump CFBundleVersion in App Store builds, which
+    /// auto-invalidates the cache without any hardcoded "expected
+    /// count" to maintain. Falls back to the bundle path when the
+    /// cache is missing, stale, or its version sentinel is absent.
     func loadLettersFast() -> [LetterAsset] {
         if let bundleVersion = currentBundleVersion,
            let cachedVersion = userDefaults.string(forKey: Self.cacheBundleVersionKey),
@@ -180,15 +177,16 @@ final class LetterRepository {
         return loadLetters()
     }
 
-    /// Storage key for the bundle-version sentinel that pairs with the cache
-    /// file. Versioning the cache by app build is the standard cache-bust idiom
-    /// for resource caches and avoids a hand-maintained "expected count" const.
+    /// Storage key for the bundle-version sentinel paired with the
+    /// cache file. Versioning the cache by app build is the standard
+    /// resource-cache bust idiom.
     private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion"
 
-    /// Identifier for the build that produced the cache. Combines marketing
-    /// version and build number so the cache busts on either kind of release.
-    /// Returns nil in environments without a bundle (e.g. unit-test hosts) so
-    /// the fast path defers to the slow path rather than serving stale data.
+    /// Identifier for the build that produced the cache. Combines
+    /// marketing version and build number so the cache busts on
+    /// either kind of release. Returns nil without a bundle (e.g.
+    /// unit-test hosts) so the fast path defers to the slow path
+    /// rather than serving stale data.
     private var currentBundleVersion: String? {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
@@ -202,9 +200,9 @@ final class LetterRepository {
         do {
             try cache.save(letters)
         } catch {
-            // Skip the version stamp when the cache write itself failed — we
-            // must never claim a valid cache exists for a build whose cache
-            // file is missing or corrupt.
+            // Skip the version stamp on write failure: we must never
+            // claim a valid cache exists for a build whose cache file
+            // is missing or corrupt.
             return
         }
         if let version = currentBundleVersion {
@@ -214,16 +212,12 @@ final class LetterRepository {
 
     private func loadFromCache() -> [LetterAsset]? {
         guard let letters = try? cache.load(), !letters.isEmpty else { return nil }
-        // Reject caches that contain any letter with an empty stroke array.
-        // A cache written by an earlier build can shadow a valid bundle
-        // indefinitely — when strokes are empty, `load(letter:)` skips the
-        // observe+direct phases and drops the child straight into Nachspuren.
-        // Falling back to the bundle re-reads strokes.json fresh and repairs
+        // Reject caches with any empty-stroke letter. An empty stroke
+        // array would make `load(letter:)` skip the observe+direct
+        // phases and drop the child straight into Nachspuren; falling
+        // back to the bundle re-reads strokes.json fresh and repairs
         // itself on the next persist.
         guard letters.allSatisfy({ !$0.strokes.strokes.isEmpty }) else { return nil }
-        // Loggig moved to the slow-path caller so the fast warm-launch path
-        // (loadLettersFast -> cache hit) doesn't emit a misleading "bundle
-        // load failed" message on every launch.
         return letters
     }
 
@@ -278,27 +272,24 @@ private extension LetterRepository {
 
             let allAudio = findAudioAssets(for: base)
             if allAudio.isEmpty {
+                // Letter is still surfaced: a valid strokes.json is
+                // enough to trace. Letters without recordings stay
+                // silent during proximity events.
                 issues.append(.init(letter: base, message: "No audio files found in bundle for letter"))
-                // The letter is still surfaced — it has valid strokes
-                // and a glyph the child can trace. Audio is optional;
-                // letters without recordings simply stay silent during
-                // proximity events. Dropping them here is what made
-                // only the seven recorded letters reachable in the
-                // picker.
             }
             // Phoneme recordings follow the `<base>_phoneme<n>.<ext>`
-            // suffix convention and are partitioned out so the parent's
-            // "Lautwert wiedergeben" toggle can pick which population
+            // suffix convention; partitioning lets the parent's
+            // "Lautwert wiedergeben" toggle choose which population
             // plays.
             let (audio, phonemeAudio) = partitionPhonemeAudio(allAudio)
 
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = (base == base.lowercased() && base != base.uppercased()) ? .lower : .upper
-            // `variants` describes alternate stroke *orders* of the same
-            // letter within the same script (e.g. German primary-school F,
-            // whose horizontal bars can be drawn in two sequences).
-            // Scripts (Druckschrift, Schreibschrift, …) are NOT variants —
-            // they flow through SchriftArt.bundleVariantID instead.
+            // `variants` describes alternate stroke *orders* of the
+            // same letter within the same script (e.g. F's two
+            // horizontal-bar sequences). Scripts themselves
+            // (Druckschrift, Schreibschrift, …) are not variants —
+            // they flow through `SchriftArt.bundleVariantID`.
             var variantIDs: [String] = []
             if bundleHasResource(at: "Letters/\(base)/strokes_variant.json") { variantIDs.append("variant") }
             let variants: [String]? = variantIDs.isEmpty ? nil : variantIDs
@@ -350,11 +341,10 @@ private extension LetterRepository {
         return (deduped, issues)
     }
 
-    /// P6 (ROADMAP_V5): split a letter's audio inventory into the
-    /// letter-name population and the phoneme population. Phoneme
-    /// recordings follow the convention `<base>_phoneme<n>.<ext>`
-    /// (e.g. `A_phoneme1.mp3`). Match is case-insensitive on the
-    /// suffix; sorted output keeps playback order deterministic.
+    /// Split a letter's audio inventory into the letter-name and
+    /// phoneme populations. Phoneme recordings follow the convention
+    /// `<base>_phoneme<n>.<ext>` (e.g. `A_phoneme1.mp3`); match is
+    /// case-insensitive and sorted output keeps playback deterministic.
     func partitionPhonemeAudio(_ files: [String]) -> (name: [String], phoneme: [String]) {
         var name: [String] = []
         var phoneme: [String] = []
@@ -542,14 +532,11 @@ private extension LetterRepository {
     }
 
     func logValidationIssues(_ issues: [ValidationIssue]) {
-        // Most "issues" are benign: stroke JSONs ship for every letter
-        // A-Z plus umlauts + ß, but bundled audio / PBM only exist for
-        // the 7-letter demo set (A F I K L M O). The loader already
-        // drops letters missing audio so they never appear in the UI.
-        // Logging each skip at .warning level spammed the Xcode console
-        // on every launch — demote the per-letter detail to .debug and
-        // emit a single summary warning so the signal is preserved
-        // without the noise.
+        // Most issues are benign — stroke JSONs ship for every letter
+        // but bundled audio/PBM only exist for the recorded subset.
+        // Emit a single summary at .info, with per-letter detail at
+        // .debug so the signal is preserved without spamming the
+        // Xcode console on every launch.
         guard !issues.isEmpty else { return }
         let missingAudio = issues.filter { $0.message.contains("No audio files") }.count
         let missingPBM   = issues.filter { $0.message.contains("Missing PBM") }.count
