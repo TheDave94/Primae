@@ -115,10 +115,10 @@ final class JSONStreakStore: StreakStoring {
             state.lastPracticeDayString = dayString
         }
 
-        // Update totals. Routed through `LetterProgress.canonicalKey`
-        // so the `ß` special-case stays in lock-step with the progress
-        // and dashboard stores (review item W-3) — the
-        // `allLettersComplete` reward below checks for `"ß"` literally.
+        // Route through `LetterProgress.canonicalKey` so the `ß`
+        // special-case stays in lock-step with the progress and
+        // dashboard stores — the `allLettersComplete` reward below
+        // checks for `"ß"` literally.
         let previousLetterCount = state.completedLetters.count
         state.totalCompletions += lettersCompleted.count
         lettersCompleted.forEach { letter in

@@ -44,12 +44,11 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
     /// property so it's testable without instantiating the full
     /// `TracingDependencies` graph (AudioEngine, JSONProgressStore, etc.).
     static var defaultForInstall: ThesisCondition {
-        // T6 (ROADMAP_V5): manual researcher override for small cohorts
-        // wins over the byte-modulo derivation. Lets a thesis with n < 30
-        // achieve exact between-arms balance (e.g. 8/8/8) rather than
-        // accepting the ~uniform-in-expectation imbalance produced by
-        // byte%3. The override is settable from SettingsView's research
-        // section and persists in UserDefaults + iCloud-KVS.
+        // A researcher-set manual override (configured from
+        // SettingsView's research section) wins over byte-modulo
+        // derivation so small thesis cohorts (n < 30) can hit exact
+        // between-arms balance instead of the imbalance the modulo
+        // produces in expectation.
         if let manual = ParticipantStore.conditionOverride {
             return manual
         }
@@ -78,23 +77,21 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
 
 /// Persists a per-install participant UUID for stable A/B cohort assignment.
 ///
-/// Storage layering (review item W-22):
+/// Storage layering:
 ///   1. **iCloud Key-Value** (`NSUbiquitousKeyValueStore`) — primary,
 ///      survives app reinstall on the same iCloud account so a parent
 ///      who deletes + reinstalls mid-study doesn't accidentally reroll
 ///      the child's A/B condition assignment.
 ///   2. **UserDefaults** — local fallback for offline / no-iCloud
-///      installs, and for the test target which doesn't have iCloud
-///      entitlements.
+///      installs and for the test target which lacks iCloud entitlements.
 ///
-/// On first access we read both sources, prefer whichever has a valid
-/// UUID, and reconcile by writing the chosen value back to whichever
-/// source was empty. Subsequent writes hit both stores so a future
-/// device-replacement read finds the same UUID.
+/// On first access both sources are read; the valid UUID wins and is
+/// written back to whichever source was empty. Subsequent writes hit
+/// both stores so a future device-replacement read finds the same UUID.
 enum ParticipantStore {
     private static let key = "de.flamingistan.primae.participantId"
     private static let enrolledKey = "de.flamingistan.primae.thesisEnrolled"
-    /// D-7: timestamp captured when `isEnrolled` flips from `false` to
+    /// Timestamp captured when `isEnrolled` flips from `false` to
     /// `true`. The CSV exporter filters phase-session rows older than
     /// this date so pilot / sandbox / pre-enrollment activity doesn't
     /// pollute the `.threePhase` arm at analysis time.
@@ -103,9 +100,8 @@ enum ParticipantStore {
 
     /// Researcher-set thesis arm. When non-nil, `defaultForInstall`
     /// returns this value verbatim, ignoring the byte-modulo assignment.
-    /// Used for stratified-block balancing in small-n thesis cohorts
-    /// (T6 ROADMAP_V5). Mirrored to iCloud-KVS so a reinstall preserves
-    /// the explicit assignment alongside the participant UUID.
+    /// Mirrored to iCloud-KVS so a reinstall preserves the explicit
+    /// assignment alongside the participant UUID.
     static var conditionOverride: ThesisCondition? {
         get {
             let icloud = NSUbiquitousKeyValueStore.default
@@ -173,7 +169,7 @@ enum ParticipantStore {
     /// `ThesisCondition.assign(participantId:)` takes over.
     ///
     /// Mirrored to iCloud-KVS so an enrolled child who reinstalls keeps
-    /// the same condition (review item W-22).
+    /// the same condition.
     static var isEnrolled: Bool {
         get {
             // Prefer iCloud if it has a value; otherwise fall back to local.
@@ -188,11 +184,11 @@ enum ParticipantStore {
             UserDefaults.standard.set(newValue, forKey: enrolledKey)
             let icloud = NSUbiquitousKeyValueStore.default
             icloud.set(newValue, forKey: enrolledKey)
-            // D-7: stamp the enrolment timestamp the first time enrolment
-            // flips on. Don't overwrite once it's set — a parent who
-            // toggles the switch off and on again would otherwise lose
-            // the original cohort start date and a portion of legitimate
-            // study data would be incorrectly filtered as pre-enrollment.
+            // Stamp the enrolment timestamp the first time enrolment
+            // flips on. Don't overwrite — a parent who toggles the
+            // switch off and on again would otherwise lose the
+            // original cohort start date and legitimate study data
+            // would be filtered out as pre-enrollment.
             if newValue, !wasEnrolled, enrolledAt == nil {
                 let now = Date()
                 UserDefaults.standard.set(now, forKey: enrolledAtKey)
@@ -203,10 +199,10 @@ enum ParticipantStore {
     }
 
     /// Wall-clock time the install joined the thesis study. `nil` for
-    /// installs that have never enrolled — those should never have any
-    /// thesis-arm data because `defaultForInstall` returns `.threePhase`
-    /// for `isEnrolled == false`. The CSV exporter discards phase-session
-    /// rows older than this date (review item D-7).
+    /// installs that have never enrolled — those have no thesis-arm
+    /// data because `defaultForInstall` returns `.threePhase` for
+    /// `isEnrolled == false`. The CSV exporter discards phase-session
+    /// rows older than this date.
     static var enrolledAt: Date? {
         let icloud = NSUbiquitousKeyValueStore.default
         let icloudTs = icloud.double(forKey: enrolledAtKey)

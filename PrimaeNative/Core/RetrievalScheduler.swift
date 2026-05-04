@@ -1,13 +1,12 @@
 // RetrievalScheduler.swift
 // PrimaeNative
 //
-// P1 (ROADMAP_V5): retrieval-practice scheduling. Roediger & Karpicke
-// (2006) showed that retrieval tests produce better long-term retention
-// than additional study: the act of *generating* an answer beats the
-// act of *re-encoding* it. The app already implements spaced practice
-// via LetterScheduler (Ebbinghaus + accuracy + novelty); this scheduler
-// adds a parallel signal — every Nth letter selection, present a brief
-// recognition test before the tracing phases.
+// Retrieval-practice scheduling. Roediger & Karpicke (2006) showed
+// retrieval tests produce better long-term retention than additional
+// study — the act of *generating* an answer beats *re-encoding* it.
+// `LetterScheduler` already covers spaced practice; this scheduler
+// layers a parallel signal: every Nth letter selection, present a
+// brief recognition test before the tracing phases.
 //
 // Configurable knobs:
 // - `interval`: every Nth selection triggers a retrieval prompt
@@ -16,10 +15,10 @@
 //   completed the letter at least this many times — testing on a
 //   never-seen letter is just guessing (default 1).
 //
-// Persistence: per-letter `retrievalAttempts: [Bool]?` (recent 10) so
-// the dashboard / export can compute retrieval accuracy alongside form
-// accuracy. The `recordOutcome` API mutates a `ProgressStoring` so the
-// scheduler stays decoupled from the disk layer.
+// Outcomes are persisted as a per-letter rolling [Bool] of recent
+// attempts so the dashboard/export can compute retrieval accuracy
+// alongside form accuracy. The `recordOutcome` API mutates a
+// `ProgressStoring`, keeping the scheduler decoupled from disk.
 
 import Foundation
 
