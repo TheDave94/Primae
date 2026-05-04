@@ -4,10 +4,19 @@
   "strokes": [
     {
       "id": 1,
+      "comment": "Left arm: top-left down to junction",
       "checkpoints": [
         {
           "x": 0.25,
           "y": 0.15
+        },
+        {
+          "x": 0.35,
+          "y": 0.29
+        },
+        {
+          "x": 0.417,
+          "y": 0.436
         },
         {
           "x": 0.5,
@@ -17,10 +26,15 @@
     },
     {
       "id": 2,
+      "comment": "Right arm: top-right down to junction",
       "checkpoints": [
         {
           "x": 0.75,
           "y": 0.15
+        },
+        {
+          "x": 0.626,
+          "y": 0.325
         },
         {
           "x": 0.5,
@@ -30,10 +44,15 @@
     },
     {
       "id": 3,
+      "comment": "Stem: junction down",
       "checkpoints": [
         {
           "x": 0.5,
           "y": 0.5
+        },
+        {
+          "x": 0.472,
+          "y": 0.667
         },
         {
           "x": 0.5,

@@ -4,7 +4,7 @@
   "strokes": [
     {
       "id": 1,
-      "comment": "Left diagonal",
+      "comment": "Left diagonal: top-left down to apex",
       "checkpoints": [
         {
           "x": 0.3,
@@ -38,31 +38,31 @@
     },
     {
       "id": 2,
-      "comment": "Right diagonal",
+      "comment": "Right diagonal: apex up to top-right",
       "checkpoints": [
         {
-          "x": 0.7,
-          "y": 0.2
-        },
-        {
-          "x": 0.705,
-          "y": 0.333
-        },
-        {
-          "x": 0.656,
-          "y": 0.452
-        },
-        {
-          "x": 0.605,
-          "y": 0.569
+          "x": 0.5,
+          "y": 0.8
         },
         {
           "x": 0.556,
           "y": 0.689
         },
         {
-          "x": 0.5,
-          "y": 0.8
+          "x": 0.605,
+          "y": 0.569
+        },
+        {
+          "x": 0.656,
+          "y": 0.452
+        },
+        {
+          "x": 0.705,
+          "y": 0.333
+        },
+        {
+          "x": 0.7,
+          "y": 0.2
         }
       ]
     }

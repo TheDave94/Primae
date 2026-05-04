@@ -69,7 +69,10 @@ DEFAULT_RADIUS = 0.06
 #   comment:     optional human-readable note copied through to the JSON.
 LETTER_SPECS: dict[str, list[dict]] = {
     "A": [
-        {"start": [0.58, 0.04], "end": [0.06, 0.96], "via": [[0.34, 0.44]], "comment": "Left leg: apex down-left"},
+        # Worksheet: ↑ at bottom-left of left leg → start at the
+        # bottom and go UP to the apex. The right leg then leaves
+        # the apex going down-right; crossbar last, left to right.
+        {"start": [0.06, 0.96], "end": [0.58, 0.04], "via": [[0.34, 0.44]], "comment": "Left leg: bottom-left up to apex"},
         {"start": [0.58, 0.04], "end": [0.94, 0.96], "via": [[0.76, 0.50]], "comment": "Right leg: apex down-right"},
         {"start": [0.25, 0.60], "end": [0.80, 0.60], "comment": "Crossbar: left to right"},
     ],
@@ -86,8 +89,10 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.35, 0.15], "end": [0.35, 0.85], "via": [[0.70, 0.50]], "comment": "Right arc"},
     ],
     "E": [
-        {"start": [0.65, 0.15], "end": [0.35, 0.15], "comment": "Top bar"},
+        # Worksheet stroke order: spine first (top→bottom), then
+        # top / mid / bottom horizontals each drawn left → right.
         {"start": [0.35, 0.15], "end": [0.35, 0.85], "comment": "Vertical spine"},
+        {"start": [0.35, 0.15], "end": [0.65, 0.15], "comment": "Top bar"},
         {"start": [0.35, 0.50], "end": [0.60, 0.50], "comment": "Mid bar"},
         {"start": [0.35, 0.85], "end": [0.65, 0.85], "comment": "Bottom bar"},
     ],
@@ -111,8 +116,11 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.60, 0.15], "end": [0.28, 0.72], "via": [[0.45, 0.85]], "comment": "Stem with hook"},
     ],
     "K": [
+        # Worksheet: spine first, then upper arm comes IN to the
+        # spine from the top-right (down-left), and the lower arm
+        # leaves the spine going down-right.
         {"start": [0.16, 0.04], "end": [0.07, 0.95], "via": [[0.10, 0.64]], "comment": "Spine: top to bottom"},
-        {"start": [0.27, 0.48], "end": [0.93, 0.04], "via": [[0.62, 0.24]], "comment": "Upper arm"},
+        {"start": [0.93, 0.04], "end": [0.27, 0.48], "via": [[0.62, 0.24]], "comment": "Upper arm: top-right down to spine"},
         {"start": [0.27, 0.48], "end": [0.85, 0.95], "via": [[0.51, 0.69]], "comment": "Lower arm"},
     ],
     "L": [
@@ -120,18 +128,28 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.10, 0.95], "end": [0.95, 0.95], "comment": "Foot"},
     ],
     "M": [
-        {"start": [0.20, 0.05], "end": [0.04, 0.97], "via": [[0.10, 0.59]], "comment": "Left spine"},
-        {"start": [0.20, 0.05], "end": [0.49, 0.91], "via": [[0.37, 0.54]], "comment": "Left diagonal"},
-        {"start": [0.49, 0.91], "end": [0.91, 0.04], "via": [[0.79, 0.27]], "comment": "Right diagonal"},
-        {"start": [0.91, 0.04], "end": [0.95, 0.95], "via": [[0.94, 0.63]], "comment": "Right spine"},
+        # Worksheet: ↑ at bottom-left → continuous path from
+        # bottom-left going UP to the top-left, down to the mid
+        # valley, up to the top-right, and back down to the bottom.
+        {"start": [0.04, 0.97], "end": [0.20, 0.05], "via": [[0.10, 0.59]], "comment": "Left spine: bottom up to top-left"},
+        {"start": [0.20, 0.05], "end": [0.49, 0.91], "via": [[0.37, 0.54]], "comment": "Left diagonal: down to mid valley"},
+        {"start": [0.49, 0.91], "end": [0.91, 0.04], "via": [[0.79, 0.27]], "comment": "Right diagonal: up to top-right"},
+        {"start": [0.91, 0.04], "end": [0.95, 0.95], "via": [[0.94, 0.63]], "comment": "Right spine: down to bottom"},
     ],
     "N": [
-        {"start": [0.28, 0.15], "end": [0.28, 0.85], "comment": "Left spine"},
-        {"start": [0.28, 0.15], "end": [0.70, 0.85], "comment": "Diagonal"},
-        {"start": [0.70, 0.15], "end": [0.70, 0.85], "comment": "Right spine"},
+        # Worksheet: ↑ at bottom-left → continuous path from
+        # bottom-left UP to the top-left, diagonal DOWN to the
+        # bottom-right, then UP to the top-right.
+        {"start": [0.28, 0.85], "end": [0.28, 0.15], "comment": "Left spine: bottom up to top"},
+        {"start": [0.28, 0.15], "end": [0.70, 0.85], "comment": "Diagonal: top-left down to bottom-right"},
+        {"start": [0.70, 0.85], "end": [0.70, 0.15], "comment": "Right spine: bottom up to top"},
     ],
     "O": [
-        {"start": [0.27, 0.13], "end": [0.27, 0.13], "via": [[0.81, 0.80]], "comment": "Oval (CCW via bottom-right)"},
+        # Worksheet: ← at the top → start at top-centre, go LEFT
+        # first (counter-clockwise). Routing the BFS via the LEFT
+        # side anchor forces the start→via leg to take the
+        # upper-left arc, producing a CCW traversal.
+        {"start": [0.50, 0.10], "end": [0.50, 0.10], "via": [[0.18, 0.50]], "comment": "Oval (CCW from top via left)"},
     ],
     "P": [
         {"start": [0.33, 0.15], "end": [0.33, 0.85], "comment": "Vertical spine"},
@@ -153,8 +171,11 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.28, 0.15], "end": [0.72, 0.15], "via": [[0.55, 0.87]], "comment": "U-bend"},
     ],
     "V": [
-        {"start": [0.28, 0.15], "end": [0.50, 0.85], "comment": "Left diagonal"},
-        {"start": [0.72, 0.15], "end": [0.50, 0.85], "comment": "Right diagonal"},
+        # Worksheet: ↓ at top-left → single continuous V path,
+        # left-diagonal down to the apex then right-diagonal up.
+        # The second sub-stroke leaves the apex going up-right.
+        {"start": [0.28, 0.15], "end": [0.50, 0.85], "comment": "Left diagonal: top-left down to apex"},
+        {"start": [0.50, 0.85], "end": [0.72, 0.15], "comment": "Right diagonal: apex up to top-right"},
     ],
     "W": [
         {"start": [0.18, 0.15], "end": [0.30, 0.85], "comment": "Left diagonal down"},
@@ -167,9 +188,13 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.75, 0.15], "end": [0.25, 0.85], "comment": "TR→BL diagonal"},
     ],
     "Y": [
-        {"start": [0.25, 0.15], "end": [0.50, 0.50], "comment": "Left arm to junction"},
-        {"start": [0.75, 0.15], "end": [0.50, 0.50], "comment": "Right arm to junction"},
-        {"start": [0.50, 0.50], "end": [0.50, 0.85], "comment": "Stem"},
+        # Worksheet: ↓ at top-left, ↓ at top-right (down-left into
+        # junction), ↓ at junction. Left arm comes IN to the
+        # junction from the top-left, right arm comes IN from
+        # top-right, then the stem heads down.
+        {"start": [0.25, 0.15], "end": [0.50, 0.50], "comment": "Left arm: top-left down to junction"},
+        {"start": [0.75, 0.15], "end": [0.50, 0.50], "comment": "Right arm: top-right down to junction"},
+        {"start": [0.50, 0.50], "end": [0.50, 0.85], "comment": "Stem: junction down"},
     ],
     "Z": [
         {"start": [0.25, 0.15], "end": [0.75, 0.15], "comment": "Top bar"},
@@ -294,8 +319,9 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.70, 0.25], "end": [0.70, 0.80], "comment": "Right stem"},
     ],
     "v": [
-        {"start": [0.30, 0.20], "end": [0.50, 0.80], "comment": "Left diagonal"},
-        {"start": [0.70, 0.20], "end": [0.50, 0.80], "comment": "Right diagonal"},
+        # Mirrors uppercase V: down to apex, then up to top-right.
+        {"start": [0.30, 0.20], "end": [0.50, 0.80], "comment": "Left diagonal: top-left down to apex"},
+        {"start": [0.50, 0.80], "end": [0.70, 0.20], "comment": "Right diagonal: apex up to top-right"},
     ],
     "w": [
         {"start": [0.22, 0.30], "end": [0.35, 0.70], "comment": "Down-left"},
