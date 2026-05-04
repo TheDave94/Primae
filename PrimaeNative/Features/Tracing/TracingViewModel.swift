@@ -1314,13 +1314,13 @@ public final class TracingViewModel {
         }
     }
 
-    /// Apply calibrated glyph-relative checkpoints from the debug overlay.
+    /// Apply calibrated canvas-relative checkpoints from the debug overlay.
+    /// The overlay stores points in the same 0..1 canvas-relative space
+    /// the JSON stroke files use, so no glyph-rect remap is needed here.
     func applyCalibration(_ strokes: [[CGPoint]]) {
-        guard let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: currentLetterName, canvasSize: canvasSize, schriftArt: schriftArt) else { return }
         let defs = strokes.enumerated().map { (i, pts) in
             StrokeDefinition(id: i + 1, checkpoints: pts.map { cp in
-                Checkpoint(x: gr.minX + cp.x * gr.width,
-                           y: gr.minY + cp.y * gr.height)
+                Checkpoint(x: cp.x, y: cp.y)
             })
         }
         let letterStrokes = LetterStrokes(letter: currentLetterName, checkpointRadius: 0.05, strokes: defs)
@@ -1754,22 +1754,12 @@ public final class TracingViewModel {
                 cell.tracker.load(cellSource)
                 continue
             }
-            let strokesForCell: LetterStrokes
-            if let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                for: cellLetter, canvasSize: cellSize, schriftArt: schriftArt) {
-                let mapped = cellSource.strokes.map { stroke in
-                    StrokeDefinition(id: stroke.id, checkpoints: stroke.checkpoints.map { cp in
-                        Checkpoint(x: gr.minX + cp.x * gr.width,
-                                   y: gr.minY + cp.y * gr.height)
-                    })
-                }
-                strokesForCell = LetterStrokes(letter: cellSource.letter,
-                                               checkpointRadius: cellSource.checkpointRadius,
-                                               strokes: mapped)
-            } else {
-                strokesForCell = cellSource
-            }
-            cell.tracker.load(strokesForCell)
+            // Stroke checkpoints are canvas-relative (0..1 of the
+            // cell's frame, including the glyph's pad). Pass them
+            // through to the tracker unchanged — the renderer reads
+            // the same canvas-relative coords, so proximity hit-tests
+            // line up with what's drawn on screen.
+            cell.tracker.load(cellSource)
         }
         lastCheckpointKey = key
     }

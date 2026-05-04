@@ -76,14 +76,17 @@ struct StrokeCalibrationOverlay: View {
         }
     }
 
-    /// Dashed red outline of `PrimaeLetterRenderer.normalizedGlyphRect` for
-    /// the current (letter, schriftArt). Lets us spot-check whether the
-    /// coordinate system used to place dots lines up with the visible glyph:
-    /// if the rect isn't wrapping the rendered glyph, the glyph-rel coords
-    /// stored in JSON will also be off on render.
+    /// Dashed red outline of `PrimaeLetterRenderer.normalizedGlyphRect`
+    /// for the current letter / script. Spot-check that the inner
+    /// glyph-bbox the renderer reports actually wraps the visible
+    /// glyph; misalignment here would explain a ghost / stroke
+    /// drift even though strokes themselves are canvas-relative.
     @ViewBuilder
     private func glyphRectDebugLayer(in size: CGSize) -> some View {
-        let gr = glyphRect(in: size)
+        let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+            for: vm.currentLetterName,
+            canvasSize: size,
+            schriftArt: vm.schriftArt) ?? CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)
         let rect = CGRect(
             x: gr.minX * size.width,
             y: gr.minY * size.height,
@@ -343,23 +346,16 @@ struct StrokeCalibrationOverlay: View {
 
     // MARK: - Coordinate conversion
 
-    private func glyphRect(in size: CGSize) -> CGRect {
-        PrimaeLetterRenderer.normalizedGlyphRect(for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt)
-            ?? CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)
-    }
-
+    /// Calibrations are stored in the same canvas-relative space the
+    /// JSON stroke files use (0..1 of the canvas, including the glyph
+    /// generator's 10% pad), so screen ↔ stored is a straight scale.
     private func glyphToScreen(_ pt: CGPoint, in size: CGSize) -> CGPoint {
-        let gr = glyphRect(in: size)
-        return CGPoint(
-            x: (gr.minX + pt.x * gr.width) * size.width,
-            y: (gr.minY + pt.y * gr.height) * size.height
-        )
+        CGPoint(x: pt.x * size.width, y: pt.y * size.height)
     }
 
     private func screenToGlyph(_ pt: CGPoint, in size: CGSize) -> CGPoint {
-        let gr = glyphRect(in: size)
-        let x = ((pt.x / size.width) - gr.minX) / gr.width
-        let y = ((pt.y / size.height) - gr.minY) / gr.height
+        let x = pt.x / size.width
+        let y = pt.y / size.height
         return CGPoint(
             x: max(-0.05, min(1.05, (x * 100).rounded() / 100)),
             y: max(-0.05, min(1.05, (y * 100).rounded() / 100))

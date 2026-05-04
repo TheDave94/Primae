@@ -67,20 +67,24 @@ struct TracingCanvasView: View {
                 if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
                    !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
-                   !rawStrokes.strokes.isEmpty,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
-                    // Ghost lines from stroke JSON — same data as dots, guaranteed alignment.
+                   !rawStrokes.strokes.isEmpty {
+                    // Stroke checkpoints are stored canvas-relative (0..1
+                    // of the canvas, including the 10% pad the glyph
+                    // generator and `glyphPath` both use). Don't remap
+                    // through `normalizedGlyphRect` here — that would
+                    // squeeze the strokes inward by another 10% on each
+                    // side and leave them floating inside the ghost.
                     for stroke in rawStrokes.strokes {
                         guard stroke.checkpoints.count >= 2 else { continue }
                         var ghostPath = Path()
                         let first = stroke.checkpoints[0]
                         ghostPath.move(to: CGPoint(
-                            x: ox + (gr.minX + first.x * gr.width) * cellSize.width,
-                            y: oy + (gr.minY + first.y * gr.height) * cellSize.height))
+                            x: ox + first.x * cellSize.width,
+                            y: oy + first.y * cellSize.height))
                         for cp in stroke.checkpoints.dropFirst() {
                             ghostPath.addLine(to: CGPoint(
-                                x: ox + (gr.minX + cp.x * gr.width) * cellSize.width,
-                                y: oy + (gr.minY + cp.y * gr.height) * cellSize.height))
+                                x: ox + cp.x * cellSize.width,
+                                y: oy + cp.y * cellSize.height))
                         }
                         context.stroke(ghostPath, with: .color(.canvasGhost.opacity(0.35)),
                                        style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
@@ -93,15 +97,13 @@ struct TracingCanvasView: View {
                 // aren't doubled up by the phase's fat start-dot overlay.
                 if vm.showCheckpoints, !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
-                   !rawStrokes.strokes.isEmpty,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                       for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                   !rawStrokes.strokes.isEmpty {
                     for (idx, stroke) in rawStrokes.strokes.enumerated() {
                         guard let first = stroke.checkpoints.first else { continue }
                         let isComplete = vm.isStrokeCompleted(idx)
                         let isActive = vm.activeStrokeIndex == idx
-                        let screenX = ox + (gr.minX + first.x * gr.width) * cellSize.width
-                        let screenY = oy + (gr.minY + first.y * gr.height) * cellSize.height
+                        let screenX = ox + first.x * cellSize.width
+                        let screenY = oy + first.y * cellSize.height
                         let pt = CGPoint(x: screenX, y: screenY)
                         let r: CGFloat = isActive ? 18 : 14
                         let dotRect = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
@@ -144,11 +146,10 @@ struct TracingCanvasView: View {
                 // Hidden while calibrating: the observe-phase animation would
                 // otherwise scan across the calibrator's numbered dots and make
                 // it impossible to tell what sits where on the glyph.
-                if isActiveCell, let point = vm.animationGuidePoint, !vm.isCalibrating,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                if isActiveCell, let point = vm.animationGuidePoint, !vm.isCalibrating {
                     let screenPt = CGPoint(
-                        x: ox + (gr.minX + point.x * gr.width) * cellSize.width,
-                        y: oy + (gr.minY + point.y * gr.height) * cellSize.height)
+                        x: ox + point.x * cellSize.width,
+                        y: oy + point.y * cellSize.height)
                     let r: CGFloat = 22
                     let dotRect   = CGRect(x: screenPt.x - r, y: screenPt.y - r, width: r * 2, height: r * 2)
                     let dot       = Path(ellipseIn: dotRect)
@@ -165,16 +166,14 @@ struct TracingCanvasView: View {
                 if isActiveCell, let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    arrowIdx < rawStrokes.strokes.count,
-                   rawStrokes.strokes[arrowIdx].checkpoints.count >= 2,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                       for: cellLetter, canvasSize: cellSize, schriftArt: vm.schriftArt) {
+                   rawStrokes.strokes[arrowIdx].checkpoints.count >= 2 {
                     let stroke = rawStrokes.strokes[arrowIdx]
                     let c0 = stroke.checkpoints[0]
                     let c1 = stroke.checkpoints[1]
-                    let from = CGPoint(x: ox + (gr.minX + c0.x * gr.width) * cellSize.width,
-                                       y: oy + (gr.minY + c0.y * gr.height) * cellSize.height)
-                    let to   = CGPoint(x: ox + (gr.minX + c1.x * gr.width) * cellSize.width,
-                                       y: oy + (gr.minY + c1.y * gr.height) * cellSize.height)
+                    let from = CGPoint(x: ox + c0.x * cellSize.width,
+                                       y: oy + c0.y * cellSize.height)
+                    let to   = CGPoint(x: ox + c1.x * cellSize.width,
+                                       y: oy + c1.y * cellSize.height)
                     var linePath = Path()
                     linePath.move(to: from)
                     linePath.addLine(to: to)
@@ -227,20 +226,18 @@ struct TracingCanvasView: View {
         Canvas { context, size in
             // Reference strokes in blue (opacity 0.4, lineWidth 8)
             if let rawStrokes = vm.glyphRelativeStrokes,
-               !rawStrokes.strokes.isEmpty,
-               let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                   for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) {
+               !rawStrokes.strokes.isEmpty {
                 for stroke in rawStrokes.strokes {
                     guard stroke.checkpoints.count >= 2 else { continue }
                     var refPath = Path()
                     let first = stroke.checkpoints[0]
                     refPath.move(to: CGPoint(
-                        x: (gr.minX + first.x * gr.width) * size.width,
-                        y: (gr.minY + first.y * gr.height) * size.height))
+                        x: first.x * size.width,
+                        y: first.y * size.height))
                     for cp in stroke.checkpoints.dropFirst() {
                         refPath.addLine(to: CGPoint(
-                            x: (gr.minX + cp.x * gr.width) * size.width,
-                            y: (gr.minY + cp.y * gr.height) * size.height))
+                            x: cp.x * size.width,
+                            y: cp.y * size.height))
                     }
                     context.stroke(refPath, with: .color(.canvasGhost.opacity(0.4)),
                                    style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
@@ -543,11 +540,7 @@ private struct DirectPhaseDotsOverlay: View {
                 let cellFrame = vm.multiCellActiveFrame
                 ?? CGRect(origin: .zero, size: geo.size)
                 if let rawStrokes = vm.rawGlyphStrokes,
-                   !rawStrokes.strokes.isEmpty,
-                   let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                       for: vm.currentLetterName,
-                       canvasSize: cellFrame.size,
-                       schriftArt: vm.schriftArt) {
+                   !rawStrokes.strokes.isEmpty {
                     let nextIdx = vm.directNextExpectedDotIndex
                     // Render order: non-next dots first (bottom), then
                     // the next-expected dot last (top). Many letters
@@ -561,14 +554,12 @@ private struct DirectPhaseDotsOverlay: View {
                         if idx != nextIdx {
                             dotView(idx: idx,
                                     stroke: stroke,
-                                    gr: gr,
                                     cellFrame: cellFrame)
                         }
                     }
                     if nextIdx < rawStrokes.strokes.count {
                         dotView(idx: nextIdx,
                                 stroke: rawStrokes.strokes[nextIdx],
-                                gr: gr,
                                 cellFrame: cellFrame)
                     }
                 }
@@ -578,13 +569,14 @@ private struct DirectPhaseDotsOverlay: View {
     }
 
     @ViewBuilder
-    private func dotView(idx: Int, stroke: StrokeDefinition, gr: CGRect, cellFrame: CGRect) -> some View {
+    private func dotView(idx: Int, stroke: StrokeDefinition, cellFrame: CGRect) -> some View {
         if let first = stroke.checkpoints.first {
-            // gr is normalised 0..1 relative to `cellFrame.size`; offset by
-            // cellFrame origin so word-mode (multi-cell) draws the dot in
-            // the active cell instead of the canvas origin (W-24).
-            let screenX = cellFrame.minX + (gr.minX + first.x * gr.width) * cellFrame.width
-            let screenY = cellFrame.minY + (gr.minY + first.y * gr.height) * cellFrame.height
+            // Stroke checkpoints are canvas-relative (0..1 of the
+            // cellFrame). Offset by cellFrame origin so word-mode
+            // (multi-cell) draws the dot in the active cell instead of
+            // the canvas origin.
+            let screenX = cellFrame.minX + first.x * cellFrame.width
+            let screenY = cellFrame.minY + first.y * cellFrame.height
             let isTapped = vm.directTappedDots.contains(idx)
             let isNext   = !isTapped && idx == vm.directNextExpectedDotIndex
             let r: CGFloat = isNext ? 22 : 18
