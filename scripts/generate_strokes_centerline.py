@@ -128,21 +128,21 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.10, 0.95], "end": [0.95, 0.95], "comment": "Foot"},
     ],
     "M": [
-        # Worksheet: ↑ at bottom-left → continuous path from
-        # bottom-left going UP to the top-left, down to the mid
-        # valley, up to the top-right, and back down to the bottom.
-        {"start": [0.04, 0.97], "end": [0.20, 0.05], "via": [[0.10, 0.59]], "comment": "Left spine: bottom up to top-left"},
-        {"start": [0.20, 0.05], "end": [0.49, 0.91], "via": [[0.37, 0.54]], "comment": "Left diagonal: down to mid valley"},
-        {"start": [0.49, 0.91], "end": [0.91, 0.04], "via": [[0.79, 0.27]], "comment": "Right diagonal: up to top-right"},
-        {"start": [0.91, 0.04], "end": [0.95, 0.95], "via": [[0.94, 0.63]], "comment": "Right spine: down to bottom"},
+        # Worksheet: ↑ at bottom-left, no other arrows — drawn as
+        # ONE continuous stroke from bottom-left up to top-left,
+        # down to the mid valley, up to top-right, and back down to
+        # the bottom-right.
+        {"start": [0.04, 0.97], "end": [0.95, 0.95],
+         "via": [[0.20, 0.05], [0.49, 0.91], [0.91, 0.04]],
+         "comment": "Continuous M (BL ↑ TL → mid-V → TR → BR)"},
     ],
     "N": [
-        # Worksheet: ↑ at bottom-left → continuous path from
-        # bottom-left UP to the top-left, diagonal DOWN to the
-        # bottom-right, then UP to the top-right.
-        {"start": [0.28, 0.85], "end": [0.28, 0.15], "comment": "Left spine: bottom up to top"},
-        {"start": [0.28, 0.15], "end": [0.70, 0.85], "comment": "Diagonal: top-left down to bottom-right"},
-        {"start": [0.70, 0.85], "end": [0.70, 0.15], "comment": "Right spine: bottom up to top"},
+        # Worksheet: ↑ at bottom-left only — ONE continuous stroke
+        # from bottom-left up to top-left, diagonally down to
+        # bottom-right, then up to top-right.
+        {"start": [0.28, 0.85], "end": [0.70, 0.15],
+         "via": [[0.28, 0.15], [0.70, 0.85]],
+         "comment": "Continuous N (BL ↑ TL → BR → TR)"},
     ],
     "O": [
         # Worksheet: ← at the top → start at top-centre, go LEFT
@@ -171,17 +171,20 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.28, 0.15], "end": [0.72, 0.15], "via": [[0.55, 0.87]], "comment": "U-bend"},
     ],
     "V": [
-        # Worksheet: ↓ at top-left → single continuous V path,
-        # left-diagonal down to the apex then right-diagonal up.
-        # The second sub-stroke leaves the apex going up-right.
-        {"start": [0.28, 0.15], "end": [0.50, 0.85], "comment": "Left diagonal: top-left down to apex"},
-        {"start": [0.50, 0.85], "end": [0.72, 0.15], "comment": "Right diagonal: apex up to top-right"},
+        # Worksheet: ↓ at top-left only — ONE continuous stroke
+        # from top-left down to the apex and up to top-right.
+        {"start": [0.28, 0.15], "end": [0.72, 0.15],
+         "via": [[0.50, 0.85]],
+         "comment": "Continuous V (TL → apex → TR)"},
     ],
     "W": [
-        {"start": [0.18, 0.15], "end": [0.30, 0.85], "comment": "Left diagonal down"},
-        {"start": [0.30, 0.85], "end": [0.50, 0.45], "comment": "Up to mid peak"},
-        {"start": [0.50, 0.45], "end": [0.70, 0.85], "comment": "Down to right valley"},
-        {"start": [0.70, 0.85], "end": [0.82, 0.15], "comment": "Up to top right"},
+        # Worksheet: ↓ at top-left only — ONE continuous stroke
+        # tracing the full M-shape from top-left down to the first
+        # valley, up to the mid peak, down to the second valley,
+        # up to the top-right.
+        {"start": [0.18, 0.15], "end": [0.82, 0.15],
+         "via": [[0.30, 0.85], [0.50, 0.45], [0.70, 0.85]],
+         "comment": "Continuous W (TL → V₁ → mid → V₂ → TR)"},
     ],
     "X": [
         {"start": [0.25, 0.15], "end": [0.75, 0.85], "comment": "TL→BR diagonal"},
@@ -319,15 +322,16 @@ LETTER_SPECS: dict[str, list[dict]] = {
         {"start": [0.70, 0.25], "end": [0.70, 0.80], "comment": "Right stem"},
     ],
     "v": [
-        # Mirrors uppercase V: down to apex, then up to top-right.
-        {"start": [0.30, 0.20], "end": [0.50, 0.80], "comment": "Left diagonal: top-left down to apex"},
-        {"start": [0.50, 0.80], "end": [0.70, 0.20], "comment": "Right diagonal: apex up to top-right"},
+        # ONE continuous stroke matching uppercase V.
+        {"start": [0.30, 0.20], "end": [0.70, 0.20],
+         "via": [[0.50, 0.80]],
+         "comment": "Continuous v (TL → apex → TR)"},
     ],
     "w": [
-        {"start": [0.22, 0.30], "end": [0.35, 0.70], "comment": "Down-left"},
-        {"start": [0.35, 0.70], "end": [0.50, 0.45], "comment": "Up to mid"},
-        {"start": [0.50, 0.45], "end": [0.65, 0.70], "comment": "Down to right"},
-        {"start": [0.65, 0.70], "end": [0.78, 0.30], "comment": "Up to top right"},
+        # ONE continuous stroke matching uppercase W.
+        {"start": [0.22, 0.30], "end": [0.78, 0.30],
+         "via": [[0.35, 0.70], [0.50, 0.45], [0.65, 0.70]],
+         "comment": "Continuous w (TL → V₁ → mid → V₂ → TR)"},
     ],
     "x": [
         {"start": [0.25, 0.20], "end": [0.75, 0.80], "comment": "TL→BR"},
@@ -362,21 +366,40 @@ LETTER_SPECS: dict[str, list[dict]] = {
 
 
 def rasterize(letter: str) -> np.ndarray:
-    """Render `letter` to a 512×512 binary mask (True = glyph pixel)."""
+    """Render `letter` to a SIZE × SIZE binary mask (True = glyph pixel).
+
+    Uses uniform font-metric scaling so every glyph in the font shares
+    the same em-square: lowercase 'a' is naturally smaller than 'A'
+    instead of being scaled up to fill the canvas. The em-square
+    (ascent + descent) is fitted into the avail region; each glyph
+    is centered horizontally and rendered with its baseline anchored
+    at `pad + scaled_ascent` — same scaling rule the iOS renderer
+    uses, so the strokes generated here line up with the on-device
+    ghost path.
+    """
     avail = int(SIZE * (1 - 2 * PAD))
-    font = ImageFont.truetype(str(FONT_PATH), avail)
+    # Probe at a large size so the ascent / descent metrics are precise,
+    # then derive a target font size whose em-square fits `avail`.
+    probe_size = 1000
+    probe_font = ImageFont.truetype(str(FONT_PATH), probe_size)
+    probe_ascent, probe_descent = probe_font.getmetrics()
+    em_height = probe_ascent + probe_descent
+    if em_height <= 0:
+        raise ValueError(f"Bad font metrics for {letter!r}")
+    target_size = int(round(probe_size * avail / em_height))
+    font = ImageFont.truetype(str(FONT_PATH), target_size)
+    ascent, _ = font.getmetrics()
     bbox = font.getbbox(letter)
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    if w <= 0 or h <= 0:
+    w = bbox[2] - bbox[0]
+    if w <= 0:
         raise ValueError(f"Empty glyph for {letter!r}")
-    scale = min(avail / w, avail / h)
-    font = ImageFont.truetype(str(FONT_PATH), int(avail * scale))
-    bbox = font.getbbox(letter)
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    # Center horizontally; place the baseline at `pad + ascent` so
+    # the ascender area sits inside the top pad and any descender
+    # extends into the bottom pad.
     x = (SIZE - w) // 2 - bbox[0]
-    y = (SIZE - h) // 2 - bbox[1]
+    baseline_y = int(SIZE * PAD + ascent)
     img = Image.new("L", (SIZE, SIZE), 255)
-    ImageDraw.Draw(img).text((x, y), letter, font=font, fill=0)
+    ImageDraw.Draw(img).text((x, baseline_y), letter, font=font, fill=0, anchor="ls")
     return np.array(img) < 128
 
 

@@ -203,20 +203,29 @@ public enum PrimaeLetterRenderer {
         let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
         guard bbox.width > 0, bbox.height > 0,
               let cgPath = CTFontCreatePathForGlyph(font, glyph, nil) else { return nil }
+        // Uniform font-metric scaling: every glyph in this font shares
+        // the same em-square (ascent + descent), so scaling against
+        // that height keeps lowercase 'a' visibly smaller than
+        // uppercase 'A' (the natural typographic relationship). The
+        // glyph is positioned on the baseline at 75 % of the canvas
+        // height, with the inked ascent above and descent below.
         let pad: CGFloat = 0.10
-        let availW = size.width  * (1 - 2 * pad)
         let availH = size.height * (1 - 2 * pad)
-        let scale  = min(availW / bbox.width, availH / bbox.height)
-        // Compose: shift bbox-centre to origin → scale (negative Y to
-        // flip CoreText's bottom-left origin into UIKit top-left) →
-        // translate to canvas centre. CGAffineTransform's chained
-        // builder applies operations such that the LAST .translatedBy
-        // is the FIRST applied to a point — so reading bottom-up
-        // matches the visual order above.
+        let ascent = CTFontGetAscent(font)
+        let descent = CTFontGetDescent(font)
+        let emHeight = ascent + descent
+        let scale = emHeight > 0 ? availH / emHeight : availH / bbox.height
+        // Baseline sits at the bottom of the inked ascent area:
+        // 10 % top pad + ascent, all measured in canvas pixels.
+        let baselineY = size.height * pad + ascent * scale
+        // CoreText positions glyphs with the baseline at y = 0 (BL
+        // origin) and the bbox extending up by `bbox.maxY` and down
+        // by `bbox.minY` (negative for descenders). Flip Y to UIKit
+        // (TL origin) and place the baseline at `baselineY`.
         var transform = CGAffineTransform.identity
-            .translatedBy(x: size.width / 2, y: size.height / 2)
+            .translatedBy(x: size.width / 2, y: baselineY)
             .scaledBy(x: scale, y: -scale)
-            .translatedBy(x: -bbox.midX, y: -bbox.midY)
+            .translatedBy(x: -bbox.midX, y: 0)
         guard let positioned = cgPath.copy(using: &transform) else { return nil }
         return Path(positioned)
     }
