@@ -37,11 +37,10 @@ public final class TracingViewModel {
                   !letters.isEmpty, letterIndex < letters.count else { return }
             scriptStrokeCache.removeAll(keepingCapacity: true)
             PrimaeLetterRenderer.clearCache()
-            // Invariant: variants are druckschrift-only (review item
-            // W-10). Switching script invalidates any previously-shown
-            // variant — clearing it here keeps the impossible state
-            // `showingVariant && schriftArt != .druckschrift` from
-            // ever being observable, regardless of toggle ordering.
+            // Invariant: variants are druckschrift-only. Switching
+            // script clears any in-flight variant so the impossible
+            // state `showingVariant && schriftArt != .druckschrift`
+            // never becomes observable, regardless of toggle order.
             if schriftArt != .druckschrift {
                 showingVariant = false
                 variantStrokeCache = nil
@@ -300,12 +299,13 @@ public final class TracingViewModel {
     var freeWriteTimestamps: [CFTimeInterval] { freeWriteRecorder.timestamps }
     /// Digitiser force at each accumulated free-write point (0 = finger / no data).
     var freeWriteForces: [CGFloat] { freeWriteRecorder.forces }
-    /// Checkpoints passed per second in the current guided or freeWrite phase.
-    /// Updated on every touch event; reset on phase transition and letter load.
-    /// Renamed from `strokesPerSecond` (review item W-25): the figure is
-    /// `completedCheckpoints / elapsed`, which is checkpoints/sec, not
-    /// strokes/sec. The old name read as "strokes per second" and could
-    /// mislead a thesis reader correlating it with motor-rhythm research.
+    /// Checkpoints passed per second in the current guided or
+    /// freeWrite phase. Updated on every touch event; reset on phase
+    /// transition and letter load. The figure is
+    /// `completedCheckpoints / elapsed` — checkpoints/sec, not
+    /// strokes/sec; the name matters because a thesis reader
+    /// correlating with motor-rhythm research would otherwise pick up
+    /// the wrong unit.
     var checkpointsPerSecond: CGFloat { freeWriteRecorder.checkpointsPerSecond }
     /// Last computed Fréchet distance (for debug overlay).
     var lastFreeWriteDistance: CGFloat { freeWriteRecorder.lastDistance }
@@ -343,44 +343,41 @@ public final class TracingViewModel {
                 forKey: "de.flamingistan.primae.enableFreeformMode")
         }
     }
-    /// P6 (ROADMAP_V5): play the *phoneme* (sound the letter makes —
-    /// /a/ as in *Affe*) instead of the letter *name* (/aː/) when the
-    /// child taps the audio gesture. Falls back to the name set when
-    /// a letter ships no phoneme recordings, so the toggle never
-    /// produces silence on letters that haven't been recorded yet.
-    /// Persisted in UserDefaults; default off (the canonical name
-    /// audio is the established behaviour).
+    /// Play the *phoneme* (sound the letter makes — /a/ as in *Affe*)
+    /// instead of the letter *name* (/aː/) on audio gestures. Falls
+    /// back to the name set when a letter ships no phoneme recordings
+    /// so the toggle never produces silence. Persisted in
+    /// UserDefaults; default off (canonical name audio is the
+    /// established behaviour).
     var enablePhonemeMode: Bool = false {
         didSet {
             UserDefaults.standard.set(enablePhonemeMode,
                 forKey: "de.flamingistan.primae.enablePhonemeMode")
             // Reset the audio-variant cursor so a swipe doesn't index
-            // out of the new (potentially shorter / longer) population.
+            // out of the new population.
             audioIndex = 0
         }
     }
-    /// P1 (ROADMAP): opt-in spaced-retrieval recognition prompts.
-    /// When on, every Nth letter selection presents a 3-button
-    /// "Welcher Buchstabe?" test before tracing begins. Cadence is
-    /// governed by `RetrievalScheduler.interval`. Off by default —
-    /// research feature; parents enable explicitly.
+    /// Opt-in spaced-retrieval recognition prompts. When on, every
+    /// Nth letter selection presents a 3-button "Welcher Buchstabe?"
+    /// test before tracing begins. Cadence governed by
+    /// `RetrievalScheduler.interval`. Off by default — research
+    /// feature; parents enable explicitly.
     var enableRetrievalPrompts: Bool = false {
         didSet {
             UserDefaults.standard.set(enableRetrievalPrompts,
                 forKey: "de.flamingistan.primae.enableRetrievalPrompts")
         }
     }
-    /// P1 (ROADMAP): the retrieval scheduler instance for this VM.
-    /// Built once in init and reused across letter selections so the
-    /// counter persists across runs (the scheduler reads UserDefaults
-    /// on init).
+    /// Retrieval scheduler for this VM. Built once in init and reused
+    /// across letter selections so the counter persists across runs
+    /// (it reads UserDefaults on init).
     let retrievalScheduler: RetrievalScheduler = RetrievalScheduler()
-    /// P5 (ROADMAP): reverse the direct-phase tap order so the child
-    /// taps the LAST stroke first. Off by default; opt-in for
-    /// motor-planning special-needs use (Spooner et al. 2014).
-    /// Affects only the direct phase — guided + freeWrite ignore this
-    /// setting and always run canonical stroke order. Persisted in
-    /// UserDefaults so the choice survives a relaunch.
+    /// Reverse the direct-phase tap order so the child taps the LAST
+    /// stroke first. Off by default; opt-in for motor-planning
+    /// special-needs use (Spooner et al. 2014). Affects only the
+    /// direct phase — guided + freeWrite always run canonical stroke
+    /// order.
     var enableBackwardChaining: Bool = false {
         didSet {
             UserDefaults.standard.set(enableBackwardChaining,
@@ -410,12 +407,10 @@ public final class TracingViewModel {
     /// recognition result whose dispatch preceded the clear is silently
     /// dropped instead of writing into the new context.
     ///
-    /// D1a (ROADMAP): the recognition-token machinery is now owned by
-    /// `RecognitionTokenTracker` — the VM keeps a non-optional reference
-    /// and forwards `issue()` / `isStillActive(_:)` calls. State-
-    /// clearing transitions (letter load, phase transition, canvas
-    /// clear) call `recognitionTokens.cancel()` to nil the token so
-    /// any late-arriving completion is dropped.
+    /// Owned by `RecognitionTokenTracker`; the VM forwards `issue()`
+    /// / `isStillActive(_:)` and calls `cancel()` from state-clearing
+    /// transitions (letter load, phase transition, canvas clear) so
+    /// any late-arriving recognition completion is dropped.
     private let recognitionTokens = RecognitionTokenTracker()
 
     var writingMode: WritingMode {
@@ -461,17 +456,16 @@ public final class TracingViewModel {
     /// True while the correct (next expected) dot should pulse to guide after a wrong tap.
     var directPulsingDot: Bool = false
     /// Cancellation handle for the 700 ms timer that clears `directPulsingDot`.
-    /// Stored so rapid wrong taps don't accumulate orphaned Tasks (W-28).
+    /// Stored so rapid wrong taps don't accumulate orphaned Tasks.
     private var directPulsingTask: Task<Void, Never>? = nil
     /// Index of the stroke whose directional arrow is briefly shown after a correct tap.
     var directArrowStrokeIndex: Int? = nil
 
     /// Index of the next dot the child must tap in the direct phase.
-    /// P5 (ROADMAP): when `enableBackwardChaining` is on, iterate the
-    /// stroke list in reverse — the child taps the LAST stroke first
-    /// and adds earlier strokes backward. Supports motor-planning
-    /// special-needs populations (Spooner et al. 2014). Default off;
-    /// guided/freeWrite phases always run canonical (forward) order.
+    /// When `enableBackwardChaining` is on the stroke list is iterated
+    /// in reverse — the child taps the LAST stroke first and adds
+    /// earlier strokes backward (Spooner et al. 2014). Default off;
+    /// guided / freeWrite always run canonical forward order.
     var directNextExpectedDotIndex: Int {
         guard let rawStrokes = rawGlyphStrokes else { return 0 }
         let indices: [Int] = enableBackwardChaining
@@ -494,13 +488,13 @@ public final class TracingViewModel {
     var isOnboardingComplete: Bool = false
     /// Current onboarding step for presenting onboarding UI.
     private(set) var onboardingStep: OnboardingStep = .welcome
-    /// U4 (ROADMAP): the onboarding variant the current run is using.
-    /// Set in init based on the stored choice (or the parent's
-    /// UserDefaults preference for never-onboarded installs). Read by
-    /// `OnboardingView` so the UI can render only the steps that
-    /// belong to the active variant. Locked once `markComplete` runs
-    /// so a parent who later flips the Settings toggle doesn't change
-    /// the historical record.
+    /// Onboarding variant the current run is using. Set in init from
+    /// the stored choice (or, for never-onboarded installs, the
+    /// parent's UserDefaults preference). Read by `OnboardingView` so
+    /// the UI renders only the steps that belong to the active
+    /// variant. Locked once `markComplete` runs so a parent who later
+    /// flips the Settings toggle doesn't change the historical
+    /// record.
     var onboardingVariant: OnboardingVariant = .full
     /// Progress through onboarding steps (0–1).
     var onboardingProgress: Double { onboardingCoordinator.progress }
@@ -568,12 +562,12 @@ public final class TracingViewModel {
         progressStore.progress(for: letter)
     }
 
-    /// P7 (ROADMAP_V5): completions that landed today. Drives the
-    /// daily-goal pill in `FortschritteWorldView`.
+    /// Completions that landed today. Drives the daily-goal pill in
+    /// `FortschritteWorldView`.
     var completionsToday: Int { progressStore.completionsToday }
-    /// P7: parent-configurable daily-completion goal. Persisted in
-    /// UserDefaults so a parent can adjust it; default 3 is a low bar
-    /// designed to be hit on most weekdays for a 5-year-old.
+    /// Parent-configurable daily-completion goal. Persisted in
+    /// UserDefaults; default 3 is a low bar designed to be hit on
+    /// most weekdays for a 5-year-old.
     var dailyGoal: Int {
         get {
             let v = UserDefaults.standard.integer(forKey: "de.flamingistan.primae.dailyGoal")
@@ -595,17 +589,15 @@ public final class TracingViewModel {
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
     private let letterRecognizer: LetterRecognizerProtocol
-    /// German speech synthesiser used for child-facing verbal feedback.
-    /// Children can't read fluently yet, so every score the dashboard
-    /// computes (Klarheit, Form, Tempo, Druck, Rhythmus) goes via TTS
-    /// in plain encouraging German rather than visible numbers.
+    /// German speech synthesiser for child-facing verbal feedback.
+    /// Children can't read fluently yet, so every dashboard score
+    /// (Klarheit, Form, Tempo, Druck, Rhythmus) reaches the child as
+    /// encouraging German speech rather than as a visible number.
     let speech: SpeechSynthesizing
-    /// Plays bundled ElevenLabs MP3s for the static prompts (phase
-    /// entries, praise tiers, paper-transfer cues, retrieval
-    /// question). Falls back to `speech` when an MP3 is missing —
-    /// covers builds before `scripts/generate_prompts.py` has run.
-    /// Dynamic per-letter content (recognition templates) still
-    /// goes through `speech` directly.
+    /// Plays bundled MP3s for the static prompts (phase entries,
+    /// praise tiers, paper-transfer cues, retrieval question). Falls
+    /// back to `speech` when an MP3 is missing. Dynamic per-letter
+    /// content (recognition templates) goes through `speech` directly.
     let prompts: any PromptPlaying
     /// Owns the freeWrite buffers + session timing + scoring. Lives on
     /// the VM so views can keep reading via the existing forwarders;
@@ -622,37 +614,36 @@ public final class TracingViewModel {
     /// `schriftArt.didSet` and on letter load so a switch reloads fresh.
     private var scriptStrokeCache: [SchriftArt: LetterStrokes] = [:]
     var audioIndex                       = 0
-    /// Wall-clock start of the *current* foreground window for the active
-    /// letter. Reset on every `load(letter:)` and on every foreground return
-    /// (`appDidBecomeActive`). Cleared on backgrounding so the timer doesn't
-    /// keep ticking while the iPad sits idle (D-1: the device only sleeps
-    /// after several minutes, so a "4-minute" session would otherwise
-    /// silently include the time spent backgrounded).
+    /// Wall-clock start of the *current* foreground window for the
+    /// active letter. Reset on every `load(letter:)` and every
+    /// foreground return; cleared on backgrounding so the timer
+    /// doesn't keep ticking while the iPad sits idle. Without the
+    /// background reset a "4-minute" session would silently include
+    /// time spent backgrounded — iPads only sleep after several
+    /// minutes.
     var letterLoadTime: CFTimeInterval?
     /// Accumulated foreground-only practice time across background returns
     /// for the current letter. The reported session duration is
     /// `letterActiveTimeAccumulated + (now − letterLoadTime)`. Resets on
     /// every `load(letter:)`.
     var letterActiveTimeAccumulated: TimeInterval = 0
-    /// Wall-clock `Date` when the current letter was loaded. Used for
-    /// T4 (ROADMAP_V5) so the session record can carry wall-clock time
-    /// alongside the active-time `durationSeconds`. Distinct from
-    /// `letterLoadTime` (CACurrentMediaTime) because we need a stable
-    /// timestamp that survives background/foreground cycles.
+    /// Wall-clock `Date` when the current letter was loaded. Lets the
+    /// session record carry wall-clock time alongside the active-time
+    /// `durationSeconds`. Distinct from `letterLoadTime`
+    /// (CACurrentMediaTime) — we need a stable timestamp that
+    /// survives background / foreground cycles.
     var letterLoadedDate: Date?
     var didCompleteCurrentLetter         = false
-    /// Scheduler priority captured at letter selection time (loadRecommendedLetter).
-    /// Forwarded to recordPhaseSession so schedulerEffectivenessProxy is non-zero.
-    /// C-3: was hardcoded 0, making the Pearson correlation permanently 0.
+    /// Scheduler priority captured at letter-selection time. Forwarded
+    /// to `recordPhaseSession` so `schedulerEffectivenessProxy` has a
+    /// real value to correlate against.
     var lastScheduledLetterPriority: Double = 0
-    /// W-16: was previously an IUO because `init` needed to capture
-    /// `[weak self]` while constructing `PlaybackController`, which under
-    /// Swift's two-phase init rules requires every stored property to
-    /// have an initial value at the capture site. The fix exposes
-    /// `PlaybackController.onIsPlayingChanged` as a mutable `var` so the
-    /// controller is constructed with a no-op callback, assigned to
-    /// `self.playback`, and the real `[weak self]` callback is wired
-    /// AFTER `self` is fully initialised — eliminating the IUO.
+    /// Two-phase init pattern: the controller is built with a no-op
+    /// `onIsPlayingChanged` callback before `self` is fully
+    /// initialised, then the real `[weak self]` callback is wired
+    /// after init. This sidesteps Swift's "every stored property must
+    /// have a value at capture site" rule that would otherwise force
+    /// an IUO here.
     let playback: PlaybackController
     private let messages: TransientMessagePresenter
     private let animation: AnimationGuideController
@@ -665,18 +656,15 @@ public final class TracingViewModel {
     /// Reset to nil whenever the source data changes (e.g. user calibration).
     private var lastCheckpointKey: CheckpointBuildKey?
 
-    /// D1b (ROADMAP): owns the touch-session state and the
-    /// `beginTouch` / `updateTouch` / `endTouch` flow. The VM keeps thin
-    /// forwarders so SwiftUI views and tests don't change. Wired in
-    /// `init` using the same W-16 two-phase pattern as `playback`: built
-    /// without `self`, assigned, then the back-reference is set once the
-    /// VM is fully initialised.
+    /// Owns the touch-session state and the `beginTouch` /
+    /// `updateTouch` / `endTouch` flow. Built without `self`, assigned,
+    /// then the back-reference is set once the VM is fully
+    /// initialised — the same two-phase pattern as `playback`.
     let touchDispatcher: TouchDispatcher
 
-    /// D1c (ROADMAP): owns the phase-transition pipeline (scoring,
-    /// post-freeWrite overlay queue, controller advance, completion
-    /// pipeline). Same two-phase init pattern as `playback` and
-    /// `touchDispatcher`.
+    /// Owns the phase-transition pipeline (scoring, post-freeWrite
+    /// overlay queue, controller advance, completion pipeline). Same
+    /// two-phase init pattern as `playback` and `touchDispatcher`.
     let phaseTransitions: PhaseTransitionCoordinator
 
     // MARK: - Init
@@ -711,11 +699,11 @@ public final class TracingViewModel {
                 : MovingAverageAdaptationPolicy()
         )
 
-        // U4 (ROADMAP): pick the onboarding variant (full vs short) so
-        // the coordinator iterates the right step list. Reads the parent
-        // toggle from UserDefaults; if the install has already completed
-        // onboarding once and the variant was recorded, we honour that
-        // recorded variant on a re-run so the post-hoc analysis always
+        // Pick the onboarding variant (full vs short) so the
+        // coordinator iterates the right step list. Reads the parent
+        // toggle from UserDefaults; if the install already completed
+        // onboarding once and the variant was recorded, honour the
+        // recorded variant on a re-run so post-hoc analysis always
         // sees the same first-encounter variant for that participant.
         let useShort = UserDefaults.standard.bool(forKey: "de.flamingistan.primae.useShortOnboarding")
         let recordedVariant = deps.onboardingStore.variantUsed
@@ -744,19 +732,16 @@ public final class TracingViewModel {
         self.letterScheduler  = deps.makeLetterScheduler()
 
         haptics.prepare()
-        // W-16: build with a no-op callback first so the closure does
-        // not capture `self` (which is not yet fully initialised). Once
-        // both `self.playback` and `self.touchDispatcher` are assigned,
-        // every stored `let` is in place and `self` is fully
-        // initialised — wire the real `[weak self]` callback at that
-        // point. The controller stores `onIsPlayingChanged` as a `var`
-        // precisely for this seam.
+        // Build with a no-op callback first so the closure doesn't
+        // capture `self` (not yet fully initialised). Once every
+        // stored property is assigned, wire the real `[weak self]`
+        // callback. `PlaybackController.onIsPlayingChanged` is a
+        // `var` for exactly this seam.
         let pb = deps.makePlaybackController(deps.audio) { _ in }
         self.playback = pb
-        // D1b + D1c: same two-phase pattern as `playback`. Build the
-        // vm-less collaborators, assign them to the stored properties
-        // so `self` is fully initialised, then wire the closures +
-        // back-references.
+        // Same two-phase pattern for `touchDispatcher` and
+        // `phaseTransitions`: build vm-less, assign, then wire the
+        // back-reference once `self` is fully initialised.
         let td = TouchDispatcher()
         self.touchDispatcher = td
         let ptc = PhaseTransitionCoordinator()
@@ -873,13 +858,11 @@ public final class TracingViewModel {
         audio.loadAudioFile(named: files[audioIndex], autoplay: true)
     }
 
-    /// P6 (ROADMAP_V5): pick the audio population to play given the
-    /// parent's "Lautwert wiedergeben" toggle. When phoneme mode is on
-    /// AND the asset ships phoneme recordings, the phoneme set wins.
-    /// Otherwise (toggle off, or asset lacks phoneme audio), the
-    /// letter-name set is used. This keeps the existing two-finger
-    /// swipe variant cycler working — it always cycles within the
-    /// active population.
+    /// Pick the audio population to play given the parent's
+    /// "Lautwert wiedergeben" toggle. Phoneme set wins when phoneme
+    /// mode is on and the asset ships phoneme recordings; otherwise
+    /// the letter-name set is used. The two-finger swipe variant
+    /// cycler always cycles within the chosen population.
     func activeAudioFiles(for asset: LetterAsset) -> [String] {
         if enablePhonemeMode, !asset.phonemeAudioFiles.isEmpty {
             return asset.phonemeAudioFiles
@@ -1018,11 +1001,7 @@ public final class TracingViewModel {
 
     // MARK: - Touch handling
 
-    /// D1b (ROADMAP): the touch-handling logic and its session-scoped
-    /// state (last point/timestamp, smoothed velocity, single-touch
-    /// flag, the three tuning knobs) live on `TouchDispatcher` now.
-    /// The VM keeps the public touch methods as thin forwarders so
-    /// SwiftUI views and tests don't notice the move.
+    /// Touch handling lives on `TouchDispatcher`; the VM forwards.
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         touchDispatcher.beginTouch(at: p, t: t)
     }
@@ -1198,11 +1177,9 @@ public final class TracingViewModel {
 
     // MARK: - Learning phase control
 
-    /// D1c (ROADMAP): the phase-transition pipeline (scoring +
-    /// post-freeWrite overlay queue + controller advance + completion
-    /// pipeline) lives on `PhaseTransitionCoordinator` now. This stays
-    /// as a thin forwarder so TouchDispatcher and the SwiftUI views
-    /// don't have to change.
+    /// Phase-transition pipeline (scoring, post-freeWrite overlay
+    /// queue, controller advance, completion) lives on
+    /// `PhaseTransitionCoordinator`; the VM forwards.
     func advanceLearningPhase() {
         phaseTransitions.advance()
     }
@@ -1223,10 +1200,10 @@ public final class TracingViewModel {
         // and freeWrite share the same UI state since only one recognition
         // request is ever in flight at a time.
         freeform.isRecognizing = true
-        // Pull the child's prior recognition history for this letter so
-        // the calibrator's "practised letter" boost (review item W-21)
-        // actually fires. Empty array on first encounter — calibrator
-        // skips the boost path until enough samples accumulate.
+        // Pull the child's prior recognition history for this letter
+        // so the calibrator's "practised letter" boost can fire.
+        // Empty on first encounter — the calibrator skips the boost
+        // path until enough samples accumulate.
         let history = (progressStore.progress(for: expected)
                        .recognitionAccuracy ?? [])
                       .map { CGFloat($0) }
@@ -1352,34 +1329,30 @@ public final class TracingViewModel {
 
     /// Load the letter recommended by spaced repetition.
     func loadRecommendedLetter() {
-        // U6 (ROADMAP_V5): confirmation haptic on the celebration's
-        // "Weiter" tap. The rest of the app uses haptics consistently
-        // (begin/checkpoint/stroke/letter); this seam was the lone tap
-        // that produced no feedback.
+        // Confirmation haptic on the celebration's "Weiter" tap so
+        // every primary tap in the app produces feedback.
         haptics.fire(.letterCompleted)
         let available = visibleLetterNames
         let scored = letterScheduler.prioritized(available: available,
                                                   progress: progressStore.allProgress)
-        // C-3: capture priority at selection time so schedulerEffectivenessProxy
-        // gets a real non-zero value instead of the hardcoded 0 it was receiving.
-        // W-4: reset the overlay queue when no letter is available so the
-        // celebration "Weiter" button doesn't leave the child stuck on screen.
+        // Reset the overlay queue when no letter is available so the
+        // celebration "Weiter" button doesn't leave the child stuck.
         guard let best = scored.first,
               let idx  = letters.firstIndex(where: { $0.name == best.letter }) else {
             overlayQueue.reset()
             return
         }
+        // Capture priority at selection time so
+        // `schedulerEffectivenessProxy` has a real value to report.
         lastScheduledLetterPriority = best.priority
         letterIndex = idx
         load(letter: letters[idx])
         toast("Empfohlen: \(currentLetterName)")
-        // P1 (ROADMAP): if retrieval prompts are enabled and the
-        // scheduler decides this selection is a retrieval moment, slot
-        // the prompt onto the queue ahead of the tracing phases. The
-        // child answers, the recordRetrievalAttempt fires, and the
-        // queue's dismiss flows back into the canvas. Skip when the
-        // letter has fewer than the scheduler's minimum prior
-        // completions (testing on never-seen letters is just guessing).
+        // If retrieval prompts are enabled and the scheduler decides
+        // this selection is a retrieval moment, slot the prompt onto
+        // the queue ahead of the tracing phases. Skip when the letter
+        // has fewer than the scheduler's minimum prior completions —
+        // testing on a never-seen letter is just guessing.
         if enableRetrievalPrompts {
             let prog = progressStore.progress(for: best.letter)
             if retrievalScheduler.shouldPrompt(for: best.letter, progress: prog) {
@@ -1389,12 +1362,12 @@ public final class TracingViewModel {
         }
     }
 
-    /// P1 (ROADMAP): pick two distractors for the retrieval prompt.
-    /// Pulls from the same `motorSimilarity` cluster so the choice has
-    /// pedagogical value (visually-similar letters disambiguate the
-    /// child's recognition; arbitrary distractors are too easy).
-    /// Falls back to alphabetical neighbours when the visible-letter
-    /// pool can't supply two cluster-mates.
+    /// Pick two distractors for the retrieval prompt. Draws from the
+    /// same `motorSimilarity` cluster so the choice has pedagogical
+    /// value — visually-similar letters disambiguate the child's
+    /// recognition, while arbitrary distractors are too easy. Falls
+    /// back to alphabetical neighbours when the pool can't supply two
+    /// cluster-mates.
     private func retrievalDistractors(for target: String, from pool: [String]) -> [String] {
         let candidates = pool.filter { $0 != target }
         guard !candidates.isEmpty else { return [] }
@@ -1414,9 +1387,9 @@ public final class TracingViewModel {
         return Array(candidates.shuffled().prefix(2))
     }
 
-    /// P1 (ROADMAP): callback for the RetrievalPromptView. Records the
-    /// outcome on the progress store and dismisses the overlay so the
-    /// queue can advance into the tracing phases.
+    /// Callback for the RetrievalPromptView. Records the outcome on
+    /// the progress store and dismisses the overlay so the queue can
+    /// advance into the tracing phases.
     func submitRetrievalAnswer(letter: String, correct: Bool) {
         progressStore.recordRetrievalAttempt(letter: letter, correct: correct)
         refreshProgressMirror()
@@ -1523,21 +1496,17 @@ public final class TracingViewModel {
         isPlaying = false
     }
 
-    // D1c (ROADMAP): `recordPhaseSessionCompletion` and
-    // `commitCompletion` were moved to PhaseTransitionCoordinator
-    // along with `advanceLearningPhase`. The coordinator's
-    // `commitCompletion(...)` stays public so any future per-letter
-    // shared-completion site can call it directly via
-    // `vm.phaseTransitions.commitCompletion(...)`.
+    // `recordPhaseSessionCompletion` and `commitCompletion` live on
+    // `PhaseTransitionCoordinator`; per-letter shared-completion
+    // sites can reach them via `vm.phaseTransitions.commitCompletion`.
 
     // MARK: - Parent dashboard access
 
     var dashboardSnapshot: DashboardSnapshot { dashboardStore.snapshot }
     var currentStreak: Int { streakStore.currentStreak }
     var longestStreak: Int { streakStore.longestStreak }
-    /// Achievement events the child has unlocked. Forwarded for the
-    /// Fortschritte badge gallery — see HIDDEN_FEATURES_AUDIT C.6:
-    /// the data was collected since launch but never surfaced.
+    /// Achievement events the child has unlocked. Surfaced in the
+    /// Fortschritte badge gallery.
     var earnedRewards: Set<RewardEvent> { streakStore.earnedRewards }
 
     enum SpeedTrendDirection { case improving, stable, declining }
@@ -1635,14 +1604,13 @@ public final class TracingViewModel {
         // Loading into the old grid's tracker would be thrown away here.
         reapplyGridPreset()
         reloadStrokeCheckpoints(for: letter)
-        // P3 (ROADMAP_V5): errorless-learning ramp for the first three
-        // sessions on a new letter. The MovingAveragePolicy starts at
-        // .standard for every letter regardless of whether the child has
-        // seen this glyph before; an extra-lenient radius for the first
-        // few encounters supports motor-pattern formation without the
-        // child experiencing repeated near-miss failure on novel letters
-        // (Skinner 1958; Terrace 1963). Falls back to the policy tier
-        // from session 4 onward, so adaptation still drives long-term.
+        // Errorless-learning ramp for the first three sessions on a
+        // new letter. The MovingAveragePolicy starts at `.standard`
+        // for every letter regardless of prior exposure; widening
+        // the radius on the first few encounters supports motor-
+        // pattern formation without repeated near-miss failure on
+        // novel letters (Skinner 1958; Terrace 1963). From session 4
+        // the policy tier drives the radius again.
         let priorCompletions = progressStore.progress(for: letter.name).completionCount
         if priorCompletions < 3 {
             strokeTracker.radiusMultiplier = max(
@@ -2089,14 +2057,14 @@ public final class TracingViewModel {
 
         freeform.isRecognizing = true
         freeform.hasRecognitionCompleted = false
-        // Pre-compute per-letter recognition history on the main actor
-        // so the detached Task can look it up without re-entering the
-        // VM's isolation. Activates the calibrator boost (review item
-        // W-21) for whichever target letters the child has practised.
-        // Words with repeated letters (e.g. "MAMA", "OMMA") map the
-        // same letter twice; both lookups return the same scores from
-        // progressStore, so collapsing duplicates with `{ first, _ in
-        // first }` is semantically equivalent and avoids the
+        // Pre-compute per-letter recognition history on the main
+        // actor so the detached Task can look it up without re-
+        // entering the VM's isolation. Activates the calibrator's
+        // practised-letter boost for whichever targets the child has
+        // history on. Words with repeated letters (MAMA, OMMA) map
+        // the same letter twice; both lookups return the same
+        // scores, so collapsing duplicates with `{ first, _ in first }`
+        // is semantically equivalent and sidesteps the
         // `Dictionary(uniqueKeysWithValues:)` duplicate-key trap.
         let historyByLetter: [String: [CGFloat]] = Dictionary(
             targetLetters.map { ch -> (String, [CGFloat]) in
