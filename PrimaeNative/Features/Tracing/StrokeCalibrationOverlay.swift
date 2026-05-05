@@ -337,18 +337,36 @@ struct StrokeCalibrationOverlay: View {
 
     // MARK: - Coordinate conversion
 
-    /// Calibrations are canvas-relative 0..1 (matches the JSON stroke
-    /// files), so screen ↔ stored is a straight scale.
+    /// Calibrations are bbox-relative 0..1 (within the glyph rect).
+    /// Screen ↔ stored goes through `normalizedGlyphRect` so a checkpoint
+    /// stays aligned with the visible glyph at any cell aspect ratio.
     private func glyphToScreen(_ pt: CGPoint, in size: CGSize) -> CGPoint {
-        CGPoint(x: pt.x * size.width, y: pt.y * size.height)
+        guard let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+            for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt) else {
+            return CGPoint(x: pt.x * size.width, y: pt.y * size.height)
+        }
+        return CGPoint(
+            x: (gr.minX + pt.x * gr.width) * size.width,
+            y: (gr.minY + pt.y * gr.height) * size.height
+        )
     }
 
     private func screenToGlyph(_ pt: CGPoint, in size: CGSize) -> CGPoint {
-        let x = pt.x / size.width
-        let y = pt.y / size.height
+        guard let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+            for: vm.currentLetterName, canvasSize: size, schriftArt: vm.schriftArt),
+              gr.width > 0, gr.height > 0 else {
+            let x = pt.x / size.width
+            let y = pt.y / size.height
+            return CGPoint(
+                x: max(-0.05, min(1.05, (x * 100).rounded() / 100)),
+                y: max(-0.05, min(1.05, (y * 100).rounded() / 100))
+            )
+        }
+        let x = (pt.x / size.width - gr.minX) / gr.width
+        let y = (pt.y / size.height - gr.minY) / gr.height
         return CGPoint(
-            x: max(-0.05, min(1.05, (x * 100).rounded() / 100)),
-            y: max(-0.05, min(1.05, (y * 100).rounded() / 100))
+            x: max(-0.10, min(1.10, (x * 100).rounded() / 100)),
+            y: max(-0.10, min(1.10, (y * 100).rounded() / 100))
         )
     }
 

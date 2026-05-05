@@ -207,9 +207,11 @@ public enum PrimaeLetterRenderer {
         return Path(positioned)
     }
 
-    /// Normalized ink bounding rect (0–1 each axis) for the given
-    /// letter as rendered at `canvasSize`. Used to map calibration-
-    /// space coordinates onto the on-screen glyph rect.
+    /// Glyph ink bounding rect as fraction of `canvasSize` (cell-fraction
+    /// coords). Uses the same em-height scaling and baseline placement as
+    /// `glyphPath`, so the rect lines up with the on-screen ghost glyph.
+    /// Stroke JSON checkpoints are stored bbox-relative; the canvas maps
+    /// them through this rect to get cell-fraction screen positions.
     /// Memoized — the canvas calls this 3× per 60 fps frame.
     public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) -> CGRect? {
         guard !isRunningTests, !letter.isEmpty,
@@ -225,17 +227,21 @@ public enum PrimaeLetterRenderer {
         let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
         guard bbox.width > 0, bbox.height > 0 else { return nil }
         let pad: CGFloat = 0.10
-        let px = CGSize(width: canvasSize.width * 2, height: canvasSize.height * 2)
-        let availW = px.width  * (1 - 2 * pad)
-        let availH = px.height * (1 - 2 * pad)
-        let ratio  = min(availW / bbox.width, availH / bbox.height)
-        let scaledW = bbox.width  * ratio
-        let scaledH = bbox.height * ratio
+        let availH = canvasSize.height * (1 - 2 * pad)
+        let ascent = CTFontGetAscent(font)
+        let descent = CTFontGetDescent(font)
+        let emHeight = ascent + descent
+        let scale = emHeight > 0 ? availH / emHeight : availH / bbox.height
+        let baselineY = canvasSize.height * pad + ascent * scale
+        let scaledW = bbox.width * scale
+        let leftX = canvasSize.width / 2 - scaledW / 2
+        let topY = baselineY - (bbox.minY + bbox.height) * scale
+        let bottomY = baselineY - bbox.minY * scale
         let rect = CGRect(
-            x:      0.5 - scaledW / (2 * px.width),
-            y:      0.5 - scaledH / (2 * px.height),
-            width:  scaledW / px.width,
-            height: scaledH / px.height
+            x: leftX / canvasSize.width,
+            y: topY / canvasSize.height,
+            width: scaledW / canvasSize.width,
+            height: (bottomY - topY) / canvasSize.height
         )
         if rectCache.count >= cacheLimit { rectCache.removeAll(keepingCapacity: true) }
         rectCache[key] = rect

@@ -192,8 +192,11 @@ struct TracingCanvasView: View {
     @ViewBuilder
     private func freeWriteKPOverlay() -> some View {
         Canvas { context, size in
-            // Reference strokes in blue (opacity 0.4, lineWidth 8)
-            if let rawStrokes = vm.glyphRelativeStrokes,
+            // Reference strokes in blue (opacity 0.4, lineWidth 8).
+            // `rawGlyphStrokes` is cell-fraction (mapped through the
+            // glyph rect), so direct multiplication by `size` lands on
+            // the visible ghost.
+            if let rawStrokes = vm.rawGlyphStrokes,
                !rawStrokes.strokes.isEmpty {
                 for stroke in rawStrokes.strokes {
                     guard stroke.checkpoints.count >= 2 else { continue }

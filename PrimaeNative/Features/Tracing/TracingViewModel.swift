@@ -83,17 +83,40 @@ public final class TracingViewModel {
     /// ligatures aren't cropped per glyph.
     var gridWordRendering: PrimaeLetterRenderer.WordRendering? { grid.wordRendering }
 
-    /// Strokes for the cell at `index`. The currently-loaded letter
-    /// honors variant / script / calibration; other word-mode cells
-    /// fall back to the bundle's default Druckschrift strokes since
-    /// per-letter variants and calibration don't apply to words.
+    /// Cell-fraction strokes (0..1 of the cell's own frame) for the cell
+    /// at `index`. JSON strokes are bbox-relative; this remaps them
+    /// through the cell's glyph rect so the renderer and tracker share
+    /// one coordinate system regardless of cell aspect ratio.
     func gridCellStrokes(at index: Int) -> LetterStrokes? {
         guard index < grid.cells.count else { return nil }
         let cellLetter = grid.cells[index].item.letter
+        let raw: LetterStrokes?
         if cellLetter == currentLetterName {
-            return glyphRelativeStrokes
+            raw = glyphRelativeStrokes
+        } else {
+            raw = letters.first(where: { $0.name == cellLetter })?.strokes
         }
-        return letters.first(where: { $0.name == cellLetter })?.strokes
+        guard let raw else { return nil }
+        let cellSize = grid.cells[index].frame.size
+        guard cellSize.width > 0, cellSize.height > 0,
+              let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                for: cellLetter, canvasSize: cellSize, schriftArt: schriftArt) else {
+            return raw
+        }
+        let mapped = raw.strokes.map { def in
+            StrokeDefinition(
+                id: def.id,
+                checkpoints: def.checkpoints.map { cp in
+                    Checkpoint(
+                        x: gr.minX + cp.x * gr.width,
+                        y: gr.minY + cp.y * gr.height
+                    )
+                }
+            )
+        }
+        return LetterStrokes(letter: raw.letter,
+                             checkpointRadius: raw.checkpointRadius,
+                             strokes: mapped)
     }
 
     /// Letter at cell `index`. Canvas uses this for per-cell glyph
@@ -199,13 +222,41 @@ public final class TracingViewModel {
         return calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
     }
 
-    /// Raw glyph-relative strokes from JSON. Used by canvas to keep
-    /// dots aligned with the ghost at any size.
+    /// Active-letter strokes mapped from bbox-relative to cell-fraction
+    /// (via the active cell's glyph rect). Canvas dots, guide animation,
+    /// and observe-phase playback all consume these so screen positions
+    /// match the rendered ghost regardless of cell aspect ratio. Falls
+    /// through to bbox-relative when the cell hasn't laid out yet.
     var rawGlyphStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
-        if showingVariant, let vs = variantStrokeCache { return vs }
-        if let ss = activeScriptStrokes { return ss }
-        return letters[letterIndex].strokes
+        let bbox: LetterStrokes
+        if showingVariant, let vs = variantStrokeCache {
+            bbox = vs
+        } else if let ss = activeScriptStrokes {
+            bbox = ss
+        } else {
+            bbox = letters[letterIndex].strokes
+        }
+        let cellSize = grid.activeCell.frame.size
+        guard cellSize.width > 0, cellSize.height > 0,
+              let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                for: currentLetterName, canvasSize: cellSize, schriftArt: schriftArt) else {
+            return bbox
+        }
+        let mapped = bbox.strokes.map { def in
+            StrokeDefinition(
+                id: def.id,
+                checkpoints: def.checkpoints.map { cp in
+                    Checkpoint(
+                        x: gr.minX + cp.x * gr.width,
+                        y: gr.minY + cp.y * gr.height
+                    )
+                }
+            )
+        }
+        return LetterStrokes(letter: bbox.letter,
+                             checkpointRadius: bbox.checkpointRadius,
+                             strokes: mapped)
     }
 
     /// True when the current letter has a variant in the active
@@ -1049,16 +1100,38 @@ public final class TracingViewModel {
         }
     }
 
-    /// Apply calibrated 0..1 canvas-relative checkpoints (matches the
-    /// JSON stroke format, no glyph-rect remap needed).
+    /// Apply calibrated bbox-relative checkpoints (the JSON shape).
+    /// Maps through the live cell's glyph rect into cell-fraction
+    /// before loading the tracker so proximity hit-tests share frame
+    /// with the renderer's ghost path.
     func applyCalibration(_ strokes: [[CGPoint]]) {
         let defs = strokes.enumerated().map { (i, pts) in
             StrokeDefinition(id: i + 1, checkpoints: pts.map { cp in
                 Checkpoint(x: cp.x, y: cp.y)
             })
         }
-        let letterStrokes = LetterStrokes(letter: currentLetterName, checkpointRadius: 0.05, strokes: defs)
-        strokeTracker.load(letterStrokes)
+        let bboxStrokes = LetterStrokes(letter: currentLetterName, checkpointRadius: 0.05, strokes: defs)
+        let cellSize = grid.activeCell.frame.size
+        guard cellSize.width > 0, cellSize.height > 0,
+              let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                for: currentLetterName, canvasSize: cellSize, schriftArt: schriftArt) else {
+            strokeTracker.load(bboxStrokes)
+            return
+        }
+        let mapped = bboxStrokes.strokes.map { def in
+            StrokeDefinition(
+                id: def.id,
+                checkpoints: def.checkpoints.map { cp in
+                    Checkpoint(
+                        x: gr.minX + cp.x * gr.width,
+                        y: gr.minY + cp.y * gr.height
+                    )
+                }
+            )
+        }
+        strokeTracker.load(LetterStrokes(letter: bboxStrokes.letter,
+                                         checkpointRadius: bboxStrokes.checkpointRadius,
+                                         strokes: mapped))
     }
 
     /// Load the spaced-repetition-recommended letter.
@@ -1448,12 +1521,34 @@ public final class TracingViewModel {
                 cell.tracker.load(cellSource)
                 continue
             }
-            // Stroke checkpoints are canvas-relative (0..1 of the
-            // cell's frame, including the glyph's pad). Pass them
-            // through to the tracker unchanged — the renderer reads
-            // the same canvas-relative coords, so proximity hit-tests
-            // line up with what's drawn on screen.
-            cell.tracker.load(cellSource)
+            // JSON stroke checkpoints are glyph-bbox-relative (0..1 of
+            // the rendered glyph's bbox). Map them through the cell's
+            // glyph rect into cell-fraction coords (0..1 of the cell)
+            // so proximity hit-tests and the renderer share one frame.
+            // Skip the remap when the rect lookup fails so the tracker
+            // at least has a definition; pre-layout passes also fall
+            // through this branch.
+            if let gr = PrimaeLetterRenderer.normalizedGlyphRect(
+                for: cellLetter, canvasSize: cellSize, schriftArt: schriftArt) {
+                let mappedStrokes = cellSource.strokes.map { def in
+                    StrokeDefinition(
+                        id: def.id,
+                        checkpoints: def.checkpoints.map { cp in
+                            Checkpoint(
+                                x: gr.minX + cp.x * gr.width,
+                                y: gr.minY + cp.y * gr.height
+                            )
+                        }
+                    )
+                }
+                cell.tracker.load(LetterStrokes(
+                    letter: cellSource.letter,
+                    checkpointRadius: cellSource.checkpointRadius,
+                    strokes: mappedStrokes
+                ))
+            } else {
+                cell.tracker.load(cellSource)
+            }
         }
         lastCheckpointKey = key
     }
