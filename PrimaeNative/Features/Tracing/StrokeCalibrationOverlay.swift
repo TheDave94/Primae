@@ -38,11 +38,15 @@ struct StrokeCalibrationOverlay: View {
     /// Live touch path while recording. Cleared on touch-up after the
     /// resampled snapshot replaces `editableStrokes[activeStroke]`.
     @State private var recordingPoints: [CGPoint] = []
-    /// Target number of checkpoints kept after resampling a recorded
-    /// stroke. ~20 is enough for the proximity tracker to fire smoothly
-    /// while staying loose enough that small wobbles in a hand trace
-    /// don't surface as visible kinks.
-    private let recordedCheckpointCount = 20
+    /// Final checkpoint count for a recorded stroke. 40 is dense
+    /// enough that the post-snap polyline reads as a smooth centerline
+    /// trace even when the user's input wobbles.
+    private let recordedCheckpointCount = 40
+    /// Pre-snap resample count. Larger than the final count so each
+    /// pre-snap point has more options when looking for the nearest
+    /// skeleton pixel — better centerline tracking when the input
+    /// drifts off-ink.
+    private let preSnapSampleCount = 80
 
     private let strokeColors: [Color] = [.red, .blue, .green, .orange, .purple, .pink, .cyan, .yellow]
 
@@ -105,24 +109,116 @@ struct StrokeCalibrationOverlay: View {
         }
     }
 
-    /// Resample the live drag path to `recordedCheckpointCount` points
-    /// uniformly along arc length, convert to glyph-bbox coords, and
-    /// replace the active stroke. Auto-advances `activeStroke` so the
-    /// next drag records the next stroke.
+    /// Process the live drag path: dense pre-snap resample, snap each
+    /// point to the nearest centerline pixel from the bundled glyph
+    /// skeleton (so a wobbly hand trace lands on the actual ink),
+    /// dedupe adjacent identical snaps, then re-resample to the final
+    /// dense checkpoint count. Falls back to plain uniform resampling
+    /// when the bundle has no skeleton (older JSON / user calibrations).
+    /// Auto-advances `activeStroke` so consecutive drags record the
+    /// next stroke without intermediate taps.
     private func commitRecordedStroke(in size: CGSize) {
         defer { recordingPoints.removeAll() }
         guard recordingPoints.count >= 2 else { return }
-        let resampled = resampleUniform(recordingPoints,
-                                        count: recordedCheckpointCount)
-        let bboxPts = resampled.map { screenToGlyph($0, in: size) }
+
+        let preSnap = resampleUniform(recordingPoints,
+                                      count: preSnapSampleCount)
+        let preSnapBbox = preSnap.map { screenToGlyph($0, in: size) }
+
+        let snapped: [CGPoint]
+        if let skeleton = vm.glyphRelativeStrokes?.skeleton, !skeleton.isEmpty {
+            snapped = snapToSkeleton(preSnapBbox, skeleton: skeleton)
+        } else {
+            snapped = preSnapBbox
+        }
+
+        let deduped = dedupeAdjacent(snapped)
+        let finalPts = deduped.count >= 2
+            ? resampleUniformBbox(deduped, count: recordedCheckpointCount)
+            : deduped
+
         while editableStrokes.count <= activeStroke {
             editableStrokes.append([])
         }
-        editableStrokes[activeStroke] = bboxPts
+        editableStrokes[activeStroke] = finalPts
         activeStroke = min(activeStroke + 1, editableStrokes.count)
         if activeStroke == editableStrokes.count {
             editableStrokes.append([])
         }
+    }
+
+    /// For each point, return the nearest skeleton pixel in bbox coords.
+    /// Linear scan over the cloud — at ~500 skeleton points × 80 input
+    /// points = 40 K comparisons, well under 1 ms on iPad.
+    private func snapToSkeleton(_ pts: [CGPoint],
+                                skeleton: [Checkpoint]) -> [CGPoint] {
+        pts.map { p in
+            var bestIdx = 0
+            var bestD2: CGFloat = .infinity
+            for i in 0..<skeleton.count {
+                let dx = skeleton[i].x - p.x
+                let dy = skeleton[i].y - p.y
+                let d2 = dx * dx + dy * dy
+                if d2 < bestD2 {
+                    bestD2 = d2
+                    bestIdx = i
+                }
+            }
+            return CGPoint(x: skeleton[bestIdx].x, y: skeleton[bestIdx].y)
+        }
+    }
+
+    /// Drop consecutive duplicates (within a tiny epsilon). After
+    /// snap-to-skeleton many input points often land on the same
+    /// pixel; leaving them in poisons the next resampling step.
+    private func dedupeAdjacent(_ pts: [CGPoint]) -> [CGPoint] {
+        guard let first = pts.first else { return [] }
+        var out: [CGPoint] = [first]
+        let eps2: CGFloat = 1e-6
+        for i in 1..<pts.count {
+            let dx = pts[i].x - out.last!.x
+            let dy = pts[i].y - out.last!.y
+            if dx * dx + dy * dy > eps2 {
+                out.append(pts[i])
+            }
+        }
+        return out
+    }
+
+    /// Same uniform-arc-length resample as `resampleUniform`, but the
+    /// input/output are bbox-relative `CGPoint`s. (Separate routine so
+    /// we don't round-trip through screen coords on the snapped path.)
+    private func resampleUniformBbox(_ pts: [CGPoint], count: Int) -> [CGPoint] {
+        guard pts.count >= 2, count >= 2 else { return pts }
+        var cum: [CGFloat] = [0]
+        for i in 1..<pts.count {
+            let dx = pts[i].x - pts[i - 1].x
+            let dy = pts[i].y - pts[i - 1].y
+            cum.append(cum[i - 1] + (dx * dx + dy * dy).squareRoot())
+        }
+        let total = cum.last ?? 0
+        guard total > 0 else { return [pts[0], pts[pts.count - 1]] }
+        var out: [CGPoint] = []
+        var j = 0
+        for k in 0..<count {
+            let target = total * CGFloat(k) / CGFloat(count - 1)
+            while j < cum.count - 1 && cum[j + 1] < target { j += 1 }
+            if j >= pts.count - 1 {
+                out.append(pts[pts.count - 1])
+                continue
+            }
+            let denom = cum[j + 1] - cum[j]
+            if denom == 0 {
+                out.append(pts[j])
+                continue
+            }
+            let t = (target - cum[j]) / denom
+            out.append(CGPoint(
+                x: pts[j].x + t * (pts[j + 1].x - pts[j].x),
+                y: pts[j].y + t * (pts[j + 1].y - pts[j].y)
+            ))
+        }
+        return out
     }
 
     /// Walk the polyline and return `count` points spaced equally

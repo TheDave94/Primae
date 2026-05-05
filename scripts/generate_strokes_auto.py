@@ -1071,10 +1071,24 @@ def generate_for_letter(letter: str, font_path: Path,
                             for (x, y) in rel],
             "comment": comment,
         })
+    # Skeleton point cloud in glyph-bbox coords. Subsampled every 2px so
+    # the JSON stays small but iOS still has a dense centerline target
+    # for the calibrator's record-mode "snap to centerline" pass.
+    sk_rows, sk_cols = np.where(skel)
+    bbox_w = max(1, bbox[2] - bbox[0])
+    bbox_h = max(1, bbox[3] - bbox[1])
+    skeleton_pts = []
+    for r, c in zip(sk_rows.tolist()[::2], sk_cols.tolist()[::2]):
+        skeleton_pts.append({
+            "x": round((c - bbox[0]) / bbox_w, 4),
+            "y": round((r - bbox[1]) / bbox_h, 4),
+        })
+
     data = {
         "letter": letter,
         "checkpointRadius": DEFAULT_RADIUS,
         "strokes": json_strokes,
+        "skeleton": skeleton_pts,
     }
     debug = {
         "mask": mask,

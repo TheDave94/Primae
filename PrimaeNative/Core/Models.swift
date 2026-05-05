@@ -59,6 +59,19 @@ struct LetterStrokes: Codable, Equatable {
     let letter: String
     let checkpointRadius: CGFloat
     let strokes: [StrokeDefinition]
+    /// Bbox-relative centerline point cloud (subsampled medial axis of
+    /// the rendered glyph). Optional — older bundles and user-saved
+    /// calibrations omit it. The calibrator's record mode uses these
+    /// to snap a wobbly hand-traced sketch onto the actual ink centerline.
+    let skeleton: [Checkpoint]?
+
+    init(letter: String, checkpointRadius: CGFloat,
+         strokes: [StrokeDefinition], skeleton: [Checkpoint]? = nil) {
+        self.letter = letter
+        self.checkpointRadius = checkpointRadius
+        self.strokes = strokes
+        self.skeleton = skeleton
+    }
 }
 
 struct StrokeDefinition: Codable, Equatable {
