@@ -155,6 +155,19 @@ struct SettingsView: View {
                     .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einer bestimmten Studienbedingung zu, anstatt die automatische Zuweisung zu verwenden — für ausgewogene Stichproben.")
                 }
             }
+            Section("Werkzeuge") {
+                Toggle("Striche kalibrieren", isOn: Binding(
+                    get: { vm.showDebug && vm.showCalibration },
+                    set: { newValue in
+                        vm.showDebug = newValue
+                        vm.showCalibration = newValue
+                    }
+                ))
+                .accessibilityHint("Schaltet die Stricheditor-Einblendung in der Schule-Welt frei. Punkte ziehen, hinzufügen oder löschen, dann \"Speichern\" — die Anpassung gilt nur auf diesem Gerät.")
+                Text("Punkte ziehen / hinzufügen / löschen, \"Speichern\" überschreibt die mitgelieferten Striche dieses Buchstabens auf diesem Gerät.")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+            }
             Section("Hilfe") {
                 // A/B onboarding length. Default off (7-step). The
                 // first-run variant is locked into OnboardingStore on

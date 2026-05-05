@@ -322,6 +322,16 @@ struct TracingCanvasView: View {
                     }
                 }
             )
+            .overlay(
+                Group {
+                    // Top-most layer so drag / tap edits aren't swallowed
+                    // by the underlying tracing/pencil overlays. Other
+                    // overlays already gate themselves on `!isCalibrating`.
+                    if vm.isCalibrating {
+                        StrokeCalibrationOverlay(canvasSize: geo.size)
+                    }
+                }
+            )
         }
     }
 }
