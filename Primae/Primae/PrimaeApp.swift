@@ -2,9 +2,10 @@ import SwiftUI
 import PrimaeNative
 
 // MARK: - Main entry point
-// During XCTest runs, the test host process bootstraps a TestApp with an
-// empty WindowGroup. This prevents AVAudioEngine from being initialised in
-// the headless simulator where it would abort with an RPC timeout (SIGABRT).
+
+// During XCTest runs the test host bootstraps `TestApp` with an empty
+// WindowGroup so AVAudioEngine isn't initialised in the headless
+// simulator (it would abort with an RPC timeout / SIGABRT).
 @main
 struct MainEntryPoint {
     static func main() {
@@ -21,17 +22,13 @@ struct PrimaeApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var vm = TracingViewModel()
 
-    /// Primae appearance override (Part C). Stored in UserDefaults
-    /// under `primaeAppearance` by the parent-area Settings picker
-    /// ("system" / "light" / "dark"). `nil` resolution = follow iOS.
+    /// Stored under `primaeAppearance`: "system" / "light" / "dark".
     @AppStorage(PrimaeAppearance.storageKey) private var appearance: String = "system"
 
     init() {
-        // Register the SPM-bundled Primae / PrimaeText / Playwrite
-        // faces with CoreText so SwiftUI `Font.custom(...)` resolves
-        // them by PostScript name. The `UIAppFonts` Info.plist key
-        // covers main-bundle fonts only; the SPM resource bundle
-        // needs `CTFontManagerRegisterFontsForURLs`. Idempotent.
+        // Register SPM-bundled fonts with CoreText. `UIAppFonts` only
+        // covers main-bundle fonts; the SPM resource bundle needs
+        // `CTFontManagerRegisterFontsForURLs`. Idempotent.
         PrimaeFonts.registerAll()
     }
 
@@ -46,11 +43,11 @@ struct PrimaeApp: App {
             case .active:
                 vm.appDidBecomeActive()
             case .background, .inactive:
-                // appDidEnterBackground is now async — it drains pending JSON
-                // store writes after the synchronous state cleanup. Wrap in a
-                // Task so iOS's scene-suspension grace window holds the process
-                // alive until the awaits resolve, instead of losing a freshly
-                // completed letter to a half-flushed write on suspension.
+                // `appDidEnterBackground` is async — drains pending JSON
+                // store writes. Wrap in a Task so iOS's scene-suspension
+                // grace window holds the process alive until the awaits
+                // resolve, instead of losing a freshly completed letter
+                // to a half-flushed write on suspension.
                 Task { await vm.appDidEnterBackground() }
             @unknown default:
                 Task { await vm.appDidEnterBackground() }

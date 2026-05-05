@@ -1,10 +1,7 @@
-// PlaybackControllerTests.swift
-// PrimaeNativeTests
-//
 // Direct tests for the playback state machine wrapper extracted from
-// TracingViewModel. Confirms the LESSONS.md sync-load contract (immediate=true
-// produces a synchronous audio side-effect) and the debounced idle/active
-// timings match VM assumptions.
+// TracingViewModel. Confirms the LESSONS.md sync-load contract
+// (immediate=true produces a synchronous audio side-effect) and the
+// debounced idle/active timings match VM assumptions.
 
 import Foundation
 import Testing

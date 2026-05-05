@@ -1,17 +1,12 @@
 // RecognitionFeedbackView.swift
 // PrimaeNative
 //
-// Shows a child-friendly badge with the CoreML recognition result after
-// the freeWrite KP overlay dismisses. Color and message depend on
-// whether the prediction was correct and how confident the model was:
-//   • green  (correct & confident): "Du hast ein A geschrieben! 🎉"
-//   • yellow (correct & uncertain): "Das sieht aus wie ein A — gut gemacht!"
-//   • orange (wrong   & confident): "Das sieht aus wie ein O — versuche nochmal A!"
-// When raw confidence is below 0.4 the recognizer is too unsure to show
-// anything, and the caller falls back to the Fréchet score alone.
-//
-// Auto-dismissed after 3 s by `OverlayQueueManager` (the queue's
-// timer for `.recognitionBadge`), or earlier on tap.
+// Child-friendly badge for the CoreML recognition result. Tiers:
+//   • green  (correct & confident, conf > 0.7)
+//   • yellow (correct & uncertain, 0.4 ≤ conf ≤ 0.7)
+//   • orange (wrong & confident, conf > 0.7)
+// Raw confidence below 0.4 renders nothing; auto-dismissed by
+// OverlayQueueManager after 3 s, or earlier on tap.
 
 import SwiftUI
 
@@ -37,18 +32,14 @@ struct RecognitionFeedbackView: View {
                 .background(style.tint, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
                 .onTapGesture { onDismiss() }
-                // Auto-dismiss is owned by OverlayQueueManager (3 s for
-                // `.recognitionBadge`). Don't add a view-level `.task`
-                // here — the queue fires first and tears the view down,
-                // so a second timer would just race the queue.
+                // Auto-dismiss owned by OverlayQueueManager — don't add
+                // a view-level timer here, it would race the queue.
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(style.message)
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Tippen, um die Rückmeldung zu schließen")
             } else {
-                // Confidence < 0.4 — model is unsure, show nothing so the
-                // child isn't distracted by a meaningless badge. Caller's
-                // Fréchet-based feedback path remains the primary signal.
+                // Confidence < 0.4 — model is unsure; show nothing.
                 Color.clear.frame(height: 0)
             }
         }
@@ -89,8 +80,7 @@ struct RecognitionFeedbackView: View {
                 message: "Das sieht eher nach \(result.predictedLetter) aus — schreib nochmal ein \(expectedLetter)!"
             )
         }
-        // conf in (0.4, 0.7] but wrong — model isn't confident enough to
-        // confuse the child with a correction message. Stay silent.
+        // conf in (0.4, 0.7] but wrong — too uncertain to correct.
         return nil
     }
 }

@@ -3,12 +3,8 @@
 //
 // Scores a freehand drawn path against a reference letter definition.
 // Returns a WritingAssessment with four Schreibmotorik dimensions
-// (Marquardt & Söhl, 2016): Form, Tempo, Druck, Rhythmus.
-//
-// References:
-// - Eiter & Mannila (1994) "Computing Discrete Fréchet Distance"
-// - Alt & Godau (1995) "Computing the Fréchet Distance Between Two Polygonal Curves"
-// - Marquardt & Söhl (2016) Schreibmotorik Institut four-dimension model
+// (Marquardt & Söhl 2016): Form, Tempo, Druck, Rhythmus.
+// Form scoring uses discrete Fréchet distance (Eiter & Mannila 1994).
 
 import CoreGraphics
 import Foundation
@@ -38,16 +34,8 @@ struct FreeWriteScorer {
 
     // MARK: - Public API
 
-    /// Scores a traced path against reference strokes, returning a four-dimension assessment.
-    ///
-    /// - Parameters:
-    ///   - tracedPoints: Child's freehand path, normalised to 0–1.
-    ///   - reference: Canonical stroke definition for the letter.
-    ///   - timestamps: `CACurrentMediaTime()` value for each point in `tracedPoints`.
-    ///   - forces: Digitizer force at each point (0 = finger / no data).
-    ///   - sessionStart: `CACurrentMediaTime()` when the freeWrite phase began.
-    ///   - sessionEnd: `CACurrentMediaTime()` when the child finished writing.
-    /// - Returns: `WritingAssessment` with all four dimensions scored 0–1.
+    /// Scores a traced path against reference strokes, returning a
+    /// four-dimension assessment with each dimension in 0–1.
     static func score(
         tracedPoints: [CGPoint],
         reference: LetterStrokes,
@@ -82,43 +70,21 @@ struct FreeWriteScorer {
 
     // MARK: - Shape-only accuracy (freeform writing)
 
-    /// Shape-similarity score in 0–1, designed for blank-canvas writing
-    /// where stroke order, pen-lift count, and absolute position on the
-    /// canvas are all irrelevant — the question is simply "does the
-    /// child's ink cover the reference glyph's footprint?"
+    /// Shape-similarity score in 0–1 for blank-canvas writing where
+    /// stroke order, pen-lift count, and absolute position are all
+    /// irrelevant — only "does the ink cover the glyph's footprint?".
     ///
-    /// Key design choices:
-    ///
-    /// 1. **Per-stroke densification of the reference, no concatenation.**
-    ///    The first revision concatenated stroke checkpoints into one
-    ///    polyline and resampled, which let the imaginary line from
-    ///    end-of-stroke-1 → start-of-stroke-2 (e.g., A's left-leg foot
-    ///    → right-leg apex, length ≈ 1.06 in unit-space) absorb ~40 %
-    ///    of the 60 sample points. Hausdorff then scored those phantom
-    ///    samples instead of the actual glyph — even a perfect A came
-    ///    out at 0 %. Densifying each stroke independently and unioning
-    ///    the results means every sample point sits on real ink.
-    /// 2. **Trace stays raw — no resample.** Touch samples from the
-    ///    digitiser are already dense (typically 100–300 per letter)
-    ///    and consecutive samples never cross a pen-lift gap (the gap
-    ///    is implicit in the stroke-size buffer, not interpolated into
-    ///    `freeformPoints`). Resampling by arc length on the trace
-    ///    re-introduces the same phantom-segment bias the reference
-    ///    rewrite removed.
-    /// 3. **Bounding-box normalisation on both sets.** Without this, a
-    ///    centred trace at e.g. (0.5–0.7, 0.4–0.7) can't align with the
-    ///    reference at (0–1, 0–1) and Hausdorff captures position
-    ///    offset on top of shape error.
-    /// 4. **Symmetric Hausdorff.** Order-free, so multi-stroke letters
-    ///    drawn in any sequence score the same as the canonical order.
-    ///    Both directions matter — d1 = "is every trace point close to
-    ///    *some* ink in the reference?" (catches stray strokes), d2 =
-    ///    "is every part of the reference covered by *some* trace
-    ///    point?" (catches missing parts of the glyph).
-    /// 5. **Looser tolerance + concave mapping.** 6×checkpointRadius
-    ///    plus a square-root softener, so a clearly-shaped L now lands
-    ///    in the 80s rather than capping at ~55 %. A scribble still
-    ///    scores near zero — `max(0, …)` clamps the bottom.
+    /// Notes:
+    /// - Reference is densified per-stroke (no cross-stroke
+    ///   concatenation) so phantom segments between pen-lifts can't
+    ///   absorb sample points and tank the score.
+    /// - Trace stays raw — touch samples are already dense and
+    ///   resampling re-introduces phantom-segment bias.
+    /// - Both sets normalised to a unit bounding box so position
+    ///   offset doesn't add to the shape error.
+    /// - Symmetric Hausdorff makes scoring stroke-order independent.
+    /// - 6×checkpointRadius tolerance plus a square-root softener so
+    ///   a clearly-shaped L lands in the 80s instead of capping at ~55 %.
     static func formAccuracyShape(
         tracedPoints: [CGPoint],
         reference: LetterStrokes
@@ -135,18 +101,14 @@ struct FreeWriteScorer {
 
         let maxAcceptable = max(reference.checkpointRadius * 6.0, 0.001)
         let raw = max(0, min(1, 1.0 - distance / maxAcceptable))
-        // Square-root softens the high end: raw 0.50 → 0.71,
-        // raw 0.70 → 0.84, raw 0.85 → 0.92. A child who clearly drew
-        // the right letter should feel rewarded; the bottom only
-        // climbs a little (raw 0.10 → 0.32) so a scribble still reads
-        // as "needs more practice" rather than a pity score.
+        // Square-root softens the high end so a recognisable letter
+        // lands in the 80s; the bottom only climbs a little so a
+        // scribble still reads as "needs more practice".
         return CGFloat(sqrt(Double(raw)))
     }
 
     /// Resample each reference stroke's checkpoint polyline to a dense
-    /// sequence of unit-space points — without crossing pen-lift gaps.
-    /// Returns the union of those per-stroke samples, suitable for
-    /// Hausdorff comparison against an arbitrary trace point set.
+    /// sequence of unit-space points without crossing pen-lift gaps.
     private static func densifyReferenceStrokes(_ reference: LetterStrokes) -> [CGPoint] {
         var result: [CGPoint] = []
         for stroke in reference.strokes {
@@ -155,7 +117,7 @@ struct FreeWriteScorer {
                 result.append(contentsOf: pts)
                 continue
             }
-            // ~24 samples per stroke gives smooth coverage even on long
+            // ~24 samples per stroke gives smooth coverage on long
             // sloped legs without ballooning the Hausdorff cost.
             let dense = resample(pts, targetCount: max(24, pts.count))
             result.append(contentsOf: dense)
@@ -164,9 +126,8 @@ struct FreeWriteScorer {
     }
 
     /// Map a path so its axis-aligned bounding box fills the unit
-    /// square. Degenerate paths (zero extent on one axis, single point)
-    /// fall back to centred 0.5 coordinates so the caller never deals
-    /// with NaN.
+    /// square. Degenerate paths fall back to centred 0.5 coordinates
+    /// so the caller never deals with NaN.
     static func normaliseToUnitBox(_ points: [CGPoint]) -> [CGPoint] {
         guard !points.isEmpty,
               let minX = points.map(\.x).min(),
@@ -234,7 +195,7 @@ struct FreeWriteScorer {
 
         let variance = intervals.reduce(0.0) { $0 + ($1 - mean) * ($1 - mean) }
             / Double(intervals.count)
-        // Coefficient of variation squared — scale-free normalisation of variance.
+        // Coefficient of variation squared — scale-free normalisation.
         let normalised = variance / (mean * mean)
         return CGFloat(max(0, min(1, 1.0 - normalised)))
     }
@@ -276,10 +237,8 @@ struct FreeWriteScorer {
 
     // MARK: - Discrete Fréchet Distance
 
-    /// O(nm) dynamic programming computation of discrete Fréchet distance.
-    ///
-    /// Uses a flat array instead of 2D for cache-line efficiency.
-    /// Iterative bottom-up to avoid stack overflow on large inputs.
+    /// O(nm) DP discrete Fréchet distance (Eiter & Mannila 1994).
+    /// Flat array + iterative for cache and stack-safety.
     static func discreteFrechetDistance(
         _ p: [CGPoint], _ q: [CGPoint]
     ) -> CGFloat {
@@ -327,11 +286,9 @@ struct FreeWriteScorer {
         hypot(a.x - b.x, a.y - b.y)
     }
 
-    /// Resamples a polyline to approximately `targetCount` equidistant points.
-    ///
-    /// This normalises the point density between the child's traced path
-    /// (which may have hundreds of touch samples) and the reference
-    /// (which typically has 5–16 checkpoints).
+    /// Resamples a polyline to approximately `targetCount` equidistant
+    /// points so trace density (100s of samples) matches reference
+    /// density (5–16 checkpoints) before Fréchet comparison.
     static func resample(_ points: [CGPoint], targetCount: Int) -> [CGPoint] {
         guard points.count >= 2, targetCount >= 2 else { return points }
 

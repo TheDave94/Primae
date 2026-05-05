@@ -1,12 +1,9 @@
 // SchuleWorldView.swift
 // PrimaeNative
 //
-// World 1 — Buchstaben-Schule. Hosts the existing TracingCanvasView
-// full-bleed with a minimal HUD: current-letter pill in the top-left
-// (long-press to open LetterWheelPicker), phase dots flanked by
-// prev/next arrows at the bottom. All scoring / audio / recognition
-// pipelines remain on TracingViewModel — this view only replaces the
-// surrounding chrome.
+// World 1 — Buchstaben-Schule. Hosts `TracingCanvasView` full-bleed
+// with minimal HUD: letter pill (top-left), phase dots + prev/next
+// (bottom). Scoring/audio/recognition stay on `TracingViewModel`.
 
 import SwiftUI
 
@@ -44,12 +41,11 @@ struct SchuleWorldView: View {
                 observeOverlay
             }
 
-            // All post-freeWrite overlays flow through the overlay queue —
-            // no two can stack because the queue serialises them in canonical
-            // order: kpOverlay → recognitionBadge → paperTransfer → celebration.
-            // (KP overlay is rendered inside TracingCanvasView so it has
-            // access to the live canvas geometry; the modals below sit on
-            // top of the world chrome.)
+            // Post-freeWrite overlays serialise through the queue
+            // (canonical order: kpOverlay → recognitionBadge →
+            // paperTransfer → celebration). The KP overlay is rendered
+            // inside `TracingCanvasView` to reach canvas geometry;
+            // the modals below sit on top of the world chrome.
             queuedModalOverlay
 
             VStack {
@@ -63,14 +59,9 @@ struct SchuleWorldView: View {
                 if let assessment = vm.lastWritingAssessment,
                    vm.learningPhase == .freeWrite,
                    !isQueueShowingKPOverlay {
-                    // After the KP overlay dismisses but before the
-                    // celebration appears, show the form-accuracy row.
-                    // C-6: isPhaseSessionComplete guard removed — it was
-                    // always true by first re-render (phaseController.advance
-                    // sets the flag before returning), so the card never
-                    // rendered. The remaining guards (phase == .freeWrite,
-                    // no KP overlay) are sufficient; the celebration modal
-                    // is opaque and covers this card when it appears.
+                    // Form-accuracy row between KP-overlay dismiss and
+                    // the celebration. The opaque celebration modal
+                    // covers this card when it appears.
                     formFeedbackCard(score: assessment.formAccuracy)
                         .padding(.top, 8)
                         .transition(reduceMotion ? .opacity : .opacity)
@@ -100,10 +91,9 @@ struct SchuleWorldView: View {
                     letters: vm.visibleLetterNames,
                     currentLetter: vm.currentLetterName,
                     starCount: { name in
-                        // Read via the @Observable allProgress
-                        // mirror (not progress(for:)) so the
-                        // picker chip refreshes after a fresh
-                        // completion without dismissing-+-reopening.
+                        // Read via `vm.allProgress` (the @Observable
+                        // mirror) so the chip refreshes after a fresh
+                        // completion without reopening the picker.
                         LetterStars.stars(
                             for: (vm.allProgress[name] ?? LetterProgress()).phaseScores)
                     },
@@ -122,18 +112,13 @@ struct SchuleWorldView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.overlayQueue.currentOverlay)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
-        // Canvas now uses Color.canvasPaper (Primae token, dynamic),
-        // so the world participates in the user's chosen appearance
-        // (Hell / Dunkel / System) — no light-mode lock required.
-        } // end else
+        }
     }
 
     // MARK: - Queue-driven modal overlays
 
-    /// Renders whichever overlay the OverlayQueueManager currently has on
-    /// top, except for the KP overlay (which lives in TracingCanvasView so
-    /// it can reach the canvas geometry). Returns an empty view for that
-    /// case and for `nil`, letting the queue advance naturally.
+    /// Renders whichever overlay the queue currently has on top —
+    /// except the KP overlay (rendered inside `TracingCanvasView`).
     @ViewBuilder
     private var queuedModalOverlay: some View {
         switch vm.overlayQueue.currentOverlay {
@@ -164,18 +149,15 @@ struct SchuleWorldView: View {
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(20)
         case .rewardCelebration(let event):
-            // Timed (2.5 s) one-shot achievement celebration.
-            // Auto-dismisses through the queue's own timer;
-            // tap-to-dismiss for impatient users.
+            // 2.5 s one-shot achievement celebration. Queue auto-
+            // dismisses; tap-to-dismiss for impatient users.
             RewardCelebrationOverlay(event: event)
                 .onTapGesture { vm.overlayQueue.dismiss() }
                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .zIndex(25)
         case .retrievalPrompt(let letter, let distractors):
-            // Spaced-retrieval recognition prompt. Modal — child must
-            // answer before tracing begins. Audio cue plays the
-            // active letter's audio (name or phoneme depending on the
-            // parent's toggle) via `vm.replayAudio`.
+            // Spaced-retrieval prompt. Modal — child must answer
+            // before tracing begins.
             RetrievalPromptView(
                 target: letter,
                 distractors: distractors,
@@ -187,25 +169,22 @@ struct SchuleWorldView: View {
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(22)
         case .kpOverlay:
-            // KP overlay is rendered by `TracingCanvasView` itself (it
-            // needs the canvas geometry and reference-stroke data) — the
-            // queueModalOverlay branch only handles full-screen modals.
+            // Rendered inside `TracingCanvasView` — it needs canvas
+            // geometry and reference-stroke data.
             EmptyView()
         case .frechetScore:
-            // Reserved enum case for a future inline Fréchet-score chip.
-            // Currently the inline form/guided feedback cards in this
-            // view render the signal instead; the queue case is kept so
-            // a downstream caller can re-introduce the chip without an
-            // enum-shape migration. See OverlayQueueManager.CanvasOverlay.
+            // Reserved for a future inline Fréchet-score chip; the
+            // inline form/guided feedback cards above render the
+            // signal today. Kept to avoid an enum-shape migration.
             EmptyView()
         case .none:
             EmptyView()
         }
     }
 
-    /// True while the overlay queue is actively showing the KP (Knowledge
-    /// of Performance) overlay. Used to suppress the inline form-accuracy
-    /// card during the KP window so the two don't overlap.
+    /// True while the queue is showing the KP (Knowledge of
+    /// Performance) overlay — suppresses the inline form-accuracy
+    /// card during that window.
     private var isQueueShowingKPOverlay: Bool {
         if case .kpOverlay = vm.overlayQueue.currentOverlay { return true }
         return false
@@ -229,12 +208,10 @@ struct SchuleWorldView: View {
         )
     }
 
-    /// Verbal feedback band shown above the canvas during the freeWrite
-    /// transition. Children must NEVER see numeric metrics — they get a
-    /// star count + a short German encouragement line + a colour swatch
-    /// that signals quality without spelling out a percentage. The exact
-    /// numeric scores all the metrics produce live in the research
-    /// dashboard (parent-gated) and the CSV/TSV thesis export.
+    /// Verbal feedback band above the canvas after freeWrite.
+    /// Child-facing — never shows numeric metrics; star count +
+    /// colour swatch + short German encouragement only. Numeric
+    /// scores live in the research dashboard and CSV/TSV export.
     private func feedbackCard(title: String, score: CGFloat, subtitle: String) -> some View {
         let tint: Color = score >= 0.7 ? .green : (score >= 0.5 ? .yellow : .orange)
         let starsEarned = score >= 0.85 ? 3 : (score >= 0.6 ? 2 : (score >= 0.35 ? 1 : 0))
@@ -246,7 +223,7 @@ struct SchuleWorldView: View {
         default: praise = "Probier es nochmal."
         }
         return HStack(spacing: 14) {
-            // Mood swatch — colour conveys quality, no number.
+            // Mood swatch — colour conveys quality without a number.
             ZStack {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(tint.opacity(0.22))
@@ -296,18 +273,17 @@ struct SchuleWorldView: View {
         .padding(.horizontal, 16)
     }
 
-    /// Total stars across all letters — same computation the world
-    /// rail's Sterne badge uses so the two displays always agree.
+    /// Total stars across all letters — same computation as the
+    /// world rail's badge so the two displays always agree.
     private var totalStars: Int {
         vm.allProgress.values.reduce(0) { acc, prog in
             acc + LetterStars.stars(for: prog.phaseScores)
         }
     }
 
-    /// Persistent header pill: a yellow star + the running total.
-    /// Mirrors the world-rail badge styling so a child who has
-    /// noticed one recognises the other; placed in the top-right of
-    /// Schule so accumulating stars is visible without world-switching.
+    /// Persistent header pill (star + running total). Mirrors the
+    /// world-rail badge styling; placed top-right so accumulating
+    /// stars are visible without world-switching.
     private func starCountBadge(count: Int) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "star.fill")
@@ -344,9 +320,8 @@ struct SchuleWorldView: View {
         }
         .buttonStyle(.plain)
         .simultaneousGesture(
-            // Tap or long-press both open the picker — the long-press
-            // gesture mirrors the spec's "long-press the letter" wording
-            // while the tap fallback keeps the UI obvious for a child.
+            // Tap or long-press both open the picker. Long-press
+            // matches the spec; tap keeps it obvious for a child.
             LongPressGesture(minimumDuration: 0.4).onEnded { _ in
                 withAnimation { showLetterPicker = true }
             }
@@ -359,13 +334,9 @@ struct SchuleWorldView: View {
     // MARK: - Observe overlay
 
     private var observeOverlay: some View {
-        // The child can't read, so the spoken prompt
-        // (`ChildSpeechLibrary.phaseEntry(.observe)` — "Schau mal
-        // genau hin.") + the live guide-dot animation are the actual
-        // phase cue. The on-screen overlay is just two glyphs in a
-        // brand pill: an eye for "watch" and a finger for "tap to
-        // continue when ready". No text — words wouldn't reach the
-        // intended user anyway, and they cluttered the canvas.
+        // Pre-reader UI — the spoken prompt + guide-dot animation
+        // carry the phase cue. The on-screen overlay is two glyphs
+        // (eye = watch, finger = tap to continue) in a brand pill.
         VStack {
             Spacer()
             HStack(spacing: 18) {

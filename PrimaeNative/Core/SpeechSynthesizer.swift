@@ -15,20 +15,16 @@ import Foundation
 
 // MARK: - Protocol seam
 
-/// Async-free TTS API for child-facing verbal feedback. Tests
-/// substitute `NullSpeechSynthesizer`, which records spoken lines so
-/// assertions can verify what the child would have heard.
+/// Async-free TTS API for child-facing verbal feedback. Tests use
+/// `NullSpeechSynthesizer` which records spoken lines.
 @MainActor
 protocol SpeechSynthesizing {
-    /// Speak `text` in German. AVSpeechSynthesizer queues utterances
-    /// natively — back-to-back calls play in delivery order. Callers
-    /// that need to interrupt must call `stop()` first.
+    /// Speak `text` in German. Utterances queue natively — call
+    /// `stop()` first to interrupt.
     func speak(_ text: String)
     /// Halt any in-flight or queued utterance.
     func stop()
-    /// Parent-tunable rate. `nil` restores the default. Bound to a
-    /// 3-position slider in SettingsView (0.36 langsam / 0.42 normal
-    /// / 0.50 schnell).
+    /// Parent-tunable rate; `nil` restores the default.
     func setRate(_ rate: Float?)
 }
 
@@ -65,10 +61,10 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         self.germanVoice = enhanced
             ?? germanVoices.first
             ?? AVSpeechSynthesisVoice(language: "de-DE")
-        // The synthesizer uses the default `usesApplicationAudioSession
-        // = true`, so it shares the AudioEngine's `.playback` session.
-        // Setting it to false would put the synth on a private session
-        // incompatible with the AudioEngine letter-sound pipeline.
+        // Default `usesApplicationAudioSession = true` shares the
+        // AudioEngine's `.playback` session. Disabling it would put
+        // the synth on a private session incompatible with the letter-
+        // sound pipeline.
     }
 
     func speak(_ text: String) {
@@ -105,17 +101,13 @@ final class NullSpeechSynthesizer: SpeechSynthesizing {
 
 // MARK: - Phrase library
 
-/// Centralised German feedback phrases. Co-locating every phrase the
-/// child hears makes copy review tractable for the research team and
-/// keeps view layout free of hardcoded strings.
+/// Centralised German feedback phrases — co-locating every phrase the
+/// child hears keeps view layout free of hardcoded strings.
 enum ChildSpeechLibrary {
 
-    /// Phase entry prompts. Imperative + short — the child can't read
-    /// the on-screen phase pill, so the spoken instruction has to
-    /// stand on its own. Kept brief enough that the utterance finishes
-    /// before the child can plausibly touch the canvas, since the
-    /// AudioEngine's per-touch session reconfiguration cuts in-flight
-    /// TTS short.
+    /// Phase entry prompts. Imperative + short so the utterance
+    /// finishes before the child plausibly touches the canvas
+    /// (AudioEngine's per-touch session reconfiguration cuts TTS short).
     static func phaseEntry(_ phase: LearningPhase) -> String {
         switch phase {
         case .observe:    return "Pass jetzt gut auf!"
@@ -125,8 +117,8 @@ enum ChildSpeechLibrary {
         }
     }
 
-    /// Praise spoken on guided / freeWrite stroke completion. The
-    /// 0-star case stays warm — "probier nochmal" without judgement.
+    /// Praise spoken on guided / freeWrite stroke completion. 0-star
+    /// stays warm — "probier nochmal" without judgement.
     static func praise(starsEarned: Int) -> String {
         switch starsEarned {
         case 4: return "Wow, das war perfekt! Super gemacht."
@@ -137,9 +129,9 @@ enum ChildSpeechLibrary {
         }
     }
 
-    /// Recognition badge announcement. Imperative phrasing for
-    /// corrections ("schreib nochmal ein A") gives a 5-year-old a
-    /// concrete next action; abstract "versuche nochmal" doesn't.
+    /// Recognition badge announcement. Corrections use imperative
+    /// phrasing ("schreib nochmal ein A") — a 5-year-old needs a
+    /// concrete next action.
     static func recognition(_ result: RecognitionResult, expected: String) -> String {
         if result.isCorrect {
             if result.confidence > 0.7 {
@@ -164,9 +156,8 @@ enum ChildSpeechLibrary {
     /// Spaced-retrieval modal headline — spoken on appear.
     static let retrievalQuestion = "Welchen Buchstaben hörst du?"
 
-    /// Spoken after every letter completes. The N-of-4 star row in
-    /// `CompletionCelebrationOverlay` carries the gradation; the
-    /// audio is always a warm "Super gemacht!".
+    /// Spoken after every letter completes. The on-screen star row
+    /// carries the gradation; audio is always a warm "Super gemacht!".
     static let celebration = "Super gemacht!"
 
     // MARK: - PromptPlayer mapping

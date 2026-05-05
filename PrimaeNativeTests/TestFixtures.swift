@@ -81,10 +81,9 @@ final class StubProgressStore: ProgressStoring {
                           phaseScores: [String: Double]?, speed: Double?,
                           recognitionResult: RecognitionResult?) {}
     // Explicitly opt in to no-op behaviour for the optional protocol
-    // methods. Previously the protocol's extension defaults silently
-    // swallowed these calls — review item W-13/P-3 promoted those
-    // defaults to `fatalError` so a forgotten stub override fails
-    // loudly in tests instead of silently dropping thesis data.
+    // methods. The protocol's extension defaults are `fatalError` so a
+    // forgotten stub override fails loudly in tests instead of silently
+    // dropping thesis data.
     func recordPaperTransferScore(for letter: String, score: Double) {}
     func recordVariantUsed(for letter: String, variantID: String?) {}
     func recordFreeformCompletion(letter: String, result: RecognitionResult) {}

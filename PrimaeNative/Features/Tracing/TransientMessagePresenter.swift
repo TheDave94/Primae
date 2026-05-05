@@ -1,15 +1,8 @@
 // TransientMessagePresenter.swift
 // PrimaeNative
 //
-// Owns two short-lived UI messages published by the view model:
-//   - a generic toast that auto-dismisses after ~1.3 s
-//   - a celebration HUD that auto-dismisses after ~1.8 s or on user tap
-//
-// Extracted from TracingViewModel so both messages (each with its own
-// cancellation Task + equality-guarded auto-clear) live in one focused place.
-//
-// The sleep used for the auto-clear timers is injectable so tests can drive
-// the dismissal deterministically without relying on wall-clock pauses.
+// Two short-lived UI messages: a 1.3 s toast and a 1.8 s celebration
+// HUD (also dismissable on tap). Sleep is injectable for tests.
 
 import Foundation
 
@@ -55,8 +48,8 @@ final class TransientMessagePresenter {
         let duration = toastDuration
         toastTask = Task { [weak self] in
             try? await sleeper(.seconds(duration))
+            // Equality-guard so a newer message queued during sleep isn't clobbered.
             guard let self, !Task.isCancelled, self.toastMessage == text else { return }
-            // Equality-guard prevents clobbering a newer message queued during our sleep.
             self.toastMessage = nil
             self.toastTask    = nil
         }
@@ -81,8 +74,8 @@ final class TransientMessagePresenter {
         completionMessage = nil
     }
 
-    /// Clear the completion HUD without cancelling (used by resetLetter paths
-    /// that want to wipe state but keep the task slot for a subsequent show).
+    /// Clear the HUD without cancelling — for resetLetter paths that
+    /// keep the task slot ready for a subsequent show.
     func clearCompletionState() {
         completionTask?.cancel()
         completionMessage = nil

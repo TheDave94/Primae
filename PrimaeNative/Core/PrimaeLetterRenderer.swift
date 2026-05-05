@@ -17,13 +17,8 @@ public enum PrimaeLetterRenderer {
         let letter:     String
         let width:      Int
         let height:     Int
-        // schriftArt was missing from this key. `clearCache()` is called
-        // by `TracingViewModel.schriftArt.didSet`, which prevents stale
-        // glyphs in the steady state — but the cache window between the
-        // didSet and the next render could still serve the previous
-        // script's image. Including the script in the key removes the
-        // race entirely; it also lets two scripts coexist in the cache
-        // (useful when the calibrator switches scripts repeatedly).
+        // schriftArt is part of the key so two scripts can coexist
+        // in the cache without a race window after a script switch.
         let schriftArt: SchriftArt
     }
 
@@ -42,7 +37,7 @@ public enum PrimaeLetterRenderer {
 
     public static func render(letter: String, size: CGSize, schriftArt: SchriftArt = .druckschrift) -> UIImage? {
         guard size.width > 0, size.height > 0, !letter.isEmpty else { return nil }
-        // Skip font rendering in test environments to avoid CGDataProvider hangs
+        // CGDataProvider hangs in the test process — skip rendering.
         guard !isRunningTests else { return nil }
         let key = CacheKey(letter: letter,
                             width: Int(size.width),
@@ -50,8 +45,8 @@ public enum PrimaeLetterRenderer {
                             schriftArt: schriftArt)
         if let cached = cache[key] { return cached }
         guard let image = draw(letter: letter, size: size, fontName: schriftArt.fontFileName) else { return nil }
-        // Evict entire cache when full rather than an LRU walk — letters rarely
-        // change and the next render repopulates the one entry that matters.
+        // Full eviction when over cap — letters rarely change and the
+        // next render repopulates the one entry that matters.
         if cache.count >= cacheLimit { cache.removeAll(keepingCapacity: true) }
         cache[key] = image
         return image
@@ -62,24 +57,17 @@ public enum PrimaeLetterRenderer {
         rectCache.removeAll()
     }
 
-    /// Output of `renderWord` — the whole word rendered as one text run
-    /// (so Schreibschrift ligatures connect properly) plus per-character
-    /// bounding boxes in canvas coordinates. Callers use the frames to
-    /// position per-cell overlays (strokes, dots, active-cell ring); the
-    /// image is drawn once across the whole canvas so connector strokes
-    /// flow across cell boundaries instead of being clipped per-glyph.
+    /// Output of `renderWord`: the whole word as one text run (so
+    /// Schreibschrift ligatures connect) plus per-character bounding
+    /// boxes for positioning per-cell overlays.
     public struct WordRendering {
         public let image: UIImage
         public let characterFrames: [CGRect]
     }
 
     /// Render an entire word as one cursive text run. Defaults to
-    /// Schreibschrift since that's the mode that actually needs proper
-    /// ligatures — Druckschrift words work fine with per-letter renders.
-    ///
-    /// Returns nil in test environments (CoreText font loading hangs),
-    /// for empty/zero-size inputs, or when the font / glyphs are
-    /// unavailable. Caller should fall back to per-letter rendering.
+    /// Schreibschrift; Druckschrift words work fine per-letter.
+    /// Returns nil in tests or when the font/glyphs are unavailable.
     public static func renderWord(word: String, size: CGSize,
                                   schriftArt: SchriftArt = .schreibschrift) -> WordRendering? {
         guard size.width > 0, size.height > 0, !word.isEmpty else { return nil }
@@ -181,18 +169,9 @@ public enum PrimaeLetterRenderer {
         let image = UIImage(cgImage: cgImage, scale: scale, orientation: .up)
         return WordRendering(image: image, characterFrames: characterFrames)
     }
-    /// Returns the glyph as a SwiftUI `Path`, positioned and scaled so
-    /// its bounding box sits centred inside `size` with the same 10 %
-    /// padding the rasterised path uses. Coordinates are top-left
-    /// origin (UIKit / SwiftUI convention) so the caller can hand the
-    /// path straight to `Canvas` `context.fill(_:with:)` or any
-    /// `.fill(_:)` modifier without further transformation.
-    ///
-    /// Vector replacement for the old PBM ghost: resolution-independent,
-    /// re-renders crisply at any iPad size, and trims ~1 MB of
-    /// pre-rasterised assets from the bundle. Returns nil only when
-    /// the font / glyph isn't available (test environment) or `size`
-    /// is degenerate.
+    /// Returns the glyph as a SwiftUI `Path` centred in `size` with
+    /// 10 % padding. Top-left origin so the caller can pass it straight
+    /// to `Canvas` / `.fill(_:)` without transformation.
     public static func glyphPath(letter: String, size: CGSize,
                                  schriftArt: SchriftArt = .druckschrift) -> Path? {
         guard size.width > 0, size.height > 0, !letter.isEmpty,
@@ -203,12 +182,10 @@ public enum PrimaeLetterRenderer {
         let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
         guard bbox.width > 0, bbox.height > 0,
               let cgPath = CTFontCreatePathForGlyph(font, glyph, nil) else { return nil }
-        // Uniform font-metric scaling: every glyph in this font shares
-        // the same em-square (ascent + descent), so scaling against
-        // that height keeps lowercase 'a' visibly smaller than
-        // uppercase 'A' (the natural typographic relationship). The
-        // glyph is positioned on the baseline at 75 % of the canvas
-        // height, with the inked ascent above and descent below.
+        // Uniform font-metric scaling against the em-square keeps
+        // lowercase 'a' visibly smaller than uppercase 'A'. The glyph
+        // sits on the baseline with the inked ascent above and
+        // descent below.
         let pad: CGFloat = 0.10
         let availH = size.height * (1 - 2 * pad)
         let ascent = CTFontGetAscent(font)
@@ -230,16 +207,10 @@ public enum PrimaeLetterRenderer {
         return Path(positioned)
     }
 
-    /// Returns the normalized ink bounding rect (0–1 in each axis) for the given letter
-    /// as rendered by PrimaeLetterRenderer at the given canvas size.
-    /// Used by TracingCanvasView and StrokeCalibrationOverlay to map normalised
-    /// ghost / stroke coordinates from calibration space to the actual font-rendered
-    /// glyph rect on screen.
-    ///
-    /// Memoized by (letter, canvasSize, schriftArt). The canvas calls
-    /// this up to 3× per frame on the 60 fps render loop and each
-    /// uncached call costs a CTFontGetBoundingRectsForGlyphs CoreText
-    /// roundtrip.
+    /// Normalized ink bounding rect (0–1 each axis) for the given
+    /// letter as rendered at `canvasSize`. Used to map calibration-
+    /// space coordinates onto the on-screen glyph rect.
+    /// Memoized — the canvas calls this 3× per 60 fps frame.
     public static func normalizedGlyphRect(for letter: String, canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) -> CGRect? {
         guard !isRunningTests, !letter.isEmpty,
               canvasSize.width > 0, canvasSize.height > 0 else { return nil }
@@ -281,8 +252,8 @@ public enum PrimaeLetterRenderer {
         let bundles: [Bundle] = [.module, .main]
         // Try root, then SPM .copy("Resources") nested paths, then flat Fonts/.
         let subdirs: [String?] = [nil, "Resources/Fonts", "Fonts"]
-        // Primae ships as OTF, Playwrite AT ships as a variable TTF — probe both
-        // extensions so schriftArt.fontFileName can stay extension-agnostic.
+        // Primae is OTF, Playwrite AT is variable TTF — probe both so
+        // `schriftArt.fontFileName` can stay extension-agnostic.
         let exts = ["otf", "ttf"]
         for bundle in bundles {
             for subdir in subdirs {
@@ -304,12 +275,9 @@ public enum PrimaeLetterRenderer {
     }
 
     static func getGlyph(for letter: String, in font: CTFont) -> CGGlyph? {
-        // NFC-normalise so umlauts arrive as their precomposed
-        // codepoints (ä = U+00E4) instead of decomposed pairs
-        // (a + U+0308). The latter would make the loop below pick up
-        // the base-letter glyph and silently render "a/o/u" in place
-        // of "ä/ö/ü". Then walk every UTF-16 unit so a surrogate-
-        // pair codepoint also resolves to its glyph.
+        // NFC-normalise so umlauts arrive as precomposed codepoints
+        // (ä = U+00E4); decomposed pairs would silently render the
+        // base letter. Walk every UTF-16 unit so surrogate pairs work.
         let normalised = letter.precomposedStringWithCanonicalMapping
         for unit in normalised.utf16 {
             var c = unit

@@ -11,33 +11,31 @@ struct PhaseSessionRecord: Codable, Equatable {
     let score: Double
     /// Spaced-repetition priority assigned when this session was scheduled.
     let schedulerPriority: Double
-    /// Thesis A/B condition in effect for this session. Added post-launch so
-    /// old records may be missing this field — custom decoder defaults to
-    /// .threePhase for pre-migration records.
+    /// Thesis A/B condition in effect for this session. Added
+    /// post-launch; custom decoder defaults pre-migration records to
+    /// `.threePhase`.
     let condition: ThesisCondition
-    /// D-3: wall-clock timestamp when the phase row was recorded. Lets
-    /// the CSV reconstruct dated learning curves and lets the exporter
-    /// filter pre-enrollment records (D-7). Optional only because pre-
-    /// D-3 records on disk don't carry it; new writes always populate.
+    /// Wall-clock timestamp when this row was recorded. Drives dated
+    /// learning curves and pre-enrollment filtering. Optional because
+    /// legacy records on disk don't carry it.
     let recordedAt: Date?
     /// Schreibmotorik dimensions (non-nil only for freeWrite sessions).
     let formAccuracy: Double?
     let tempoConsistency: Double?
     let pressureControl: Double?
     let rhythmScore: Double?
-    /// Per-session recognition outcome captured at session-completion
-    /// time. Only meaningful for freeWrite rows; nil for the other
-    /// phases and for legacy records written before this field existed.
+    /// Per-session recognition outcome captured at completion time.
+    /// Only meaningful for freeWrite rows; nil otherwise and for
+    /// legacy records.
     let recognitionPredicted: String?
     let recognitionConfidence: Double?
-    /// Pre-calibration softmax confidence so the thesis can quantify
-    /// the ConfidenceCalibrator's effect.
+    /// Pre-calibration softmax confidence so analysis can quantify
+    /// the calibrator's effect.
     let recognitionConfidenceRaw: Double?
     let recognitionCorrect: Bool?
-    /// Input device in effect for the session ("finger" / "pencil").
-    /// Lets the analysis distinguish a `pressureControl == 1.0` from
-    /// a real finger session (no force data) from a low-variance
-    /// pencil session. Optional for legacy rows.
+    /// Input device ("finger" / "pencil") so a `pressureControl == 1.0`
+    /// real finger session is distinguishable from a low-variance
+    /// pencil session.
     let inputDevice: String?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
@@ -134,20 +132,16 @@ struct SessionDurationRecord: Codable, Equatable {
     /// Active practice time in seconds. Pauses while the app is
     /// backgrounded so this reflects actual on-task time.
     let durationSeconds: TimeInterval
-    /// Wall-clock duration including backgrounded intervals. Lets the
-    /// analysis distinguish "engaged with the app" from "actively
-    /// practising". Optional for legacy rows.
+    /// Wall-clock duration including backgrounded intervals — lets
+    /// analysis distinguish "engaged" from "actively practising".
     let wallClockSeconds: TimeInterval?
     /// Thesis condition active during this session.
     let condition: ThesisCondition
-    /// Full wall-clock timestamp captured at session-record time so
-    /// the export can recover time-of-day signal (morning vs evening
-    /// practice) on top of the day-level aggregation. Optional for
-    /// legacy rows.
+    /// Full wall-clock timestamp at session-record time so the export
+    /// recovers time-of-day signal on top of the day-level aggregation.
     let recordedAt: Date?
-    /// Input device in effect for this session ("finger" / "pencil").
-    /// Lets "minutes practised by device" be aggregated without
-    /// joining across record types. Optional for legacy rows.
+    /// Input device ("finger" / "pencil") so "minutes practised by
+    /// device" can be aggregated without joining across record types.
     let inputDevice: String?
 
     init(dateString: String, durationSeconds: TimeInterval,
@@ -178,7 +172,6 @@ struct DashboardSnapshot: Codable, Equatable {
     var letterStats: [String: LetterAccuracyStat] = [:]
     var sessionDurations: [SessionDurationRecord] = []
     var phaseSessionRecords: [PhaseSessionRecord] = []
-    /// Persisted schema version (see ProgressStore for the rationale).
     var schemaVersion: Int? = dashboardSchemaVersion
 
     init(letterStats: [String: LetterAccuracyStat] = [:],
@@ -220,10 +213,9 @@ struct DashboardSnapshot: Codable, Equatable {
             .reduce(0) { $0 + $1.durationSeconds }
     }
 
-    /// Fraction of sessions that completed each phase (keyed by LearningPhase.rawName).
-    /// Iterates LearningPhase.allCases so every phase — including `direct` —
-    /// makes it into the thesis export. Previously hard-coded to three phases,
-    /// which silently dropped Richtung-lernen data from every CSV row.
+    /// Fraction of sessions that completed each phase (keyed by
+    /// `LearningPhase.rawName`). Iterates `LearningPhase.allCases` so
+    /// every phase, including `direct`, lands in the export.
     var phaseCompletionRates: [String: Double] {
         var result: [String: Double] = [:]
         for phase in LearningPhase.allCases.map(\.rawName) {
@@ -234,11 +226,9 @@ struct DashboardSnapshot: Codable, Equatable {
         return result
     }
 
-    /// Mean per-phase score for a single letter, keyed by LearningPhase.rawName.
-    /// Returns only phases the child has actually completed at least one
-    /// session of — letters never traced beyond observe will return a single
-    /// "observe" entry, etc. Used by the per-letter dashboard row to show
-    /// which phase a child masters vs which one they get stuck on.
+    /// Mean per-phase score for one letter, keyed by
+    /// `LearningPhase.rawName`. Returns only phases with at least one
+    /// completed session.
     func phaseScores(for letter: String) -> [String: Double] {
         let key = LetterProgress.canonicalKey(letter)
         let records = phaseSessionRecords.filter { LetterProgress.canonicalKey($0.letter) == key && $0.completed }
@@ -251,10 +241,9 @@ struct DashboardSnapshot: Codable, Equatable {
         return sums.mapValues { $0.total / Double($0.count) }
     }
 
-    /// Daily practice minutes for the most recent `days` days. Missing days
-    /// in `sessionDurations` are filled with 0 so the chart x-axis always
-    /// shows a continuous timeline. Returns oldest-first so the chart reads
-    /// left-to-right as past-to-present.
+    /// Daily practice minutes for the most recent `days` days. Missing
+    /// days are filled with 0 so the chart x-axis is continuous.
+    /// Oldest-first.
     func dailyPracticeMinutes(days: Int = 30,
                               referenceDate: Date = Date(),
                               calendar: Calendar = .current) -> [(date: Date, minutes: Double)] {
@@ -285,8 +274,8 @@ struct DashboardSnapshot: Codable, Equatable {
         return scores.reduce(0, +) / Double(scores.count)
     }
 
-    /// Average of each Schreibmotorik dimension across completed freeWrite sessions
-    /// that have dimension data. Returns nil when no such sessions exist yet.
+    /// Average of each Schreibmotorik dimension across completed
+    /// freeWrite sessions with dimension data, or nil if none exist.
     var averageWritingDimensions: (form: Double, tempo: Double, pressure: Double, rhythm: Double)? {
         let records = phaseSessionRecords
             .filter { $0.phase == "freeWrite" && $0.completed && $0.formAccuracy != nil }
@@ -332,9 +321,9 @@ struct DashboardSnapshot: Codable, Equatable {
 @MainActor
 protocol ParentDashboardStoring {
     var snapshot: DashboardSnapshot { get }
-    /// Records one completed letter session. T4/T7: pass `wallClockSeconds`
-    /// (including backgrounded time) and `inputDevice` so the export can
-    /// distinguish active practice from engagement and split by device.
+    /// Records one completed letter session. `wallClockSeconds` covers
+    /// backgrounded time so the export can distinguish active practice
+    /// from engagement; `inputDevice` enables device-split aggregation.
     func recordSession(letter: String, accuracy: Double,
                        durationSeconds: TimeInterval,
                        wallClockSeconds: TimeInterval?,
@@ -360,9 +349,7 @@ extension ParentDashboardStoring {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
                            schedulerPriority: schedulerPriority, condition: condition, assessment: assessment, recognition: recognition, inputDevice: nil)
     }
-    /// Backward-compatible recordSession that doesn't pass wallClockSeconds /
-    /// inputDevice. Existing tests and any non-VM callers continue to work;
-    /// the new fields populate as nil.
+    /// Backward-compatible recordSession overload — new fields populate as nil.
     func recordSession(letter: String, accuracy: Double,
                        durationSeconds: TimeInterval, date: Date,
                        condition: ThesisCondition) {
@@ -401,22 +388,17 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         self.snapshot = Self.load(from: self.fileURL) ?? DashboardSnapshot()
     }
 
-    /// Hard ceiling on per-letter accuracy samples. The trend regression
-    /// only looks at the trailing 10, so anything beyond ~200 samples is
-    /// noise — capping there keeps the dashboard JSON file from growing
-    /// unbounded on long-running thesis devices while still preserving
-    /// enough history for a generous trailing-window analysis.
+    /// Hard ceiling on per-letter accuracy samples — keeps the JSON
+    /// file bounded on long-running deployments. The trend regression
+    /// only reads the trailing 10.
     private static let accuracySamplesCap = 200
 
-    /// Hard ceiling on phase-session records. Dashboard summaries
-    /// only ever read recent windows, so unbounded accumulation on
-    /// multi-year thesis deployments would grow the JSON file without
-    /// improving any visible signal.
+    /// Hard ceiling on phase-session records — dashboard summaries
+    /// read recent windows only.
     private static let phaseSessionRecordsCap = 2000
 
-    /// Hard ceiling on per-day session durations. PracticeTrendChart
-    /// renders the last 30 days at most; 1000 entries gives roughly
-    /// three years of headroom for the trailing-window export.
+    /// Hard ceiling on per-day session durations. ~3 years of headroom
+    /// for the 30-day PracticeTrendChart window.
     private static let sessionDurationsCap = 1000
 
     func recordSession(letter: String, accuracy: Double,
@@ -426,19 +408,17 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                        inputDevice: String? = nil) {
         let key = LetterProgress.canonicalKey(letter)
         // Word-mode sessions arrive with multi-character keys
-        // (`"BUCH"`). Adding those to `letterStats` would corrupt the
-        // per-letter accuracy / trend table. Per-letter contributions
-        // for words already land via `progressStore.recordCompletion`
-        // on each cell letter; skip the letterStats update here for
-        // multi-character keys but record the duration once for the
-        // whole word.
+        // (`"BUCH"`); adding those to `letterStats` would corrupt the
+        // per-letter accuracy table. Per-letter contributions land via
+        // `progressStore.recordCompletion` on each cell letter, so we
+        // skip the letterStats update here but still record the
+        // duration once for the whole word.
         if key.count == 1 {
             let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [], accuracyConditions: [])
             var samples = existing.accuracySamples
             samples.append(accuracy)
-            // Maintain a parallel-length condition array. Legacy rows
-            // decoded `accuracyConditions == nil`; promote them to a
-            // back-filled array so subsequent writes line up.
+            // Parallel-length condition array. Legacy rows decoded with
+            // `accuracyConditions == nil`; back-fill so writes line up.
             var conditions = existing.accuracyConditions
                 ?? Array(repeating: ThesisCondition.threePhase, count: existing.accuracySamples.count)
             conditions.append(condition)
@@ -502,20 +482,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     // MARK: Private
 
     private func persist() {
-        // Encode on main, write off main. The bounded value-type
-        // snapshot (caps keep it well under 100 KB) sidesteps the
-        // Swift 6 restriction on calling a MainActor-isolated
-        // Encodable from a detached Task; only the atomic write
-        // runs off main.
+        // Encode on main, write off main. Caps keep the snapshot well
+        // under 100 KB so main-actor encoding is cheap.
         //
-        // Rapid-fire batching: when several persist() calls happen
-        // in one runloop tick (e.g. `recordPhaseSessionCompletion`
-        // writes one record per phase) the cancel-and-replace chain
-        // coalesces them into a single disk write — each successor
-        // cancels its predecessor and the `guard !Task.isCancelled`
-        // short-circuits before the atomic write. Only the final
-        // snapshot lands on disk; the value-type captures everything
-        // accumulated up to that point. See
+        // Rapid-fire batching: when several persist() calls happen in
+        // one runloop tick the cancel-and-replace chain coalesces
+        // them into a single disk write — each successor cancels its
+        // predecessor before the atomic write fires. See
         // ParentDashboardStoreTests for the regression guard.
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let url = fileURL
@@ -544,7 +517,8 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(DashboardSnapshot.self, from: data)
         else { return nil }
-        // See ProgressStore.load for the future-schema rationale.
+        // Refuse files written by a future schema rather than
+        // mis-decoding them. See ProgressStore.load.
         if let v = decoded.schemaVersion, v > dashboardSchemaVersion {
             storePersistenceLogger.warning(
                 "ParentDashboardStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(dashboardSchemaVersion); ignoring on-disk state.")

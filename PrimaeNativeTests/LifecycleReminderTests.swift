@@ -1,9 +1,6 @@
-// LifecycleReminderTests.swift
-// PrimaeNativeTests
-//
-// Covers the reminder-scheduling side-effect of appDidBecomeActive.
-// Before this test existed a regression could have silently broken
-// the daily notification refresh (TracingViewModel.appDidBecomeActive:479).
+// Covers the reminder-scheduling side-effect of appDidBecomeActive —
+// guards the daily notification refresh path in
+// TracingViewModel.appDidBecomeActive against regressions.
 
 import Foundation
 import Testing

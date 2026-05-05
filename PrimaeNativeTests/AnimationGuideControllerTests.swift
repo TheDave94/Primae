@@ -1,6 +1,3 @@
-// AnimationGuideControllerTests.swift
-// PrimaeNativeTests
-
 import Foundation
 import CoreGraphics
 import Testing
@@ -38,7 +35,6 @@ import Testing
     @Test func start_setsGuidePointWithinShortWindow() async {
         let c = AnimationGuideController()
         c.start(strokes: sampleStrokes())
-        // The first step should assign guidePoint fairly quickly.
         for _ in 0..<20 {
             if c.guidePoint != nil { break }
             try? await Task.sleep(for: .milliseconds(25))
@@ -61,7 +57,6 @@ import Testing
         let c = AnimationGuideController()
         c.startAfterDelay(0.2, strokes: sampleStrokes())
         try? await Task.sleep(for: .milliseconds(50))
-        // Deferred start — guidePoint should still be nil.
         #expect(c.guidePoint == nil,
                 "startAfterDelay must honor the delay before firing")
         c.stop()
@@ -72,7 +67,7 @@ import Testing
         var cycles = 0
         c.onCycleComplete = { cycles += 1 }
         c.start(strokes: sampleStrokes())
-        // Single checkpoint gets ~0.25s step + 0.5s pause ≈ 750ms/cycle.
+        // Single checkpoint gets ~0.25 s step + 0.5 s pause ≈ 750 ms/cycle.
         for _ in 0..<60 {
             if cycles >= 1 { break }
             try? await Task.sleep(for: .milliseconds(50))
@@ -86,7 +81,6 @@ import Testing
         let c = AnimationGuideController()
         c.start(strokes: sampleStrokes())
         try? await Task.sleep(for: .milliseconds(40))
-        // Restarting should cancel the previous loop without crashing.
         c.start(strokes: sampleStrokes())
         try? await Task.sleep(for: .milliseconds(40))
         c.stop()

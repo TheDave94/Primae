@@ -15,9 +15,8 @@ import Vision
 // MARK: - Classifier intermediate type
 
 /// Framework-agnostic projection of a Vision
-/// `VNClassificationObservation`. Keeps the rest of the recognizer
-/// pipeline free of Vision dependencies and lets tests inject a
-/// deterministic classifier without bundling a real `.mlpackage`.
+/// `VNClassificationObservation`. Keeps the recognizer pipeline free
+/// of Vision deps and lets tests inject a deterministic classifier.
 struct LetterClassification: Equatable, Sendable {
     let identifier: String
     let confidence: Float
@@ -31,21 +30,18 @@ struct RecognitionResult: Equatable, Sendable {
     let predictedLetter: String
     /// Calibrated confidence (0–1) for the top label.
     let confidence: CGFloat
-    /// Pre-calibration softmax confidence. Lets the thesis report the
-    /// calibrator's effect (raw vs adjusted, decision-flip rate)
-    /// alongside the post-calibration figure. Optional so synthesised
-    /// results from stubs / tests / freeform mode stay unaffected.
+    /// Pre-calibration softmax confidence so the thesis can report
+    /// the calibrator's effect. Optional so stubbed results stay
+    /// unaffected.
     let rawConfidence: CGFloat?
     /// Top-3 labels with calibrated confidences, descending.
     let topThree: [TopCandidate]
-    /// True when `predictedLetter` matches `expectedLetter` case-insensitively.
-    /// For freeform mode (no expectation), this is always `false`.
+    /// True when `predictedLetter` matches `expectedLetter`
+    /// case-insensitively. Always `false` in freeform mode.
     let isCorrect: Bool
 
-    /// Nonisolated so the recognizer's `Task.detached` background context
-    /// can construct results without bouncing back to MainActor — the
-    /// package's `.defaultIsolation(MainActor.self)` would otherwise
-    /// pin a custom init to the main actor.
+    /// Nonisolated so the `Task.detached` recognizer path can build
+    /// results without bouncing through MainActor.
     nonisolated init(predictedLetter: String, confidence: CGFloat,
                      rawConfidence: CGFloat? = nil,
                      topThree: [TopCandidate], isCorrect: Bool) {
@@ -66,34 +62,26 @@ struct RecognitionResult: Equatable, Sendable {
 
 /// Async recognition seam. Swap `StubLetterRecognizer` in tests.
 protocol LetterRecognizerProtocol: Sendable {
-    /// Recognise the rasterised stroke. `strokeStartIndices` lists
-    /// indices into `points` where a fresh stroke begins (after a
-    /// finger-up between strokes); the rasterizer breaks the polyline
-    /// there so multi-stroke letters (F, E, H, …) aren't drawn with
-    /// phantom diagonals connecting the strokes — that silhouette
-    /// reads as a different glyph (F → P) on the model. Pass `[]` (or
-    /// the convenience overload below) when there are no breaks.
-    /// `historicalFormScores` is the child's prior recognition-
-    /// accuracy history for the expected letter; the calibrator uses
-    /// it to award a small confidence boost on letters the child has
-    /// practised reliably.
+    /// Recognise the rasterised stroke. `strokeStartIndices` marks
+    /// fresh-stroke indices into `points`; the rasterizer breaks the
+    /// polyline there so multi-stroke letters aren't drawn with
+    /// phantom diagonals between lifts (F → P misclassification).
+    /// `historicalFormScores` feeds the calibrator's confidence boost
+    /// for letters the child has practised reliably.
     func recognize(points: [CGPoint],
                    strokeStartIndices: [Int],
                    canvasSize: CGSize,
                    expectedLetter: String?,
                    historicalFormScores: [CGFloat]) async -> RecognitionResult?
-    /// Whether the recognizer's backing model is actually loaded and
-    /// ready for inference. `false` means every call to `recognize`
-    /// will return `nil`; the UI uses this to distinguish "model
-    /// missing" from "model said no" and show a diagnostic banner.
+    /// Whether the backing model is loaded and ready. `false` means
+    /// every `recognize` call returns `nil`; the UI uses this to
+    /// distinguish "model missing" from "model said no".
     func isModelAvailable() async -> Bool
 }
 
 extension LetterRecognizerProtocol {
-    /// Convenience that omits stroke breaks (single-stroke letters,
-    /// freeform mode where stroke separation isn't tracked yet) and
-    /// `historicalFormScores`. Lets older call sites keep the
-    /// 3-argument shape.
+    /// Convenience overload omitting stroke breaks and
+    /// `historicalFormScores` (single-stroke letters, freeform mode).
     func recognize(points: [CGPoint],
                    canvasSize: CGSize,
                    expectedLetter: String?,
@@ -114,35 +102,28 @@ private nonisolated(unsafe) let recognizerLogger = Logger(
 )
 
 /// Production recognizer backed by `GermanLetterRecognizer.mlpackage`.
+/// Model loads lazily on first `recognize(…)`; missing/load-failed
+/// model logs a warning and subsequent calls return `nil` so the app
+/// falls back to Fréchet-only scoring.
 ///
-/// The model is loaded lazily on first `recognize(…)` call so app startup
-/// doesn't pay the Vision framework warm-up cost. If the model file is
-/// missing or fails to load, the recognizer logs a warning and every
-/// subsequent call returns `nil` — the app falls back to Fréchet-only
-/// scoring gracefully.
-///
-/// Declared `nonisolated` to opt out of the package-level
-/// `defaultIsolation(MainActor.self)` — all its work needs to happen on
-/// the cooperative pool inside a detached Task (see `recognize`), which
-/// can only call nonisolated members.
+/// Declared `nonisolated` so the hot path can run inside a detached
+/// Task on the cooperative pool, away from the package-level
+/// `defaultIsolation(MainActor.self)`.
 nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unchecked Sendable {
 
     // MARK: Static model cache
 
-    /// nonisolated(unsafe) because Vision's model handles are expensive to
-    /// load (~50 ms) and are safe to share across threads after
-    /// construction. Guarded by `loadLock` on first touch.
+    /// `nonisolated(unsafe)` because Vision model handles are
+    /// expensive to load (~50 ms) and safe to share across threads
+    /// after construction. Guarded by `loadLock` on first touch.
     private nonisolated(unsafe) static var sharedModel: VNCoreMLModel?
     private nonisolated(unsafe) static var didAttemptLoad = false
     private static let loadLock = NSLock()
 
     private let calibrator: ConfidenceCalibrator
-    /// The classification step is the only piece of `recognize()`
-    /// that needs Vision. Taking it as an injectable closure lets
-    /// tests swap in a deterministic stub without bundling a
-    /// `.mlpackage` into the test target, so the rendering step
-    /// (renderToImage) and the post-processing step (makeResult +
-    /// ConfidenceCalibrator) become testable end-to-end.
+    /// Classification is the only Vision-touching step — taking it as
+    /// an injectable closure lets tests stub it without bundling a
+    /// `.mlpackage`, so renderToImage + makeResult become testable.
     typealias Classifier = @Sendable (CGImage) -> [LetterClassification]
     private let classify: Classifier
 
@@ -154,15 +135,13 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         self.classify = classifier ?? Self.defaultClassifier
     }
 
-    /// Production classifier: lazy-load the bundled `.mlpackage`, run a
-    /// `VNCoreMLRequest`, project the observations onto the
-    /// framework-agnostic `LetterClassification` type so the rest of
-    /// the pipeline never touches Vision. Returns `[]` when the model
-    /// can't be loaded — the caller treats empty as "skip recognition".
-    /// Spelled with the full closure type rather than the `Classifier`
-    /// typealias because Swift's stored-property-initializer rules
-    /// flag a covariant-Self reference when a typealias inside a final
-    /// class is used to type a `static let`.
+    /// Production classifier: lazy-load the bundled `.mlpackage`,
+    /// run a `VNCoreMLRequest`, project observations onto the
+    /// framework-agnostic `LetterClassification`. Returns `[]` when
+    /// the model can't be loaded.
+    /// Spelled with the full closure type because Swift's stored-
+    /// property-initializer rules flag a covariant-Self reference
+    /// on the `Classifier` typealias here.
     private static let defaultClassifier: @Sendable (CGImage) -> [LetterClassification] = { image in
         guard let model = CoreMLLetterRecognizer.loadModelIfNeeded() else { return [] }
         let request = VNCoreMLRequest(model: model)
@@ -182,11 +161,9 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
 
     // MARK: LetterRecognizerProtocol
 
-    /// First access compiles the `.mlpackage` and loads the VNCoreMLModel —
-    /// both blocking on disk and GPU warm-up. Ship it to a detached Task
-    /// so the probe never runs on MainActor; otherwise iOS surfaces
-    /// "should not be called on main thread" and the gesture subsystem
-    /// times out waiting for the main runloop.
+    /// First access compiles the `.mlpackage` and warms the
+    /// VNCoreMLModel — disk + GPU blocking. Run on a detached Task
+    /// so the probe never executes on MainActor.
     func isModelAvailable() async -> Bool {
         await Task.detached(priority: .userInitiated) {
             Self.loadModelIfNeeded() != nil
@@ -206,11 +183,10 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         let history = historicalFormScores
         let classifier = classify
         let breaks = strokeStartIndices
-        // The entire hot path — model load on first call, 40×40 CGContext
-        // rasterization, VNImageRequestHandler.perform — is CPU-heavy and
-        // must NOT execute on the MainActor. A detached Task runs on the
-        // cooperative thread pool and does not inherit the caller's
-        // isolation, so every synchronous call inside happens off-main.
+        // Hot path (model load, 40×40 rasterization, Vision perform)
+        // is CPU-heavy and must run off MainActor. A detached Task
+        // doesn't inherit caller isolation, so every sync call inside
+        // stays off-main.
         return await Task.detached(priority: .userInitiated) {
             guard let image = Self.renderToImage(points: points,
                                                   strokeStartIndices: breaks,
@@ -254,10 +230,8 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         }()
 
         let modelURL: URL? = {
-            // Possible subdirectories — SwiftPM's `.copy("Resources")`
-            // preserves the tree, Xcode's resource processing flattens
-            // into the top-level bundle root. Try all the plausible
-            // locations before giving up.
+            // SwiftPM `.copy("Resources")` preserves tree structure,
+            // Xcode flattens to bundle root — probe all layouts.
             let subdirs: [String?] = [nil, "Resources/ML", "ML", "Resources"]
             for bundle in candidates {
                 for sub in subdirs {
@@ -349,9 +323,8 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
     // MARK: - Image rendering
 
     /// Rasterize the child's stroke into a 40×40 grayscale CGImage
-    /// matching the training data distribution: black background, white
-    /// strokes, centered with a small padding, line width 2.5 at model
-    /// resolution. Returns nil when the path has no extent.
+    /// matching the training distribution (black bg, white strokes,
+    /// centred with small padding, line width 2.5).
     static func renderToImage(points: [CGPoint],
                                strokeStartIndices: [Int] = [],
                                canvasSize: CGSize) -> CGImage? {
@@ -387,9 +360,9 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         context.setFillColor(gray: 0, alpha: 1)
         context.fill(CGRect(origin: .zero, size: targetSize))
 
-        // Flip Y so our top-left-origin points draw upright into the
-        // bottom-left-origin CGContext. Without this the letter would
-        // render upside down and the model would classify mirror glyphs.
+        // Flip Y so top-left-origin points draw upright into the
+        // bottom-left-origin CGContext; otherwise the letter renders
+        // upside down and the model sees mirror glyphs.
         context.translateBy(x: 0, y: targetSize.height)
         context.scaleBy(x: 1, y: -1)
 
@@ -399,10 +372,8 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
         context.setLineJoin(.round)
 
         // Break the polyline at every stroke-start index so multi-
-        // stroke letters render as N disjoint polylines instead of
-        // one zig-zag with phantom diagonals across the lifts. The
-        // implicit start at index 0 is added to the front of the
-        // breaks list so the loop body is uniform.
+        // stroke letters render as N disjoint polylines, not one
+        // zig-zag with phantom diagonals across the lifts.
         let breaks = ([0] + strokeStartIndices.filter { $0 > 0 && $0 < points.count })
             .sorted()
         let path = CGMutablePath()
@@ -431,9 +402,9 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, @unche
 
 // MARK: - Test stub
 
-/// In-memory recognizer used by unit tests and previews. Returns a
-/// pre-configured result regardless of input, or `nil` to simulate a
-/// missing model.
+/// In-memory recognizer for tests and previews. Returns its
+/// pre-configured result regardless of input, or `nil` to simulate
+/// a missing model.
 struct StubLetterRecognizer: LetterRecognizerProtocol {
     let result: RecognitionResult?
 
@@ -461,18 +432,12 @@ struct StubLetterRecognizer: LetterRecognizerProtocol {
                    canvasSize: CGSize,
                    expectedLetter: String?,
                    historicalFormScores: [CGFloat]) async -> RecognitionResult? {
-        // historicalFormScores + strokeStartIndices intentionally
-        // ignored: the stub returns its pre-configured result
-        // regardless of input.
+        // Inputs ignored — the stub returns its pre-configured result.
         _ = historicalFormScores
         _ = strokeStartIndices
-        // Truthfulness check (DEBUG only). The pre-configured
-        // `result.isCorrect` should match
-        // `result.predictedLetter == expectedLetter` when the caller
-        // supplied an expectation; otherwise the test is asserting
-        // against an inconsistent stub state and any pass/fail signal
-        // it produces is suspect. Production builds skip this check
-        // so the stub stays a zero-cost no-op outside tests.
+        // Truthfulness check (DEBUG only): asserting on an inconsistent
+        // stub setup keeps tests honest. Stripped from production so
+        // the stub stays zero-cost.
         #if DEBUG
         if let result, let expected = expectedLetter {
             let actuallyCorrect =

@@ -50,26 +50,21 @@ struct LearningPhaseController: Equatable {
 
     // MARK: - Computed properties
 
-    /// Stars earned in this letter session, 0…N where N is the number of
-    /// active phases under the current thesis condition. A phase earns
-    /// its star only when the recorded score meets its quality threshold
-    /// (see `starThreshold(for:)`) — so a child who ran through guided +
-    /// freeWrite without actually tracing anything gets 2 observe/direct
-    /// stars at most, not 4.
+    /// Stars earned in this letter session, 0…N where N is the number
+    /// of active phases under the current thesis condition. A phase
+    /// earns its star only when its recorded score clears
+    /// `starThreshold(for:)`, so passing observe/direct without
+    /// actually tracing caps at 2 stars rather than 4.
     var starsEarned: Int {
         phaseScores.reduce(0) { acc, entry in
             acc + (entry.value >= Self.starThreshold(for: entry.key) ? 1 : 0)
         }
     }
 
-    /// Lowest phase score required to earn that phase's star.
-    /// - observe / direct: 0 — completing them always earns the star
-    ///   because they're pass/fail (score stored as 1.0 on completion).
-    /// - guided: 0.5 — at least half the checkpoints reached in order.
-    /// - freeWrite: 0.4 — form-accuracy roughly matches the reference
-    ///   (Fréchet distance under 3× checkpoint radius).
-    /// Exposed as a static so UI code can mirror the threshold when
-    /// explaining to parents why a letter got 2 stars instead of 4.
+    /// Lowest score required to earn that phase's star. observe/direct
+    /// are pass/fail (0 threshold); guided needs ≥ half the checkpoints;
+    /// freeWrite needs roughly matching form (≈ 3× checkpoint radius).
+    /// Exposed so UI can mirror it when explaining star counts.
     static func starThreshold(for phase: LearningPhase) -> CGFloat {
         switch phase {
         case .observe, .direct: return 0.0
@@ -79,9 +74,9 @@ struct LearningPhaseController: Equatable {
     }
 
     /// Maximum stars achievable under the current thesis condition.
-    /// W-5: the celebration overlay must show this many stars (not a
-    /// hardcoded 4) so children in guidedOnly/control don't see empty
-    /// stars for a perfect guided session — a motivational confound.
+    /// The celebration overlay must show exactly this many — children
+    /// in guidedOnly/control would otherwise see empty stars for a
+    /// perfect session (motivational confound).
     var maxStars: Int { activePhases.count }
 
     /// The phases that are active under the current thesis condition.

@@ -2,9 +2,8 @@
 // PrimaeNative
 //
 // First-run flow. One step per learning phase (observe → direct →
-// guided → freeWrite) plus a welcome and a reward intro, so the
-// onboarding mirrors the four-phase model the child will see in the
-// app rather than skipping the middle phases.
+// guided → freeWrite) plus welcome and reward intro, mirroring the
+// four-phase model the child sees in the app.
 
 import SwiftUI
 
@@ -91,10 +90,9 @@ private struct OnboardingProgressBar: View {
 }
 
 // MARK: - Shared A-letter stroke geometry
-//
-// All four phase demos draw the same three strokes of an "A" in a
-// 1x1 unit box so the child sees a consistent glyph across the
-// onboarding and can focus on what each phase adds on top of it.
+
+// All four phase demos draw the same three strokes of "A" in a 1×1
+// unit box so the child sees a consistent glyph across onboarding.
 
 private struct ADemoStroke {
     let from: CGPoint
@@ -108,9 +106,8 @@ private let aDemoStrokes: [ADemoStroke] = [
 ]
 
 private func scaled(_ pt: CGPoint, in size: CGSize) -> CGPoint {
-    // Pad inside the Canvas so dots drawn at the stroke endpoints (which sit
-    // at glyph-relative 0 / 1) don't get clipped by the Canvas frame — the
-    // largest dot is ~14pt radius in the direct demo.
+    // Pad inside the Canvas so endpoint dots (the largest is ~14 pt
+    // radius in the direct demo) aren't clipped by the frame.
     let pad: CGFloat = 16
     return CGPoint(
         x: pad + pt.x * (size.width  - 2 * pad),
@@ -273,10 +270,8 @@ private struct DirectDemoStepView: View {
 
             TimelineView(.animation) { timeline in
                 let elapsed = timeline.date.timeIntervalSinceReferenceDate
-                // Three strokes × ~1.4 s + 0.6 s pause before the cycle
-                // restarts. The breathing pulse on the next-expected dot
-                // runs on the absolute clock so it stays in phase with
-                // the real PulsingDot in TracingCanvasView.
+                // Breathing pulse runs on the absolute clock so it
+                // stays in phase with the real PulsingDot.
                 let cycle = 5.0
                 let progress = CGFloat((elapsed.truncatingRemainder(dividingBy: cycle)) / cycle)
 
@@ -310,29 +305,20 @@ private struct DirectDemoStepView: View {
     }
 }
 
-/// Mirrors the real direct phase as it appears in the app today:
-/// all numbered start-dots are visible from the start (gray = future,
-/// blue with continuous breathing pulse = next-expected, green = tapped).
-/// When the next-expected dot is "tapped" it switches to green and the
-/// directional arrow flashes in along the stroke for ~1.2 s, then the
-/// next dot lights up. No press-down shrink animation — the real phase
-/// uses an `.id`-based cross-fade that scale-pops the new state in.
+/// Mirrors the real direct phase: numbered dots (gray = future, blue
+/// breathing pulse = next-expected, green = tapped); arrow flashes in
+/// for ~1.2 s on each "tap".
 private struct DirectDemoLayer: View {
     let progress: CGFloat
-    /// Absolute reference-date clock used for the breathing pulse so
-    /// the dot pulses in lockstep with the real PulsingDot (1.2 s
-    /// sine cycle, scale 1.0…1.35).
+    /// Absolute reference-date clock — keeps the pulse in lockstep
+    /// with the real `PulsingDot` (1.2 s sine, scale 1.0…1.35).
     let clock: TimeInterval
 
     var body: some View {
         Canvas { context, size in
-            // Faint stroke guides so the demo viewer can see where each
-            // dot leads even before the corresponding tap fires. The
-            // real canvas doesn't draw these lines in the direct phase
-            // (only the dots + arrow), but for the 160pt onboarding
-            // preview we keep them at very low opacity to make the
-            // "the second dot starts here, ends there" relationship
-            // legible without animation.
+            // Faint stroke guides — real canvas omits them, but at
+            // 160 pt the preview needs them to make the dot-to-dot
+            // relationship legible without animation.
             for stroke in aDemoStrokes {
                 var p = Path()
                 p.move(to: scaled(stroke.from, in: size))
@@ -341,9 +327,8 @@ private struct DirectDemoLayer: View {
             }
 
             let total = CGFloat(aDemoStrokes.count)
-            // Reserve the trailing 12 % of the cycle as a quiet beat
-            // (all dots green, no arrow) so the loop reads as
-            // "complete → restart" rather than snapping mid-arrow.
+            // Reserve the trailing 12 % as a quiet "complete → restart"
+            // beat so the loop doesn't snap mid-arrow.
             let activePortion: CGFloat = 0.88
             let active = min(progress / activePortion, 1.0)
             let seg = active * total
@@ -351,11 +336,8 @@ private struct DirectDemoLayer: View {
             let sub = seg - CGFloat(currentIdx)
             let isCycleSettling = progress >= activePortion
 
-            // Arrow lifetime (matches the real 1.2 s lingering arrow
-            // observed on every successful tap) — but normalised to
-            // the per-stroke sub-progress: the arrow appears the moment
-            // the dot turns green and stays for the rest of the
-            // sub-step before the next dot becomes next-expected.
+            // Arrow appears the moment the dot turns green and stays
+            // for the rest of the sub-step.
             let arrowOnsetSub: CGFloat = 0.0
 
             for (idx, stroke) in aDemoStrokes.enumerated() {
@@ -375,10 +357,8 @@ private struct DirectDemoLayer: View {
                     isTapped = false; isNext = false
                 }
 
-                // Breathing pulse driven by wall-clock time — same shape
-                // and amplitude as `PulsingDot` (TracingCanvasView.swift:510)
-                // so the onboarding preview reads as a faithful sample
-                // of the real direct-phase dot.
+                // Wall-clock pulse — same shape/amplitude as the
+                // real `PulsingDot` so the preview is faithful.
                 let pulseScale: CGFloat
                 if isNext {
                     let phase = (sin(clock * .pi / 0.6) + 1) / 2  // 0…1
@@ -395,10 +375,9 @@ private struct DirectDemoLayer: View {
                 drawNumbered(context: context, at: start, color: color,
                              number: idx + 1, scale: pulseScale)
 
-                // Arrow: drawn for the active stroke once it transitions
-                // into "tapped" state, and persists on every previously-
-                // completed stroke so the demo viewer can read the
-                // direction of every segment that's been tapped so far.
+                // Arrow persists on every completed stroke so the
+                // viewer can read the direction of all tapped
+                // segments so far.
                 let drawArrowForThis: Bool
                 if isCycleSettling {
                     drawArrowForThis = true
@@ -507,9 +486,8 @@ private struct GuidedDemoStepView: View {
     }
 }
 
-/// Finger emoji follows each stroke in turn, leaving a green ink trail
-/// behind it — the visual analog of the guided phase's checkpoint-rail
-/// tracing experience.
+/// Finger emoji follows each stroke leaving a green ink trail —
+/// visual analog of the guided phase's checkpoint-rail tracing.
 private struct GuidedDemoLayer: View {
     let progress: CGFloat
 
@@ -611,21 +589,16 @@ private struct FreeWriteDemoStepView: View {
     }
 }
 
-/// Mirrors the freeWrite phase as the child sees it: a faint blue
-/// reference of the letter (no checkpoint dots, no rail) plus the
-/// child's organic green ink path drawn on top. We simulate the child
-/// writing the three strokes of A in sequence with a slight wobble so
-/// the demo viewer can tell this is freehand, not snapped tracing. A
-/// small ⭐ sparkles in once all three strokes finish to communicate
-/// "complete → reward" without requiring the viewer to read text.
+/// Mirrors the freeWrite phase: faint blue reference + child's
+/// wobbly green ink. A star pops in on completion to communicate
+/// "complete → reward" without text.
 private struct FreeWriteDemoLayer: View {
     let progress: CGFloat
 
     var body: some View {
         Canvas { context, size in
-            // Faint blue reference — same role as
-            // `freeWriteKPOverlay`'s reference strokes
-            // (TracingCanvasView.swift:228) at opacity 0.4 / lineWidth 8.
+            // Faint blue reference — same role as the freeWriteKP
+            // overlay's reference strokes (opacity 0.4, lineWidth 8).
             for stroke in aDemoStrokes {
                 var p = Path()
                 p.move(to: scaled(stroke.from, in: size))
@@ -634,8 +607,8 @@ private struct FreeWriteDemoLayer: View {
                                style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
             }
 
-            // Reserve the trailing 18 % for a "done" beat where all
-            // strokes are visible and a star pops in.
+            // Trailing 18 % is the "done" beat — all strokes visible,
+            // star pops in.
             let writingPortion: CGFloat = 0.82
             let writing = min(progress / writingPortion, 1.0)
             let total = CGFloat(aDemoStrokes.count)
@@ -644,7 +617,7 @@ private struct FreeWriteDemoLayer: View {
             let sub = seg - CGFloat(currentIdx)
             let isCelebrating = progress >= writingPortion
 
-            // Completed strokes — solid green ink, locked in.
+            // Completed strokes — solid green ink.
             for idx in 0..<currentIdx {
                 let stroke = aDemoStrokes[idx]
                 drawWobblyStroke(context: context, size: size,
@@ -652,18 +625,15 @@ private struct FreeWriteDemoLayer: View {
                                  t: 1.0, seed: idx)
             }
 
-            // Active stroke — green ink growing from start to current
-            // tip with a subtle wobble so it reads as a freehand line,
-            // not a metronomic glide (which would look like the guided
-            // phase's snap-to-checkpoint trace).
+            // Active stroke — wobbly green ink so it reads as
+            // freehand, not as a snap-to-checkpoint trace.
             if !isCelebrating {
                 let stroke = aDemoStrokes[currentIdx]
                 drawWobblyStroke(context: context, size: size,
                                  from: stroke.from, to: stroke.to,
                                  t: sub, seed: currentIdx)
 
-                // Pen tip — a small green disc at the current ink head
-                // so the viewer can see "the child is writing here".
+                // Pen tip — small green disc at the ink head.
                 let from = scaled(stroke.from, in: size)
                 let to = scaled(stroke.to, in: size)
                 let tipPt = CGPoint(x: from.x + (to.x - from.x) * sub,
@@ -674,14 +644,13 @@ private struct FreeWriteDemoLayer: View {
                                              width: r * 2, height: r * 2)),
                     with: .color(.canvasInkStroke))
             } else {
-                // Final stroke fully drawn during the celebration beat.
+                // Final stroke fully drawn during the celebration.
                 let stroke = aDemoStrokes.last!
                 drawWobblyStroke(context: context, size: size,
                                  from: stroke.from, to: stroke.to,
                                  t: 1.0, seed: aDemoStrokes.count - 1)
 
-                // Star pops in to communicate "you finished the letter"
-                // without text. Scale-up over the first half of the
+                // Star scale-up over the first half of the
                 // celebration beat, hold for the rest.
                 let celebT = (progress - writingPortion) / (1.0 - writingPortion)
                 let starScale = min(CGFloat(celebT) * 2.0, 1.0)
@@ -694,11 +663,9 @@ private struct FreeWriteDemoLayer: View {
         }
     }
 
-    /// Draws a slightly-wobbly polyline from `from` to `to` (glyph-
-    /// relative) over [0, t] of its length. The wobble is a deterministic
-    /// per-seed sine whose phase is keyed off the segment fraction so
-    /// the path looks the same every loop and reads as "freehand" but
-    /// not chaotic. Plain lerp would read as a guided rail.
+    /// Slightly-wobbly polyline over [0, t] of its length.
+    /// Deterministic per-seed sine so the path looks the same every
+    /// loop. Plain lerp would read as a guided rail.
     private func drawWobblyStroke(context: GraphicsContext, size: CGSize,
                                   from: CGPoint, to: CGPoint,
                                   t: CGFloat, seed: Int) {
@@ -709,10 +676,9 @@ private struct FreeWriteDemoLayer: View {
         let dy = to.y - from.y
         let length = sqrt(dx * dx + dy * dy)
         guard length > 0.5 else { return }
-        // Perpendicular unit vector for sideways wobble.
         let perpX = -dy / length
         let perpY = dx / length
-        let wobbleAmp: CGFloat = 1.6  // tiny — child writing is mostly straight
+        let wobbleAmp: CGFloat = 1.6  // child writing is mostly straight
         let phaseShift = CGFloat(seed) * 1.3
 
         var path = Path()
@@ -722,9 +688,8 @@ private struct FreeWriteDemoLayer: View {
             let f = CGFloat(i) / CGFloat(steps)
             let baseX = from.x + dx * f
             let baseY = from.y + dy * f
-            // Window the wobble so it tapers near the endpoints — keeps
-            // the start/end exactly on the reference, which is what
-            // freehand writing actually looks like at this age.
+            // Taper the wobble near endpoints — keeps start/end on
+            // the reference, matching real freehand writing at this age.
             let edgeWindow = sin(f * .pi)  // 0 at ends, 1 in middle
             let wob = sin(f * 6.0 + phaseShift) * wobbleAmp * edgeWindow
             let x = baseX + perpX * wob

@@ -1,6 +1,3 @@
-//  LocalNotificationSchedulerTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import UserNotifications
 @testable import PrimaeNative

@@ -2,18 +2,14 @@ import SwiftUI
 
 struct CompletionCelebrationOverlay: View {
     let starsEarned: Int
-    /// W-5: max achievable stars for the current thesis condition (1 for
-    /// guidedOnly/control, 4 for threePhase). Showing 4 stars to a
-    /// guidedOnly child who scored perfectly would always show 3 empty
-    /// stars — a motivational confound between conditions.
+    /// Max achievable stars under the current thesis condition (1 for
+    /// guidedOnly/control, 4 for threePhase) — showing 4 stars to a
+    /// guidedOnly child would always reveal 3 empty placeholders.
     let maxStars: Int
     let onWeiter: () -> Void
 
     var body: some View {
         ZStack {
-            // Backdrop dim — black regardless of mode (overlay dims darken
-            // the canvas; in dark mode the canvas is already dark and the
-            // dim still reads as "everything below is paused").
             Color.black.opacity(0.45)
                 .ignoresSafeArea()
 
@@ -22,11 +18,9 @@ struct CompletionCelebrationOverlay: View {
                     .font(.system(size: 58))
                     .accessibilityHidden(true)
 
-                // I-7: distinct from the SchuleWorldView "Nachspuren
-                // fertig" feedback card (which uses "Super gemacht!" for
-                // a 3-of-3 score), so the child doesn't see the same
-                // praise text stack twice when the card and the
-                // celebration both show after the freeWrite phase.
+                // Distinct from SchuleWorldView's "Nachspuren fertig"
+                // praise so the child doesn't see the same line twice
+                // when card + celebration both appear.
                 Text("Geschafft!")
                     .font(.display(FontSize.xxl, weight: .bold))
                     .foregroundStyle(Color.paper)

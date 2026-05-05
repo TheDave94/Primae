@@ -1,8 +1,5 @@
-//  PlaybackStateMachineTests.swift
-//  PrimaeNativeTests
-//
-//  Unit tests for PlaybackStateMachine value type.
-//  Pure logic — no audio, no dispatch, no UIKit.
+// Unit tests for PlaybackStateMachine value type.
+// Pure logic — no audio, no dispatch, no UIKit.
 
 import Testing
 @testable import PrimaeNative

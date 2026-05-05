@@ -1,8 +1,4 @@
 // NOTE: Intentionally uses XCTest — requires real hardware (XCTSkip in setUp), uses expectation/wait. Do not migrate to Swift Testing.
-// AudioEngineTests.swift
-// PrimaeNativeTests
-//
-// Requires Xcode 13+ for XCTSkip in setUp to behave correctly (marks skip, not failure).
 //
 // Tests exercise AudioEngine directly via forged AVAudioSession notification userInfo payloads,
 // asserting state machine transitions on isPlaying and #if DEBUG accessors.

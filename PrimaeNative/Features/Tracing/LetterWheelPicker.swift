@@ -1,11 +1,8 @@
 // LetterWheelPicker.swift
 // PrimaeNative
 //
-// Overlay picker shown when the child long-presses the current-letter
-// pill in the top-left of SchuleWorldView. 4-column grid of letter
-// tiles, each sized 60×60 with an optional star-count footer. Tapping
-// a tile calls onSelect; tapping the scrim dismisses without changing
-// the active letter.
+// 4-column overlay picker shown when the child long-presses the
+// current-letter pill in SchuleWorldView.
 
 import SwiftUI
 
@@ -16,9 +13,8 @@ struct LetterWheelPicker: View {
     let onSelect: (String) -> Void
     let onDismiss: () -> Void
 
-    /// Dynamic-Type-scaled tile geometry. The glyph and the tile scale
-    /// together so the letter never clips at larger accessibility sizes.
-    /// Baseline 60×60 with 34pt glyph matches the original visual design.
+    /// Dynamic-Type-scaled tile geometry — glyph + tile scale together
+    /// so the letter never clips at larger accessibility sizes.
     @ScaledMetric(relativeTo: .title) private var tileSize: CGFloat = 60
     @ScaledMetric(relativeTo: .title) private var letterFontSize: CGFloat = 34
 
@@ -26,11 +22,9 @@ struct LetterWheelPicker: View {
 
     var body: some View {
         ZStack {
-            // Sighted users tap the scrim to dismiss; VoiceOver users
-            // get an explicit "Abbrechen" button so focus order stays
-            // deterministic. Treating the scrim as the dismiss button
-            // for VoiceOver leaves focus ordering ambiguous (scrim vs
-            // grid race).
+            // Sighted users tap the scrim to dismiss; VoiceOver gets an
+            // explicit "Abbrechen" button so focus order stays
+            // deterministic.
             Color.ink.opacity(0.35)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())

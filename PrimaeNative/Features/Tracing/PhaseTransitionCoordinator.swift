@@ -1,52 +1,31 @@
 // PhaseTransitionCoordinator.swift
 // PrimaeNative
 //
-// Owns the post-phase pipeline that runs when the learner completes
-// a phase or the whole letter session:
+// Owns the post-phase pipeline: `advance()` scores the just-completed
+// phase, queues post-freeWrite overlays, advances the controller, and
+// either announces the next phase or runs the completion pipeline.
+// `recordSessionCompletion()` writes the dashboard rows, then
+// `commitCompletion(...)` writes durable progress, streaks, reward
+// overlays, cloud sync, difficulty-tier adaptation, and the HUD.
 //
-//   `advance()` — score the just-completed phase, queue the post-
-//   freeWrite kpOverlay + paperTransfer, advance the controller, and
-//   route to either `toast` + `speech` (mid-cycle phase entry) or
-//   `recordSessionCompletion()` (final phase reached).
-//
-//   `recordSessionCompletion()` — celebration overlay + praise
-//   speech, write one PhaseSessionRecord per phase to the dashboard,
-//   hand off to `commitCompletion`.
-//
-//   `commitCompletion(...)` — durable progress, streak update +
-//   reward overlays, dashboard session record, cloud-sync push,
-//   difficulty-tier adaptation, completion HUD. Called from both the
-//   end-of-phase pipeline and per-cell completion sites that need
-//   the same shared side-effect set.
-//
-// Holds a weak reference back to the VM. Retain ownership goes:
 // VM strong-owns the coordinator; coordinator weakly references the
-// VM. State touched during a transition lives on the VM
-// (phaseController, freeWriteRecorder, the four stores, overlayQueue,
-// speech, syncCoordinator, …) and is reached through the weak ref.
-// The coordinator is stateless beyond the back-reference.
-//
-// Views still call into `vm.advanceLearningPhase` so the SwiftUI
-// binding surface and tests don't change — the VM forwards.
+// VM. The coordinator is stateless beyond the back-reference.
 
 import Foundation
 import QuartzCore
 
 @MainActor
 final class PhaseTransitionCoordinator {
-    /// The VM that constructed this coordinator. Weak so the
-    /// coordinator doesn't retain its parent. Set once by
-    /// `TracingViewModel.init` after `self.phaseTransitions = pc` to
-    /// satisfy two-phase init — the same pattern as `playback` and
-    /// `touchDispatcher`.
+    /// Weak back-reference set by `TracingViewModel.init` after
+    /// `self.phaseTransitions = pc` — same two-phase pattern as
+    /// `playback` and `touchDispatcher`.
     weak var vm: TracingViewModel?
 
     // MARK: - Public entry (forwarded from VM)
 
     /// Score the active phase, queue post-freeWrite overlays, advance
     /// the controller, and either announce the next phase or run the
-    /// completion pipeline. Called from the VM's
-    /// `advanceLearningPhase()` forwarder.
+    /// completion pipeline.
     func advance() {
         guard let vm else { return }
         let score: CGFloat
@@ -63,16 +42,11 @@ final class PhaseTransitionCoordinator {
                 score = 0
                 break
             }
-            // Recorder owns scoring — it has the buffers, sessionStart,
-            // and canvasSize-normalised points all in one place.
-            // C-5: pass the active cell's frame for multi-cell (pencil)
-            // layouts so points are normalised to cell-local 0–1 space,
-            // matching the reference stroke coordinate system.
-            // W-26: word mode (multi-cell) splits the trace by cell so
-            // each letter is scored against its own reference, then the
-            // four Schreibmotorik dimensions are averaged. The single-
-            // cell fall-through preserves the existing finger-mode
-            // contract (one tracker definition over the whole canvas).
+            // Multi-cell (pencil / word): pass each cell's frame so
+            // points normalise into cell-local 0–1 space matching the
+            // reference, and average the four Schreibmotorik dimensions
+            // across cells. Single-cell falls through to the original
+            // finger-mode contract.
             if vm.grid.cells.count > 1 {
                 let cellRefs = vm.grid.cells.compactMap { cell -> (frame: CGRect, reference: LetterStrokes)? in
                     guard let ref = cell.tracker.definition else { return nil }
@@ -101,18 +75,14 @@ final class PhaseTransitionCoordinator {
         let wasInGuided = vm.phaseController.currentPhase == .guided
 
         if wasInGuided {
-            // Capture the guided score before the phase advance so the
-            // Schule world can show a verbal feedback band during the
-            // transition into freeWrite. Cleared on letter load.
+            // Capture the guided score before the advance so the Schule
+            // world can show a feedback band on the transition.
             vm.freeWriteRecorder.lastGuidedScore = score
         }
 
-        // FreeWrite final phase: defer the post-freeWrite UI + the
-        // session-completion record until the CoreML recognizer
-        // returns. The recognition outcome decides whether the child
-        // gets the "Geschafft!" celebration (correct + confidence
-        // > 0.7) or has to retrace the freeform — neither of which
-        // we know synchronously here.
+        // FreeWrite final phase: defer the celebration / completion
+        // until the CoreML recognizer returns — we don't yet know
+        // whether the result triggers retry or "Geschafft!".
         if wasInFreeWrite {
             vm.runRecognizerForFreeWrite(score: score)
             return
@@ -124,33 +94,24 @@ final class PhaseTransitionCoordinator {
                 vm.startGuideAnimation()
             }
             vm.toast(vm.phaseController.currentPhase.displayName)
-            // Verbal phase prompt — spoken every transition so a child
-            // who can't read the on-screen "Anschauen / Richtung lernen"
-            // pill still knows what's happening next. Routed through
-            // PromptPlayer so the ElevenLabs MP3 plays when bundled,
-            // with the AVSpeechSynthesizer line as the fallback.
+            // Verbal phase prompt for non-reading children.
             vm.prompts.play(
                 ChildSpeechLibrary.phaseEntryPromptKey(vm.phaseController.currentPhase),
                 fallbackText: ChildSpeechLibrary.phaseEntry(vm.phaseController.currentPhase)
             )
         } else {
-            // Non-freeWrite final phase (.guidedOnly / .control
-            // conditions land here at end-of-guided). No recognizer
-            // run for those; celebrate unconditionally.
+            // Non-freeWrite final phase (.guidedOnly / .control land
+            // here at end-of-guided). No recognizer; celebrate.
             recordSessionCompletion()
         }
     }
 
     // MARK: - FreeWrite recognizer-gated completion
 
-    /// Called from `TracingViewModel.runRecognizerForFreeWrite(score:)`
-    /// once the CoreML recognizer returns. Routes to retry only when
-    /// the model is *confident the letter is wrong* (RecognitionFeedback
-    /// "orange" tier: `!isCorrect && confidence > 0.7`). Green, yellow
-    /// (correct + low confidence), low-confidence noise, and a missing
-    /// recognizer all flow into the celebration — gating strictly on
-    /// "model agrees with green confidence" locked the child out when
-    /// the model was uncertain on perfectly-acceptable handwriting.
+    /// Called once the recognizer returns. Routes to retry only when
+    /// the model is *confident the letter is wrong* (orange tier:
+    /// `!isCorrect && confidence > 0.7`); everything else celebrates so
+    /// uncertain models can't lock the child out.
     func completePostFreeWriteRecognition(score: CGFloat,
                                           result: RecognitionResult?) {
         guard let vm else { return }
@@ -175,40 +136,29 @@ final class PhaseTransitionCoordinator {
         if let r = result, r.confidence >= 0.4 {
             vm.overlayQueue.enqueueBeforeCelebration(.recognitionBadge(r))
         }
-        // Schule freeWrite gets a generic "Gut gemacht!" instead of
-        // the letter-specific recognition feedback ("Du hast ein K
-        // geschrieben!") — that letter-naming feedback belongs in
-        // Werkstatt's freeform recognition, where naming the letter
-        // the model saw is the whole point of the exercise. The
-        // celebration "Super gemacht!" follows from
-        // `recordSessionCompletion`; AVSpeechSynthesizer queues the
-        // two utterances natively now (the explicit `stopSpeaking`
-        // was removed) so they play in sequence without cutting.
+        // Schule freeWrite uses a generic "Gut gemacht!" — letter-naming
+        // feedback ("Du hast ein K geschrieben!") belongs in Werkstatt
+        // where naming what the model saw is the point. Celebration
+        // "Super gemacht!" follows from `recordSessionCompletion`.
         vm.speech.speak("Gut gemacht!")
         if vm.enablePaperTransfer {
             vm.overlayQueue.enqueue(.paperTransfer(letter: vm.currentLetterName))
         }
-        // Final-phase advance — sets isLetterSessionComplete = true
-        // but leaves currentPhase at .freeWrite. Returns false; we
-        // never reach the mid-phase branch from this path.
+        // Final-phase advance — sets isLetterSessionComplete but
+        // leaves currentPhase at .freeWrite; returns false.
         _ = vm.phaseController.advance(score: score)
         recordSessionCompletion()
     }
 
     private func requestFreeWriteRetry(result: RecognitionResult) {
         guard let vm else { return }
-        // Visual badge stays so the child can see what the model
-        // thought ("looks like O" → orange chip). The verbal mirror
-        // ("Das sieht eher nach O aus, schreib nochmal A") is
-        // intentionally NOT spoken in Schule — that style of
-        // letter-naming feedback belongs in Werkstatt. The toast +
-        // "Probier's nochmal" below is the audio retry cue.
+        // Visual badge stays so the child sees what the model thought.
+        // No letter-naming verbal mirror in Schule — that belongs in
+        // Werkstatt. "Probier's nochmal" below is the audio retry cue.
         if result.confidence >= 0.4 {
             vm.overlayQueue.enqueue(.recognitionBadge(result))
         }
-        // Reset freeWrite state so the next stroke starts from a
-        // clean slate — recorder, ink trail, stroke tracker all
-        // wiped, recorder session re-armed for the retry.
+        // Reset freeWrite state so the next stroke starts clean.
         vm.strokeTracker.reset()
         if vm.letters.indices.contains(vm.letterIndex) {
             vm.reloadStrokeCheckpoints(for: vm.letters[vm.letterIndex])
@@ -225,14 +175,8 @@ final class PhaseTransitionCoordinator {
     private func recordSessionCompletion() {
         guard let vm else { return }
         vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
-        // Letter-completion celebration: short positive chime +
-        // the warm "Super gemacht!" voice line. The N-of-4 star
-        // row in CompletionCelebrationOverlay is the visual
-        // differentiator; the audio is the same regardless of
-        // star count, so a child who barely scraped 1 star still
-        // hears genuine encouragement. Pre-recorded ElevenLabs
-        // take via PromptPlayer when bundled; AVSpeech fallback
-        // otherwise.
+        // Same chime + "Super gemacht!" regardless of star count so a
+        // 1-star child still hears genuine encouragement.
         vm.prompts.playSuccessChime()
         vm.prompts.play(.celebration,
                         fallbackText: ChildSpeechLibrary.celebration)
@@ -243,9 +187,9 @@ final class PhaseTransitionCoordinator {
         let scores: [String: Double] = Dictionary(
             uniqueKeysWithValues: vm.phaseController.phaseScores.map { ($0.key.rawName, Double($0.value)) }
         )
-        // D-2: attach the latest recognition reading to the freeWrite row
-        // so per-session recognition is recoverable from the CSV. Other
-        // phases never produce a freeWrite recognition; pass nil there.
+        // Attach the latest recognition reading to the freeWrite row so
+        // per-session recognition is recoverable from the CSV; other
+        // phases pass nil.
         let freeWriteRecognition: RecognitionSample? = vm.lastRecognitionResult.map { rr in
             RecognitionSample(
                 predictedLetter: rr.predictedLetter,
@@ -253,9 +197,9 @@ final class PhaseTransitionCoordinator {
                 isCorrect: rr.isCorrect
             )
         }
-        // D-6: capture the input mode in effect for the row so a finger
-        // session's pressureControl == 1.0 (no force data) is
-        // distinguishable from a low-variance pencil session in the export.
+        // Capture the input mode so the export can distinguish a finger
+        // session's pressureControl == 1.0 (no force data) from a
+        // low-variance pencil session.
         let device = vm.detector.effectiveKind.rawValue
         for (phase, phaseScore) in scores {
             vm.dashboardStore.recordPhaseSession(
@@ -277,22 +221,18 @@ final class PhaseTransitionCoordinator {
     }
 
     /// Shared completion side-effects: durable progress + streak +
-    /// dashboard row, background cloud sync, difficulty-tier
-    /// adaptation, completion HUD. Both the per-letter stroke-
-    /// completion path and the multi-phase session completion path go
-    /// through here so the side-effect set can never drift between the
-    /// two — every store-write addition lands in one place.
+    /// dashboard row, cloud sync, difficulty-tier adaptation, HUD.
+    /// Single funnel for both the per-letter stroke-completion path and
+    /// the multi-phase session completion path.
     func commitCompletion(letter: String,
                           accuracy: Double,
                           duration: TimeInterval,
                           phaseScores: [String: Double]? = nil) {
         guard let vm else { return }
-        // Word sequences fan out per-cell for progress + streak so each
-        // letter that appears in a word counts toward its own mastery
-        // tracking, while the dashboard + adaptation row uses the word
-        // title so thesis analytics can distinguish word sessions from
-        // single-letter sessions by the field length. Single-letter and
-        // repetition sequences take the pre-word path unchanged.
+        // Word sequences fan out per-cell for progress + streak (each
+        // letter counts toward its own mastery), but use the word title
+        // for the dashboard/adaptation row so analytics can distinguish
+        // word sessions from single-letter sessions.
         let lettersToRecord: [String]
         let dashboardLabel: String
         let isWordSequence: Bool
@@ -307,45 +247,33 @@ final class PhaseTransitionCoordinator {
         }
 
         let speed: Double? = vm.checkpointsPerSecond > 0 ? Double(vm.checkpointsPerSecond) : nil
-        // Recognition result lands asynchronously in parallel with phase
-        // advance — it's often still nil here. Pass whatever's latched so
-        // single-letter guided sessions that finish AFTER the recognizer
-        // returns also populate the dashboard's confidence series.
+        // Recognition lands async; pass whatever's latched so sessions
+        // finishing after the recognizer returns still populate the
+        // dashboard's confidence series.
         let rr = vm.lastRecognitionResult
         for l in lettersToRecord {
             vm.progressStore.recordCompletion(for: l, accuracy: accuracy,
                                               phaseScores: phaseScores, speed: speed,
                                               recognitionResult: rr)
         }
-        // Variant tracking is single-letter only — loadWord doesn't
-        // preserve showingVariant state across word entries.
+        // Variant tracking is single-letter only.
         if !isWordSequence, vm.showingVariant, vm.letters.indices.contains(vm.letterIndex),
            let variantID = vm.letters[vm.letterIndex].variants?.first {
             vm.progressStore.recordVariantUsed(for: letter, variantID: variantID)
         }
-        // Refresh the VM's @Observable allProgress mirror so the
-        // world-rail star badge + Fortschritte gallery pick up the
-        // new completion. The store itself isn't @Observable, so
-        // this call is the bridge that fires SwiftUI updates.
+        // The store isn't @Observable; this mirror is the SwiftUI bridge.
         vm.refreshProgressMirror()
         let newRewards = vm.streakStore.recordSession(
             date: Date(),
             lettersCompleted: lettersToRecord,
             accuracy: accuracy
         )
-        // Surface freshly-unlocked achievements as a one-time overlay
-        // before the celebration the child is already expecting.
-        // `enqueueBeforeCelebration` slots each badge ahead of the
-        // celebration regardless of where in the queue the
-        // celebration currently sits.
+        // Slot freshly-unlocked badges ahead of the celebration the
+        // child is already expecting.
         for event in newRewards {
             vm.overlayQueue.enqueueBeforeCelebration(.rewardCelebration(event))
         }
-        // `wallClock` includes any backgrounded interval and is
-        // reconstructed from the load timestamp; the active-time
-        // `duration` parameter excludes backgrounded time.
-        // `device` tags the input mode so the export can split
-        // duration by finger / pencil.
+        // `wallClock` includes backgrounded time; `duration` excludes it.
         let wallClock = vm.letterLoadedDate.map { Date().timeIntervalSince($0) }
         let device = vm.detector.effectiveKind.rawValue
         vm.dashboardStore.recordSession(letter: dashboardLabel, accuracy: accuracy,

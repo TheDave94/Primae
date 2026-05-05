@@ -1,25 +1,19 @@
 import CoreGraphics
 import Observation
 
-/// Owns the grid of `LetterCell`s that a `TracingSequence` expands to.
-/// Responsibilities: per-cell layout, active-cell tracking, hit-testing,
-/// advancement on cell completion, aggregate progress reporting.
-///
-/// The controller does NOT load stroke JSON or drive the VM — it's a pure
-/// state object. Later commits will compose it into `TracingViewModel`.
-/// For a length-1 `TracingSequence` with `InputPreset.finger`, the
-/// controller produces exactly one cell whose frame equals the canvas,
-/// preserving today's single-letter behavior byte-for-byte.
+/// Owns the grid of `LetterCell`s that a `TracingSequence` expands to:
+/// per-cell layout, active-cell tracking, hit-testing, advancement on
+/// completion, aggregate progress. Pure state object — does not load
+/// stroke JSON or drive the VM. A length-1 sequence with `.finger`
+/// produces exactly one cell whose frame equals the canvas.
 @Observable
 final class SequenceGridController {
     private(set) var cells: [LetterCell]
     private(set) var activeCellIndex: Int
     private(set) var preset: InputPreset
     private(set) var sequence: TracingSequence
-    /// Rendered whole-word image + per-character bounding boxes. Populated
-    /// by `layout(in:schriftArt:)` when the current sequence is `.word(...)`
-    /// and CoreText successfully laid out the characters; nil otherwise.
-    /// Canvas uses the image for a single blit so Schreibschrift ligatures
+    /// Whole-word image + per-character bboxes for `.word` sequences;
+    /// canvas blits this in one pass so Schreibschrift ligatures
     /// connect across cell boundaries.
     private(set) var wordRendering: PrimaeLetterRenderer.WordRendering?
 
@@ -46,13 +40,9 @@ final class SequenceGridController {
         self.wordRendering = nil
     }
 
-    /// Assign per-cell frames. For `.singleLetter` and `.repetition`
-    /// sequences, frames come from GridLayoutCalculator (even-width
-    /// cells). For `.word` sequences, we ask PrimaeLetterRenderer to lay
-    /// the word out via CoreText and use the per-character bboxes — this
-    /// preserves cursive kerning so Schreibschrift words don't split
-    /// into isolated glyphs. Falls back to even-width cells if the word
-    /// renderer returns nil (test env, missing font, etc.).
+    /// Assign per-cell frames. `.word` sequences route through
+    /// CoreText so cursive kerning is preserved; other kinds use
+    /// even-width cells. Falls back to even-width if word layout fails.
     func layout(in canvasSize: CGSize, schriftArt: SchriftArt = .druckschrift) {
         let frames: [CGRect]
         if case .word(let word) = sequence.kind,

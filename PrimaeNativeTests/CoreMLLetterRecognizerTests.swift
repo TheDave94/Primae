@@ -1,13 +1,8 @@
-//  CoreMLLetterRecognizerTests.swift
-//  PrimaeNativeTests
-//
-//  D3 (ROADMAP_V5): direct unit coverage for the recognizer's image
-//  pipeline. The Vision-request path needs a real or mocked CoreML
-//  model and is exercised end-to-end via integration tests; the
-//  rendering / coordinate-flipping internals are pure CoreGraphics and
-//  testable here without a model. Pins the contract so a regression
-//  that mis-flips the Y axis or zero-extents the path can't ship
-//  silently.
+// Direct unit coverage for the recognizer's image pipeline. The
+// Vision-request path needs a real or mocked CoreML model and is
+// exercised end-to-end via integration tests; the rendering /
+// coordinate-flipping internals are pure CoreGraphics and testable
+// here without a model.
 
 import Testing
 import Foundation
@@ -137,7 +132,7 @@ import CoreGraphics
         #expect(r?.predictedLetter == "X")
     }
 
-    @Test("rawConfidence preserves the pre-calibration value (T5)")
+    @Test("rawConfidence preserves the pre-calibration value")
     func rawConfidencePreserved() async {
         let recognizer = CoreMLLetterRecognizer(
             calibrator: ConfidenceCalibrator(),

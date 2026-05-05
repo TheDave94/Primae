@@ -1,42 +1,27 @@
 // LearningPhase.swift
 // PrimaeNative
 //
-// Four-step pedagogical model based on the Gradual Release of
-// Responsibility framework (Fisher & Frey, 2013; LetterSchool's
-// "tap → trace → write" pattern extended with directionality teaching).
-//
-// Phase progression:
-//   observe  →  direct  →  guided  →  freeWrite
-//   "I do"      "Start"    "We do"     "You do"
+// Four-step Gradual Release of Responsibility flow (Fisher & Frey 2013):
+// observe → direct → guided → freeWrite ("I do" / "Start" / "We do" / "You do").
 
 import Foundation
 
 /// Represents one of the four phases in the letter-learning sequence.
-///
-/// Each letter is practised through all four phases in order before
-/// the session is considered complete. The phase determines what
-/// scaffolding the canvas provides and how the child's input is scored.
+/// The phase determines canvas scaffolding and how input is scored.
 enum LearningPhase: Int, Codable, CaseIterable, Comparable, Equatable, Sendable {
-    /// Watch the animated letter formation. Touch is disabled.
-    /// The child sees numbered stroke-start dots and the animation guide
-    /// tracing the correct path. Tap replays the animation.
+    /// Watch the animated letter formation. Touch disabled; tap replays.
     case observe   = 0
 
     /// Tap the numbered stroke-start dots in order to learn directionality.
-    /// Research (Thibon, Gerber & Kandel, 2018) shows children under 8
-    /// store motor programs for individual segments; explicitly teaching
-    /// start positions aids segment-by-segment motor program formation.
-    /// Scored pass/fail (1.0 on completion).
+    /// Pass/fail scoring (1.0 on completion). Thibon, Gerber & Kandel 2018.
     case direct    = 1
 
-    /// Trace the letter with checkpoint rails.
-    /// Checkpoints are visible, haptic feedback fires on hit, audio plays
-    /// when near a stroke. Scored by checkpoint progress (0–1).
+    /// Trace the letter with checkpoint rails. Scored by checkpoint
+    /// progress (0–1).
     case guided    = 2
 
-    /// Write the letter from memory without visual checkpoints.
-    /// Touch is tracked as a freehand polyline. Scoring uses discrete
-    /// Fréchet distance against the reference stroke definition.
+    /// Write the letter from memory without visual checkpoints. Scored
+    /// by discrete Fréchet distance against the reference.
     case freeWrite = 3
 
     static func < (lhs: LearningPhase, rhs: LearningPhase) -> Bool {
@@ -58,7 +43,7 @@ enum LearningPhase: Int, Codable, CaseIterable, Comparable, Equatable, Sendable 
         }
     }
 
-    /// Stable string key for serialization (matches Codable dictionary keys in ProgressStore).
+    /// Stable string key for serialization (Codable dictionary keys).
     var rawName: String {
         switch self {
         case .observe:   return "observe"

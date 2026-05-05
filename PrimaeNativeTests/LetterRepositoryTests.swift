@@ -1,6 +1,3 @@
-//  LetterRepositoryTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 @testable import PrimaeNative
@@ -52,7 +49,6 @@ private extension MockResourceProvider {
 @MainActor
 struct LetterRepositoryTests {
 
-    // MARK: 1 — Empty provider returns fallback
     @Test func emptyProvider_returnsFallbackLetter() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let letters = repo.loadLetters()
@@ -60,7 +56,6 @@ struct LetterRepositoryTests {
         #expect(letters.first?.id == "A", "Fallback must be letter A")
     }
 
-    // MARK: 2 — Fallback letter has required fields
     @Test func fallbackLetter_hasRequiredFields() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let letter = repo.loadLetters().first!
@@ -69,7 +64,6 @@ struct LetterRepositoryTests {
         #expect(!letter.imageName.isEmpty)
     }
 
-    // MARK: 3 — Invalid JSON is skipped
     @Test func invalidJSON_isSkipped_returnsAtLeastFallback() {
         class BadProvider: LetterResourceProviding {
             var bundle: Bundle = .main
@@ -85,7 +79,6 @@ struct LetterRepositoryTests {
         #expect(!repo.loadLetters().isEmpty)
     }
 
-    // MARK: 4 — Names are non-empty
     @Test func letterAsset_names_areNonEmpty() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
@@ -93,7 +86,6 @@ struct LetterRepositoryTests {
         }
     }
 
-    // MARK: 5 — audioFiles are non-empty
     @Test func letterAsset_audioFiles_areNonEmpty() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
@@ -101,7 +93,6 @@ struct LetterRepositoryTests {
         }
     }
 
-    // MARK: 6 — Checkpoints in [0,1]
     @Test func defaultStrokes_checkpoints_areNormalized() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
@@ -114,7 +105,6 @@ struct LetterRepositoryTests {
         }
     }
 
-    // MARK: 7 — checkpointRadius is positive
     @Test func defaultStrokes_checkpointRadius_isPositive() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         for letter in repo.loadLetters() {
@@ -122,20 +112,17 @@ struct LetterRepositoryTests {
         }
     }
 
-    // MARK: 8 — No duplicate ids
     @Test func loadLetters_noDuplicateIds() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         let ids = repo.loadLetters().map(\.id)
         #expect(ids.count == Set(ids).count, "loadLetters() must not return duplicate ids")
     }
 
-    // MARK: 9 — Idempotent
     @Test func loadLetters_isIdempotent() {
         let repo = LetterRepository(resources: MockResourceProvider(), cache: NullLetterCache())
         #expect(repo.loadLetters() == repo.loadLetters())
     }
 
-    // MARK: 10 — Equatable
     @Test func letterAsset_equatable() {
         let a = LetterAsset(id: "A", name: "A", imageName: "A.pbm",
                             audioFiles: ["A.mp3"], strokes: LetterStrokes(letter: "A", checkpointRadius: 0.06, strokes: []))

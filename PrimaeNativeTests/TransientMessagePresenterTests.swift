@@ -1,6 +1,3 @@
-// TransientMessagePresenterTests.swift
-// PrimaeNativeTests
-
 import Foundation
 import Testing
 @testable import PrimaeNative

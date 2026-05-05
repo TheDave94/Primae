@@ -67,8 +67,7 @@ struct JSONLetterCache: LetterCacheStoring {
 
 // MARK: - Codable bridge for LetterAsset
 
-/// `LetterAsset` uses `CGFloat` which isn't JSON-friendly on all platforms.
-/// This bridge serializes via `Double` for clean JSON.
+/// `LetterAsset` uses `CGFloat`; bridge via `Double` for clean JSON.
 private struct CodableLetterAsset: Codable {
     let id: String
     let name: String

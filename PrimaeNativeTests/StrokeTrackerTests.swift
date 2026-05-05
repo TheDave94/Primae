@@ -1,6 +1,3 @@
-//  StrokeTrackerTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import CoreGraphics
 @testable import PrimaeNative

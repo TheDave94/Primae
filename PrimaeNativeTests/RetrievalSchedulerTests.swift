@@ -1,11 +1,7 @@
-// RetrievalSchedulerTests.swift
-// PrimaeNativeTests
-//
-// P1 (ROADMAP): unit coverage for the retrieval-practice cadence.
-// Pins the contract on every Nth letter selection firing a prompt,
-// the minimum-prior-completions guard skipping never-seen letters,
-// the counter resetting on fire, and the persisted-counter shape
-// surviving a re-init.
+// Unit coverage for the retrieval-practice cadence. Pins the contract on
+// every Nth letter selection firing a prompt, the minimum-prior-completions
+// guard skipping never-seen letters, the counter resetting on fire, and the
+// persisted-counter shape surviving a re-init.
 
 import Testing
 import Foundation

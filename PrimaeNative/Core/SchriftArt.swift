@@ -8,26 +8,20 @@ public enum SchriftArt: String, Codable, CaseIterable {
     case druckschrift
     case schreibschrift
     case grundschrift
-    // I-5: identifier is German "Vereinfachte Ausgangs**s**chrift" — the
-    // genitive-s was missing from the original case name. The raw value
-    // is pinned to the old spelling so persisted user-default selections
-    // and the bundled font/strokes filenames keep resolving without a
-    // migration step.
+    // The raw value retains the original misspelling
+    // ("vereinfachteAusgangschrift", missing the genitive-s) so
+    // persisted user-default selections and bundled font/strokes
+    // filenames keep resolving without a migration.
     case vereinfachteAusgangsschrift = "vereinfachteAusgangschrift"
     case schulausgangsschrift
 
-    /// Font resource filename (without extension) for this script.
-    /// PrimaeLetterRenderer probes `.otf` first, then `.ttf`, so either format
-    /// can be bundled under this name. Returning the stem keeps the enum
-    /// extension-agnostic.
+    /// Font resource filename (without extension). PrimaeLetterRenderer
+    /// probes `.otf` then `.ttf` so the stem stays extension-agnostic.
     public var fontFileName: String {
         switch self {
         case .druckschrift:              return "Primae-Regular"
-        // Playwrite Österreich (TypeTogether, 2023) — SIL OFL 1.1 licensed
-        // variable TTF bundled as Resources/Fonts/PlaywriteAT-Regular.ttf.
-        // Implements an Austrian primary-school cursive; not an exact clone
-        // of the official Schulschrift 1995, which is why the user-facing
-        // label is the generic "Schreibschrift".
+        // Playwrite AT (Austrian cursive, SIL OFL 1.1). Not an exact
+        // Schulschrift 1995 clone, hence the generic UI label.
         case .schreibschrift:            return "PlaywriteAT-Regular"
         case .grundschrift:              return "Grundschrift-Regular"
         case .vereinfachteAusgangsschrift: return "VereinfachteAusgangschrift-Regular"
@@ -46,16 +40,12 @@ public enum SchriftArt: String, Codable, CaseIterable {
         }
     }
 
-    /// The `variantID` that `LetterRepository.loadVariantStrokes` uses to
-    /// find this script's stroke JSON — e.g. "schulschrift" resolves to
-    /// `Letters/<letter>/strokes_schulschrift.json`. `nil` for
-    /// `.druckschrift`: its strokes are the primary `strokes.json` carried
-    /// by `LetterAsset.strokes`, not a variant file.
-    ///
-    /// Adding a new script is a three-step move: add an enum case, return
-    /// the variantID here, and ship `Resources/Letters/<letter>/strokes_<id>.json`
-    /// alongside the font. `TracingViewModel.activeScriptStrokes` picks it
-    /// up automatically — no VM changes required.
+    /// The variantID `LetterRepository.loadVariantStrokes` uses to
+    /// locate this script's stroke JSON (e.g. "schulschrift" →
+    /// `Letters/<letter>/strokes_schulschrift.json`). nil for
+    /// `.druckschrift` since it uses the primary `strokes.json`.
+    /// To add a new script: add an enum case, return its variantID
+    /// here, ship `strokes_<id>.json` alongside the font.
     public var bundleVariantID: String? {
         switch self {
         case .druckschrift:              return nil

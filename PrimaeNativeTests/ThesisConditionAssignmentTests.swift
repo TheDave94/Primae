@@ -1,6 +1,3 @@
-// ThesisConditionAssignmentTests.swift
-// PrimaeNativeTests
-//
 // Verifies the A/B cohort assignment is stable (same UUID → same arm)
 // and that assignment covers all three arms across participants.
 

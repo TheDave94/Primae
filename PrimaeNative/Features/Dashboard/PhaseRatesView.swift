@@ -1,16 +1,11 @@
 // PhaseRatesView.swift
 // PrimaeNative
 //
-// Horizontal bars showing the child's completion rate for each of the four
-// pedagogical phases (observe / direct / guided / freeWrite). Sourced from
-// `DashboardSnapshot.phaseCompletionRates` — the data is captured per
-// session in `phaseSessionRecords` and rolled up here for the parent view.
-//
-// Per-phase distinct colors (blue / indigo / teal / purple) so the eye reads
-// the difference between phases as the visual variable, not the score
-// magnitude — for that, the percentage label on the right is enough. Labels
-// come from `LearningPhase.displayName` so the dashboard uses the same
-// German wording the child sees in-app.
+// Horizontal bars of per-phase completion rate (observe / direct /
+// guided / freeWrite). Sourced from
+// `DashboardSnapshot.phaseCompletionRates`. Distinct per-phase colors
+// (blue / indigo / teal / purple) keep phase identity readable; the
+// percentage label carries the magnitude.
 
 import SwiftUI
 
@@ -29,8 +24,8 @@ struct PhaseRatesView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Always render every phase even with no data, so the parent sees
-            // the full pedagogical arc rather than a row that pops in later.
+            // Always render every phase, even with no data, so the
+            // parent sees the full pedagogical arc up front.
             ForEach(LearningPhase.allCases, id: \.self) { phase in
                 let value = rates[phase.rawName] ?? 0
                 let color = Self.color(for: phase)

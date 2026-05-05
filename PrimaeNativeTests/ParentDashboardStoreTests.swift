@@ -1,6 +1,3 @@
-//  ParentDashboardStoreTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 @testable import PrimaeNative
@@ -234,13 +231,13 @@ private func makeStore() -> JSONParentDashboardStore {
         #expect(abs((store.snapshot.letterStats["B"]?.averageAccuracy ?? 0) - 0.5) < 1e-9)
     }
 
-    /// Regression guard for review item #9 — rapid-fire batching contract.
-    /// When several `recordSession` / `recordPhaseSession` calls fire
-    /// synchronously in one runloop tick, the cancel-and-replace chain in
-    /// `persist()` must coalesce them into a single durable write that
-    /// reflects the *final* accumulated state. Cancelling earlier writes
-    /// must not drop data — the value-type `DashboardSnapshot` snapshot in
-    /// each task already captures the accumulated state at enqueue time.
+    /// Rapid-fire batching contract: when several `recordSession` /
+    /// `recordPhaseSession` calls fire synchronously in one runloop tick,
+    /// the cancel-and-replace chain in `persist()` must coalesce them
+    /// into a single durable write that reflects the final accumulated
+    /// state. Cancelling earlier writes must not drop data — the
+    /// value-type `DashboardSnapshot` snapshot in each task already
+    /// captures the accumulated state at enqueue time.
     @Test func rapidFireWrites_finalStateIsDurable() async {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("DashRapid-\(UUID().uuidString).json")

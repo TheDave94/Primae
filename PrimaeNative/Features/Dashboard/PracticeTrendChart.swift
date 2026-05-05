@@ -1,18 +1,16 @@
 // PracticeTrendChart.swift
 // PrimaeNative
 //
-// Compact bar chart of daily practice minutes for the most recent 30 days.
-// Sourced from `DashboardSnapshot.dailyPracticeMinutes` which fills missing
-// days with zero so the timeline reads continuously even when a child skips
-// a day. Apple's SwiftUI Charts framework (iOS 16+) handles the layout,
-// accessibility (rotor traversal of bars), and Dynamic Type scaling for free.
+// Bar chart of daily practice minutes over the last 30 days. Source
+// is `DashboardSnapshot.dailyPracticeMinutes`, which zero-fills
+// skipped days so the timeline reads continuously.
 
 import SwiftUI
 import Charts
 
 struct PracticeTrendChart: View {
 
-    /// Oldest-first list of (day, practice-minutes) tuples. Pass exactly what
+    /// Oldest-first (day, minutes) tuples — pass exactly what
     /// `DashboardSnapshot.dailyPracticeMinutes(days:)` returns.
     let series: [(date: Date, minutes: Double)]
 
@@ -24,8 +22,7 @@ struct PracticeTrendChart: View {
         series.map { Datum(id: $0.date, minutes: $0.minutes) }
     }
 
-    /// Show no chart when the entire window is empty — a wall of zero bars
-    /// is uglier than a clean placeholder string.
+    /// Suppress the chart when the whole window is empty.
     private var hasAnyPractice: Bool {
         series.contains { $0.minutes > 0 }
     }

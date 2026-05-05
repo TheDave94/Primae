@@ -1,6 +1,3 @@
-//  LetterAnimationGuideTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 import CoreGraphics

@@ -13,59 +13,36 @@
 import CoreGraphics
 import Foundation
 
-/// Content of a single queued canvas overlay. Extend as new temporal
-/// feedback moments are added; the manager itself doesn't care about
-/// payload shape, only about ordering + dismissal.
-///
-/// The canonical post-freeWrite order — enqueued together so the child
-/// always sees them in this sequence, never stacked on top of each other
-/// — is: `kpOverlay` → `recognitionBadge` → `paperTransfer` → `celebration`.
-/// Each overlay is dismissable by tap (`.dismiss()`); modal-style overlays
-/// (paperTransfer, celebration) carry a `nil` defaultDuration so they wait
-/// for an explicit dismiss instead of timing out from under the child.
-///
-/// I-9: `kpOverlay` is terminal in this sequence — it is never shown
-/// concurrently with any other overlay. It runs first and auto-advances
-/// after its 3 s window; the queue then proceeds to recognitionBadge,
-/// paperTransfer, and celebration in order. Nothing else is enqueued
-/// while kpOverlay is the active overlay.
+/// One queued canvas overlay. Canonical post-freeWrite order is
+/// `kpOverlay → recognitionBadge → paperTransfer → celebration`; modal
+/// overlays (paperTransfer, celebration, retrievalPrompt) use
+/// `defaultDuration == nil` so they wait for an explicit `.dismiss()`.
 enum CanvasOverlay: Equatable, Sendable {
-    /// Quick Fréchet-score confirmation chip ("Form 82 %"), 1.5 s.
-    /// Currently unused — the inline form/guided feedback cards in
-    /// SchuleWorldView render this signal alongside the canvas instead.
-    /// Retained on the enum so consumers downstream of the queue can
-    /// re-introduce the chip without an enum-shape migration.
+    /// Quick Fréchet-score confirmation chip. Currently unused — the
+    /// inline feedback cards in SchuleWorldView render this signal
+    /// instead. Retained so the chip can be reintroduced without an
+    /// enum-shape migration.
     case frechetScore(CGFloat)
-    /// Larger KP (Knowledge of Performance) overlay with the reference
-    /// path drawn over the child's trace, ~3 s.
+    /// KP (Knowledge of Performance) overlay with the reference path
+    /// drawn over the child's trace.
     case kpOverlay
-    /// CoreML recognition badge when confidence ≥ 0.4, ~3 s.
+    /// CoreML recognition badge when confidence ≥ 0.4.
     case recognitionBadge(RecognitionResult)
-    /// Paper-transfer self-assessment modal — show reference letter for 3 s,
-    /// hide for 10 s while the child writes on paper, then ask which emoji
-    /// fits. Modal: no auto-dismiss, child taps an emoji to advance.
+    /// Paper-transfer self-assessment modal. Modal: no auto-dismiss.
     case paperTransfer(letter: String)
-    /// Phase-complete / letter-complete celebration. Modal: no auto-dismiss,
-    /// child taps "Weiter" to load the next recommended letter.
+    /// Phase- / letter-complete celebration. Modal.
     case celebration(stars: Int)
-    /// Newly-unlocked achievement (firstLetter, 7-day streak,
-    /// allLetters, …). Auto-advances after 2.5 s so the queue keeps
-    /// flowing into the celebration that follows; the persistent
-    /// display lives in FortschritteWorldView, this overlay is the
-    /// one-time "you just earned this" moment.
+    /// Newly-unlocked achievement (firstLetter, 7-day streak, …).
+    /// Auto-advances after 2.5 s so it doesn't block celebration; the
+    /// persistent display lives in FortschritteWorldView.
     case rewardCelebration(RewardEvent)
     /// Spaced-retrieval recognition prompt. Plays the letter's audio
-    /// (or phoneme, if `enablePhonemeMode`) and shows three candidate
-    /// letters; the child picks one. Modal — child must answer
-    /// before tracing begins. The outcome lands on
-    /// `LetterProgress.retrievalAttempts` via
-    /// `progressStore.recordRetrievalAttempt`.
+    /// and shows three candidates; outcome lands on
+    /// `LetterProgress.retrievalAttempts`. Modal.
     case retrievalPrompt(letter: String, distractors: [String])
 
-    /// Default display duration chosen per overlay type so callers can
-    /// enqueue without re-stating the timing at every site. `nil` means
-    /// the overlay is modal and only dismisses on an explicit `.dismiss()`
-    /// call from the rendering view.
+    /// Default display duration. `nil` means modal — only an explicit
+    /// `.dismiss()` advances the queue.
     var defaultDuration: TimeInterval? {
         switch self {
         case .frechetScore:       return 1.5
@@ -113,12 +90,8 @@ final class OverlayQueueManager {
     // MARK: - Public API
 
     /// Append `overlay` to the queue. If nothing is showing, display
-    /// it immediately; otherwise it waits behind whatever's running.
-    /// Pass `duration = nil` to use the overlay's default. For modal
-    /// overlays (paperTransfer, celebration) the default is also nil,
-    /// meaning the queue waits for an explicit `.dismiss()` rather than
-    /// timing out — appropriate for a 5-year-old who needs as much time
-    /// as the celebration or the paper-write step takes.
+    /// it immediately; otherwise it waits in FIFO order. Pass
+    /// `duration = nil` to use the overlay's default.
     func enqueue(_ overlay: CanvasOverlay, duration: TimeInterval? = nil) {
         let d = duration ?? overlay.defaultDuration
         queue.append((overlay, d))
@@ -127,17 +100,12 @@ final class OverlayQueueManager {
         }
     }
 
-    /// Slot `overlay` into the queue immediately ahead of the first queued
-    /// `.paperTransfer` or `.celebration` (whichever comes first), or append
-    /// it if neither is queued. This ensures the canonical post-freeWrite
-    /// order `kpOverlay → recognitionBadge → paperTransfer → celebration`
-    /// even when CoreML inference finishes after the synchronous teardown
-    /// already enqueued kpOverlay, paperTransfer, and celebration (W-25).
-    ///
-    /// C-4/W-25: also handles the case where paperTransfer or celebration is
-    /// *already* the active overlay (CoreML inference arrived very late).
-    /// In that case the blocking overlay is pushed back to queue position 0
-    /// and the badge becomes the new currentOverlay, then auto-advances.
+    /// Slot `overlay` into the queue ahead of the first queued
+    /// `.paperTransfer` or `.celebration`, or append if neither is
+    /// queued. Preserves canonical post-freeWrite order even when
+    /// CoreML inference arrives late. If a blocking modal is already
+    /// the active overlay, it is pushed back to queue position 0 and
+    /// the inserted overlay becomes the new current overlay.
     func enqueueBeforeCelebration(_ overlay: CanvasOverlay,
                                    duration: TimeInterval? = nil) {
         let d = duration ?? overlay.defaultDuration
@@ -201,10 +169,7 @@ final class OverlayQueueManager {
         currentOverlay = next.overlay
         advanceTask?.cancel()
         // Modal overlays (`duration == nil`) wait for an explicit
-        // `.dismiss()` — no timer is armed so the child can take their
-        // time on the celebration or the paper-write step. Timed
-        // overlays (KP, recognition badge) auto-advance after their
-        // window so post-freeWrite feedback flows without manual taps.
+        // `.dismiss()`; timed overlays auto-advance after their window.
         guard let duration = next.duration else {
             advanceTask = nil
             return

@@ -14,16 +14,10 @@ enum OnboardingStep: String, Codable, CaseIterable, Equatable {
 
 // MARK: - Onboarding length variants
 
-/// Two onboarding length variants used for A/B comparison in the
-/// thesis cohort. The variant the child actually ran is recorded on
-/// `OnboardingState.variantUsed` so post-hoc CSV analysis can correlate
-/// retention/streak metrics with which onboarding ran.
-///
-/// `full` — canonical 7-step flow with one demo per phase plus the
-/// reward-system intro.
-/// `short` — compressed 3-step flow: welcome → guided demo → done.
-/// Parents who want the long version can re-run via
-/// "Einführung wiederholen".
+/// Onboarding length variants for A/B comparison. The chosen variant
+/// is recorded on `OnboardingState.variantUsed` so post-hoc CSV
+/// analysis can correlate engagement with onboarding length. `full`
+/// is the 7-step flow; `short` collapses to welcome → guided demo → done.
 enum OnboardingVariant: String, Codable, CaseIterable, Equatable {
     case full
     case short
@@ -36,8 +30,7 @@ enum OnboardingVariant: String, Codable, CaseIterable, Equatable {
         }
     }
 
-    /// Step list that the OnboardingCoordinator should iterate through
-    /// when this variant is active. `complete` is always the terminator.
+    /// Step list to iterate through. `complete` is the terminator.
     var steps: [OnboardingStep] {
         switch self {
         case .full:
@@ -174,10 +167,8 @@ final class JSONOnboardingStore: OnboardingStoring {
     func markComplete(variant: OnboardingVariant) {
         state.completed = true
         state.savedStepRaw = nil
-        // Only record on the FIRST complete: a parent re-run via
-        // "Einführung wiederholen" can change the variant, but the
-        // original A/B assignment must not be overwritten or the
-        // post-hoc analysis can't correlate.
+        // Record only on the FIRST complete — a parent re-run must
+        // not overwrite the original A/B assignment.
         if state.variantUsedRaw == nil {
             state.variantUsedRaw = variant.rawValue
         }
@@ -195,15 +186,11 @@ final class JSONOnboardingStore: OnboardingStoring {
     }
 
     private func persist() {
-        // Encode on main, write off main — keeps disk I/O off the
-        // MainActor while still letting the encoded snapshot reflect
-        // the state at the moment of the call.
+        // Encode on main, write off main.
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = fileURL
-        // Coalesce-and-await: each call cancels and supersedes the
-        // previous pending write (the encoded data is already the
-        // latest snapshot). Ordering is preserved by awaiting the
-        // previous task before this one writes.
+        // Coalesce-and-await: each call cancels its predecessor and
+        // awaits it before writing, so order is preserved on disk.
         let previous = pendingSave
         previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {

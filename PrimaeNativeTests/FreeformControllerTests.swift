@@ -1,10 +1,7 @@
-//  FreeformControllerTests.swift
-//  PrimaeNativeTests
-//
-//  Coverage for FreeformController.clearBuffers — the buffer lifecycle is
-//  load-bearing for the "Nochmal" button, mode switches, and letter loads,
-//  and a future change that forgets one field would silently leak stale
-//  state into the next recognition pass.
+// Coverage for FreeformController.clearBuffers — the buffer lifecycle is
+// load-bearing for the "Nochmal" button, mode switches, and letter loads.
+// A future change that forgets one field would leak stale state into the
+// next recognition pass.
 
 import Testing
 import Foundation

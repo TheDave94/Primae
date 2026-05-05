@@ -1,14 +1,13 @@
 // NOTE: Intentionally uses XCTest — Swift Testing has no measure()/XCTMetric equivalent. Do not migrate.
-//  StrokeTrackerRegressionGateTests.swift
-//  PrimaeNativeTests
 //
-//  CI performance regression gate for StrokeTracker.
-//  Uses XCTMetric (clock time + memory) to establish baselines.
-//  Build fails if throughput regresses beyond the measured baseline.
+// CI performance regression gate for StrokeTracker. Uses XCTMetric
+// (clock time + memory) to establish baselines. Build fails if
+// throughput regresses beyond the measured baseline.
 //
-//  Baselines are NOT hardcoded — XCTest's measure infrastructure
-//  stores them in the .xcresult bundle and tracks regressions automatically.
-//  On first run, baselines are established. Subsequent runs compare against them.
+// Baselines are NOT hardcoded — XCTest's measure infrastructure stores
+// them in the .xcresult bundle and tracks regressions automatically. On
+// first run, baselines are established. Subsequent runs compare against
+// them.
 
 import XCTest
 import CoreGraphics

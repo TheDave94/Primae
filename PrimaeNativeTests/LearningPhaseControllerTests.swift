@@ -1,8 +1,3 @@
-// LearningPhaseControllerTests.swift
-// PrimaeNativeTests
-//
-// Uses Swift Testing (@Test, #expect) — the modern framework stable in Swift 6.3.
-
 import Testing
 import CoreGraphics
 @testable import PrimaeNative
@@ -97,10 +92,10 @@ struct LearningPhaseControllerTests {
         #expect(sut.starsEarned == 1)
     }
 
-    /// Round-3 test-audit gap: the `.control` arm runs guided-only,
-    /// just like `.guidedOnly`. The plumbing differs (fixedOrder()
-    /// scheduler etc.) but the phase controller contract is identical:
-    /// one advance ends the session with one star earned.
+    /// The `.control` arm runs guided-only, just like `.guidedOnly`.
+    /// Plumbing differs (fixedOrder() scheduler etc.) but the phase
+    /// controller contract is identical: one advance ends the session
+    /// with one star earned.
     @Test("Control completes after one phase")
     func controlCompletesAfterOne() {
         var sut = LearningPhaseController(condition: .control)

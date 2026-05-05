@@ -1,12 +1,9 @@
 // RewardCelebrationOverlay.swift
 // PrimaeNative
 //
-// One-time "you just earned this" moment for an unlocked
-// `RewardEvent`. The persistent display lives in the Fortschritte
-// gallery's badge row; this overlay is the immediate affirmation.
-// Auto-dismisses after the duration set in
-// `CanvasOverlay.rewardCelebration.defaultDuration`; the queue then
-// proceeds to the celebration that triggered the achievement.
+// Immediate "you just earned this" moment for an unlocked
+// `RewardEvent`; the persistent badge lives in the Fortschritte
+// gallery. Auto-dismissed by the OverlayQueueManager.
 
 import SwiftUI
 

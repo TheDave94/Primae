@@ -1,12 +1,9 @@
 // FortschritteWorldView.swift
 // PrimaeNative
 //
-// World 3 — Meine Fortschritte. Child-facing view that celebrates
-// progress without any parent-grade analytics. Three rows:
-//   • big star total + streak headline
-//   • letter gallery (4 stars each — one per completed learning phase),
-//     colour-coded by mastery tier
-//   • "Schreibflüssigkeit" footer pulled from vm.writingSpeedTrend
+// World 3 — Meine Fortschritte. Child-facing progress view: star
+// total + streak, reward badges, letter gallery (4 stars each),
+// fluency footer. No parent-grade analytics.
 
 import SwiftUI
 
@@ -44,10 +41,8 @@ struct FortschritteWorldView: View {
         }
     }
 
-    /// Daily-goal pill — Goal-setting theory (Locke & Latham 1990)
-    /// predicts that explicit proximal goals improve practice
-    /// quality. Default 3 letters/day; parent adjusts via
-    /// UserDefaults. Tile turns green once the goal is hit.
+    /// Daily-goal pill (Locke & Latham 1990 — proximal goals improve
+    /// practice). Default 3 letters/day; turns green once met.
     private var dailyGoalCard: some View {
         let done = vm.completionsToday
         let goal = vm.dailyGoal
@@ -130,11 +125,9 @@ struct FortschritteWorldView: View {
 
     // MARK: - Rewards
 
-    /// Achievement badges. Shows every `RewardEvent` case as a tile;
-    /// earned ones render in colour with a labelled emoji, unearned
-    /// ones render gray-scale so the child can see what's still ahead.
-    /// Surfaces data the StreakStore has been collecting since launch
-    /// but never displayed (HIDDEN_FEATURES_AUDIT C.6).
+    /// Achievement badges. Shows every `RewardEvent` as a tile —
+    /// earned tiles in colour, unearned ones gray-scale so the child
+    /// can see what's still ahead.
     private var rewardsBadgeRow: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Auszeichnungen")
@@ -213,10 +206,8 @@ struct FortschritteWorldView: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(Color.ink)
             if vm.visibleLetterNames.isEmpty {
-                // Defensive empty state — shouldn't happen in practice
-                // (letter list is bundled), but a parent who's somehow
-                // landed here on an empty install gets a verbal hint
-                // rather than a silent grey box.
+                // Defensive empty state — letters are bundled, but
+                // surface a hint rather than a silent grey box.
                 ContentUnavailableView(
                     "Noch keine Buchstaben",
                     systemImage: "textformat.abc",
@@ -238,15 +229,14 @@ struct FortschritteWorldView: View {
 
     @ViewBuilder
     private func letterCard(letter: String) -> some View {
-        // Read through `vm.allProgress` (the @Observable mirror)
-        // not `vm.progress(for:)` (a forwarder to the non-Observable
-        // store) so the cell re-renders when a fresh completion
-        // bumps the star count.
+        // Read through `vm.allProgress` (the @Observable mirror) so
+        // the cell re-renders when a fresh completion bumps the
+        // star count.
         let prog = vm.allProgress[letter] ?? LetterProgress()
         let stars = LetterStars.stars(for: prog.phaseScores)
         let tint: Color = {
-            // Shared token with LetterPickerBar so a "mastered" letter
-            // looks identical in the picker and the gallery.
+            // Shared token with LetterPickerBar so mastered letters
+            // look identical in the picker and the gallery.
             if stars >= LetterStars.maxStars { return AppSurface.mastered }
             if stars >= 1 { return Color(red: 1.00, green: 0.88, blue: 0.60) }
             return Color.paperEdge.opacity(0.5)

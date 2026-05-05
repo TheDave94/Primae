@@ -1,11 +1,8 @@
-//  FreeWritePhaseRecorderTests.swift
-//  PrimaeNativeTests
-//
-//  Coverage for the recorder that owns the freeWrite phase's four
-//  buffers (points / timestamps / forces / normalised path) plus the
-//  session-timing state that drives checkpointsPerSecond and rhythmScore.
-//  Buffer lifecycle is load-bearing — a leak between letters would
-//  corrupt the next freeWrite assessment.
+// Coverage for the recorder that owns the freeWrite phase's four
+// buffers (points / timestamps / forces / normalised path) plus the
+// session-timing state that drives checkpointsPerSecond and rhythmScore.
+// Buffer lifecycle is load-bearing — a leak between letters would
+// corrupt the next freeWrite assessment.
 
 import Testing
 import Foundation
@@ -122,14 +119,12 @@ import CoreGraphics
         #expect(r.sessionStart == 100)
     }
 
-    // MARK: - W-26 multi-cell scoring
+    // MARK: - Multi-cell scoring
 
-    /// Round-4 audit gap: `assess(cellReferences:)` is the W-26 path
-    /// that splits a freeWrite trace by cell frame and averages
-    /// per-letter scores. The empty-cell-list fallback should return
-    /// a zero assessment without crashing or recursing into the
-    /// single-cell overload (which would need a synthesized empty
-    /// LetterStrokes).
+    /// `assess(cellReferences:)` splits a freeWrite trace by cell frame
+    /// and averages per-letter scores. The empty-cell-list fallback
+    /// returns a zero assessment without crashing or recursing into the
+    /// single-cell overload.
     @Test func assess_multiCell_emptyReferencesReturnsZero() {
         let r = FreeWritePhaseRecorder()
         r.startSession(now: 100)

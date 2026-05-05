@@ -9,12 +9,9 @@ struct TracingCanvasView: View {
     @ViewBuilder
     private func tracingCanvas(geo: GeometryProxy) -> some View {
         Canvas { context, size in
-            // Frame source: for singleLetter / repetition sequences the
-            // cells are evenly-spaced, so we compute fresh from the live
-            // Canvas `size` to avoid any first-render staleness. For word
-            // sequences the layout depends on CoreText character advances,
-            // so we use the stored cell frames — recomputing a CoreText
-            // run per redraw would thrash the frame budget.
+            // Word sequences use stored CoreText frames; other kinds
+            // recompute from `size` to avoid first-render staleness
+            // and to keep CoreText off the per-frame budget.
             let wordRendering = vm.gridWordRendering
             let frames: [CGRect]
             if wordRendering != nil {
@@ -26,9 +23,8 @@ struct TracingCanvasView: View {
             let cellCount = min(frames.count, vm.gridCells.count)
             let activeIndex = vm.gridActiveCellIndex
 
-            // Whole-word image (word mode only): drawn once at full canvas
-            // size so the cursive connectors between letters flow across
-            // cell boundaries instead of getting cropped per glyph.
+            // Whole-word image: one blit at full canvas size so cursive
+            // connectors flow across cell boundaries.
             if let wr = wordRendering {
                 context.draw(Image(uiImage: wr.image),
                              in: CGRect(origin: .zero, size: size))
@@ -38,18 +34,12 @@ struct TracingCanvasView: View {
                 let cellSize  = cellFrame.size
                 let ox        = cellFrame.minX
                 let oy        = cellFrame.minY
-                // Per-cell letter — for single-letter sessions every cell has
-                // the same letter (repetition or length-1), for word mode
-                // each cell has its own character.
                 let cellLetter = vm.gridCellLetter(at: i) ?? vm.currentLetterName
                 let isActiveCell = (i == activeIndex)
 
-                // Background: fill the glyph as a vector path from the
-                // OTF outline directly. Resolution-independent, so this
-                // renders crisply at any iPad size without any
-                // pre-rasterised PBM ghost. Skipped in word mode — the
-                // whole-word image was already drawn above so the
-                // ligatures connect across cells.
+                // Background glyph as a vector path from the OTF
+                // outline (resolution-independent). Skipped in word
+                // mode — the whole-word image was drawn above.
                 if wordRendering == nil,
                    let glyph = PrimaeLetterRenderer.glyphPath(
                        letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt) {
@@ -58,22 +48,18 @@ struct TracingCanvasView: View {
                     context.fill(positioned, with: .color(.ink.opacity(0.78)))
                 }
 
-                // Ghost scaffolding: phase drives default visibility (observe/guided = on,
-                // freeWrite = off). User's showGhost toggle can ADD ghost in observe/guided,
-                // but cannot re-enable it in freeWrite (scaffolding is withdrawn per GRRM).
-                // Suppressed while calibrating — these are fat (lineWidth 6) blue paths
-                // drawn for every stroke on the glyph and they were still covering the
-                // letter even after the other phase overlays were hidden.
+                // Ghost scaffolding follows GRRM: phase drives default
+                // visibility (observe/guided on, freeWrite off); user
+                // toggle adds in observe/guided only. Suppressed during
+                // calibration where the fat blue paths obscure edits.
                 if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
                    !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty {
-                    // Stroke checkpoints are stored canvas-relative (0..1
-                    // of the canvas, including the 10% pad the glyph
-                    // generator and `glyphPath` both use). Don't remap
-                    // through `normalizedGlyphRect` here — that would
-                    // squeeze the strokes inward by another 10% on each
-                    // side and leave them floating inside the ghost.
+                    // Checkpoints are canvas-relative 0..1 (incl. the
+                    // 10% glyph pad). Don't remap through
+                    // normalizedGlyphRect — that would squeeze the
+                    // strokes inside the ghost.
                     for stroke in rawStrokes.strokes {
                         guard stroke.checkpoints.count >= 2 else { continue }
                         var ghostPath = Path()
@@ -91,10 +77,8 @@ struct TracingCanvasView: View {
                     }
                 }
 
-                // Stroke start dots — use phaseController.showCheckpoints (single source
-                // of truth for phase scaffolding) instead of duplicating the rule here.
-                // Suppressed while calibrating so the calibrator's own numbered dots
-                // aren't doubled up by the phase's fat start-dot overlay.
+                // Stroke start dots; suppressed during calibration so
+                // the calibrator's own numbered dots aren't doubled up.
                 if vm.showCheckpoints, !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty {
@@ -113,11 +97,8 @@ struct TracingCanvasView: View {
                     }
                 }
 
-                // Retained ink from previously-completed cells — stays on
-                // screen so the child can see the letter they just wrote
-                // even after the active cursor has moved on. Empty for
-                // single-cell sessions (completion fires commit and the
-                // load(letter:) reset clears on the next letter).
+                // Retained ink from previously-completed cells stays
+                // visible after the cursor has moved on.
                 let retainedInk = vm.gridCells[i].activePath
                 if retainedInk.count > 1 {
                     var path = Path()
@@ -126,12 +107,9 @@ struct TracingCanvasView: View {
                                    style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
                 }
 
-                // Active ink path — the child's in-progress stroke, in
-                // absolute canvas coords. Drawn only on the active cell
-                // pass: for single-cell that's the one iteration (identical
-                // to pre-grid behavior); for multi-cell it avoids the same
-                // pixels being stroked N times and keeps ink scoped to
-                // the cell the child is currently tracing.
+                // Active ink — only drawn on the active cell pass so
+                // multi-cell layouts don't stroke the same pixels N
+                // times.
                 if isActiveCell, vm.activePath.count > 1 {
                     var path = Path()
                     path.addLines(vm.activePath)
@@ -140,12 +118,8 @@ struct TracingCanvasView: View {
                                    style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
                 }
 
-                // Animation guide dot — ACTIVE cell only. Guide scans the
-                // active letter's stroke path; rendering it in every cell
-                // would show N dots scanning N letters in parallel.
-                // Hidden while calibrating: the observe-phase animation would
-                // otherwise scan across the calibrator's numbered dots and make
-                // it impossible to tell what sits where on the glyph.
+                // Animation guide dot — active cell only; suppressed
+                // during calibration so it doesn't scan over edits.
                 if isActiveCell, let point = vm.animationGuidePoint, !vm.isCalibrating {
                     let screenPt = CGPoint(
                         x: ox + point.x * cellSize.width,
@@ -153,16 +127,12 @@ struct TracingCanvasView: View {
                     let r: CGFloat = 22
                     let dotRect   = CGRect(x: screenPt.x - r, y: screenPt.y - r, width: r * 2, height: r * 2)
                     let dot       = Path(ellipseIn: dotRect)
-                    // Animation guide dot — Primae design system pins
-                    // this as amber (`--guide`), not blue. Renders as
-                    // amber-500 in light, amber-400 in dark.
+                    // Amber per design system (`--guide`), not blue.
                     context.fill(dot,   with: .color(.canvasGuide.opacity(0.85)))
                     context.stroke(dot, with: .color(.canvasPaper.opacity(0.60)), lineWidth: 2)
                 }
 
-                // Directional arrow — ACTIVE cell only. Direct-phase cue
-                // belongs to the cell the child is currently being asked
-                // to tap; other cells are static scaffolding.
+                // Directional arrow — active cell only.
                 if isActiveCell, let arrowIdx = vm.directArrowStrokeIndex, !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    arrowIdx < rawStrokes.strokes.count,
@@ -198,9 +168,8 @@ struct TracingCanvasView: View {
                 }
             }
 
-            // Active-cell highlight: soft blue ring around the active cell
-            // in multi-cell layouts. Skipped for single-cell (ring around
-            // the whole canvas would be visual noise).
+            // Active-cell highlight in multi-cell layouts; a ring on a
+            // single-cell canvas would be visual noise.
             if cellCount > 1, activeIndex < frames.count, !vm.isCalibrating {
                 let activeFrame = frames[activeIndex].insetBy(dx: 2, dy: 2)
                 let ringPath = Path(roundedRect: activeFrame,
@@ -209,8 +178,7 @@ struct TracingCanvasView: View {
                                style: StrokeStyle(lineWidth: 3))
             }
 
-            // Progress bar: canvas-wide (one total for the whole sequence),
-            // not per cell. Identical to pre-grid for length-1.
+            // Canvas-wide progress (whole sequence).
             let clampedProgress = max(0, min(1, vm.progress))
             let trackRect = CGRect(x: 0, y: size.height - 8, width: size.width,                    height: 8)
             let fillRect  = CGRect(x: 0, y: size.height - 8, width: size.width * clampedProgress, height: 8)
@@ -244,13 +212,9 @@ struct TracingCanvasView: View {
                 }
             }
 
-            // Child's freeWrite path in green (lineWidth 4). Break
-            // the polyline at every stroke-start so multi-stroke
-            // letters (F, E, H, …) render as N disjoint strokes
-            // rather than one zig-zag with phantom diagonals
-            // bridging the lifts — that connected silhouette was
-            // what the child read as "the app is tracking my
-            // finger between strokes."
+            // Child's freeWrite path. Break at every stroke-start so
+            // multi-stroke letters (F, E, H) render as disjoint
+            // strokes instead of one zig-zag with phantom diagonals.
             let pts = vm.freeWritePath
             let breaks = vm.freeWriteStrokeStartIndices
             if pts.count > 1 {
@@ -276,8 +240,7 @@ struct TracingCanvasView: View {
         .background(.black.opacity(0.15))
         .contentShape(Rectangle())
         .onTapGesture { vm.overlayQueue.dismiss() }
-        // Auto-dismiss is owned by OverlayQueueManager (3 s default for
-        // .kpOverlay). The queue advances itself, so no local timer here.
+        // Auto-dismiss owned by OverlayQueueManager.
     }
 
     var body: some View {
@@ -294,41 +257,26 @@ struct TracingCanvasView: View {
             }
             .onAppear { vm.canvasSize = geo.size }
             .onChange(of: geo.size) { _, newSize in vm.canvasSize = newSize }
-            // Overlay ordering: UnifiedTouchOverlay BELOW (added
-            // first), PencilAwareCanvasOverlay ABOVE (added second).
-            // Pencil's `hitTest` returns self for pencil and nil
-            // otherwise, so finger touches fall through it to the
-            // unified overlay underneath; pencil touches land on
-            // pencil directly. This ordering means we don't need a
-            // matching pencil-rejecting hitTest on the unified
-            // overlay (which broke during SwiftUI's pre-touch
-            // hit-test pass when `event` is nil).
+            // Overlay ordering: UnifiedTouchOverlay below,
+            // PencilAwareCanvasOverlay above. Pencil's hitTest returns
+            // self for pencil and nil otherwise; finger touches fall
+            // through. A pencil-rejecting hitTest on the unified
+            // overlay broke SwiftUI's pre-touch pass where `event` is
+            // nil.
             .overlay(
-                // Finger tracing only: 1-finger → trace. Letter / audio /
-                // ghost navigation routed through the visible world-bar
-                // controls (MainAppView / SchuleWorldView) to avoid
-                // accidental palm-rest triggers for 5-year-olds.
-                //
-                // Disabled entirely in the direct phase: the VM's `beginTouch`
-                // already no-ops for .direct, and because this is a
-                // UIViewRepresentable its embedded UIView can swallow taps
-                // before the SwiftUI dots overlay above gets a chance to
-                // recognise them. `.allowsHitTesting(false)` removes it from
-                // hit-testing for the duration of Richtung-lernen so the
-                // numbered-dot tap gestures always win.
+                // Finger-only tracing. Disabled entirely during direct
+                // phase so the SwiftUI dots overlay's tap gestures win
+                // over the UIView's touch swallowing.
                 UnifiedTouchOverlay(
                     canvasSize: geo.size,
                     onSingleTouchBegan:  { pt, t in
-                        // Symmetrical with the pencil overlay — record
-                        // the finger touch for the detector's hysteresis
-                        // before routing into the tracing flow.
+                        // Feed the detector hysteresis before tracing.
                         vm.fingerDidTouchDown()
                         vm.beginTouch(at: pt, t: t)
                     },
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
                     onSingleTouchEnded:  { vm.endTouch() },
-                    // Two-finger vertical swipe cycles through the letter's
-                    // audio variants — up = next, down = previous.
+                    // Two-finger swipe cycles audio variants.
                     onTwoFingerSwipeUp:   { vm.nextAudioVariant() },
                     onTwoFingerSwipeDown: { vm.previousAudioVariant() }
                 )
@@ -338,9 +286,8 @@ struct TracingCanvasView: View {
                 PencilAwareCanvasOverlay(
                     canvasSize: geo.size,
                     onBegan:  { pt, t in
-                        // Feed the input-mode detector first so a pencil
-                        // session flips to the pencil preset before the
-                        // touch kicks off any grid-preset-dependent work.
+                        // Feed the detector first so the preset flips
+                        // before any grid-preset-dependent work runs.
                         vm.pencilDidTouchDown()
                         vm.beginTouch(at: pt, t: t)
                     },
@@ -352,16 +299,14 @@ struct TracingCanvasView: View {
                     onEnded:  { vm.endTouch() },
                     onPencilSqueeze: { vm.replayAudio() }
                 )
-                // Tracing input is suspended while calibrating so dragging a
-                // dot doesn't also fire proximity audio / stroke progress on
-                // the underlying tracker.
+                // Suspend tracing during calibration so a drag doesn't
+                // fire proximity audio on the underlying tracker.
                 .allowsHitTesting(!vm.isCalibrating)
             )
             .overlay(
                 Group {
-                    // Calibrator owns the numbered-dot visualization while
-                    // it's open; the direct-phase overlay would draw the
-                    // next-expected tap dot on top of it otherwise.
+                    // Calibrator owns the numbered-dot visualization;
+                    // hide the direct-phase overlay while it's open.
                     if vm.learningPhase == .direct, !vm.isCalibrating {
                         DirectPhaseDotsOverlay()
                     }
@@ -402,16 +347,9 @@ private struct TracingCanvasAccessibility: ViewModifier {
 
 // MARK: - Progress pill
 
-/// Verbal/visual progress capsule shown in the bottom-leading corner of
-/// the tracing canvas. Children at age 5–6 don't read percentages, so
-/// this renders a coloured fill bar (blue → yellow → green as progress
-/// rises) with **no number visible**. The numeric figure remains
-/// accessible to assistive tech and to engineering builds.
-/// Equatable so callers can wrap in `.equatable()` and SwiftUI skips
-/// body re-evaluation when neither `progress` nor
-/// `differentiateWithoutColor` changed. The pill re-renders on every
-/// `vm.*` change otherwise — most of which (audio state, recognition
-/// result, overlay queue, …) don't affect this view at all.
+/// Coloured progress capsule (blue → yellow → green); no visible
+/// number — 5–6 yr-olds don't read percentages. Equatable so SwiftUI
+/// skips body re-evaluation on unrelated VM changes.
 private struct ProgressPill: View, Equatable {
     let progress: CGFloat
     let differentiateWithoutColor: Bool
@@ -429,8 +367,7 @@ private struct ProgressPill: View, Equatable {
             }
             .frame(height: 8)
             #if DEBUG
-            // Engineering builds keep the numeric readout for tuning;
-            // children never see it because Release strips this branch.
+            // Numeric readout for tuning; Release strips this branch.
             Text("\(Int(p * 100))%")
                 .font(.caption2.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.primary)
@@ -445,38 +382,25 @@ private struct ProgressPill: View, Equatable {
             Capsule()
                 .stroke((differentiateWithoutColor ? Color.blue : tint).opacity(0.55), lineWidth: 1)
         )
-        // Status is communicated verbally through ChildSpeechLibrary on
-        // phase transitions; the pill is decorative for the canvas.
+        // Status is spoken via ChildSpeechLibrary; pill is decorative.
         .accessibilityHidden(true)
     }
 }
 
 // MARK: - Direct phase dot overlay
 
-/// Self-contained pulsing dot for the direct phase.
+/// Pulsing dot for the direct phase.
 ///
-/// Drives the scale via a 30 Hz `Timer.publish` rather than any of
-/// SwiftUI's animation primitives (`withAnimation`,
-/// `.animation(_:value:)`, `TimelineView`, `keyframeAnimator`).
-/// We tried each of those — none produced a visible pulse on iOS 26
-/// + Swift 6.2 with the package's `.defaultIsolation(MainActor.self)`
-/// setting, consistent with the regressions documented on Apple
-/// Developer Forums 805693 and Yago de Martín's "iOS 26 Animation
-/// Regression: @MainActor, Swift 6.2" article (2025). Direct state
-/// mutation triggers SwiftUI re-renders unconditionally, side-
-/// stepping the broken animation transaction path entirely.
+/// Driven by a 30 Hz `Timer.publish` because SwiftUI animation
+/// primitives (withAnimation, .animation(_:value:), TimelineView,
+/// keyframeAnimator) don't produce a visible pulse on iOS 26 + Swift
+/// 6.2 + `.defaultIsolation(MainActor.self)` — see project memory
+/// `feedback_swiftui_animation_regression`.
 ///
-/// Reduce Motion is intentionally NOT respected here: the breathing
-/// pulse is a functional attention cue for pre-readers (they can't
-/// read the dot's numeric label, so the pulse is the "tap me next"
-/// signal — without it, a 5-yr-old can scan past the dot). The
-/// 35 % scale range is small enough that motion-sensitive adult
-/// users in the parent area won't be affected; the dot only ever
-/// appears on the child-facing direct-phase canvas.
-///
-/// `emphasis` driver: when `true` (set by the VM after a wrong tap
-/// for ~700 ms), the pulse range expands to 1.0…1.55 so the correct
-/// dot reads as "look here" louder than the idle breathing.
+/// Reduce Motion intentionally NOT respected: the pulse is the
+/// functional "tap me next" cue for non-reading children. The 35%
+/// scale range is small enough that the parent area is unaffected.
+/// `emphasis` expands the range to 1.0…1.55 after a wrong tap.
 private struct PulsingDot: View {
     let isNext: Bool
     let isTapped: Bool
@@ -501,12 +425,11 @@ private struct PulsingDot: View {
             Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
         ) { date in
             guard isNext else { scale = 1.0; return }
-            // 1.2 s sine cycle on wall-clock time. Direct state
-            // mutation — no withAnimation, no keyframeAnimator.
+            // 1.2 s wall-clock sine cycle, direct state mutation.
             let t = date.timeIntervalSinceReferenceDate
-            let phase = (sin(t * .pi / 0.6) + 1) / 2       // 0…1
+            let phase = (sin(t * .pi / 0.6) + 1) / 2
             let amplitude: CGFloat = emphasis ? 0.55 : 0.35
-            scale = 1.0 + amplitude * CGFloat(phase)         // 1.0…1.35 (or 1.0…1.55 in emphasis)
+            scale = 1.0 + amplitude * CGFloat(phase)
         }
     }
 }
@@ -520,36 +443,18 @@ private struct DirectPhaseDotsOverlay: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Render ALL numbered start-dots so the testing-
-                // checklist 4.3 wrong-tap path is reachable: tap a
-                // dot that isn't the next-expected one → off-path
-                // haptic + the correct dot pulses harder. Tapped
-                // dots show green, the next-expected shows blue and
-                // breathes, others stay gray. ForEach order is
-                // stroke order, so when two dots share a glyph point
-                // (A's apex, F's corner) the higher-index one
-                // renders on top. After tapping dot 0 there, dot 1
-                // becomes next-expected (blue, pulsing) and sits
-                // visually above the green tapped dot 0 — readable
-                // even when stacked.
-                // W-24: in word mode the glyph rect must be computed
-                // against the active *cell*, not the whole canvas — the
-                // strokes are cell-local. Single-cell layouts (the default
-                // for every letter session) keep using `geo.size` and the
-                // canvas origin, so the path is unchanged for them.
+                // Render every numbered start-dot so wrong-tap path is
+                // reachable. Word-mode strokes are cell-local, so use
+                // the active cell frame; single-cell falls through to
+                // the whole canvas.
                 let cellFrame = vm.multiCellActiveFrame
                 ?? CGRect(origin: .zero, size: geo.size)
                 if let rawStrokes = vm.rawGlyphStrokes,
                    !rawStrokes.strokes.isEmpty {
                     let nextIdx = vm.directNextExpectedDotIndex
-                    // Render order: non-next dots first (bottom), then
-                    // the next-expected dot last (top). Many letters
-                    // have strokes that start at the same glyph point
-                    // (A's apex, F's top-left, M's two top peaks), so
-                    // when dot N is layered above dot N-1 at the same
-                    // position the user can't tap dot N-1. Putting the
-                    // next-expected dot on top guarantees the tap
-                    // gesture's hit-test reaches it first.
+                    // Render the next-expected dot last so its hit-test
+                    // wins when two dots share a glyph point (A apex,
+                    // F top-left, M peaks).
                     ForEach(Array(rawStrokes.strokes.enumerated()), id: \.offset) { idx, stroke in
                         if idx != nextIdx {
                             dotView(idx: idx,
@@ -571,20 +476,17 @@ private struct DirectPhaseDotsOverlay: View {
     @ViewBuilder
     private func dotView(idx: Int, stroke: StrokeDefinition, cellFrame: CGRect) -> some View {
         if let first = stroke.checkpoints.first {
-            // Stroke checkpoints are canvas-relative (0..1 of the
-            // cellFrame). Offset by cellFrame origin so word-mode
-            // (multi-cell) draws the dot in the active cell instead of
-            // the canvas origin.
+            // Checkpoints are 0..1 of cellFrame; offset to canvas
+            // coords so word-mode draws in the active cell.
             let screenX = cellFrame.minX + first.x * cellFrame.width
             let screenY = cellFrame.minY + first.y * cellFrame.height
             let isTapped = vm.directTappedDots.contains(idx)
             let isNext   = !isTapped && idx == vm.directNextExpectedDotIndex
             let r: CGFloat = isNext ? 22 : 18
-            // `.onTapGesture` must sit BEFORE `.position` — `.position` expands the
-            // modified view to the full parent frame, so a gesture attached after
-            // would hit-test the entire canvas. With multiple dots stacked via
-            // ForEach, only the top-most (last) dot's handler would then fire for
-            // every tap, leaving multi-stroke letters unable to advance.
+            // `.onTapGesture` MUST come before `.position` — `.position`
+            // expands the view to the parent frame, so a later-attached
+            // gesture hit-tests the whole canvas and only the top-most
+            // dot's handler fires.
             PulsingDot(isNext: isNext,
                        isTapped: isTapped,
                        emphasis: isNext && vm.directPulsingDot,
@@ -592,10 +494,8 @@ private struct DirectPhaseDotsOverlay: View {
                        radius: r)
                 .contentShape(Circle())
                 .onTapGesture {
-                    // Wrap so the .id(idx) transition (outgoing dot
-                    // scales up + fades, incoming scales in) runs.
-                    // The VM doesn't import SwiftUI, so the animation
-                    // transaction lives here at the call site.
+                    // Animation transaction lives at the call site —
+                    // the VM doesn't import SwiftUI.
                     withAnimation(reduceMotion ? nil : .easeOut(duration: 0.55)) {
                         vm.tapDirectDot(index: idx)
                     }
@@ -608,10 +508,8 @@ private struct DirectPhaseDotsOverlay: View {
 }
 
 // MARK: - Unified touch overlay
-// 1-finger tracing only. Letter/audio/ghost navigation moved to the visible
-// world-bar controls (MainAppView / SchuleWorldView) — 2-finger pan / tap
-// / 3-finger tap caused too many accidental triggers for 5-year-olds
-// resting a palm on the iPad.
+// 1-finger tracing only; letter/audio/ghost nav moved to world-bar
+// controls so palm rests don't trigger them.
 
 private struct UnifiedTouchOverlay: UIViewRepresentable {
     let canvasSize: CGSize
@@ -635,9 +533,7 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
     func makeUIView(context: Context) -> TouchView {
         let view = TouchView(coordinator: context.coordinator)
         view.backgroundColor        = .clear
-        // Multi-touch on so the pan-gesture recognizer below can see the
-        // second finger. The touches* handlers still gate on single-finger
-        // state so tracing isn't disturbed.
+        // Multi-touch on so the 2-finger pan recognizer fires.
         view.isMultipleTouchEnabled = true
         let pan = UIPanGestureRecognizer(
             target: context.coordinator,
@@ -645,8 +541,7 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         )
         pan.minimumNumberOfTouches = 2
         pan.maximumNumberOfTouches = 2
-        // Don't eat the 1-finger trace that may already be in progress when
-        // a 2-finger swipe begins.
+        // Don't eat an in-progress 1-finger trace.
         pan.cancelsTouchesInView = false
         pan.delegate = context.coordinator
         view.addGestureRecognizer(pan)
@@ -665,16 +560,10 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         }
         required init?(coder: NSCoder) { fatalError() }
 
-        // No hitTest override: this view accepts every touch by
-        // default. Pencil routing instead relies on the overlay
-        // ordering — `PencilAwareCanvasOverlay` sits ABOVE this view
-        // and rejects non-pencil at its own hitTest, so finger
-        // touches fall through to here while pencil touches land on
-        // the pencil overlay first. (A hitTest override that
-        // returned nil for pencil broke the SwiftUI pre-touch
-        // hit-test pass — `event` is nil in that pass, so the override
-        // returned nil for everything and silently swallowed all
-        // input.)
+        // No hitTest override: pencil routing relies on overlay
+        // ordering (PencilAwareCanvasOverlay sits above and rejects
+        // non-pencil). A hitTest override broke SwiftUI's pre-touch
+        // pass where `event` is nil.
 
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             coordinator.touchesBegan(touches, with: event, in: self)
@@ -740,9 +629,8 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             case .began, .possible:
                 twoFingerSwipeFired = false
             case .changed:
-                // Fire once per gesture as soon as the translation crosses
-                // the threshold so the user gets immediate feedback without
-                // having to lift fingers first.
+                // Fire once per gesture on threshold crossing so the
+                // user doesn't have to lift fingers first.
                 guard !twoFingerSwipeFired, let view = gesture.view else { return }
                 let dy = gesture.translation(in: view).y
                 let threshold: CGFloat = 50
@@ -760,9 +648,8 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             }
         }
 
-        // Let the pan recognizer coexist with the single-touch event
-        // pipeline; they operate on disjoint touch counts (1 vs 2) so
-        // allowing simultaneous recognition can't introduce conflicts.
+        // 1-finger and 2-finger gestures are disjoint, so simultaneous
+        // recognition can't conflict.
         func gestureRecognizer(
             _ gestureRecognizer: UIGestureRecognizer,
             shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
@@ -779,9 +666,8 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let onBegan:  (CGPoint, CFTimeInterval) -> Void
     let onMoved:  (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
     let onEnded:  () -> Void
-    /// Apple Pencil 2 squeeze handler. Replays the letter audio so a
-    /// child writing one-handed can hear it again without lifting the
-    /// pencil. nil on devices that don't expose `UIPencilInteraction`.
+    /// Apple Pencil 2 squeeze handler — replays letter audio.
+    /// nil on devices without `UIPencilInteraction`.
     let onPencilSqueeze: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -817,9 +703,8 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
             self.onPencilSqueeze = onPencilSqueeze
         }
 
-        // U5: legacy double-tap callback (Pencil 2 default action).
-        // Mapped to the same "replay audio" intent as squeeze so users
-        // on either gesture get the same outcome.
+        // Pencil 2 double-tap maps to the same "replay audio" intent
+        // as the squeeze so either gesture produces the same outcome.
         func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
             onPencilSqueeze?()
         }
@@ -830,9 +715,7 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
         var canvasSize: CGSize = .zero
         private var pencilInteraction: UIPencilInteraction?
 
-        /// U5: lazily install a UIPencilInteraction the first time the
-        /// view appears in a window. Safe to call multiple times — only
-        /// the first install actually adds the interaction.
+        /// Lazily install a UIPencilInteraction; safe to call repeatedly.
         func installPencilInteraction() {
             guard pencilInteraction == nil else { return }
             let interaction = UIPencilInteraction()
@@ -846,8 +729,8 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
             return touch.type == .pencil ? self : nil
         }
 
-        // UIKit pencil callbacks are delivered on the main thread.
-        // Direct dispatch — no DispatchQueue.main.async hop needed or wanted.
+        // Pencil callbacks are delivered on the main thread; no hop
+        // needed.
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard let t = touches.first, t.type == .pencil else { return }
             coordinator?.onBegan(t.location(in: self), t.timestamp)

@@ -1,11 +1,9 @@
 // AppWorld.swift
 // PrimaeNative
 //
-// Top-level navigation model for the three-world UI. Each world is a
-// full-screen environment; a persistent 64pt rail on the left edge of
-// the screen lets the child switch between them. Settings and research
-// features live behind a parental gate (see ParentAreaView) and are
-// never reachable from these enum cases.
+// Top-level navigation for the three-world child UI. The world-
+// switcher rail flips between cases. Parent / research surfaces live
+// behind a parental gate and aren't reachable from this enum.
 
 import Foundation
 

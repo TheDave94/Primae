@@ -1,11 +1,8 @@
-//  OverlayQueueManagerTests.swift
-//  PrimaeNativeTests
-//
-//  Coverage for the overlay scheduler that serialises post-freeWrite
-//  feedback (KP overlay, recognition badge, paper transfer, celebration).
-//  Pins the canonical ordering rules — especially `enqueueBeforeCelebration`
-//  which lets a late-arriving CoreML recognition badge slot ahead of an
-//  already-queued celebration without resetting the queue.
+// Coverage for the overlay scheduler that serialises post-freeWrite
+// feedback (KP overlay, recognition badge, paper transfer, celebration).
+// Pins the canonical ordering rules — especially `enqueueBeforeCelebration`
+// which lets a late-arriving CoreML recognition badge slot ahead of an
+// already-queued celebration without resetting the queue.
 
 import Testing
 import Foundation
@@ -67,12 +64,11 @@ private func sampleResult(_ predicted: String = "A",
         q.enqueue(.kpOverlay)
         q.enqueue(.paperTransfer(letter: "B"))
         q.enqueue(.celebration(stars: 3))
-        // Late-arriving badge: must sit ahead of both `paperTransfer`
-        // and `celebration` so the canonical order is preserved
+        // Late-arriving badge must sit ahead of both `paperTransfer` and
+        // `celebration` so the canonical order is preserved
         // (kpOverlay → recognitionBadge → paperTransfer → celebration).
-        // Inserting only ahead of `celebration` would push the badge
-        // past the paper-transfer self-assessment and break the
-        // recognition feedback's pre-paper position (review item W-25).
+        // Inserting only ahead of `celebration` would push the badge past
+        // the paper-transfer self-assessment.
         q.enqueueBeforeCelebration(.recognitionBadge(sampleResult("B")))
         #expect(q.currentOverlay == .kpOverlay)
         q.dismiss()
@@ -99,11 +95,11 @@ private func sampleResult(_ predicted: String = "A",
         #expect(q.pendingCount == 0)
     }
 
-    /// Round-3 test-audit gap (C-4 branch): when CoreML inference
-    /// finishes after the celebration is already the active overlay,
-    /// the badge must interrupt — push the celebration back to position
-    /// 0 in the queue, become the new currentOverlay, and let the queue
-    /// resume to the celebration after the badge auto-advances.
+    /// When CoreML inference finishes after the celebration is already
+    /// the active overlay, the badge must interrupt — push the celebration
+    /// back to position 0 in the queue, become the new currentOverlay,
+    /// and let the queue resume to the celebration after the badge
+    /// auto-advances.
     @Test func enqueueBeforeCelebration_whenCelebrationAlreadyActive() {
         let q = OverlayQueueManager()
         q.enqueue(.celebration(stars: 2))
@@ -117,11 +113,10 @@ private func sampleResult(_ predicted: String = "A",
         #expect(q.currentOverlay == .celebration(stars: 2))
     }
 
-    /// W-25 follow-up: same interrupt path when paperTransfer is the
-    /// already-active modal. Badge must come ahead of paperTransfer so
-    /// the canonical post-freeWrite order
-    /// (kpOverlay → recognitionBadge → paperTransfer → celebration) is
-    /// preserved no matter how late inference returns.
+    /// Same interrupt path when paperTransfer is the already-active modal.
+    /// Badge must come ahead of paperTransfer so the canonical
+    /// post-freeWrite order (kpOverlay → recognitionBadge → paperTransfer
+    /// → celebration) is preserved no matter how late inference returns.
     @Test func enqueueBeforeCelebration_whenPaperTransferAlreadyActive() {
         let q = OverlayQueueManager()
         q.enqueue(.paperTransfer(letter: "Z"))

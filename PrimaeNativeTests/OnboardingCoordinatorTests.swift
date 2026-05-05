@@ -1,6 +1,3 @@
-//  OnboardingCoordinatorTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 @testable import PrimaeNative

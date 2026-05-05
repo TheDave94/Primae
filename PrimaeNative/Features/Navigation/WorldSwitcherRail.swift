@@ -1,10 +1,9 @@
 // WorldSwitcherRail.swift
 // PrimaeNative
 //
-// 64pt-wide vertical rail pinned to the leading edge of MainAppView.
-// Three large icons (44×44) select the current world; a gear at the
-// bottom opens ParentAreaView, but only after a 2-second long press so
-// a 5-year-old can't reach it by accident.
+// 64pt vertical rail. Three world icons; gear at the bottom opens
+// `ParentAreaView` after a 2-second long press so a 5-year-old can't
+// reach it by accident.
 
 import SwiftUI
 
@@ -13,10 +12,9 @@ struct WorldSwitcherRail: View {
     @Binding var activeWorld: AppWorld
     @Binding var showParentArea: Bool
 
-    /// Progress 0…1 of the in-flight gear long-press. Drives the ring
-    /// that fills around the gear icon while the parent holds it down.
+    /// 0…1 progress of the in-flight gear long-press.
     @State private var gearHoldProgress: Double = 0
-    /// Fixed 2-second window required to open the parent area.
+    /// Hold duration required to open the parent area.
     private let gearHoldSeconds: Double = 2.0
 
     var body: some View {
@@ -106,9 +104,8 @@ struct WorldSwitcherRail: View {
         n > 99 ? "99+" : "\(n)"
     }
 
-    /// Total stars earned across all letters. Sums each letter's
-    /// quality-gated star count so the badge agrees with the celebration
-    /// overlay and the letter gallery.
+    /// Sum of quality-gated star counts across letters — keeps the
+    /// badge in agreement with the celebration overlay and gallery.
     private var starTotal: Int {
         vm.allProgress.values.reduce(0) { acc, prog in
             acc + LetterStars.stars(for: prog.phaseScores)
@@ -133,9 +130,8 @@ struct WorldSwitcherRail: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(Color.inkSoft)
         }
-        // 44×44 ring + a 4pt invisible padding on each side gives a 48pt
-        // hit area, matching iOS HIG for primary nav while leaving the
-        // visible gear at its prior size.
+        // 44×44 visible ring + 4 pt invisible padding = 48 pt hit
+        // area (iOS HIG primary-nav minimum).
         .frame(width: 48, height: 48)
         .contentShape(Rectangle())
         .onLongPressGesture(

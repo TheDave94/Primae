@@ -1,6 +1,3 @@
-//  ProgressStoreTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 @testable import PrimaeNative
@@ -98,9 +95,6 @@ import Foundation
         await store.flush()
         #expect(JSONProgressStore(fileURL: tempURL).totalCompletions == 0)
     }
-    // Streak math now lives on JSONStreakStore — see StreakStoreTests.
-    // Removed `streak_*` cases that exercised the deleted
-    // `JSONProgressStore.currentStreakDays` accessor (review item W-9).
     @Test func recordCompletion_withPhaseScores_persistsAndLoads() async {
         let scores: [String: Double] = ["observe": 1.0, "guided": 0.85, "freeWrite": 0.72]
         store.recordCompletion(for: "Q", accuracy: 0.85, phaseScores: scores)
@@ -125,13 +119,12 @@ import Foundation
         #expect(!all.keys.contains("Q"))
     }
 
-    // MARK: - speedTrend cap (D-4)
+    // MARK: - speedTrend cap
 
     @Test func speedTrend_capsAtFiftyEntries() {
-        // D-4 raised the cap from 5 to 50 so the thesis export has the
-        // full automatisation trajectory. The scheduler's
-        // `automatizationBonus` only reads halves so longer histories
-        // don't distort the bonus.
+        // The thesis export needs the full automatisation trajectory; the
+        // scheduler's `automatizationBonus` only reads halves so longer
+        // histories don't distort the bonus.
         let speeds: [Double] = (0..<60).map { Double($0) * 0.1 + 0.1 }
         for s in speeds {
             store.recordCompletion(for: "S", accuracy: 0.9,
@@ -153,11 +146,11 @@ import Foundation
         #expect(store.progress(for: "T").speedTrend == [1.5])
     }
 
-    // MARK: - Round-3 audit gap: paperTransfer + variant round-trip
+    // MARK: - paperTransfer + variant round-trip
 
-    /// Round-3 test-audit gap: `recordPaperTransferScore` was untested
-    /// for round-trip persistence — a regression that nil'd the field
-    /// could ship without breaking any test.
+    /// Round-trip persistence for `recordPaperTransferScore` — a
+    /// regression that nil'd the field would otherwise ship without
+    /// breaking any test.
     @Test func recordPaperTransferScore_persistsAndReloads() async {
         store.recordPaperTransferScore(for: "P", score: 0.5)
         #expect(store.progress(for: "P").paperTransferScore == 0.5)
@@ -183,7 +176,7 @@ import Foundation
         #expect(again.progress(for: "G").lastVariantUsed == nil)
     }
 
-    // MARK: - Recognition samples (F1)
+    // MARK: - Recognition samples
 
     @Test func recordCompletion_storesFullRecognitionSample() {
         let result = RecognitionResult(

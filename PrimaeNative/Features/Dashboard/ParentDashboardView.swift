@@ -99,11 +99,9 @@ struct ParentDashboardView: View {
     }
 
     /// Per-dimension Schreibmotorik breakdown (Form / Tempo / Druck /
-    /// Rhythmus). The composite percentage in `ubersichtSection` is a
-    /// 40/25/15/20 weighted blend of these four; surfacing each one
-    /// individually lets parents see which motor-skill dimension a
-    /// child is strong or weak in. Only emitted once at least one
-    /// completed freeWrite session has produced dimension data.
+    /// Rhythmus). Composite in `ubersichtSection` is a 40/25/15/20
+    /// weighted blend; emitted once a completed freeWrite session
+    /// has produced dimension data.
     @ViewBuilder
     private var schreibqualitaetDetailsSection: some View {
         if let dims = snapshot.averageWritingDimensions {
@@ -124,9 +122,8 @@ struct ParentDashboardView: View {
         }
     }
 
-    /// Pull the last 5 non-nil values for a single Schreibmotorik
-    /// dimension across all completed freeWrite phase records so the
-    /// row can render a small trend sparkline next to the average.
+    /// Last 5 non-nil values for a single Schreibmotorik dimension
+    /// across completed freeWrite records, for the trend sparkline.
     private func dimensionTrend(_ keyPath: KeyPath<PhaseSessionRecord, Double?>) -> [Double] {
         snapshot.phaseSessionRecords
             .filter { $0.phase == "freeWrite" && $0.completed }
@@ -153,18 +150,14 @@ struct ParentDashboardView: View {
                 .progressViewStyle(.linear)
         }
         .padding(.vertical, 2)
-        // Collapse the row into one VoiceOver element so the
-        // dimension label, percentage, and progress bar read as a
-        // single phrase ("Form, 78 Prozent") rather than three focus
-        // stops. Sparkline is hidden above.
+        // Collapse into one VoiceOver element so the row reads as a
+        // single phrase rather than three focus stops.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(label), \(pct) Prozent")
     }
 }
 
-/// Minimal inline sparkline. Renders a polyline over the supplied
-/// 0–1 values, scaled to fit the assigned frame. Single-value series
-/// fall through; the row caller already gates on `count >= 2`.
+/// Inline sparkline over 0–1 values. Caller gates on `count >= 2`.
 private struct Sparkline: View, Equatable {
     let values: [Double]
     var body: some View {
@@ -277,8 +270,8 @@ extension ParentDashboardView {
 
     #if DEBUG
     private var forschungsmetrikenSection: some View {
-        // Debug-only: research-internal correlations the parent has no use
-        // for. Toggled via vm.showDebug (long-press on the phase indicator).
+        // Debug-only research-internal correlations. Toggled via
+        // vm.showDebug (long-press on the phase indicator).
         Section("Forschungsmetriken (Debug)") {
             LabeledContent("Scheduler-Effektivität (r)") {
                 Text(String(format: "%.3f", snapshot.schedulerEffectivenessProxy))
@@ -351,8 +344,7 @@ extension ParentDashboardView {
 
 private struct LetterStatRow: View {
     let stat: LetterAccuracyStat
-    /// Per-phase mean scores for this letter, keyed by LearningPhase.rawName.
-    /// Empty when the child hasn't completed any phase sessions yet.
+    /// Per-phase mean scores keyed by `LearningPhase.rawName`.
     let phaseScores: [String: Double]
 
     var body: some View {
@@ -385,8 +377,7 @@ private struct LetterStatRow: View {
         .padding(.vertical, 2)
     }
 
-    /// One-letter abbreviation shown inside a chip. Uppercase initial of the
-    /// phase's `displayName` keeps the chip compact; the full name is in the
+    /// One-letter chip abbreviation. Full name is in the
     /// accessibilityLabel so VoiceOver still reads it out.
     private func abbreviation(for phase: LearningPhase) -> String {
         switch phase {

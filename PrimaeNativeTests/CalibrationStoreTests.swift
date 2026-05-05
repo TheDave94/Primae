@@ -1,6 +1,3 @@
-// CalibrationStoreTests.swift
-// PrimaeNativeTests
-//
 // Direct tests for CalibrationStore's cache + disk I/O semantics. The
 // negative-result memoization relies on `Dictionary.updateValue(_:forKey:)`
 // because `dict[key] = nil` removes the key for Optional-valued dicts —

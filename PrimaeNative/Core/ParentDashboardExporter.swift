@@ -4,10 +4,8 @@ import Foundation
 
 enum DashboardExportFormat {
     case csv
-    /// Tab-separated variant of `csv`. SPSS, R, and most stat tools
-    /// import TSV without escape-quoting confusion when the dataset
-    /// happens to contain commas, so a TSV export is offered alongside
-    /// the canonical CSV.
+    /// Tab-separated variant of `csv`. SPSS / R import TSV without the
+    /// escape-quoting confusion CSVs hit on comma-bearing fields.
     case tsv
     case json
 }
@@ -27,11 +25,10 @@ struct ParentDashboardExporter {
 
     // MARK: CSV / TSV
 
-    /// Produces a UTF-8 CSV with a `# participantId=...` header, one row per
-    /// letter, per-session durations (with condition), per-phase records
-    /// (with condition), and the aggregate thesis metrics.
-    /// Consumers doing A/B analysis need the participantId header to align
-    /// data across installs and the condition column on every session row.
+    /// Produces a UTF-8 CSV with a `# participantId=...` header, one
+    /// row per letter, per-session durations, per-phase records, and
+    /// aggregate thesis metrics. The participantId header lets A/B
+    /// analysis align data across installs.
     static func csvData(from snapshot: DashboardSnapshot,
                          participantId: UUID = ParticipantStore.participantId,
                          progress: [String: LetterProgress] = [:],
@@ -40,9 +37,7 @@ struct ParentDashboardExporter {
                        progress: progress, enrolledAt: enrolledAt, separator: ",")
     }
 
-    /// Tab-separated variant of `csvData`. Same row layout, fewer
-    /// import-time escaping headaches in SPSS / R for datasets that
-    /// happen to contain commas.
+    /// Tab-separated variant of `csvData`. Same row layout.
     static func tsvData(from snapshot: DashboardSnapshot,
                          participantId: UUID = ParticipantStore.participantId,
                          progress: [String: LetterProgress] = [:],
@@ -51,9 +46,8 @@ struct ParentDashboardExporter {
                        progress: progress, enrolledAt: enrolledAt, separator: "\t")
     }
 
-    /// Shared row builder behind csvData / tsvData. Keeping a single
-    /// implementation guarantees both formats stay in lock-step on
-    /// columns and dimension precision.
+    /// Shared row builder behind csvData / tsvData. Single
+    /// implementation keeps both formats in lock-step on columns.
     private static func delimitedData(
         from snapshot: DashboardSnapshot,
         participantId: UUID,
@@ -63,34 +57,22 @@ struct ParentDashboardExporter {
     ) -> Data {
         var lines: [String] = []
         lines.append("# participantId=\(participantId.uuidString)")
-        // Surface the enrolment timestamp so downstream consumers can
-        // reproduce the exporter's pre-enrollment filtering rule and
-        // audit which records were skipped at export time.
+        // Enrolment timestamp lets consumers reproduce the
+        // pre-enrollment filtering rule and audit skipped records.
         if let enrolledAt {
             lines.append("# enrolledAt=\(ISO8601DateFormatter().string(from: enrolledAt))")
         }
-        // Timezone identifier alongside the offset-carrying ISO-8601
-        // timestamps — analyst-facing label for cross-timezone /
-        // DST-aware interpretation.
+        // Timezone label for cross-timezone / DST-aware interpretation.
         lines.append("# timezone=\(TimeZone.current.identifier)")
         let isoFormatter = ISO8601DateFormatter()
         lines.append("")
 
-        // Letter-aggregate row schema:
-        //   speedTrend            — semicolon-joined per-letter writing-
-        //                           speed series the scheduler uses for
-        //                           the automatisation bonus.
-        //   freeformCompletionCount — blank-canvas recognition completions
-        //                           tracked separately from guided
-        //                           mastery so analysis can distinguish
-        //                           exploration from gradual-release
-        //                           learning. Empty for letters never
-        //                           written in freeform mode.
-        //   retrievalAccuracy     — rolling mean of
-        //                           `LetterProgress.retrievalAttempts`
-        //                           (cap 10). Empty when the parent
-        //                           hasn't enabled the Erinnerungstest
-        //                           or for letters never tested.
+        // Letter-aggregate columns:
+        //   speedTrend — semicolon-joined per-letter writing-speed
+        //                series feeding the automatisation bonus.
+        //   freeformCompletionCount — blank-canvas completions tracked
+        //                separately from guided mastery.
+        //   retrievalAccuracy — rolling mean of retrievalAttempts (cap 10).
         lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount","retrievalAccuracy"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
@@ -115,12 +97,10 @@ struct ParentDashboardExporter {
         }
         lines.append("")
 
-        // D-9: emit the full ISO-8601 timestamp alongside the day-level
-        // dateString so the analysis can recover time-of-day signal
-        // (morning vs evening practice). T4 adds wallClockSeconds (total
-        // wall-clock time including backgrounded intervals) so the
-        // engagement-vs-practice split is recoverable. T7 adds
-        // inputDevice. Legacy rows emit empty strings for new columns.
+        // Full ISO-8601 timestamp alongside day-level dateString lets
+        // analysis recover time-of-day signal. wallClockSeconds covers
+        // backgrounded intervals so engagement-vs-practice is
+        // recoverable. Legacy rows emit empty strings for new columns.
         lines.append(["date","recordedAt","durationSeconds","wallClockSeconds","condition","inputDevice"].joined(separator: sep))
         for rec in snapshot.sessionDurations.sorted(by: { $0.dateString < $1.dateString }) {
             let recordedAtField = rec.recordedAt.map { isoFormatter.string(from: $0) } ?? ""
@@ -132,32 +112,21 @@ struct ParentDashboardExporter {
         }
         lines.append("")
 
-        // Per-phase records gain four Schreibmotorik dimensions
-        // (formAccuracy, tempoConsistency, pressureControl, rhythmScore)
-        // alongside the recognition columns so SPSS / R / pandas imports
-        // can analyse each motor-skill dimension independently. The
-        // dimensions are non-null only on freeWrite rows — see
-        // PhaseSessionRecord.init — so observe / direct / guided rows
-        // emit empty strings for them.
-        // D-3 adds `recordedAt`; D-2 reverses W-2's blank-column workaround
-        // because `PhaseSessionRecord` now carries session-aligned
-        // recognition fields. Legacy rows (pre-D-2/D-3) decode the new
-        // fields as nil and emit empty strings, which is what
-        // downstream tooling already handles.
-        // D-6: `inputDevice` ("finger"/"pencil") so a `pressureControl == 1.0`
-        // row is distinguishable from a real low-variance pencil session.
-        // T5: `recognition_confidence_raw` is the pre-calibration softmax
-        // probability so the thesis can quantify the calibrator's effect
-        // on classification decisions.
+        // Per-phase rows carry the four Schreibmotorik dimensions
+        // (formAccuracy / tempoConsistency / pressureControl /
+        // rhythmScore) — non-null only for freeWrite rows. Legacy
+        // rows decode the new fields as nil and emit empty strings.
+        // `inputDevice` ("finger" / "pencil") distinguishes a true
+        // finger session from a low-variance pencil session.
+        // `recognition_confidence_raw` is the pre-calibration softmax
+        // probability, used to quantify the calibrator's effect.
         lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice"].joined(separator: sep))
         for rec in snapshot.phaseSessionRecords {
-            // D-7: discard rows recorded before this install joined the
-            // study so pilot / sandbox / pre-enrolment activity isn't
-            // silently attributed to the assigned thesis arm.
-            // D-8: also discard rows that pre-date `recordedAt` itself
-            // when an `enrolledAt` exists — we can't prove they were
-            // post-enrolment, and the decoder defaulted their condition
-            // to `.threePhase`, which would silently inflate that arm.
+            // Discard rows from before enrolment so pilot/sandbox
+            // activity isn't attributed to the assigned arm. Also
+            // discard rows lacking `recordedAt` when an `enrolledAt`
+            // exists — they default to `.threePhase` and would
+            // silently inflate that arm.
             if let enrolledAt {
                 if let ts = rec.recordedAt {
                     if ts < enrolledAt { continue }
@@ -188,8 +157,8 @@ struct ParentDashboardExporter {
 
         lines.append(["metric","value"].joined(separator: sep))
         let rates = snapshot.phaseCompletionRates
-        // Iterate LearningPhase.allCases so Richtung-lernen (direct) is
-        // exported alongside the other three phases — prior versions dropped it.
+        // Iterate LearningPhase.allCases so every phase, including
+        // `direct`, lands in the export.
         for phase in LearningPhase.allCases.map(\.rawName) {
             if let rate = rates[phase] {
                 lines.append(["phaseCompletionRate_\(phase)", String(format: "%.4f", rate)].joined(separator: sep))
@@ -197,12 +166,10 @@ struct ParentDashboardExporter {
         }
         lines.append(["averageFreeWriteScore", String(format: "%.4f", snapshot.averageFreeWriteScore)].joined(separator: sep))
         lines.append(["schedulerEffectivenessProxy", String(format: "%.4f", snapshot.schedulerEffectivenessProxy)].joined(separator: sep))
-        // D-7 / D-10: per-condition aggregates so a between-arm comparison
-        // doesn't have to back out the mixed-condition contamination from
-        // the overall figures above. The proxy is meaningful only inside
-        // an arm — `.control` uses `-completionCount` priorities, which
-        // share no scale with the Ebbinghaus priorities the other arms
-        // emit, so the cross-arm proxy is invalid by construction.
+        // Per-condition aggregates so between-arm comparisons don't
+        // have to back out cross-arm contamination. The proxy is
+        // meaningful only inside an arm — `.control` uses a different
+        // priority scale, so the cross-arm proxy is invalid.
         for arm in ThesisCondition.allCases {
             let armRecords = snapshot.phaseSessionRecords.filter { $0.condition == arm }
             let freeWrite = armRecords.filter { $0.phase == "freeWrite" && $0.completed }.map(\.score)
@@ -210,9 +177,8 @@ struct ParentDashboardExporter {
                 let avg = freeWrite.reduce(0, +) / Double(freeWrite.count)
                 lines.append(["averageFreeWriteScore_\(arm.rawValue)", String(format: "%.4f", avg)].joined(separator: sep))
             }
-            // Per-arm proxy: same Pearson formula as `schedulerEffectivenessProxy`,
-            // restricted to one condition. Skipped when the arm has fewer
-            // than 2 letter pairs to correlate.
+            // Per-arm proxy: same Pearson as `schedulerEffectivenessProxy`,
+            // restricted to one condition. Skipped under 2 pairs.
             var pairs: [(priority: Double, delta: Double)] = []
             let lettersInArm = Set(armRecords.map(\.letter))
             for letter in lettersInArm {
@@ -238,13 +204,12 @@ struct ParentDashboardExporter {
                 }
             }
         }
-        // D-5: per-letter accuracy aggregates split by thesis arm.
-        // `letterStats.accuracySamples` is a flat array with no
-        // condition tag, so the per-letter `averageAccuracy` row above
-        // mixes arms. Recompute the same aggregate from
-        // `phaseSessionRecords` (which DO carry condition) so a
-        // between-arm letter-level analysis has a clean source.
-        // Format: `letterByArm,letter,arm,sampleCount,averageScore`.
+        // Per-letter accuracy aggregates split by thesis arm. The
+        // letter-row `averageAccuracy` above mixes arms because
+        // `letterStats.accuracySamples` carries no condition tag;
+        // `phaseSessionRecords` does, so it gives a clean per-arm
+        // letter-level source. Format:
+        // `letterByArm,letter,arm,sampleCount,averageScore`.
         lines.append(["letterByArm","letter","arm","sampleCount","averageScore"].joined(separator: sep))
         let phaseByArm = Dictionary(grouping: snapshot.phaseSessionRecords.filter(\.completed), by: { $0.condition })
         for arm in ThesisCondition.allCases {
@@ -257,8 +222,8 @@ struct ParentDashboardExporter {
             }
         }
         // Aggregate Schreibmotorik dimensions across all completed
-        // freeWrite sessions. Only emitted when at least one session
-        // contributed — pre-V3 installs never see these rows.
+        // freeWrite sessions. Emitted only when at least one session
+        // contributed.
         if let dims = snapshot.averageWritingDimensions {
             lines.append(["averageFormAccuracy", String(format: "%.4f", dims.form)].joined(separator: sep))
             lines.append(["averageTempoConsistency", String(format: "%.4f", dims.tempo)].joined(separator: sep))
@@ -270,10 +235,8 @@ struct ParentDashboardExporter {
 
     // MARK: JSON
 
-    /// Produces pretty-printed JSON of the full ``DashboardSnapshot`` plus
-    /// thesis metrics, the stable `participantId` needed for cross-install
-    /// A/B analysis, and the per-letter progress entries (recognition
-    /// samples, speed trend, paper-transfer assessments).
+    /// Pretty-printed JSON of the full snapshot plus thesis metrics,
+    /// `participantId`, and per-letter progress entries.
     static func jsonData(from snapshot: DashboardSnapshot,
                           participantId: UUID = ParticipantStore.participantId,
                           progress: [String: LetterProgress] = [:]) throws(ExportError) -> Data {

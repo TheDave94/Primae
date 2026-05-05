@@ -1,11 +1,8 @@
-// GlyphStrokeExtractorTests.swift
-// PrimaeNativeTests
-//
 // Direct coverage for the algorithmic core of GlyphStrokeExtractor (path
-// flattening, horizontal ray-casting, stroke connection, polyline resampling).
-// Drives the helpers with synthetic CGPaths and centers grids — bypasses the
-// font-availability requirement that makes the public extractStrokes() bail
-// out in the headless test process.
+// flattening, horizontal ray-casting, stroke connection, polyline
+// resampling). Drives the helpers with synthetic CGPaths — bypasses the
+// font-availability requirement that makes extractStrokes() bail out in
+// the headless test process.
 
 import Testing
 import Foundation
@@ -21,10 +18,9 @@ import CoreGraphics
     }
 
     @Test func extractStrokes_inTestEnvironment_returnsNil() {
-        // The extractor explicitly bails when XCTestCase is loaded so the
-        // unit-test process never exercises CoreText font rendering. This
-        // pins that contract — a future change that removes the guard
-        // surfaces here so the team can decide intentionally.
+        // The extractor bails when XCTestCase is loaded so the unit-test
+        // process never exercises CoreText font rendering. Removing the
+        // guard would surface here so the team can decide intentionally.
         #expect(GlyphStrokeExtractor.extractStrokes(for: "A") == nil)
     }
 

@@ -10,25 +10,19 @@ public final class TracingViewModel {
     // MARK: - Public observable state
 
     var showGhost           = false
-    /// True = picker shows every letter the bundle ships. False = limit
-    /// to the 7 demo letters (A, F, I, K, L, M, O) used in the thesis
-    /// pilot. Defaults true now so the full alphabet is reachable; the
-    /// flag stays so a future "thesis demo" mode can re-enable the
-    /// reduced set without re-introducing the filter logic.
+    /// True shows every bundled letter; false limits to the 7 demo
+    /// letters (A, F, I, K, L, M, O). Default true; flag remains for a
+    /// future "thesis demo" mode.
     var showAllLetters      = true
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
     var showDebug           = false
-    /// When true, the stroke-calibration overlay takes focus and the other
-    /// debug panels (audio tuning, letter picker) are hidden so they don't
-    /// sit on top of the calibrator's mode / add-stroke / save controls.
-    /// Only meaningful while `showDebug` is also true.
+    /// Calibration mode — hides other debug panels so they don't sit
+    /// on top of the calibrator controls. Only meaningful with
+    /// `showDebug` true.
     var showCalibration     = false
-    /// Convenience gate used by rendering code to drop all learning-phase
-    /// overlays (observe-phase modal, start dots, animation guide dot,
-    /// direct-phase tap dots, direction arrow) while the calibrator is open
-    /// — otherwise the phase UI stacks with the calibrator visualization and
-    /// buries the letter.
+    /// Drops all learning-phase overlays during calibration so the
+    /// calibrator's dots aren't buried under phase UI.
     var isCalibrating: Bool { showDebug && showCalibration }
     var letterOrdering: LetterOrderingStrategy = .motorSimilarity
     var schriftArt: SchriftArt = .druckschrift {
@@ -37,85 +31,62 @@ public final class TracingViewModel {
                   !letters.isEmpty, letterIndex < letters.count else { return }
             scriptStrokeCache.removeAll(keepingCapacity: true)
             PrimaeLetterRenderer.clearCache()
-            // Invariant: variants are druckschrift-only. Switching
-            // script clears any in-flight variant so the impossible
-            // state `showingVariant && schriftArt != .druckschrift`
-            // never becomes observable, regardless of toggle order.
+            // Invariant: variants are druckschrift-only. Clear the
+            // variant on every script change so the impossible state
+            // never becomes observable.
             if schriftArt != .druckschrift {
                 showingVariant = false
                 variantStrokeCache = nil
             }
-            // The canvas now renders the glyph as a vector path on every
-            // frame (`PrimaeLetterRenderer.glyphPath`), so script changes
-            // need no image refresh — the next Canvas redraw picks up
-            // the new font automatically.
+            // Glyph is rendered as a vector path each frame; the next
+            // Canvas redraw picks up the new font automatically.
             reloadStrokeCheckpoints(for: letters[letterIndex])
-            // W-29: reloadStrokeCheckpoints resets the tracker to empty
-            // checkpoints; zero the progress bar immediately so it doesn't
-            // show the previous font's progress until the next updateTouch.
+            // Tracker resets to empty checkpoints; zero the bar so the
+            // previous font's progress doesn't linger until next touch.
             progress = 0
         }
     }
-    /// Forwarded from `TransientMessagePresenter` so existing views keep binding via `vm.toastMessage`.
+    /// Forwarded from `TransientMessagePresenter`.
     var toastMessage: String? { messages.toastMessage }
     var currentLetterName   = "A"
     var canvasSize: CGSize  = CGSize(width: 1024, height: 1024) {
         didSet {
             guard oldValue != canvasSize,
                   !letters.isEmpty, letterIndex < letters.count else { return }
-            // Re-layout first so cell frames reflect the new canvas size
-            // BEFORE checkpoints reload — reloadStrokeCheckpoints now reads
-            // each cell's frame to map strokes into cell-local space.
+            // Re-layout BEFORE checkpoint reload — reload reads each
+            // cell's frame to map strokes into cell-local space.
             grid.layout(in: canvasSize, schriftArt: schriftArt)
-            // Recompute stroke checkpoints now that we know the real canvas dimensions.
-            // load(letter:) was called at init with the default 1024×1024 size; the
-            // view updates canvasSize to the actual device size on first layout.
             reloadStrokeCheckpoints(for: letters[letterIndex])
         }
     }
 
-    /// Read-only view onto the grid's cell list for the canvas renderer.
-    /// Length-1 for every single-letter session, so iterating this in the
-    /// canvas body produces exactly one pass identical to today's layout.
+    /// Read-only view of the grid's cells for the canvas renderer.
     var gridCells: [LetterCell] { grid.cells }
 
-    /// Current grid geometry preset. Exposed so the canvas can compute
-    /// cell frames from the live Canvas `size` at each draw — this
-    /// sidesteps the first-render window where `vm.canvasSize` (fed by
-    /// `.onAppear`) hasn't caught up with `geo.size` yet.
+    /// Current grid preset — exposed so the canvas can compute cell
+    /// frames from the live Canvas `size`, sidestepping the
+    /// first-render window where `vm.canvasSize` hasn't caught up.
     var gridPreset: InputPreset { grid.preset }
 
-    /// Index of the currently active cell in the grid. Canvas uses this
-    /// to scope active-cell-only scaffolding (direction arrow, animation
-    /// guide dot) — other cells render static ghost + dots only.
+    /// Active cell index. Canvas scopes active-only scaffolding to it.
     var gridActiveCellIndex: Int { grid.activeCellIndex }
 
-    /// Active-cell frame in canvas-pixel coordinates, only when the grid
-    /// is multi-cell (word mode). Single-cell sessions return `nil` so the
-    /// canvas overlays default to full-canvas geometry. Used by overlays
-    /// that need to map normalized glyph coordinates (e.g.
-    /// DirectPhaseDotsOverlay) into the active cell instead of the whole
-    /// canvas — without this they draw in the wrong place for word mode
-    /// (W-24 follow-up to C-5: same root cause as the freeWrite scorer
-    /// fix, applied to the direct-phase dot renderer).
+    /// Active-cell frame in canvas pixels for multi-cell layouts;
+    /// `nil` for single-cell. Overlays that map glyph coordinates
+    /// (DirectPhaseDotsOverlay) need this for word mode.
     var multiCellActiveFrame: CGRect? {
         grid.cells.count > 1 ? grid.activeCell.frame : nil
     }
 
-    /// Rendered word layout (image + per-character frames). Non-nil only
-    /// for `.word` sequences after a successful CoreText layout — the
-    /// canvas uses it to blit the whole word as one connected run so
-    /// Schreibschrift ligatures aren't cropped per glyph.
+    /// Rendered word layout — non-nil for `.word` sequences after a
+    /// successful CoreText layout; canvas blits this so Schreibschrift
+    /// ligatures aren't cropped per glyph.
     var gridWordRendering: PrimaeLetterRenderer.WordRendering? { grid.wordRendering }
 
-    /// Strokes for the cell at `index`, mapped per its letter. For the
-    /// currently-loaded letter (single-letter mode, or first cell of a
-    /// word starting with it) this honors the full override chain
-    /// (variant / script / calibration). Other cells of a word sequence
-    /// fall back to the bundle's default Druckschrift strokes for their
-    /// letter — words don't currently support per-letter variants or
-    /// calibration. Returns nil if the cell's letter isn't in the
-    /// library.
+    /// Strokes for the cell at `index`. The currently-loaded letter
+    /// honors variant / script / calibration; other word-mode cells
+    /// fall back to the bundle's default Druckschrift strokes since
+    /// per-letter variants and calibration don't apply to words.
     func gridCellStrokes(at index: Int) -> LetterStrokes? {
         guard index < grid.cells.count else { return nil }
         let cellLetter = grid.cells[index].item.letter
@@ -125,25 +96,20 @@ public final class TracingViewModel {
         return letters.first(where: { $0.name == cellLetter })?.strokes
     }
 
-    /// Letter displayed in the cell at `index`, or nil if out of range.
-    /// Canvas uses this to render each cell's own glyph in word mode
-    /// — repetition mode returns the same letter for every index.
+    /// Letter at cell `index`. Canvas uses this for per-cell glyph
+    /// rendering in word mode.
     func gridCellLetter(at index: Int) -> String? {
         guard index < grid.cells.count else { return nil }
         return grid.cells[index].item.letter
     }
 
-    /// Exposed for the debug UI and for unit tests that want to assert
-    /// detector state without poking private storage.
+    /// Exposed for debug UI and tests.
     var inputModeDetector: InputModeDetector { detector }
 
-    /// Forwarded from the pencil overlay on every pencil touchesBegan.
-    /// Feeds the detector so the first pencil stroke of a session flips
-    /// the effective preset to `.pencil`, and re-applies the grid preset
-    /// immediately so the layout splits before the stroke completes.
-    /// Safe to auto-promote now: commit 4b/4c made tracking cell-aware,
-    /// so touches in cell 0 of a newly-split pencil layout still feed
-    /// the tracker correctly.
+    /// Pencil touchesBegan forwarder. Feeds the detector and re-applies
+    /// the grid preset so the layout splits before the stroke
+    /// completes; tracking is cell-aware so touches still feed the
+    /// active cell correctly.
     func pencilDidTouchDown() {
         let priorKind = detector.effectiveKind
         detector.observeTouchBegan(isPencil: true)
@@ -154,23 +120,16 @@ public final class TracingViewModel {
         }
     }
 
-    /// Forwarded from the finger overlay on every finger touchesBegan.
-    /// Tracks the finger-streak counter used by the detector's
-    /// hysteresis to decide when to demote a stale pencil session.
+    /// Finger touchesBegan forwarder; feeds the detector hysteresis
+    /// counter for pencil-session demotion.
     func fingerDidTouchDown() {
         detector.observeTouchBegan(isPencil: false)
     }
 
-    /// Rebuild the grid's sequence + preset to match the detector's
-    /// effective input mode. Called on letter loads, from the debug
-    /// override chip, and from the pencil overlay when a real pencil
-    /// touch promotes the session.
-    ///
-    /// - `.finger`: length-1 singleLetter sequence, finger preset —
-    ///   byte-identical to pre-grid behavior.
-    /// - `.pencil` (auto or forced): repetition sequence broadcasting the
-    ///   current letter across the preset's default cell count. Tracking
-    ///   is cell-aware as of commit 4b, so writing works in each cell.
+    /// Rebuild the grid's sequence + preset for the detector's mode.
+    ///   - `.finger`: length-1 singleLetter sequence.
+    ///   - `.pencil`: repetition sequence broadcasting the current
+    ///     letter across the preset's default cell count.
     func reapplyGridPreset() {
         guard letters.indices.contains(letterIndex) else { return }
         let letter = letters[letterIndex]
@@ -181,43 +140,30 @@ public final class TracingViewModel {
             : .singleLetter(letter.name)
         grid.load(sequence: sequence, preset: preset)
         grid.layout(in: canvasSize, schriftArt: schriftArt)
-        // Preset changes alter cell frames, which flip the coord space each
-        // cell's tracker runs in. The checkpoint-build idempotency cache
-        // doesn't include preset state, so force the next reload to rebuild.
+        // Preset changes alter cell frames; the idempotency cache
+        // doesn't include preset state, so force a rebuild.
         lastCheckpointKey = nil
     }
     var progress: CGFloat   = 0
     var isPlaying           = false
     var activePath: [CGPoint] = []
-    /// Adapted by `PhaseTransitionCoordinator.commitCompletion` after
-    /// every session — internal so the coordinator can write it.
+    /// Updated by `PhaseTransitionCoordinator.commitCompletion`.
     var currentDifficultyTier: DifficultyTier = .standard
 
     // MARK: - Learning phase state
 
-    /// Current learning phase (observe / guided / freeWrite).
     var learningPhase: LearningPhase { phaseController.currentPhase }
-    /// Per-phase scores for the current letter session.
     var phaseScores: [LearningPhase: CGFloat] { phaseController.phaseScores }
-    /// Whether the current letter session (all phases) is complete.
     var isPhaseSessionComplete: Bool { phaseController.isLetterSessionComplete }
 
-    /// Whether stroke-start dots should render in the current phase
-    /// (Pearson & Gallagher 1983 GRRM: observe = full scaffold, guided =
-    /// partial scaffold with halos, freeWrite = scaffolding withdrawn).
+    /// Whether stroke-start dots render in the current phase
+    /// (Pearson & Gallagher 1983 GRRM).
     var showCheckpoints: Bool { phaseController.showCheckpoints }
 
-    /// Whether the ghost guide-line should render because of the current phase.
-    /// Composed with the user's `showGhost` toggle in views.
-    /// - observe: ON — the intro animation scans the stroke path, ghost
-    ///   shows direction being demonstrated.
-    /// - guided: ON — testing-checklist 4.3 explicitly requires a
-    ///   "ghost letter (faint blue stroke) drawn on the canvas as a
-    ///   tracing target." 5-yr-olds can't read the toggle in the
-    ///   parent area, so guided needs the ghost on by default.
-    /// - direct / freeWrite: OFF — direct uses the numbered dots +
-    ///   directional arrow as scaffolding; freeWrite withdraws all
-    ///   scaffolding per Schmidt & Lee's Guidance Hypothesis.
+    /// Phase-driven ghost-line visibility, composed with user toggle.
+    /// observe + guided ON; direct + freeWrite OFF (direct uses the
+    /// numbered dots + arrow; freeWrite withdraws all scaffolding per
+    /// Schmidt & Lee's Guidance Hypothesis).
     var showGhostForPhase: Bool {
         switch phaseController.currentPhase {
         case .observe, .guided:    return true
@@ -225,12 +171,10 @@ public final class TracingViewModel {
         }
     }
 
-    /// Guidance-fading intensity (Schmidt & Lee, 2005): reducing feedback over
-    /// time improves motor-learning retention. Used to gate haptics and the
-    /// PromptPlayer checkpoint/stroke ticks — NOT the letter-sound audio,
-    /// which plays in every phase including freeWrite (the phoneme is the
-    /// glyph's auditory anchor, not a guidance signal that should fade).
-    /// observe=1.0, direct=1.0, guided=0.6 (moderate), freeWrite=0.0 (post-hoc only).
+    /// Guidance-fading intensity (Schmidt & Lee 2005). Gates haptics +
+    /// checkpoint ticks; letter-sound audio is NOT gated since the
+    /// phoneme is the glyph's auditory anchor, not guidance feedback.
+    /// observe/direct=1.0, guided=0.6, freeWrite=0.0.
     var feedbackIntensity: CGFloat {
         switch phaseController.currentPhase {
         case .observe:   return 1.0
@@ -240,14 +184,13 @@ public final class TracingViewModel {
         }
     }
 
-    /// Expose stroke data for calibration overlay (canvas-mapped coordinates).
+    /// Stroke data for the calibration overlay (canvas-mapped).
     var strokeDefinition: LetterStrokes? { strokeTracker.definition }
 
-    /// Raw glyph-relative stroke data (0-1 within bounding box) for rendering.
-    /// Schreibschrift always takes its strokes from the bundle JSON so the
-    /// committed calibrations in Resources/Letters/<x>/strokes_schulschrift.json
-    /// are authoritative. Druckschrift still prefers the user-calibrated
-    /// Application Support file when one exists — on-device save there works.
+    /// Raw glyph-relative strokes (0-1 within bbox). Non-Druckschrift
+    /// always uses bundle JSON (committed calibrations in
+    /// `strokes_schulschrift.json` are authoritative). Druckschrift
+    /// prefers the user-calibrated Application Support file.
     var glyphRelativeStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
@@ -256,8 +199,8 @@ public final class TracingViewModel {
         return calibrationStore.strokes(for: letter.name, schriftArt: schriftArt) ?? letter.strokes
     }
 
-    /// Raw glyph-relative strokes from JSON (0-1 within bounding box).
-    /// Used by TracingCanvasView to render dots aligned with the ghost at any canvas size.
+    /// Raw glyph-relative strokes from JSON. Used by canvas to keep
+    /// dots aligned with the ghost at any size.
     var rawGlyphStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count else { return nil }
         if showingVariant, let vs = variantStrokeCache { return vs }
@@ -265,33 +208,26 @@ public final class TracingViewModel {
         return letters[letterIndex].strokes
     }
 
-    /// True when the current letter has a registered alternate stroke-order
-    /// form usable in the active script. `strokes_variant.json` files carry
-    /// Druckschrift-specific coordinates, so in Schreibschrift / future
-    /// scripts there's nothing to load until a per-script variant file is
-    /// added (e.g. `strokes_schulschrift_variant.json`). Hiding the button
-    /// avoids rendering a Druckschrift path on top of a cursive glyph.
+    /// True when the current letter has a variant in the active
+    /// script. Variant files are Druckschrift-only for now, so the
+    /// button stays hidden in Schreibschrift to avoid rendering a
+    /// print path over a cursive glyph.
     var currentLetterHasVariants: Bool {
         guard !letters.isEmpty, letterIndex < letters.count,
               schriftArt == .druckschrift else { return false }
         return !(letters[letterIndex].variants?.isEmpty ?? true)
     }
-    /// Stars earned in current letter session (0-3).
+    /// Stars earned in the current session (0-3).
     var starsEarned: Int { phaseController.starsEarned }
-    /// Maximum achievable stars under the active thesis condition.
-    /// W-5: guidedOnly/control have 1 active phase so maxStars = 1, not 4.
+    /// Maximum achievable stars; guidedOnly/control = 1, threePhase = 4
+    /// — showing 4 placeholders for a single-phase condition would be
+    /// a between-arms confound.
     var maxStars: Int { phaseController.maxStars }
-    /// Phases active under the current thesis condition. I-4: the
-    /// `PhaseDotIndicator` HUD uses this so guidedOnly/control don't
-    /// render three permanently-empty placeholder dots.
+    /// Phases active in the current condition (drives the dot HUD so
+    /// single-phase conditions don't render empty placeholders).
     var activePhases: [LearningPhase] { phaseController.activePhases }
 
     // MARK: - FreeWrite phase data (forwarded from FreeWritePhaseRecorder)
-    //
-    // The four buffers, session-timing state, and scoring helpers were
-    // extracted into `FreeWritePhaseRecorder` during the W8 God-object
-    // cleanup. The VM keeps the same read-only public surface so views
-    // and tests don't notice the extraction.
 
     /// Accumulated canvas-space touch points for free-write scoring.
     var freeWritePoints: [CGPoint] { freeWriteRecorder.points }
@@ -299,85 +235,63 @@ public final class TracingViewModel {
     var freeWriteTimestamps: [CFTimeInterval] { freeWriteRecorder.timestamps }
     /// Digitiser force at each accumulated free-write point (0 = finger / no data).
     var freeWriteForces: [CGFloat] { freeWriteRecorder.forces }
-    /// Checkpoints passed per second in the current guided or
-    /// freeWrite phase. Updated on every touch event; reset on phase
-    /// transition and letter load. The figure is
-    /// `completedCheckpoints / elapsed` — checkpoints/sec, not
-    /// strokes/sec; the name matters because a thesis reader
-    /// correlating with motor-rhythm research would otherwise pick up
-    /// the wrong unit.
+    /// Checkpoints completed per second in guided / freeWrite. Note
+    /// the unit: checkpoints, not strokes — the name matters for
+    /// motor-rhythm correlations.
     var checkpointsPerSecond: CGFloat { freeWriteRecorder.checkpointsPerSecond }
-    /// Last computed Fréchet distance (for debug overlay).
+    /// Last computed Fréchet distance (debug overlay).
     var lastFreeWriteDistance: CGFloat { freeWriteRecorder.lastDistance }
-    /// Most recent Schreibmotorik four-dimension assessment from the freeWrite phase.
+    /// Most recent four-dimension Schreibmotorik assessment.
     var lastWritingAssessment: WritingAssessment? { freeWriteRecorder.lastAssessment }
-    /// Most recent guided-phase checkpoint-accuracy score (0–1), captured
-    /// the moment the child transitions out of Nachspuren. Surfaced by
-    /// the Schule world as a verbal "Nachspuren fertig" feedback band.
+    /// Last guided-phase score, captured for the "Nachspuren fertig"
+    /// feedback band.
     var lastGuidedScore: CGFloat? { freeWriteRecorder.lastGuidedScore }
-    /// Normalised (0–1) touch path accumulated during the freeWrite phase.
-    /// Kept for the KP overlay that shows where the child deviated.
-    /// Forwarded from FreeWritePhaseRecorder.
+    /// Normalised freeWrite touch path for the KP overlay.
     var freeWritePath: [CGPoint] { freeWriteRecorder.path }
-    /// Indices in `freeWritePath` where a fresh stroke begins after
-    /// a finger-up between strokes. Forwarded so the canvas's KP
-    /// overlay can break its polyline at the lifts (instead of
-    /// drawing one zig-zag with phantom diagonals across the air
-    /// gaps — what the user perceived as "tracking my finger
-    /// between strokes").
+    /// Stroke-start indices so the KP overlay can break the polyline
+    /// at lifts instead of bridging gaps with phantom diagonals.
     var freeWriteStrokeStartIndices: [Int] { freeWriteRecorder.strokeStartIndices }
-    /// Whether the user is currently tracing the variant stroke form.
+    /// Whether the user is tracing the variant stroke form.
     var showingVariant: Bool = false
-    /// Whether the paper-transfer phase is enabled (thesis setting).
+    /// Paper-transfer phase enabled (thesis setting).
     var enablePaperTransfer: Bool = false {
         didSet {
             UserDefaults.standard.set(enablePaperTransfer,
                 forKey: "de.flamingistan.primae.enablePaperTransfer")
         }
     }
-    /// Whether the freeform writing button is exposed in the picker bar.
-    /// Parents can disable via Settings; default is enabled.
+    /// Freeform-mode picker entry exposed; default on.
     var enableFreeformMode: Bool = true {
         didSet {
             UserDefaults.standard.set(enableFreeformMode,
                 forKey: "de.flamingistan.primae.enableFreeformMode")
         }
     }
-    /// Play the *phoneme* (sound the letter makes — /a/ as in *Affe*)
-    /// instead of the letter *name* (/aː/) on audio gestures. Falls
-    /// back to the name set when a letter ships no phoneme recordings
-    /// so the toggle never produces silence. Persisted in
-    /// UserDefaults; default off (canonical name audio is the
-    /// established behaviour).
+    /// Play the phoneme (/a/) instead of the letter name (/aː/);
+    /// falls back to name audio when a letter ships no phoneme set so
+    /// the toggle never produces silence.
     var enablePhonemeMode: Bool = false {
         didSet {
             UserDefaults.standard.set(enablePhonemeMode,
                 forKey: "de.flamingistan.primae.enablePhonemeMode")
-            // Reset the audio-variant cursor so a swipe doesn't index
-            // out of the new population.
+            // Reset the variant cursor so a swipe doesn't index out
+            // of the new population.
             audioIndex = 0
         }
     }
-    /// Opt-in spaced-retrieval recognition prompts. When on, every
-    /// Nth letter selection presents a 3-button "Welcher Buchstabe?"
-    /// test before tracing begins. Cadence governed by
-    /// `RetrievalScheduler.interval`. Off by default — research
-    /// feature; parents enable explicitly.
+    /// Opt-in spaced-retrieval prompts before every Nth letter; off
+    /// by default (research feature, parents enable).
     var enableRetrievalPrompts: Bool = false {
         didSet {
             UserDefaults.standard.set(enableRetrievalPrompts,
                 forKey: "de.flamingistan.primae.enableRetrievalPrompts")
         }
     }
-    /// Retrieval scheduler for this VM. Built once in init and reused
-    /// across letter selections so the counter persists across runs
-    /// (it reads UserDefaults on init).
+    /// Built once in init; counter persists across runs via UserDefaults.
     let retrievalScheduler: RetrievalScheduler = RetrievalScheduler()
-    /// Reverse the direct-phase tap order so the child taps the LAST
-    /// stroke first. Off by default; opt-in for motor-planning
-    /// special-needs use (Spooner et al. 2014). Affects only the
-    /// direct phase — guided + freeWrite always run canonical stroke
-    /// order.
+    /// Reverse direct-phase tap order — last stroke first
+    /// (Spooner et al. 2014). Off by default; affects direct phase
+    /// only, guided + freeWrite always run canonical order.
     var enableBackwardChaining: Bool = false {
         didSet {
             UserDefaults.standard.set(enableBackwardChaining,
@@ -387,30 +301,17 @@ public final class TracingViewModel {
 
     // MARK: - Recognition + freeform state (forwarded from FreeformController)
 
-    /// Owns every freeform field. The VM keeps the *methods* because they
-    /// touch VM-only collaborators (audio, recognizer, speech, stores);
-    /// the controller exists to give those fields a single home for
-    /// auditing and lifecycle management. Views observe via VM forwarders.
+    /// Owns the freeform fields. VM owns the methods (they touch
+    /// audio / recognizer / speech / stores). Views observe via
+    /// forwarders.
     private let freeform = FreeformController()
 
-    /// Most recent CoreML recognition result (any mode). Cleared on
-    /// letter load and phase reset.
+    /// Most recent CoreML recognition result. Cleared on letter load
+    /// and phase reset.
     private(set) var lastRecognitionResult: RecognitionResult?
 
-    /// Idempotency gate for in-flight recognition Tasks. Each recognition
-    /// dispatch (freeWrite phase teardown, freeform letter, freeform word)
-    /// stamps a fresh UUID here; the matching async completion handler
-    /// checks equality before applying side effects (lastRecognitionResult,
-    /// progress writes, overlay enqueue, speech). State-clearing
-    /// transitions — `loadLetter`, `resetForPhaseTransition`,
-    /// `clearFreeformCanvas` — set this to nil so any late-arriving
-    /// recognition result whose dispatch preceded the clear is silently
-    /// dropped instead of writing into the new context.
-    ///
-    /// Owned by `RecognitionTokenTracker`; the VM forwards `issue()`
-    /// / `isStillActive(_:)` and calls `cancel()` from state-clearing
-    /// transitions (letter load, phase transition, canvas clear) so
-    /// any late-arriving recognition completion is dropped.
+    /// Idempotency gate for in-flight recognition Tasks; state-clearing
+    /// transitions cancel so late completions are dropped.
     private let recognitionTokens = RecognitionTokenTracker()
 
     var writingMode: WritingMode {
@@ -436,36 +337,28 @@ public final class TracingViewModel {
     var freeformCanvasSize: CGSize { freeform.freeformCanvasSize }
     var hasRecognitionCompleted: Bool { freeform.hasRecognitionCompleted }
     var isRecognitionModelAvailable: Bool? { freeform.isRecognitionModelAvailable }
-    /// Form-accuracy score from the last freeform recognition (0–1).
-    /// Forwarded from FreeformController.
+    /// Form-accuracy from the last freeform recognition (0–1).
     var lastFreeformFormScore: CGFloat? { freeform.lastFreeformFormScore }
 
-    /// Serialised canvas overlay scheduler. SchuleWorldView and
-    /// TracingCanvasView observe this so no two overlays stack on top of
-    /// each other; the canonical post-freeWrite order is
-    /// `kpOverlay → recognitionBadge → paperTransfer → celebration`,
-    /// driven entirely from this queue (the legacy
-    /// `showFreeWriteOverlay` / `showPaperTransfer` booleans were
-    /// removed alongside this migration).
+    /// Serialised canvas overlay scheduler. Canonical post-freeWrite
+    /// order: kpOverlay → recognitionBadge → paperTransfer →
+    /// celebration.
     let overlayQueue = OverlayQueueManager()
 
     // MARK: - Direct phase state
 
-    /// Stroke indices whose start dot has been tapped in the direct phase.
+    /// Stroke indices whose start dot has been tapped in direct phase.
     private(set) var directTappedDots: Set<Int> = []
-    /// True while the correct (next expected) dot should pulse to guide after a wrong tap.
+    /// True while the correct (next-expected) dot should pulse harder.
     var directPulsingDot: Bool = false
-    /// Cancellation handle for the 700 ms timer that clears `directPulsingDot`.
-    /// Stored so rapid wrong taps don't accumulate orphaned Tasks.
+    /// 700 ms timer for clearing `directPulsingDot`; stored so rapid
+    /// wrong taps don't accumulate orphaned Tasks.
     private var directPulsingTask: Task<Void, Never>? = nil
-    /// Index of the stroke whose directional arrow is briefly shown after a correct tap.
+    /// Stroke whose direction arrow is briefly shown after a tap.
     var directArrowStrokeIndex: Int? = nil
 
-    /// Index of the next dot the child must tap in the direct phase.
-    /// When `enableBackwardChaining` is on the stroke list is iterated
-    /// in reverse — the child taps the LAST stroke first and adds
-    /// earlier strokes backward (Spooner et al. 2014). Default off;
-    /// guided / freeWrite always run canonical forward order.
+    /// Next-expected dot index. With `enableBackwardChaining` the list
+    /// iterates in reverse (Spooner et al. 2014); default off.
     var directNextExpectedDotIndex: Int {
         guard let rawStrokes = rawGlyphStrokes else { return 0 }
         let indices: [Int] = enableBackwardChaining
@@ -475,99 +368,66 @@ public final class TracingViewModel {
         return rawStrokes.strokes.count
     }
 
-    // MARK: - Animation guide state (ready for onboarding / demo UI)
+    // MARK: - Animation guide state
 
-    /// Normalized (0–1) point for the animated tracing guide dot.
-    /// TracingCanvasView scales this to screen coordinates.
-    /// Forwards to AnimationGuideController so views continue to bind via `vm.animationGuidePoint`.
+    /// Normalized 0–1 point for the animated guide dot; canvas scales
+    /// to screen coords. Forwarded from AnimationGuideController.
     var animationGuidePoint: CGPoint? { animation.guidePoint }
 
-    // MARK: - Onboarding state (ready for onboarding UI layer)
+    // MARK: - Onboarding state
 
-    /// True once the user has completed onboarding.
     var isOnboardingComplete: Bool = false
-    /// Current onboarding step for presenting onboarding UI.
     private(set) var onboardingStep: OnboardingStep = .welcome
-    /// Onboarding variant the current run is using. Set in init from
-    /// the stored choice (or, for never-onboarded installs, the
-    /// parent's UserDefaults preference). Read by `OnboardingView` so
-    /// the UI renders only the steps that belong to the active
-    /// variant. Locked once `markComplete` runs so a parent who later
-    /// flips the Settings toggle doesn't change the historical
-    /// record.
+    /// Onboarding variant locked at first `markComplete` so a later
+    /// Settings toggle can't change the historical record.
     var onboardingVariant: OnboardingVariant = .full
-    /// Progress through onboarding steps (0–1).
     var onboardingProgress: Double { onboardingCoordinator.progress }
 
     // MARK: - Private dependencies
 
     private let repo: LetterRepository
-    /// The active cell's stroke tracker. Source-compatible with every
-    /// pre-grid use site that read `strokeTracker.X`: for a length-1
-    /// sequence the active cell is stable throughout the letter session,
-    /// so the returned tracker reference is the same instance from load
-    /// to completion. For multi-cell sequences (commit 4 onwards) the
-    /// reference shifts when the active cell advances — the tracker is
-    /// mutable state owned by the cell, not by the VM.
+    /// Active cell's stroke tracker. The reference is stable for a
+    /// single-letter session; it shifts to the next cell on advance
+    /// in multi-cell sequences.
     var strokeTracker: StrokeTracker { grid.activeCell.tracker }
-    /// Schreibheft grid representation of the current sequence.
-    /// Drives the canvas renderer via `gridCells` / `gridPreset`. For the
-    /// single-letter flow this is a length-1 sequence with the finger
-    /// preset — byte-identical to pre-grid behavior.
+    /// Schreibheft grid representation of the current sequence. Drives
+    /// the canvas renderer via `gridCells` / `gridPreset`.
     let grid = SequenceGridController(
         sequence: .singleLetter(""),
         preset: .finger
     )
 
-    /// Finger / pencil detector with hysteresis. Receives every touch-began
-    /// event from the overlays; its `effectiveKind` will drive grid preset
-    /// promotion from commit 3 onward. Nothing observes it yet in this
-    /// commit — detection runs, rendering is unchanged.
+    /// Finger / pencil detector with hysteresis. Receives every
+    /// touch-began event from the overlays; `effectiveKind` drives
+    /// grid preset promotion.
     let detector = InputModeDetector()
     let audio: AudioControlling
     let haptics: HapticEngineProviding
-    /// Persistent letter-progress store. The W-5 contract still
-    /// stands: external readers consume the read-only `allProgress` /
-    /// `progress(for:)` forwarders below. The store is `internal`
-    /// (not private) so `PhaseTransitionCoordinator` can mutate it
-    /// in-process; the coordinator is part of the VM's internal
-    /// machinery, not an external collaborator.
+    /// Persistent letter-progress store. External readers consume the
+    /// read-only `allProgress` / `progress(for:)` forwarders below.
+    /// `internal` so `PhaseTransitionCoordinator` can mutate it.
     let progressStore: ProgressStoring
 
-    /// Read-only snapshot of all letter progress. Views bind here
-    /// instead of reaching into `progressStore` directly so
-    /// persistence stays encapsulated and writes remain VM-mediated.
-    ///
-    /// Stored, not computed: the underlying `progressStore` is a
-    /// plain `final class` (not `@Observable`), so mutations to it
-    /// don't trigger `@Observable` updates on the VM. SwiftUI
-    /// surfaces that read `vm.allProgress` (the world-rail star
-    /// badge, the Fortschritte gallery) would never re-render
-    /// after a letter completion. Holding the dict here as a
-    /// tracked property + calling `refreshProgressMirror()` after
-    /// every store mutation re-fires Observation correctly.
+    /// Read-only @Observable mirror of `progressStore.allProgress`.
+    /// Stored, not computed: the underlying store isn't @Observable,
+    /// so mutations there don't fire SwiftUI updates. Call
+    /// `refreshProgressMirror()` after every store write.
     private(set) var allProgress: [String: LetterProgress] = [:]
 
-    /// Resync the @Observable mirror from `progressStore`. Call
-    /// after any code that mutates the store
-    /// (`recordCompletion`, `recordPaperTransferScore`,
-    /// `recordRetrievalAttempt`, `recordRecognitionSample`,
-    /// `recordFreeformCompletion`, `recordVariantUsed`).
+    /// Resync the @Observable mirror from `progressStore`. Call after
+    /// any store mutation.
     func refreshProgressMirror() {
         allProgress = progressStore.allProgress
     }
 
-    /// Per-letter progress lookup. Mirrors `ProgressStoring.progress(for:)`.
+    /// Per-letter progress lookup.
     func progress(for letter: String) -> LetterProgress {
         progressStore.progress(for: letter)
     }
 
-    /// Completions that landed today. Drives the daily-goal pill in
-    /// `FortschritteWorldView`.
+    /// Completions today (drives the daily-goal pill).
     var completionsToday: Int { progressStore.completionsToday }
-    /// Parent-configurable daily-completion goal. Persisted in
-    /// UserDefaults; default 3 is a low bar designed to be hit on
-    /// most weekdays for a 5-year-old.
+    /// Parent-configurable daily goal; default 3.
     var dailyGoal: Int {
         get {
             let v = UserDefaults.standard.integer(forKey: "de.flamingistan.primae.dailyGoal")
@@ -589,19 +449,14 @@ public final class TracingViewModel {
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
     private let letterRecognizer: LetterRecognizerProtocol
-    /// German speech synthesiser for child-facing verbal feedback.
-    /// Children can't read fluently yet, so every dashboard score
-    /// (Klarheit, Form, Tempo, Druck, Rhythmus) reaches the child as
-    /// encouraging German speech rather than as a visible number.
+    /// German speech synthesiser; non-readers hear scores as speech
+    /// rather than seeing numeric dashboards.
     let speech: SpeechSynthesizing
-    /// Plays bundled MP3s for the static prompts (phase entries,
-    /// praise tiers, paper-transfer cues, retrieval question). Falls
-    /// back to `speech` when an MP3 is missing. Dynamic per-letter
-    /// content (recognition templates) goes through `speech` directly.
+    /// Bundled MP3 prompts (phase entries, praise tiers, paper cues,
+    /// retrieval). Falls back to `speech` when missing; dynamic
+    /// per-letter content goes through `speech` directly.
     let prompts: any PromptPlaying
-    /// Owns the freeWrite buffers + session timing + scoring. Lives on
-    /// the VM so views can keep reading via the existing forwarders;
-    /// extracting it cleared the four-buffer churn out of the VM body.
+    /// FreeWrite buffers + session timing + scoring.
     let freeWriteRecorder = FreeWritePhaseRecorder()
 
     // MARK: - Private playback / touch state
@@ -609,62 +464,40 @@ public final class TracingViewModel {
     var letters: [LetterAsset]          = []
     var letterIndex                      = 0
     private var variantStrokeCache: LetterStrokes? = nil
-    /// Per-script bundle stroke cache keyed by (schriftArt). Populated lazily
-    /// on first access for each non-Druckschrift script. Invalidated in
-    /// `schriftArt.didSet` and on letter load so a switch reloads fresh.
+    /// Per-script stroke cache; invalidated in `schriftArt.didSet`.
     private var scriptStrokeCache: [SchriftArt: LetterStrokes] = [:]
     var audioIndex                       = 0
-    /// Wall-clock start of the *current* foreground window for the
-    /// active letter. Reset on every `load(letter:)` and every
-    /// foreground return; cleared on backgrounding so the timer
-    /// doesn't keep ticking while the iPad sits idle. Without the
-    /// background reset a "4-minute" session would silently include
-    /// time spent backgrounded — iPads only sleep after several
-    /// minutes.
+    /// Start of the current foreground window. Cleared on background
+    /// so the session-duration timer doesn't tick while the iPad
+    /// sleeps.
     var letterLoadTime: CFTimeInterval?
-    /// Accumulated foreground-only practice time across background returns
-    /// for the current letter. The reported session duration is
-    /// `letterActiveTimeAccumulated + (now − letterLoadTime)`. Resets on
-    /// every `load(letter:)`.
+    /// Accumulated foreground-only practice time across
+    /// background/foreground cycles for the current letter.
     var letterActiveTimeAccumulated: TimeInterval = 0
-    /// Wall-clock `Date` when the current letter was loaded. Lets the
-    /// session record carry wall-clock time alongside the active-time
-    /// `durationSeconds`. Distinct from `letterLoadTime`
-    /// (CACurrentMediaTime) — we need a stable timestamp that
-    /// survives background / foreground cycles.
+    /// Wall-clock `Date` of letter load. Distinct from `letterLoadTime`
+    /// (CACurrentMediaTime) — survives background cycles.
     var letterLoadedDate: Date?
     var didCompleteCurrentLetter         = false
-    /// Scheduler priority captured at letter-selection time. Forwarded
-    /// to `recordPhaseSession` so `schedulerEffectivenessProxy` has a
-    /// real value to correlate against.
+    /// Captured at selection so `schedulerEffectivenessProxy` has a
+    /// real correlation value.
     var lastScheduledLetterPriority: Double = 0
-    /// Two-phase init pattern: the controller is built with a no-op
-    /// `onIsPlayingChanged` callback before `self` is fully
-    /// initialised, then the real `[weak self]` callback is wired
-    /// after init. This sidesteps Swift's "every stored property must
-    /// have a value at capture site" rule that would otherwise force
-    /// an IUO here.
+    /// Two-phase init seam: built with a no-op callback, real
+    /// `[weak self]` wired after `self` is initialised.
     let playback: PlaybackController
     private let messages: TransientMessagePresenter
     private let animation: AnimationGuideController
-    /// Full-cycle counter for the observe-phase animation. Used to auto-advance
-    /// after the second loop completes.
+    /// Observe-phase cycle counter for auto-advance after the second loop.
     private var observeCycleCount: Int = 0
-    /// Idempotency key for the last reloadStrokeCheckpoints rebuild. Caches the
-    /// (letter, size) pair so repeated calls within a rotation safety-net window
-    /// or a fast-touch burst don't re-map the same checkpoints over and over.
-    /// Reset to nil whenever the source data changes (e.g. user calibration).
+    /// Idempotency key for `reloadStrokeCheckpoints`. Reset when source
+    /// data changes (e.g. calibration save).
     private var lastCheckpointKey: CheckpointBuildKey?
 
-    /// Owns the touch-session state and the `beginTouch` /
-    /// `updateTouch` / `endTouch` flow. Built without `self`, assigned,
-    /// then the back-reference is set once the VM is fully
-    /// initialised — the same two-phase pattern as `playback`.
+    /// Touch-session state + begin/update/endTouch flow. Two-phase
+    /// init pattern (back-reference wired after init).
     let touchDispatcher: TouchDispatcher
 
-    /// Owns the phase-transition pipeline (scoring, post-freeWrite
-    /// overlay queue, controller advance, completion pipeline). Same
-    /// two-phase init pattern as `playback` and `touchDispatcher`.
+    /// Phase-transition pipeline (scoring, post-freeWrite overlays,
+    /// controller advance, completion). Two-phase init pattern.
     let phaseTransitions: PhaseTransitionCoordinator
 
     // MARK: - Init
@@ -692,19 +525,17 @@ public final class TracingViewModel {
         self.letterRecognizer       = deps.letterRecognizer
         self.speech                 = deps.speech
         self.prompts                = deps.makePromptPlayer(deps.speech)
-        // Control condition uses fixed difficulty — no moving-average adaptation.
+        // Control condition uses fixed difficulty so the manipulation
+        // can't confound the phase-progression IV.
         self.adaptationPolicy       = deps.adaptationPolicy ?? (
             deps.thesisCondition == .control
                 ? FixedAdaptationPolicy(currentTier: .standard)
                 : MovingAverageAdaptationPolicy()
         )
 
-        // Pick the onboarding variant (full vs short) so the
-        // coordinator iterates the right step list. Reads the parent
-        // toggle from UserDefaults; if the install already completed
-        // onboarding once and the variant was recorded, honour the
-        // recorded variant on a re-run so post-hoc analysis always
-        // sees the same first-encounter variant for that participant.
+        // Honour any recorded variant so post-hoc analysis sees the
+        // first-encounter variant for this participant; otherwise
+        // fall back to the parent's toggle.
         let useShort = UserDefaults.standard.bool(forKey: "de.flamingistan.primae.useShortOnboarding")
         let recordedVariant = deps.onboardingStore.variantUsed
         let activeVariant: OnboardingVariant = recordedVariant ?? (useShort ? .short : .full)
@@ -722,26 +553,19 @@ public final class TracingViewModel {
         self.schriftArt = deps.schriftArt
         self.letterOrdering = deps.letterOrdering
 
-        // Build the per-VM controllers from the dependency factories. Doing this
-        // here (not at field init) is what lets tests replace any one of them
-        // with a test-friendly variant (instant sleeper, shorter debounce, etc.)
-        // without having to subclass or poke into the VM's privates.
+        // Per-VM controllers from factories so tests can swap any one
+        // without subclassing.
         self.messages         = deps.makeMessagePresenter()
         self.animation        = deps.makeAnimationGuide()
         self.calibrationStore = deps.makeCalibrationStore()
         self.letterScheduler  = deps.makeLetterScheduler()
 
         haptics.prepare()
-        // Build with a no-op callback first so the closure doesn't
-        // capture `self` (not yet fully initialised). Once every
-        // stored property is assigned, wire the real `[weak self]`
-        // callback. `PlaybackController.onIsPlayingChanged` is a
-        // `var` for exactly this seam.
+        // Two-phase init: build with a no-op callback, wire the real
+        // `[weak self]` once every stored property is assigned.
         let pb = deps.makePlaybackController(deps.audio) { _ in }
         self.playback = pb
-        // Same two-phase pattern for `touchDispatcher` and
-        // `phaseTransitions`: build vm-less, assign, then wire the
-        // back-reference once `self` is fully initialised.
+        // Same pattern for touchDispatcher / phaseTransitions.
         let td = TouchDispatcher()
         self.touchDispatcher = td
         let ptc = PhaseTransitionCoordinator()
@@ -750,24 +574,16 @@ public final class TracingViewModel {
         td.vm = self
         ptc.vm = self
         letters = repo.loadLettersFast()
-        // Seed the @Observable allProgress mirror from the persisted
-        // store so the world-rail star badge + Fortschritte gallery
-        // pick up any pre-existing progress on first render.
+        // Seed the mirror so the rail badge + gallery pick up
+        // pre-existing progress on first render.
         allProgress = progressStore.allProgress
-        // Surface a startup audio failure as a brief German toast so a parent
-        // notices the device is silent on purpose (not because the child got
-        // lost). The toast auto-clears via TransientMessagePresenter's normal
-        // 1.3 s timer; nil under healthy operation.
+        // Surface startup audio failures as a brief toast.
         if let audioError = deps.audio.initializationError {
             messages.show(toast: audioError)
         }
         guard let first = letters.first else { return }
-        // playPhaseCue: false — VM init runs before the audio
-        // session and SwiftUI scene have settled. Speaking here
-        // produces ~2 s of crackly half-rendered audio on launch
-        // (returning users go straight to Schule and hear it
-        // unprompted; first-run users had it gated on
-        // isOnboardingComplete already, but this is the real fix).
+        // Don't play the phase cue at init — the audio session
+        // hasn't settled and would produce ~2 s of crackle.
         load(letter: first, playPhaseCue: false)
     }
 
@@ -777,9 +593,8 @@ public final class TracingViewModel {
     func toggleDebug()             { showDebug.toggle();         toast("Debug \(showDebug ? "an" : "aus")") }
     func toggleCalibration()       { showCalibration.toggle();   toast("Kalibrieren \(showCalibration ? "an" : "aus")") }
 
-    /// Switch between the standard and variant stroke form for the current letter.
-    /// Only available when the letter has a registered variant (currentLetterHasVariants).
-    /// Reloads checkpoints and resets tracing progress; does not affect phase state.
+    /// Switch between standard and variant stroke form. Reloads
+    /// checkpoints + resets tracing progress; phase state unchanged.
     func toggleVariant() {
         guard currentLetterHasVariants, letters.indices.contains(letterIndex) else { return }
         let letter = letters[letterIndex]
@@ -800,13 +615,10 @@ public final class TracingViewModel {
         return repo.loadVariantStrokes(for: letter.name, variantID: variantID)
     }
 
-    /// Returns the current script's bundle strokes, loading from
-    /// `strokes_<variantID>.json` and caching on first access. `nil` when the
-    /// active script is Druckschrift (data lives on the LetterAsset itself)
-    /// or when no variant file exists for the current letter.
-    ///
-    /// Driven by `SchriftArt.bundleVariantID`, so adding a new script only
-    /// needs an enum case + variantID + bundled JSON — no touch here.
+    /// Bundle strokes for the active script (loads
+    /// `strokes_<variantID>.json` on first access). `nil` for
+    /// Druckschrift (uses LetterAsset directly) or when no variant
+    /// file exists. Driven by `SchriftArt.bundleVariantID`.
     private var activeScriptStrokes: LetterStrokes? {
         guard !letters.isEmpty, letterIndex < letters.count,
               let variantID = schriftArt.bundleVariantID else { return nil }
@@ -830,12 +642,8 @@ public final class TracingViewModel {
         return "\(pct) Prozent fertig"
     }
 
-    /// Autoplay the active cell's letter audio — called on cell advance
-    /// in word mode so each letter announces itself as the child moves
-    /// through the sequence. Always uses variant 0 (no user-selected
-    /// variant for transient cell-advance sounds). Silent when the
-    /// active cell's letter has no audio assets in the inventory,
-    /// which is acceptable demo behavior per the thesis scope.
+    /// Autoplay the active cell's letter audio on cell advance in
+    /// word mode. Always variant 0; silent for letters without audio.
     func autoplayActiveCellLetter() {
         let activeLetter = gridCellLetter(at: gridActiveCellIndex) ?? currentLetterName
         guard let asset = letters.first(where: { $0.name == activeLetter }),
@@ -844,12 +652,8 @@ public final class TracingViewModel {
     }
 
     func replayAudio() {
-        // Re-load and autoplay the ACTIVE cell's letter audio file. For a
-        // length-1 single-letter session the active cell's letter equals
-        // letters[letterIndex].name, so behavior is identical to today. In
-        // word mode, the speaker plays whatever letter the child is on now.
-        // Silence is acceptable for letters without audio assets — this is
-        // scope-limited demo behavior per the thesis plan.
+        // Reloads and autoplays the active cell's letter audio.
+        // Silence is acceptable for letters without audio assets.
         let activeLetter = gridCellLetter(at: gridActiveCellIndex)
             ?? currentLetterName
         guard let asset = letters.first(where: { $0.name == activeLetter }) else { return }
@@ -858,11 +662,8 @@ public final class TracingViewModel {
         audio.loadAudioFile(named: files[audioIndex], autoplay: true)
     }
 
-    /// Pick the audio population to play given the parent's
-    /// "Lautwert wiedergeben" toggle. Phoneme set wins when phoneme
-    /// mode is on and the asset ships phoneme recordings; otherwise
-    /// the letter-name set is used. The two-finger swipe variant
-    /// cycler always cycles within the chosen population.
+    /// Audio population for the parent's phoneme toggle. Falls back
+    /// to name audio when no phoneme files are bundled.
     func activeAudioFiles(for asset: LetterAsset) -> [String] {
         if enablePhonemeMode, !asset.phonemeAudioFiles.isEmpty {
             return asset.phonemeAudioFiles
@@ -919,35 +720,24 @@ public final class TracingViewModel {
         toast("Buchstabe: \(currentLetterName)")
     }
 
-    /// Demo word list — Austrian Volksschule 1. Klasse canonical
-    /// Woche-1 tracing words, ordered shortest → longest. Every word
-    /// composes from letters currently in the bundle (A, F, I, K, L,
-    /// M, O, P). See the research note in the commit message: OMA /
-    /// OMI / OPA are the standard grandparent trio, MAMA / PAPA the
-    /// parent pair, LAMA introduces doubled-letter practice, KILO and
-    /// FILM are everyday 4-letter nouns.
+    /// Demo word list — Austrian Volksschule 1. Klasse Woche-1
+    /// tracing words, ordered shortest → longest. Every word
+    /// composes from letters in the demo bundle.
     static let demoWordList: [String] = [
         "OMA", "OMI", "OPA", "MAMA", "PAPA", "LAMA", "KILO", "FILM"
     ]
 
-    /// Load a word sequence — each character becomes its own cell. Demo
-    /// feature for the thesis scope: uppercase-only (lowercase letters
-    /// aren't currently in the audio inventory), no per-letter variants
-    /// or calibration, no spaced-repetition tracking at the word level.
-    /// Completion fires once the last cell's tracker completes.
-    ///
-    /// Implementation: anchor the VM at the word's first-letter asset so
-    /// the existing load / audio / dashboard paths keep working, then
-    /// replace the grid's length-1 sequence with the full word and
-    /// re-map stroke checkpoints into each cell's 0–1 space.
+    /// Load a word — each character becomes a cell. Uppercase only,
+    /// no per-letter variants/calibration, no word-level
+    /// spaced-repetition tracking.
     func loadWord(_ word: String) {
         let upper = word.uppercased()
         guard !upper.isEmpty, let first = upper.first,
               let idx = letters.firstIndex(where: { $0.name == String(first) }) else { return }
         letterIndex = idx
         load(letter: letters[idx])
-        // load() built a length-1 (singleLetter) grid; swap in the word
-        // sequence and re-flow cells + strokes to match.
+        // load() built a length-1 grid; swap in the word sequence
+        // and re-flow cells + strokes to match.
         grid.load(sequence: .word(upper), preset: grid.preset)
         grid.layout(in: canvasSize, schriftArt: schriftArt)
         lastCheckpointKey = nil
@@ -988,9 +778,8 @@ public final class TracingViewModel {
         toast("Ton \(audioIndex + 1) von \(files.count): \(soundLabel(for: files[audioIndex]))")
     }
 
-    /// Human-friendly label for a letter sound file — strips the letter
-    /// prefix and the `.mp3` extension so toasts read "Ton 4 von 5: Affe"
-    /// instead of the raw filename.
+    /// Human-friendly label — strips the letter prefix and `.mp3` so
+    /// toasts read "Ton 4 von 5: Affe" instead of raw filenames.
     private func soundLabel(for file: String) -> String {
         var label = (file as NSString).deletingPathExtension
         if label.hasPrefix(currentLetterName), label.count > currentLetterName.count {
@@ -999,9 +788,8 @@ public final class TracingViewModel {
         return label.isEmpty ? file : label
     }
 
-    // MARK: - Touch handling
+    // MARK: - Touch handling (forwarded to TouchDispatcher)
 
-    /// Touch handling lives on `TouchDispatcher`; the VM forwards.
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         touchDispatcher.beginTouch(at: p, t: t)
     }
@@ -1010,10 +798,7 @@ public final class TracingViewModel {
         touchDispatcher.updateTouch(at: p, t: t, canvasSize: canvasSize)
     }
 
-    /// Test-only inspection of the dispatcher's smoothed-velocity
-    /// state. Lets the existing TracingViewModelTests assertions on
-    /// audio-state changes pin the contract without poking through the
-    /// dispatcher type.
+    /// Test-only dispatcher state inspection.
     var debugSmoothedVelocity: CGFloat { touchDispatcher.smoothedVelocity }
     var debugIsSingleTouchInteractionActive: Bool { touchDispatcher.isSingleTouchInteractionActive }
 
@@ -1024,10 +809,8 @@ public final class TracingViewModel {
         playback.appIsForeground = false
         playback.cancelPending()
         endTouch()
-        // D-1: stop the session-duration timer so the backgrounded window
-        // doesn't get attributed to "active practice". Whatever the child
-        // had practised so far is folded into the accumulator and survives
-        // the round-trip; the next foreground return restarts the live slice.
+        // Stop the active-time timer so backgrounded time isn't
+        // counted; the accumulator survives the round-trip.
         if let start = letterLoadTime {
             letterActiveTimeAccumulated += CACurrentMediaTime() - start
             letterLoadTime = nil
@@ -1036,15 +819,12 @@ public final class TracingViewModel {
         playback.apply(cmd)
         if cmd == .none { audio.stop(); isPlaying = false }
         audio.suspendForLifecycle()
-        // Halt any in-flight verbal feedback so the synthesised voice
-        // doesn't keep talking after the child leaves the app.
+        // Halt in-flight TTS so the voice doesn't keep talking.
         speech.stop()
         playback.resetPlayIntentClock()
-        // Drain pending disk writes before returning so the SwiftUI scene-phase
-        // wrapper can hold the iOS suspension grace window open until durability
-        // is guaranteed. The prior fire-and-forget `Task { await … }` shape let
-        // iOS race the writes to /dev/null on suspension — losing a letter
-        // completion that happened seconds before backgrounding.
+        // Drain disk writes synchronously: iOS's suspension grace
+        // window otherwise raced the prior fire-and-forget Tasks and
+        // could lose a letter completion seconds before backgrounding.
         await progressStore.flush()
         await streakStore.flush()
         await dashboardStore.flush()
@@ -1054,9 +834,8 @@ public final class TracingViewModel {
     public func appDidBecomeActive() {
         playback.appIsForeground = true
         audio.resumeAfterLifecycle()
-        // D-1: restart the live slice of session-duration tracking so the
-        // current foreground window contributes to `duration` again. The
-        // pre-background slice is already in `letterActiveTimeAccumulated`.
+        // Restart the active-time live slice for this foreground
+        // window; the pre-background slice is in the accumulator.
         if letterLoadTime == nil, !didCompleteCurrentLetter {
             letterLoadTime = CACurrentMediaTime()
         }
@@ -1077,21 +856,16 @@ public final class TracingViewModel {
     }
 
     // MARK: - Animation guide
-    // Delegates the guide-dot animation to `AnimationGuideController`.
-    // The observe-phase canvas binds to `vm.animationGuidePoint` which forwards
-    // to the controller's published point.
 
     func startGuideAnimation() {
-        // Use raw glyph-relative strokes — NOT the canvas-mapped tracker definition.
-        // The Canvas maps these to screen coords at render time using normalizedGlyphRect.
-        // rawGlyphStrokes (not letters[…].strokes) so the animation dot follows
-        // the CURRENT script's stroke set — otherwise Schreibschrift mode plays
-        // a Druckschrift path on top of a Playwrite glyph.
+        // Use rawGlyphStrokes so the dot follows the CURRENT script;
+        // `letters[..].strokes` would play a Druckschrift path over a
+        // Playwrite glyph in Schreibschrift mode.
         guard !letters.isEmpty, letterIndex < letters.count,
               let rawStrokes = rawGlyphStrokes,
               !rawStrokes.strokes.isEmpty else { return }
-        // Auto-advance the observe phase after the second full cycle so a child
-        // who can't read "Tippen" isn't stuck waiting for a parent's prompt.
+        // Auto-advance the observe phase after the second cycle so
+        // non-reading children aren't stuck waiting on "Tippen".
         observeCycleCount = 0
         animation.onCycleComplete = { [weak self] in
             guard let self else { return }
@@ -1109,21 +883,18 @@ public final class TracingViewModel {
     }
 
     // MARK: - Onboarding control
-    // These methods are called by onboarding UI (future expansion).
 
-    /// Advance to the next onboarding step. Call from onboarding UI buttons.
+    /// Advance one onboarding step.
     func advanceOnboarding() {
         guard onboardingCoordinator.advance() else { return }
         onboardingStep = onboardingCoordinator.currentStep
         if onboardingCoordinator.isComplete {
-            // U4: record which variant the child actually completed so
-            // post-hoc analysis can correlate engagement with onboarding
-            // length. Only the first-completion variant is recorded —
-            // later "Einführung wiederholen" runs leave it unchanged.
+            // Record the first-completion variant only; re-runs leave
+            // the historical record alone.
             onboardingStore.markComplete(variant: onboardingVariant)
             isOnboardingComplete = true
             speakInitialPhaseCueAfterOnboarding()
-            // Request notification permission and schedule reminder on onboarding completion
+            // Request notification permission + schedule daily reminder.
             Task { [weak self] in
                 guard let self else { return }
                 _ = await self.notificationScheduler.requestPermission()
@@ -1146,13 +917,9 @@ public final class TracingViewModel {
         speakInitialPhaseCueAfterOnboarding()
     }
 
-    /// Play the phase-entry prompt for the currently-loaded letter
-    /// just after onboarding finishes. The original TTS at the end
-    /// of `load(letter:)` is gated on `isOnboardingComplete`, so the
-    /// cue gets skipped during the very-first VM init. Re-firing
-    /// it here lets the child hear "Pass jetzt gut auf!" exactly
-    /// when the onboarding cards drop and the canvas comes up —
-    /// the audio finally matches what the screen is showing.
+    /// Play the phase-entry prompt right after onboarding finishes —
+    /// the cue at the end of `load(letter:)` is gated on
+    /// isOnboardingComplete and skipped during init, so refire here.
     private func speakInitialPhaseCueAfterOnboarding() {
         prompts.play(
             ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
@@ -1160,11 +927,8 @@ public final class TracingViewModel {
         )
     }
 
-    /// Reset onboarding so the intro flow replays on next launch / app foreground.
-    /// U4: re-reads the current parent preference so a parent who flipped
-    /// the Settings toggle and then chose "Einführung wiederholen" gets
-    /// the new variant. The historically-recorded `variantUsed` on the
-    /// store is preserved (it only locks on the FIRST complete).
+    /// Reset onboarding so it replays. Re-reads the parent variant
+    /// preference; the historical `variantUsed` is preserved.
     func restartOnboarding() {
         onboardingStore.reset()
         let useShort = UserDefaults.standard.bool(forKey: "de.flamingistan.primae.useShortOnboarding")
@@ -1177,33 +941,23 @@ public final class TracingViewModel {
 
     // MARK: - Learning phase control
 
-    /// Phase-transition pipeline (scoring, post-freeWrite overlay
-    /// queue, controller advance, completion) lives on
-    /// `PhaseTransitionCoordinator`; the VM forwards.
+    /// Forwards to PhaseTransitionCoordinator.
     func advanceLearningPhase() {
         phaseTransitions.advance()
     }
 
-    /// Recognizer pass for the completed freeWrite phase. Drives the
-    /// post-recognition routing in `PhaseTransitionCoordinator`: a
-    /// "green" result (correct + confidence > 0.7) triggers the
-    /// celebration; anything else triggers the retry prompt and a
-    /// freeWrite reset. Uses the absolute-canvas-space points already
-    /// accumulated during updateTouch so the model sees the same
-    /// stroke the child drew.
+    /// Run the recognizer on the freeWrite buffer. Result drives
+    /// celebration vs retry routing in the coordinator.
     func runRecognizerForFreeWrite(score: CGFloat) {
         let pts = freeWritePoints
         let breaks = freeWriteRecorder.strokeStartIndices
         let size = canvasSize
         let expected = currentLetterName
-        // FreeformController owns the isRecognizing flag — both freeform
-        // and freeWrite share the same UI state since only one recognition
-        // request is ever in flight at a time.
+        // FreeformController owns the spinner flag — only one
+        // recognition is ever in flight.
         freeform.isRecognizing = true
-        // Pull the child's prior recognition history for this letter
-        // so the calibrator's "practised letter" boost can fire.
-        // Empty on first encounter — the calibrator skips the boost
-        // path until enough samples accumulate.
+        // Recognition history feeds the calibrator's practised-letter
+        // boost; empty on first encounter (skipped path).
         let history = (progressStore.progress(for: expected)
                        .recognitionAccuracy ?? [])
                       .map { CGFloat($0) }
@@ -1229,24 +983,23 @@ public final class TracingViewModel {
         }
     }
 
-    /// Record the child's paper-transfer self-assessment score and advance
-    /// the overlay queue to the next overlay (typically the celebration).
+    /// Record the paper-transfer self-assessment and advance the queue.
     func submitPaperTransfer(score: Double) {
         progressStore.recordPaperTransferScore(for: currentLetterName, score: score)
         refreshProgressMirror()
         overlayQueue.dismiss()
     }
 
-    /// Manually complete observe phase (tap to continue).
+    /// Tap-to-continue completion of the observe phase.
     func completeObservePhase() {
         guard phaseController.currentPhase == .observe else { return }
         stopGuideAnimation()
         advanceLearningPhase()
     }
 
-    /// Handle a tap on a numbered start dot in the direct phase.
-    /// Correct order tap: plays confirmation audio, shows directional arrow, advances.
-    /// Wrong order tap: gentle haptic, pulses the correct dot.
+    /// Direct-phase dot tap. Correct order: confirmation audio +
+    /// arrow, advances. Wrong order: gentle haptic, pulse the
+    /// correct dot.
     func tapDirectDot(index: Int) {
         guard phaseController.currentPhase == .direct else { return }
         guard let rawStrokes = rawGlyphStrokes else { return }
@@ -1254,34 +1007,19 @@ public final class TracingViewModel {
         guard index < total, !directTappedDots.contains(index) else { return }
 
         if index == directNextExpectedDotIndex {
-            // The dot overlay's `.id(idx)` transition is run by the
-            // SwiftUI view (DirectPhaseDotsOverlay) — its tap handler
-            // wraps this method in `withAnimation`, so the state
-            // change here is observed inside an animation transaction.
-            // Don't import SwiftUI from the VM: the curve choice and
-            // wrapping live at the call site.
+            // The DirectPhaseDotsOverlay tap handler wraps this in
+            // `withAnimation`; the curve lives at the call site so
+            // the VM doesn't import SwiftUI.
             directTappedDots.insert(index)
             haptics.fire(.checkpointHit)
-            // Per-tap confirmation click — tied to the visible arrow
-            // so the child gets concurrent audio + visual + haptic
-            // feedback for the registered tap. The letter-name audio
-            // only plays on the first tap (replaying it on every dot
-            // turned into noise); the click stays per-tap so each
-            // confirmation is distinct.
+            // Per-tap chime: distinct confirmation per dot. Letter
+            // audio plays only on first tap; replaying it per dot
+            // was perceived as noisy duplication of the observe demo.
             prompts.playTapChime()
-            // No letter-name audio in the direct phase: the tap chime
-            // + haptic + directional arrow already provide three
-            // concurrent confirmation channels, and replaying the
-            // phoneme on dot taps was reading as duplicate / noisy
-            // (it already plays on the observe demo and during
-            // guided tracing).
-            // Show directional arrow briefly along the stroke path.
+            // Brief directional arrow along the stroke path.
             directArrowStrokeIndex = index
-            // On the final dot, the old code advanced the phase synchronously,
-            // which tore down the direct-phase overlay before the arrow had a
-            // chance to render — so the last stroke never got its direction
-            // cue. Defer the phase advance until the arrow finishes so the
-            // last arrow is shown just like the others.
+            // Defer the final-dot phase advance until the arrow has
+            // finished rendering so the last stroke gets its cue too.
             let isLastTap = directTappedDots.count >= total
             Task { [weak self] in
                 guard let self else { return }
@@ -1295,12 +1033,9 @@ public final class TracingViewModel {
                 }
             }
         } else {
-            // Wrong dot — gentle haptic, distinct buzz, pulse the
-            // correct one. The buzz mirrors the correct-tap chime's
-            // mute-bypass path (AVAudioPlayer through AudioEngine's
-            // `.playback` session) so it's audible even with the
-            // ringer switch on, just at a lower pitch so the child
-            // hears the contrast.
+            // Wrong dot — gentle haptic + lower-pitched buzz that
+            // bypasses the mute switch (same path as the correct
+            // chime) so the child hears the contrast.
             haptics.fire(.offPath)
             prompts.playWrongTapChime()
             directPulsingDot = true
@@ -1314,9 +1049,8 @@ public final class TracingViewModel {
         }
     }
 
-    /// Apply calibrated canvas-relative checkpoints from the debug overlay.
-    /// The overlay stores points in the same 0..1 canvas-relative space
-    /// the JSON stroke files use, so no glyph-rect remap is needed here.
+    /// Apply calibrated 0..1 canvas-relative checkpoints (matches the
+    /// JSON stroke format, no glyph-rect remap needed).
     func applyCalibration(_ strokes: [[CGPoint]]) {
         let defs = strokes.enumerated().map { (i, pts) in
             StrokeDefinition(id: i + 1, checkpoints: pts.map { cp in
@@ -1327,32 +1061,27 @@ public final class TracingViewModel {
         strokeTracker.load(letterStrokes)
     }
 
-    /// Load the letter recommended by spaced repetition.
+    /// Load the spaced-repetition-recommended letter.
     func loadRecommendedLetter() {
-        // Confirmation haptic on the celebration's "Weiter" tap so
-        // every primary tap in the app produces feedback.
+        // Confirmation haptic on celebration "Weiter".
         haptics.fire(.letterCompleted)
         let available = visibleLetterNames
         let scored = letterScheduler.prioritized(available: available,
                                                   progress: progressStore.allProgress)
-        // Reset the overlay queue when no letter is available so the
-        // celebration "Weiter" button doesn't leave the child stuck.
+        // Reset the queue when nothing's available so the celebration
+        // doesn't strand the child.
         guard let best = scored.first,
               let idx  = letters.firstIndex(where: { $0.name == best.letter }) else {
             overlayQueue.reset()
             return
         }
-        // Capture priority at selection time so
-        // `schedulerEffectivenessProxy` has a real value to report.
+        // Capture priority for `schedulerEffectivenessProxy`.
         lastScheduledLetterPriority = best.priority
         letterIndex = idx
         load(letter: letters[idx])
         toast("Empfohlen: \(currentLetterName)")
-        // If retrieval prompts are enabled and the scheduler decides
-        // this selection is a retrieval moment, slot the prompt onto
-        // the queue ahead of the tracing phases. Skip when the letter
-        // has fewer than the scheduler's minimum prior completions —
-        // testing on a never-seen letter is just guessing.
+        // Slot a retrieval prompt ahead of tracing when the scheduler
+        // says it's time and the letter has enough prior completions.
         if enableRetrievalPrompts {
             let prog = progressStore.progress(for: best.letter)
             if retrievalScheduler.shouldPrompt(for: best.letter, progress: prog) {
@@ -1362,18 +1091,12 @@ public final class TracingViewModel {
         }
     }
 
-    /// Pick two distractors for the retrieval prompt. Draws from the
-    /// same `motorSimilarity` cluster so the choice has pedagogical
-    /// value — visually-similar letters disambiguate the child's
-    /// recognition, while arbitrary distractors are too easy. Falls
-    /// back to alphabetical neighbours when the pool can't supply two
-    /// cluster-mates.
+    /// Pick two distractors. Prefers motor-similarity cluster-mates
+    /// (within ±5 rank) for pedagogical value; falls back to random
+    /// pool members when the pool is small.
     private func retrievalDistractors(for target: String, from pool: [String]) -> [String] {
         let candidates = pool.filter { $0 != target }
         guard !candidates.isEmpty else { return [] }
-        // Prefer letters within ±5 motor-similarity-rank of the target;
-        // reduces to "two random from the visible pool" when the pool
-        // is small (demo set with 7 letters).
         let order = LetterOrderingStrategy.motorSimilarity.orderedLetters()
         let rank: (String) -> Int = { letter in
             order.firstIndex(of: letter) ?? Int.max
@@ -1387,26 +1110,23 @@ public final class TracingViewModel {
         return Array(candidates.shuffled().prefix(2))
     }
 
-    /// Callback for the RetrievalPromptView. Records the outcome on
-    /// the progress store and dismisses the overlay so the queue can
-    /// advance into the tracing phases.
+    /// Record the retrieval outcome and dismiss the overlay.
     func submitRetrievalAnswer(letter: String, correct: Bool) {
         progressStore.recordRetrievalAttempt(letter: letter, correct: correct)
         refreshProgressMirror()
         haptics.fire(correct ? .letterCompleted : .offPath)
-        // Brief delay so the colour-coded reveal renders before the
-        // overlay dismisses. The view animates the result inline; the
-        // queue advances after a 0.6 s window.
+        // 0.6 s delay so the colour-coded reveal renders before the
+        // overlay dismisses.
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
             await MainActor.run { self?.overlayQueue.dismiss() }
         }
     }
 
-    /// The 7 demo letters for thesis scope.
+    /// 7 demo letters for thesis scope.
     private let demoBaseLetters: Set<String> = ["A", "F", "I", "K", "L", "M", "O"]
 
-    /// Letter names visible based on the showAllLetters toggle, sorted by the active ordering strategy.
+    /// Visible letters per `showAllLetters`, sorted by `letterOrdering`.
     var visibleLetterNames: [String] {
         let pool = showAllLetters
             ? letters.map(\.name)
@@ -1420,10 +1140,8 @@ public final class TracingViewModel {
         }
     }
 
-    /// Expose stroke definition for canvas rendering.
-    /// Current active stroke index.
     var activeStrokeIndex: Int { strokeTracker.currentStrokeIndex }
-    /// Check if a stroke is completed.
+    /// Whether the stroke at `index` has been completed.
     func isStrokeCompleted(_ index: Int) -> Bool {
         strokeTracker.progress.indices.contains(index) && strokeTracker.progress[index].complete
     }
@@ -1436,43 +1154,27 @@ public final class TracingViewModel {
         activePath.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
         recognitionTokens.cancel()
-        // `didCompleteCurrentLetter` is set true by the guided-phase
-        // stroke-completion path (TouchDispatcher.handleStrokeCompletionIfReached)
-        // when the grid sequence finishes — but at that point only the
-        // *guided* phase is done, not the whole letter session. The
-        // flag was originally meant to mean "letter session done"; we
-        // restore that meaning here so the freeWrite auto-advance gate
-        // (`!vm.didCompleteCurrentLetter`) doesn't stay clamped after
-        // guided→freeWrite. The final-phase commit path inside
-        // `recordSessionCompletion` wins because it runs before the
-        // controller advances back to observe on the next letter.
+        // didCompleteCurrentLetter means "letter session done"; the
+        // sequence-completion path on guided sets it true, but only
+        // the guided *phase* is done, so reset here to keep the
+        // freeWrite auto-advance gate working across guided→freeWrite.
         didCompleteCurrentLetter = false
-        // Always clear the recorder when a phase transition fires —
-        // a stale freeWritePath from a previous freeWrite session must
-        // not leak into the next one if the controller lands on a
-        // non-freeWrite phase first (e.g. via thesis-condition skips).
-        // Then re-arm the timing for the active phase.
-        // C-1: clearAll() wipes lastGuidedScore, but advanceLearningPhase() sets
-        // it immediately before calling here (guided→freeWrite path). Preserve it
-        // so SchuleWorldView's "Nachspuren fertig" feedback card can display.
+        // Preserve lastGuidedScore across clearAll — the guided→
+        // freeWrite path sets it immediately before we get here, and
+        // SchuleWorldView's "Nachspuren fertig" card needs it.
         let savedGuidedScore = freeWriteRecorder.lastGuidedScore
         freeWriteRecorder.clearAll()
         freeWriteRecorder.lastGuidedScore = savedGuidedScore
-        // Stop any in-flight guide animation from the previous phase
-        // before deciding whether to (re)start it. Without this the
-        // animation kept scanning into freeWrite and direct, where
-        // the canvas should be free of scaffolding.
+        // Stop the previous phase's guide animation before deciding
+        // whether to restart — otherwise it scans into freeWrite/direct.
         stopGuideAnimation()
         if phaseController.currentPhase == .freeWrite {
             freeWriteRecorder.startSession()
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
-            // Animate the guide dot scanning the stroke path while the
-            // child traces in guided. Same animator the observe phase
-            // uses; the auto-advance-after-2-cycles trigger inside
-            // startGuideAnimation is gated on `currentPhase == .observe`,
-            // so calling it here runs the visual scan without affecting
-            // phase progression.
+            // Same animator as observe; auto-advance-after-2-cycles
+            // is gated on `currentPhase == .observe` so calling it
+            // here runs the scan without affecting progression.
             startGuideAnimation()
         }
         directTappedDots.removeAll()
@@ -1480,14 +1182,10 @@ public final class TracingViewModel {
         directPulsingTask = nil
         directPulsingDot = false
         directArrowStrokeIndex = nil
-        // W-6: a phase transition can fire mid-stroke
-        // (handleStrokeCompletionIfReached is called from updateTouch
-        // while a finger is down). If the system interrupts the gesture
-        // (incoming call, Control Centre swipe) between that
-        // updateTouch and the matching endTouch,
-        // `isSingleTouchInteractionActive` is stranded true and
-        // beginTouch's guard rejects all future touches. The dispatcher
-        // owns that flag now, so the reset goes through it.
+        // Phase transitions can fire mid-stroke from updateTouch; if
+        // the gesture is then interrupted (incoming call, Control
+        // Centre swipe), the active flag would strand true and reject
+        // future touches. Reset goes through the dispatcher.
         touchDispatcher.resetTouchState()
         playback.resumeIntent = false
         playback.cancelPending()
@@ -1495,10 +1193,6 @@ public final class TracingViewModel {
         playback.forceIdle()
         isPlaying = false
     }
-
-    // `recordPhaseSessionCompletion` and `commitCompletion` live on
-    // `PhaseTransitionCoordinator`; per-letter shared-completion
-    // sites can reach them via `vm.phaseTransitions.commitCompletion`.
 
     // MARK: - Parent dashboard access
 

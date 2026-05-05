@@ -1,8 +1,3 @@
-// FreeWriteScorerTests.swift
-// PrimaeNativeTests
-//
-// Uses Swift Testing (@Test, #expect).
-
 import Testing
 import CoreGraphics
 @testable import PrimaeNative
@@ -125,12 +120,11 @@ struct FreeWriteScorerTests {
         #expect(FreeWriteScorer.score(tracedPoints: traced, reference: strokes).formAccuracy == 0)
     }
 
-    // MARK: - formAccuracyShape (round-3 audit gap)
+    // MARK: - formAccuracyShape
 
     /// `formAccuracyShape` is the freeform-mode scorer (blank canvas:
-    /// stroke order, pen-lift count, absolute position all irrelevant)
-    /// and was previously untested directly. The order-free Hausdorff
-    /// guarantee is the meaningful contract — verify it explicitly.
+    /// stroke order, pen-lift count, absolute position all irrelevant).
+    /// The order-free Hausdorff guarantee is the meaningful contract.
     @Test("formAccuracyShape: identical trace and reference scores high")
     func formAccuracyShapeIdentical() {
         let strokes = LetterStrokes(letter: "I", checkpointRadius: 0.05, strokes: [

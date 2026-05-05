@@ -1,15 +1,9 @@
 // ParentAreaView.swift
 // PrimaeNative
 //
-// Parental gate destination. NavigationSplitView-based adult interface
-// reachable only via the 2-second long-press on the gear in the
-// WorldSwitcherRail. Hosts three existing adult-grade features:
-//   • Übersicht — the existing ParentDashboardView
-//   • Einstellungen — the existing SettingsView
-//   • Datenexport — reuses the CSV / JSON exporter that ships today
-//
-// The child should never land here accidentally; everything is plain
-// iOS chrome with no child-friendly styling.
+// Parental gate destination. Reached only via the 2-second gear
+// long-press on `WorldSwitcherRail`. Plain iOS chrome — no
+// child-friendly styling, since a child should never land here.
 
 import SwiftUI
 import UIKit

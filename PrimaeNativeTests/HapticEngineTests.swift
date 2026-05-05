@@ -1,6 +1,3 @@
-//  HapticEngineTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import CoreGraphics
 import QuartzCore

@@ -8,10 +8,8 @@ struct PaperTransferView: View {
     @Environment(TracingViewModel.self) private var vm
     let letter: String
     let onComplete: (Double) -> Void
-    /// Injectable sleeper so the 3 s reference / 10 s write-paper
-    /// timing is testable deterministically. Production keeps
-    /// `Task.sleep`; tests substitute an instant-resume closure to
-    /// skip the 13-second wall-clock wait.
+    /// Injectable sleeper so the 3 s / 10 s timing is testable
+    /// deterministically without 13 s of wall-clock wait.
     var sleep: @Sendable (Duration) async throws -> Void = {
         try await Task.sleep(for: $0)
     }
@@ -67,10 +65,8 @@ struct PaperTransferView: View {
             .padding(48)
         }
         .task {
-            // Children can't read the prompt text; speak it as German
-            // verbal feedback while the visual phase rotates. Each TTS
-            // line lines up with the corresponding visual phase so a
-            // pre-reader gets the same instruction aurally.
+            // Children can't read the prompt text; speak each phase
+            // aurally so pre-readers get the same instruction.
             vm.prompts.play(.paperShow,   fallbackText: ChildSpeechLibrary.paperTransferShow)
             do {
                 try await sleep(.seconds(3))

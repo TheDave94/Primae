@@ -20,9 +20,9 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
         self.bundle = bundle
     }
 
-    /// Returns Bundle.module if available, falling back to Bundle.main.
-    /// Avoids the fatalError that SPM's generated Bundle.module accessor
-    /// throws when the resource bundle cannot be located (e.g. in test hosts).
+    /// Returns `Bundle.module` if available, falling back to
+    /// `Bundle.main`. Avoids the `fatalError` SPM's generated
+    /// `Bundle.module` accessor throws in test hosts.
     private static func safeModuleBundle() -> Bundle {
         let bundleName = "PrimaeNative_PrimaeNative"
         let candidates: [Bundle?] = [
@@ -55,18 +55,11 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     }
 
     func resourceURL(for relativePath: String) -> URL? {
-        // Resources can land in any of three layouts depending on how
-        // the package is consumed, so probe every one:
-        //   1. SPM module bundle with `.copy("Resources")` →
-        //      <bundle>/Resources/Letters/A/strokes_schulschrift.json
-        //   2. SPM module bundle with `.process(_:)` (flattened) →
-        //      <bundle>/Letters/A/strokes_schulschrift.json
-        //   3. Xcode app target copying files into the .app directly →
-        //      <Bundle.main>/Letters/A/strokes_schulschrift.json or
-        //      <Bundle.main>/A/strokes_schulschrift.json
-        // The enumerator-based suffix match at the end is a last
-        // resort that guarantees the app never silently serves the
-        // wrong variant file just because the bundling layout shifted.
+        // Resources land in one of three layouts depending on how the
+        // package is consumed: SPM `.copy("Resources")`, SPM
+        // `.process(_:)` (flattened), or Xcode app-target copy. The
+        // enumerator suffix match at the end guarantees the right
+        // variant file even when the bundling layout shifts.
         let pathCandidates = [relativePath, "Resources/\(relativePath)"]
         for b in searchBundles {
             guard let root = b.resourceURL else { continue }
@@ -90,9 +83,7 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
                 }
             }
         }
-        // Last-resort: enumerate every resource URL and match by path suffix.
-        // Slower but guaranteed to find the file as long as it's inside any
-        // of the search bundles somewhere.
+        // Last-resort enumerator pass — slow but exhaustive.
         let suffix = "/" + relativePath
         for url in allResourceURLs() {
             if url.path.hasSuffix(suffix) { return url }
@@ -119,8 +110,8 @@ final class LetterRepository {
         self.userDefaults = userDefaults
     }
 
-    /// Loads letters from bundle with cache fallback.
-    /// Never returns empty — falls back to a hardcoded sample letter.
+    /// Loads letters from bundle with cache fallback. Never empty —
+    /// falls back to a hardcoded sample letter.
     func loadLetters() -> [LetterAsset] {
         switch loadWithErrors() {
         case .success(let letters):
@@ -161,11 +152,9 @@ final class LetterRepository {
     }
 
     /// Warm-launch optimisation: return the cached letters when they
-    /// were written by the same app build that's currently running.
-    /// App updates bump CFBundleVersion in App Store builds, which
-    /// auto-invalidates the cache without any hardcoded "expected
-    /// count" to maintain. Falls back to the bundle path when the
-    /// cache is missing, stale, or its version sentinel is absent.
+    /// were written by the currently-running build. App-Store builds
+    /// bump `CFBundleVersion`, which auto-invalidates the cache.
+    /// Falls back to the bundle path on miss / stale / missing sentinel.
     func loadLettersFast() -> [LetterAsset] {
         if let bundleVersion = currentBundleVersion,
            let cachedVersion = userDefaults.string(forKey: Self.cacheBundleVersionKey),
@@ -177,24 +166,16 @@ final class LetterRepository {
         return loadLetters()
     }
 
-    /// Storage key for the bundle-version sentinel paired with the
-    /// cache file. Versioning the cache by app build is the standard
-    /// resource-cache bust idiom.
-    ///
-    /// The trailing `.vN` suffix is a manual bust knob: dev builds
-    /// reuse the same `CFBundleVersion` between commits, so a stroke-
-    /// data refactor that changes the on-disk JSON shape would keep
-    /// serving the old cached strokes indefinitely. Bump the suffix
-    /// any time the stroke generator's output convention changes
-    /// (regenerated checkpoints, coordinate-space rules, etc.) so
-    /// existing installs read the bundle fresh once and re-cache.
+    /// Bundle-version sentinel paired with the cache file. The
+    /// trailing `.vN` is a manual bust knob — bump when the stroke
+    /// generator's output convention changes (dev builds reuse
+    /// `CFBundleVersion` between commits, so a JSON-shape refactor
+    /// would otherwise keep serving the old cached strokes).
     private static let cacheBundleVersionKey = "PrimaeNative.LetterCache.bundleVersion.v4"
 
-    /// Identifier for the build that produced the cache. Combines
-    /// marketing version and build number so the cache busts on
-    /// either kind of release. Returns nil without a bundle (e.g.
-    /// unit-test hosts) so the fast path defers to the slow path
-    /// rather than serving stale data.
+    /// Build identifier — `CFBundleShortVersionString-CFBundleVersion`.
+    /// Returns nil in unit-test hosts so the fast path defers to the
+    /// slow path rather than serving stale data.
     private var currentBundleVersion: String? {
         let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
@@ -208,9 +189,8 @@ final class LetterRepository {
         do {
             try cache.save(letters)
         } catch {
-            // Skip the version stamp on write failure: we must never
-            // claim a valid cache exists for a build whose cache file
-            // is missing or corrupt.
+            // Skip the version stamp on write failure — never claim a
+            // valid cache for a build whose file is missing/corrupt.
             return
         }
         if let version = currentBundleVersion {
@@ -220,11 +200,10 @@ final class LetterRepository {
 
     private func loadFromCache() -> [LetterAsset]? {
         guard let letters = try? cache.load(), !letters.isEmpty else { return nil }
-        // Reject caches with any empty-stroke letter. An empty stroke
-        // array would make `load(letter:)` skip the observe+direct
-        // phases and drop the child straight into Nachspuren; falling
-        // back to the bundle re-reads strokes.json fresh and repairs
-        // itself on the next persist.
+        // Reject caches with any empty-stroke letter — an empty array
+        // would skip observe + direct and drop the child straight
+        // into Nachspuren. Falling back to the bundle re-reads
+        // strokes.json fresh and self-repairs on the next persist.
         guard letters.allSatisfy({ !$0.strokes.strokes.isEmpty }) else { return nil }
         return letters
     }
@@ -261,13 +240,11 @@ private extension LetterRepository {
                 return nil
             }
 
-            // Folder name (or the `<x>_strokes.json` filename stem)
-            // determines which letter this row belongs to. Lowercase
-            // folders carry a `_l` suffix so they don't collide with
-            // their uppercase counterparts on case-insensitive APFS
-            // / HFS+ (the iPad's filesystem folds `A` and `a` into
-            // the same node, which would otherwise overwrite the
-            // strokes for one with the other at install time).
+            // Folder name (or `<x>_strokes.json` stem) is the letter.
+            // Lowercase folders carry a `_l` suffix to avoid case
+            // collisions on case-insensitive APFS/HFS+ (`A` and `a`
+            // fold to the same node and would overwrite each other
+            // at install time).
             let folderName: String
             if filename.hasSuffix("_strokes.json") {
                 folderName = url.deletingPathExtension().lastPathComponent
@@ -281,11 +258,10 @@ private extension LetterRepository {
                 : folderName
             guard !base.isEmpty, base.count <= 2 else { return nil }
 
-            // PBM glyph fallback (kept for legacy installs); vector
-            // path is always preferred at render time. The lookup
-            // walks both the case-suffixed folder and the bare name
-            // so legacy uppercase folders without a suffix keep
-            // resolving.
+            // PBM glyph fallback (legacy installs); the vector path
+            // is preferred at render time. Walks both the case-
+            // suffixed folder and the bare name so legacy uppercase
+            // folders without a suffix still resolve.
             let imageBase = isLowercaseFolder ? "\(base)_l" : base
             let imageCandidates = [
                 "Letters/\(imageBase)/\(base).pbm",
@@ -301,30 +277,24 @@ private extension LetterRepository {
 
             let allAudio = findAudioAssets(for: base)
             if allAudio.isEmpty {
-                // Letter is still surfaced: a valid strokes.json is
-                // enough to trace. Letters without recordings stay
-                // silent during proximity events.
+                // A valid strokes.json is enough to trace; letters
+                // without recordings stay silent on proximity events.
                 issues.append(.init(letter: base, message: "No audio files found in bundle for letter"))
             }
-            // Phoneme recordings follow the `<base>_phoneme<n>.<ext>`
-            // suffix convention; partitioning lets the parent's
-            // "Lautwert wiedergeben" toggle choose which population
-            // plays.
+            // Phoneme recordings: `<base>_phoneme<n>.<ext>`. The
+            // parent's "Lautwert wiedergeben" toggle picks which
+            // population plays.
             let (audio, phonemeAudio) = partitionPhonemeAudio(allAudio)
 
-            // The user-facing letter name keeps its original case
-            // (the picker renders `A` vs `a` correctly), the
-            // baseLetter keys the progress / audio store (always
-            // uppercase or `ß`), and `letterCase` captures upper /
-            // lower from the folder convention rather than guessing.
+            // displayName preserves picker case (`A` vs `a`);
+            // baseLetter keys progress/audio (uppercase or `ß`);
+            // letterCase comes from the folder suffix.
             let displayName = isLowercaseFolder ? base.lowercased() : base
             let baseLetter = base == "ß" ? "ß" : base.uppercased()
             let letterCase: LetterAsset.LetterCase = isLowercaseFolder ? .lower : .upper
-            // `variants` describes alternate stroke *orders* of the
-            // same letter within the same script (e.g. F's two
-            // horizontal-bar sequences). Scripts themselves
-            // (Druckschrift, Schreibschrift, …) are not variants —
-            // they flow through `SchriftArt.bundleVariantID`.
+            // `variants` are alternate stroke *orders* within the same
+            // script (e.g. F's two horizontal-bar sequences). Scripts
+            // themselves flow through `SchriftArt.bundleVariantID`.
             var variantIDs: [String] = []
             if bundleHasResource(at: "Letters/\(imageBase)/strokes_variant.json") { variantIDs.append("variant") }
             let variants: [String]? = variantIDs.isEmpty ? nil : variantIDs
@@ -376,10 +346,9 @@ private extension LetterRepository {
         return (deduped, issues)
     }
 
-    /// Split a letter's audio inventory into the letter-name and
-    /// phoneme populations. Phoneme recordings follow the convention
-    /// `<base>_phoneme<n>.<ext>` (e.g. `A_phoneme1.mp3`); match is
-    /// case-insensitive and sorted output keeps playback deterministic.
+    /// Split into letter-name vs phoneme populations.
+    /// Phoneme files: `<base>_phoneme<n>.<ext>` (case-insensitive).
+    /// Sorted output keeps playback deterministic.
     func partitionPhonemeAudio(_ files: [String]) -> (name: [String], phoneme: [String]) {
         var name: [String] = []
         var phoneme: [String] = []
@@ -422,8 +391,8 @@ private extension LetterRepository {
             return nil
         }
 
-        // Filter stale references before any downstream matching so they can never
-        // accidentally satisfy a letter lookup (e.g. hmmm.wav matching H via hasPrefix).
+        // Filter stale references before downstream matching so e.g.
+        // `hmmm.wav` can never satisfy H via the hasPrefix fallback.
         let unique = Array(Set(audio)).sorted().filter { !isLikelyStaleAudioReference($0) }
         let preferred = preferredAudioFiles(for: base, available: unique)
         if !preferred.isEmpty { return preferred }
@@ -445,11 +414,9 @@ private extension LetterRepository {
         }.sorted()
     }
 
-    /// Names matched by `findAudioAssets`'s hasPrefix fallback that
-    /// aren't actually letter recordings. Without this list the UI tap
-    /// effect `tap.wav` becomes the "letter audio" for T (matches
-    /// `t...`), which then plays in place of the real letter sound on
-    /// every guided-phase proximity event for that letter.
+    /// Files matched by the hasPrefix fallback that aren't letter
+    /// recordings. Without this list `tap.wav` becomes the "letter
+    /// audio" for T and plays on every T proximity event.
     private static let nonLetterAudioBasenames: Set<String> = [
         "tap.wav", "tap_wrong.wav", "tick_stroke.wav", "hmmm.wav"
     ]
@@ -568,10 +535,8 @@ private extension LetterRepository {
 
     func logValidationIssues(_ issues: [ValidationIssue]) {
         // Most issues are benign — stroke JSONs ship for every letter
-        // but bundled audio/PBM only exist for the recorded subset.
-        // Emit a single summary at .info, with per-letter detail at
-        // .debug so the signal is preserved without spamming the
-        // Xcode console on every launch.
+        // but audio/PBM only for the recorded subset. Summary at
+        // .info; per-letter detail at .debug.
         guard !issues.isEmpty else { return }
         let missingAudio = issues.filter { $0.message.contains("No audio files") }.count
         let missingPBM   = issues.filter { $0.message.contains("Missing PBM") }.count
@@ -586,11 +551,9 @@ private extension LetterRepository {
 // MARK: - Variant stroke loading
 
 extension LetterRepository {
-    /// Load alternative stroke data for a given letter and variant ID.
-    /// Reads `Letters/{letter}/strokes_{variantID}.json` from the
-    /// bundle. Lowercase folders carry a `_l` suffix to avoid case
-    /// collisions on case-insensitive filesystems, so probe both the
-    /// suffixed and bare folder names.
+    /// Load alternate stroke data from
+    /// `Letters/{letter}/strokes_{variantID}.json`. Probes both the
+    /// suffixed (`_l`) and bare folder names for lowercase letters.
     func loadVariantStrokes(for letter: String, variantID: String) -> LetterStrokes? {
         let folderCandidates: [String]
         if letter == letter.uppercased() && letter != letter.lowercased() {

@@ -1,14 +1,11 @@
-// WritingAssessmentTests.swift
-// PrimaeNativeTests
-//
 // Unit coverage for the three non-form Schreibmotorik dimensions and the
-// weighted overallScore on `WritingAssessment`. Form accuracy already has
-// dedicated coverage in FreeWriteScorerTests via Fréchet distance fixtures.
+// weighted overallScore on `WritingAssessment`. Form accuracy has its own
+// coverage in FreeWriteScorerTests via Fréchet distance fixtures.
 //
-// The dimension implementations in FreeWriteScorer are file-private, so the
-// tests exercise them through `FreeWriteScorer.score(...)` and assert on the
-// resulting WritingAssessment fields. Form inputs are kept constant so any
-// score variation comes from the dimension under test.
+// The dimension implementations in FreeWriteScorer are file-private, so
+// these tests exercise them through `FreeWriteScorer.score(...)` and
+// assert on the resulting WritingAssessment fields. Form inputs are kept
+// constant so any score variation comes from the dimension under test.
 
 import Testing
 import CoreGraphics

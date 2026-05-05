@@ -1,21 +1,14 @@
 // PlaybackController.swift
 // PrimaeNative
 //
-// Encapsulates the audio-playback state machine, its debounced state
-// transitions, and the play-intent wall-time deduplication used during
-// rapid tap bursts. Extracted from TracingViewModel to keep its God-object
-// scope smaller.
+// Audio-playback state machine, debounced transitions, and play-intent
+// wall-time deduplication for rapid tap bursts.
 //
-// DESIGN NOTES (re LESSONS.md audio fragility):
-//   - This controller is MainActor-bound like the VM. No audio command moves
-//     off the main thread; we only move the state machine + timing bookkeeping.
-//   - `request(_:immediate:)` with immediate=true remains fully synchronous —
-//     `load(letter:)` in the VM still calls us with immediate=true and the
-//     corresponding audio command is issued before we return, preserving the
-//     sync-load contract LESSONS.md flags as CRITICAL.
-//   - Debounce timings (activeDebounceSeconds / idleDebounceSeconds) must match
-//     the values tests assert against in TracingViewModelTests; exposed as
-//     constructor parameters so tests can still tune if needed.
+// FRAGILE — see docs/LESSONS.md before touching audio:
+//   - MainActor-bound; no audio command moves off the main thread.
+//   - `request(_:immediate:)` with immediate=true is fully synchronous;
+//     the VM's load(letter:) path depends on this sync contract.
+//   - Debounce timings are asserted against in TracingViewModelTests.
 
 import Foundation
 import QuartzCore
@@ -26,30 +19,24 @@ final class PlaybackController {
     // MARK: - Injected
 
     private let audio: AudioControlling
-    /// Invoked when the audible playing state changes. VM uses this to
-    /// update its @Observable `isPlaying` mirror.
-    ///
-    /// Settable post-init so the owning VM can capture `[weak self]`
-    /// AFTER `self.playback` has already been assigned (W-16). Pass the
-    /// real callback at init when you can; assign it later when the
-    /// callback needs to capture an enclosing object that can't escape
-    /// Swift's two-phase init rules.
+    /// Invoked when the audible playing state changes. Settable
+    /// post-init so the VM can wire `[weak self]` after `self.playback`
+    /// is assigned (two-phase init seam).
     var onIsPlayingChanged: (Bool) -> Void
 
     // MARK: - Tunable timings (live-adjustable from the debug audio panel)
 
     var activeDebounceSeconds: TimeInterval
     var idleDebounceSeconds: TimeInterval
-    /// Coalesces rapid tap bursts (begin→update→end in quick succession) into
-    /// a single audible playback. Without this, each short cycle produces a
-    /// fresh idle→active transition and a new audio.play() call.
+    /// Coalesces rapid tap bursts into a single audible playback so each
+    /// short cycle doesn't fire a fresh audio.play().
     var playIntentDebounceSeconds: CFTimeInterval
 
     // MARK: - State
 
     private var machine = PlaybackStateMachine()
-    /// In-flight debounced transition. Exposed read-only so tests can await it
-    /// instead of sleeping past the debounce on the wall clock.
+    /// In-flight debounced transition. Read-only so tests can await it
+    /// instead of sleeping past the debounce.
     private(set) var pendingTransition: Task<Void, Never>?
     private var lastPlayIntentWallTime: CFTimeInterval = 0
 
@@ -149,8 +136,7 @@ final class PlaybackController {
     }
 
     /// Cancel any in-flight debounced transition AND any pending audio
-    /// lifecycle work (AVAudioSession deactivation etc.). Mirror of the
-    /// former `cancelPendingPlaybackWork()` in VM.
+    /// lifecycle work (AVAudioSession deactivation etc.).
     func cancelPending() {
         pendingTransition?.cancel()
         pendingTransition = nil

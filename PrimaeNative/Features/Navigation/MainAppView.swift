@@ -1,29 +1,25 @@
 // MainAppView.swift
 // PrimaeNative
 //
-// Root view of the redesigned UI. Hosts the persistent WorldSwitcherRail
-// on the left and swaps the right-hand content between the three worlds
-// based on `activeWorld`. Settings + research features are behind the
-// gear long-press (presented as a fullScreenCover).
+// Root view. Hosts the persistent WorldSwitcherRail on the left and
+// swaps the right-hand content between the three worlds. Parent
+// area is gated behind the gear long-press (fullScreenCover).
 
 import SwiftUI
 
 public struct MainAppView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Persisted across launches so the child returns to the world
-    /// they were last in. Stored as the AppWorld raw value because
-    /// `@AppStorage` only supports plain Codable scalars.
+    /// Persisted as the AppWorld raw value because `@AppStorage`
+    /// only supports plain Codable scalars.
     @AppStorage("de.flamingistan.primae.activeWorld")
     private var activeWorldRaw: String = AppWorld.schule.rawValue
     @State private var showParentArea = false
 
     public init() {}
 
-    /// Two-way binding around `activeWorldRaw` that decodes and encodes the
-    /// AppWorld enum so child views can keep working with the typed value.
-    /// Falls back to `.schule` if a future build wrote a value we no
-    /// longer recognise.
+    /// Two-way binding around `activeWorldRaw`. Falls back to
+    /// `.schule` for unrecognised values from future builds.
     private var activeWorldBinding: Binding<AppWorld> {
         Binding(
             get: { AppWorld(rawValue: activeWorldRaw) ?? .schule },
@@ -36,7 +32,7 @@ public struct MainAppView: View {
     }
 
     public var body: some View {
-        // Onboarding still owns the full screen on first run. No rail
+        // Onboarding owns the full screen on first run; no rail
         // until the user has reached the main experience.
         if !vm.isOnboardingComplete {
             OnboardingView()
@@ -48,9 +44,8 @@ public struct MainAppView: View {
                 )
                 worldContent
             }
-            // Primae paper canvas behind the whole shell. Each world
-            // overlays its own soft tinted band on top via
-            // WorldPalette.background(for:).
+            // Paper canvas behind the shell; each world overlays its
+            // own tinted band via `WorldPalette.background(for:)`.
             .background(Color.paperDeep.ignoresSafeArea())
             .ignoresSafeArea()
             .fullScreenCover(isPresented: $showParentArea) {
@@ -58,19 +53,15 @@ public struct MainAppView: View {
                     .environment(vm)
             }
             .onChange(of: activeWorldRaw) { _, _ in
-                // Leaving Werkstatt → drop freeform so the other worlds
-                // see a clean VM state (guided canvas, blank target).
+                // Leaving Werkstatt — drop freeform so the other
+                // worlds see a clean VM state.
                 if activeWorld != .werkstatt, vm.writingMode == .freeform {
                     vm.exitFreeformMode()
                 }
-                // Leaving Schule → halt any in-flight phase-entry
-                // voiceover. Phase prompts are Schule-only context
-                // ("Pass jetzt gut auf!", "Fahr die Linie nach.") —
-                // hearing them play *into* Sterne or Werkstatt is
-                // confusing for a child. The post-onboarding cue
-                // takes ~2 s on TTS; without this stop, a quick tap
-                // on Sterne right after onboarding ends bleeds the
-                // Schule prompt across the world boundary.
+                // Leaving Schule — halt the in-flight phase-entry
+                // voiceover. Phase prompts are Schule-only context;
+                // letting them bleed into Sterne or Werkstatt right
+                // after onboarding is confusing for the child.
                 if activeWorld != .schule {
                     vm.prompts.stop()
                 }
@@ -98,9 +89,8 @@ public struct MainAppView: View {
             insertion: .move(edge: .trailing).combined(with: .opacity),
             removal: .opacity
         ))
-        // Respect Reduce Motion: skip the slide-in transition for users
-        // who disabled motion. The world still swaps, just without the
-        // 300 ms ease — matches the rest of the app's reduceMotion gates.
+        // Respect Reduce Motion — skip the 300 ms slide for users
+        // who disabled motion; world still swaps.
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.3), value: activeWorld)
     }
 }

@@ -1,8 +1,8 @@
 // Radii.swift
 // PrimaeNative — Theme
 //
-// Primae corner-radius scale, mirroring the `--r-*` CSS vars in
-// `design-system/colors_and_type.css`. Friendly but not toy-round.
+// Corner-radius scale mirroring the `--r-*` CSS vars in
+// `design-system/colors_and_type.css`.
 
 import CoreGraphics
 
@@ -17,8 +17,7 @@ enum Radii {
     static let xl: CGFloat = 28
     /// 40 px — bottom-sheet / parent-area panel.
     static let xxl: CGFloat = 40
-    /// Full pill for buttons + chips. SwiftUI uses an explicit
-    /// pill shape via `.clipShape(Capsule())`; this exists as a
-    /// large numeric fallback for radius-driven contexts.
+    /// Full pill — large numeric fallback for radius-driven contexts.
+    /// Prefer `.clipShape(Capsule())` where a shape works.
     static let pill: CGFloat = 9999
 }

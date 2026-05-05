@@ -1,6 +1,3 @@
-//  EndToEndTracingSessionTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 import QuartzCore
@@ -38,7 +35,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         vm = TracingViewModel(.stub.with(audio: audio))
     }
 
-    // MARK: 1 — Initial state
+    // MARK: - Initial state
 
     @Test func initialState() {
         #expect(!vm.isPlaying)
@@ -47,28 +44,26 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(vm.currentLetterName == vm.currentLetterName.uppercased())
     }
 
-    // MARK: 2 — Audio load called on init
+    // MARK: - Audio load on init
 
     @Test func audioLoaded_onInit() {
         let loadEvents = audio.events.filter { if case .load = $0 { return true }; return false }
         #expect(!loadEvents.isEmpty, "Audio loadAudioFile must be called during init")
     }
 
-    // MARK: 3 — Fast touch → play fires after debounce
+    // MARK: - Fast touch triggers play after debounce
 
     @Test func fastTouch_triggersPlay() async {
         simulateFastTouch(t0: 1000)
-        // Round-3 test-audit gap: the prior wall-clock sleep made this
-        // test flaky on slow CI runners (debounce can fire late under
-        // load). Await the controller's exposed pendingTransition task
-        // so the assertion fires deterministically when the debounce
-        // resolves, regardless of runner pressure.
+        // Await the controller's exposed pendingTransition task so the
+        // assertion fires deterministically when the debounce resolves,
+        // independent of CI runner pressure.
         await vm.awaitPlaybackDebounce()
         #expect(audio.hasEvent(.play), "Fast touch must trigger audio.play()")
         #expect(vm.isPlaying)
     }
 
-    // MARK: 4 — endTouch stops audio
+    // MARK: - endTouch stops audio
 
     @Test func endTouch_stopsAudio() async {
         simulateFastTouch(t0: 1000)
@@ -80,7 +75,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(!vm.isPlaying)
     }
 
-    // MARK: 5 — setAdaptivePlayback called during touch
+    // MARK: - Adaptive playback during touch
 
     @Test func adaptivePlayback_calledDuringTouch() {
         simulateFastTouch(t0: 1000)
@@ -94,21 +89,19 @@ fileprivate final class RecordingAudio: AudioControlling {
         }
     }
 
-    // MARK: 6 — Full session: progress reaches 1.0
+    // MARK: - Full session
 
     @Test func fullSession_progressReachesOne() {
         guard gridScanUntilComplete() else { return }
         #expect(vm.progress == 1.0)
     }
 
-    // MARK: 7 — After completion, isPlaying = false
-
     @Test func fullSession_isPlayingFalseAfterCompletion() {
         guard gridScanUntilComplete() else { return }
         #expect(!vm.isPlaying)
     }
 
-    // MARK: 8 — resetLetter restores initial state
+    // MARK: - resetLetter restores initial state
 
     @Test func resetLetter_restoresInitialState() {
         gridScanUntilComplete()
@@ -118,7 +111,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(audio.hasEvent(.stop))
     }
 
-    // MARK: 9 — Accessibility strings valid throughout session
+    // MARK: - Accessibility strings throughout session
 
     @Test func accessibilityStrings_validThroughoutSession() {
         assertAccessibilityStringsValid(label: "initial")
@@ -130,7 +123,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         assertAccessibilityStringsValid(label: "after reset")
     }
 
-    // MARK: 10 — Full bg/fg lifecycle around a session
+    // MARK: - Full bg/fg lifecycle around a session
 
     @Test func lifecycleAroundSession() async {
         simulateFastTouch(t0: 1000)
@@ -144,7 +137,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         assertAccessibilityStringsValid(label: "after foreground return")
     }
 
-    // MARK: 11 — nextLetter changes state cleanly
+    // MARK: - nextLetter changes state cleanly
 
     @Test func selectLetter_changesCurrentLetter() {
         vm.nextLetter()
@@ -153,7 +146,7 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(vm.progress == 0.0)
     }
 
-    // MARK: - Stroke proximity tests
+    // MARK: - Stroke proximity
 
     @Test func stdDrag_checkpointProximity_progressPositive() {
         simulateFastTouch(t0: 1000)

@@ -1,17 +1,10 @@
 //  PlaybackStateMachine.swift
 //  PrimaeNative
 //
-//  Pure value-type state machine for adaptive playback.
-//  Contains zero side effects — callers act on the returned Command.
-//
-//  State diagram:
-//
-//    idle ──transition(.active, guarded=true)──▶ active
-//    active ──transition(.idle)──────────────▶ idle
-//    any ──forceIdle()────────────────────────▶ idle
-//
-//  Guards: transition to .active is blocked when appIsForeground==false
-//  or resumeIntent==false; in that case the machine stays/moves to .idle.
+//  Pure value-type state machine for adaptive playback. Side-effect
+//  free — callers execute the returned Command. Transitions to
+//  `.active` are blocked unless `appIsForeground` and `resumeIntent`
+//  are both true; the machine stays/moves to `.idle` otherwise.
 
 import Foundation
 

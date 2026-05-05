@@ -2,9 +2,8 @@
 // PrimaeNative
 //
 // Curated word list for the freeform "Wort schreiben" sub-mode. Words
-// are short, concrete, and familiar to Austrian 1st-graders (Volksschule
-// Woche 1–2 vocabulary). Ordered by increasing difficulty — longer
-// words and less-common letters come later.
+// are short, concrete, and familiar to Austrian 1st-graders. Ordered
+// easy → hard.
 
 import Foundation
 
@@ -16,12 +15,10 @@ struct FreeformWord: Codable, Equatable, Sendable, Hashable {
     let difficulty: Int
 }
 
-/// Static catalogue of supported freeform target words. Keep the list
-/// short and child-friendly — 10–15 entries is the thesis sweet spot.
+/// Static catalogue of supported freeform target words.
 enum FreeformWordList {
 
-    /// All supported words, pre-sorted easy → hard so list UIs can
-    /// iterate directly without re-sorting.
+    /// All supported words, pre-sorted easy → hard.
     static let all: [FreeformWord] = [
         // Easy — family names the child already says every day.
         FreeformWord(word: "MAMA", difficulty: 1),

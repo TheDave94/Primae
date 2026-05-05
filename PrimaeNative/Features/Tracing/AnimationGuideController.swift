@@ -2,9 +2,7 @@
 // PrimaeNative
 //
 // Drives the "blue dot follows the stroke path" animation used during
-// the observe phase and the onboarding trace demo. Owns the animation
-// point and looping Task; deliberately knows nothing about audio,
-// touch, or phase logic.
+// the observe phase and the onboarding trace demo.
 
 import CoreGraphics
 import Foundation
@@ -18,22 +16,14 @@ final class AnimationGuideController {
     /// using `PrimaeLetterRenderer.normalizedGlyphRect`.
     private(set) var guidePoint: CGPoint? = nil
 
-    /// Fires after each full demonstration loop (all steps + the 0.5 s rest).
-    /// The observe phase uses this to auto-advance after N cycles so a child
-    /// who doesn't read the "Tippen" prompt isn't stuck forever.
+    /// Fires after each full demonstration loop. Observe phase uses this
+    /// to auto-advance after N cycles for non-reading children.
     var onCycleComplete: (@MainActor () -> Void)? = nil
 
-    /// The active animation loop. Cancelled on `stop()` or when replaced.
     private var task: Task<Void, Never>?
-
     /// Deferred-start task for `startAfterDelay(_:strokes:)`. Tracked
     /// separately so `stop()` can cancel either phase cleanly.
     private var startTask: Task<Void, Never>?
-
-    /// Injected sleeper for per-step + inter-cycle waits. Defaults to
-    /// `realSleeper` (Task.sleep) in production; tests substitute a
-    /// deterministic fake so the cycle / step timing can be exercised
-    /// without real wall-clock waits.
     private let sleeper: Sleeper
 
     init(sleeper: @escaping Sleeper = realSleeper) {
@@ -48,19 +38,14 @@ final class AnimationGuideController {
         guard !guide.steps.isEmpty else { return }
 
         task = Task { [weak self, sleeper] in
-            // Pre-attentive start cue: park the guide dot at the first
-            // step's position for ~1 s before the loop begins so a
-            // 5-year-old has a chance to see WHERE the trace starts
-            // before the dot starts moving (Mayer 2009). Only fires on
-            // the first iteration; subsequent loops skip the dwell.
+            // Pre-attentive start cue: park the dot at the first step
+            // for ~1 s on the first iteration so the child sees WHERE
+            // the trace starts before motion begins (Mayer 2009).
             let firstHoldRequested = !Task.isCancelled
             var heldFirst = false
-            // 60 Hz interpolation budget: each segment between two
-            // consecutive checkpoints in the same stroke is split into
-            // N frames so the dot glides instead of snapping. Across
-            // stroke boundaries we teleport (no interpolation) so the
-            // viewer doesn't see a phantom diagonal between e.g. the
-            // top of the A's left leg and the top of the right leg.
+            // 60 Hz interpolation within a stroke; teleport across
+            // stroke boundaries so cross-stroke moves read as pen lifts
+            // rather than diagonal slides.
             let frameInterval: TimeInterval = 1.0 / 60.0
             while !Task.isCancelled {
                 guard let self else { return }
@@ -87,9 +72,7 @@ final class AnimationGuideController {
                         }
                     } else {
                         // First step of the cycle or a new stroke —
-                        // teleport and dwell for the segment duration
-                        // so cross-stroke transitions read as discrete
-                        // pen lifts rather than diagonal slides.
+                        // teleport and dwell for the segment duration.
                         self.guidePoint = step.point
                         try? await sleeper(.seconds(duration))
                     }
@@ -98,9 +81,6 @@ final class AnimationGuideController {
                 if !Task.isCancelled {
                     self.guidePoint = nil
                     try? await sleeper(.seconds(0.5))
-                    // One full cycle completed — invite the observer to advance.
-                    // The callback reads `self` again because the outer while
-                    // continues until cancelled by the callback site via stop().
                     if !Task.isCancelled { self.onCycleComplete?() }
                 }
             }

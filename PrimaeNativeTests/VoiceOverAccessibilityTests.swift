@@ -1,6 +1,3 @@
-//  VoiceOverAccessibilityTests.swift
-//  PrimaeNativeTests
-
 import Testing
 @testable import PrimaeNative
 
@@ -77,11 +74,9 @@ fileprivate final class LocalMockAudioController: AudioControlling {
         #expect(vm.accessibilityCanvasValue == "Fertig")
     }
     @Test func replayAudio_reloadsCurrentFileWithAutoplay() {
-        // The new replayAudio shape (commit f73f71b) reloads the current
-        // letter's audio with autoplay=true instead of the old
-        // stop()-then-play() which was a no-op because stop() nils
-        // currentFile and play() guards on it. Assert the new contract:
-        // loadAudioFile was called with autoplay=true at least once.
+        // replayAudio reloads the current letter's audio with
+        // autoplay=true; the old stop()-then-play() path was a no-op
+        // because stop() nils currentFile and play() guards on it.
         audioController.loadedFiles.removeAll()
         audioController.loadedAutoplay.removeAll()
         vm.replayAudio()

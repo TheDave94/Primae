@@ -13,9 +13,8 @@ struct SettingsView: View {
     @State private var useShortOnboarding: Bool = UserDefaults.standard.bool(
         forKey: "de.flamingistan.primae.useShortOnboarding"
     )
-    /// Primae appearance override — "system" (follow iOS), "light",
-    /// or "dark". Applied at the app root via `.preferredColorScheme`.
-    /// Persisted under `primaeAppearance` per the design-system spec.
+    /// "system" / "light" / "dark". Applied at the app root via
+    /// `.preferredColorScheme`. Persisted under `primaeAppearance`.
     @AppStorage("primaeAppearance") private var appearance: String = "system"
 
     private static let defaultsKey = "de.flamingistan.primae.selectedSchriftArt"
@@ -43,11 +42,8 @@ struct SettingsView: View {
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
             Section("Schreibrichtung") {
-                // Reverse the direct-phase tap order so the child taps
-                // the LAST stroke first. Niche; off by default. Useful
-                // for motor-planning special-needs students (Spooner
-                // 2014). Affects only the direct phase — guided +
-                // freeWrite always run canonical order.
+                // Backward chaining for direct phase only: taps the
+                // last stroke first (Spooner 2014). Off by default.
                 Toggle("Letzten Strich zuerst", isOn: Binding(
                     get: { vm.enableBackwardChaining },
                     set: { vm.enableBackwardChaining = $0 }
@@ -58,10 +54,8 @@ struct SettingsView: View {
                     .foregroundStyle(Color.inkSoft)
             }
             Section("Erinnerungstest") {
-                // Opt-in spaced-retrieval prompt before every Nth
-                // letter selection. Roediger & Karpicke 2006 —
-                // retrieval-practice effect. Default off; research
-                // feature.
+                // Spaced-retrieval prompt every Nth letter selection
+                // (Roediger & Karpicke 2006). Default off.
                 Toggle("Erinnerungstest aktivieren", isOn: Binding(
                     get: { vm.enableRetrievalPrompts },
                     set: { vm.enableRetrievalPrompts = $0 }
@@ -72,12 +66,10 @@ struct SettingsView: View {
                     .foregroundStyle(Color.inkSoft)
             }
             Section("Lautwert") {
-                // Opt-in phoneme playback. When on, the audio gesture
-                // (tap, replay, two-finger swipe) plays the *sound*
-                // the letter makes (/a/ as in *Affe*) instead of its
-                // name (/aː/). Falls back to the name set for letters
-                // without phoneme recordings so the toggle never
-                // produces silence.
+                // Phoneme playback: plays the letter's sound (/a/)
+                // instead of its name (/aː/). Falls back to the name
+                // set when no phoneme recording exists, so the toggle
+                // never produces silence.
                 Toggle("Lautwert wiedergeben", isOn: Binding(
                     get: { vm.enablePhonemeMode },
                     set: { vm.enablePhonemeMode = $0 }
@@ -88,10 +80,8 @@ struct SettingsView: View {
                     .foregroundStyle(Color.inkSoft)
             }
             Section("Sprache") {
-                // Three-position rate picker so a parent can slow the
-                // TTS for younger / less verbal children. Persisted
-                // in UserDefaults; applied to vm.speech on every
-                // appear and on change.
+                // Three-position TTS rate. Persisted; applied to
+                // `vm.speech` on every appear and on change.
                 Picker("Sprechgeschwindigkeit", selection: Binding(
                     get: { speechRate },
                     set: { newValue in
@@ -116,11 +106,8 @@ struct SettingsView: View {
                     .foregroundStyle(Color.inkSoft)
             }
             Section("Erscheinungsbild") {
-                // Manual appearance override. "System" follows the
-                // iOS Settings → Display & Brightness toggle;
-                // "Hell" / "Dunkel" lock the app regardless. Persisted
-                // under `primaeAppearance` and applied at the root via
-                // `.preferredColorScheme(...)` in `PrimaeApp`.
+                // "System" follows iOS; "Hell" / "Dunkel" lock the
+                // app. Applied at the root via `.preferredColorScheme`.
                 Picker("Erscheinungsbild", selection: $appearance) {
                     Text("System").tag("system")
                     Text("Hell").tag("light")
@@ -150,10 +137,8 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
                 if thesisEnrolled {
-                    // Manual researcher override so small cohorts can
-                    // be exactly balanced (e.g. 8/8/8 vs. the byte-
-                    // modulo's uniform-in-expectation imbalance for
-                    // n < 30). "Automatisch" leaves assignment to
+                    // Researcher override for exact small-cohort
+                    // balancing (e.g. 8/8/8). "Automatisch" defers to
                     // `ThesisCondition.assign(participantId:)`.
                     Picker("Studienarm überschreiben",
                            selection: Binding(
@@ -171,13 +156,10 @@ struct SettingsView: View {
                 }
             }
             Section("Hilfe") {
-                // A/B onboarding length. Default off (full 7-step
-                // flow). When on, "Einführung wiederholen" restarts
-                // with the compressed 3-step variant. The first-run
-                // variant is locked into OnboardingStore on initial
-                // completion so post-hoc CSV analysis can correlate
-                // engagement metrics with the variant the child
-                // actually saw, regardless of later parent toggles.
+                // A/B onboarding length. Default off (7-step). The
+                // first-run variant is locked into OnboardingStore on
+                // initial completion so CSV analysis correlates
+                // engagement with the variant actually seen.
                 Toggle("Kurze Einführung", isOn: Binding(
                     get: { useShortOnboarding },
                     set: { newValue in

@@ -1,36 +1,16 @@
 // StickerButton.swift
 // PrimaeNative — Components
 //
-// Primae's primary button treatment — the "sticker" pill. Idiomatic
-// SwiftUI port of the `.btn-sticker*` styles from
-// `design-system/ui_kits/ipad-app/styles.css`:
-//
-//   - Pill capsule, 14 pt vertical / 24 pt horizontal padding.
-//   - White label, brand fill (or per-world tint via the `tint`
-//     parameter).
-//   - Soft elevated shadow that uses the tint colour at low alpha
-//     plus a small ink drop. Collapses to a near-flush press shadow
-//     on press; the button also nudges 1 pt down via translate.
-//
-// Usage:
-//
-//   Button("Weiter") { … }
-//       .buttonStyle(StickerButtonStyle())          // brand
-//       .buttonStyle(StickerButtonStyle(tint: .schule))
-//
-// Tint takes a SwiftUI `Color`; pass any of the world-tint tokens or
-// the brand. The shadow tint follows `tint`.
+// Primary button treatment — the "sticker" pill. SwiftUI port of the
+// `.btn-sticker*` styles in `design-system/ui_kits/ipad-app/styles.css`.
 
 import SwiftUI
 
 struct StickerButtonStyle: ButtonStyle {
-    /// Fill colour. Defaults to `.brand`. Pass `.schule`,
-    /// `.werkstatt`, `.fortschritte` for world-tinted variants.
+    /// Fill colour. Defaults to `.brand`; pass a world tint for variants.
     var tint: Color = .brand
 
-    /// Label colour. Defaults to white because all four documented
-    /// tints (brand blue, world blue, amber, pink) carry white labels
-    /// at the contrast level the design system specifies.
+    /// Label colour. White pairs with all documented tints.
     var labelColor: Color = .white
 
     func makeBody(configuration: Configuration) -> some View {
@@ -41,8 +21,7 @@ struct StickerButtonStyle: ButtonStyle {
             .padding(.horizontal, 24)
             .background(tint, in: Capsule(style: .continuous))
             .compositingGroup()
-            // Two-layer shadow matching the CSS `.btn-sticker`:
-            //   coloured halo (tint @ 25 %) + small ink drop.
+            // Two-layer shadow: coloured halo (tint @ 25 %) + ink drop.
             // Press collapses both to a flush near-shadow.
             .shadow(color: tint.opacity(configuration.isPressed ? 0.0 : 0.25),
                     radius: configuration.isPressed ? 0 : 6,

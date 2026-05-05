@@ -2,42 +2,29 @@
 // PrimaeNative
 //
 // Owns the per-letter user-calibrated stroke JSON files in
-// Application Support. Decoded results are cached in memory so the ghost /
-// dot-render path doesn't hit disk on every frame.
-//
-// Extracted from TracingViewModel to isolate disk I/O + cache policy from
-// the view model's touch / audio / phase logic.
+// Application Support. Decoded results are cached in memory so the
+// ghost / dot-render path doesn't hit disk on every frame.
 
 import Foundation
 import CoreGraphics
 
-/// Reads and writes user-calibrated stroke definitions for a letter under a
-/// specific `SchriftArt`.
-///
-/// A user who re-calibrates a letter produces a JSON file in
-/// `~/Application Support/PrimaeNative/CalibratedStrokes/<schriftArt>/<letter>.json`.
-/// On subsequent launches this file takes priority over the bundle
-/// `strokes.json`, so each child's tuned dot positions survive restarts and
-/// Druckschrift / Schreibschrift calibrations stay independent.
-///
-/// Legacy calibrations written before per-script storage existed live at
-/// `CalibratedStrokes/<letter>.json` without a font folder. Reads fall back
-/// to that path when a font-specific file is absent so nothing on disk is
-/// orphaned by the schema change; the next save promotes that data into the
-/// current font's folder.
+/// Reads and writes user-calibrated stroke definitions for a letter
+/// under a specific `SchriftArt`. Files live at
+/// `~/Application Support/PrimaeNative/CalibratedStrokes/<schriftArt>/<letter>.json`
+/// and take priority over the bundle `strokes.json`. Reads fall back to
+/// the pre-per-font path `CalibratedStrokes/<letter>.json` so legacy
+/// calibrations still apply; the next save promotes them.
 @MainActor
 final class CalibrationStore {
 
-    /// Decoded strokes keyed by `schriftArt.rawValue + "/" + letter`, including
-    /// negative (nil) results so the ghost-render path doesn't repeatedly hit
-    /// `Data(contentsOf:)` for letters the user has never calibrated.
+    /// Decoded strokes keyed by `schriftArt.rawValue + "/" + letter`,
+    /// including negative (nil) results so the ghost-render path doesn't
+    /// re-hit disk for letters the user has never calibrated.
     private var cache: [String: LetterStrokes?] = [:]
 
-    /// Returns the user-calibrated strokes for `letter` in `schriftArt`, or nil
-    /// if none exist. First call for a (font, letter) pair performs disk I/O +
-    /// JSON decode; subsequent calls return from the in-memory cache.
-    /// Falls back to the pre-per-font file path if the font-specific file is
-    /// missing, so calibrations saved before the schema split still apply.
+    /// Returns the user-calibrated strokes for `letter` in `schriftArt`,
+    /// or nil if none exist. Falls back to the pre-per-font path so
+    /// calibrations saved before the schema split still apply.
     func strokes(for letter: String, schriftArt: SchriftArt) -> LetterStrokes? {
         let key = cacheKey(letter: letter, schriftArt: schriftArt)
         if let cached = cache[key] { return cached }
@@ -62,15 +49,13 @@ final class CalibrationStore {
         return nil
     }
 
-    /// Writes glyph-relative stroke checkpoints for `letter` in `schriftArt` to
-    /// disk. Invalidates the in-memory cache so the next read picks up the new
-    /// file.
+    /// Writes glyph-relative stroke checkpoints for `letter` in
+    /// `schriftArt` to disk and invalidates the in-memory cache.
     func persist(_ strokes: [[CGPoint]], for letter: String, schriftArt: SchriftArt) {
         let defs = strokes.enumerated().compactMap { (i, pts) -> StrokeDefinition? in
             guard !pts.isEmpty else { return nil }
             return StrokeDefinition(id: i + 1, checkpoints: pts.map {
-                // Round to 3 decimals so diffs between calibration runs are
-                // visible but the files don't churn on imperceptible drift.
+                // Round to 3 decimals so files don't churn on imperceptible drift.
                 Checkpoint(x: (($0.x * 1000).rounded() / 1000),
                            y: (($0.y * 1000).rounded() / 1000))
             })

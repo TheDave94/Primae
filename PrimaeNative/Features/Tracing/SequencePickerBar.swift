@@ -1,15 +1,8 @@
 import SwiftUI
 
-/// Top-of-screen picker with two tabs: "Buchstaben" (the existing
-/// single-letter tile row) and "Wörter" (curated Austrian Volksschule
-/// word-tracing list). Replaces the standalone `LetterPickerBar` —
-/// `LetterPickerBar` is still used internally for the Buchstaben tab
-/// so the single-letter flow is untouched.
-///
-/// Selecting a word tile calls `vm.loadWord(_:)` which builds a
-/// `.word` sequence; the grid engine handles per-cell layout, and
-/// Schreibschrift words get proper CoreText cursive ligatures via
-/// `PrimaeLetterRenderer.renderWord`.
+/// Top-of-screen picker with "Buchstaben" / "Wörter" tabs. Words use
+/// the curated Austrian Volksschule list; selecting a word tile builds
+/// a `.word` sequence via `vm.loadWord(_:)`.
 struct SequencePickerBar: View {
     @Environment(TracingViewModel.self) private var vm
     @State private var tab: Tab = .letters
@@ -36,9 +29,8 @@ struct SequencePickerBar: View {
     }
 }
 
-/// Curated word tiles for the "Wörter" tab. Source list comes from
-/// `TracingViewModel.demoWordList` — see commit 5's commit message for
-/// the Austrian Volksschule research that picked these words.
+/// Curated word tiles for the "Wörter" tab. Source list:
+/// `TracingViewModel.demoWordList`.
 private struct WordPickerRow: View {
     @Environment(TracingViewModel.self) private var vm
 
@@ -61,9 +53,8 @@ private struct WordPickerRow: View {
     }
 }
 
-/// Equatable so the parent's `.equatable()` wrapper can skip body
-/// re-evaluation while only unrelated VM state changes. Closure
-/// excluded from `==` for the same reason as LetterPickerButton.
+/// Equatable so SwiftUI skips body re-evaluation on unrelated VM
+/// state. Closure excluded from `==`.
 private struct WordPickerButton: View, Equatable {
     let word: String
     let isSelected: Bool

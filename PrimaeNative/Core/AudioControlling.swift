@@ -10,13 +10,8 @@ protocol AudioControlling: AnyObject {
     func suspendForLifecycle()
     func resumeAfterLifecycle()
     func cancelPendingLifecycleWork()
-    /// Non-nil when audio failed to initialise (engine.start error,
-    /// audio session category misconfiguration, etc.). The VM surfaces
-    /// this as a short German toast at startup so a parent notices
-    /// "audio unavailable" instead of silent failure. nil under normal
-    /// operation. Every conformer must spell out its initialisation
-    /// contract — there is no protocol-level default, so a mock that
-    /// omits the property is a compile error rather than a silent
-    /// "always healthy" claim.
+    /// Non-nil when audio failed to initialise; the VM surfaces this as
+    /// a startup toast so silent failure is visible. No protocol default
+    /// is provided so conformers must spell out their state explicitly.
     var initializationError: String? { get }
 }

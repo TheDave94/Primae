@@ -1,24 +1,10 @@
 // RetrievalScheduler.swift
 // PrimaeNative
 //
-// Retrieval-practice scheduling. Roediger & Karpicke (2006) showed
-// retrieval tests produce better long-term retention than additional
-// study — the act of *generating* an answer beats *re-encoding* it.
-// `LetterScheduler` already covers spaced practice; this scheduler
-// layers a parallel signal: every Nth letter selection, present a
-// brief recognition test before the tracing phases.
-//
-// Configurable knobs:
-// - `interval`: every Nth selection triggers a retrieval prompt
-//   (default 3). Lower N = more retrieval; thesis can sweep this.
-// - `minimumPriorCompletions`: skip retrieval until the child has
-//   completed the letter at least this many times — testing on a
-//   never-seen letter is just guessing (default 1).
-//
-// Outcomes are persisted as a per-letter rolling [Bool] of recent
-// attempts so the dashboard/export can compute retrieval accuracy
-// alongside form accuracy. The `recordOutcome` API mutates a
-// `ProgressStoring`, keeping the scheduler decoupled from disk.
+// Retrieval-practice scheduling layered on top of `LetterScheduler`:
+// every Nth letter selection presents a brief recognition test
+// before tracing (Roediger & Karpicke 2006). Outcomes persist as a
+// rolling [Bool] on `LetterProgress.retrievalAttempts`.
 
 import Foundation
 
@@ -64,9 +50,8 @@ final class RetrievalScheduler {
         return fire
     }
 
-    /// Reset the cadence counter without recording an outcome. Used by
-    /// the test target and by the parent's "Erinnerungstest neu starten"
-    /// action (not yet exposed in UI).
+    /// Reset the cadence counter without recording an outcome. Used
+    /// by tests and by the parent's "Erinnerungstest neu starten".
     func reset() {
         selectionsSinceRetrieval = 0
         UserDefaults.standard.set(0, forKey: Self.counterKey)

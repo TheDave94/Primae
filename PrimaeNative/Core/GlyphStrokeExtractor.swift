@@ -82,11 +82,9 @@ struct GlyphStrokeExtractor {
 
     // MARK: - Path Flattening
     //
-    // The four helpers below are exposed as `internal` (rather than `private`)
-    // so the test target can drive them with synthetic CGPaths and centers grids
-    // — exercising the algorithmic core without needing the Primae font, which
-    // isn't loaded in the test process. `extractStrokes` itself remains the
-    // sole public entry point.
+    // The four helpers below are `internal` (not `private`) so the test
+    // target can exercise the algorithm with synthetic CGPaths without
+    // loading the Primae font. `extractStrokes` is the sole public entry.
 
     struct Segment: Equatable {
         let x1: CGFloat, y1: CGFloat

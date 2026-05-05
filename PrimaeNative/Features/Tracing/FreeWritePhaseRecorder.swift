@@ -3,17 +3,8 @@
 //
 // Owns the four buffers (canvas-space points, timestamps, forces,
 // normalised KP path) plus session-timing state that the freeWrite
-// phase produces. Extracted from TracingViewModel during the W8
-// God-object refactor so the buffer lifecycle (start session → record
-// touch → score → reset) lives in one place instead of being
-// spread across `updateTouch`, `advanceLearningPhase`, and
-// `resetForPhaseTransition`.
-//
-// The VM still owns the touch-handling site that decides *whether*
-// to record (gated on `phaseController.currentPhase == .freeWrite`),
-// because that decision needs the broader phase context. The
-// recorder is intentionally MainActor-bound so reads from views
-// can access the buffers directly without thread hops.
+// phase produces. The VM gates whether to record based on phase;
+// the recorder owns the buffer lifecycle.
 
 import CoreGraphics
 import Foundation
@@ -34,15 +25,11 @@ final class FreeWritePhaseRecorder {
     /// Same path normalised to 0–1 over the canvas — used by the KP
     /// overlay so it can render at any geometry without re-mapping.
     private(set) var path: [CGPoint] = []
-    /// Indices into `points` (and `path`) at which a fresh stroke
-    /// begins after a finger-up / finger-down between strokes. Lets
-    /// downstream consumers (the CoreML rasterizer in particular)
-    /// break the polyline at lifts so multi-stroke letters like F /
-    /// E / H aren't rendered with a phantom diagonal connecting the
-    /// end of one stroke to the start of the next — that phantom
-    /// silhouette was making F look like P to the recognizer.
-    /// Index 0 is implicit (every recorded session starts a stroke
-    /// at point 0); only subsequent stroke starts are stored.
+    /// Indices into `points` (and `path`) at which a fresh stroke begins
+    /// after a finger-up. Lets the CoreML rasterizer break the polyline
+    /// at lifts so multi-stroke letters (F / E / H) don't render with
+    /// phantom diagonals that confuse the recognizer (F→P). Index 0 is
+    /// implicit; only subsequent stroke starts are stored.
     private(set) var strokeStartIndices: [Int] = []
     /// `CACurrentMediaTime()` at session start. Drives `rhythmScore`.
     private(set) var sessionStart: CFTimeInterval = 0
@@ -121,17 +108,12 @@ final class FreeWritePhaseRecorder {
         checkpointsPerSecond = CGFloat(completedCheckpoints) / CGFloat(elapsed)
     }
 
-    /// Multi-cell scoring for word mode (W-26). Splits the recorded
-    /// freeWrite trace by which cell frame each point falls into, scores
-    /// every cell against its own reference, and averages the four
-    /// Schreibmotorik dimensions across cells that produced any ink.
-    /// Cells with fewer than two points are excluded so a child who only
-    /// wrote part of the word doesn't get a divide-by-zero or a score
-    /// dragged to 0 by empty cells.
-    ///
-    /// Falls back to single-cell scoring against the last reference if
-    /// no cell collected enough samples — that keeps the prior behaviour
-    /// of scoring against the active cell instead of returning 0.
+    /// Multi-cell scoring for word mode. Splits the trace by cell frame,
+    /// scores each cell against its own reference, and averages the four
+    /// Schreibmotorik dimensions across cells that produced ink. Cells
+    /// with fewer than two points are excluded. Falls back to single-cell
+    /// scoring against the last reference if no cell collected enough
+    /// samples.
     @discardableResult
     func assess(cellReferences: [(frame: CGRect, reference: LetterStrokes)],
                 canvasSize: CGSize,
@@ -181,16 +163,9 @@ final class FreeWritePhaseRecorder {
     }
 
     /// Score the captured trace against `reference` strokes mapped into
-    /// canvas-normalised coordinates. Stores the result in
-    /// `lastAssessment` for view forwarders and returns the assessment
-    /// so the VM can also funnel the score into ProgressStore /
-    /// PhaseSessionRecord without re-reading the recorder.
-    ///
-    /// `cellFrame` must be supplied for multi-cell (pencil) layouts.
-    /// The reference strokes are in cell-local 0–1 space; without the
-    /// frame offset the canvas-space points normalise to full-canvas
-    /// coordinates that never overlap the reference, producing a score
-    /// of 0 regardless of writing quality (C-5).
+    /// canvas-normalised coordinates. `cellFrame` must be supplied for
+    /// multi-cell (pencil) layouts — reference strokes are in cell-local
+    /// 0–1 space, so without the frame offset the score collapses to 0.
     @discardableResult
     func assess(reference: LetterStrokes,
                 canvasSize: CGSize,
@@ -216,8 +191,7 @@ final class FreeWritePhaseRecorder {
     }
 
     /// Clear every buffer. Called on letter load and on phase
-    /// transitions to make sure stale freeWrite state from one letter
-    /// can never bleed into another.
+    /// transitions so stale freeWrite state can't bleed across letters.
     func clearAll() {
         points.removeAll(keepingCapacity: true)
         timestamps.removeAll(keepingCapacity: true)

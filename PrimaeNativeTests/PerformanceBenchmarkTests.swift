@@ -1,9 +1,7 @@
 // NOTE: Intentionally uses XCTest — Swift Testing has no measure()/XCTMetric equivalent. Do not migrate.
-//  PerformanceBenchmarkTests.swift
-//  PrimaeNativeTests
 //
-//  XCTest measure-block benchmarks for StrokeTracker hit-testing
-//  and LetterRepository load time. CI baselines established on first run.
+// XCTest measure-block benchmarks for StrokeTracker hit-testing and
+// LetterRepository load time. CI baselines established on first run.
 
 import XCTest
 import CoreGraphics

@@ -52,8 +52,6 @@ private struct StreakState: Codable, Equatable {
     var lastPracticeDayString: String = ""
     /// Calendar day string of current streak start.
     var streakStartDayString: String = ""
-    /// W-17: persisted schema version (see ProgressStore for the
-    /// rationale). Absent from pre-W-17 files; new writes stamp it.
     var schemaVersion: Int? = streakSchemaVersion
 }
 
@@ -115,10 +113,9 @@ final class JSONStreakStore: StreakStoring {
             state.lastPracticeDayString = dayString
         }
 
-        // Route through `LetterProgress.canonicalKey` so the `ß`
-        // special-case stays in lock-step with the progress and
-        // dashboard stores — the `allLettersComplete` reward below
-        // checks for `"ß"` literally.
+        // Route through `LetterProgress.canonicalKey` so `ß` stays
+        // in lock-step with the progress and dashboard stores — the
+        // `allLettersComplete` check below uses `"ß"` literally.
         let previousLetterCount = state.completedLetters.count
         state.totalCompletions += lettersCompleted.count
         lettersCompleted.forEach { letter in
@@ -133,7 +130,7 @@ final class JSONStreakStore: StreakStoring {
         newRewards += checkReward(.streakWeek, condition: state.currentStreak >= 7)
         newRewards += checkReward(.streakMonth, condition: state.currentStreak >= 30)
         newRewards += checkReward(.centuryClub, condition: state.totalCompletions >= 100)
-        // allLettersComplete: all 26 uppercase letters A-Z
+        // allLettersComplete: every supported uppercase letter.
         let allAlphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ".map { String($0) }
             + ["Ä", "Ö", "Ü", "ß"])
         newRewards += checkReward(.allLettersComplete, condition: allAlphabet.isSubset(of: state.completedLetters))
@@ -179,8 +176,7 @@ final class JSONStreakStore: StreakStoring {
     }
 
     private func persist() {
-        // Encode on main, write off main: see ProgressStore.save() for the
-        // same pattern and the rationale.
+        // Encode on main, write off main — see ProgressStore.save().
         guard let data = try? JSONEncoder().encode(state) else { return }
         let url = fileURL
         // Coalesce + order: see ProgressStore.save() for rationale.
@@ -208,7 +204,7 @@ final class JSONStreakStore: StreakStoring {
         guard let data = try? Data(contentsOf: url),
               let decoded = try? JSONDecoder().decode(StreakState.self, from: data)
         else { return nil }
-        // W-17: see ProgressStore.load for the future-schema rationale.
+        // Refuse a future-schema file — see ProgressStore.load.
         if let v = decoded.schemaVersion, v > streakSchemaVersion {
             storePersistenceLogger.warning(
                 "StreakStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(streakSchemaVersion); ignoring on-disk state.")

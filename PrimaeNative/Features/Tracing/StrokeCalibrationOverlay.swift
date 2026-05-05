@@ -1,10 +1,9 @@
 // StrokeCalibrationOverlay.swift
 // PrimaeNative
 //
-// Interactive overlay for calibrating stroke checkpoint positions.
-// Shown when Debug mode is active. Drag dots, add / delete them, switch
-// between strokes, and persist the result per-script directly — JSON
-// export is still available as a secondary action for backup.
+// Debug-mode overlay for editing stroke checkpoint positions.
+// Drag / add / delete dots, switch strokes, persist per-script.
+// JSON export is the secondary backup action.
 
 import SwiftUI
 
@@ -20,9 +19,8 @@ struct StrokeCalibrationOverlay: View {
     @State private var activeStroke = 0
     @State private var mode: CalibrationMode = .drag
     @State private var savedFlashUntil: Date? = nil
-    /// (letter, schriftArt) pair used for the last reload. A change in either
-    /// must reload from disk so switching font while calibrating picks up the
-    /// other script's saved strokes instead of keeping stale edit state.
+    /// (letter, schriftArt) of the last reload — both invalidate so a
+    /// font switch picks up the other script's saved strokes.
     @State private var loadedKey: LoadKey? = nil
 
     private struct LoadKey: Equatable {
@@ -76,11 +74,9 @@ struct StrokeCalibrationOverlay: View {
         }
     }
 
-    /// Dashed red outline of `PrimaeLetterRenderer.normalizedGlyphRect`
-    /// for the current letter / script. Spot-check that the inner
-    /// glyph-bbox the renderer reports actually wraps the visible
-    /// glyph; misalignment here would explain a ghost / stroke
-    /// drift even though strokes themselves are canvas-relative.
+    /// Dashed red outline of the renderer's `normalizedGlyphRect`.
+    /// Spot-check that the inner glyph bbox actually wraps the glyph —
+    /// misalignment here would explain ghost / stroke drift.
     @ViewBuilder
     private func glyphRectDebugLayer(in size: CGSize) -> some View {
         let gr = PrimaeLetterRenderer.normalizedGlyphRect(
@@ -101,11 +97,9 @@ struct StrokeCalibrationOverlay: View {
 
     @ViewBuilder
     private func strokePathsLayer(in size: CGSize) -> some View {
-        // Only render the dashed path for the active stroke. Drawing every
-        // stroke's dashed polyline on top of the letter turns the glyph into
-        // an unreadable crosshatch — the inactive strokes still show their
-        // start dot as a tap-target for switching, which is all the user
-        // needs to orient between strokes.
+        // Only the active stroke's dashed path is drawn — rendering all
+        // strokes turns the glyph into a crosshatch. Inactive strokes
+        // keep their start dot as a switch target.
         if editableStrokes.indices.contains(activeStroke) {
             let stroke = editableStrokes[activeStroke]
             Path { path in
@@ -125,7 +119,7 @@ struct StrokeCalibrationOverlay: View {
     private func dotsLayer(in size: CGSize) -> some View {
         ForEach(Array(editableStrokes.enumerated()), id: \.offset) { si, stroke in
             if si == activeStroke {
-                // Full numbered checkpoint chain for the stroke being edited.
+                // Full numbered checkpoint chain for the active stroke.
                 ForEach(Array(stroke.enumerated()), id: \.offset) { ci, pt in
                     checkpointDot(si: si, ci: ci, pt: pt, in: size)
                     if ci == 0 {
@@ -133,8 +127,8 @@ struct StrokeCalibrationOverlay: View {
                     }
                 }
             } else if let first = stroke.first {
-                // Inactive strokes: just the start dot, faded, as a tap-to-
-                // switch target. Keeps the letter visible under the overlay.
+                // Inactive strokes: faded start dot as a tap-to-switch
+                // target so the letter remains readable.
                 checkpointDot(si: si, ci: 0, pt: first, in: size)
                 strokeLabel(si: si, pt: first, in: size)
             }
@@ -149,8 +143,8 @@ struct StrokeCalibrationOverlay: View {
         let diameter: CGFloat = isActive ? 32 : 20
         let fontSize: CGFloat = isActive ? 12 : 9
 
-        // Inactive start dots are only a switcher hint — keep them small and
-        // faint so the glyph underneath stays readable while calibrating.
+        // Inactive start dots stay small + faint so the glyph
+        // underneath remains readable.
         Circle()
             .fill(color.opacity(isActive ? 1 : 0.35))
             .frame(width: diameter, height: diameter)
@@ -162,9 +156,8 @@ struct StrokeCalibrationOverlay: View {
             .shadow(color: .black.opacity(0.5), radius: 2)
             .position(screenPt)
             .gesture(
-                // Dragging any dot — active or not — switches the active
-                // stroke to the one being edited. Cross-stroke editing on the
-                // fly shouldn't require a separate tap to activate first.
+                // Dragging any dot switches the active stroke to it,
+                // so cross-stroke edits don't require a separate tap.
                 mode == .drag
                     ? DragGesture(minimumDistance: 0).onChanged { value in
                         if activeStroke != si { activeStroke = si }
@@ -200,10 +193,8 @@ struct StrokeCalibrationOverlay: View {
             topBar
                 .padding(10)
                 .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10))
-                // Sits just below the debug toggle chips. An earlier bump to
-                // 110 pushed the bar down into the letter's top and covered
-                // apexes (e.g. A, F). 50 keeps it flush under the chips and
-                // above the letter render area on all demo letters.
+                // 50 pt keeps the bar flush under the debug chips and
+                // above the glyph render area for all demo letters.
                 .padding(.top, 50)
 
             if mode == .add {
@@ -346,9 +337,8 @@ struct StrokeCalibrationOverlay: View {
 
     // MARK: - Coordinate conversion
 
-    /// Calibrations are stored in the same canvas-relative space the
-    /// JSON stroke files use (0..1 of the canvas, including the glyph
-    /// generator's 10% pad), so screen ↔ stored is a straight scale.
+    /// Calibrations are canvas-relative 0..1 (matches the JSON stroke
+    /// files), so screen ↔ stored is a straight scale.
     private func glyphToScreen(_ pt: CGPoint, in size: CGSize) -> CGPoint {
         CGPoint(x: pt.x * size.width, y: pt.y * size.height)
     }
@@ -407,11 +397,9 @@ struct StrokeCalibrationOverlay: View {
 
     // MARK: - Data
 
-    /// Load the raw glyph-relative JSON for the current (letter, schriftArt)
-    /// pair. `force: true` reloads even if the same pair is already loaded —
-    /// used for Reset and explicit font switches so edits are thrown away
-    /// on-demand. The default call only re-reads when the pair actually
-    /// changed to avoid clobbering in-flight edits on every view update.
+    /// Load JSON for the current (letter, schriftArt). `force: true`
+    /// reloads even when the pair is unchanged (Reset / explicit font
+    /// switches); the default call avoids clobbering in-flight edits.
     private func loadFromVM(force: Bool = false) {
         let key = LoadKey(letter: vm.currentLetterName, schriftArt: vm.schriftArt)
         if !force, loaded, loadedKey == key { return }
@@ -431,16 +419,14 @@ struct StrokeCalibrationOverlay: View {
         vm.applyCalibration(editableStrokes)
     }
 
-    /// Apply the current edits to the live tracker AND persist them to the
-    /// per-script calibration file. This is the primary save path — parents
-    /// don't need to visit the JSON export sheet to make their tuning
-    /// survive a relaunch.
+    /// Apply the edits to the live tracker AND persist per-script.
+    /// Primary save path; JSON export is the backup.
     private func saveToVM() {
         vm.applyCalibration(editableStrokes)
         vm.persistCalibratedStrokes(editableStrokes, for: vm.currentLetterName)
         savedFlashUntil = Date().addingTimeInterval(1.2)
-        // Clear the badge after the flash window so a second save shows the
-        // check again instead of sticking green forever.
+        // Clear the badge after the flash window so a second save can
+        // re-flash green instead of sticking.
         Task {
             try? await Task.sleep(for: .milliseconds(1300))
             if let until = savedFlashUntil, Date() >= until {

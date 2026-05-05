@@ -1,6 +1,3 @@
-//  TracingViewModelTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 import QuartzCore
@@ -220,7 +217,7 @@ private func slowDrag(vm: TracingViewModel,
         #expect(weakVM == nil)
     }
 
-    // MARK: - Stroke proximity tests
+    // MARK: - Stroke proximity
 
     @Test func stdDrag_checkpointProximity_progressGtZero() {
         fastDrag(vm: vm, audio: audio)
@@ -241,14 +238,13 @@ private func slowDrag(vm: TracingViewModel,
         #expect(last > 0)
     }
 
-    // MARK: - W-5 progressStore forwarders
+    // MARK: - progressStore forwarders
 
-    /// Round-4 audit gap: `vm.allProgress` and `vm.progress(for:)`
-    /// replaced direct `vm.progressStore.*` access in 8 view sites.
-    /// Pin the contract: `progress(for:)` returns the protocol default
-    /// (zero completions, no recorded date) for a letter never seen,
-    /// and a get on an unknown key never inserts into the underlying
-    /// store — `allProgress.keys` must be stable across reads.
+    /// `vm.allProgress` and `vm.progress(for:)` replaced direct
+    /// `vm.progressStore.*` access in 8 view sites. `progress(for:)`
+    /// returns the protocol default for a letter never seen, and a get
+    /// on an unknown key must not insert into the underlying store —
+    /// `allProgress.keys` stays stable across reads.
     @Test func progressForwarders_passThroughAndReadOnly() {
         let beforeKeys = Set(vm.allProgress.keys)
         let unknown = vm.progress(for: "ZZZZ-never-a-letter")
@@ -261,26 +257,25 @@ private func slowDrag(vm: TracingViewModel,
                 "progress(for:) must be read-only — getter on an unknown key must not mutate allProgress")
     }
 
-    // MARK: - W-24 multi-cell active-frame forwarder
+    // MARK: - Multi-cell active-frame forwarder
 
-    /// Round-4 audit gap: `vm.multiCellActiveFrame` returns nil for
-    /// single-cell sessions and the active cell's frame for multi-cell.
-    /// DirectPhaseDotsOverlay reads this to map glyph coordinates into
-    /// the active cell instead of the canvas origin (W-24).
+    /// `vm.multiCellActiveFrame` returns nil for single-cell sessions
+    /// and the active cell's frame for multi-cell. DirectPhaseDotsOverlay
+    /// reads this to map glyph coordinates into the active cell instead
+    /// of the canvas origin.
     @Test func multiCellActiveFrame_isNilForSingleLetter() {
         // Default VM init loads a single-letter session — frame should
         // be nil so the overlay falls back to full-canvas geometry.
         #expect(vm.multiCellActiveFrame == nil)
     }
 
-    // MARK: - D-1 active-time accumulator
+    // MARK: - Active-time accumulator
 
-    /// Round-4 audit gap: backgrounding pauses the session-duration
-    /// clock. The wall clock keeps ticking while iOS suspends the app
-    /// (mach_absolute_time stops only in deep device sleep), so a
-    /// "5-minute" session would otherwise silently include the
-    /// backgrounded interval. Asserts the accumulator pauses on
-    /// background and resumes on foreground.
+    /// Backgrounding pauses the session-duration clock. The wall clock
+    /// keeps ticking while iOS suspends the app (mach_absolute_time
+    /// stops only in deep device sleep), so a "5-minute" session would
+    /// otherwise silently include the backgrounded interval. Asserts
+    /// the accumulator pauses on background and resumes on foreground.
     @Test func d1_activeTimeAccumulator_pausesOnBackground() async {
         // A live foreground window: letterLoadTime is set, accumulator is 0.
         #expect(vm.debugLetterLoadTime != nil)

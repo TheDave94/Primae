@@ -1,29 +1,20 @@
 // PhaseDotIndicator.swift
 // PrimaeNative
 //
-// Minimal horizontal row of four dots representing the learning phases
-// (observe / direct / guided / freeWrite). Replaces the older
-// PhaseIndicatorView's larger pill layout when the redesigned worlds
-// want a tighter, icon-free HUD. Labels are only exposed via
-// accessibilityLabel / long-press peek — the visual is just coloured
-// circles so a 5-year-old sees progress at a glance.
+// Minimal horizontal row of dots representing the learning phases.
+// Visual is just coloured circles; labels are accessibility-only.
 
 import SwiftUI
 
 struct PhaseDotIndicator: View {
     let phase: LearningPhase
     let scores: [LearningPhase: CGFloat]
-    /// I-4: phases the current thesis condition actually runs. The
-    /// `.guidedOnly` / `.control` arms only run `.guided`, so showing
-    /// four dots there displayed three permanently-empty placeholders
-    /// — visually misleading and a between-arms confound. Default
-    /// keeps the previous four-dot behaviour for any caller that
-    /// doesn't pass an explicit list yet.
+    /// Phases the current thesis condition actually runs.
+    /// `.guidedOnly`/`.control` only run `.guided`; rendering four dots
+    /// there would show three permanently-empty placeholders.
     var activePhases: [LearningPhase] = LearningPhase.allCases
 
     private let dotSize: CGFloat = 10
-
-    /// Primary blue used for filled (completed + current) dots.
     private let primaryBlue = Color(red: 0.22, green: 0.54, blue: 0.87)
 
     @State private var pulse = false

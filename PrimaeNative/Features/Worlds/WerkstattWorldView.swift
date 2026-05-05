@@ -1,11 +1,9 @@
 // WerkstattWorldView.swift
 // PrimaeNative
 //
-// World 2 — Schreibwerkstatt. Two-column layout: 140pt mode-card panel
-// on the left (Buchstabe / Wort), freeform canvas on the right. Reuses
-// the existing FreeformWritingView — no tracing/scoring/recognition
-// logic is duplicated here; we just configure TracingViewModel's
-// writingMode and let the canvas do its thing.
+// World 2 — Schreibwerkstatt. Two-column layout: 140 pt mode-card
+// panel (Buchstabe / Wort) + freeform canvas. Reuses
+// `FreeformWritingView`; this view only configures `writingMode`.
 
 import SwiftUI
 
@@ -24,9 +22,8 @@ struct WerkstattWorldView: View {
             }
         }
         .onAppear {
-            // Auto-enter freeform on first landing so the canvas isn't
-            // blank on an explicit user intent — MainAppView drops us
-            // back to guided whenever they leave this world.
+            // Auto-enter freeform on landing; `MainAppView` drops us
+            // back to guided whenever the user leaves this world.
             if vm.writingMode != .freeform {
                 vm.enterFreeformMode(subMode: .letter)
             }
@@ -115,9 +112,8 @@ struct WerkstattWorldView: View {
         if vm.writingMode == .freeform {
             FreeformWritingView()
         } else {
-            // Transient state while enterFreeformMode finishes on first
-            // onAppear. Keep the area on the canvas paper so it
-            // doesn't flash grey + matches the freeform canvas.
+            // Transient state during the first-onAppear handoff —
+            // canvas-paper avoids a grey flash before freeform takes over.
             Color.canvasPaper
         }
     }

@@ -1,6 +1,3 @@
-// PBMLoaderTests.swift
-// PrimaeNativeTests
-//
 // Regression tests for PBMLoader.decode — a parser bug here would silently
 // break every letter bitmap in the app.
 

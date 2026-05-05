@@ -1,19 +1,16 @@
 // WorldPalette.swift
 // PrimaeNative
 //
-// World tints + chrome surface tokens. Both forward into the Primae
-// design system (`PrimaeNative/Theme/Colors.swift`), so values flip
-// automatically between light and dark mode and stay in sync with the
-// design-system spec.
+// World tints + chrome surface tokens. Forwards into the Primae
+// design system (`Theme/Colors.swift`), so values flip light/dark.
 
 import SwiftUI
 
 enum WorldPalette {
 
-    /// Per-world soft background tint. The Primae spec says world hero
-    /// screens get a single soft tinted band over the paper canvas, not
-    /// a full gradient. We keep the LinearGradient signature so existing
-    /// call sites don't have to change their `.background(...)` modifier.
+    /// Per-world soft background tint. The spec is a single soft
+    /// tinted band over the paper canvas; we keep the LinearGradient
+    /// signature so existing `.background(...)` call sites are unchanged.
     static func background(for world: AppWorld) -> LinearGradient {
         let soft = softTint(for: world)
         return LinearGradient(
@@ -22,8 +19,8 @@ enum WorldPalette {
         )
     }
 
-    /// Primary accent colour for the world — used on rail icons, phase
-    /// dots, sticker buttons, and any active-state chrome.
+    /// Primary accent — rail icons, phase dots, sticker buttons,
+    /// any active-state chrome.
     static func accent(for world: AppWorld) -> Color {
         switch world {
         case .schule:       return .schule
@@ -32,8 +29,8 @@ enum WorldPalette {
         }
     }
 
-    /// Soft variant of the world tint — used as the start of the hero-
-    /// band gradient and as the inactive background of rail buttons.
+    /// Soft tint — start of the hero-band gradient and the inactive
+    /// background of rail buttons.
     static func softTint(for world: AppWorld) -> Color {
         switch world {
         case .schule:       return .schuleSoft
@@ -44,39 +41,29 @@ enum WorldPalette {
 }
 
 // MARK: - Shared surface tokens
-//
-// Backwards-compatible namespace pointing at the Primae design tokens.
-// Existing call sites read these as `AppSurface.card`, `.prompt`, etc.;
-// the values now auto-resolve light/dark via the underlying Color.*
-// dynamic providers.
+
+/// Back-compat namespace pointing at the Primae design tokens. Values
+/// auto-resolve light/dark via the underlying `Color.*`.
 enum AppSurface {
-    /// Card / pill body colour. Bright surface that floats over the
-    /// `--paper-deep` page.
+    /// Card / pill body — bright surface over `--paper-deep`.
     static let card     = Color.paper
-    /// Hairline border around `card` so it doesn't disappear when set
-    /// against the same-luminance paper canvas.
+    /// Hairline border around `card`.
     static let cardEdge = Color.paperEdge
-    /// Subdued body label colour — replaces `.secondary` on top of
-    /// pastel/paper backgrounds where the system grey washes out.
+    /// Subdued body label — replaces `.secondary` on pastel/paper
+    /// backgrounds where the system grey washes out.
     static let prompt   = Color.ink
-    /// Caption-weight label colour — slightly lighter than `prompt`
-    /// for hierarchy.
+    /// Caption-weight label — slightly lighter than `prompt`.
     static let caption  = Color.inkSoft
-    /// Mastered-letter tile fill — soft pastel green used in the
-    /// FortschritteWorldView gallery and the LetterPickerBar so a
-    /// "fully completed" letter looks identical wherever it appears.
-    /// Routes through `--success-soft` (emerald-50 / emerald-900).
+    /// Mastered-letter tile fill — `--success-soft`. Used in the
+    /// gallery and picker so mastered letters look identical
+    /// everywhere.
     static let mastered = Color.successSoft
-    /// Foreground colour to pair with `mastered` for letter glyphs.
-    /// Saturated success green that reads against the pastel fill.
+    /// Glyph foreground paired with `mastered`.
     static let masteredText = Color.success
-    /// Background colour pair for `WorldSwitcherRail`. The rail sits
-    /// over the page paper; we use the slightly recessed `paperDeep`
-    /// for both stops so the gradient renders as a flat band — paper,
-    /// not glass.
+    /// `WorldSwitcherRail` paper band — both stops on `paperDeep`-
+    /// adjacent so the gradient reads as a flat paper band.
     static let railTop    = Color.paper
     static let railBottom = Color.paperDeep
-    /// Unified gold / star tint. Routes through the design system's
-    /// `--star` token (amber-500 light, amber-400 dark).
+    /// Unified gold / star tint — routes through `--star`.
     static let starGold = Color.star
 }

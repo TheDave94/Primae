@@ -1,44 +1,26 @@
 // FreeformWritingView.swift
 // PrimaeNative
 //
-// Blank-canvas writing mode. No reference letter outline, no checkpoints,
-// no phases. The child writes whatever they want; once they lift the
-// pen (letter sub-mode) or tap "Fertig" (word sub-mode) the CoreML
-// recognizer reports what it saw.
-//
-// Keeps AudioEngine.swift untouched — freeform mode is deliberately
-// silent so the recognition badge is the only feedback signal.
+// Blank-canvas writing mode — no reference, checkpoints, or phases.
+// Lift (letter sub-mode) or "Fertig" (word sub-mode) runs CoreML.
+// Deliberately silent so the recognition badge is the only feedback.
 
 import SwiftUI
 import UIKit
 
 // MARK: - Surface palette
-//
-// Solid colours used for the freeform UI panels. Replaces the previous
-// `.ultraThinMaterial` cards, which read as light gray over the white
-// canvas and crushed the contrast of `.secondary` labels and tinted
-// chips (see IMG_0337–0340 — "Schreibe einen Buchstaben…", the
-// "Vorschläge:" row, and the Klarheit / Form pills were almost
-// invisible). These tones give every label and chip a predictable
-// background to sit on regardless of system colour scheme.
-/// Freeform-mode-specific tokens that don't have an `AppSurface`
-/// equivalent. Card / edge / prompt alias `AppSurface` directly so a
+
+/// Freeform-mode tokens. Card / edge / prompt alias `AppSurface` so a
 /// re-skin only touches one file.
 private enum FreeformSurface {
-    /// Toolbar and prompt strip behind Zurück / mode picker / Nochmal.
     static let header   = Color(red: 0.94, green: 0.94, blue: 0.97)
-    /// Result and status cards under the canvas. Aliases `AppSurface.card`.
     static let card     = AppSurface.card
-    /// Hairline border around cards. Aliases `AppSurface.cardEdge`.
     static let cardEdge = AppSurface.cardEdge
-    /// Word-picker pill backgrounds for unselected items — strong
-    /// enough that the dark label remains legible (purple.opacity(0.12)
-    /// rendered as near-pink and dropped contrast below WCAG AA).
+    /// Word-picker pill background, dark enough to keep the label
+    /// legible (purple.opacity(0.12) failed WCAG AA).
     static let pillIdle = Color(red: 0.91, green: 0.85, blue: 0.97)
-    /// Dark text for the unselected word-picker pills. Hand-picked dark
-    /// purple paired against `pillIdle` — measured ≈ 7:1 contrast.
+    /// Dark purple ≈ 7:1 contrast against `pillIdle`.
     static let pillIdleText = Color(red: 0.30, green: 0.13, blue: 0.45)
-    /// Body label for prompts. Aliases `AppSurface.prompt`.
     static let prompt   = AppSurface.prompt
 }
 
@@ -46,14 +28,11 @@ struct FreeformWritingView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// IDs of recognition results we've already shown the popup for.
-    /// Without this, dismissing the popup would just bring it back on
-    /// the next render. Reset whenever the canvas is cleared.
+    /// Recognition results already dismissed; without this the popup
+    /// reappears on the next render. Reset on canvas clear.
     @State private var dismissedResultLetter: String? = nil
 
-    /// Dynamic-Type-scaled size for the target-word glyph in word
-    /// sub-mode. Baseline 30pt is the original visual; scales relative
-    /// to .title so it tracks the parent dashboard's heading sizes.
+    /// Dynamic-Type-scaled target-word glyph size.
     @ScaledMetric(relativeTo: .title) private var targetWordFontSize: CGFloat = 30
 
     var body: some View {
@@ -62,13 +41,9 @@ struct FreeformWritingView: View {
                 Color.canvasPaper
                     .ignoresSafeArea()
 
-                // Header + canvas pinned to the top edge. They live in
-                // their own VStack so neither the footer nor the popup
-                // can shift them. The previous "Spacer + footer with
-                // minHeight" layout still let the footer push the
-                // canvas up when the result panel exceeded the reserved
-                // 130 pt (IMG_0342) — the footer is now a bottom-anchored
-                // overlay and shares no layout flow with the canvas.
+                // Header + canvas pinned to the top; footer is a
+                // bottom-anchored overlay so a tall result panel can't
+                // push the canvas up.
                 VStack(spacing: 0) {
                     header
                     if vm.freeformSubMode == .word {
@@ -93,26 +68,18 @@ struct FreeformWritingView: View {
                 }
             }
         }
-        // Canvas is hard-coded `Color.canvasPaper`, so pin the rest of the
-        // view to light mode too — otherwise `.primary`/`.secondary`
-        // resolve to white-ish in dark mode and disappear into the
-        // canvas, exactly the white-on-white symptom in IMG_0337–0340.
-        
+        // Canvas is hard-coded light; rest of the view inherits so
+        // `.primary`/`.secondary` don't disappear into white in dark
+        // mode.
         .animation(reduceMotion ? nil : .spring(response: 0.4, dampingFraction: 0.82),
                    value: shouldShowResultPopup)
         .onChange(of: vm.freeformPoints.count) { _, newValue in
-            // New stroke after a dismissed result → re-arm the popup
-            // for the next recognition. Without this the popup would
-            // never come back unless the user left and re-entered the
-            // mode.
+            // Re-arm the popup after the canvas clears.
             if newValue == 0 { dismissedResultLetter = nil }
         }
     }
 
-    /// Show the popup only for letter mode, only when the recogniser
-    /// has produced a result, and only if the child hasn't already
-    /// dismissed THIS particular result. Word-mode keeps its inline
-    /// slot-aligned chip row; the popup is letter-mode-only.
+    /// Letter mode only — word mode uses an inline chip row.
     private var shouldShowResultPopup: Bool {
         guard vm.freeformSubMode == .letter,
               let r = vm.lastRecognitionResult else { return false }
@@ -120,9 +87,8 @@ struct FreeformWritingView: View {
     }
 
     private func popupKey(for r: RecognitionResult) -> String {
-        // Per-result key: predicted letter + confidence to two decimals.
-        // Same letter shown twice in a row should pop again because the
-        // form score / stroke count likely changed.
+        // Predicted letter + confidence + stroke count, so the same
+        // letter shown twice in a row still re-pops.
         "\(r.predictedLetter)-\(Int((r.confidence * 100).rounded()))-\(vm.freeformStrokeSizes.count)"
     }
 
@@ -130,11 +96,8 @@ struct FreeformWritingView: View {
 
     private var header: some View {
         VStack(spacing: 8) {
-            // Row 1: Zurück / Nochmal. The mode picker (Buchstabe /
-            // Wort) lives on the WerkstattWorldView left rail —
-            // exposing it again here as a horizontal segmented
-            // picker created two ways to do the same thing on the
-            // same screen, so the horizontal one is gone.
+            // Row 1: Zurück / Nochmal. Mode picker lives on the
+            // WerkstattWorldView left rail.
             HStack(alignment: .center, spacing: 12) {
                 Button {
                     vm.exitFreeformMode()
@@ -159,8 +122,7 @@ struct FreeformWritingView: View {
                 .accessibilityHint("Leert das Blatt, damit du es nochmal versuchen kannst")
             }
 
-            // Row 2: target prompt. Occupies its own horizontal band so
-            // it never collides with the nav buttons above.
+            // Row 2: target prompt, separated from the nav row.
             HStack {
                 Spacer()
                 if vm.freeformSubMode == .word, let target = vm.freeformTargetWord {
@@ -175,8 +137,7 @@ struct FreeformWritingView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("Zielwort \(target.word)")
                 } else {
-                    // Mirror the in-canvas prompt verbatim so the
-                    // header and the canvas hint never drift.
+                    // Mirror the in-canvas prompt verbatim.
                     Text("Schreibe einen Buchstaben mit dem Finger oder dem Stift.")
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(FreeformSurface.prompt)
@@ -209,8 +170,7 @@ struct FreeformWritingView: View {
                             .foregroundStyle(isSelected
                                              ? Color.canvasPaper
                                              : FreeformSurface.pillIdleText)
-                            // 44 pt minimum touch target (HIG): headline
-                            // line height ≈ 22 pt + 2×14 pt = ≥ 50 pt.
+                            // 44 pt HIG touch target: headline + 2×14 pt.
                             .padding(.horizontal, 14).padding(.vertical, 14)
                             .background(
                                 isSelected
@@ -268,9 +228,7 @@ struct FreeformWritingView: View {
     }
 
     private func drawCommittedPoints(context: GraphicsContext, size: CGSize) {
-        // Reconstruct per-stroke polylines from freeformStrokeSizes so
-        // pen lifts stay visible as gaps rather than being bridged with
-        // a spurious line segment across the canvas.
+        // Per-stroke polylines so pen lifts stay visible as gaps.
         let all = vm.freeformPoints
         guard !all.isEmpty else { return }
         var cursor = 0
@@ -320,13 +278,9 @@ struct FreeformWritingView: View {
                 letterFooter
             }
         }
-        // `minHeight` reserves enough vertical space for the tallest
-        // letterFooter state (post-popup result row, ≈ 92 pt) so the
-        // footer never grows or shrinks during a writing session.
-        // Word mode's wordResultPanel is taller, but it only appears
-        // after the explicit "Fertig" button — never mid-stroke — so
-        // a temporary expansion there is acceptable. Top alignment
-        // keeps short prompts from drifting toward the centre.
+        // `minHeight` reserves space for the tallest letterFooter
+        // state so the footer doesn't reflow mid-stroke. Word-mode's
+        // panel can grow, but only after the explicit "Fertig" tap.
         .frame(maxWidth: .infinity,
                minHeight: 130,
                alignment: .top)
@@ -352,10 +306,8 @@ struct FreeformWritingView: View {
                 subtitle: "Ich schaue mir deinen Buchstaben an."
             )
         } else if vm.isWaitingForRecognition {
-            // Visible debounce window — child just lifted the pen, we're
-            // holding recognition for a moment so multi-stroke letters
-            // can finish. Makes the delay feel intentional instead of
-            // laggy.
+            // Visible debounce window so the multi-stroke wait feels
+            // intentional instead of laggy.
             statusBanner(
                 icon: "hourglass",
                 tint: Color(red: 0.40, green: 0.30, blue: 0.80),
@@ -408,10 +360,8 @@ struct FreeformWritingView: View {
         .accessibilityLabel(title + ". " + subtitle)
     }
 
-    /// Tiny inline stub shown under the canvas after the popup has
-    /// been dismissed. Just the predicted letter + the headline — no
-    /// Vorschläge, no Klarheit/Form pills. Detail breakdown lives in
-    /// the popup's "Details" disclosure.
+    /// Inline stub under the canvas after popup dismiss — predicted
+    /// letter + headline only.
     private func letterResultPanel(result: RecognitionResult) -> some View {
         let raw = result.confidence
         let tint: Color = raw >= 0.7 ? .green : (raw >= 0.4 ? .yellow : .orange)
@@ -430,8 +380,7 @@ struct FreeformWritingView: View {
                 .font(.body(FontSize.md, weight: .semibold))
                 .foregroundStyle(Color.ink)
             Spacer()
-            // Re-open the popup so the child can see the written
-            // evaluation again on demand.
+            // Re-open the popup on demand.
             Button {
                 dismissedResultLetter = nil
             } label: {
@@ -466,11 +415,10 @@ struct FreeformWritingView: View {
 
     // MARK: - Result popup (child-facing written evaluation)
 
-    /// Modal-style popup centred over the canvas. Drives off the form
-    /// score (FreeWriteScorer.formAccuracyShape) so the message rewards
-    /// well-shaped letters even when CoreML's confusable-pair penalty
-    /// drops Klarheit. Falls back to a Klarheit-only message when no
-    /// reference glyph is bundled for the recognised letter.
+    /// Modal popup centred over the canvas. Drives off the form score
+    /// so well-shaped letters get rewarded even when CoreML's
+    /// confusable-pair penalty drops Klarheit; falls back to Klarheit
+    /// when no reference glyph is bundled.
     private func resultPopup(result: RecognitionResult) -> some View {
         let formScore = vm.lastFreeformFormScore
         let scoreForMessage = formScore ?? result.confidence
@@ -545,11 +493,8 @@ struct FreeformWritingView: View {
                     .tint(.blue)
                 }
 
-                // Numeric metrics (Klarheit, Form, Vorschläge with %) live
-                // in the parent-gated research dashboard. The child popup
-                // is intentionally metric-free — verbal evaluation + star
-                // count only — to match the thesis spec for an audience
-                // that cannot read percentages yet.
+                // Numeric metrics live in the parent-gated research
+                // dashboard; the child popup is metric-free.
             }
             .padding(28)
             .frame(maxWidth: 460)
@@ -568,9 +513,7 @@ struct FreeformWritingView: View {
         dismissedResultLetter = popupKey(for: result)
     }
 
-    /// Stars 0–3 from the form (or fallback) score. Bands mirror the
-    /// celebration overlay's tiering so a "3 stars in the popup" lines
-    /// up with what the child sees on phase completion.
+    /// Stars 0–3 — bands mirror the celebration overlay's tiering.
     private func formStars(for score: CGFloat) -> Int {
         switch score {
         case 0.85...:   return 3
@@ -580,17 +523,14 @@ struct FreeformWritingView: View {
         }
     }
 
-    /// Child-friendly written evaluation. Distinct messages per band
-    /// rather than a single template so the kid sees variety, and
-    /// `hasFormScore == false` (letter has no bundled reference)
-    /// rephrases to avoid telling the child their shape is "great"
-    /// when we couldn't actually measure shape.
+    /// Child-friendly evaluation, varied per band. When
+    /// `hasFormScore == false` we don't praise shape we couldn't
+    /// measure.
     private func formEvaluation(score: CGFloat,
                                  letter: String,
                                  hasFormScore: Bool) -> String {
         if !hasFormScore {
-            // No reference glyph for this letter — speak only to what
-            // the recogniser saw, not to shape we didn't measure.
+            // Speak only to what the recogniser saw.
             return score >= 0.7
                 ? "Super, ich erkenne dein \(letter) ganz klar!"
                 : "Ich glaube, das ist ein \(letter). Probier es nochmal größer und deutlicher."
@@ -653,8 +593,7 @@ struct FreeformWritingView: View {
     private var wordResultPanel: some View {
         let target = vm.freeformTargetWord?.word ?? ""
         let targetChars = Array(target)
-        // Slot-aligned so missing letters show as grey placeholder chips
-        // rather than collapsing the row to just the recognized ones.
+        // Slot-aligned so missing letters show as grey placeholders.
         let slots = vm.freeformWordResultSlots
         let recognized = slots.map { $0?.predictedLetter ?? "·" }.joined()
         VStack(alignment: .leading, spacing: 12) {

@@ -1,47 +1,37 @@
-//  VelocityMappingTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import CoreGraphics
 @testable import PrimaeNative
 
 struct VelocityMappingTests {
 
-    // MARK: 1 — v=0 returns max speed (2.0)
     @Test func zeroVelocity_returnsMaxSpeed() {
         #expect(TouchDispatcher.mapVelocityToSpeed(0) == 0.5)
     }
 
-    // MARK: 2 — v at low boundary returns 2.0
     @Test func lowBoundary_returnsMaxSpeed() {
         #expect(TouchDispatcher.mapVelocityToSpeed(50) == 0.5)
     }
 
-    // MARK: 3 — v at high boundary returns 0.5
     @Test func highBoundary_returnsMinSpeed() {
         #expect(TouchDispatcher.mapVelocityToSpeed(800) == 2.0)
     }
 
-    // MARK: 4 — v > high clamps to 0.5
     @Test func aboveHigh_clampsToMinSpeed() {
         #expect(TouchDispatcher.mapVelocityToSpeed(5000) == 2.0)
         #expect(TouchDispatcher.mapVelocityToSpeed(.greatestFiniteMagnitude) == 2.0)
     }
 
-    // MARK: 5 — v < low (but > 0) returns 2.0
     @Test func belowLow_returnsMaxSpeed() {
         #expect(TouchDispatcher.mapVelocityToSpeed(30)  == 0.5)
         #expect(TouchDispatcher.mapVelocityToSpeed(49)  == 0.5)
     }
 
-    // MARK: 6 — Midpoint v=710 is halfway → speed = 1.25
     @Test func midpoint_returnsLinearInterpolation() {
         let mid: CGFloat = (50 + 800) / 2.0
         let expected: Float = 0.5 + (1.5 * 0.5)
         #expect(abs(TouchDispatcher.mapVelocityToSpeed(mid) - expected) < 1e-5)
     }
 
-    // MARK: 7 — Result is monotonically non-increasing
     @Test func monotonicallyNonDecreasing() {
         var prev: Float = 0.5
         for v in stride(from: CGFloat(0), through: 2000, by: 10) {
@@ -52,7 +42,6 @@ struct VelocityMappingTests {
         }
     }
 
-    // MARK: 8 — Result always in [0.5, 2.0]
     @Test func result_alwaysInRange() {
         var rng = SeededRNGLocal()
         for _ in 0..<10_000 {
@@ -65,12 +54,10 @@ struct VelocityMappingTests {
         }
     }
 
-    // MARK: 9 — Negative velocity treated like zero
     @Test func negativeVelocity_treatedLikeZero() {
         #expect(TouchDispatcher.mapVelocityToSpeed(-100) == 0.5)
     }
 
-    // MARK: 10 — Return type is Float
     @Test func returnType_isFloat() {
         let result = TouchDispatcher.mapVelocityToSpeed(500)
         #expect(type(of: result) == Float.self)

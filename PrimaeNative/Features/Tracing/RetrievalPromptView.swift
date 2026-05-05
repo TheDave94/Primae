@@ -1,16 +1,10 @@
 // RetrievalPromptView.swift
 // PrimaeNative
 //
-// Spaced-retrieval recognition prompt. Roediger & Karpicke (2006):
-// retrieval tests produce better long-term retention than additional
-// study — generating an answer beats re-encoding it. Every Nth letter
-// selection (cadence governed by `RetrievalScheduler`) the parent-
-// opt-in flow shows this overlay before the tracing phases begin:
-// play the letter's audio (or phoneme), show three candidate letters,
-// child picks one. The outcome lands on
-// `LetterProgress.retrievalAttempts` via the VM's onAnswer callback.
-// Modal — the queue waits for the child to answer, or for an
-// impatient parent to tap-and-hold "Überspringen".
+// Spaced-retrieval recognition prompt (Roediger & Karpicke 2006).
+// Every Nth letter selection plays the audio and shows three
+// candidates; the child's answer lands on
+// `LetterProgress.retrievalAttempts`.
 
 import SwiftUI
 
@@ -88,23 +82,12 @@ struct RetrievalPromptView: View {
             .shadow(color: .black.opacity(0.30), radius: 24, y: 6)
         }
         .onAppear {
-            // Shuffle exactly once per appearance so the child can't
-            // anticipate the target by position. The ZStack persists for
-            // the duration of the modal; the queue's reset re-creates
-            // the view with a fresh shuffle next time.
+            // Shuffle once per appearance so the child can't anticipate
+            // the target by position.
             options = ([target] + distractors).shuffled()
-            // Spoken instruction first — the child can't read the
-            // on-screen "Welcher Buchstabe?" headline. Pre-readers
-            // need to hear what's being asked before the letter
-            // sound plays. Pre-recorded ElevenLabs MP3 via
-            // PromptPlayer when bundled; AVSpeech fallback otherwise.
+            // Spoken instruction first for non-readers, then the cue.
             vm.prompts.play(.retrievalQuestion,
                             fallbackText: ChildSpeechLibrary.retrievalQuestion)
-            // Prime the audio so the first "Hören" tap doesn't hit a
-            // cold cache. The VM has already arranged the active letter,
-            // but the overlay queue may run before the load finishes —
-            // so a small delay is acceptable; the parent toggle gates
-            // whether name or phoneme is loaded.
             onPlayAudio()
         }
     }

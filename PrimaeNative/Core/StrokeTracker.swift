@@ -27,11 +27,9 @@ final class StrokeTracker {
     }
 
     var isComplete: Bool {
-        // `[].allSatisfy(_:)` is vacuously true, so a definition with zero
-        // strokes would otherwise report itself as complete without any
-        // user input. Guard against that here too — TracingViewModel
-        // already checks `hasStrokes` at the call site, but the API
-        // itself shouldn't lie about completeness.
+        // `[].allSatisfy(_:)` is vacuously true — guard against a
+        // zero-stroke definition reporting itself as complete without
+        // any user input.
         guard let definition, !definition.strokes.isEmpty else { return false }
         return progress.count == definition.strokes.count && progress.allSatisfy(\.complete)
     }
@@ -71,10 +69,9 @@ final class StrokeTracker {
         isNearStroke = false
     }
 
-    /// Wipe partial progress on the in-flight stroke without clearing
-    /// the definition or already-completed strokes. Used when the
-    /// touch leaves the canvas mid-stroke — the child has to retrace
-    /// that stroke from its first checkpoint.
+    /// Wipe partial progress on the in-flight stroke. The child must
+    /// retrace from the first checkpoint. Already-completed strokes
+    /// and the definition itself are preserved.
     func resetCurrentStroke() {
         let idx = currentStrokeIndex
         guard progress.indices.contains(idx) else { return }

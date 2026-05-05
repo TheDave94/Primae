@@ -1,38 +1,11 @@
 // CloudSyncService.swift
 // PrimaeNative
 //
-// ⚠️ DORMANT — protocol-only scaffolding for a future CloudKit sync.
-// =================================================================
-// No real CloudKit-backed implementation ships in this repository today.
-// The only conforming type is `NullSyncService`, an in-memory no-op
-// installed by `TracingDependencies.stub` and the production app entry
-// point alike. `SyncCoordinator.pushAll()` runs on every letter
-// completion (see TracingViewModel.recordPhaseSessionCompletion) and
-// silently does nothing — the data is buffered in `pushedRecords` for
-// tests but never leaves the device.
-//
-// What's intentionally already wired:
-//   • Sendable-correct async/throws protocol
-//   • SyncCoordinator with last-write-wins merge semantics scaffolded
-//   • Test seam (NullSyncService.simulateError, seedRecord)
-//   • Region-isolated payload materialisation in pushAll
-//
-// What's missing for a thesis demo or a real shipping build:
-//   • CloudKitCloudSyncService implementation (CKDatabase / CKRecord /
-//     CKModifyRecordsOperation, plus a Sendable wrapper for the
-//     `[String: any Sendable]` payload)
-//   • CKContainer entitlement + iCloud capability in Primae.entitlements
-//   • Conflict-resolution policy beyond last-write-wins (timestamps in
-//     payload are scaffolded but the merge-on-fetch path is unwritten)
-//   • Background-fetch / push-notification trigger so other devices
-//     pick up changes without an explicit pushAll()
-//
-// Reactivating this code path is intentionally one-edit-away: swap the
-// NullSyncService injection in TracingDependencies for a CloudKit
-// implementation. Until then, treat this file as documentation of the
-// intended interface and a regression guard against breaking that
-// interface during unrelated refactors.
-// =================================================================
+// DORMANT — protocol-only scaffolding for a future CloudKit sync. The
+// only conforming type today is `NullSyncService` (in-memory no-op);
+// `SyncCoordinator.pushAll()` runs but never leaves the device.
+// Reactivation: swap the NullSyncService injection in
+// TracingDependencies for a CloudKit-backed implementation.
 
 import Foundation
 #if canImport(CloudKit)
@@ -66,8 +39,7 @@ protocol CloudSyncService: AnyObject, Sendable {
 
 // MARK: - Null (test / pre-CloudKit) implementation
 
-// MainActor-isolated so mutations serialize through the main queue;
-// removes the @unchecked Sendable escape that allowed concurrent push() races.
+// MainActor-isolated so mutations serialize through the main queue.
 @MainActor
 final class NullSyncService: CloudSyncService {
     private(set) var syncState: SyncState = .idle
@@ -120,8 +92,8 @@ final class NullSyncService: CloudSyncService {
 final class SyncCoordinator {
 
     // `any CloudSyncService & Sendable` is required in Swift 6:
-    // existentials over Sendable protocols are only Sendable when explicitly
-    // composed with Sendable in the type annotation.
+    // existentials over Sendable protocols are only Sendable when
+    // explicitly composed with Sendable in the type annotation.
     private let sync: any CloudSyncService & Sendable
     private let progressStore: ProgressStoring
     private let streakStore: StreakStoring
@@ -139,9 +111,9 @@ final class SyncCoordinator {
 
     /// Push all local state to CloudKit. Throws on first failure.
     func pushAll() async throws {
-        // Materialise both payloads on the MainActor before any async suspension.
-        // Swift 6 region-based isolation requires values to be fully owned by the
-        // caller's region before they can be `sending`-transferred to an async call.
+        // Materialise both payloads on the MainActor before any async
+        // suspension — Swift 6 region isolation requires values to be
+        // fully owned by the caller's region before `sending` transfer.
         let progressPayload = buildProgressPayload()
         let streakPayload   = buildStreakPayload()
         try await sync.push(recordType: .progress, payload: progressPayload)

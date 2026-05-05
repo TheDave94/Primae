@@ -1,6 +1,3 @@
-//  ParentDashboardExporterTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 @testable import PrimaeNative
@@ -99,12 +96,11 @@ struct ParentDashboardExporterTests {
         try? FileManager.default.removeItem(at: url)
     }
 
-    // MARK: - D-2 / D-3: phase-row recognition + recordedAt are session-aligned
+    // MARK: - Phase-row recognition + recordedAt are session-aligned
 
-    /// D-2: when the VM passes a `RecognitionSample` to `recordPhaseSession`,
-    /// the per-phase row emits the actual session-aligned values. This
-    /// supersedes W-2's blank-column workaround now that `PhaseSessionRecord`
-    /// carries the recognition fields directly.
+    /// When the VM passes a `RecognitionSample` to `recordPhaseSession`,
+    /// the per-phase row emits the actual session-aligned values —
+    /// `PhaseSessionRecord` carries the recognition fields directly.
     @Test func csvPhaseRowEmitsSessionAlignedRecognition() {
         let recordedAt = Date(timeIntervalSince1970: 1_770_000_000)
         var snap = DashboardSnapshot()
@@ -123,8 +119,7 @@ struct ParentDashboardExporterTests {
         // recordedAt,recognition_predicted,recognition_confidence,
         // recognition_confidence_raw,recognition_correct,
         // formAccuracy,tempoConsistency,pressureControl,rhythmScore,
-        // inputDevice (T5 added recognition_confidence_raw before
-        // recognition_correct).
+        // inputDevice.
         #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,\(isoTs),O,0.6200,,false,,,,,"),
                 "Expected session-aligned recognition + timestamp — found:\n\(csv)")
     }
@@ -148,9 +143,9 @@ struct ParentDashboardExporterTests {
                 "Expected blank recognition columns + populated recordedAt — found:\n\(csv)")
     }
 
-    // MARK: - D-7: pre-enrolment records are filtered
+    // MARK: - Pre-enrolment records are filtered
 
-    /// D-7: any phase-session row recorded before `ParticipantStore.enrolledAt`
+    /// Any phase-session row recorded before `ParticipantStore.enrolledAt`
     /// is dropped at export time so pilot / sandbox activity doesn't get
     /// silently attributed to the assigned thesis arm.
     @Test func csvFiltersPreEnrolmentRows() {
@@ -177,18 +172,18 @@ struct ParentDashboardExporterTests {
                 "Post-enrolment row must survive — found:\n\(csv)")
     }
 
-    /// D-8: legacy rows missing `recordedAt` (pre-D-3) are now filtered
-    /// when an `enrolledAt` exists — we can't prove they're post-
-    /// enrolment, and the decoder defaulted their condition to
-    /// `.threePhase`, which would silently inflate that arm. When no
-    /// `enrolledAt` is set (study not yet started), they survive so
-    /// pre-thesis dev/test data still appears in dev exports.
+    /// Legacy rows missing `recordedAt` are filtered when an `enrolledAt`
+    /// exists — we can't prove they're post-enrolment, and the decoder
+    /// defaulted their condition to `.threePhase`, which would silently
+    /// inflate that arm. When no `enrolledAt` is set (study not yet
+    /// started), they survive so pre-thesis dev/test data still appears
+    /// in dev exports.
     @Test func csvFiltersLegacyRowsWithoutRecordedAtWhenEnrolled() {
         let enrolledAt = Date(timeIntervalSince1970: 1_770_000_000)
         var snap = DashboardSnapshot()
         // Decoding a record from a JSON file without `recordedAt`
         // produces nil there. Construct one manually via JSON to mirror
-        // the pre-D-3 wire format.
+        // the legacy wire format.
         let legacyJSON = """
         {
           "letter": "L", "phase": "guided", "completed": true,
@@ -197,7 +192,7 @@ struct ParentDashboardExporterTests {
         """.data(using: .utf8)!
         let legacy = try! JSONDecoder().decode(PhaseSessionRecord.self, from: legacyJSON)
         snap.phaseSessionRecords.append(legacy)
-        // With enrolledAt set: legacy row is dropped (D-8).
+        // With enrolledAt set: legacy row is dropped.
         let csvEnrolled = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: enrolledAt), encoding: .utf8)!
         #expect(!csvEnrolled.contains("L,guided,true"),
@@ -209,7 +204,7 @@ struct ParentDashboardExporterTests {
                 "Legacy row must survive in dev exports (enrolledAt: nil) — found:\n\(csvDev)")
     }
 
-    // MARK: - D-6: speedTrend column on letter-aggregate rows
+    // MARK: - speedTrend column on letter-aggregate rows
 
     @Test func csvLetterAggregateContainsSpeedTrend() {
         var snap = DashboardSnapshot()

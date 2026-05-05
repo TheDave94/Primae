@@ -1,22 +1,11 @@
 // Fonts.swift
 // PrimaeNative — Theme
 //
-// Primae type ramp + font-family helpers. Wraps the bundled
-// "Primae" / "PrimaeText" / "Playwrite AT" families so call sites
-// don't have to remember PostScript names. The OTF/TTF files live
-// in `Resources/Fonts/` and are loaded via two paths:
-//
-//   1. `INFOPLIST_KEY_UIAppFonts` in the app target's build
-//      settings — covers the case where a host embeds the fonts in
-//      the *main* bundle.
-//   2. `PrimaeFonts.registerAll()` (see FontRegistration.swift),
-//      called from `PrimaeApp.init()` — registers the SPM
-//      package's `Bundle.module` fonts with CoreText. This is the
-//      load-bearing path because the fonts physically live inside
-//      the SPM resource bundle, not the main bundle, and
-//      `UIAppFonts` only searches the main bundle.
-//
-// Type scale mirrors the `--fz-*` CSS vars in
+// Type ramp + font-family helpers wrapping the bundled "Primae" /
+// "PrimaeText" / "Playwrite AT" families. Fonts live in
+// `Resources/Fonts/` and are loaded by `PrimaeFonts.registerAll()`
+// (the SPM bundle path); `INFOPLIST_KEY_UIAppFonts` covers main-
+// bundle copies. Type scale mirrors `--fz-*` in
 // `design-system/colors_and_type.css`.
 
 import SwiftUI
@@ -49,41 +38,32 @@ enum FontSize {
 // MARK: - Family helpers
 
 extension Font {
-    /// Display family (Primae). Use for large titles, prompts, the
-    /// canvas glyph, button labels. Falls back to the system font if
-    /// the bundled OTF can't be located at runtime.
-    ///
-    /// Note: the weight argument selects a *PostScript variant*
-    /// (Light / Regular / Semibold / Bold) and the returned Font is
-    /// constructed directly with that PostScript name. We deliberately
-    /// don't chain `.weight(weight)` — none of the bundled OTFs are
-    /// variable fonts, and asking SwiftUI to nudge the weight axis on
-    /// a non-variable custom font triggers a SwiftUI bug-report log
-    /// ("Unable to update Font Descriptor's weight to Weight(value:
-    /// 0.0)") on every render.
+    /// Display family (Primae). Constructs the Font directly with the
+    /// PostScript name; we don't chain `.weight(weight)` because the
+    /// bundled OTFs aren't variable fonts and SwiftUI logs a "Unable
+    /// to update Font Descriptor's weight" bug-report on every render
+    /// when the weight axis is nudged on a non-variable custom font.
     static func display(_ size: CGFloat,
                         weight: Font.Weight = .bold) -> Font {
         Font.custom(primaePostScriptName(for: weight, italic: false), size: size)
     }
 
-    /// Display-cursive (Primae italic) — the cursive-axis variant of
-    /// the display family. Reserved for marketing / signature
-    /// flourishes; the in-app cursive specimen uses Playwrite AT.
+    /// Display-cursive (Primae italic). Reserved for marketing /
+    /// signature flourishes; in-app cursive uses Playwrite AT.
     static func displayCursive(_ size: CGFloat,
                                weight: Font.Weight = .regular) -> Font {
         Font.custom(primaePostScriptName(for: weight, italic: true), size: size)
     }
 
-    /// Body / text family (PrimaeText) — companion text-grade weight
-    /// of Primae, optimised for smaller sizes and longer prose.
+    /// Text-grade companion family (PrimaeText) — optimised for
+    /// smaller sizes and longer prose.
     static func body(_ size: CGFloat,
                      weight: Font.Weight = .regular) -> Font {
         Font.custom(primaeTextPostScriptName(for: weight, italic: false), size: size)
     }
 
     /// Austrian school cursive (Playwrite AT) — the *real* cursive
-    /// specimen used wherever the app would render Schreibschrift.
-    /// Only one weight is bundled.
+    /// specimen for Schreibschrift. Only one weight is bundled.
     static func cursive(_ size: CGFloat) -> Font {
         Font.custom("PlaywriteAT-Regular", size: size)
     }
@@ -91,31 +71,23 @@ extension Font {
 
 // MARK: - Private — PostScript-name resolution
 
-/// Map a SwiftUI `Font.Weight` to the bundled Primae PostScript name.
-/// Falls back to the closest available weight (Light / Regular /
-/// Semibold / Bold + Semilight). Italic axis uses the *Cursive*
-/// member of the family — the OTFs are named e.g. "Primae-Cursive"
-/// for regular-italic.
 private func primaePostScriptName(for weight: Font.Weight, italic: Bool) -> String {
     let stem = "Primae"
     let cursive = italic ? "Cursive" : ""
     return weightSuffix(for: weight, stem: stem, cursiveSuffix: cursive)
 }
 
-/// Same as above, but for the text-grade companion family.
 private func primaeTextPostScriptName(for weight: Font.Weight, italic: Bool) -> String {
     let stem = "PrimaeText"
     let cursive = italic ? "Cursive" : ""
     return weightSuffix(for: weight, stem: stem, cursiveSuffix: cursive)
 }
 
-/// PostScript-name builder shared by the two Primae families. The
-/// font files are named e.g. `Primae-Light.otf`, `Primae-Cursive.otf`
-/// (regular cursive, no weight prefix), `PrimaeText-SemiboldCursive.otf`.
+/// PostScript-name builder. Files are named e.g. `Primae-Light.otf`,
+/// `Primae-Cursive.otf` (regular cursive, no weight prefix),
+/// `PrimaeText-SemiboldCursive.otf`.
 private func weightSuffix(for weight: Font.Weight, stem: String, cursiveSuffix: String) -> String {
-    // Map SwiftUI weights onto the five PostScript weights present in
-    // the bundle. There's no Medium / Heavy / Black face; round to the
-    // nearest available.
+    // No Medium / Heavy / Black face in the bundle — round to nearest.
     let weightToken: String
     switch weight {
     case .ultraLight, .thin, .light:

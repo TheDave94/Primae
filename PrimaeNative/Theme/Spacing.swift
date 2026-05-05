@@ -1,9 +1,8 @@
 // Spacing.swift
 // PrimaeNative — Theme
 //
-// Primae spacing scale, mirroring the `--sp-*` CSS vars in
-// `design-system/colors_and_type.css`. 4 px base, 8 px primary
-// rhythm.
+// Spacing scale mirroring `--sp-*` in
+// `design-system/colors_and_type.css`. 4 px base, 8 px primary rhythm.
 
 import CoreGraphics
 

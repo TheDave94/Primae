@@ -1,27 +1,21 @@
 // PromptPlayer.swift
 // PrimaeNative
 //
-// Plays the bundled MP3 phrases the child hears during practice
-// (phase entries, praise tiers, paper-transfer cues, the retrieval
-// headline, the letter-completion celebration). Falls back to
-// AVSpeechSynthesizer when the MP3 for a given key isn't bundled,
-// so the app is functional before `scripts/generate_prompts.py`
-// has been run.
-//
-// Dynamic, per-letter phrases (recognition feedback, retrieval
-// correction) bypass this player and go through the synthesizer
-// directly — the combinatorial template space is too large to
-// pre-render.
+// Plays the bundled MP3 phrases the child hears during practice.
+// Falls back to AVSpeechSynthesizer when the MP3 for a given key
+// isn't bundled, so the app works before
+// `scripts/generate_prompts.py` has run. Dynamic per-letter phrases
+// (recognition feedback, retrieval correction) bypass this and go
+// through the synthesizer directly.
 
 import AudioToolbox
 import AVFoundation
 import Foundation
 import os.log
 
-/// Public surface of `PromptPlayer`. Tests substitute `NullPromptPlayer`
-/// so the suite avoids real AVAudioPlayer setup; on the simulator each
-/// `.play()` costs enough wall-clock time (~10–20 ms) to push rapid-tap
-/// tests past `PlaybackController.playIntentDebounceSeconds`.
+/// Public surface of `PromptPlayer`. Tests use `NullPromptPlayer` —
+/// real AVAudioPlayer setup costs enough wall-clock time (~10–20 ms
+/// on simulator) to push rapid-tap tests past the playback debounce.
 @MainActor
 protocol PromptPlaying: AnyObject {
     func play(_ key: PromptPlayer.PromptKey, fallbackText: String)
@@ -46,10 +40,9 @@ final class NullPromptPlayer: PromptPlaying {
 @MainActor
 final class PromptPlayer: PromptPlaying {
 
-    /// Stable identifiers for each pre-recorded phrase. The raw value
-    /// is the filename stem inside `Resources/Prompts/<key>.mp3`;
-    /// keep in sync with the PROMPTS table in
-    /// `scripts/generate_prompts.py`.
+    /// Stable identifiers for pre-recorded phrases. Raw value is the
+    /// filename stem in `Resources/Prompts/<key>.mp3` — keep in sync
+    /// with the PROMPTS table in `scripts/generate_prompts.py`.
     enum PromptKey: String, CaseIterable {
         case phaseObserve   = "phase_observe"
         case phaseDirect    = "phase_direct"
@@ -69,11 +62,10 @@ final class PromptPlayer: PromptPlaying {
 
     private let speech: SpeechSynthesizing
     private var player: AVAudioPlayer?
-    /// Lazy cache of effect-sound players keyed by asset stem. AVAudioPlayer
-    /// inherits the AudioEngine's `.playback` session, so these effects
-    /// bypass the iPad ringer switch. Lazy-loaded because pre-loading
-    /// every effect at init shifts subsequent timing enough to push
-    /// rapid-tap tests past the playback debounce window.
+    /// Lazy cache of effect-sound players. AVAudioPlayer inherits the
+    /// AudioEngine's `.playback` session so these effects bypass the
+    /// iPad ringer switch. Lazy because pre-loading shifts timing
+    /// enough to push rapid-tap tests past the playback debounce.
     private var effectPlayers: [String: AVAudioPlayer] = [:]
     /// Effect names that failed to load — cached so the bundle isn't
     /// re-probed on every play call.
@@ -84,14 +76,11 @@ final class PromptPlayer: PromptPlaying {
         self.speech = fallbackSpeech
     }
 
-    /// Play the prompt audio for `key`. Falls back to
+    /// Play the prompt audio for `key`, falling back to
     /// `speech.speak(fallbackText)` when the bundled MP3 is missing.
-    ///
-    /// Both pipelines are stopped on entry, not just the one we're
-    /// about to use: when prompt MP3s aren't bundled every call falls
-    /// into the synthesizer, and `AVSpeechSynthesizer.speak()` queues
-    /// utterances rather than replacing them. Without `speech.stop()`,
-    /// rapid letter-skipping stacks the phase cue N+1 deep.
+    /// Stops BOTH pipelines on entry — `AVSpeechSynthesizer.speak()`
+    /// queues utterances, so without `speech.stop()` rapid letter-
+    /// skipping stacks the phase cue N+1 deep.
     func play(_ key: PromptKey, fallbackText: String) {
         player?.stop()
         speech.stop()
@@ -116,35 +105,31 @@ final class PromptPlayer: PromptPlaying {
         speech.stop()
     }
 
-    /// Letter-completion celebration. Uses a system sound so it can
-    /// fire even while the letter-sound pipeline is reconfiguring.
+    /// Letter-completion celebration. Uses a system sound so it fires
+    /// even while the letter-sound pipeline is reconfiguring.
     func playSuccessChime() {
         AudioServicesPlaySystemSound(1322)
     }
 
-    /// Confirmation click for a correct dot tap in the direct phase.
-    /// Routes through AVAudioPlayer so the AudioEngine's `.playback`
-    /// session bypasses the device mute switch.
+    /// Correct dot-tap click. AVAudioPlayer route bypasses the device
+    /// mute switch via the AudioEngine's `.playback` session.
     func playTapChime() {
         playEffect(name: "tap", systemFallback: 1104)
     }
 
-    /// Distinct dissonant buzz for a wrong dot tap — same mute-bypass
-    /// path as `playTapChime`, lower in pitch so the child reads it
-    /// as "not that one" without harshness.
+    /// Wrong-tap buzz — same mute-bypass route, lower pitched.
     func playWrongTapChime() {
         playEffect(name: "tap_wrong", systemFallback: 1053)
     }
 
-    /// Beat played whenever the StrokeTracker flips a stroke to
-    /// complete during guided/freeWrite tracing.
+    /// Beat played when StrokeTracker flips a stroke to complete.
     func playStrokeTick() {
         playEffect(name: "tick_stroke", systemFallback: nil)
     }
 
-    /// Lazy effect playback: load the AVAudioPlayer on first call,
-    /// cache it, reuse thereafter. Falls back to `systemFallback`
-    /// when the asset isn't bundled; pass nil to skip silently.
+    /// Lazy effect playback: load + cache on first call. Falls back
+    /// to `systemFallback` when the asset isn't bundled; pass nil to
+    /// skip silently.
     private func playEffect(name: String, systemFallback: SystemSoundID?) {
         if let p = effectPlayers[name] {
             p.currentTime = 0
@@ -190,9 +175,8 @@ final class PromptPlayer: PromptPlaying {
 
     // MARK: - Bundle lookup
 
-    /// Probe `<key>.mp3` across the layouts the SPM/Xcode bundling
-    /// pipeline produces (Resources-prefixed, flattened, root-level)
-    /// in both `.module` and `.main`.
+    /// Probe `<key>.mp3` across the layouts SPM/Xcode bundling
+    /// produces, in both `.module` and `.main`.
     private func locate(_ key: PromptKey) -> URL? {
         let name = key.rawValue
         let bundles: [Bundle] = [.module, .main]

@@ -1,19 +1,10 @@
 // FreeformController.swift
 // PrimaeNative
 //
-// Owns every piece of state the freeform writing mode needs:
-// the active sub-mode (letter / word), the in-progress drawing buffers,
-// the recognition request / result lifecycle, and the debounce task
-// that gates multi-stroke recognition.
-//
-// Extracted from TracingViewModel during the W8 God-object cleanup.
-// The VM still drives the *methods* — entering / leaving freeform,
-// running CoreML, recording completions in the dashboard — because
-// those touch VM-only collaborators (audio, recognizer, speech,
-// progressStore). The controller exists to put the freeform fields
-// in one Observable container so a view-model audit can reason
-// about them without scrolling through 300 lines of unrelated
-// guided-mode state.
+// Owns every piece of state the freeform writing mode needs: sub-mode
+// (letter / word), drawing buffers, recognition request / result
+// lifecycle, and the multi-stroke recognition debounce. The VM still
+// owns the methods that touch audio / recognizer / speech / stores.
 
 import CoreGraphics
 import Foundation
@@ -68,11 +59,9 @@ final class FreeformController {
     /// UI surfaces a "KI-Modell nicht verfügbar" banner on false.
     var isRecognitionModelAvailable: Bool? = nil
     /// True while a model availability probe Task is in flight. Prevents
-    /// concurrent probes from rapid mode-toggle gestures: without this
-    /// gate the value-only `isRecognitionModelAvailable == nil` check has
-    /// a window between dispatch and result where a second probe sneaks
-    /// in, redundantly loading the ML model. Reset to false in the probe
-    /// completion handler.
+    /// redundant CoreML model loads from rapid mode-toggle gestures
+    /// sneaking past the value-only `isRecognitionModelAvailable == nil`
+    /// check.
     var isProbingModel: Bool = false
     /// Form-accuracy score from the last freeform recognition (0–1),
     /// computed from the child's path against the recognised letter's
@@ -98,9 +87,9 @@ final class FreeformController {
         pendingRecognitionTask?.cancel()
         pendingRecognitionTask = nil
         isWaitingForRecognition = false
-        // C-2: if a CoreML task is in flight and the canvas is cleared (e.g. "Nochmal"),
-        // the task's completion handler checks activeRecognitionToken and returns early —
-        // but it never resets isRecognizing. Reset it here so the spinner clears.
+        // If a CoreML task is in flight when the canvas clears, its
+        // completion handler returns early via the recognition token but
+        // never resets isRecognizing — clear it here so the spinner stops.
         isRecognizing = false
         freeformPoints.removeAll(keepingCapacity: true)
         freeformStrokeSizes.removeAll(keepingCapacity: true)

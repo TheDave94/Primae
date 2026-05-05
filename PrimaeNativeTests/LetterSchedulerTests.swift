@@ -1,8 +1,3 @@
-// LetterSchedulerTests.swift
-// PrimaeNativeTests
-//
-// Uses Swift Testing (@Test, #expect).
-
 import Foundation
 import Testing
 @testable import PrimaeNative
@@ -134,7 +129,7 @@ struct LetterSchedulerTests {
         #expect(r1.map(\.letter) == r2.map(\.letter))
     }
 
-    // MARK: - Tie-breaker (review item #19)
+    // MARK: - Tie-breaker
 
     @Test("Equal-priority letters preserve input-array order")
     func tieBreakerIsInputOrder() {
@@ -151,16 +146,14 @@ struct LetterSchedulerTests {
         #expect(r2.map(\.letter) == inputGtoA)
     }
 
-    // MARK: - Fixed-order control scheduler (review item W-23)
+    // MARK: - Fixed-order control scheduler
 
     @Test("fixedOrder advances past the first letter as it gets practised")
     func fixedOrderRoundRobinsByCompletionCount() {
         // The .control thesis arm uses fixedOrder() so the scheduler
-        // doesn't confound the phase manipulation. Earlier the priority
-        // was a constant 0 for every letter, which made recommendNext()
-        // always return the first letter — children in the control arm
-        // were stuck on "A" forever. With priority = -completionCount,
-        // a single completion on "A" should bubble "F" to the top.
+        // doesn't confound the phase manipulation. With priority =
+        // -completionCount, a single completion on "A" should bubble
+        // "F" to the top.
         let control = LetterScheduler.fixedOrder()
         let progress: [String: LetterProgress] = [
             "A": LetterProgress(completionCount: 1, bestAccuracy: 0.9, lastCompletedAt: now),
@@ -177,15 +170,14 @@ struct LetterSchedulerTests {
         #expect(control.recommendNext(available: letters, progress: [:], now: now) == "A")
     }
 
-    // MARK: - Expanding interval (review item W-24)
+    // MARK: - Expanding interval
 
     @Test("Practice + accuracy stretch the per-letter Ebbinghaus stability")
     func expandingIntervalGrowsWithPracticeAndAccuracy() {
-        // W-24: a letter the child has practised many times with high
-        // accuracy should not feel as urgent, day-for-day, as a never-
-        // practised one. With fixed 7-day stability the urgency curves
-        // would be identical for the two; expanding-interval pushes the
-        // well-practised letter's curve further to the right.
+        // A letter the child has practised many times with high accuracy
+        // should not feel as urgent, day-for-day, as a never-practised one.
+        // Expanding-interval pushes the well-practised letter's urgency
+        // curve further to the right.
         let novice = LetterProgress(completionCount: 0,
                                     bestAccuracy: 0.0,
                                     lastCompletedAt: now.addingTimeInterval(-14 * 86400))
@@ -215,13 +207,10 @@ struct LetterSchedulerTests {
                 "Stability must never drop below the configured baseline")
     }
 
-    /// Round-3 test-audit gap: the automatisation bonus reads the
-    /// `speedTrend` array as "prefix half = older, suffix half = newer"
-    /// and lowers a letter's priority when the child is *speeding up*
-    /// on it (i.e., automatising — needs less practice). A letter with
-    /// declining speed should therefore be recommended before one with
-    /// improving speed when both share completion count, recency, and
-    /// accuracy. Tests the observable behaviour through `recommendNext`
+    /// The automatisation bonus reads the `speedTrend` array as
+    /// "prefix half = older, suffix half = newer" and lowers a letter's
+    /// priority when the child is speeding up (automatising — needs less
+    /// practice). Tests observable behaviour through `recommendNext`
     /// because `automatizationBonus` is private to the scheduler.
     @Test("Improving speed ranks below declining speed (automatizationBonus)")
     func automatisationBonusOrdersByTrend() {
@@ -259,11 +248,11 @@ struct LetterSchedulerTests {
     }
 }
 
-// MARK: - LetterOrderingStrategy (V3-003)
+// MARK: - LetterOrderingStrategy
 
 struct LetterOrderingStrategyTests {
 
-    @Test("motorSimilarity matches the V3-003 spec ordering")
+    @Test("motorSimilarity matches the spec ordering")
     func motorSimilarityOrdering() {
         let order = LetterOrderingStrategy.motorSimilarity.orderedLetters()
         #expect(order == [
@@ -273,7 +262,7 @@ struct LetterOrderingStrategyTests {
         #expect(order.count == 26)
     }
 
-    @Test("wordBuilding matches the V3-003 spec ordering")
+    @Test("wordBuilding matches the spec ordering")
     func wordBuildingOrdering() {
         let order = LetterOrderingStrategy.wordBuilding.orderedLetters()
         #expect(order == [

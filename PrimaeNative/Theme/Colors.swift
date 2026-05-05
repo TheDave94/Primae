@@ -1,32 +1,21 @@
 // Colors.swift
 // PrimaeNative — Theme
 //
-// Primae design tokens. Each named color resolves through the
-// **Asset Catalog** at
-// `Primae/Primae/Assets.xcassets/Colors/<name>.colorset/`, where
-// every colorset declares an explicit light + dark variant.
+// Primae design tokens. Each named color resolves through the Asset
+// Catalog at `Primae/Primae/Assets.xcassets/Colors/<name>.colorset/`,
+// which declares explicit light + dark variants.
 //
-// Why this shape (not `UIColor(dynamicProvider:)`):
-//   - Asset-Catalog colors are compiled into the host app's `.car`
-//     and resolved by UIKit/SwiftUI directly from the trait
-//     collection — no Swift closure runs at render time, so there
-//     is no chance of tripping a Swift 6 `MainActor` isolation
-//     trap on `com.apple.SwiftUI.AsyncRenderer`. The earlier
-//     dynamic-provider path crashed the app on every view re-render
-//     (commit `52c50de` reverted it to a static light-only set as
-//     a holding pattern; this restores dark mode safely).
-//   - Hexes stay in sync with `design-system/colors_and_type.css`
-//     via `scripts/gen_colorsets.py` (re-run when the design
-//     system updates).
+// Why asset-catalog colorsets (not `UIColor(dynamicProvider:)`):
+// resolved by UIKit/SwiftUI directly from the trait collection so no
+// Swift closure runs at render time — avoids the Swift 6 default-
+// MainActor isolation trap on `com.apple.SwiftUI.AsyncRenderer`.
+// Hexes stay in sync with `design-system/colors_and_type.css` via
+// `scripts/gen_colorsets.py`.
 //
-// Bundle: assets live in the host app's Asset Catalog, so the
-// lookup uses `Color("name")` (default `.main` bundle). When the
-// SPM target runs in the host app process, `.main` is the host
-// app — perfect. SwiftUI Previews from inside the SPM (without a
-// host) won't find these; that's an acceptable trade-off.
-//
-// Bundled hex values are still available via `Color(hex:)` for
-// one-off cases that don't need dark-mode adaptation.
+// Bundle: assets live in the host app's Asset Catalog, so `Color("name")`
+// reads from `.main`. SwiftUI Previews launched from inside the SPM
+// (without a host) won't resolve them — accepted trade-off.
+// `Color(hex:)` is still available for one-off non-adaptive uses.
 
 import SwiftUI
 
@@ -45,10 +34,8 @@ extension Color {
 // MARK: - Asset-backed token helper
 
 private extension Color {
-    /// Convenience wrapper around `Color(name:)` so token call sites
-    /// stay readable. Asset name is the lowerCamelCase token name —
-    /// matches the colorset folder under
-    /// `Assets.xcassets/Colors/<name>.colorset/`.
+    /// Asset name is the lowerCamelCase token name — matches the
+    /// colorset folder under `Assets.xcassets/Colors/<name>.colorset/`.
     static func asset(_ name: String) -> Color {
         Color(name)
     }

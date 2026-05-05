@@ -1,6 +1,3 @@
-//  PrimaeNativeTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import Foundation
 import CoreGraphics
@@ -148,9 +145,8 @@ import AVFoundation
         let size = CGSize(width: 320, height: 480)
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
         vm.updateTouch(at: CGPoint(x: 80, y: 80), t: 1.01, canvasSize: size)
-        // Round-3 audit gap: drain the debounced play BEFORE snapshotting
-        // `playsBefore` so the post-background assertion can be strict
-        // (`== playsBefore`) instead of tolerating an off-by-one race.
+        // Drain the debounced play before snapshotting `playsBefore` so the
+        // post-background assertion can be strict (`== playsBefore`).
         await vm.awaitPlaybackDebounce()
         let playsBefore = audio.playCount
         await vm.appDidEnterBackground()
@@ -251,7 +247,7 @@ import AVFoundation
         #expect(vm.debugActivePathCount == 0)
     }
 
-    // MARK: - Stroke proximity tests
+    // MARK: - Stroke proximity
 
     @Test func strokeTracker_largeRadius_hitsFirstCheckpoint() {
         let tracker = StrokeTracker()
@@ -289,7 +285,7 @@ import AVFoundation
         #expect(tracker.soundEnabled, "Sound must be enabled after the first checkpoint is hit")
     }
 
-    // MARK: - OverlayQueueManager (F2)
+    // MARK: - OverlayQueueManager
 
     @Test func overlayQueue_isIdleByDefault() {
         let q = OverlayQueueManager()
@@ -399,30 +395,23 @@ private final class LocalMockAudioController: AudioControlling {
     func cancelPendingLifecycleWork() { cancelPendingLifecycleWorkCount += 1 }
 }
 
-// MARK: - V3-001: feedbackIntensity per phase
+// MARK: - feedbackIntensity per phase
 
 @MainActor
 struct FeedbackIntensityTests {
     @Test("Observe + direct phases broadcast full feedback intensity")
     func fullIntensityInPreTracePhases() {
         // The feedbackIntensity computed property is what gates haptics +
-        // audio inside `updateTouch`. Pinning the values here catches any
-        // regression that would suddenly silence pre-trace phases.
+        // audio inside `updateTouch`. The stub VM lands at .guided under
+        // .guidedOnly thesis condition, so we read the property directly.
         let vm = makeTestVM()
-        // Force a known phase via the public learningPhase forwarder is
-        // read-only; instead, validate the static mapping via the
-        // already-loaded phase. The stub VM lands at .guided under
-        // .guidedOnly thesis condition, so we sanity-check that case
-        // and the boundary cases by inspecting feedbackIntensity directly.
-        // (Reading the property is enough — the switch is exhaustive.)
         #expect(vm.feedbackIntensity == 0.6, "guided phase gates audio at 0.6 (gate threshold > 0.3 keeps audio on)")
     }
 
     @Test("starThreshold matches LearningPhaseController spec")
     func starThresholdsExactValues() {
-        // V3-004 specifies max 4 stars; observe / direct are pass/fail
-        // (threshold 0), guided 0.5, freeWrite 0.4. UI mirrors this so
-        // copy stays consistent.
+        // Observe / direct are pass/fail (threshold 0), guided 0.5,
+        // freeWrite 0.4. UI mirrors this so copy stays consistent.
         #expect(LearningPhaseController.starThreshold(for: .observe)   == 0.0)
         #expect(LearningPhaseController.starThreshold(for: .direct)    == 0.0)
         #expect(LearningPhaseController.starThreshold(for: .guided)    == 0.5)
@@ -430,27 +419,22 @@ struct FeedbackIntensityTests {
     }
 }
 
-// MARK: - V3-008: variant strokes loading
+// MARK: - Variant strokes loading
 
 @MainActor
 struct VariantStrokesTests {
     @Test("currentLetterHasVariants is true for letter F")
     func uppercaseFHasRegisteredVariant() {
-        // F ships an alternate calligraphic form via `strokes_variant.json`.
-        // The VM exposes the variant flag so the canvas / settings UI can
-        // gate the "Variante" button appropriately. Empty variants list
-        // (lowercase letters) must read false.
-        let vm = makeTestVM()
         // The stub resource provider only contains a synthetic "A" letter
-        // with no variants, so we verify the negative case there. The
-        // bundle scan in production fills this in for F / H / r — covered
-        // by LetterRepositoryTests.
+        // with no variants, so we verify the negative case here. Production
+        // bundle scan coverage lives in LetterRepositoryTests.
+        let vm = makeTestVM()
         #expect(vm.currentLetterHasVariants == false,
                 "Stub letter has no registered variants")
     }
 }
 
-// MARK: - V4-001: RecognitionResult Codable round-trip
+// MARK: - RecognitionResult Codable round-trip
 
 struct RecognitionResultCodableTests {
     @Test("RecognitionResult round-trips through JSON encoder")
@@ -465,11 +449,10 @@ struct RecognitionResultCodableTests {
             ],
             isCorrect: true
         )
-        // RecognitionResult itself is Equatable but NOT Codable in the
-        // current shape — it's tunneled via `RecognitionSample` for
-        // persistence. This test pins the Equatable shape so any future
-        // change to topThree ordering or confidence precision shows up
-        // as a diff here.
+        // RecognitionResult is Equatable but not Codable in the current
+        // shape — persistence goes through `RecognitionSample`. Pin the
+        // Equatable shape so changes to topThree ordering or confidence
+        // precision surface here.
         let copy = RecognitionResult(
             predictedLetter: original.predictedLetter,
             confidence: original.confidence,
@@ -492,7 +475,7 @@ struct RecognitionResultCodableTests {
     }
 }
 
-// MARK: - V4-005: freeform word segmentation
+// MARK: - Freeform word segmentation
 
 struct BucketStrokesByTargetLetterTests {
     @Test("Three-letter word splits strokes by x-centroid")
@@ -579,9 +562,8 @@ struct BucketStrokesByTargetLetterTests {
 struct ChildSpeechLibraryTests {
     @Test("Phase entry phrases are German and per-phase distinct")
     func phaseEntryGerman() {
-        // Children must hear different prompts as the four-phase flow
-        // progresses; the strings are pinned here so any rewording lands
-        // in code review with full context.
+        // Pin the per-phase prompts so any rewording lands in code review
+        // with full context — children must hear distinct cues.
         #expect(ChildSpeechLibrary.phaseEntry(.observe).contains("Pass"))
         #expect(ChildSpeechLibrary.phaseEntry(.direct).contains("Punkte"))
         #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("Linie"))

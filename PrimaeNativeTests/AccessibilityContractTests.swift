@@ -1,6 +1,3 @@
-//  AccessibilityContractTests.swift
-//  PrimaeNativeTests
-
 import Testing
 import CoreGraphics
 @testable import PrimaeNative
@@ -92,7 +89,7 @@ fileprivate final class MockAccessibilityAudio: AudioControlling {
         #expect(!vm.progress.isInfinite)
     }
 
-    // MARK: - Stroke proximity tests
+    // MARK: - Stroke proximity
 
     @Test func afterStdDrag_progressIsPositive() {
         vm.beginTouch(at: CGPoint(x: 100, y: 200), t: 1000)

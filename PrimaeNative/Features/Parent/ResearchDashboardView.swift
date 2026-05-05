@@ -1,16 +1,9 @@
 // ResearchDashboardView.swift
 // PrimaeNative
 //
-// Adult / researcher-only dashboard reachable via the parental gate
-// (gear long-press → "Forschungs-Daten"). Surfaces every numeric metric
-// the data model captures — Schreibmotorik dimensions (Form, Tempo,
-// Druck, Rhythmus), recognition predictions vs. expectations, condition
-// arm assignments, scheduler effectiveness — none of which the child
-// ever sees in the Schule / Werkstatt / Fortschritte worlds.
-//
-// Children's worlds keep showing only verbal evaluations, stars, and
-// streak counts; this view is the place a researcher comes to inspect
-// the actual numbers behind those simplified visualisations.
+// Researcher-only dashboard behind the parental gate. Surfaces every
+// numeric metric the data model captures: Schreibmotorik dimensions,
+// recognition predictions, condition assignments, scheduler proxy.
 
 import SwiftUI
 
