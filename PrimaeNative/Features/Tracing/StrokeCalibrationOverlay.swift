@@ -29,11 +29,17 @@ struct StrokeCalibrationOverlay: View {
     }
 
     enum CalibrationMode: String, CaseIterable {
+        case points = "Punkte"
         case drag = "Ziehen"
         case add = "Punkt"
         case delete = "Löschen"
         case record = "Aufnehmen"
     }
+
+    /// Bbox-relative anchors set in `.points` mode, per stroke index.
+    /// The committed `editableStrokes[i]` is rebuilt from these anchors
+    /// by BFS-walking the glyph skeleton between consecutive points.
+    @State private var anchorsPerStroke: [Int: [CGPoint]] = [:]
 
     /// Live touch path while recording. Cleared on touch-up after the
     /// resampled snapshot replaces `editableStrokes[activeStroke]`.
@@ -64,7 +70,8 @@ struct StrokeCalibrationOverlay: View {
                 glyphRectDebugLayer(in: size)
                 strokePathsLayer(in: size)
                 recordingPreviewLayer(in: size)
-                dotsLayer(in: size)
+                if mode != .points { dotsLayer(in: size) }
+                anchorsLayer(in: size)
                 controlsLayer
             }
             .onAppear { loadFromVM() }
@@ -268,6 +275,108 @@ struct StrokeCalibrationOverlay: View {
                     addCheckpoint(glyph)
                 }
         }
+        if mode == .points {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { location in
+                    let bboxPt = screenToGlyph(location, in: size)
+                    addAnchor(bboxPt)
+                }
+        }
+    }
+
+    /// Append an anchor for the active stroke and rebuild the polyline
+    /// between anchors via BFS along the glyph skeleton. With ≥ 2
+    /// anchors the user sees the auto-completed centerline; one
+    /// constraining anchor in the wrong region forces the BFS to take
+    /// a different route between its neighbours.
+    private func addAnchor(_ pt: CGPoint) {
+        anchorsPerStroke[activeStroke, default: []].append(pt)
+        rebuildStrokeFromAnchors()
+    }
+
+    private func removeAnchor(strokeIdx: Int, anchorIdx: Int) {
+        guard var anchors = anchorsPerStroke[strokeIdx],
+              anchorIdx < anchors.count else { return }
+        anchors.remove(at: anchorIdx)
+        anchorsPerStroke[strokeIdx] = anchors
+        if strokeIdx == activeStroke { rebuildStrokeFromAnchors() }
+    }
+
+    private func rebuildStrokeFromAnchors() {
+        let anchors = anchorsPerStroke[activeStroke] ?? []
+        while editableStrokes.count <= activeStroke {
+            editableStrokes.append([])
+        }
+        guard let raw = vm.glyphRelativeStrokes,
+              let skel = raw.skeleton, !skel.isEmpty,
+              let adj = raw.skeletonAdj, adj.count == skel.count,
+              anchors.count >= 2 else {
+            // Fewer than two anchors: just keep the anchors so the
+            // user sees what they've set so far.
+            editableStrokes[activeStroke] = anchors
+            return
+        }
+        let snappedIdx = anchors.map { nearestSkelIndex($0, in: skel) }
+        var fullPath: [Int] = []
+        for i in 0..<(snappedIdx.count - 1) {
+            let leg = bfsAlongSkeleton(from: snappedIdx[i],
+                                       to: snappedIdx[i + 1],
+                                       adj: adj)
+            if leg.isEmpty { continue }
+            if i == 0 {
+                fullPath.append(contentsOf: leg)
+            } else {
+                fullPath.append(contentsOf: leg.dropFirst())
+            }
+        }
+        let pathPts = fullPath.map { CGPoint(x: skel[$0].x, y: skel[$0].y) }
+        // Dense final sample: 40 evenly-spaced checkpoints for the
+        // tracker; each anchor stays roughly in place because BFS
+        // walks the actual centerline.
+        let dense = pathPts.count >= 2
+            ? resampleUniformBbox(pathPts, count: 40)
+            : pathPts
+        editableStrokes[activeStroke] = dense
+    }
+
+    private func nearestSkelIndex(_ p: CGPoint, in skel: [Checkpoint]) -> Int {
+        var bestIdx = 0
+        var bestD2: CGFloat = .infinity
+        for i in 0..<skel.count {
+            let dx = skel[i].x - p.x
+            let dy = skel[i].y - p.y
+            let d2 = dx * dx + dy * dy
+            if d2 < bestD2 {
+                bestD2 = d2
+                bestIdx = i
+            }
+        }
+        return bestIdx
+    }
+
+    private func bfsAlongSkeleton(from start: Int, to end: Int,
+                                  adj: [[Int]]) -> [Int] {
+        if start == end { return [start] }
+        var parent: [Int: Int] = [start: -1]
+        var queue: [Int] = [start]
+        var head = 0
+        while head < queue.count {
+            let cur = queue[head]; head += 1
+            if cur == end { break }
+            for n in adj[cur] where parent[n] == nil {
+                parent[n] = cur
+                queue.append(n)
+            }
+        }
+        guard parent[end] != nil else { return [] }
+        var path: [Int] = []
+        var cur = end
+        while cur != -1 {
+            path.append(cur)
+            cur = parent[cur] ?? -1
+        }
+        return path.reversed()
     }
 
     /// Dashed red outline of the renderer's `normalizedGlyphRect`.
@@ -293,21 +402,51 @@ struct StrokeCalibrationOverlay: View {
 
     @ViewBuilder
     private func strokePathsLayer(in size: CGSize) -> some View {
-        // Only the active stroke's dashed path is drawn — rendering all
-        // strokes turns the glyph into a crosshatch. Inactive strokes
-        // keep their start dot as a switch target.
+        // Active stroke renders as a solid colored line so it's easy to
+        // see whether the polyline matches the underlying ink. Other
+        // strokes' starts still appear as faded chips for switch.
         if editableStrokes.indices.contains(activeStroke) {
             let stroke = editableStrokes[activeStroke]
+            let color = strokeColors[activeStroke % strokeColors.count]
             Path { path in
                 let pts = stroke.map { glyphToScreen($0, in: size) }
                 guard let first = pts.first else { return }
                 path.move(to: first)
                 for pt in pts.dropFirst() { path.addLine(to: pt) }
             }
-            .stroke(
-                strokeColors[activeStroke % strokeColors.count].opacity(0.7),
-                style: StrokeStyle(lineWidth: 3, dash: [6, 3])
-            )
+            .stroke(color.opacity(0.85),
+                    style: StrokeStyle(lineWidth: 6,
+                                       lineCap: .round,
+                                       lineJoin: .round))
+        }
+    }
+
+    /// Anchor markers for `.points` mode — large numbered dots that
+    /// represent the user's BFS waypoints. Tap-to-delete behaviour
+    /// piggybacks on `.delete` mode for symmetry with checkpoint dots.
+    @ViewBuilder
+    private func anchorsLayer(in size: CGSize) -> some View {
+        if let anchors = anchorsPerStroke[activeStroke], !anchors.isEmpty {
+            let color = strokeColors[activeStroke % strokeColors.count]
+            ForEach(Array(anchors.enumerated()), id: \.offset) { idx, pt in
+                let screenPt = glyphToScreen(pt, in: size)
+                Circle()
+                    .fill(color)
+                    .frame(width: 28, height: 28)
+                    .overlay(Circle().stroke(.white, lineWidth: 3))
+                    .overlay(
+                        Text("\(idx + 1)")
+                            .font(.system(size: 13, weight: .heavy, design: .monospaced))
+                            .foregroundStyle(.white)
+                    )
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .position(screenPt)
+                    .onTapGesture {
+                        if mode == .delete {
+                            removeAnchor(strokeIdx: activeStroke, anchorIdx: idx)
+                        }
+                    }
+            }
         }
     }
 
@@ -404,6 +543,19 @@ struct StrokeCalibrationOverlay: View {
 
             if mode == .record {
                 Text("Strich \(activeStroke + 1) zeichnen — beim Loslassen wird übernommen")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+
+            if mode == .points {
+                let count = anchorsPerStroke[activeStroke]?.count ?? 0
+                let hint = count < 2
+                    ? "Strich \(activeStroke + 1) — Punkt setzen (\(count)/min 2)"
+                    : "Strich \(activeStroke + 1) — \(count) Punkte gesetzt; weitere Punkte korrigieren den Verlauf"
+                Text(hint)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
@@ -632,6 +784,10 @@ struct StrokeCalibrationOverlay: View {
                 CGPoint(x: CGFloat(cp.x), y: CGFloat(cp.y))
             }
         }
+        // Anchors are stroke-layout-specific; clear when the underlying
+        // strokes reload so old anchors don't paint on top of a fresh
+        // letter / script.
+        anchorsPerStroke.removeAll()
         activeStroke = 0
         loadedKey = key
         loaded = true

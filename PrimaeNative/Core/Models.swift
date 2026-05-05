@@ -64,13 +64,21 @@ struct LetterStrokes: Codable, Equatable {
     /// calibrations omit it. The calibrator's record mode uses these
     /// to snap a wobbly hand-traced sketch onto the actual ink centerline.
     let skeleton: [Checkpoint]?
+    /// Adjacency list parallel to `skeleton`: `skeletonAdj[i]` holds
+    /// the indices of skeleton pixels that are direct (≤ 3 px) neighbours
+    /// of pixel `i`. Drives the calibrator's "tap a few points, BFS
+    /// along the centerline between them" anchor mode.
+    let skeletonAdj: [[Int]]?
 
     init(letter: String, checkpointRadius: CGFloat,
-         strokes: [StrokeDefinition], skeleton: [Checkpoint]? = nil) {
+         strokes: [StrokeDefinition],
+         skeleton: [Checkpoint]? = nil,
+         skeletonAdj: [[Int]]? = nil) {
         self.letter = letter
         self.checkpointRadius = checkpointRadius
         self.strokes = strokes
         self.skeleton = skeleton
+        self.skeletonAdj = skeletonAdj
     }
 }
 
