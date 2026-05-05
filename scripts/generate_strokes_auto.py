@@ -1,16 +1,25 @@
-"""Fully automatic per-font stroke generator.
+"""Per-font stroke generator with worksheet ground-truth overrides.
 
-Skeletonises every glyph, walks every connected skeleton component,
-splits at branch points but merges back any segments that meet
-collinearly, orders the resulting strokes by writing convention
-(top first, then left), and samples them densely. No per-letter
-topology spec — adding a new font is just `--font path/to/Foo.otf`.
+Two modes per letter:
 
-Output JSON checkpoint coordinates are normalised to the glyph
-bounding rect: `cp.x` and `cp.y` are both in [0, 1], where (0,0) is
-the bbox top-left and (1,1) is the bbox bottom-right. The iOS canvas
-maps these onto the on-screen glyph via `normalizedGlyphRect`, so cell
-aspect ratio and orientation no longer affect alignment.
+1. **Override** (LETTER_OVERRIDES): the Wiener Bildungsserver
+   "Arbeitsblätter Druckschrift" worksheet specifies stroke count,
+   start anchor and direction for every letter. When an override
+   exists, we resolve each anchor against the rasterised skeleton
+   and BFS-walk between them. This pins the OUTPUT order and shape
+   to what's taught in Austrian Volksschule 1. Klasse, regardless
+   of how the font's skeleton happens to branch.
+
+2. **Auto fallback**: skeletonise, walk every connected component,
+   split at branches and merge collinear/2-incidents corners,
+   order by component centroid. Used when no override exists OR
+   when the override walker fails (e.g. an anchor is unreachable
+   on this particular font's geometry).
+
+Coordinates are glyph-bbox-relative ([0, 1] within the rendered
+glyph's bounding rect). The iOS renderer maps them through
+`normalizedGlyphRect` so cell aspect ratio and orientation don't
+affect alignment.
 
 Usage:
     pip install Pillow numpy scipy scikit-image
@@ -54,6 +63,297 @@ MERGE_ANGLE_THRESHOLD_DEG = 35  # segments within 35° of collinear get merged
 # Lowercase folder suffix dodges APFS / HFS+ case-insensitive collision
 # with their uppercase counterparts.
 LOWERCASE_SUFFIX = "_l"
+
+
+# -----------------------------------------------------------------------------
+# Worksheet ground-truth overrides
+# -----------------------------------------------------------------------------
+#
+# Encodes the stroke count, start anchor, and direction taught in the
+# Wiener Bildungsserver "Arbeitsblätter Druckschrift" PDF. Each entry
+# is a list of strokes in writing order. Three primitives:
+#
+#   {"kind": "walk", "from": ANCHOR, "to": ANCHOR}
+#     → BFS-shortest path along the skeleton between two anchors.
+#
+#   {"kind": "continuous", "anchors": [ANCHOR, ...]}
+#     → Chain of BFS walks through anchors in order. Used for letters
+#       written as one continuous zigzag (M, N, V, W, Z, U).
+#
+#   {"kind": "loop", "start": ANCHOR, "direction": "ccw"|"cw"}
+#     → Walk a closed cycle starting at the anchor's nearest skeleton
+#       pixel. Direction is enforced via shoelace sign.
+#
+# ANCHOR is one of:
+#   "TL" "TR" "BL" "BR"      bbox corners
+#   "TC"="T" "BC"="B"        top/bottom centre
+#   "ML"="L" "MR"="R"        mid-left / mid-right
+#   "C"                      bbox centre
+#   (x, y)                   normalised tuple in [0, 1] of bbox
+#
+# Conventions captured (Austrian-specific where they differ):
+#   • A: bottom-left UP to apex first, then apex DOWN to BR, then crossbar
+#   • M, N, V, W, Z: single continuous zigzag starting at BL (or TL for V)
+#   • E, F: spine first, then horizontals top-to-bottom
+#   • H: left vertical, right vertical, crossbar (3 strokes)
+#   • h, n, m: arch starts at the bottom-right of the arch going UP
+#   • J: top cap then descending hook (2 strokes)
+#   • U: single continuous bowl
+#   • Ä Ö Ü ä ö ü: body strokes first, then dots left-to-right
+
+LETTER_OVERRIDES: dict[str, list[dict]] = {
+    # ─── Uppercase ────────────────────────────────────────────────────
+    "A": [
+        {"kind": "walk", "from": "BL", "to": "TC"},
+        {"kind": "walk", "from": "TC", "to": "BR"},
+        {"kind": "walk", "from": "ML", "to": "MR"},
+    ],
+    "B": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "continuous", "anchors": ["TR", "MR", "ML", "MR", "BR"]},
+    ],
+    "C": [
+        {"kind": "walk", "from": "TR", "to": "BR"},
+    ],
+    "D": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "continuous", "anchors": ["TR", "MR", "BR"]},
+    ],
+    "E": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "TL", "to": "TR"},
+        {"kind": "walk", "from": "ML", "to": "MR"},
+        {"kind": "walk", "from": "BL", "to": "BR"},
+    ],
+    "F": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "TL", "to": "TR"},
+        {"kind": "walk", "from": "ML", "to": "MR"},
+    ],
+    "G": [
+        {"kind": "continuous", "anchors": ["TR", "L", "B", "MR"]},
+        {"kind": "walk", "from": "MR", "to": "C"},
+    ],
+    "H": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "TR", "to": "BR"},
+        {"kind": "walk", "from": "ML", "to": "MR"},
+    ],
+    "I": [
+        {"kind": "walk", "from": "T", "to": "B"},
+    ],
+    "J": [
+        {"kind": "continuous", "anchors": ["TL", "TR", "BR", "BC", "BL"]},
+    ],
+    "K": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "TR", "to": "ML"},
+        {"kind": "walk", "from": "ML", "to": "BR"},
+    ],
+    "L": [
+        {"kind": "continuous", "anchors": ["TL", "BL", "BR"]},
+    ],
+    "M": [
+        {"kind": "continuous", "anchors": ["BL", "TL", "BC", "TR", "BR"]},
+    ],
+    "N": [
+        {"kind": "continuous", "anchors": ["BL", "TL", "BR", "TR"]},
+    ],
+    "O": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+    ],
+    "P": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "continuous", "anchors": ["TR", "MR", "ML"]},
+    ],
+    "Q": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+        {"kind": "walk", "from": "C", "to": "BR"},
+    ],
+    "R": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "continuous", "anchors": ["TR", "MR", "ML"]},
+        {"kind": "walk", "from": "MR", "to": "BR"},
+    ],
+    "S": [
+        {"kind": "walk", "from": "TR", "to": "BL"},
+    ],
+    "T": [
+        {"kind": "walk", "from": "TL", "to": "TR"},
+        {"kind": "walk", "from": "T", "to": "B"},
+    ],
+    "U": [
+        {"kind": "continuous", "anchors": ["TL", "BL", "BR", "TR"]},
+    ],
+    "V": [
+        {"kind": "continuous", "anchors": ["TL", "BC", "TR"]},
+    ],
+    "W": [
+        {"kind": "continuous", "anchors": ["TL", "BL", "TC", "BR", "TR"]},
+    ],
+    "X": [
+        {"kind": "walk", "from": "TL", "to": "BR"},
+        {"kind": "walk", "from": "TR", "to": "BL"},
+    ],
+    "Y": [
+        {"kind": "walk", "from": "TL", "to": "C"},
+        {"kind": "walk", "from": "TR", "to": "C"},
+        {"kind": "walk", "from": "C",  "to": "B"},
+    ],
+    "Z": [
+        {"kind": "continuous", "anchors": ["TL", "TR", "BL", "BR"]},
+    ],
+
+    # ─── Lowercase ────────────────────────────────────────────────────
+    "a": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+        {"kind": "walk", "from": "TR", "to": "BR"},
+    ],
+    "b": [
+        {"kind": "continuous", "anchors": ["TL", "BL", "BR", "MR", "ML"]},
+    ],
+    "c": [
+        {"kind": "walk", "from": "TR", "to": "BR"},
+    ],
+    "d": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+        {"kind": "walk", "from": "TR", "to": "BR"},
+    ],
+    "e": [
+        {"kind": "continuous", "anchors": ["ML", "MR", "T", "L", "B", "BR"]},
+    ],
+    "f": [
+        {"kind": "continuous", "anchors": ["TR", "TC", "TL", "BL"]},
+        {"kind": "walk", "from": "ML", "to": "MR"},
+    ],
+    "g": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+        {"kind": "walk", "from": "TR", "to": "BL"},
+    ],
+    "h": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "BR", "to": "ML"},
+    ],
+    "i": [
+        {"kind": "walk", "from": "T", "to": "B"},
+        {"kind": "loop", "start": (0.5, 0.05), "direction": "ccw"},
+    ],
+    "j": [
+        {"kind": "walk", "from": "T", "to": "BL"},
+        {"kind": "loop", "start": (0.5, 0.05), "direction": "ccw"},
+    ],
+    "k": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "TR", "to": "ML"},
+        {"kind": "walk", "from": "ML", "to": "BR"},
+    ],
+    "l": [
+        {"kind": "walk", "from": "T", "to": "B"},
+    ],
+    "m": [
+        {"kind": "continuous",
+         "anchors": ["BL", "TL", "BC", "TC", "BR", "TR"]},
+    ],
+    "n": [
+        {"kind": "continuous", "anchors": ["BL", "TL", "TR", "BR"]},
+    ],
+    "o": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+    ],
+    "p": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "continuous", "anchors": ["TL", "TR", "MR", "ML"]},
+    ],
+    "q": [
+        {"kind": "loop", "start": "T", "direction": "ccw"},
+        {"kind": "walk", "from": "TR", "to": "BR"},
+    ],
+    "r": [
+        {"kind": "walk", "from": "TL", "to": "BL"},
+        {"kind": "walk", "from": "TL", "to": "TR"},
+    ],
+    "s": [
+        {"kind": "walk", "from": "TR", "to": "BL"},
+    ],
+    "t": [
+        {"kind": "walk", "from": "T", "to": "B"},
+        {"kind": "walk", "from": "ML", "to": "MR"},
+    ],
+    "u": [
+        {"kind": "continuous", "anchors": ["TL", "BL", "BR", "TR"]},
+    ],
+    "v": [
+        {"kind": "continuous", "anchors": ["TL", "BC", "TR"]},
+    ],
+    "w": [
+        {"kind": "continuous", "anchors": ["TL", "BL", "TC", "BR", "TR"]},
+    ],
+    "x": [
+        {"kind": "walk", "from": "TL", "to": "BR"},
+        {"kind": "walk", "from": "TR", "to": "BL"},
+    ],
+    "y": [
+        {"kind": "walk", "from": "TL", "to": "BC"},
+        {"kind": "walk", "from": "TR", "to": "BL"},
+    ],
+    "z": [
+        {"kind": "continuous", "anchors": ["TL", "TR", "BL", "BR"]},
+    ],
+
+    # ─── Diaeresis & ß ────────────────────────────────────────────────
+    # Body strokes first (matching base letter), then left dot, right dot.
+    "Ä": [
+        {"kind": "walk", "from": "BL", "to": (0.5, 0.18)},
+        {"kind": "walk", "from": (0.5, 0.18), "to": "BR"},
+        {"kind": "walk", "from": (0.10, 0.55), "to": (0.90, 0.55)},
+        {"kind": "loop", "start": (0.30, 0.05), "direction": "ccw"},
+        {"kind": "loop", "start": (0.70, 0.05), "direction": "ccw"},
+    ],
+    "Ö": [
+        {"kind": "loop", "start": (0.5, 0.18), "direction": "ccw"},
+        {"kind": "loop", "start": (0.30, 0.05), "direction": "ccw"},
+        {"kind": "loop", "start": (0.70, 0.05), "direction": "ccw"},
+    ],
+    "Ü": [
+        {"kind": "continuous",
+         "anchors": [(0.05, 0.18), (0.05, 0.95), (0.95, 0.95), (0.95, 0.18)]},
+        {"kind": "loop", "start": (0.30, 0.05), "direction": "ccw"},
+        {"kind": "loop", "start": (0.70, 0.05), "direction": "ccw"},
+    ],
+    "ä": [
+        {"kind": "loop", "start": (0.5, 0.30), "direction": "ccw"},
+        {"kind": "walk", "from": (0.95, 0.30), "to": (0.95, 0.95)},
+        {"kind": "loop", "start": (0.30, 0.05), "direction": "ccw"},
+        {"kind": "loop", "start": (0.70, 0.05), "direction": "ccw"},
+    ],
+    "ö": [
+        {"kind": "loop", "start": (0.5, 0.30), "direction": "ccw"},
+        {"kind": "loop", "start": (0.30, 0.05), "direction": "ccw"},
+        {"kind": "loop", "start": (0.70, 0.05), "direction": "ccw"},
+    ],
+    "ü": [
+        {"kind": "continuous",
+         "anchors": [(0.05, 0.30), (0.05, 0.95),
+                     (0.95, 0.95), (0.95, 0.30)]},
+        {"kind": "loop", "start": (0.30, 0.05), "direction": "ccw"},
+        {"kind": "loop", "start": (0.70, 0.05), "direction": "ccw"},
+    ],
+    "ß": [
+        {"kind": "continuous",
+         "anchors": ["BL", "TL", "TR", "MR", "ML", "MR", "BR"]},
+    ],
+}
+
+
+ANCHOR_POSITIONS: dict[str, tuple[float, float]] = {
+    "TL": (0.0, 0.0), "TR": (1.0, 0.0),
+    "BL": (0.0, 1.0), "BR": (1.0, 1.0),
+    "T":  (0.5, 0.0), "TC": (0.5, 0.0),
+    "B":  (0.5, 1.0), "BC": (0.5, 1.0),
+    "L":  (0.0, 0.5), "ML": (0.0, 0.5),
+    "R":  (1.0, 0.5), "MR": (1.0, 0.5),
+    "C":  (0.5, 0.5),
+}
 
 # All 59 letters in the Primae demo set: 26 caps + 26 lowercase + Ää Öö Üü ß.
 ALL_LETTERS = (
@@ -558,28 +858,161 @@ def to_bbox_relative(seg: list[tuple[int, int]],
 
 
 # -----------------------------------------------------------------------------
-# Top-level letter pipeline
+# Worksheet-override walker
 # -----------------------------------------------------------------------------
 
-def generate_for_letter(letter: str, font_path: Path,
-                        ) -> tuple[dict, dict]:
-    """Returns (json_data, debug_info) for one letter."""
-    mask = rasterize(letter, font_path)
-    skel = morph.skeletonize(mask)
-
-    # Compute glyph bounding rect from the actual ink — used both as
-    # the bbox for the JSON's relative coords AND for sizing/centering
-    # debug overlays.
-    rows, cols = np.where(mask)
+def resolve_anchor(anchor,
+                   skel: np.ndarray,
+                   bbox: tuple[int, int, int, int]
+                   ) -> tuple[int, int] | None:
+    """Map an anchor (string name or (x, y) tuple in [0, 1] of bbox) to
+    the nearest skeleton pixel. Returns None for an empty skeleton."""
+    x_min, y_min, x_max, y_max = bbox
+    w = max(1, x_max - x_min)
+    h = max(1, y_max - y_min)
+    if isinstance(anchor, str):
+        if anchor not in ANCHOR_POSITIONS:
+            raise ValueError(f"Unknown anchor name: {anchor!r}")
+        ax, ay = ANCHOR_POSITIONS[anchor]
+    else:
+        ax, ay = anchor
+    target_x = x_min + ax * w
+    target_y = y_min + ay * h
+    rows, cols = np.where(skel)
     if len(rows) == 0:
-        raise ValueError(f"Empty glyph for {letter!r}")
-    bbox = (int(cols.min()), int(rows.min()),
-            int(cols.max()), int(rows.max()))
+        return None
+    dx = cols.astype(np.float64) - target_x
+    dy = rows.astype(np.float64) - target_y
+    i = int(np.argmin(dx * dx + dy * dy))
+    return (int(cols[i]), int(rows[i]))
 
+
+def bfs_path(start: tuple[int, int],
+             end: tuple[int, int],
+             adj: dict[tuple[int, int], list[tuple[int, int]]],
+             blocked: set[tuple[int, int]] | None = None
+             ) -> list[tuple[int, int]] | None:
+    """Shortest path along the skeleton graph. Returns None when end is
+    unreachable from start (e.g. they're in disconnected components)."""
+    if blocked is None:
+        blocked = set()
+    if start == end:
+        return [start]
+    if start not in adj or end not in adj:
+        return None
+    parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
+    q: deque[tuple[int, int]] = deque([start])
+    while q:
+        cur = q.popleft()
+        if cur == end:
+            break
+        for n in adj.get(cur, []):
+            if n not in parent and n not in blocked:
+                parent[n] = cur
+                q.append(n)
+    if end not in parent:
+        return None
+    path: list[tuple[int, int]] = []
+    cur: tuple[int, int] | None = end
+    while cur is not None:
+        path.append(cur)
+        cur = parent[cur]
+    path.reverse()
+    return path
+
+
+def walk_continuous(anchors: list,
+                    adj: dict[tuple[int, int], list[tuple[int, int]]],
+                    skel: np.ndarray,
+                    bbox: tuple[int, int, int, int]
+                    ) -> list[tuple[int, int]] | None:
+    """BFS-walk through `anchors` in order, stitching shortest paths
+    head-to-tail. Returns None if any leg is unreachable."""
+    if not anchors:
+        return None
+    pixels = [resolve_anchor(a, skel, bbox) for a in anchors]
+    if any(p is None for p in pixels):
+        return None
+    full: list[tuple[int, int]] = [pixels[0]]
+    for i in range(len(pixels) - 1):
+        seg = bfs_path(pixels[i], pixels[i + 1], adj)
+        if seg is None or len(seg) < 2:
+            return None
+        full.extend(seg[1:])
+    return full
+
+
+def walk_loop_at(anchor,
+                 direction: str,
+                 adj: dict[tuple[int, int], list[tuple[int, int]]],
+                 skel: np.ndarray,
+                 bbox: tuple[int, int, int, int]
+                 ) -> list[tuple[int, int]] | None:
+    """Walk a closed cycle on the skeleton component containing the
+    anchor's nearest skeleton pixel, then enforce direction (CCW = the
+    Austrian writing convention for O / o). Returns None if the
+    component isn't a cycle."""
+    seed = resolve_anchor(anchor, skel, bbox)
+    if seed is None:
+        return None
+    if seed not in adj or len(adj[seed]) < 2:
+        return None
+    path = _walk_cycle_ccw(seed, adj)
+    if direction == "cw":
+        path = list(reversed(path))
+    return path
+
+
+def strokes_from_override(letter: str,
+                          mask: np.ndarray,
+                          skel: np.ndarray,
+                          bbox: tuple[int, int, int, int]
+                          ) -> list[list[tuple[int, int]]] | None:
+    """Build strokes from the LETTER_OVERRIDES spec. Returns None when
+    the override doesn't exist or any walk fails (e.g. an anchor is
+    unreachable on this font's specific geometry); the caller falls
+    back to auto-extraction in that case."""
+    spec = LETTER_OVERRIDES.get(letter)
+    if not spec:
+        return None
+    rows, cols = np.where(skel)
+    skel_pixels = set(zip(cols.tolist(), rows.tolist()))
+    adj = build_adjacency(skel_pixels)
+    out: list[list[tuple[int, int]]] = []
+    for stroke_spec in spec:
+        kind = stroke_spec["kind"]
+        if kind == "walk":
+            start = resolve_anchor(stroke_spec["from"], skel, bbox)
+            end = resolve_anchor(stroke_spec["to"], skel, bbox)
+            if start is None or end is None:
+                return None
+            path = bfs_path(start, end, adj)
+            if path is None or len(path) < 2:
+                return None
+            out.append(path)
+        elif kind == "continuous":
+            path = walk_continuous(stroke_spec["anchors"], adj, skel, bbox)
+            if path is None:
+                return None
+            out.append(path)
+        elif kind == "loop":
+            path = walk_loop_at(stroke_spec["start"],
+                                stroke_spec.get("direction", "ccw"),
+                                adj, skel, bbox)
+            if path is None:
+                return None
+            out.append(path)
+        else:
+            raise ValueError(f"Unknown override kind: {kind!r}")
+    return out
+
+
+def strokes_auto(skel: np.ndarray) -> list[list[tuple[int, int]]]:
+    """Fallback per-component extraction (split + merge + walk). Used
+    when a letter has no override entry or the override walker fails."""
     labels = measure.label(skel, connectivity=2)
     n_components = labels.max()
-
-    raw_strokes: list[list[tuple[int, int]]] = []
+    out: list[list[tuple[int, int]]] = []
     for lbl in range(1, n_components + 1):
         comp_mask = labels == lbl
         rs, cs = np.where(comp_mask)
@@ -591,20 +1024,52 @@ def generate_for_letter(letter: str, font_path: Path,
         merged = merge_segments_at_branches(segments)
         for s in merged:
             if len(s) >= 2:
-                raw_strokes.append(s)
+                out.append(s)
+    return out
 
-    raw_strokes = order_strokes(raw_strokes)
-    raw_strokes = [order_stroke(s) for s in raw_strokes]
+
+# -----------------------------------------------------------------------------
+# Top-level letter pipeline
+# -----------------------------------------------------------------------------
+
+def generate_for_letter(letter: str, font_path: Path,
+                        ) -> tuple[dict, dict]:
+    """Returns (json_data, debug_info) for one letter. Tries the
+    worksheet override first; falls back to auto-extraction when the
+    override is absent or its walker fails on this font's geometry."""
+    mask = rasterize(letter, font_path)
+    skel = morph.skeletonize(mask)
+
+    rows, cols = np.where(mask)
+    if len(rows) == 0:
+        raise ValueError(f"Empty glyph for {letter!r}")
+    bbox = (int(cols.min()), int(rows.min()),
+            int(cols.max()), int(rows.max()))
+
+    used_override = False
+    raw_strokes = strokes_from_override(letter, mask, skel, bbox)
+    if raw_strokes is not None and raw_strokes:
+        used_override = True
+    else:
+        raw_strokes = strokes_auto(skel)
+        # Auto extraction owns ordering and direction; overrides
+        # already encode both, so we only re-run the orderer for the
+        # auto path.
+        raw_strokes = order_strokes(raw_strokes)
+        raw_strokes = [order_stroke(s) for s in raw_strokes]
+
     sampled = [resample(s) for s in raw_strokes]
 
     json_strokes = []
     for i, s in enumerate(sampled, start=1):
         rel = to_bbox_relative(s, bbox)
+        comment = ("worksheet" if used_override
+                   else f"auto-{stroke_orientation(s)}")
         json_strokes.append({
             "id": i,
             "checkpoints": [{"x": round(x, 4), "y": round(y, 4)}
                             for (x, y) in rel],
-            "comment": f"auto-{stroke_orientation(s)}",
+            "comment": comment,
         })
     data = {
         "letter": letter,
@@ -616,6 +1081,7 @@ def generate_for_letter(letter: str, font_path: Path,
         "skel": skel,
         "bbox": bbox,
         "raw_strokes": sampled,
+        "used_override": used_override,
     }
     return data, debug
 
