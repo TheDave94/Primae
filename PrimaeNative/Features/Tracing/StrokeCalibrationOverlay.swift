@@ -29,10 +29,20 @@ struct StrokeCalibrationOverlay: View {
     }
 
     enum CalibrationMode: String, CaseIterable {
-        case drag = "Drag"
-        case add = "Add"
-        case delete = "Delete"
+        case drag = "Ziehen"
+        case add = "Punkt"
+        case delete = "Löschen"
+        case record = "Aufnehmen"
     }
+
+    /// Live touch path while recording. Cleared on touch-up after the
+    /// resampled snapshot replaces `editableStrokes[activeStroke]`.
+    @State private var recordingPoints: [CGPoint] = []
+    /// Target number of checkpoints kept after resampling a recorded
+    /// stroke. ~20 is enough for the proximity tracker to fire smoothly
+    /// while staying loose enough that small wobbles in a hand trace
+    /// don't surface as visible kinks.
+    private let recordedCheckpointCount = 20
 
     private let strokeColors: [Color] = [.red, .blue, .green, .orange, .purple, .pink, .cyan, .yellow]
 
@@ -46,8 +56,10 @@ struct StrokeCalibrationOverlay: View {
             let size = geo.size
             ZStack {
                 addTapLayer(in: size)
+                recordCaptureLayer(in: size)
                 glyphRectDebugLayer(in: size)
                 strokePathsLayer(in: size)
+                recordingPreviewLayer(in: size)
                 dotsLayer(in: size)
                 controlsLayer
             }
@@ -58,6 +70,94 @@ struct StrokeCalibrationOverlay: View {
         .sheet(isPresented: $showExport) {
             ExportSheet(text: exportText, letterName: vm.currentLetterName)
         }
+    }
+
+    @ViewBuilder
+    private func recordCaptureLayer(in size: CGSize) -> some View {
+        if mode == .record {
+            Color.clear
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            recordingPoints.append(value.location)
+                        }
+                        .onEnded { _ in
+                            commitRecordedStroke(in: size)
+                        }
+                )
+        }
+    }
+
+    @ViewBuilder
+    private func recordingPreviewLayer(in size: CGSize) -> some View {
+        if mode == .record, recordingPoints.count >= 2 {
+            let color = strokeColors[activeStroke % strokeColors.count]
+            Path { path in
+                path.move(to: recordingPoints[0])
+                for pt in recordingPoints.dropFirst() {
+                    path.addLine(to: pt)
+                }
+            }
+            .stroke(color.opacity(0.85),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round))
+            .allowsHitTesting(false)
+        }
+    }
+
+    /// Resample the live drag path to `recordedCheckpointCount` points
+    /// uniformly along arc length, convert to glyph-bbox coords, and
+    /// replace the active stroke. Auto-advances `activeStroke` so the
+    /// next drag records the next stroke.
+    private func commitRecordedStroke(in size: CGSize) {
+        defer { recordingPoints.removeAll() }
+        guard recordingPoints.count >= 2 else { return }
+        let resampled = resampleUniform(recordingPoints,
+                                        count: recordedCheckpointCount)
+        let bboxPts = resampled.map { screenToGlyph($0, in: size) }
+        while editableStrokes.count <= activeStroke {
+            editableStrokes.append([])
+        }
+        editableStrokes[activeStroke] = bboxPts
+        activeStroke = min(activeStroke + 1, editableStrokes.count)
+        if activeStroke == editableStrokes.count {
+            editableStrokes.append([])
+        }
+    }
+
+    /// Walk the polyline and return `count` points spaced equally
+    /// along arc length. First and last input points are always kept.
+    private func resampleUniform(_ pts: [CGPoint], count: Int) -> [CGPoint] {
+        guard pts.count >= 2, count >= 2 else { return pts }
+        var cum: [CGFloat] = [0]
+        for i in 1..<pts.count {
+            let dx = pts[i].x - pts[i - 1].x
+            let dy = pts[i].y - pts[i - 1].y
+            cum.append(cum[i - 1] + (dx * dx + dy * dy).squareRoot())
+        }
+        let total = cum.last ?? 0
+        guard total > 0 else { return [pts[0], pts[pts.count - 1]] }
+        var out: [CGPoint] = []
+        var j = 0
+        for k in 0..<count {
+            let target = total * CGFloat(k) / CGFloat(count - 1)
+            while j < cum.count - 1 && cum[j + 1] < target { j += 1 }
+            if j >= pts.count - 1 {
+                out.append(pts[pts.count - 1])
+                continue
+            }
+            let denom = cum[j + 1] - cum[j]
+            if denom == 0 {
+                out.append(pts[j])
+                continue
+            }
+            let t = (target - cum[j]) / denom
+            out.append(CGPoint(
+                x: pts[j].x + t * (pts[j + 1].x - pts[j].x),
+                y: pts[j].y + t * (pts[j + 1].y - pts[j].y)
+            ))
+        }
+        return out
     }
 
     // MARK: - Canvas layers
@@ -199,6 +299,15 @@ struct StrokeCalibrationOverlay: View {
 
             if mode == .add {
                 Text("Tippe um Punkt zu setzen")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+
+            if mode == .record {
+                Text("Strich \(activeStroke + 1) zeichnen — beim Loslassen wird übernommen")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
