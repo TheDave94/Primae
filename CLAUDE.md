@@ -114,6 +114,28 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > `-allowProvisioningUpdates` and an unlocked, connected iPad. It is NOT automated
 > and never was.
 
+> **Correction (2026-09-03, measured from a sandboxed Claude Code seat on this
+> Mac — a different environment than claudebox above).** Neither `swift build`
+> nor `xcodebuild` works from here; there is no local fallback because only
+> `test` is blocked — **build is blocked too.** A claim otherwise, relayed
+> from another seat or a prior session, did not reproduce; re-measure before
+> trusting it again:
+> - `swift build` fails at manifest compilation: `couldn't create cache file
+>   '.../xcrun_db-*' (errno=Operation not permitted)`, and
+>   `~/Library/org.swift.swiftpm/*` reports not accessible/writable.
+> - `xcodebuild build` and even a bare `xcodebuild -resolvePackageDependencies`
+>   (default derived-data path, no override) fail identically: `CoreSimulatorService
+>   connection became invalid` (the XPC connection itself is refused) followed by
+>   `error: permissionDenied` on package resolution. Not a `-derivedDataPath`
+>   artifact — reproduces with Xcode's own default path.
+> - Only CI (hosted macos-26 runner) can build or test this project from a
+>   sandboxed seat. Prepare the change, then hand off to a build-capable seat
+>   or David's terminal — don't spend a round trip re-discovering this.
+> - `gh run list` (and `gh api .../actions/runs`) also fails locally with a
+>   Go-TLS certificate error specific to that endpoint; `curl` with the token
+>   from `gh auth token` against the same URL works. Use curl for reading CI
+>   results from a sandboxed seat.
+
 1. **Swift compilation check** (claudebox Linux — basic syntax check only, SwiftUI/QuartzCore won't link):
    ```bash
    swift build 2>&1 | head -20
