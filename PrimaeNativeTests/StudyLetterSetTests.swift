@@ -25,6 +25,14 @@ import CoreGraphics
     private func makeVM(studyMode: Bool) -> TracingViewModel {
         var deps = TracingDependencies.stub
         deps.studyMode = studyMode
+        // Pinned rather than left at .defaultForInstall, which reads
+        // ParticipantStore's persisted UserDefaults state and is not
+        // deterministic across a test run. .threePhase also matches the
+        // real precondition every study device must run under — see
+        // DECISIONS.md: guidedOnly/control omit freeWrite entirely, which
+        // is what CI caught here (learningPhase stayed .guided instead of
+        // .freeWrite because activePhases didn't contain it).
+        deps.thesisCondition = .threePhase
         let vm = TracingViewModel(deps)
         vm.letters = [
             makeAsset("A", base: "A", letterCase: .upper),
