@@ -149,9 +149,15 @@ import CoreGraphics
         vm.startPostTest(letter: "L")
         #expect(vm.learningPhase == .freeWrite)
         // A normal load right after — e.g. the proctor picking a trained
-        // letter again — must reset into observe as usual, not inherit
-        // the one-shot freeWrite override.
+        // letter again — must not inherit the one-shot freeWrite override.
+        // Asserting != .freeWrite rather than pinning to .observe
+        // specifically: makeAsset's fixture letters carry empty strokes,
+        // which load(letter:)'s own (unrelated, pre-existing) "nothing to
+        // demonstrate" skip auto-advances past observe/direct to .guided —
+        // correct fixture behaviour, not a leak, and not what this test is
+        // about.
         vm.loadLetter(name: "A")
-        #expect(vm.learningPhase == .observe)
+        #expect(vm.learningPhase != .freeWrite,
+                "the one-shot override must not leak into a later normal load")
     }
 }
