@@ -136,6 +136,20 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 >   from `gh auth token` against the same URL works. Use curl for reading CI
 >   results from a sandboxed seat.
 
+> **Commit signing runs IN a Claude Code session — it is not a handover.**
+> `ls`/`cat` on `~/.ssh` return `Operation not permitted` from a sandboxed
+> Bash tool call, which looks like a hard block on reading the signing key —
+> it isn't one for `git commit` itself. Measured directly (2026-09-03,
+> commit `b2d5397`): a plain `git commit` (no special flags, this repo's
+> `commit.gpgsign=true` / `gpg.format=ssh` fires automatically) completed
+> synchronously, no hang, no visible prompt delay, and `git log --show-signature`
+> confirmed a genuine `Good "git" signature ... ED25519-SK key`. So: run the
+> commit directly from the session. Only the physical key touch is David's;
+> the commit itself is not. (Whether every future attempt is this fast — e.g.
+> a FIDO2 recent-verification window — is unmeasured; if a commit ever
+> genuinely hangs, that's new information to record, not a reason to assume
+> the old "structurally blocked" claim was right after all.)
+
 1. **Swift compilation check** (claudebox Linux — basic syntax check only, SwiftUI/QuartzCore won't link):
    ```bash
    swift build 2>&1 | head -20
