@@ -481,6 +481,70 @@ jobs:
             done
           fi
 
+          # -------------------------------------------------------------
+          # On-device distinctness. `nm` proves the LINKER cannot conflate
+          # the two builds; nothing above proves a PROCTOR can't. A study
+          # build that installs under the same bundle identifier as the
+          # normal app silently replaces it on the device (same slot, same
+          # icon, same name on the home screen) — so the only artefact
+          # this seat can inspect (`nm`, pre-install) is useless at the
+          # moment it actually matters (a proctor deciding which icon to
+          # tap). Fail closed on the installable identity too, not just
+          # the linked one — read from the bundle's OWN generated
+          # Info.plist, not from the pbxproj source (a build setting that
+          # never reached the plist protects nobody).
+          # -------------------------------------------------------------
+          plist_value() { # $1=bundle $2=key -> value or "" if absent/unreadable
+            /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist" 2>/dev/null
+          }
+          if [ -n "$STUDY" ] && [ -n "$NORMAL" ]; then
+            study_id=$(plist_value "$STUDY" CFBundleIdentifier)
+            normal_id=$(plist_value "$NORMAL" CFBundleIdentifier)
+            study_name=$(plist_value "$STUDY" CFBundleDisplayName)
+            normal_name=$(plist_value "$NORMAL" CFBundleDisplayName)
+            if [ -z "$study_id" ] || [ -z "$normal_id" ]; then
+              echo "FAIL  could not read CFBundleIdentifier from one or both Info.plists —"
+              echo "      study='$study_id' normal='$normal_id'"
+              rc=1
+            elif [ "$study_id" = "$normal_id" ]; then
+              echo "FAIL  study and normal bundles share CFBundleIdentifier '$study_id' —"
+              echo "      installing one REPLACES the other on a device, silently. A"
+              echo "      proctor cannot tell which instrument is on the iPad."
+              rc=1
+            else
+              echo "ok    bundle identifiers differ: study='$study_id' normal='$normal_id'"
+            fi
+            if [ -z "$study_name" ] || [ -z "$normal_name" ]; then
+              echo "FAIL  could not read CFBundleDisplayName from one or both Info.plists —"
+              echo "      study='$study_name' normal='$normal_name'"
+              rc=1
+            elif [ "$study_name" = "$normal_name" ]; then
+              echo "FAIL  study and normal bundles share CFBundleDisplayName '$study_name' —"
+              echo "      the home-screen label cannot distinguish them."
+              rc=1
+            else
+              echo "ok    display names differ: study='$study_name' normal='$normal_name'"
+            fi
+            # Icon name is best-effort: GENERATE_INFOPLIST_FILE emits
+            # CFBundleIconName from ASSETCATALOG_COMPILER_APPICON_NAME, but
+            # don't invent a FAIL mode around a key this scan has not
+            # independently confirmed is always present.
+            study_icon=$(plist_value "$STUDY" CFBundleIconName)
+            normal_icon=$(plist_value "$NORMAL" CFBundleIconName)
+            if [ -n "$study_icon" ] && [ -n "$normal_icon" ]; then
+              if [ "$study_icon" = "$normal_icon" ]; then
+                echo "FAIL  study and normal bundles share CFBundleIconName '$study_icon' —"
+                echo "      same home-screen icon."
+                rc=1
+              else
+                echo "ok    icon names differ: study='$study_icon' normal='$normal_icon'"
+              fi
+            else
+              echo "note  CFBundleIconName absent from one or both Info.plists — not"
+              echo "      asserted (identifier + display name checks above still ran)."
+            fi
+          fi
+
           echo "SCAN_RESULT=$rc"
           } 2>&1 | tee /tmp/identity-scan.log
           grep -qx 'SCAN_RESULT=0' /tmp/identity-scan.log

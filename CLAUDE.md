@@ -306,6 +306,43 @@ fails at link time instead: every configuration names its own
 when the package itself was compiled with the matching flag. Fail-closed in both
 directions; CI proves both (CONTROL A and CONTROL B in `ios-build.yml`).
 
+**Installing it.** `build_study.sh` only builds — it does not push the result
+onto a device. Locate the iPad and install the *verified* `.app` (verify
+before install, not after — the `nm` check above is the only way to know
+which binary you're holding, and it's useless once it's already on the
+home screen):
+
+```bash
+xcrun devicectl list devices   # note the target iPad's UDID from the listing
+UDID=REPLACE_WITH_UDID_FROM_PREVIOUS_COMMAND
+xcrun devicectl device install app --device "$UDID" \
+  /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app
+```
+
+**On-device distinctness (2026-09-07).** The study build ships under its own
+bundle identifier, display name, and icon — `com.flamingistan.primae.study` /
+"Primae Studie" / `AppIcon-Study` (amber, role-swapped accent dot, a navy
+"STUDIE" ribbon; same design for the light and dark appearances on purpose,
+so the signal doesn't depend on the device's appearance setting) — set on the
+app target's `Debug-Study`/`Release-Study` configurations only, distinct from
+`com.flamingistan.primae` / "Primae" / `AppIcon` on `Debug`/`Release`. This
+was NOT true before that date: all four configurations shared one bundle ID,
+so a study build silently replaced whatever Primae build was already on the
+device, same icon, same name, nothing on the home screen to tell them apart —
+found when David asked how to install the study build and it became clear
+`nm` (a pre-install, terminal-only check) was the only way to know which one
+a device was running. Coexistence, not just detectability, was the point: a
+distinct bundle ID means the two can be installed side by side and never
+overwrite each other, and — as a side effect — the entire `UserDefaults`
+store is separately sandboxed per bundle ID by iOS regardless of the
+`de.flamingistan.primae.*` key-prefix strings used internally, so a study
+install can never inherit or contaminate a casual install's state.
+`ios-build.yml`'s identity-scan step now asserts `CFBundleIdentifier` and
+`CFBundleDisplayName` differ between the two built bundles' OWN generated
+`Info.plist` (not the pbxproj source — a build setting that never reached the
+plist protects nobody) and fails the build if they don't; `CFBundleIconName`
+is checked the same way when present, best-effort.
+
 ### ⚠️ The pilot artefact is built by a toolchain CI does not exercise
 
 This workstation runs **Xcode 27 beta**; `ios-build.yml` pins **Xcode 26.4** on
