@@ -360,6 +360,20 @@ correct end state on its own terms, independent of whether anything would
 have broken: a study instrument should not read or write the casual app's
 data.
 
+**Same question, asked of every other identity-scoped resource — also CLOSED,
+same pass.** App Groups are one of several iOS mechanisms scoped to a bundle
+identifier (or a keychain-access-group derived from it); a split that's safe
+for one isn't automatically safe for the others. Checked directly: no
+Keychain usage anywhere (`Keychain`/`kSecClass`/`SecItem`, zero hits) —
+nothing to have a keychain-access-group collide or split on. No remote push
+(`registerForRemoteNotifications`, `aps-environment`, zero hits) — the one
+notification hit in the repo (`LocalNotificationScheduler.swift`) is
+`UNUserNotificationCenter` for **local**, not remote, notifications, which are
+sandboxed per bundle ID with no entitlement and nothing to reconfigure. No
+CloudKit, no Sign in with Apple, no `UIBackgroundModes` or
+`com.apple.developer.*` capability of any kind in `project.pbxproj`. The
+bundle-ID split has no other identity-scoped surface to have broken.
+
 ### ⚠️ The pilot artefact is built by a toolchain CI does not exercise
 
 This workstation runs **Xcode 27 beta**; `ios-build.yml` pins **Xcode 26.4** on
