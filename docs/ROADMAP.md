@@ -337,6 +337,8 @@ The `SchriftArt` enum has five cases; only Druckschrift (Primae) and Schreibschr
 
 A single complication that shows the current streak. Tapping opens the Schule world. WatchKit extension + WCSession to read `streak.json` from the App Group. Depends on F1.
 
+**Consequence of the 2026-09-07 study-build bundle-ID split (`CLAUDE.md`, "Study builds"): the App Group this item needs is scoped to the CASUAL app's bundle identifier (`com.flamingistan.primae`) only.** Study now ships under its own, separate `com.flamingistan.primae.study`, with no shared container between the two — verified, not assumed (see `CLAUDE.md`). Whoever builds this companion should create the App Group under the casual bundle ID and expect it to reach only the casual app's `streak.json`; it will not, and should not, see anything a study build wrote. That's correct, not a gap to close — a study instrument is deliberately isolated from the casual app's data.
+
 ### F8 — Mac Catalyst
 **Effort:** M · **Priority:** P3
 
