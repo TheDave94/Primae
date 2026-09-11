@@ -343,6 +343,23 @@ install can never inherit or contaminate a casual install's state.
 plist protects nobody) and fails the build if they don't; `CFBundleIconName`
 is checked the same way when present, best-effort.
 
+**The App Group question this split raised — CLOSED, measured, 2026-09-11.**
+Splitting the bundle identifier means Study and Casual now get separate iOS
+sandboxes (separate `UserDefaults`, separate Application Support) with no
+implicit sharing between them. The question was whether anything in Primae
+depended on that implicit sharing and would silently break once it was gone —
+answer: no. Measured directly, not assumed: no `.entitlements` file exists
+anywhere in the repo (`find . -iname "*.entitlements"`), no
+`CODE_SIGN_ENTITLEMENTS` or `com.apple.security.application-groups` capability
+in `project.pbxproj`, no `UserDefaults(suiteName:)` call anywhere in
+`PrimaeNative`/`Primae`, and no
+`containerURL(forSecurityApplicationGroupIdentifier:)` call either — there was
+never a shared container for the split to cut off. No App Group is needed now
+or after the split. Full isolation between Study and Casual is also the
+correct end state on its own terms, independent of whether anything would
+have broken: a study instrument should not read or write the casual app's
+data.
+
 ### ⚠️ The pilot artefact is built by a toolchain CI does not exercise
 
 This workstation runs **Xcode 27 beta**; `ios-build.yml` pins **Xcode 26.4** on
