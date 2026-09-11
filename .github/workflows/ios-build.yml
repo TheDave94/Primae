@@ -495,7 +495,15 @@ jobs:
           # never reached the plist protects nobody).
           # -------------------------------------------------------------
           plist_value() { # $1=bundle $2=key -> value or "" if absent/unreadable
-            /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist" 2>/dev/null
+            # `|| true`: PlistBuddy exits non-zero for a missing key, and this
+            # step runs under `bash -e` (GitHub Actions' default) — a bare
+            # command substitution's failure there aborts the whole script
+            # BEFORE the `if [ -z ... ]` handling below ever runs, which is
+            # exactly what happened to the CFBundleIconName probe (found live,
+            # run 34575684230: every check up to display-name passed, then
+            # the step died with no output from the icon-name block at all).
+            # A missing key must produce an empty string here, not a death.
+            /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist" 2>/dev/null || true
           }
           if [ -n "$STUDY" ] && [ -n "$NORMAL" ]; then
             study_id=$(plist_value "$STUDY" CFBundleIdentifier)
