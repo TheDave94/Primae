@@ -302,6 +302,25 @@ on-device act (like the pilot artefact build in CLAUDE.md) or dropping.
 
 These are worthwhile additions once the thesis ships. None of them is a thesis-blocker.
 
+**Prerequisite for all of F1–F12, recorded 2026-09-13:** the casual `Debug`/`Release`
+path is paused, not deleted (`CLAUDE.md`, "The casual path is paused") — CI no longer
+builds, tests, or compares it against study. Every item below assumes a working
+casual build; restoring active casual CI is the first act of resuming any of them,
+not a side effect of picking one up. Two concrete pieces of that restoration, already
+scoped so nobody re-derives them from scratch:
+1. Re-add a CI job/step that builds `Debug`/`Release` again (removed: "CONTROL B",
+   "Build the normal build for comparison"; the identity-scan step's normal-side
+   checks were rewritten to study-only, not just skipped — restoring the comparison
+   means writing that half back, not un-skipping it).
+2. Flip the main `xcode_test` job's `-configuration Debug` back to whichever
+   configuration makes sense at that point — deliberately NOT done during the pilot
+   because 12 of 72 test files construct non-study scenarios
+   (`TestFixtureContractTests`, `HapticEngineTests`, `StudyLaunchTests`,
+   `StudyLetterSetTests`, `PreTaskDemonstrationTests`, `TogglePersistenceTests`,
+   `AudioArmRoutingTests`, `StudyCleanConfigTests`, `AuditThirdPassTests`,
+   `ThesisConditionAssignmentTests`, `StudyModeGuardTests`, `SilentArmAuthorityTests`)
+   and would need auditing against whatever `STUDY_BUILD`'s state is by then.
+
 ### F1 — App Store readiness pass
 **Effort:** L · **Priority:** P1 (post-thesis)
 

@@ -303,8 +303,9 @@ nm -jU /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app/Primae \
 Pressing ⌘R on the `Primae-Study` scheme does NOT produce a study build. It
 fails at link time instead: every configuration names its own
 `_primae_build_identity_{study,normal}` via `-u`, and the symbol exists only
-when the package itself was compiled with the matching flag. Fail-closed in both
-directions; CI proves both (CONTROL A and CONTROL B in `ios-build.yml`).
+when the package itself was compiled with the matching flag. CI proves the
+flag is genuinely load-bearing (CONTROL A in `ios-build.yml` — see "The
+casual path is paused" below for why there is no longer a CONTROL B).
 
 **Installing it.** `build_study.sh` only builds — it does not push the result
 onto a device. Locate the iPad and install the *verified* `.app` (verify
@@ -373,6 +374,59 @@ sandboxed per bundle ID with no entitlement and nothing to reconfigure. No
 CloudKit, no Sign in with Apple, no `UIBackgroundModes` or
 `com.apple.developer.*` capability of any kind in `project.pbxproj`. The
 bundle-ID split has no other identity-scoped surface to have broken.
+
+### The casual path is paused, on this same line, not on a branch (2026-09-13)
+
+**Decision, with the pilot running (a participant was being enrolled when this
+was made):** the casual `Debug`/`Release` configuration stops being built,
+tested, or reasoned about — not deleted, paused. `STUDY_BUILD` is the only
+configuration this repo actively maintains from here until a deliberate,
+post-thesis restoration. No separate branch was created for this.
+
+**Why not a branch, judged rather than assumed.** A branch only reduces
+dual-build reasoning if it *also* drops the casual configs to get any
+simplification — at which point it's the identical subtraction made here,
+plus a cost this line doesn't have: two diverging histories to reconcile at
+cherry-pick time instead of one paused line to additively restore. If it
+*keeps* both configs to stay mergeable, it hasn't removed any reasoning at
+all, just relocated it. A branch also makes CI branch-aware (a real fork —
+one more place to get the branch wrong) and adds a second thing a future
+session can confuse for the first — a demonstrated failure mode on this
+project already (the 2026-09-08/11 credential and pbxproj-editing incidents),
+not a hypothetical one.
+
+**What actually changed, in `ios-build.yml`'s `study_build` job:**
+- **Removed:** "CONTROL B — Debug WITH the flag must FAIL to link" (existed
+  to prove the casual configuration's own identity-symbol integrity — no
+  longer a thing being maintained) and "Build the normal build for
+  comparison" (built `Debug` solely so the identity/surfaces scan had
+  something to diff against).
+- **Kept:** CONTROL A (proves `STUDY_BUILD` reaching the package requires
+  `build_study.sh`'s command-line override, not a property of the casual
+  build at all — orthogonal to this decision) and the pilot-artefact build.
+- **Rewritten:** the identity-scan step now asserts everything about the
+  STUDY bundle alone — its own identity symbol present and the `normal` one
+  absent, the compiled-out `SURFACES` list absent, `CFBundleIdentifier` /
+  `CFBundleDisplayName` equal to the expected literal constants — instead of
+  diffing against a normal bundle that no longer gets built. The
+  vacuity-guard the old SURFACES check had ("missing from normal too" catches
+  a renamed symbol silently passing) is gone with it — an accepted,
+  documented reduction in coverage, not a silent one.
+- **Untouched, deliberately:** the main `xcode_test` job still builds and
+  tests under plain `Debug` (~892 tests, two simulators). This is the one
+  place casual is still exercised, and it's not an oversight — 12 of 72 test
+  files construct non-study scenarios
+  (`TestFixtureContractTests`, `HapticEngineTests`, `StudyLaunchTests`,
+  `StudyLetterSetTests`, `PreTaskDemonstrationTests`, `TogglePersistenceTests`,
+  `AudioArmRoutingTests`, `StudyCleanConfigTests`, `AuditThirdPassTests`,
+  `ThesisConditionAssignmentTests`, `StudyModeGuardTests`,
+  `SilentArmAuthorityTests`), and `StudyBuild.resolveStudyMode()` returns
+  `true` unconditionally under `STUDY_BUILD` with no escape hatch — some of
+  those files may not even compile once the test target is built with the
+  flag. Flipping this job to `Debug-Study` needs each of those twelve audited
+  first, and that can't be verified without a CI round-trip whose outcome I
+  couldn't predict — not a change to make blind, mid-pilot. **Named here as
+  the deliberate next step, not dropped.**
 
 ### ⚠️ The pilot artefact is built by a toolchain CI does not exercise
 

@@ -223,36 +223,6 @@ jobs:
             exit 1
           fi
 
-      - name: "CONTROL B — Debug WITH the flag must FAIL to link"
-        run: |
-          set -o pipefail
-          # The mirror of A. Force STUDY_BUILD into a NORMAL configuration:
-          # the package then emits the study identity, Debug's `-u` still
-          # demands the normal one, and the link must fail. Without this,
-          # a normal binary asserts nothing about its own identity.
-          if xcodebuild build \
-               -project Primae/Primae.xcodeproj \
-               -scheme Primae \
-               -configuration Debug \
-               -destination 'generic/platform=iOS Simulator' \
-               -derivedDataPath /tmp/dd-guard-b \
-               SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) STUDY_BUILD' \
-               CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
-               > /tmp/guard-b.log 2>&1; then
-            echo "GUARD BROKEN: a flagged Debug build succeeded."
-            echo "A normal configuration accepted a study-compiled package."
-            tail -30 /tmp/guard-b.log
-            exit 1
-          fi
-          if grep -qi "primae_build_identity_normal" /tmp/guard-b.log; then
-            echo "GUARD B OK — flagged normal build fails at link on the missing normal identity:"
-            grep -i -m3 "primae_build_identity_normal" /tmp/guard-b.log
-          else
-            echo "GUARD B INCONCLUSIVE — build failed, but not on the identity symbol."
-            tail -30 /tmp/guard-b.log
-            exit 1
-          fi
-
       - name: "Build & test the study build"
         run: |
           set -o pipefail
@@ -296,18 +266,6 @@ jobs:
             scripts/build_study.sh build \
               2>&1 | tee /tmp/release-study-build.log | tail -5
 
-      - name: "Build the normal build for comparison"
-        run: |
-          set -o pipefail
-          xcodebuild build \
-            -project Primae/Primae.xcodeproj \
-            -scheme Primae \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath /tmp/dd-normal \
-            CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
-            2>&1 | tee /tmp/normal-build.log | tail -5
-
       # ---------------------------------------------------------------
       # Identity is checked with `nm`, not `strings`: a symbol's presence
       # is a fact the linker was required to enforce.
@@ -316,10 +274,8 @@ jobs:
       # app executable can be a launcher stub with the real code in a
       # sibling Mach-O (ENABLE_DEBUG_DYLIB, embedded frameworks), and
       # `nm` on a stub reports absence exactly like a missing symbol.
-      # A comparability check runs FIRST so that never again reads as an
-      # identity failure.
       # ---------------------------------------------------------------
-      - name: "Build identity — nm scan over the shipped bundles"
+      - name: "Build identity — nm scan over the study bundle"
         run: |
           {
           rc=0
@@ -361,39 +317,33 @@ jobs:
           }
 
           locate_app /tmp/dd-study-scan '*/Debug-Study-*/Primae.app'; STUDY="$FOUND"
-          locate_app /tmp/dd-normal    '*/Debug-iphone*/Primae.app';  NORMAL="$FOUND"
 
-          describe study  "$STUDY"  /tmp/dd-study-scan '*/Debug-Study-*/Primae.app' || rc=1
-          describe normal "$NORMAL" /tmp/dd-normal     '*/Debug-iphone*/Primae.app' || rc=1
+          describe study "$STUDY" /tmp/dd-study-scan '*/Debug-Study-*/Primae.app' || rc=1
 
           # -------------------------------------------------------------
-          # Comparability. Two builds of the same app cannot differ by an
-          # order of magnitude in symbol count; if they do, one of them is
-          # a stub or is missing the package, and any identity result read
-          # off it is meaningless. This is asserted BEFORE identity so the
-          # failure names the real problem.
+          # Plausibility floor, replacing the old study-vs-normal ratio
+          # check (2026-09-13: normal is no longer built here to compare
+          # against — see CLAUDE.md "The casual path is paused"). A
+          # launcher stub (real code in a sibling Mach-O, e.g. the `test`
+          # action's arm64-only stub) measured 702 symbols; a real study
+          # bundle measured 20850 (run 34048770455). 5000 sits an order of
+          # magnitude above the stub and well below the real figure.
           # -------------------------------------------------------------
-          if [ -n "$STUDY" ] && [ -n "$NORMAL" ]; then
-            SS=$(bundle_syms "$STUDY"); NS=$(bundle_syms "$NORMAL")
-            echo "comparability: study=$SS symbols, normal=$NS symbols"
-            if [ "$SS" -eq 0 ] || [ "$NS" -eq 0 ]; then
-              echo "FAIL  IMPLAUSIBLE BUNDLE: one build has NO defined symbols at all."
+          if [ -n "$STUDY" ]; then
+            SS=$(bundle_syms "$STUDY")
+            echo "study defined symbols: $SS"
+            if [ "$SS" -lt 5000 ]; then
+              echo "FAIL  IMPLAUSIBLY FEW SYMBOLS ($SS) — looks like a launcher stub"
+              echo "      (real code in a sibling Mach-O) rather than the full app."
               rc=1
-            else
-              hi=$SS; lo=$NS
-              if [ "$NS" -gt "$SS" ]; then hi=$NS; lo=$SS; fi
-              if [ $(( hi / lo )) -ge 10 ]; then
-                echo "FAIL  IMPLAUSIBLY FEW SYMBOLS: the two builds of the same app differ"
-                echo "      by ${hi}/${lo} = $(( hi / lo ))x in defined-symbol count."
-                echo "      One of these is a launcher stub or is missing the PrimaeNative"
-                echo "      package entirely. Any identity verdict read off it is void."
-                rc=1
-              fi
             fi
           fi
 
           # -------------------------------------------------------------
-          # Identity, searched across every Mach-O in the bundle.
+          # Identity, searched across every Mach-O in the bundle. Only the
+          # study half is built here now, but the check itself was always
+          # self-contained per bundle (asks one bundle for both the
+          # expected and the forbidden symbol), so it needs no change.
           # -------------------------------------------------------------
           identity_hits() { # $1=bundle $2=half -> "file" lines carrying that identity
             machos "$1" | while read -r f; do
@@ -420,19 +370,19 @@ jobs:
               rc=1
             fi
           }
-          check study  "$STUDY"  study  normal
-          check normal "$NORMAL" normal study
+          check study "$STUDY" study normal
 
           if [ $rc -eq 0 ]; then
-            echo "Build identity OK — each bundle carries exactly its own."
+            echo "Build identity OK — study bundle carries exactly its own."
           fi
 
           # -------------------------------------------------------------
           # Compiled-out surfaces. Each entry is a substring of the Swift
-          # mangled name of a declaration that must exist in the normal
-          # build and NOT in the study one. The "missing from normal too"
-          # branch is what stops an entry from passing vacuously after a
-          # rename — if it fires, fix the pattern, never delete the entry.
+          # mangled name of a declaration that must be absent from the
+          # study bundle. Previously also required present-in-normal, to
+          # catch a renamed symbol passing vacuously — normal is no longer
+          # built here (see CLAUDE.md), so that guard is gone with it: an
+          # accepted, documented reduction in coverage, not a silent one.
           # -------------------------------------------------------------
           sym_in_bundle() { # $1=bundle $2=pattern -> files whose symbols match
             machos "$1" | while read -r f; do
@@ -440,10 +390,6 @@ jobs:
             done
           }
 
-          # Every declaration compiled out of the study build. Each entry is
-          # a substring of the Swift mangled name; the "missing from NORMAL
-          # too" branch below means a rename cannot make an entry pass
-          # vacuously — fix the pattern, never delete the entry.
           SURFACES="debugPercentReadout
                     WerkstattWorldView
                     FortschritteWorldView
@@ -461,38 +407,30 @@ jobs:
                     FreeformWritingView
                     PracticeTrendChart
                     variantToggle"
-          if [ -n "$STUDY" ] && [ -n "$NORMAL" ]; then
+          if [ -n "$STUDY" ]; then
             for sym in $SURFACES; do
               in_study=$(sym_in_bundle "$STUDY" "$sym")
-              in_normal=$(sym_in_bundle "$NORMAL" "$sym")
               if [ -n "$in_study" ]; then
                 echo "FAIL  $sym is still IN the study bundle:"
                 echo "$in_study" | sed 's/^/        /'
                 rc=1
-              elif [ -z "$in_normal" ]; then
-                echo "FAIL  $sym is missing from the NORMAL bundle too — this entry is"
-                echo "      asserting nothing. Either the declaration was renamed, or it"
-                echo "      is not emitted under this name. Fix the pattern; do not"
-                echo "      delete the entry."
-                rc=1
               else
-                echo "ok    $sym absent from study, present in normal"
+                echo "ok    $sym absent from study"
               fi
             done
           fi
 
           # -------------------------------------------------------------
-          # On-device distinctness. `nm` proves the LINKER cannot conflate
-          # the two builds; nothing above proves a PROCTOR can't. A study
-          # build that installs under the same bundle identifier as the
-          # normal app silently replaces it on the device (same slot, same
-          # icon, same name on the home screen) — so the only artefact
-          # this seat can inspect (`nm`, pre-install) is useless at the
-          # moment it actually matters (a proctor deciding which icon to
-          # tap). Fail closed on the installable identity too, not just
-          # the linked one — read from the bundle's OWN generated
-          # Info.plist, not from the pbxproj source (a build setting that
-          # never reached the plist protects nobody).
+          # On-device identity. `nm` proves the LINKER cannot conflate a
+          # study and a normal binary; nothing above proves a PROCTOR
+          # can't tell them apart on a home screen. Previously diffed
+          # against a normal bundle built in this same job; normal isn't
+          # built here anymore (CLAUDE.md, "The casual path is paused"),
+          # so this now asserts the study bundle's own identity equals the
+          # literal constants project.pbxproj sets for it, rather than
+          # diffing against a sibling build. Read from the bundle's OWN
+          # generated Info.plist, not the pbxproj source — a build setting
+          # that never reached the plist protects nobody.
           # -------------------------------------------------------------
           plist_value() { # $1=bundle $2=key -> value or "" if absent/unreadable
             # `|| true`: PlistBuddy exits non-zero for a missing key, and this
@@ -505,51 +443,22 @@ jobs:
             # A missing key must produce an empty string here, not a death.
             /usr/libexec/PlistBuddy -c "Print :$2" "$1/Info.plist" 2>/dev/null || true
           }
-          if [ -n "$STUDY" ] && [ -n "$NORMAL" ]; then
+          if [ -n "$STUDY" ]; then
             study_id=$(plist_value "$STUDY" CFBundleIdentifier)
-            normal_id=$(plist_value "$NORMAL" CFBundleIdentifier)
             study_name=$(plist_value "$STUDY" CFBundleDisplayName)
-            normal_name=$(plist_value "$NORMAL" CFBundleDisplayName)
-            if [ -z "$study_id" ] || [ -z "$normal_id" ]; then
-              echo "FAIL  could not read CFBundleIdentifier from one or both Info.plists —"
-              echo "      study='$study_id' normal='$normal_id'"
-              rc=1
-            elif [ "$study_id" = "$normal_id" ]; then
-              echo "FAIL  study and normal bundles share CFBundleIdentifier '$study_id' —"
-              echo "      installing one REPLACES the other on a device, silently. A"
-              echo "      proctor cannot tell which instrument is on the iPad."
+            if [ "$study_id" != "com.flamingistan.primae.study" ]; then
+              echo "FAIL  study CFBundleIdentifier is '$study_id', expected"
+              echo "      com.flamingistan.primae.study — a proctor cannot rely on"
+              echo "      this build never overwriting a casual install."
               rc=1
             else
-              echo "ok    bundle identifiers differ: study='$study_id' normal='$normal_id'"
+              echo "ok    study CFBundleIdentifier = $study_id"
             fi
-            if [ -z "$study_name" ] || [ -z "$normal_name" ]; then
-              echo "FAIL  could not read CFBundleDisplayName from one or both Info.plists —"
-              echo "      study='$study_name' normal='$normal_name'"
-              rc=1
-            elif [ "$study_name" = "$normal_name" ]; then
-              echo "FAIL  study and normal bundles share CFBundleDisplayName '$study_name' —"
-              echo "      the home-screen label cannot distinguish them."
+            if [ "$study_name" != "Primae Studie" ]; then
+              echo "FAIL  study CFBundleDisplayName is '$study_name', expected 'Primae Studie'."
               rc=1
             else
-              echo "ok    display names differ: study='$study_name' normal='$normal_name'"
-            fi
-            # Icon name is best-effort: GENERATE_INFOPLIST_FILE emits
-            # CFBundleIconName from ASSETCATALOG_COMPILER_APPICON_NAME, but
-            # don't invent a FAIL mode around a key this scan has not
-            # independently confirmed is always present.
-            study_icon=$(plist_value "$STUDY" CFBundleIconName)
-            normal_icon=$(plist_value "$NORMAL" CFBundleIconName)
-            if [ -n "$study_icon" ] && [ -n "$normal_icon" ]; then
-              if [ "$study_icon" = "$normal_icon" ]; then
-                echo "FAIL  study and normal bundles share CFBundleIconName '$study_icon' —"
-                echo "      same home-screen icon."
-                rc=1
-              else
-                echo "ok    icon names differ: study='$study_icon' normal='$normal_icon'"
-              fi
-            else
-              echo "note  CFBundleIconName absent from one or both Info.plists — not"
-              echo "      asserted (identifier + display name checks above still ran)."
+              echo "ok    study CFBundleDisplayName = $study_name"
             fi
           fi
 
@@ -565,9 +474,7 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/guard-a.log
-            /tmp/guard-b.log
             /tmp/study-test.log
-            /tmp/normal-build.log
             /tmp/study-scan-build.log
             /tmp/release-study-build.log
             /tmp/identity-scan.log
