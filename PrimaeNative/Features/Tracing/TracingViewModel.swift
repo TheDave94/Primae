@@ -703,15 +703,26 @@ public final class TracingViewModel {
     let dashboardStore: ParentDashboardStoring
     /// Cold per-trial raw freeWrite traces (re-analysis insurance).
     private let rawTraceStore: RawTraceStoring
-    let thesisCondition: ThesisCondition
+    /// Durable per-participant seal, written before `resetForNewParticipant`
+    /// wipes the stores above for the next child. See
+    /// `ParticipantArchiveStore.swift`.
+    let participantArchive: ParticipantArchiving
+    /// Was `let` until 2026-09-14: a researcher override (pedagogical arm,
+    /// audio arm, trained subset) is read ONCE at init in a non-study
+    /// build, so a non-study session still needs the relaunch
+    /// `sessionBlockReason` enforces (`assignmentOverrideChanged`) — see
+    /// `reapplyParticipantIdentity` for why a STUDY build no longer does.
+    private(set) var thesisCondition: ThesisCondition
     /// Pilot audio arm for this participant. Stamped onto every recorded
-    /// session (H1); per-arm audio playback routing is H2.
-    let audioCondition: PilotAudioCondition
+    /// session (H1); per-arm audio playback routing is H2. Was `let`
+    /// until 2026-09-14 — see `reapplyParticipantIdentity`.
+    private(set) var audioCondition: PilotAudioCondition
     /// Trained 3-of-5 study-letter subset for this participant (third
     /// assignment axis). Filters the practice pool under `studyMode`;
     /// stamped onto every recorded session for trained/untrained
-    /// partitioning in analysis.
-    let trainedSubset: TrainedLetterSubset
+    /// partitioning in analysis. Was `let` until 2026-09-14 — see
+    /// `reapplyParticipantIdentity`.
+    private(set) var trainedSubset: TrainedLetterSubset
     private let onboardingStore: OnboardingStoring
     private let notificationScheduler: LocalNotificationScheduler
     var adaptationPolicy: any AdaptationPolicy
@@ -821,6 +832,7 @@ public final class TracingViewModel {
         self.streakStore            = deps.streakStore
         self.dashboardStore         = deps.dashboardStore
         self.rawTraceStore          = deps.rawTraceStore
+        self.participantArchive     = deps.participantArchive
         self.onboardingStore        = deps.onboardingStore
         self.notificationScheduler  = deps.notificationScheduler
         // Study pin (2026-09-04): the pedagogical flow is held constant
@@ -942,17 +954,27 @@ public final class TracingViewModel {
         if let audioError = effectiveAudio.initializationError {
             messages.show(toast: audioError)
         }
-        // Under studyMode the launch letter is the FIRST TRAINED letter,
-        // not `letters.first`: the repository sorts by name, so every
-        // device used to open on "A" — an UNTRAINED letter for the four
-        // subsets without it (FIL, FIM, FLM, ILM), fully traceable with
-        // scaffolding because `load(letter:)` never consults the
-        // `visibleLetterNames` filter, and with A's observe animation
-        // and sound-arm demonstration armed before any cold probe of A
-        // (audit 2026-09-06). The trained pool is empty only when the
-        // bundle is (refused above) — then nothing loads.
+        loadFirstTrainedLetter()
+    }
+
+    /// Loads the launch/current participant's first trained letter,
+    /// parked (no phase cue). Factored out of `init` (2026-09-14) so
+    /// `reapplyParticipantIdentity` can re-run exactly this step for an
+    /// incoming child without repeating the rest of init's one-time
+    /// setup.
+    ///
+    /// Under studyMode the launch letter is the FIRST TRAINED letter,
+    /// not `letters.first`: the repository sorts by name, so every
+    /// device used to open on "A" — an UNTRAINED letter for the four
+    /// subsets without it (FIL, FIM, FLM, ILM), fully traceable with
+    /// scaffolding because `load(letter:)` never consults the
+    /// `visibleLetterNames` filter, and with A's observe animation
+    /// and sound-arm demonstration armed before any cold probe of A
+    /// (audit 2026-09-06). The trained pool is empty only when the
+    /// bundle is (refused earlier) — then nothing loads.
+    private func loadFirstTrainedLetter() {
         let first: LetterAsset?
-        if deps.studyMode {
+        if studyMode {
             first = visibleLetterNames.first.flatMap { name in
                 letters.first(where: { $0.name == name })
             }
@@ -961,10 +983,10 @@ public final class TracingViewModel {
         }
         guard let first else { return }
         letterIndex = letters.firstIndex(where: { $0.name == first.name }) ?? 0
-        // Don't play the phase cue at init — the audio session
-        // hasn't settled and would produce ~2 s of crackle. A study
-        // launch is PARKED (see `launchParked`).
-        load(letter: first, playPhaseCue: false, parked: deps.studyMode)
+        // Don't play the phase cue here — the audio session hasn't
+        // settled and would produce ~2 s of crackle. A study launch is
+        // PARKED (see `launchParked`).
+        load(letter: first, playPhaseCue: false, parked: studyMode)
     }
 
     // MARK: - Toggles
@@ -1963,6 +1985,24 @@ public final class TracingViewModel {
     // MARK: - Parent dashboard access
 
     var dashboardSnapshot: DashboardSnapshot { dashboardStore.snapshot }
+
+    /// Every participant recorded on this device, export-ready: every
+    /// sealed archive (see `ParticipantArchiveStore`) plus the current
+    /// live participant, oldest `enrolledAt` first — the "export once at
+    /// the end covering everyone" a multi-child kindergarten session
+    /// needs (2026-09-14), instead of one export per child that had to
+    /// happen before the next enrolment or be lost.
+    var allParticipantExportSources: [ParticipantExportSource] {
+        let archived = participantArchive.archivedParticipants.map {
+            ParticipantExportSource(snapshot: $0.snapshot, participantId: $0.participantId,
+                                    progress: $0.progress, rawTraces: $0.rawTraces,
+                                    enrolledAt: $0.enrolledAt)
+        }
+        let current = ParticipantExportSource(
+            snapshot: dashboardSnapshot, participantId: ParticipantStore.participantId,
+            progress: allProgress, rawTraces: rawTraces, enrolledAt: ParticipantStore.enrolledAt)
+        return archived + [current]
+    }
     var currentStreak: Int { streakStore.currentStreak }
     var longestStreak: Int { streakStore.longestStreak }
     /// Achievement events the child has unlocked. Surfaced in the
@@ -2393,6 +2433,24 @@ public final class TracingViewModel {
 
     @discardableResult
     func resetForNewParticipant() -> UUID {
+        // Seal the OUTGOING participant's complete record BEFORE any
+        // store below is wiped (2026-09-14) — the fix for a confirmed
+        // data-loss defect: until this, every prior child's rows on this
+        // device were destroyed unconditionally, with no on-device copy
+        // surviving except an export the proctor might not have finished
+        // saving. Built from the CURRENT in-memory values, which are
+        // value types copied into the record here — safe against the
+        // stores' `.reset()` calls immediately below, which mutate the
+        // stores, not this already-copied struct. See
+        // `ParticipantArchiveStore.swift`.
+        participantArchive.archive(ArchivedParticipant(
+            participantId: ParticipantStore.participantId,
+            enrolledAt: ParticipantStore.enrolledAt,
+            archivedAt: Date(),
+            snapshot: dashboardStore.snapshot,
+            progress: progressStore.allProgress,
+            rawTraces: rawTraceStore.traces
+        ))
         participantIdentityChanged = true
         // Close the outgoing child's in-flight trial FIRST: a pending
         // quiet-window task, an in-flight recognition, or the ink still
@@ -2409,7 +2467,39 @@ public final class TracingViewModel {
         clearAllCalibrations()          // on-device stroke overrides (active SchriftArt)
         let newID = ParticipantStore.startNewParticipant()  // new UUID + arms + enrolment
         refreshProgressMirror()         // clear the SwiftUI progress mirror
+        // Re-derive this device's live arm assignment for the incoming
+        // child IN PLACE (2026-09-14) — see `reapplyParticipantIdentity`.
+        // Without this, every enrolment needed a force-quit + relaunch,
+        // which a kindergarten queue with one proctor and one iPad
+        // cannot absorb between children.
+        reapplyParticipantIdentity()
         return newID
+    }
+
+    /// Re-derives the live arm assignment for whichever participant
+    /// `ParticipantStore.participantId` now names, and loads their first
+    /// trained letter — the in-process replacement (2026-09-14) for the
+    /// app relaunch `resetForNewParticipant` used to require.
+    ///
+    /// Scoped to `studyMode` deliberately, not a general capability: a
+    /// STUDY build pins every OTHER init-time decision that could
+    /// otherwise depend on the arms (haptics/speech/prompts → Null,
+    /// adaptationPolicy → Fixed, schriftArt → Druckschrift, letterOrdering
+    /// → motorSimilarity — see `init`) to `studyMode` alone, not to the
+    /// arm values, so re-deriving just the three arm properties here is a
+    /// COMPLETE re-init for the pilot, not a partial one that silently
+    /// leaves something stale. A non-study install's haptics/speech ARE
+    /// arm-dependent (the silent-arm nulling), so it is deliberately left
+    /// on the old relaunch-required path (`sessionBlockReason`) rather
+    /// than risk an incomplete in-place rebuild there — that path is not
+    /// what the kindergarten pilot workflow depends on.
+    private func reapplyParticipantIdentity() {
+        guard studyMode else { return }
+        thesisCondition = .threePhase   // studyMode always pins this; restated for symmetry.
+        audioCondition  = .defaultForInstall
+        trainedSubset   = .defaultForInstall
+        loadFirstTrainedLetter()
+        participantIdentityChanged = false
     }
 
     /// Persist calibrated glyph-relative checkpoints. Delegates to CalibrationStore

@@ -149,7 +149,7 @@ private struct ExportCenterView: View {
                 }
             }
             Section("Hinweis") {
-                Text("Exportiert den vollständigen Lernfortschritt inklusive Phasen-Daten, Schreibmotorik-Dimensionen (Form, Tempo, Druck, Rhythmus) und KI-Erkennungs-Konfidenzen. Die Teilnehmer-ID wird mitgesendet. TSV passt am besten zu SPSS/R, CSV zu Excel/pandas.")
+                Text("Exportiert die Daten ALLER auf diesem Gerät erfassten Teilnehmer in einer Datei — sowohl den aktuellen als auch jeden zuvor über „Neuer Teilnehmer“ abgeschlossenen, jeweils mit eigener Teilnehmer-ID (\(vm.allParticipantExportSources.count) Teilnehmer aktuell gespeichert). Enthält Phasen-Daten, Schreibmotorik-Dimensionen (Form, Tempo, Druck, Rhythmus) und KI-Erkennungs-Konfidenzen. TSV passt am besten zu SPSS/R, CSV zu Excel/pandas.")
                     .font(.footnote)
                     .foregroundStyle(Color.inkSoft)
             }
@@ -172,11 +172,9 @@ private struct ExportCenterView: View {
 
     private func export(format: DashboardExportFormat) {
         do {
-            shareURL = try ParentDashboardExporter.exportFileURL(
-                from: vm.dashboardSnapshot,
-                format: format,
-                progress: vm.allProgress,
-                rawTraces: vm.rawTraces
+            shareURL = try ParentDashboardExporter.combinedExportFileURL(
+                participants: vm.allParticipantExportSources,
+                format: format
             )
         } catch {
             showError = true

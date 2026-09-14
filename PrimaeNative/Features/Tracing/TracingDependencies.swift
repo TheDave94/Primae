@@ -21,6 +21,11 @@ struct TracingDependencies {
     /// insurance). Separate from `dashboardStore` to keep its hot
     /// <100 KB persist path lean.
     var rawTraceStore: RawTraceStoring
+    /// Durable, per-participant seal of an outgoing child's complete
+    /// record, written before `TracingViewModel.resetForNewParticipant`
+    /// wipes the live stores above for the next child. See
+    /// `ParticipantArchiveStore.swift`.
+    var participantArchive: ParticipantArchiving
     var onboardingStore: OnboardingStoring
     var notificationScheduler: LocalNotificationScheduler
     var thesisCondition: ThesisCondition
@@ -92,6 +97,7 @@ struct TracingDependencies {
         streakStore: StreakStoring = JSONStreakStore(),
         dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(),
         rawTraceStore: RawTraceStoring = JSONRawTraceStore(),
+        participantArchive: ParticipantArchiving = JSONParticipantArchiveStore(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         // Default to the full four-phase flow unless the install opted
@@ -165,6 +171,7 @@ struct TracingDependencies {
         self.streakStore = streakStore
         self.dashboardStore = dashboardStore
         self.rawTraceStore = rawTraceStore
+        self.participantArchive = participantArchive
         self.onboardingStore = onboardingStore
         self.notificationScheduler = notificationScheduler
         self.thesisCondition = thesisCondition

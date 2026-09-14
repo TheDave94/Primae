@@ -17,6 +17,19 @@ enum ExportError: Error, Equatable {
     case writeFailed(String)
 }
 
+// MARK: - Multi-participant export source
+
+/// One participant's complete export inputs — the live participant's, or
+/// a sealed `ArchivedParticipant`'s, presented identically so the
+/// combined-export functions below don't need to know which (2026-09-14).
+struct ParticipantExportSource {
+    let snapshot: DashboardSnapshot
+    let participantId: UUID
+    let progress: [String: LetterProgress]
+    let rawTraces: [RawTrace]
+    let enrolledAt: Date?
+}
+
 // MARK: - Exporter
 
 /// Converts a ``DashboardSnapshot`` to shareable file data.
@@ -381,6 +394,32 @@ struct ParentDashboardExporter {
         return lines.joined(separator: "\n").data(using: .utf8) ?? Data()
     }
 
+    /// A visually unambiguous separator between one participant's CSV/TSV
+    /// block and the next in a combined export — `#`-prefixed so it reads
+    /// as a comment line to any consumer that already skips the `#
+    /// participantId=...` header lines, rather than as a data row.
+    private static let participantBlockSeparator =
+        "\n\n# ==================== next participant ====================\n\n"
+
+    /// Every participant's CSV/TSV block, one after another in a single
+    /// file (2026-09-14) — the "export once at the end covering everyone"
+    /// a multi-child session needs, instead of one export per child.
+    /// Reuses `delimitedData` unchanged per participant, so the existing,
+    /// already-thesis-documented per-row column schema (EXPORT_SCHEMA
+    /// appendix) is byte-identical inside each block; only the
+    /// concatenation is new.
+    static func combinedDelimitedData(
+        participants: [ParticipantExportSource],
+        separator sep: String
+    ) -> Data {
+        let blocks = participants.map { p in
+            String(data: delimitedData(from: p.snapshot, participantId: p.participantId,
+                                       progress: p.progress, enrolledAt: p.enrolledAt, separator: sep),
+                   encoding: .utf8) ?? ""
+        }
+        return blocks.joined(separator: Self.participantBlockSeparator).data(using: .utf8) ?? Data()
+    }
+
     // MARK: JSON
 
     /// Pretty-printed JSON of the full snapshot plus thesis metrics,
@@ -394,44 +433,77 @@ struct ParentDashboardExporter {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
-            // Same pre-enrolment rule as the CSV (2026-09-04): the JSON
-            // archive used to dump every phase row unfiltered and carried
-            // no `enrolledAt`, so its consumer could not even reproduce
-            // the rule the thesis states the exporter applies (Ch.3).
-            // Raw traces follow the SAME rule (2026-09-06): a trace
-            // recorded before this enrolment can link to no exported row
-            // (those rows are filtered), and after "Teilnehmer
-            // wiederherstellen" with a different id — the delayed test on
-            // an iPad whose last child was never wiped — it is that other
-            // child's ink under this participantId. Same-id restores keep
-            // the original `enrolledAt`, so the archive stays complete.
-            let filteredTraces = enrolledAt.map { at in
-                rawTraces.filter { $0.recordedAt >= at }
-            } ?? rawTraces
-            let filtered: DashboardSnapshot = {
-                guard let enrolledAt else { return snapshot }
-                var s = snapshot
-                s.phaseSessionRecords = snapshot.phaseSessionRecords.filter { rec in
-                    guard let ts = rec.recordedAt else { return false }
-                    return ts >= enrolledAt
-                }
-                s.sessionDurations = snapshot.sessionDurations.filter { rec in
-                    guard let ts = rec.recordedAt else { return false }
-                    return ts >= enrolledAt
-                }
-                return s
-            }()
-            let export = SnapshotWithMetrics(
-                snapshot: filtered,
-                participantId: participantId,
-                progress: progress,
-                rawTraces: filteredTraces,
-                enrolledAt: enrolledAt
-            )
+            let export = snapshotWithMetrics(from: snapshot, participantId: participantId,
+                                             progress: progress, rawTraces: rawTraces,
+                                             enrolledAt: enrolledAt)
             return try encoder.encode(export)
         } catch {
             throw ExportError.encodingFailed(error.localizedDescription)
         }
+    }
+
+    /// Every participant's JSON export object, as one top-level array
+    /// (2026-09-14) — the JSON counterpart of `combinedDelimitedData`.
+    static func combinedJSONData(participants: [ParticipantExportSource]) throws(ExportError) -> Data {
+        do {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
+            encoder.dateEncodingStrategy = .iso8601
+            let exports = participants.map {
+                snapshotWithMetrics(from: $0.snapshot, participantId: $0.participantId,
+                                    progress: $0.progress, rawTraces: $0.rawTraces,
+                                    enrolledAt: $0.enrolledAt)
+            }
+            return try encoder.encode(exports)
+        } catch {
+            throw ExportError.encodingFailed(error.localizedDescription)
+        }
+    }
+
+    /// Shared single-participant JSON export builder behind both
+    /// `jsonData` and `combinedJSONData`, so the pre-enrolment filtering
+    /// rule (Ch.3) lives in exactly one place.
+    private static func snapshotWithMetrics(
+        from snapshot: DashboardSnapshot,
+        participantId: UUID,
+        progress: [String: LetterProgress],
+        rawTraces: [RawTrace],
+        enrolledAt: Date?
+    ) -> SnapshotWithMetrics {
+        // Same pre-enrolment rule as the CSV (2026-09-04): the JSON
+        // archive used to dump every phase row unfiltered and carried
+        // no `enrolledAt`, so its consumer could not even reproduce
+        // the rule the thesis states the exporter applies (Ch.3).
+        // Raw traces follow the SAME rule (2026-09-06): a trace
+        // recorded before this enrolment can link to no exported row
+        // (those rows are filtered), and after "Teilnehmer
+        // wiederherstellen" with a different id — the delayed test on
+        // an iPad whose last child was never wiped — it is that other
+        // child's ink under this participantId. Same-id restores keep
+        // the original `enrolledAt`, so the archive stays complete.
+        let filteredTraces = enrolledAt.map { at in
+            rawTraces.filter { $0.recordedAt >= at }
+        } ?? rawTraces
+        let filtered: DashboardSnapshot = {
+            guard let enrolledAt else { return snapshot }
+            var s = snapshot
+            s.phaseSessionRecords = snapshot.phaseSessionRecords.filter { rec in
+                guard let ts = rec.recordedAt else { return false }
+                return ts >= enrolledAt
+            }
+            s.sessionDurations = snapshot.sessionDurations.filter { rec in
+                guard let ts = rec.recordedAt else { return false }
+                return ts >= enrolledAt
+            }
+            return s
+        }()
+        return SnapshotWithMetrics(
+            snapshot: filtered,
+            participantId: participantId,
+            progress: progress,
+            rawTraces: filteredTraces,
+            enrolledAt: enrolledAt
+        )
     }
 
     // MARK: Private types
@@ -517,6 +589,38 @@ struct ParentDashboardExporter {
         case .json:
             data     = try jsonData(from: snapshot, progress: progress, rawTraces: rawTraces)
             filename = "primae_progress_\(tag).json"
+        }
+        let url = tempDirectory.appendingPathComponent(filename)
+        do {
+            try data.write(to: url, options: .atomic)
+        } catch {
+            throw ExportError.writeFailed(error.localizedDescription)
+        }
+        return url
+    }
+
+    /// Writes a COMBINED export — every participant recorded on this
+    /// device, current plus archived — to one temp file (2026-09-14).
+    /// The proctor-facing "export once at the end" action; see
+    /// `TracingViewModel.allParticipantExportSources`.
+    static func combinedExportFileURL(
+        participants: [ParticipantExportSource],
+        format: DashboardExportFormat,
+        tempDirectory: URL = FileManager.default.temporaryDirectory
+    ) throws(ExportError) -> URL {
+        let data: Data
+        let filename: String
+        let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(participants.count)"
+        switch format {
+        case .csv:
+            data     = combinedDelimitedData(participants: participants, separator: ",")
+            filename = "primae_progress_ALL_\(tag).csv"
+        case .tsv:
+            data     = combinedDelimitedData(participants: participants, separator: "\t")
+            filename = "primae_progress_ALL_\(tag).tsv"
+        case .json:
+            data     = try combinedJSONData(participants: participants)
+            filename = "primae_progress_ALL_\(tag).json"
         }
         let url = tempDirectory.appendingPathComponent(filename)
         do {

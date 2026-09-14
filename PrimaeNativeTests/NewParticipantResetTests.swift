@@ -174,4 +174,150 @@ import Foundation
             #expect(ParticipantStore.conditionOverride == nil, "override must clear")
         }
     }
+
+    // MARK: - Persistence across a reset (2026-09-14 data-loss fix)
+    //
+    // Drives the exact sequence David asked this be proven by: enrol,
+    // record, enrol again, and confirm the first child's data is still
+    // there and still attributable — not asserted from reading the
+    // implementation, run against real JSON-backed stores on temp files/
+    // directories, the same pattern `vmResetWipesDataAndRegeneratesIdentity`
+    // above already uses to get real (not stubbed) recording behaviour.
+
+    /// Fresh real dashboard store + real participant-archive directory,
+    /// both on temp paths removed after the test.
+    private func makeRealStores() -> (dashboard: JSONParentDashboardStore,
+                                      archiveDir: URL) {
+        let dashboardURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).json")
+        let archiveDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("archive-\(UUID().uuidString)", isDirectory: true)
+        return (JSONParentDashboardStore(fileURL: dashboardURL), archiveDir)
+    }
+
+    @Test("resetForNewParticipant seals the outgoing participant before wiping, durably")
+    func sealsOutgoingParticipantDurably() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+
+            dashboard.recordPhaseSession(letter: "F", phase: "freeWrite", completed: true,
+                                         score: 0.73, schedulerPriority: 0, condition: .threePhase)
+            let vm = TracingViewModel(.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: archive)
+                .with(studyMode: true))
+            let outgoingID = ParticipantStore.participantId
+
+            _ = vm.resetForNewParticipant()
+            await archive.flush()
+
+            // Re-derive from a FRESH store instance pointed at the same
+            // directory — proves the seal survived to disk, not just to
+            // this one process's memory (the failure mode a relaunch, a
+            // crash, or the app being quit before the combined export
+            // runs would otherwise expose).
+            let reopened = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let sealed = reopened.archivedParticipants.first { $0.participantId == outgoingID }
+            #expect(sealed != nil, "the outgoing participant must be durably archived")
+            #expect(sealed?.snapshot.phaseSessionRecords.contains { $0.letter == "F" && $0.score == 0.73 } == true,
+                    "the archived record must carry the outgoing child's actual row, not an empty snapshot")
+        }
+    }
+
+    @Test("resetForNewParticipant re-derives the arms in place under studyMode — no relaunch needed")
+    func reappliesIdentityWithoutRelaunch() {
+        withRestoredState {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = TracingViewModel(.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: archive)
+                .with(studyMode: true))
+
+            let newID = vm.resetForNewParticipant()
+
+            #expect(vm.participantIdentityChanged == false,
+                    "studyMode must clear the relaunch-required flag once the arms are re-derived")
+            #expect(vm.audioCondition == PilotAudioCondition.assign(participantId: newID),
+                    "the LIVE audioCondition must already reflect the NEW participant, with no relaunch")
+            #expect(vm.trainedSubset == TrainedLetterSubset.assign(participantId: newID),
+                    "the LIVE trainedSubset must already reflect the NEW participant, with no relaunch")
+            #expect(vm.sessionBlockReason == nil,
+                    "tracing must not be blocked after an in-place reapply")
+        }
+    }
+
+    @Test("enrol, record, enrol again: the first child's data is still there and still attributable")
+    func firstChildSurvivesASecondEnrolment() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = TracingViewModel(.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: archive)
+                .with(studyMode: true))
+
+            // Child 1: enrol (fixture already enrolled via `.stub`'s
+            // participantEnrolled pin), record a distinctive session.
+            let child1 = ParticipantStore.participantId
+            dashboard.recordPhaseSession(letter: "I", phase: "freeWrite", completed: true,
+                                         score: 0.91, schedulerPriority: 0, condition: .threePhase)
+
+            // Enrol child 2 — the destructive-in-the-old-design step.
+            let child2 = vm.resetForNewParticipant()
+            #expect(child2 != child1)
+            dashboard.recordPhaseSession(letter: "L", phase: "freeWrite", completed: true,
+                                         score: 0.42, schedulerPriority: 0, condition: .threePhase)
+            await archive.flush()
+
+            // Child 1's row must still exist, attributed to child1's id —
+            // not merged into child2's live snapshot, not gone.
+            let sources = vm.allParticipantExportSources
+            #expect(sources.count == 2, "both children must be present in one export pass")
+
+            let child1Export = sources.first { $0.participantId == child1 }
+            #expect(child1Export != nil, "child 1 must still be exportable after child 2 enrolled")
+            #expect(child1Export?.snapshot.phaseSessionRecords.contains { $0.letter == "I" && $0.score == 0.91 } == true,
+                    "child 1's actual row must survive, not just their id")
+            #expect(child1Export?.snapshot.phaseSessionRecords.contains { $0.letter == "L" } == false,
+                    "child 2's row must NOT bleed into child 1's attributed record")
+
+            let child2Export = sources.first { $0.participantId == child2 }
+            #expect(child2Export != nil)
+            #expect(child2Export?.snapshot.phaseSessionRecords.contains { $0.letter == "L" && $0.score == 0.42 } == true,
+                    "child 2's row must be attributed to child 2")
+            #expect(child2Export?.snapshot.phaseSessionRecords.contains { $0.letter == "I" } == false,
+                    "child 1's row must NOT bleed into child 2's attributed record")
+
+            // And the combined export actually produces one file
+            // covering both — not two files the proctor has to remember
+            // to send separately.
+            let combined = ParentDashboardExporter.combinedDelimitedData(participants: sources, separator: ",")
+            let combinedText = String(data: combined, encoding: .utf8) ?? ""
+            #expect(combinedText.contains(child1.uuidString))
+            #expect(combinedText.contains(child2.uuidString))
+        }
+    }
+
+    /// Async counterpart of `withRestoredState` for tests that need to
+    /// `await` a store flush mid-body.
+    private func withRestoredStateAsync(_ body: () async -> Void) async {
+        let pedOverride   = ParticipantStore.conditionOverride
+        let audioOverride = ParticipantStore.audioConditionOverride
+        let enrolled      = ParticipantStore.isEnrolled
+        let studyMode     = UserDefaults.standard.object(forKey: studyModeKey)
+        let schriftArt    = UserDefaults.standard.object(forKey: schriftArtKey)
+        defer {
+            ParticipantStore.conditionOverride = pedOverride
+            ParticipantStore.audioConditionOverride = audioOverride
+            ParticipantStore.isEnrolled = enrolled
+            UserDefaults.standard.set(studyMode, forKey: studyModeKey)
+            UserDefaults.standard.set(schriftArt, forKey: schriftArtKey)
+        }
+        await body()
+    }
 }

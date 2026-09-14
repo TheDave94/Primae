@@ -134,6 +134,15 @@ final class StubRawTraceStore: RawTraceStoring {
     func flush() async { flushCount += 1 }
 }
 
+// MARK: - In-memory participant archive (records seals for assertions)
+final class StubParticipantArchive: ParticipantArchiving {
+    private(set) var archivedParticipants: [ArchivedParticipant] = []
+    func archive(_ record: ArchivedParticipant) {
+        archivedParticipants.removeAll { $0.participantId == record.participantId }
+        archivedParticipants.append(record)
+    }
+}
+
 // MARK: - No-op onboarding store
 final class StubOnboardingStore: OnboardingStoring {
     var hasCompletedOnboarding: Bool { false }
@@ -194,6 +203,7 @@ extension TracingDependencies {
             streakStore:          streakStore,
             dashboardStore:       StubDashboardStore(),
             rawTraceStore:        StubRawTraceStore(),
+            participantArchive:   StubParticipantArchive(),
             onboardingStore:      StubOnboardingStore(),
             notificationScheduler: LocalNotificationScheduler(center: StubNotificationCenter()),
             thesisCondition:      .guidedOnly,
@@ -242,6 +252,9 @@ extension TracingDependencies {
     }
     func with(rawTraceStore: RawTraceStoring) -> TracingDependencies {
         var copy = self; copy.rawTraceStore = rawTraceStore; return copy
+    }
+    func with(participantArchive: ParticipantArchiving) -> TracingDependencies {
+        var copy = self; copy.participantArchive = participantArchive; return copy
     }
     func with(onboardingStore: OnboardingStoring) -> TracingDependencies {
         var copy = self; copy.onboardingStore = onboardingStore; return copy
