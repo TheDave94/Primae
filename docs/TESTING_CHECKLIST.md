@@ -1,5 +1,17 @@
 # Primae — Manual Test Checklist
 
+> **Not for the pilot.** This checklist tests the casual, four-world
+> app (onboarding, Werkstatt, Fortschritte, the full parent dashboard)
+> — the path CLAUDE.md's "The casual path is paused" section stopped
+> building, testing, or reasoning about on 2026-09-13 while the pilot
+> runs. It predates the study compile-out (`STUDY_BUILD`), the
+> bundle-ID split, the pre-task demonstrations (D9), and the phoneme
+> recordings (H5) — none of that exists in this document, and several
+> items here (tap-anywhere skips observe, the coloured recognition
+> badge, the Übersicht tab) are FALSE on the pilot artefact. For the
+> study device dry-run, use `docs/STUDY_DEVICE_DRYRUN.md` instead. Kept
+> here, unmaintained, for the casual app's post-thesis restoration.
+
 A manual end-to-end checklist for verifying the iPad app works as
 expected after a fresh build.
 
