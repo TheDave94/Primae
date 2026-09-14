@@ -178,6 +178,53 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
         #expect(vm.currentProbe == .pretest, "a cold probe must actually start under the newly-applied arms")
     }
 
+    @Test("a reset leaves no stale outgoing-phase state behind, even when the new participant's trainedSubset excludes the fixture's only letter")
+    func resetClearsPhaseStateEvenWithoutAFirstLetterLoad() {
+        // Found by CI (2026-09-14), not designed in: `resetForNewParticipant`
+        // reset the data stores correctly but left `phaseController` (and
+        // `progress`/`directTappedDots`) untouched UNLESS
+        // `loadFirstTrainedLetter` found a letter to load — and it silently
+        // finds none whenever the new participant's random trainedSubset
+        // happens not to include "A", the fixture's only letter (4 of the
+        // 10 possible 3-of-5 subsets: FIL, FIM, FLM, ILM). When that
+        // happened, the OUTGOING child's stale `.freeWrite` phase state
+        // survived, and the very next ordinary letter load for the
+        // INCOMING child — now correctly unblocked — read that stale state
+        // as an abandoned trial and wrote a phantom row for it.
+        //
+        // `resetForNewParticipant`'s new UUID is genuinely random, so this
+        // retries until it draws a subset that excludes "A" — overwhelmingly
+        // likely (~40% per draw) within a handful of attempts, and this is
+        // what makes the test exercise the actual edge case deterministically
+        // rather than ~60% of the time by luck.
+        let store = ThirdPassRecordingStore()
+        var vm = studyVM(store: store)
+        vm.canvasSize = canvas
+        let prevID = ParticipantStore.participantId
+        defer { UserDefaults.standard.set(prevID.uuidString, forKey: "de.flamingistan.primae.participantId") }
+
+        var hitTheEdgeCase = false
+        for _ in 0..<40 {
+            vm = studyVM(store: store)
+            vm.canvasSize = canvas
+            vm.phaseController.resume(at: .freeWrite)
+            var t: CFTimeInterval = 1000
+            inkStroke(vm, from: 50, y: 200, count: 15, t: &t)
+            let newID = vm.resetForNewParticipant()
+            guard !TrainedLetterSubset.assign(participantId: newID).letters.contains("A") else { continue }
+            hitTheEdgeCase = true
+            #expect(vm.phaseController.currentPhase == .observe,
+                    "the phase controller must be reset even when no letter load followed")
+            #expect(vm.progress == 0)
+            #expect(vm.directTappedDots.isEmpty)
+            vm.loadLetter(name: vm.currentLetterName)   // what the next probe/letter would do
+            #expect(store.phaseCalls.isEmpty,
+                    "no phantom row may be written for the outgoing child's stale phase state: \(store.phaseCalls.count)")
+            break
+        }
+        #expect(hitTheEdgeCase, "the retry loop must have drawn a trainedSubset excluding \"A\" at least once in 40 tries")
+    }
+
     @Test("restoring the id this device already carries keeps the original enrolment instant")
     func restoreSameParticipantKeepsEnrolledAt() {
         let prevID = ParticipantStore.participantId

@@ -2499,6 +2499,24 @@ public final class TracingViewModel {
         abortInFlightRecognition()
         freeWriteRecorder.clearAll()
         didCompleteCurrentLetter = true
+        // Reset the phase controller HERE, unconditionally — not left to
+        // `loadFirstTrainedLetter`'s `load(letter:)` call below, which
+        // resets it as a side effect but can silently no-op (e.g. no
+        // letter in `letters` is visible under the newly-derived
+        // trainedSubset). Found 2026-09-14: when that happened, the
+        // OUTGOING child's `phaseController` state (mid-`.freeWrite`,
+        // stale `phaseScores`) survived the reset untouched, and the
+        // very next ordinary `loadLetter` call for the INCOMING child —
+        // now correctly unblocked — read that stale state as "an
+        // abandoned trial" and wrote a phantom row for it, attributed to
+        // nobody's real activity. Resetting here makes the phase state
+        // clean regardless of whether a letter load follows. `progress`
+        // and `directTappedDots` are cleared alongside it for the same
+        // reason — `load(letter:)` clears both too, but only on a
+        // successful load.
+        phaseController.reset()
+        progress = 0
+        directTappedDots.removeAll()
         dashboardStore.reset()          // PhaseSessionRecords, letterStats, durations
         progressStore.resetAll()        // all LetterProgress
         streakStore.reset()             // streak + stars
