@@ -10,6 +10,28 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  probe_xcode27_label:
+    name: "PROBE (throwaway) — what does runs-on: xcode-27 actually give us"
+    runs-on: xcode-27
+    timeout-minutes: 5
+    steps:
+      - name: "Report the actual Xcode build on this label"
+        run: |
+          echo "--- /Applications, anything Xcode-named ---"
+          ls -la /Applications | grep -i xcode || echo "(no match)"
+          echo "--- xcode-select -p (current default) ---"
+          xcode-select -p
+          echo "--- xcodebuild -version (current default) ---"
+          xcodebuild -version
+          echo "--- every Xcode*.app's own build number, if more than one is installed ---"
+          for app in /Applications/Xcode*.app; do
+            [ -d "$app" ] || continue
+            echo "== $app =="
+            defaults read "$app/Contents/Info" DTXcodeBuild 2>/dev/null || \
+              /usr/libexec/PlistBuddy -c "Print :DTXcodeBuild" "$app/Contents/Info.plist" 2>/dev/null || \
+              echo "(no DTXcodeBuild key found)"
+          done
+
   stroke_audit:
     name: "Skeleton & stroke audit (advisory)"
     runs-on: ubuntu-latest
