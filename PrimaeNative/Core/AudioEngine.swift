@@ -328,8 +328,19 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func resumeAfterLifecycle() {
-        guard currentFile != nil else { shouldResumePlayback = false; return }
+        // DEFECT (2026-09-15): `appIsForeground` used to flip back to true
+        // only AFTER this early-return guard. `currentFile` is nil almost
+        // always between strokes (finishStop(), the tail of every stop(),
+        // nils it), so any scene-phase blip — Control Center, a
+        // notification banner, the app switcher, screen lock — that fires
+        // suspend/resume while no file is loaded left `appIsForeground`
+        // stuck false for the rest of the process: `canResumePlayback()`
+        // gates on it, so every later play attempt in both sound arms was
+        // silently refused while `isPlaying` kept reading true. Set it
+        // unconditionally, before the guard, so a foreground transition is
+        // always recorded regardless of what's currently loaded.
         appIsForeground = true
+        guard currentFile != nil else { shouldResumePlayback = false; return }
         cancelPendingLifecycleWork()
         startIfNeeded()
         if let file = currentFile, !player.isPlaying {
