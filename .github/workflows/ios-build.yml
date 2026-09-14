@@ -134,7 +134,7 @@ jobs:
         run: |
           xcodebuild -resolvePackageDependencies \
             -project Primae/Primae.xcodeproj \
-            -scheme Primae-Study
+            -scheme Primae
 
       # Debug-Study, not Debug (2026-09-14): STUDY_BUILD is now
       # unconditional in Package.swift (every build of the package IS a
@@ -149,7 +149,7 @@ jobs:
           set -o pipefail
           xcodebuild test \
             -project Primae/Primae.xcodeproj \
-            -scheme Primae-Study \
+            -scheme Primae \
             -destination 'platform=iOS Simulator,name=${{ matrix.simulator }},OS=latest' \
             -configuration Debug-Study \
             -enableCodeCoverage NO \
@@ -194,7 +194,7 @@ jobs:
       - name: Resolve Swift Package dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
-            -project Primae/Primae.xcodeproj -scheme Primae-Study
+            -project Primae/Primae.xcodeproj -scheme Primae
 
       # ---------------------------------------------------------------
       # CONTROL A ("Debug-Study without the flag must FAIL to link") lived
@@ -211,6 +211,49 @@ jobs:
       # none of the compiled-out surfaces, regardless of how STUDY_BUILD
       # reached the package.
       # ---------------------------------------------------------------
+
+      # ---------------------------------------------------------------
+      # SCHEME-DRIVEN BUILD (2026-09-14) — the check that actually caught
+      # a real defect the same day it was added: every OTHER build in this
+      # workflow passes `-configuration` explicitly, which is not how
+      # David presses Run in Xcode. He picks a scheme, picks a
+      # destination, and presses the button — no `-configuration`
+      # anywhere, so whatever the SCHEME's own Launch action names as its
+      # default is what actually gets built. A script build succeeding
+      # proves nothing about that path; this step is deliberately the
+      # thing that failed once already (a since-deleted "Primae" scheme
+      # whose Launch action still pointed at the casual Debug
+      # configuration, which could no longer link once STUDY_BUILD went
+      # unconditional — `_primae_build_identity_normal` no longer exists
+      # to satisfy the `-u`). Omitting `-configuration` here is the point,
+      # not an oversight.
+      # ---------------------------------------------------------------
+      - name: "Scheme-driven build, no -configuration override (what Xcode's Run button actually does)"
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project Primae/Primae.xcodeproj \
+            -scheme Primae \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath /tmp/dd-scheme-run \
+            CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
+            2>&1 | tee /tmp/scheme-run-build.log | tail -20
+          APP=$(find /tmp/dd-scheme-run/Build/Products -maxdepth 2 -type d -name "Primae.app" | head -1)
+          if [ -z "$APP" ]; then
+            echo "FAIL  scheme-driven build produced no Primae.app — see /tmp/scheme-run-build.log"
+            exit 1
+          fi
+          BIN="$APP/Primae"
+          if nm -jU "$BIN" 2>/dev/null | grep -qx "_primae_build_identity_study"; then
+            echo "ok    scheme-driven build (no -configuration) resolved to the study identity"
+          else
+            echo "FAIL  scheme-driven build did not carry _primae_build_identity_study — it"
+            echo "      resolved to a configuration Xcode's Run button would not use, or the"
+            echo "      wrong one. This is exactly the failure mode this step exists to catch."
+            nm -jU "$BIN" 2>/dev/null | grep primae_build_identity || echo "      (no identity symbol found at all)"
+            exit 1
+          fi
+
       - name: "Build & test the study build"
         run: |
           set -o pipefail

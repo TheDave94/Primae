@@ -311,13 +311,21 @@ nm -jU /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app/Primae \
 # must print _primae_build_identity_study, and nothing else
 ```
 
-**Pressing ⌘R on the `Primae-Study` scheme (Debug-Study configuration) now
+**Pressing ⌘R on the `Primae` scheme (Debug-Study configuration) now
 produces a study build (2026-09-14).** This was NOT true before that date —
 it used to fail at link time on the missing `_primae_build_identity_study`
 symbol, because the package needed the flag and Xcode's UI had no channel to
-supply it. See "STUDY_BUILD made unconditional" below for what changed and
-why. The identity symbols themselves are unaffected: every configuration
-still names its own `_primae_build_identity_{study,normal}` via `-u`, so `nm`
+supply it. There is exactly one scheme now, named `Primae` — the OLD `Primae`
+scheme (which built the casual Debug/Release configuration) was deleted, and
+`Primae-Study` was renamed to `Primae` to take its place; a leftover second
+scheme naming a distinction that no longer exists failed at link on a symbol
+that no longer exists, which reads as a broken project rather than a retired
+scheme, and cost a real debugging round trip the same day it was found. If
+anything still says `Primae-Study`, that scheme doesn't exist anymore — fix
+the reference, don't recreate the scheme. See "STUDY_BUILD made unconditional"
+below for what changed and why. The identity symbols themselves are
+unaffected: every configuration still names its own
+`_primae_build_identity_{study,normal}` via `-u`, so `nm`
 still attests which binary you're holding — what changed is only how
 STUDY_BUILD reaches the package, not what the identity guard verifies once
 it's there.
@@ -484,20 +492,41 @@ there is exactly one configuration worth building, so the question was not
   Header rewritten to explain the current state; the script itself is
   otherwise unchanged and still the non-interactive path for device/CI
   builds.
-- `ios-build.yml`: the main `xcode_test` job moved from `-scheme Primae
-  -configuration Debug` to `-scheme Primae-Study -configuration Debug-Study`
-  — the one configuration that still links. `CONTROL A` ("Debug-Study
-  without the flag must FAIL to link") removed from the `study_build` job:
-  its entire premise — that a flagless Debug-Study build was constructible
-  and had to be shown failing — stopped being true, so keeping it would
-  have asserted nothing (a "guard" against a state that can no longer be
-  reached is not a weaker guard, it's an inert one). The identity/SURFACES
-  scan in that same job is untouched and still does real work: it verifies
-  the SHIPPED artefact's actual composition, which is independent of how
-  the flag reached the package.
+- `ios-build.yml`: the main `xcode_test` job moved from `-configuration
+  Debug` to `-configuration Debug-Study` — the one configuration that
+  still links. `CONTROL A` ("Debug-Study without the flag must FAIL to
+  link") removed from the `study_build` job: its entire premise — that a
+  flagless Debug-Study build was constructible and had to be shown
+  failing — stopped being true, so keeping it would have asserted nothing
+  (a "guard" against a state that can no longer be reached is not a
+  weaker guard, it's an inert one). The identity/SURFACES scan in that
+  same job is untouched and still does real work: it verifies the
+  SHIPPED artefact's actual composition, which is independent of how the
+  flag reached the package.
 - Verified by a real CI round-trip (not assumed): all five `ios-build.yml`
   jobs green on the changed workflow, including the full `Debug-Study`
   test run under the new scheme/configuration.
+
+**Same-day follow-up: the scheme itself, not just the configuration, had
+the same problem.** The fix above still passed `-scheme Primae-Study` (the
+scheme that already pointed at Debug-Study/Release-Study) everywhere — it
+did NOT touch the separate, older `Primae` scheme, whose Launch/Test/
+Profile/Archive actions still pointed at the now-unlinkable Debug/Release.
+That scheme is the one David actually had selected, and pressing Run on it
+failed at link on `_primae_build_identity_normal` — a symbol that no
+longer exists, so it read as a broken project rather than a retired
+configuration. A stale scheme name left in a doc, or a habit of picking
+the "wrong" one, would have kept recreating this. Fixed by collapsing to
+one scheme rather than by telling David to remember which of two to pick:
+the old `Primae` scheme was deleted, and `Primae-Study` was renamed to
+`Primae`. Every reference to `-scheme Primae-Study` in this repo
+(`build_study.sh`, `ios-build.yml`, this file, `ROADMAP.md`,
+`StudyBuild.swift`'s header comment) was updated to `Primae`. Verified by
+the thing that actually failed, not by a script build: `ios-build.yml`
+now has a dedicated CI step ("Scheme-driven build, no -configuration
+override") that builds `-scheme Primae` with NO `-configuration` flag —
+exactly what Xcode's Run button does — and confirms via `nm` that it
+resolves to the study identity.
 
 **What this does NOT change:** the identity-symbol guard itself
 (`_primae_build_identity_{study,normal}`, `-u`-required per app

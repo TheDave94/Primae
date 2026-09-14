@@ -309,17 +309,27 @@ scratch:
    asserted, don't assume the old removed step can just be pasted back
    unchanged, since the mechanism it was guarding no longer exists in the
    same shape.
-3. Flip the main `xcode_test` job's `-scheme Primae-Study -configuration
-   Debug-Study` back to `-scheme Primae -configuration Debug` (or whichever
-   configuration makes sense at that point). The 2026-09-13 caution here — "12
-   of 72 test files construct non-study scenarios... may not even compile" —
-   was checked directly on 2026-09-14 and did NOT hold up: a full sweep found
-   zero test-file references to any symbol `STUDY_BUILD` compiles out of the
-   package, and no test constructs an unpinned `TracingDependencies()` that
-   would inherit the compile-time default. That specific worry can be
-   retired; re-verify quickly rather than re-deriving from scratch, since
-   whatever code exists by the restoration date may have drifted from what
-   was measured here.
+3. Flip the main `xcode_test` job's `-configuration Debug-Study` back to
+   `-configuration Debug` (or whichever configuration makes sense at that
+   point). The 2026-09-13 caution here — "12 of 72 test files construct
+   non-study scenarios... may not even compile" — was checked directly on
+   2026-09-14 and did NOT hold up: a full sweep found zero test-file
+   references to any symbol `STUDY_BUILD` compiles out of the package, and
+   no test constructs an unpinned `TracingDependencies()` that would
+   inherit the compile-time default. That specific worry can be retired;
+   re-verify quickly rather than re-deriving from scratch, since whatever
+   code exists by the restoration date may have drifted from what was
+   measured here.
+4. Restore a second scheme if casual needs to coexist with study again.
+   There is exactly one scheme now, `Primae` (2026-09-14) — the old
+   `Primae` scheme, which pointed at casual Debug/Release, was DELETED
+   (not renamed) once its Debug/Release link target stopped existing;
+   `Primae-Study` was renamed to `Primae` to take its place. Restoring
+   casual therefore needs a scheme recreated from scratch pointed at
+   Debug/Release (e.g. `Primae-Casual` or similar — don't reuse the name
+   `Primae` for it, that name now means "the one scheme," and re-splitting
+   it back into two without a clearly different name is exactly the "which
+   one do I pick" trap this collapse existed to close), not un-deleted.
 
 ### F1 — App Store readiness pass
 **Effort:** L · **Priority:** P1 (post-thesis)

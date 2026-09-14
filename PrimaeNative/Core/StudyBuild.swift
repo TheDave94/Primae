@@ -3,18 +3,23 @@
 //
 // The one place that knows whether this binary is a study build.
 //
-// `STUDY_BUILD` is NOT set by the Xcode project: a project-level
-// `SWIFT_ACTIVE_COMPILATION_CONDITIONS` reaches the app target but
-// NOT this SwiftPM package target (measured, spike ed055db —
-// app=ON / package=OFF). Study builds therefore come from the
-// xcodebuild command-line override in `scripts/build_study.sh`,
-// which does reach every target.
+// `STUDY_BUILD` is unconditional in `Package.swift` (2026-09-14) — every
+// build of this package IS a study build, full stop; there is no
+// non-study configuration of this SwiftPM target anymore. This was NOT
+// always true: a project-level `SWIFT_ACTIVE_COMPILATION_CONDITIONS`
+// used to reach the app target but never this package target (measured,
+// spike ed055db — app=ON / package=OFF), so the flag could only arrive
+// via an xcodebuild command-line override (`scripts/build_study.sh`),
+// and pressing ⌘R in Xcode would compile the app half in and leave the
+// package half out — a binary that looked like a study build and was
+// not. That specific trap is gone with the mechanism that caused it,
+// which is also why the casual (non-study) app configuration no longer
+// exists as a scheme: see CLAUDE.md "STUDY_BUILD made unconditional."
 //
-// That leaves one trap: selecting the Primae-Study scheme in Xcode
-// and pressing ⌘R would compile the app half out and leave the
-// package half fully intact — a binary that looks like a study build
-// and is not. The build-identity symbols at the bottom of this file
-// close it, and they carry the binary's identity as well.
+// The build-identity symbols below are unrelated to any of that history
+// and remain load-bearing on their own terms: they prove which of the
+// two app-target configurations (Debug/Release-Study) produced a given
+// binary, independent of how STUDY_BUILD itself reached the package.
 //
 // Exactly one of `primae_build_identity_study` /
 // `primae_build_identity_normal` is compiled, and EVERY app build
