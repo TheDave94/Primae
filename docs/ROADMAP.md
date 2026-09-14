@@ -286,24 +286,40 @@ on-device act (like the pilot artefact build in CLAUDE.md) or dropping.
 
 These are worthwhile additions once the thesis ships. None of them is a thesis-blocker.
 
-**Prerequisite for all of F1–F12, recorded 2026-09-13:** the casual `Debug`/`Release`
-path is paused, not deleted (`CLAUDE.md`, "The casual path is paused") — CI no longer
-builds, tests, or compares it against study. Every item below assumes a working
-casual build; restoring active casual CI is the first act of resuming any of them,
-not a side effect of picking one up. Two concrete pieces of that restoration, already
-scoped so nobody re-derives them from scratch:
-1. Re-add a CI job/step that builds `Debug`/`Release` again (removed: "CONTROL B",
-   "Build the normal build for comparison"; the identity-scan step's normal-side
-   checks were rewritten to study-only, not just skipped — restoring the comparison
-   means writing that half back, not un-skipping it).
-2. Flip the main `xcode_test` job's `-configuration Debug` back to whichever
-   configuration makes sense at that point — deliberately NOT done during the pilot
-   because 12 of 72 test files construct non-study scenarios
-   (`TestFixtureContractTests`, `HapticEngineTests`, `StudyLaunchTests`,
-   `StudyLetterSetTests`, `PreTaskDemonstrationTests`, `TogglePersistenceTests`,
-   `AudioArmRoutingTests`, `StudyCleanConfigTests`, `AuditThirdPassTests`,
-   `ThesisConditionAssignmentTests`, `StudyModeGuardTests`, `SilentArmAuthorityTests`)
-   and would need auditing against whatever `STUDY_BUILD`'s state is by then.
+**Prerequisite for all of F1–F12, recorded 2026-09-13, UPDATED 2026-09-14:** the
+casual `Debug`/`Release` path is paused, not deleted (`CLAUDE.md`, "The casual
+path is paused") — CI no longer builds, tests, or compares it against study.
+As of 2026-09-14 this went one step further: `STUDY_BUILD` is unconditional in
+`Package.swift` (`CLAUDE.md`, "STUDY_BUILD made unconditional"), so the casual
+configuration cannot even LINK anymore, not just "isn't exercised." Every item
+below assumes a working casual build; restoring active casual CI is the first
+act of resuming any of them, not a side effect of picking one up. Concrete
+pieces of that restoration, already scoped so nobody re-derives them from
+scratch:
+1. Remove (or make conditional) the `.define("STUDY_BUILD")` swiftSettings
+   entries in `Package.swift` (`PrimaeNative` and `PrimaeNativeTests` targets)
+   — this is the actual gate now; without this step nothing else here matters.
+2. Re-add a CI job/step that builds `Debug`/`Release` again (removed:
+   "CONTROL B", "Build the normal build for comparison"; the identity-scan
+   step's normal-side checks were rewritten to study-only, not just skipped —
+   restoring the comparison means writing that half back, not un-skipping it).
+   `CONTROL A` ("Debug-Study without the flag must FAIL to link") is also gone
+   and would need re-adding IF the flag goes back to being conditional rather
+   than unconditional — re-derive it from `CLAUDE.md`'s description of what it
+   asserted, don't assume the old removed step can just be pasted back
+   unchanged, since the mechanism it was guarding no longer exists in the
+   same shape.
+3. Flip the main `xcode_test` job's `-scheme Primae-Study -configuration
+   Debug-Study` back to `-scheme Primae -configuration Debug` (or whichever
+   configuration makes sense at that point). The 2026-09-13 caution here — "12
+   of 72 test files construct non-study scenarios... may not even compile" —
+   was checked directly on 2026-09-14 and did NOT hold up: a full sweep found
+   zero test-file references to any symbol `STUDY_BUILD` compiles out of the
+   package, and no test constructs an unpinned `TracingDependencies()` that
+   would inherit the compile-time default. That specific worry can be
+   retired; re-verify quickly rather than re-deriving from scratch, since
+   whatever code exists by the restoration date may have drifted from what
+   was measured here.
 
 ### F1 — App Store readiness pass
 **Effort:** L · **Priority:** P1 (post-thesis)

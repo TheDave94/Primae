@@ -261,10 +261,21 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 ## Study builds
 
 A **study build** compiles the non-study surfaces out and defaults `studyMode`
-ON (B2). `STUDY_BUILD` arrives as an xcodebuild command-line override, because a
-project-level `SWIFT_ACTIVE_COMPILATION_CONDITIONS` reaches the app target but
-NOT the `PrimaeNative` SwiftPM package target (measured — spike `ed055db`).
-`scripts/build_study.sh` is the only blessed way to produce one.
+ON (B2).
+
+**`STUDY_BUILD` is unconditional as of 2026-09-14** — defined directly in
+`Package.swift`'s `swiftSettings` for both the `PrimaeNative` and
+`PrimaeNativeTests` targets, not gated on any build setting or command-line
+flag. Every build of the package IS a study build now, full stop; see "STUDY_BUILD
+made unconditional" below "The casual path is paused" for the reasoning, what
+this took with it, and why the OLDER mechanism (an xcodebuild command-line
+override, because a project-level `SWIFT_ACTIVE_COMPILATION_CONDITIONS` never
+reached this SwiftPM package target — measured, spike `ed055db`) is now
+historical, not current. `scripts/build_study.sh` remains the blessed way to
+produce a device/CI build non-interactively (it still picks the right scheme,
+configuration, derived-data path, and prints the toolchain version) — it is
+no longer the *only* way a build can carry STUDY_BUILD, which is the whole
+point: Xcode's own ⌘R now works too.
 
 **Two configurations, and they are not interchangeable:**
 
@@ -300,12 +311,16 @@ nm -jU /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app/Primae \
 # must print _primae_build_identity_study, and nothing else
 ```
 
-Pressing ⌘R on the `Primae-Study` scheme does NOT produce a study build. It
-fails at link time instead: every configuration names its own
-`_primae_build_identity_{study,normal}` via `-u`, and the symbol exists only
-when the package itself was compiled with the matching flag. CI proves the
-flag is genuinely load-bearing (CONTROL A in `ios-build.yml` — see "The
-casual path is paused" below for why there is no longer a CONTROL B).
+**Pressing ⌘R on the `Primae-Study` scheme (Debug-Study configuration) now
+produces a study build (2026-09-14).** This was NOT true before that date —
+it used to fail at link time on the missing `_primae_build_identity_study`
+symbol, because the package needed the flag and Xcode's UI had no channel to
+supply it. See "STUDY_BUILD made unconditional" below for what changed and
+why. The identity symbols themselves are unaffected: every configuration
+still names its own `_primae_build_identity_{study,normal}` via `-u`, so `nm`
+still attests which binary you're holding — what changed is only how
+STUDY_BUILD reaches the package, not what the identity guard verifies once
+it's there.
 
 **Installing it.** `build_study.sh` only builds — it does not push the result
 onto a device. Locate the iPad and install the *verified* `.app` (verify
@@ -412,21 +427,86 @@ not a hypothetical one.
   vacuity-guard the old SURFACES check had ("missing from normal too" catches
   a renamed symbol silently passing) is gone with it — an accepted,
   documented reduction in coverage, not a silent one.
-- **Untouched, deliberately:** the main `xcode_test` job still builds and
-  tests under plain `Debug` (~892 tests, two simulators). This is the one
-  place casual is still exercised, and it's not an oversight — 12 of 72 test
-  files construct non-study scenarios
-  (`TestFixtureContractTests`, `HapticEngineTests`, `StudyLaunchTests`,
-  `StudyLetterSetTests`, `PreTaskDemonstrationTests`, `TogglePersistenceTests`,
-  `AudioArmRoutingTests`, `StudyCleanConfigTests`, `AuditThirdPassTests`,
-  `ThesisConditionAssignmentTests`, `StudyModeGuardTests`,
-  `SilentArmAuthorityTests`), and `StudyBuild.resolveStudyMode()` returns
-  `true` unconditionally under `STUDY_BUILD` with no escape hatch — some of
-  those files may not even compile once the test target is built with the
-  flag. Flipping this job to `Debug-Study` needs each of those twelve audited
-  first, and that can't be verified without a CI round-trip whose outcome I
-  couldn't predict — not a change to make blind, mid-pilot. **Named here as
-  the deliberate next step, not dropped.**
+- **Untouched, deliberately, as of 2026-09-13 — superseded 2026-09-14, see
+  below:** the main `xcode_test` job kept building and testing under plain
+  `Debug` at the time this decision was made. That is no longer current; see
+  the next section for what changed and why the "may not even compile"
+  concern below did not hold up once it was actually checked.
+
+### STUDY_BUILD made unconditional (2026-09-14) — the deliberate next step above, taken
+
+David wanted to build and install from the Xcode UI rather than the
+terminal; the `-u` identity guard correctly refused every Xcode-driven build,
+because `STUDY_BUILD` only ever reached the package via `build_study.sh`'s
+command-line override, which the Xcode UI has no way to supply (spike
+`ed055db`). The reframe that unblocked this: with the casual path paused,
+there is exactly one configuration worth building, so the question was not
+"how does Xcode supply the flag" but "should this still be a flag at all."
+
+**Measured before changing anything, not assumed:**
+- Every symbol `STUDY_BUILD` compiles out of the package (the
+  `ios-build.yml` `SURFACES` list, plus the `AppWorld.werkstatt`/`.fortschritte`
+  cases and several other view types found by a full sweep of the package's
+  25 `#if STUDY_BUILD` files) — checked against every file in
+  `PrimaeNativeTests`. Exactly one hit: `StrokeCalibrationOverlay`, referenced
+  only inside `StrokeCalibrationOverlayHelpersTests.swift`, which is ALREADY
+  wrapped in `#if !STUDY_BUILD` at the file level (compiles to nothing under
+  the flag; its own header says so). The other three test files that already
+  reference `STUDY_BUILD` (`IsCalibratingStudyBuildTests`, `StudyBuildTests`,
+  `TogglePersistenceTests`) are already written per-branch (`#if STUDY_BUILD
+  ... #else ... #endif`) asserting the correct behaviour either way.
+- No test file constructs a bare, unpinned `TracingDependencies()` or
+  `TracingViewModel()` that would pick up `StudyBuild.resolveStudyMode()`'s
+  compile-time-driven default — every VM-building test goes through `.stub`
+  (which pins `studyMode: false` explicitly) or an explicit
+  `.with(studyMode:)` override. The "12 of 72 test files... may not even
+  compile" concern recorded in the superseded bullet above did not hold up:
+  it was a reasonable precaution at the time, not something that had been
+  checked, and a full measurement now says otherwise.
+- The REAL, structural cost was a different one, found by checking the
+  linker requirement, not the test contents: `Debug`/`Release` (the casual
+  configuration) names `-u _primae_build_identity_normal`, and the package
+  can no longer produce that symbol once `STUDY_BUILD` is unconditional (it
+  only ever compiles the `study` half of that identity pair now). This
+  means the casual configuration **cannot link at all anymore** — a step
+  further than "paused" (CI stopped exercising it) to "structurally
+  unbuildable" (nothing can link it, on purpose, matching "the casual path
+  is paused" taken to its conclusion now that there is genuinely one
+  configuration). This is why `xcode_test` could not stay on plain `Debug`.
+
+**What changed:**
+- `Package.swift`: `.define("STUDY_BUILD")` added to both the
+  `PrimaeNative` and `PrimaeNativeTests` targets' `swiftSettings`,
+  unconditional — this is the actual mechanism now, not an xcodebuild flag.
+- `scripts/build_study.sh`: the `SWIFT_ACTIVE_COMPILATION_CONDITIONS`
+  command-line override removed (redundant now, and misleading to leave —
+  a future reader would reasonably conclude it's still the mechanism).
+  Header rewritten to explain the current state; the script itself is
+  otherwise unchanged and still the non-interactive path for device/CI
+  builds.
+- `ios-build.yml`: the main `xcode_test` job moved from `-scheme Primae
+  -configuration Debug` to `-scheme Primae-Study -configuration Debug-Study`
+  — the one configuration that still links. `CONTROL A` ("Debug-Study
+  without the flag must FAIL to link") removed from the `study_build` job:
+  its entire premise — that a flagless Debug-Study build was constructible
+  and had to be shown failing — stopped being true, so keeping it would
+  have asserted nothing (a "guard" against a state that can no longer be
+  reached is not a weaker guard, it's an inert one). The identity/SURFACES
+  scan in that same job is untouched and still does real work: it verifies
+  the SHIPPED artefact's actual composition, which is independent of how
+  the flag reached the package.
+- Verified by a real CI round-trip (not assumed): all five `ios-build.yml`
+  jobs green on the changed workflow, including the full `Debug-Study`
+  test run under the new scheme/configuration.
+
+**What this does NOT change:** the identity-symbol guard itself
+(`_primae_build_identity_{study,normal}`, `-u`-required per app
+configuration, `nm`-verifiable) is untouched — it still exists, still
+enforces that Debug-Study/Release-Study can only link against the study
+half. What changed is purely how `STUDY_BUILD` reaches the *package*; the
+guard survives exactly as designed, and now has nothing left to catch
+Xcode's UI doing wrong, because there is no longer a wrong way to reach it
+from there.
 
 ### ⚠️ The pilot artefact is built by a toolchain CI does not exercise
 

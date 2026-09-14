@@ -134,16 +134,24 @@ jobs:
         run: |
           xcodebuild -resolvePackageDependencies \
             -project Primae/Primae.xcodeproj \
-            -scheme Primae
+            -scheme Primae-Study
 
+      # Debug-Study, not Debug (2026-09-14): STUDY_BUILD is now
+      # unconditional in Package.swift (every build of the package IS a
+      # study build, full stop — see Package.swift and CLAUDE.md "Study
+      # builds"), so the plain Debug/Release configuration's own linker
+      # requirement (`-u _primae_build_identity_normal`) can no longer be
+      # satisfied by anything — that configuration cannot link at all
+      # anymore, not just "isn't exercised here". This is the main test
+      # job; it has to build the one configuration that still links.
       - name: Build & Test — iPad simulator
         run: |
           set -o pipefail
           xcodebuild test \
             -project Primae/Primae.xcodeproj \
-            -scheme Primae \
+            -scheme Primae-Study \
             -destination 'platform=iOS Simulator,name=${{ matrix.simulator }},OS=latest' \
-            -configuration Debug \
+            -configuration Debug-Study \
             -enableCodeCoverage NO \
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_DEBUG_DYLIB=NO \
@@ -186,43 +194,23 @@ jobs:
       - name: Resolve Swift Package dependencies
         run: |
           xcodebuild -resolvePackageDependencies \
-            -project Primae/Primae.xcodeproj -scheme Primae
+            -project Primae/Primae.xcodeproj -scheme Primae-Study
 
       # ---------------------------------------------------------------
-      # Build identity is carried by a LINK-ENFORCED symbol pair: exactly
-      # one of _primae_build_identity_{study,normal} is compiled, and each
-      # app configuration names its own with `-u`. Both controls below
-      # must be shown capable of failing before the builds they protect
-      # mean anything — and both directions matter. An earlier version
-      # guarded only the study half, and it was the study half that
-      # silently lost its identity.
+      # CONTROL A ("Debug-Study without the flag must FAIL to link") lived
+      # here and is REMOVED (2026-09-14), not just passing differently: its
+      # entire premise was that a "flagless" Debug-Study build was possible
+      # and had to be proven to fail — the Cmd-R trap. STUDY_BUILD is now
+      # unconditional in Package.swift, so there is no flagless state left
+      # to construct; every build of the package IS a study build, and a
+      # control asserting "the thing that can no longer happen must fail"
+      # would be asserting nothing, not a weaker version of the same
+      # guarantee. Removed rather than left green-by-vacuity. The identity
+      # scan below still does real, unrelated work: it verifies the
+      # SHIPPED artefact actually carries the right identity symbol and
+      # none of the compiled-out surfaces, regardless of how STUDY_BUILD
+      # reached the package.
       # ---------------------------------------------------------------
-      - name: "CONTROL A — Debug-Study without the flag must FAIL to link"
-        run: |
-          set -o pipefail
-          if xcodebuild build \
-               -project Primae/Primae.xcodeproj \
-               -scheme Primae-Study \
-               -configuration Debug-Study \
-               -destination 'generic/platform=iOS Simulator' \
-               -derivedDataPath /tmp/dd-guard-a \
-               CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
-               > /tmp/guard-a.log 2>&1; then
-            echo "GUARD BROKEN: a flagless Debug-Study build succeeded."
-            echo "That is the Cmd-R trap this guard exists to close."
-            tail -30 /tmp/guard-a.log
-            exit 1
-          fi
-          if grep -qi "primae_build_identity_study" /tmp/guard-a.log; then
-            echo "GUARD A OK — flagless study build fails at link on the missing study identity:"
-            grep -i -m3 "primae_build_identity_study" /tmp/guard-a.log
-          else
-            echo "GUARD A INCONCLUSIVE — build failed, but not on the identity symbol."
-            echo "Some other error is masking the guard; treat as broken."
-            tail -30 /tmp/guard-a.log
-            exit 1
-          fi
-
       - name: "Build & test the study build"
         run: |
           set -o pipefail

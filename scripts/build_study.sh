@@ -1,21 +1,27 @@
 #!/bin/sh
-# build_study.sh — the ONLY blessed way to produce a Primae study build.
+# build_study.sh — the blessed way to produce a Primae study build.
 #
-# Why a script rather than "select the scheme and press build":
-# `STUDY_BUILD` has to arrive as an xcodebuild command-line override.
-# A project-level SWIFT_ACTIVE_COMPILATION_CONDITIONS reaches the app
-# target but NOT the PrimaeNative SwiftPM package target (measured,
-# spike ed055db — app=ON / package=OFF), and the package is where every
-# compiled-out view lives.
+# STUDY_BUILD is unconditional in Package.swift (2026-09-14) — every
+# build of the PrimaeNative package IS a study build now, including one
+# driven from the Xcode UI (⌘R on the Primae-Study scheme, Debug-Study
+# configuration, now genuinely works — see CLAUDE.md "Study builds").
+# That was NOT always true: a project-level SWIFT_ACTIVE_COMPILATION_
+# CONDITIONS reaches the app target but never reached this SwiftPM
+# package target (measured, spike ed055db — app=ON / package=OFF), so
+# until this date the flag could only arrive as an xcodebuild COMMAND-
+# LINE override, which Xcode's own UI has no way to supply — hence this
+# script existing at all, and hence ⌘R on Primae-Study used to fail at
+# link time on the missing `_primae_build_identity_study` symbol. That
+# specific failure mode is gone; this script survives it as the
+# convenient, scriptable, non-interactive path (device installs,
+# CI, the Release-Study pilot artefact), not as the ONLY path anymore.
 #
-# Pressing ⌘R on the Primae-Study scheme in Xcode therefore does NOT
-# produce a study build. It fails at link time instead: the Debug-Study
-# configuration links with `-u _primae_build_identity_study`, a symbol
-# that exists only when the package itself was compiled with the flag.
-# Fail-closed by construction — the trap cannot be walked into. The
-# normal configurations name `-u _primae_build_identity_normal` for the
-# same reason, so neither binary can be built carrying the other half's
-# identity, and `nm` can attest which one it is holding.
+# The identity-symbol pair (`_primae_build_identity_{study,normal}`,
+# `-u`-required per configuration, in StudyBuild.swift) is unaffected by
+# any of this — it still proves which binary you're holding via `nm`,
+# still guards Debug-Study/Release-Study from linking the wrong half.
+# What changed is only how STUDY_BUILD reaches the package, not what the
+# identity guard does once it's there.
 #
 # Usage:
 #   scripts/build_study.sh build  [extra xcodebuild args...]
@@ -55,13 +61,17 @@ echo "build_study.sh: action=$ACTION configuration=$CONFIGURATION signing=$SIGNI
 echo "build_study.sh: destination=$DESTINATION"
 echo "build_study.sh: xcodebuild=$(xcodebuild -version | tr '\n' ' ')"
 
+# No SWIFT_ACTIVE_COMPILATION_CONDITIONS override here (removed
+# 2026-09-14) — STUDY_BUILD is unconditional in Package.swift now, so
+# passing it again on the command line would be a redundant no-op, and
+# a future reader finding it here would reasonably conclude it's still
+# the mechanism, which it no longer is.
 exec xcodebuild "$ACTION" \
     -project "$ROOT/Primae/Primae.xcodeproj" \
     -scheme Primae-Study \
     -configuration "$CONFIGURATION" \
     -destination "$DESTINATION" \
     -derivedDataPath "$DERIVED" \
-    SWIFT_ACTIVE_COMPILATION_CONDITIONS='$(inherited) STUDY_BUILD' \
     CODE_SIGNING_ALLOWED="$SIGNING" \
     ENABLE_DEBUG_DYLIB=NO \
     "$@"
