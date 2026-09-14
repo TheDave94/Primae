@@ -113,7 +113,13 @@ struct ParentAreaView: View {
             ParentDashboardView()
         #endif
         case .research:
-            ResearchDashboardView()
+            // ResearchDashboardView lives in the NavigationSplitView's
+            // detail column — ITS `@Environment(\.dismiss)` only pops
+            // that column, not this view's own root presentation. Pass
+            // THIS view's dismiss (the one bound to the enclosing
+            // `.fullScreenCover` in MainAppView) so a probe button can
+            // close the whole parent area (2026-09-15).
+            ResearchDashboardView(onLeaveParentArea: { dismiss() })
         case .settings:
             SettingsView()
         case .export:

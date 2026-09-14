@@ -29,6 +29,19 @@ struct ResearchDashboardView: View {
     @State private var restoreIDText = ""
     @State private var restoreError: String?
     @State private var showExportError = false
+    /// Proctor-facing refusal reason from a cold-probe button
+    /// (`startColdProbe`/`startPostTest` return non-nil on refusal).
+    /// Surfaced via `.alert` so a silent VM refusal is never
+    /// indistinguishable from the dismissal itself doing nothing
+    /// (2026-09-15).
+    @State private var probeError: String?
+    /// Closes the WHOLE parent area (its own root `NavigationSplitView`
+    /// dismiss), not just this detail column. Defaults to a no-op so any
+    /// other construction site keeps compiling. `dismiss()` from a
+    /// `NavigationSplitView` detail column is not guaranteed to dismiss
+    /// the enclosing `.fullScreenCover` — this is the belt to that
+    /// braces (2026-09-15).
+    var onLeaveParentArea: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -319,6 +332,14 @@ struct ResearchDashboardView: View {
         } message: {
             Text("Die Export-Datei konnte nicht erstellt werden. Es wurde nichts gelöscht.")
         }
+        .alert("Test kann nicht starten", isPresented: Binding(
+            get: { probeError != nil },
+            set: { if !$0 { probeError = nil } }
+        ), presenting: probeError) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { reason in
+            Text(reason)
+        }
     }
 
     // MARK: - Phoneme coverage (phoneme-arm pilot-readiness check)
@@ -521,8 +542,14 @@ struct ResearchDashboardView: View {
         VStack(spacing: 8) {
             ForEach(letters, id: \.self) { letter in
                 Button {
-                    vm.startColdProbe(letter: letter, kind: kind)
-                    dismiss()
+                    if let reason = vm.startColdProbe(letter: letter, kind: kind) {
+                        probeError = reason
+                    } else {
+                        onLeaveParentArea()
+                        // Belt-and-braces: dismisses this detail column if
+                        // that alone is ever sufficient. A no-op otherwise.
+                        dismiss()
+                    }
                 } label: {
                     Label("\(kind.displayName) starten: \(letter)", systemImage: "pencil.and.outline")
                         .frame(maxWidth: .infinity)
