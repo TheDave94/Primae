@@ -96,13 +96,14 @@
   <span class="hint">Static page — open directly from Finder, no server needed.</span>
 </div>
 <h1>Study device dry-run — proctor procedure</h1>
-<p>For David, holding the study iPad, no laptop/terminal needed. The app is already installed (<code>Release-Study</code>, bundle ID <code>com.flamingistan.primae.study</code>, "Primae Studie" on the home screen).</p>
+<p>For David, holding the study iPad, no laptop/terminal needed. The app is already installed (<code>Release-Study</code>, bundle ID <code>com.flamingistan.primae.study</code>). Identify it on the home screen by the amber icon with the navy "STUDIE" ribbon — the display name is "Primae Studie" on a build made from the committed tree (<code>project.pbxproj</code>'s <code>Debug-Study</code>/<code>Release-Study</code> <code>INFOPLIST_KEY_CFBundleDisplayName</code>), but a build made from an uncommitted working tree can show plain "Primae" instead if that value was locally edited. Don't rely on the name alone — confirm you have the study binary the way Section 0 says: the red "STUDY BUILD" banner in the parent area.</p>
 <p>Supersedes <code>docs/TESTING_CHECKLIST.md</code> for this purpose — that checklist tests the paused casual app and predates the compile-out, the bundle-ID split, the demonstrations (D9), and the phoneme recordings (H5). Everything below is read directly off the current implementation (<code>TracingViewModel.swift</code>, <code>ResearchDashboardView.swift</code>, <code>ParentAreaView.swift</code>, <code>PreTaskDemonstration.swift</code>, <code>ThesisCondition.swift</code>, <code>PilotAudioCondition.swift</code>), not recalled.</p>
 <p>You will run the whole thing <strong>three times</strong>, once per audio arm: <strong>Phonem</strong>, <strong>Raumklang</strong>, <strong>Ohne Ton</strong>. Section 6 covers switching arms between runs.</p>
 <hr>
 <h2>0 · Before you start (once, not per run)</h2>
 <ul>
 <li><strong>Headphones connected.</strong> Both the Phonem and the Raumklang arm need them — the app now warns for either, not just Raumklang (a red banner reading "Keine Kopfhörer verbunden" appears in the research tab if not). Ohne Ton doesn't need them, but leave them in for all three runs so the three are comparable.</li>
+<li><strong>Do Not Disturb on, no other audio app playing.</strong> Turning the iPad's Do Not Disturb on and making sure nothing else is playing audio isn't just tidiness — opening Control Center or a notification banner during a trial can end that trial early. Either one briefly puts the app's scene into <code>.inactive</code>, and the app treats that the same as full backgrounding: <code>appDidEnterBackground()</code> runs and finalises any finished-but-not-yet-scored free-write in progress, cutting the trial short.</li>
 <li><strong>Reach the parent area</strong>: on the Schule canvas, long-press the gear icon at the bottom of the left rail for about 2 seconds (a blue ring fills around it). This opens "Eltern-Bereich" full-screen. A red "STUDY BUILD" banner should be visible somewhere in it — if it's missing, this isn't the study binary; stop and check with me before running anything.</li>
 <li>The parent area has exactly three tabs on this build: <strong>Forschungs- Daten</strong>, <strong>Einstellungen</strong>, <strong>Datenexport</strong>. There is no "Übersicht" tab — that's the casual app's dashboard, compiled out here. That's correct, not a defect.</li>
 </ul>
@@ -140,8 +141,11 @@
 <p>This is 5 round trips through the gear long-press — expected, not a bug.</p>
 <hr>
 <h2>4 · Training — the three trained letters</h2>
-<p>Close the parent area (or it should already be closed from the last pretest). You're on the canvas.</p>
-<p><strong>The first trained letter is "parked"</strong>: nothing is playing, nothing is animating yet. You'll see the brand-blue pill at the bottom with only 👁️ 👆 (no text — the app never shows unreadable text to a child). <strong>Tap it once</strong> to start the letter for real.</p>
+<p>Close the parent area (or it should already be closed from the last pretest). You're on the canvas — what you see depends on how you got here:</p>
+<ul>
+<li><strong>Right after a fresh launch</strong> (before any pretest was run), the app opens on the <strong>first trained letter, "parked"</strong>: nothing is playing, nothing is animating yet. You'll see the brand-blue pill at the bottom with only 👁️ 👆 (no text — the app never shows unreadable text to a child). <strong>Tap it once</strong> to start the letter for real.</li>
+<li><strong>Right after the five pretests (the normal case, Section 3 just finished)</strong>, the canvas is still showing the <strong>last pretest letter</strong>, in its finished free-writing state — nothing is parked. Press the <strong>right-arrow (chevron) nav button</strong> in the bottom bar once to reach the first trained letter. That arrow calls <code>nextLetter()</code>, which cycles the trained pool; since the pretest letter you're leaving may not be one of the three trained letters, it isn't found in that pool and the arrow lands on the first trained letter rather than "the next one after it."</li>
+</ul>
 <p>For <strong>each of the three trained letters</strong> (the ones named on the "Aktiver Teilnehmer" card), in order:</p>
 <h3>4a · Observe (Anschauen)</h3>
 <ul>
@@ -154,7 +158,7 @@
 </ul>
 <h3>4b · Direct (Richtung lernen)</h3>
 <ul>
-<li>Numbered dots appear over each stroke's start point. Tap them <strong>in order</strong>. The next expected one pulses. A confirmation tap-sound and a brief directional arrow follow a correct tap; a wrong dot gives a gentle "no" haptic and does not advance.</li>
+<li>Numbered dots appear over each stroke's start point. Tap them <strong>in order</strong>. The next expected one pulses. A correct tap advances a brief directional arrow along the stroke — that part is real. <strong>The tap-sound and the haptics are not</strong>: under study mode the app substitutes silent no-op objects for both the prompt player and the haptic engine (<code>TracingViewModel.init</code>), so a correct tap is silent and a wrong dot gives no haptic either — only the visual pulse on the wrong dot and the arrow on a correct one are present, in every arm. Don't expect to hear or feel anything here; that's correct, not a defect.</li>
 <li>No arm-specific sound here in any arm — this phase is unaffected by the audio condition.</li>
 <li>All dots tapped in order → auto-advances.</li>
 </ul>
@@ -164,14 +168,16 @@
 <li><strong>This is where the arm's sound actually plays while you write:</strong></li>
 <li class="sub"><strong>Phonem / Raumklang:</strong> sound is active only while you're near the expected checkpoint and moving above a small speed threshold; it speeds up / slows down and (Raumklang only) changes pitch with your vertical position and pans with your horizontal position. If you stop moving, it holds briefly then goes idle within about a tenth of a second; moving again brings it back.</li>
 <li class="sub"><strong>Ohne Ton:</strong> silent throughout, by design.</li>
-<li>Haptic ticks fire at each checkpoint; a stronger haptic fires at stroke completion, in all three arms identically.</li>
+<li><strong>No haptics anywhere in this phase, in any arm.</strong> Under study mode the haptic engine is a silent no-op (same substitution as 4b), so neither the per-checkpoint ticks nor the stroke-completion buzz that the casual app has actually fires — don't expect to feel anything.</li>
+<li>If your finger or the Pencil leaves the canvas bounds mid-stroke, the app shows a text toast reading "Probier's nochmal" and resets the current stroke so you retrace it from its start point — no sound accompanies the toast (speech is also silenced under study mode). That's the expected recovery path, not a defect.</li>
 </ul>
 <h3>4d · FreeWrite (Selbst schreiben)</h3>
 <ul>
 <li>Blank canvas, no ghost. Write the letter from memory.</li>
+<li><strong>You may still see the last stroke of the Guided phase for a moment.</strong> The canvas keeps that finished trace visible for up to 5 seconds after the phase changes ("lingering ink" — so the child sees their own ink survive the transition instead of it blinking away), and it clears immediately as soon as you touch the canvas again. That's expected — don't flag it as leftover ghost content.</li>
 <li><strong>Silent in all three arms, including Phonem and Raumklang</strong> — the audio coupling is deliberately gated off here (sound-off production is part of the design, not a missing feature). If you hear the arm's sound during this phase, that IS a defect — flag it.</li>
-<li>After you lift: a dark overlay briefly compares your trace to the reference (KP overlay), then a star-count celebration screen ("Geschafft!" + stars). Both of these show in <strong>every</strong> arm — they are not gated by audio condition. What you will <strong>not</strong> see in any arm: the coloured recognition badge or the guided-score feedback card — both are reward-class feedback deliberately suppressed under study mode, in all three arms equally.</li>
-<li>Tap "Weiter" to move to the next trained letter and repeat 4a–4d. The demonstration in 4a plays again on every letter entry — that's intended (every trace is preceded by the same exposure), not a repeat-content bug.</li>
+<li><strong>After you lift: nothing, under study mode.</strong> In the casual app a dark KP overlay would compare your trace to the reference, followed by a star-count celebration screen ("Geschafft!" + stars) — but under study mode BOTH are gated off (<code>celebrateFreeWrite</code> and <code>recordSessionCompletion</code> in <code>PhaseTransitionCoordinator</code> each gate on <code>!vm.studyMode</code>), and the views themselves (<code>CompletionCelebrationOverlay</code>, the freeWrite KP overlay) are compiled out of the study binary entirely. After the ~2 s quiet window following your last touch, the canvas simply goes idle — no overlay, no stars, no chime, in any arm. What you will <strong>not</strong> see in any arm, casual or study: the coloured recognition badge or the guided-score feedback card — both are reward-class feedback suppressed under study mode regardless of what else changes.</li>
+<li><strong>There is no "Weiter" button under study mode</strong> — it belongs to the celebration screen, which doesn't exist here. To move to the next trained letter, press the <strong>right-arrow (chevron) nav button</strong> in the bottom bar (<code>nextLetter()</code>); the left-arrow (<code>previousLetter()</code>) goes back. Then repeat 4a–4d. The demonstration in 4a plays again on every letter entry — that's intended (every trace is preceded by the same exposure), not a repeat-content bug.</li>
 </ul>
 <p>After the third trained letter's FreeWrite, training is done. <strong>There is no separate "post-test" step for the three trained letters</strong> — that FreeWrite pass you just did already is their post-test measure.</p>
 <hr>
@@ -191,7 +197,7 @@
 <ul>
 <li>the participant ID matching the "Aktiver Teilnehmer" card,</li>
 <li>a header line naming <code>enrolledAt</code>,</li>
-<li>one row per <strong>phase</strong> completed, not per letter — each row carries its own <code>phase</code> (observe/direct/guided/freeWrite) and, for the cold probes, a <code>probe</code> column (pretest/posttest). You should see the 5 pretest rows, up to 4 rows apiece for the 3 trained letters (observe, direct, guided, freeWrite), and the 2 post-test rows — 25 or fewer if a phase legitimately auto-advanced without a distinct completion. Nothing should be entirely missing for a letter you actually wrote.</li>
+<li>one row per <strong>phase</strong> completed, not per letter — each row carries its own <code>phase</code> (observe/direct/guided/freeWrite) and, for the cold probes, a <code>probe</code> column (pretest/posttest). Each cold probe (a pretest or post-test letter) opens straight into freeWrite, so it writes exactly <strong>1 row</strong>: <strong>5 pretest rows</strong> (one per letter) and <strong>2 post-test rows</strong> (one per letter). Each of the <strong>3 trained letters</strong> writes <strong>up to 4 rows</strong> — one per phase it completed (observe, direct, guided, freeWrite; <code>LearningPhase</code> has exactly these four cases) — all written together at that letter's freeWrite completion. That caps a clean run at <strong>5 + (3 × 4) + 2 = 19 rows</strong>, fewer if a trained letter's session ended before every phase scored (e.g. you had to abandon a letter mid-phase). Nothing should be entirely missing for a letter you actually wrote.</li>
 </ul>
 <p>If the export is empty or missing rows, that's a defect — stop and flag it rather than starting the next run.</p>
 <hr>
