@@ -316,41 +316,55 @@ final class AudioEngineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 1.5)
     }
 
-    // MARK: - loadAudioFile after an idle-paused engine (2026-09-15 regression)
+    // MARK: - Resuming after the engine paused (2026-09-15 regression)
     //
-    // `pendingSafeEnginePause()` pauses AVAudioEngine ~0.2s after any
-    // ordinary playback stop — a deliberate idle measure, not an error
-    // state. Before 2026-09-15, `loadAudioFile(autoplay: true)` and
-    // `attemptResumePlayback()` both restarted the engine in that state
-    // via `startIfNeeded()` and then UNCONDITIONALLY returned without
-    // ever calling `player.play()` for the load that triggered the
-    // restart — the engine came back up, but silently played nothing.
-    // Any call arriving more than ~0.2s after the previous one (i.e.
-    // nearly all of them in real use — a child pausing to look at a
-    // letter, moving between phases, etc.) hit this. Reported on-device
-    // as "no audio at all" across every arm.
+    // `attemptResumePlayback()` (and `loadAudioFile()`, same shape, same
+    // fix, not independently testable here — see below) had
+    // `guard engine.isRunning else { startIfNeeded(); return }`. That
+    // restarts AVAudioEngine and then UNCONDITIONALLY ABANDONS the call
+    // that triggered it: player.play() never runs for it. The engine
+    // comes back up, but nothing plays.
+    //
+    // `engine.isRunning` goes false via `pendingSafeEnginePause()`
+    // (already covered by `testPendingSafeEnginePause_firesAfterDelay`
+    // above), reachable from `fileprivate` code only through real
+    // triggers — backgrounding, or an audio interruption. Interruption
+    // recovery is the one this test drives, via the same
+    // `postInterruption` helper the rest of this suite already uses,
+    // because it's fully reachable through `internal` API and is the
+    // best-precedented real scenario for "engine paused, then asked to
+    // resume." `loadAudioFile`'s copy of the same bug isn't independently
+    // driven by a test — every accessible way to pause the engine also
+    // sets either `interrupted` or `appIsForeground` false, both of
+    // which gate `canResumePlayback()` regardless of this fix, so it
+    // can't be isolated from `attemptResumePlayback`'s own gating without
+    // reaching into `fileprivate` state. Fixed by code-identical
+    // reasoning and symmetry with the tested function, not blind.
 
-    @MainActor func testLoadAudioFile_afterEnginePaused_actuallyPlays() async throws {
+    @MainActor func testAttemptResumePlayback_afterInterruptionPausesEngine_actuallyResumes() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        // isPlaying is false immediately after setUp (no file loaded yet),
-        // so calling this directly — the same thing normal playback-stop
-        // paths schedule automatically — pauses the engine without going
-        // through suspendForLifecycle (which would also flip
-        // appIsForeground, a different precondition than the one that
-        // actually reproduced this bug).
-        engine.pendingSafeEnginePause()
-        let pausedExp = expectation(description: "AVAudioEngine pauses after the 0.2s idle debounce")
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: playback started")
+
+        postInterruption(type: .began)
+        // handleInterruptionValues' .began case schedules the same
+        // pendingSafeEnginePause() idle-pause used everywhere else in
+        // this file; wait past its 0.2s debounce so the engine is
+        // actually paused, not mid-debounce, before ending the
+        // interruption.
+        let pausedExp = expectation(description: "AVAudioEngine pauses during the interruption")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { pausedExp.fulfill() }
         await fulfillment(of: [pausedExp], timeout: 1.0)
         XCTAssertFalse(engine.debugIsEngineRunning, "precondition: the engine must actually be paused")
 
-        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        postInterruption(type: .ended, shouldResume: true)
 
         XCTAssertTrue(engine.debugIsEngineRunning,
-                      "loadAudioFile(autoplay: true) must restart the paused engine")
+                      "ending the interruption must restart the paused engine")
         XCTAssertTrue(engine.isPlaying,
-                      "loadAudioFile(autoplay: true) must actually start playback after restarting a " +
-                      "paused engine, not just restart the engine and abandon this call's own play intent")
+                      "ending the interruption must actually resume playback, not just restart the " +
+                      "engine and abandon attemptResumePlayback's own resume intent — this is the " +
+                      "2026-09-15 regression")
     }
 
     // MARK: - setAdaptivePlayback clamping
