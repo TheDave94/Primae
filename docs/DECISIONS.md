@@ -94,38 +94,91 @@ Implications:
   Implemented: `14e20ff` on `feat/order-invariant-primary-outcome`,
   full rationale in `StrokeProcessMeasures.swift`'s header.
 
-- **D9 — Pre-task sound-arm demonstration, matched across all three
-  arms.** Both sound arms (`.phoneme`, `.spatial`) now get a brief,
-  scripted demonstration immediately before the tracing task begins for
-  each letter — not audio-coupled to the child's own trace. The
-  `.phoneme` arm gets a sound-letter exposure: the letter's own
+- **D9 — Pre-task sound-arm demonstration: both arms taught, not
+  matched in form.** Both sound arms (`.phoneme`, `.spatial`) get a
+  brief, scripted demonstration immediately before the tracing task
+  begins for each letter — not audio-coupled to the child's own trace.
+  The `.phoneme` arm gets a sound-letter exposure: the letter's own
   phoneme, played once. The `.spatial` arm gets an axis demonstration:
   a scripted pitch/pan sweep across the FULL canvas range (independent
   of the specific letter's own stroke shape, so every participant hears
   the same full-range sweep regardless of which letter loads first).
-  Both run for the same fixed 2.0 s window
-  (`PreTaskDemonstration.duration`) so the two are matched in duration
-  even though a phoneme clip's natural length differs from a scripted
-  sweep's.
+  Both are capped by the same 2.0 s window
+  (`PreTaskDemonstration.duration`) and run through the same code path
+  (`TracingViewModel.armPreTaskDemonstration`).
   The `.silent` arm gets NO audio added — but NOT nothing: the
   ghost-letter animation (`LetterAnimationGuide` /
   `AnimationGuideController`) that already precedes tracing in every
   arm, unchanged, IS its matched non-auditory equivalent. Every arm
   already got the same visual demonstration, of the same duration,
   before this change; the sound arms now layer their own scripted sound
-  onto that same window, and silent doesn't — the same "only audio
-  varies" shape as D1, rather than inventing a new UI element and then
-  having to separately argue it's matched.
-  THE REASON FOR THE SYMMETRY (per the framing this decision arrived
-  with): a demonstration can INSTALL a crossmodal mapping rather than
-  reveal one that was already there. If only one arm's tracing-task
-  audio had been preceded by a demonstration, that arm's later coupling
-  wouldn't just be "the arm's sound" — it would be "the arm's sound,
-  already taught." That would confound the arm contrast with having
-  been taught, not with what the sound itself is. Symmetric
-  demonstration removes that confound the same way D1's "only audio
-  varies, pedagogical flow is identical" removes the analogous one for
-  the tracing task itself.
+  onto that same window, and silent doesn't.
+  THE REASON THE DEMONSTRATION EXISTS AT ALL (unchanged by the
+  2026-09-14 correction below, and still doing real work): a
+  demonstration can INSTALL a crossmodal mapping rather than reveal one
+  that was already there. If only one arm's tracing-task audio had been
+  preceded by a demonstration, that arm's later coupling wouldn't just
+  be "the arm's sound" — it would be "the arm's sound, already taught."
+  That would confound the arm contrast with having been taught, not
+  with what the sound itself is.
+
+  **Correction 2026-09-14 (supervisor ruling, Option C) — "matched in
+  duration and form" was the wrong specification; the implementation
+  was not wrong.** Found by cross-checking the implementation against
+  the thesis's stated symmetry claim, not the reverse: the code was
+  read first (`PreTaskDemonstration.swift`,
+  `TracingViewModel.armPreTaskDemonstration`), the five delivered
+  phoneme recordings were measured directly (1.965–2.000 s, varying by
+  letter because each is a real spoken instance of that letter's own
+  phone), and only then was the thesis checked against those two facts
+  — where "matched in duration and form" turned out to describe
+  neither the code's guarantee (duration only) nor the audio (which
+  cannot be form-matched without ceasing to be phonemic).
+  - **Why they differ.** The two demonstrations do different jobs. The
+    spatial demonstration exists to teach a mapping the child has no
+    other way to infer: pen position maps to pitch and pan only
+    because the pilot invented that mapping, so the demonstration must
+    show the mapping's full range — which is why it is scripted,
+    synthetic, and identical in shape on every letter. The phoneme
+    demonstration exists to present the letter-sound pairing the study
+    trains: the letter's own phoneme, spoken once, the same stimulus
+    (modulo natural recording variation) the child hears coupled to
+    their own trace immediately after. Forcing the phoneme
+    demonstration into the spatial demonstration's shape — synthetic,
+    uniform, identical regardless of letter — would mean replacing or
+    distorting a real spoken sound to hit a shape, which manufactures
+    exactly the kind of unnatural stimulus the phoneme arm exists to
+    avoid. Forcing the spatial demonstration into the phoneme
+    demonstration's shape — one static instance rather than a swept
+    range — would stop it from demonstrating the mapping at all.
+    Matching them in form was never achievable without breaking the
+    thing each one exists to do.
+  - **What survives.** The finding behind D9 — a demonstration can
+    install a mapping rather than reveal one — still holds, and it is
+    still what the demonstration is for: it is why BOTH sound arms get
+    one, not only the arm whose mapping needs teaching. What the
+    finding requires is that neither arm is uniquely taught; it does
+    not require the two demonstrations to be identical in shape. "Both
+    arms receive a demonstration, so neither is singled out for having
+    been taught" is the operative claim now. "Matched in duration and
+    form" is retracted as its restatement — duration alone is still
+    true by construction (see above); form is not, and was never the
+    part doing the work.
+  - **The residual, disclosed, not dismissed.** The two sound arms'
+    demonstrations differ from each other in duration and structure:
+    the spatial sweep is fixed and synthetic, identical regardless of
+    letter; the phoneme exposure is a real spoken recording whose
+    natural length varies letter to letter (1.965–2.000 s measured) and
+    is capped to the same nominal window, so its precise temporal shape
+    is not uniform the way the sweep's is. This sits beside the
+    C2-1 asymmetry below (the silent arm gets no demonstration at all)
+    as a second, distinct asymmetry — both intrinsic to what each arm's
+    manipulation actually is (a taught synthetic mapping vs. a trained
+    natural sound vs. no sound), and neither is claimed to be
+    controlled. State both in thesis Ch.6 §Threats to validity beside
+    the acoustic-matching asymmetry (thesis ledger T2), as one
+    paragraph's two halves, not as a solved problem.
+
   NOT trace-coupled: driven by a fixed scripted timeline
   (`PreTaskDemonstration.axisSweep`, or a single phoneme play), never
   by `TouchDispatcher`'s live-touch coupling — a distinct mechanism
@@ -146,7 +199,18 @@ Implications:
   cold, untrained probe, and a demonstration would train the very thing
   the probe depends on not having happened.
 
-  - *Limitation recorded 2026-09-05 (supervisor ruling C2-1).* The silent arm receives no demonstration because it has no mapping to demonstrate; a blank interstitial would be a confound, not a control. Two arms therefore get an added interaction/exposure period the third does not — stated in thesis Ch.6 §Threats to validity beside the acoustic-matching asymmetry (thesis ledger T2). No time-on-task cost: the 2.0 s demonstration is layered inside the observe window (two guide-dot cycles, 5–11 s on A F I L M) that every arm runs identically.
+  - *Limitation recorded 2026-09-05 (supervisor ruling C2-1), extended
+    2026-09-14.* The silent arm receives no demonstration because it
+    has no mapping to demonstrate; a blank interstitial would be a
+    confound, not a control. All three arms therefore differ from each
+    other in what precedes the tracing task: two get an
+    interaction/exposure period the third does not, and — per the
+    2026-09-14 correction above — the two that do get one differ from
+    each other in it. Stated together in thesis Ch.6 §Threats to
+    validity beside the acoustic-matching asymmetry (thesis ledger T2).
+    No time-on-task cost: the demonstration is layered inside the
+    observe window (two guide-dot cycles, 5–11 s on A F I L M) that
+    every arm runs identically.
 - **D10 — Stroke-correspondence matching-policy parameters: DEFERRED
   pending pilot data.** D8's exhaustive-search assignment forces
   maximum cardinality (exactly `min(traced, reference)` pairs always
