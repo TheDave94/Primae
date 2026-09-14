@@ -280,6 +280,20 @@ jobs:
             echo "      sibling *.framework, such as a PackageFrameworks build) — it resolved to"
             echo "      a configuration Xcode's Run button would not use, or the wrong one. This"
             echo "      is exactly the failure mode this step exists to catch."
+            echo ""
+            echo "----- DIAGNOSTIC (failure only): grep of /tmp/scheme-run-build.log for PrimaeNative -----"
+            grep -n "PrimaeNative" /tmp/scheme-run-build.log || echo "(no lines matched \"PrimaeNative\")"
+            echo ""
+            echo "----- DIAGNOSTIC (failure only): full Products tree under /tmp/dd-scheme-run/Build/Products -----"
+            find /tmp/dd-scheme-run/Build/Products -exec ls -la {} + || echo "(find produced no output)"
+            echo ""
+            echo "----- DIAGNOSTIC (failure only): showBuildSettings for -scheme Primae, no -configuration -----"
+            xcodebuild -showBuildSettings \
+              -project Primae/Primae.xcodeproj \
+              -scheme Primae \
+              -destination 'generic/platform=iOS Simulator' \
+              2>&1 | grep -E "CONFIGURATION =|EXECUTABLE_PATH =|LD_RUNPATH_SEARCH_PATHS|OTHER_LDFLAGS|SWIFT_ACTIVE_COMPILATION_CONDITIONS" \
+              || echo "(showBuildSettings produced no matching lines)"
             exit 1
           fi
 
@@ -557,6 +571,7 @@ jobs:
           if-no-files-found: warn
           path: |
             /tmp/guard-a.log
+            /tmp/scheme-run-build.log
             /tmp/study-test.log
             /tmp/study-scan-build.log
             /tmp/release-study-build.log
