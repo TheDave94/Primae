@@ -316,6 +316,43 @@ final class AudioEngineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 1.5)
     }
 
+    // MARK: - loadAudioFile after an idle-paused engine (2026-09-15 regression)
+    //
+    // `pendingSafeEnginePause()` pauses AVAudioEngine ~0.2s after any
+    // ordinary playback stop — a deliberate idle measure, not an error
+    // state. Before 2026-09-15, `loadAudioFile(autoplay: true)` and
+    // `attemptResumePlayback()` both restarted the engine in that state
+    // via `startIfNeeded()` and then UNCONDITIONALLY returned without
+    // ever calling `player.play()` for the load that triggered the
+    // restart — the engine came back up, but silently played nothing.
+    // Any call arriving more than ~0.2s after the previous one (i.e.
+    // nearly all of them in real use — a child pausing to look at a
+    // letter, moving between phases, etc.) hit this. Reported on-device
+    // as "no audio at all" across every arm.
+
+    @MainActor func testLoadAudioFile_afterEnginePaused_actuallyPlays() async throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        // isPlaying is false immediately after setUp (no file loaded yet),
+        // so calling this directly — the same thing normal playback-stop
+        // paths schedule automatically — pauses the engine without going
+        // through suspendForLifecycle (which would also flip
+        // appIsForeground, a different precondition than the one that
+        // actually reproduced this bug).
+        engine.pendingSafeEnginePause()
+        let pausedExp = expectation(description: "AVAudioEngine pauses after the 0.2s idle debounce")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { pausedExp.fulfill() }
+        await fulfillment(of: [pausedExp], timeout: 1.0)
+        XCTAssertFalse(engine.debugIsEngineRunning, "precondition: the engine must actually be paused")
+
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+
+        XCTAssertTrue(engine.debugIsEngineRunning,
+                      "loadAudioFile(autoplay: true) must restart the paused engine")
+        XCTAssertTrue(engine.isPlaying,
+                      "loadAudioFile(autoplay: true) must actually start playback after restarting a " +
+                      "paused engine, not just restart the engine and abandon this call's own play intent")
+    }
+
     // MARK: - setAdaptivePlayback clamping
 
     @MainActor func testSetAdaptivePlayback_clampsBelowMinSpeed_doesNotCrash() async throws {
