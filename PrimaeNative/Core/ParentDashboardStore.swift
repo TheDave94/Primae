@@ -855,8 +855,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
+                // Loud now (2026-09-14) — see PersistenceFailureCenter.
+                // This store carries the pilot's primary outcome rows;
+                // a silently-swallowed write here is the worst case of
+                // the defect that type exists to close.
                 storePersistenceLogger.warning(
                     "ParentDashboardStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "ParentDashboardStore", error: error)
             }
         }
     }

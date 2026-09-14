@@ -105,8 +105,14 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
+                // Loud now (2026-09-14) — see PersistenceFailureCenter.
+                // The exact failure this store exists to prevent from
+                // being invisible: sealed only in memory, gone on the
+                // next launch, with the export having looked like it
+                // covered every participant when it silently did not.
                 storePersistenceLogger.error(
                     "ParticipantArchiveStore disk write failed for \(record.participantId.uuidString, privacy: .public) at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public) — sealed only in memory this session; do not quit the app before this is retried.")
+                PersistenceFailureCenter.shared.reportFailure(store: "ParticipantArchiveStore", error: error)
             }
         }
     }

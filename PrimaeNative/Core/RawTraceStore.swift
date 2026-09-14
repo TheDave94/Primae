@@ -125,8 +125,10 @@ final class JSONRawTraceStore: RawTraceStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
+                // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
                     "RawTraceStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "RawTraceStore", error: error)
             }
         }
     }

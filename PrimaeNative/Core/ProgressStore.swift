@@ -435,12 +435,16 @@ public final class JSONProgressStore: ProgressStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
-                // Volume full / file corrupt: in-memory state is
-                // still good for the session but log so a parent
-                // investigating "the streak reset itself" has a
-                // breadcrumb.
+                // A `try?`-and-log-only response here used to let the
+                // rest of the app carry on as if this write had
+                // succeeded — in-memory state stayed correct for the
+                // running session while nothing durable reached disk.
+                // Loud now (2026-09-14): reported to
+                // `PersistenceFailureCenter`, which the live VM turns
+                // into a hard session stop under studyMode.
                 storePersistenceLogger.warning(
                     "ProgressStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "ProgressStore", error: error)
             }
         }
     }

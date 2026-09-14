@@ -209,8 +209,10 @@ final class JSONStreakStore: StreakStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
+                // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
                     "StreakStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "StreakStore", error: error)
             }
         }
     }

@@ -922,6 +922,13 @@ public final class TracingViewModel {
         pb.reloadBeforePlay   = { [weak self] in self?.reloadActiveAudioFile() }
         td.vm = self
         ptc.vm = self
+        // Same two-phase pattern: `self` is fully assigned now, so it's
+        // safe to capture weakly. Subscribes to the FIRST disk-write
+        // failure any study data store reports — see
+        // PersistenceFailureCenter and `handlePersistenceFailure`.
+        PersistenceFailureCenter.shared.subscribe { [weak self] description in
+            self?.handlePersistenceFailure(description)
+        }
         // Study devices always parse the bundle. `loadLettersFast()`
         // serves the on-disk letter cache whenever its sentinel matches
         // `CFBundleShortVersionString-CFBundleVersion` — which is the
@@ -2418,10 +2425,42 @@ public final class TracingViewModel {
 
     func markAssignmentOverrideChanged() { assignmentOverrideChanged = true }
 
+    /// Set once, by `handlePersistenceFailure`, on the first disk-write
+    /// failure any study data store reports through
+    /// `PersistenceFailureCenter` (2026-09-14). Never cleared in
+    /// production — see that type's `resetForTesting` doc for why.
+    private(set) var persistenceFailureMessage: String?
+
+    /// MainActor callback registered with `PersistenceFailureCenter` at
+    /// init. Turns a silent `try?`-swallowed disk write into a visible
+    /// toast immediately, plus a hard `sessionBlockReason` stop from the
+    /// next check onward — the pilot runs once per child, so "log it and
+    /// carry on" is never the right response to "the data may not be
+    /// saving." Internal, not `private`, so tests can drive this
+    /// directly rather than through the process-wide `.shared` center —
+    /// see that type's doc for why sharing it across test suites is
+    /// deliberately avoided.
+    func handlePersistenceFailure(_ description: String) {
+        guard persistenceFailureMessage == nil else { return }   // first failure wins the message
+        persistenceFailureMessage =
+            "Speichern fehlgeschlagen — diese Sitzung wird angehalten, damit keine Daten verloren gehen. Gerät prüfen (Speicherplatz/Berechtigungen) und die App neu starten."
+        toast("⚠️ Speichern fehlgeschlagen — Sitzung angehalten")
+        storePersistenceLogger.error(
+            "TracingViewModel: session hard-stopped on persistence failure: \(description, privacy: .public)")
+    }
+
     /// Why the Schule surface must not start a session right now, or nil.
-    /// Folds the study precondition (phoneme recordings) and the
-    /// identity-changed relaunch requirement into one child-facing stop.
+    /// Folds the study precondition (phoneme recordings), the
+    /// identity-changed relaunch requirement, and a failed disk write to
+    /// any study data store into one child-facing stop.
     var sessionBlockReason: String? {
+        // Checked FIRST, deliberately: a persistence failure means
+        // nothing recorded from this point is guaranteed to survive —
+        // that outranks every other reason to continue, including one
+        // that would otherwise just need a relaunch (2026-09-14).
+        if studyMode, let persistenceFailureMessage {
+            return persistenceFailureMessage
+        }
         if studyMode, participantIdentityChanged {
             return "Teilnehmer gewechselt — die App muss neu gestartet werden, damit Arm und Buchstaben des neuen Kindes gelten."
         }
