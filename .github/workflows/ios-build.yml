@@ -82,6 +82,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # THROWAWAY DIAGNOSTIC (review/ci-xcode27-probe-2026-09-15) — does
+      # this runner image offer an Xcode 27 install at all? Answers
+      # whether raising IPHONEOS_DEPLOYMENT_TARGET to 27.0 is even
+      # buildable in CI, or whether CI verification of that change would
+      # need to wait on the hosted image. Never intended to land on a
+      # real branch.
+      - name: "PROBE — list installed Xcode versions on this runner"
+        run: |
+          echo "--- /Applications, anything Xcode-named ---"
+          ls -la /Applications | grep -i xcode || echo "(no match)"
+          echo "--- /Applications/.localized or Xcode*.app globs ---"
+          ls -d /Applications/Xcode*.app 2>&1
+          echo "--- xcode-select -p (current default) ---"
+          xcode-select -p
+          echo "--- xcodebuild -version (current default) ---"
+          xcodebuild -version
+
       # macos, not ubuntu, and that is load-bearing. The gate PROBES each
       # --self-test by running it, so every probed script must be able to
       # reach its own self-test branch here. typecheck_package.sh checks for
