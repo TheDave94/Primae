@@ -265,6 +265,35 @@ final class AudioEngineTests: XCTestCase {
         XCTAssertTrue(engine.debugAppIsForeground)
     }
 
+    // MARK: - appIsForeground stuck-false regression (2026-09-15)
+    //
+    // `resumeAfterLifecycle()` used to set `appIsForeground = true` AFTER
+    // `guard currentFile != nil else { ...; return }`. `currentFile` is nil
+    // almost always between strokes (finishStop() nils it on every stop()),
+    // so a scene-phase blip with nothing loaded — Control Center, a
+    // notification banner, the app switcher, screen lock — left
+    // `appIsForeground` stuck false for the rest of the process:
+    // `canResumePlayback()` gates on it, so every later play attempt in
+    // both sound arms was silently refused. This test drives exactly that
+    // sequence: suspend/resume with no file loaded, then load a file with
+    // autoplay and confirm it actually plays, not just that the flag reads
+    // true in isolation.
+
+    @MainActor func testResumeAfterLifecycle_withNoFileLoaded_clearsStuckForegroundFlag() async throws {
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        // Precondition: no file loaded, matching the between-strokes state
+        // that made this reachable in practice.
+        engine.suspendForLifecycle()
+        engine.resumeAfterLifecycle()
+        XCTAssertTrue(engine.debugAppIsForeground,
+                      "resumeAfterLifecycle() must clear appIsForeground even when currentFile is nil")
+
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying,
+                      "a play attempt after a no-file lifecycle blip must not be silently refused " +
+                      "by a stuck appIsForeground=false — the 2026-09-15 regression")
+    }
+
     @MainActor func testSuspendThenResume_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
