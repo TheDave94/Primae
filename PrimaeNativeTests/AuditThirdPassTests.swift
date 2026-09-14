@@ -144,26 +144,38 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
 
     // MARK: - Participant identity (V1 / V2)
 
-    @Test("after a participant reset the VM refuses to trace until relaunch")
-    func resetBlocksTracingUntilRelaunch() {
+    @Test("after a participant reset under studyMode the VM re-derives the arms in place and does NOT require a relaunch")
+    func resetReappliesArmsInPlaceUnderStudyMode() {
+        // Was "...refuses to trace until relaunch" until 2026-09-14: a
+        // kindergarten pilot with one proctor and one iPad enrolling
+        // several children in one sitting cannot absorb a force-quit
+        // between every child, so `resetForNewParticipant` now re-derives
+        // the arms in place instead of requiring one (see
+        // `reapplyParticipantIdentity`). This test used to prove the OLD
+        // (now-removed) block; it now proves the block is genuinely
+        // lifted, not just that the flag was never set.
         let vm = studyVM()
         vm.canvasSize = canvas
         vm.phaseController.resume(at: .guided)
         #expect(vm.sessionBlockReason == nil, "precondition: the fixture can trace")
         let prevID = ParticipantStore.participantId
         defer { UserDefaults.standard.set(prevID.uuidString, forKey: "de.flamingistan.primae.participantId") }
-        // Positive control: the same stroke advances the tracker BEFORE the reset.
-        var t: CFTimeInterval = 1000
-        inkStroke(vm, from: 0, y: 200, count: 10, t: &t)
-        vm.endTouch()
-        #expect(vm.progress > 0, "precondition: this stroke hits the fixture's checkpoints; got \(vm.progress)")
-        vm.loadLetter(name: vm.currentLetterName)
-        vm.phaseController.resume(at: .guided)
-        _ = vm.resetForNewParticipant()
-        #expect(vm.sessionBlockReason != nil, "the arms in memory are the previous child's")
-        t += 1
-        inkStroke(vm, from: 0, y: 200, count: 10, t: &t)
-        #expect(vm.progress == 0, "no trace may be accepted under the old arms; got \(vm.progress)")
+        let newID = vm.resetForNewParticipant()
+        #expect(newID != prevID)
+        #expect(vm.sessionBlockReason == nil,
+                "a studyMode reset must not leave tracing blocked — the arms are re-derived synchronously, not on next launch")
+        #expect(!vm.participantIdentityChanged)
+        #expect(vm.audioCondition == PilotAudioCondition.assign(participantId: newID),
+                "the LIVE audioCondition must already be the NEW participant's, with no relaunch")
+        #expect(vm.trainedSubset == TrainedLetterSubset.assign(participantId: newID),
+                "the LIVE trainedSubset must already be the NEW participant's, with no relaunch")
+        // Positive control: a probe under the NEW arms is actually
+        // reachable, not just flag-permitted. "A" is the fixture's only
+        // letter and is a study letter for every possible trainedSubset,
+        // so this is deterministic regardless of which subset the new
+        // random participant id happened to draw.
+        vm.startColdProbe(letter: "A", kind: .pretest)
+        #expect(vm.currentProbe == .pretest, "a cold probe must actually start under the newly-applied arms")
     }
 
     @Test("restoring the id this device already carries keeps the original enrolment instant")
@@ -324,12 +336,19 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
 
     @Test("a blocked session refuses cold probes too")
     func blockedSessionRefusesProbes() {
+        // `resetForNewParticipant` no longer leaves a studyMode session
+        // blocked (2026-09-14 — see `resetReappliesArmsInPlaceUnderStudyMode`
+        // above), so this test now exercises the ONE path that still
+        // genuinely blocks: "Teilnehmer wiederherstellen" (the delayed
+        // retest restore), which is deliberately UNCHANGED — a real
+        // relaunch is still required there, and `startColdProbe`'s
+        // `participantIdentityChanged` guard must still refuse in that
+        // state, silently or not (see the dead-button investigation).
         let vm = studyVM()
         vm.canvasSize = canvas
-        let prevID = ParticipantStore.participantId
-        defer { UserDefaults.standard.set(prevID.uuidString, forKey: "de.flamingistan.primae.participantId") }
-        _ = vm.resetForNewParticipant()
         let phaseBefore = vm.learningPhase
+        vm.markParticipantRestored()
+        #expect(vm.sessionBlockReason != nil, "precondition: a restore genuinely blocks the session")
         vm.startColdProbe(letter: "A", kind: .pretest)
         #expect(vm.currentProbe == nil && vm.learningPhase == phaseBefore,
                 "a probe must not start while the arms in memory are stale")
