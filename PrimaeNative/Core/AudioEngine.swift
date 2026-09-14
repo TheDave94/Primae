@@ -102,8 +102,19 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             // session genuinely active first, this is a one-time call at
             // app launch (not the hot path play() is), and `init` is
             // exactly the kind of control flow LESSONS.md says never to
-            // restructure.
-            try? AVAudioSession.sharedInstance().setActive(true)
+            // restructure. Logging added (2026-09-15) — a failed
+            // activation here previously fell straight through to
+            // `engine.start()` unlogged; `engine.start()` can still
+            // report success even when the session itself never
+            // genuinely activated, which reads as "audio running" while
+            // producing silence. Same shape as the logged failure branch
+            // right below; this does not change control flow, only
+            // whether the failure is visible.
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                log.error("Failed to activate audio session at init: \(error.localizedDescription)")
+            }
             if !engine.isRunning {
                 do { try engine.start() } catch {
                     player.stop()
@@ -413,7 +424,15 @@ private extension AudioEngine {
         // here is what makes that check meaningful. Called far less often
         // than play() (only when the engine genuinely isn't running), so
         // its contribution to the hang-risk warning is the smaller one.
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // Logging added (2026-09-15) — same reasoning as init's: a failed
+        // activation here fell straight through to `engine.start()`
+        // unlogged, and `engine.start()` not throwing does not mean the
+        // session actually activated. Control flow is unchanged.
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            log.error("Failed to activate audio session in startIfNeeded: \(error.localizedDescription)")
+        }
         do {
             try engine.start()
         } catch {
