@@ -4,7 +4,7 @@ See `docs/BAKE_INVARIANTS.md` for permanent bake invariants — apply to every l
 
 _Single forward-looking work log. Last updated 2026-08-19 against `main` (commit `cb7291d`), after a full read-only reconciliation against code and git history. Only items still requiring work appear here — every shipped item has been removed. Shipped items live in commit history._
 
-_**Correction (2026-09-03):** three commits landed after the 2026-08-19 pass without a ROADMAP update — `1d9ff92` (D11.5 below, now closed), `6acfeb0` (land.sh verified-landing), `a296e2e` (PrimaeBundle resource routing). Also corrected: H5 below claimed the 5 study-letter phoneme recordings were "RECORDED" — measured false. `ls PrimaeNative/Resources/Letters/{A,I,M,F,L}/` shows no `<base>_phoneme<n>.mp3` files, only pre-existing letter-name audio, and no commit ever added any. Reverted to outstanding._
+_**Correction (2026-09-03), itself now superseded (2026-09-14):** the 2026-09-03 pass reverted H5 to outstanding after measuring no phoneme files on disk. That measurement was correct **at the time**; it no longer describes the current state — the 5 pilot study-letter recordings landed `92d399e` (2026-09-14) and H5 is closed (see §2 below). Left here so the correction history isn't silently erased, not as current fact._
 
 ---
 
@@ -14,7 +14,6 @@ _**Correction (2026-09-03):** three commits landed after the 2026-08-19 pass wit
 
 | Item | Owner action | Why it matters | Effort |
 |---|---|---|---|
-| **P6** phoneme audio recordings | Record 90 phoneme recordings (human voice, 3 takes × 30 letters) per `docs/SOUND_PRODUCTION_SPEC.md`, using the IPA target table in Appendix C of `docs/APP_DOCUMENTATION.md`; drop into `Resources/Letters/<base>/` as `<base>_phoneme<n>.mp3` | Phonemic awareness ↔ reading acquisition (Adams 1990); the "Lautwert wiedergeben" toggle is already shipped — without recordings it falls back silently | **XL** (recording-time-bound) |
 | **U5** Pencil 2 squeeze validation | iPad with Apple Pencil 2 — confirm squeeze + double-tap fire `replayAudio()` and don't double-fire with finger taps | Code is shipped; just needs verifying the gesture lands as intended on real hardware | **0–1 days on device** |
 | **U10** VoiceOver walkthrough | iPad with VoiceOver enabled — walk every screen, watch for skipped elements / misordered focus / Switch Control routing / Dynamic Type clipping | Required before submitting the thesis externally; the partial in-code audit shipped, but the device walkthrough is the load-bearing part | **2–3 hours on device** |
 
@@ -24,9 +23,11 @@ _**Correction (2026-09-03):** three commits landed after the 2026-08-19 pass wit
 |---|---|---|
 | **D8** canvas redraw profile | iPad + Instruments time-profile of a high-velocity guided session | No measured evidence of a problem; pre-optimising could break a currently-correct redraw path |
 
-Everything in the **post-thesis** section (F1–F10) waits until the thesis ships.
+Everything in the **post-thesis** section (F1–F13) waits until the thesis ships.
 
 **P7** (thesis KUG compliance/formatting pass) — CORRECTED same day: mostly already done (see §1 below), not blocked on anything.
+
+**P6** (phoneme audio recordings) dropped from this table 2026-09-14: the pilot only ever needed the 5 study letters (A, F, I, L, M), and those shipped as H5 (§2 below, `92d399e`) — nothing here still blocks the study. The remaining ~25 letters × 3 takes are casual-app scope, and the casual app is out of scope for as long as it stays paused (CLAUDE.md, "The casual path is paused"); re-filed as F13, §5 POST-THESIS.
 
 ---
 
@@ -51,26 +52,9 @@ Detail sections follow with effort, file list, citations, failure modes per item
 
 ## 1. THESIS-CRITICAL
 
-### P6 — Phoneme audio recordings *(infrastructure on main; audio assets pending)*
-**Effort:** XL (recording + voice direction work) · **Priority:** P1
+### P6 — Phoneme audio recordings — CLOSED for the pilot, 2026-09-14 (H5, `92d399e`)
 
-Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing handwriting practice with the *sound* the letter makes (`/a/` as in *Affe*) instead of just its name (`/aː/`) is curriculum-aligned for German Volksschule.
-
-**What's already in code (on `main`).**
-- `LetterAsset.phonemeAudioFiles: [String]` — populated by `LetterRepository.partitionPhonemeAudio` from the bundle scan.
-- `enablePhonemeMode: Bool` UserDefaults toggle, threaded through `TracingDependencies` and the VM.
-- All 7 audio call sites (replay, variants, autoplay, begin-touch reload, direct-phase first-tap, load() prime) routed through `activeAudioFiles(for:)` helper. Toggle-on with no phoneme recordings → silent fallback to letter-name set.
-- SettingsView "Lautwert" section with the toggle + Adams 1990 caption.
-
-**What's still needed.**
-1. **Audio recordings** following the convention `<base>_phoneme<n>.<ext>` per Appendix C in `docs/APP_DOCUMENTATION.md`. Three takes per letter (different voices for child preference). 30 letters × 3 takes = 90 recordings.
-2. Per-letter IPA target table is in Appendix C; the recorded-phoneme production procedure (no-schwa Anlaut articulation, D6 stop-consonant handling, recording-session checklist) is in `docs/SOUND_PRODUCTION_SPEC.md`. Clean-up (trim silence, normalise to -16 LUFS, export at 44.1 kHz mono mp3) is the per-file labour.
-3. **Bundle wiring.** Drop the files into `PrimaeNative/Resources/Letters/<base>/`. Repository scan picks them up automatically; no Swift code changes required.
-4. **Verification checklist** (in the appendix): toggle on → tap → phoneme plays; two-finger swipe cycles through takes; toggle off → name resumes.
-
-**Citations.**
-- Adams, M. J. (1990). *Beginning to Read: Thinking and Learning about Print*. MIT Press.
-- Krech, E.-M. et al. (2009). *Deutsches Aussprachewörterbuch*. de Gruyter.
+The pilot's 5-letter study set (A, F, I, L, M — locked, `docs/SOUND_PRODUCTION_SPEC.md:6`) each has a `<base>_phoneme1.wav`, landed and gated permanently in CI — full detail at H5, §2 below. That was the only part of the original P6 ask that could block the study, and nothing here does anymore. The full-alphabet remainder (takes 2/3 for these 5 letters, all three takes for the other 25) is casual-app scope and moved to **F13, §5 POST-THESIS** — re-scoped there, not dropped, since the casual path is paused rather than deleted.
 
 ---
 
@@ -139,7 +123,7 @@ _Consolidated from the former `PILOT_READINESS.md` (2026-06-20). The decision ra
 | H5 | P6 phoneme recordings — **SHIPPED (`92d399e`, 2026-09-14).** All five files landed as WAV — `<base>_phoneme1.wav` under `Resources/Letters/{A,F,I,L,M}/` — with zero code changes (`findAudioAssets`'s supported-extension set already included `wav`; `partitionPhonemeAudio`'s `_phoneme` substring match has no extension check). Verified at runtime, not just read: CI on the real bundle (`BundleLetterResourceProvider`) flipped `studyLetterPhonemesResolve` from a `withKnownIssue` to a real pass; the wrapper is removed (`ResourceResolutionTests.swift`), turning the H5 check into a permanent gate. | Assets | Closed. |
 | H6 | Post-test reachability for the two untrained study letters — the within-child trained-vs-untrained contrast the design depends on. Re-scoped 2026-09-03 to what the pilot's stated outcome (Fréchet deviation + time) actually needs: the production measure `freeWrite` already scores. The original 3-modality (recognition/production/letter-sound) battery was NOT built — out of scope for the pilot; `PostTestController`/distractor-picker/researcher-start-screen never existed and don't need to now. **SHIPPED (`598fcbf`, 2026-09-03)** — `TracingViewModel.startPostTest(letter:)` loads either untrained letter and jumps the phase controller straight to `freeWrite` (observe/guided skipped entirely — reaching either would BE training the letter), via a one-shot override consumed in `load(letter:)`. No new export tagging needed: `trainedSubset` was already stamped on every row. `ResearchDashboardView` gets a studyMode-only trigger. `StudyLetterSetTests` covers reachability, refusal of a trained letter, refusal outside studyMode, and that the override doesn't leak into the next normal load. | Build | Reused `loadLetter` (never gated by `visibleLetterNames` — only the UI pickers were) and the existing `LearningPhaseController.resume(at:)`, as planned. |
 
-> H5 overlaps §1 P6 above — same recordings, two views: §1 is the thesis-critical work item, this row is its pilot-arm dependency.
+> H5 is the pilot-arm dependency of the same recordings §1 P6 (now closed) and F13 (§5) describe — this row is the one that actually gated the study; F13 is the leftover full-alphabet work, post-thesis.
 
 ### Known issues / residuals
 
@@ -398,16 +382,38 @@ Conditions for revisiting, after the pilot has run:
 
 **If adopted, it must be declared in a tracked `.mcp.json` at the repo root — never in `~/.claude.json`.** A user-level registration is invisible to the repo, unreviewable in a diff, and would not travel with a fresh clone: two sessions on the same commit could then be validating different targets with no record of the difference.
 
+### F13 — Phoneme recordings, full alphabet *(moved from §1 P6, 2026-09-14 — pilot subset already shipped, see H5 §2)*
+**Effort:** XL (recording + voice direction work) · **Priority:** P1 (post-thesis, i.e. once casual resumes — see this section's prerequisite note above)
+
+Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing handwriting practice with the *sound* the letter makes (`/a/` as in *Affe*) instead of just its name (`/aː/`) is curriculum-aligned for German Volksschule. This is why the item carries a thesis-strength P1 even though it's post-thesis-timed: it's not polish, it's the casual app's version of a feature the pilot already validates on its 5-letter subset.
+
+**Already in code (on `main`), pilot-proven:**
+- `LetterAsset.phonemeAudioFiles: [String]` — populated by `LetterRepository.partitionPhonemeAudio` from the bundle scan.
+- `enablePhonemeMode: Bool` UserDefaults toggle, threaded through `TracingDependencies` and the VM.
+- All 7 audio call sites routed through `activeAudioFiles(for:)`. Toggle-on with no phoneme recordings → silent fallback to letter-name set — so an incomplete recording set degrades safely rather than breaking.
+- SettingsView "Lautwert" section with the toggle + Adams 1990 caption.
+
+**What's still needed, once casual CI resumes:**
+1. **Audio recordings**, convention `<base>_phoneme<n>.<ext>` per Appendix C in `docs/APP_DOCUMENTATION.md`, three takes per letter, 30 letters. Only `_phoneme1` exists so far, and only for the 5 pilot letters (`ls PrimaeNative/Resources/Letters/{A,F,I,L,M}/ | grep phoneme`, 2026-09-14) — takes 2/3 for those 5, and all three takes for the other 25, are open.
+2. Per-letter IPA target table is in Appendix C; the recording procedure (no-schwa Anlaut articulation, D6 stop-consonant handling, checklist) is in `docs/SOUND_PRODUCTION_SPEC.md`. Clean-up (trim silence, normalise to -16 LUFS, export at 44.1 kHz mono) is the per-file labour.
+3. **Bundle wiring.** Drop the files into `PrimaeNative/Resources/Letters/<base>/`. Repository scan picks them up automatically; no Swift code changes required — reconfirmed by the pilot subset landing with zero code changes.
+4. **Verification checklist** (in the appendix): toggle on → tap → phoneme plays; two-finger swipe cycles through takes; toggle off → name resumes.
+
+**Citations.**
+- Adams, M. J. (1990). *Beginning to Read: Thinking and Learning about Print*. MIT Press.
+- Krech, E.-M. et al. (2009). *Deutsches Aussprachewörterbuch*. de Gruyter.
+
 ---
 
 ## Recommended ordering for the next sprint
 
 The at-a-glance table at the top of this file is the authoritative version. Repeated here as a flow:
 
-1. **P6 phoneme recordings** — studio recording (human voice) per `docs/SOUND_PRODUCTION_SPEC.md` + drop-into-bundle; no device needed.
-2. **U5 + U10 device validation** — single iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
+1. **U5 + U10 device validation** — single iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
 
-**D8 canvas redraw profile** is post-thesis polish — schedule once there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F11** are post-thesis full features.
+P6's pilot-blocking piece shipped 2026-09-14 (H5) and is off this list; its full-alphabet remainder moved to F13, §5, post-thesis.
+
+**D8 canvas redraw profile** is post-thesis polish — schedule once there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F13** are post-thesis full features.
 
 ---
 
