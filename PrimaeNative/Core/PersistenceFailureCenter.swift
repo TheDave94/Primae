@@ -25,7 +25,16 @@
 
 import Foundation
 
-final class PersistenceFailureCenter: @unchecked Sendable {
+// `nonisolated` on the type, not just the methods: the package target
+// default-isolates every declaration to @MainActor
+// (`.defaultIsolation(MainActor.self)`, Package.swift), and this type's
+// entire reason to exist is being callable from the detached background
+// Tasks every store's `persist()` runs its disk write on — an implicit
+// `@MainActor` inference here would make every store's fire-and-forget
+// `reportFailure` call require `await` from a context that has no
+// business suspending on it. Thread safety is via the manual `NSLock`
+// below, not actor isolation — hence `@unchecked Sendable`.
+nonisolated final class PersistenceFailureCenter: @unchecked Sendable {
     /// Production instance every JSON store reports to. Tests that want
     /// to drive the reporting/subscribing mechanism itself construct
     /// their OWN `PersistenceFailureCenter()` instead of touching this
