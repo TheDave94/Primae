@@ -1859,7 +1859,8 @@ public final class TracingViewModel {
         guard !missing.isEmpty else { return nil }
         return "Phonem-Arm ohne Phonem-Aufnahmen für: \(missing.joined(separator: ", ")). "
             + "Die Sitzung wird nicht gestartet — es würde ein falscher oder gar kein Laut gespielt. "
-            + "Aufnahmen als <Buchstabe>_phoneme<n>.mp3 in Resources/Letters/<Buchstabe>/ ablegen (H5)."
+            + "Aufnahmen als <Buchstabe>_phoneme<n>.<Format> in Resources/Letters/<Buchstabe>/ "
+            + "ablegen (Format: mp3, wav, m4a, aac, flac oder ogg; H5)."
     }
 
     /// Visible letters, sorted by `letterOrdering`. `studyMode` pins the
