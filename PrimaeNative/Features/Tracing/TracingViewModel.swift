@@ -1287,7 +1287,8 @@ public final class TracingViewModel {
     /// under the post-test label. `loadLetter` itself is NOT gated by
     /// `visibleLetterNames` (that filter is UI-only), which is what makes
     /// this reachable at all.
-    func startPostTest(letter: String) {
+    @discardableResult
+    func startPostTest(letter: String) -> String? {
         startColdProbe(letter: letter, kind: .posttest)
     }
 
@@ -1298,17 +1299,30 @@ public final class TracingViewModel {
     /// retention test; `.posttest` keeps H6's restriction to the untrained
     /// pair. The kind is stamped on the letter's rows. Refused outside
     /// study mode and for any letter outside the study set.
-    func startColdProbe(letter: String, kind: StudyProbe) {
+    /// Returns `nil` on success, or a short German proctor-facing reason
+    /// when the probe was silently refused (2026-09-15: the researcher UI
+    /// used to swallow every refusal — the proctor saw no reaction at all
+    /// and had no way to tell "refused" apart from "the dismissal didn't
+    /// work"). Callers that don't need the reason may ignore it.
+    @discardableResult
+    func startColdProbe(letter: String, kind: StudyProbe) -> String? {
         // After a reset/restore the arms in memory are stale until relaunch
         // (review 2026-09-05). Only that block applies here: a probe is a
         // sound-off production and needs no phoneme recordings.
-        guard !(studyMode && participantIdentityChanged) else { return }
-        guard studyMode,
-              kind.permits(letter: letter,
+        guard !(studyMode && participantIdentityChanged) else {
+            return "Teilnehmer gewechselt — App neu starten"
+        }
+        guard studyMode else {
+            return "Nicht im Studienmodus"
+        }
+        guard kind.permits(letter: letter,
                            untrained: trainedSubset.untrainedLetters,
-                           studyLetters: studyBaseLetters) else { return }
+                           studyLetters: studyBaseLetters) else {
+            return "Buchstabe für diesen Test nicht zulässig"
+        }
         pendingProbeOverride = kind
         loadLetter(name: letter)
+        return nil
     }
 
     /// Whether the filled reference glyph is drawn on the canvas. Study
