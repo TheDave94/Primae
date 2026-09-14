@@ -505,6 +505,18 @@ jobs:
             else
               echo "ok    study CFBundleDisplayName = $study_name"
             fi
+            study_orientations=$(plist_value "$STUDY" "UISupportedInterfaceOrientations~ipad")
+            if echo "$study_orientations" | grep -q "Portrait"; then
+              echo "FAIL  study UISupportedInterfaceOrientations~ipad allows Portrait:"
+              echo "$study_orientations" | sed 's/^/        /'
+              echo "      A mid-session rotation re-maps checkpoints and changes the"
+              echo "      letter's physical size — the study configuration must be"
+              echo "      landscape-only."
+              rc=1
+            else
+              echo "ok    study UISupportedInterfaceOrientations~ipad has no Portrait entry:"
+              echo "$study_orientations" | sed 's/^/        /'
+            fi
           fi
 
           echo "SCAN_RESULT=$rc"
