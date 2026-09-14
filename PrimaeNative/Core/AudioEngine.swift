@@ -179,12 +179,17 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             // that starts the engine and then unconditionally abandons THIS
             // load: autoplay is never set and attemptResumePlayback() never
             // runs for it, so the file loads and schedules but never
-            // actually plays. `engine.isRunning` goes false routinely
-            // in normal use — `pendingSafeEnginePause()` pauses it ~0.2s
-            // after any playback naturally stops, as a deliberate idle
-            // measure — so any load arriving after that gap (every load
-            // that isn't back-to-back with the previous one, which in
-            // practice is nearly all of them) silently played nothing.
+            // actually plays. `engine.isRunning` becomes false via
+            // `pendingSafeEnginePause()` (~0.2s after it fires) — reached
+            // from backgrounding, from an audio interruption beginning, or
+            // from attemptResumePlayback's own "can't resume" branch; NOT
+            // from an ordinary gap between two unrelated plays in the
+            // foreground (checked directly — those three are the only
+            // call sites). So this bites specifically on the next load
+            // after a backgrounding/interruption cycle, or a repeat call
+            // while resumption was already failing for some other reason
+            // — narrower than "every gap," but real, and it silently
+            // drops exactly the case a resume is supposed to restore.
             // Matches `play()`'s own `if !engine.isRunning { startIfNeeded() }`
             // below, which does NOT bail out — that's the correct shape
             // already proven elsewhere in this file; `startIfNeeded()`
