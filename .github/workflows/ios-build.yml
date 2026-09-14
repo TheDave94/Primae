@@ -243,28 +243,43 @@ jobs:
             echo "FAIL  scheme-driven build produced no Primae.app — see /tmp/scheme-run-build.log"
             exit 1
           fi
-          # Scan every Mach-O in the bundle, not just a hardcoded
-          # "$APP/Primae" path — an app executable can be a launcher stub
-          # with the real code in a sibling Mach-O (same reason the
-          # identity/SURFACES scan below does this; a naive single-file
-          # check here is what caused this exact step to false-fail on
-          # 2026-09-14: the build genuinely succeeded and carried the
-          # identity symbol, `nm` just wasn't pointed at the right file).
+          # Scan every Mach-O under the whole Products directory for this
+          # build, not just inside $APP. PrimaeNative reaches the Primae
+          # app target only via a Frameworks (link) build phase — there is
+          # no Embed Frameworks / CopyFilesBuildPhase for it anywhere in
+          # project.pbxproj (checked directly, zero hits) — so if Xcode's
+          # automatic-type resolution for this local SwiftPM product
+          # builds it as a dynamic framework for this action/destination,
+          # that framework lands as a SIBLING of Primae.app under
+          # Build/Products/<config>-<sdk>/PackageFrameworks/, never copied
+          # into the bundle, and a scan confined to "$APP" reports the
+          # identity symbol absent even though the build genuinely carries
+          # it. 2026-09-14's fix widened the scan from a single hardcoded
+          # "$APP/Primae" path to every file inside $APP and still missed
+          # this — this widens it again to the whole Products tree for the
+          # derived-data root this step used, so a PackageFrameworks
+          # sibling is covered too.
           FOUND=0
+          HIT=""
           while IFS= read -r f; do
             case "$(file -b "$f" 2>/dev/null)" in
               *Mach-O*)
-                if nm -jU "$f" 2>/dev/null | grep -qx "_primae_build_identity_study"; then FOUND=1; fi
+                if nm -jU "$f" 2>/dev/null | grep -qx "_primae_build_identity_study"; then
+                  FOUND=1
+                  HIT="$f"
+                fi
                 ;;
             esac
-          done < <(find "$APP" -type f)
+          done < <(find /tmp/dd-scheme-run/Build/Products -type f)
           if [ "$FOUND" -eq 1 ]; then
             echo "ok    scheme-driven build (no -configuration) resolved to the study identity"
+            echo "      found in: $HIT"
           else
             echo "FAIL  scheme-driven build did not carry _primae_build_identity_study in any"
-            echo "      Mach-O in the bundle — it resolved to a configuration Xcode's Run button"
-            echo "      would not use, or the wrong one. This is exactly the failure mode this"
-            echo "      step exists to catch."
+            echo "      Mach-O under /tmp/dd-scheme-run/Build/Products (the .app bundle plus any"
+            echo "      sibling *.framework, such as a PackageFrameworks build) — it resolved to"
+            echo "      a configuration Xcode's Run button would not use, or the wrong one. This"
+            echo "      is exactly the failure mode this step exists to catch."
             exit 1
           fi
 
