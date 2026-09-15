@@ -1304,6 +1304,34 @@ public final class TracingViewModel {
     /// used to swallow every refusal — the proctor saw no reaction at all
     /// and had no way to tell "refused" apart from "the dismissal didn't
     /// work"). Callers that don't need the reason may ignore it.
+    ///
+    /// Checks `studyLetterSourceFailure` directly — not the full
+    /// `sessionBlockReason` umbrella — before calling `loadLetter`
+    /// (2026-09-15, second pass). Reason: the Schule canvas and
+    /// `TouchDispatcher` already refuse loudly on `sessionBlockReason`
+    /// (a bundle-scan failure leaving `letters` empty, a missing spatial
+    /// carrier tone, missing phoneme recordings, a persistence failure,
+    /// ...), but the research-dashboard probe buttons are a SEPARATE
+    /// screen that never consulted any of it — reachable via the
+    /// parent-area gear regardless of canvas state. This adds only the
+    /// bundle-scan-failure check specifically (not the full umbrella):
+    /// a probe is a sound-off production (see the guard above) and does
+    /// not need the phoneme/spatial checks `sessionBlockReason` also
+    /// folds in — pulling in the whole thing would silently change which
+    /// conditions block a probe, which is a bigger behavior change than
+    /// this pass is for. Without this narrower check, `kind.permits`
+    /// checks the letter's NAME against a static set, not whether it
+    /// actually exists in `letters`; if the bundle scan found zero
+    /// letters, `permits` can still return true, this function still
+    /// returns `nil` ("success"), and `loadLetter`'s own
+    /// `guard let idx = letters.firstIndex(...) else { return }` no-ops
+    /// silently underneath — the caller has no way to tell it didn't
+    /// work. This is the same failure class as the CoreML model that
+    /// never loaded and the disk writes that failed silently: the app
+    /// must refuse loudly, not look like it worked. The `letters.contains`
+    /// guard right below is belt-and-braces for the same failure mode
+    /// under a narrower cause (this letter specifically missing, without
+    /// the whole bundle scan having failed).
     @discardableResult
     func startColdProbe(letter: String, kind: StudyProbe) -> String? {
         // After a reset/restore the arms in memory are stale until relaunch
@@ -1315,10 +1343,16 @@ public final class TracingViewModel {
         guard studyMode else {
             return "Nicht im Studienmodus"
         }
+        if let studyLetterSourceFailure {
+            return "Keine Buchstaben aus dem Bundle geladen (\(studyLetterSourceFailure))"
+        }
         guard kind.permits(letter: letter,
                            untrained: trainedSubset.untrainedLetters,
                            studyLetters: studyBaseLetters) else {
             return "Buchstabe für diesen Test nicht zulässig"
+        }
+        guard letters.contains(where: { $0.name == letter }) else {
+            return "Buchstabe „\(letter)“ nicht im Bundle geladen"
         }
         pendingProbeOverride = kind
         loadLetter(name: letter)

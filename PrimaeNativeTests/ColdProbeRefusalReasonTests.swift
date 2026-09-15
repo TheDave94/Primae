@@ -17,6 +17,18 @@ import Foundation
 import CoreGraphics
 @testable import PrimaeNative
 
+/// A `LetterResourceProviding` that finds nothing — simulates a study
+/// device whose bundle scan genuinely turned up zero letters (2026-09-15,
+/// second pass: `startColdProbe` used to check its own guards only, not
+/// `sessionBlockReason`, so this exact scenario returned "success" while
+/// silently doing nothing underneath).
+private struct EmptyResourceProvider: LetterResourceProviding {
+    let bundle: Bundle = .main
+    var searchBundles: [Bundle] { [bundle] }
+    func allResourceURLs() -> [URL] { [] }
+    func resourceURL(for relativePath: String) -> URL? { nil }
+}
+
 @Suite(.serialized) @MainActor struct ColdProbeRefusalReasonTests {
 
     private func makeAsset(_ name: String,
@@ -85,5 +97,29 @@ import CoreGraphics
         let delayedReason = vm.startColdProbe(letter: "A", kind: .delayed)
         #expect(delayedReason != nil)
         #expect(vm.currentProbe == nil)
+    }
+
+    /// The exact scenario this second pass closes: a study device whose
+    /// bundle scan found zero letters. Goes through the REAL init path
+    /// (unlike `makeVM` above, which pokes `vm.letters` directly after
+    /// construction) — `EmptyResourceProvider` drives
+    /// `LetterRepository.loadBundledLettersOnly()` to genuinely fail, so
+    /// `studyLetterSourceFailure` and `sessionBlockReason` are set by the
+    /// production code path, not by the test.
+    @Test("a probe on a device with zero bundled letters is refused, not silently no-op'd")
+    func zeroLettersFromBundleScan_refusesLoudly() {
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        deps.thesisCondition = .threePhase
+        deps.repo = LetterRepository(resources: EmptyResourceProvider(), cache: NullLetterCache())
+        let vm = TracingViewModel(deps)
+
+        #expect(vm.letters.isEmpty, "precondition: the bundle scan found nothing")
+        #expect(vm.sessionBlockReason != nil,
+                "precondition: the existing studyPreconditionFailure mechanism must catch this")
+
+        let reason = vm.startColdProbe(letter: "A", kind: .pretest)
+        #expect(reason != nil, "a probe on an empty-letters device must return a refusal, not nil")
+        #expect(vm.currentProbe == nil, "no probe may appear to have started")
     }
 }
