@@ -24,6 +24,49 @@ You will run the whole thing **three times**, once per audio arm:
 **Phonem**, **Raumklang**, **Ohne Ton**. Section 6 covers switching
 arms between runs.
 
+## What's automated now, and what's still yours (2026-09-15)
+
+`PrimaeUITests/StudyDryRunUITests.swift` — a real XCUITest target,
+CI-verified (drives the actual app through the accessibility tree,
+same surface VoiceOver uses; not a mock or a stub) — now covers five
+of the things below every time CI runs, on the simulator: **enrolment**
+("Neuer Teilnehmer" through to the relaunch alert), **the
+Vortest/Post-Test/Nachtest flow** (tapping a probe button and landing
+correctly on the canvas, or getting a clear refusal alert instead of
+silence), **a session completing** (a real canvas stroke through to
+the phase indicator advancing), **a second enrolment preserving the
+first participant** (the archive-and-replace flow, checked via the
+participant count), and **the export containing both** (triggering a
+real export and confirming the share sheet appears with the right
+count behind it). These are exactly the things that have broken
+silently on this project before — worth running on every CI push
+rather than only when a human remembers to re-check by hand.
+
+**Still genuinely yours, on the physical device, every run** — this
+suite deliberately does not and cannot cover these, not an oversight:
+- **Apple Pencil-specific input** (pressure, azimuth/tilt) — the
+  suite drives the canvas with plain synthetic touches, which the app
+  accepts identically to a finger for completing a phase, but pencil
+  pressure/azimuth values stay unset the whole way through. The
+  spatial arm's pitch mapping and any pencil-specific calibration
+  need a real Pencil.
+- **Palm rejection** — untestable without a real hand resting on the
+  glass.
+- **Physical audio output** — whether sound actually plays through
+  headphones is a hardware fact XCUITest cannot observe; Sections 4b/4c
+  (below) and the audio arm checks stay manual.
+- **The three-finger proctor gesture** — not simulated by this suite.
+- **All three audio arms, end to end** — the automated suite exercises
+  ONE cold-probe pass structurally; it does not switch arms or listen
+  for sound in any of them. Section 6's per-arm re-runs are still
+  entirely David's.
+
+Where a step below is now also covered by the automated suite, it says
+so inline — that does not mean skip it on a real device dry-run, since
+the suite runs on a simulator and proves the LOGIC, not the physical
+experience; it means a failure there is no longer a surprise waiting
+for the next manual pass to catch.
+
 ---
 
 ## 0 · Before you start (once, not per run)
