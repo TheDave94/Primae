@@ -167,6 +167,23 @@ jobs:
                 f"are present in the checked-out tree.")
           PY
 
+  project_invariants:
+    name: "Project-settings drift tripwire (Layer 2)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      # This is the CI half of scripts/check_project_invariants.py — the
+      # other half is the Primae scheme's own Pre-actions build script
+      # (Primae.xcscheme), which fails a local Xcode build the moment the
+      # drift appears, before anyone pushes. This job is the backstop: it
+      # catches anything pushed by a path that skipped the local build
+      # (a direct git push, a different scheme, a seat without Xcode
+      # open). See the script's own header for the incident this exists
+      # to stop from recurring a fourth time.
+      - name: "Info.plist / project.pbxproj invariants"
+        run: python3 scripts/check_project_invariants.py
+
   unwired_guards:
     name: "Unwired-guard gate (macos-26 / Xcode 26)"
     runs-on: macos-26
