@@ -345,15 +345,23 @@ jobs:
       # _primae_build_identity_study` linker invocation). The 2026-09-14
       # "widen the scan to the whole Products tree, in case of a
       # PackageFrameworks sibling" fix was chasing a framework that this
-      # destination never produces, AND that whole-tree walk-every-file
-      # loop had its own bug: a direct `nm -jU "$APP/Primae" | grep -qx
-      # _primae_build_identity_study` on the exact same binary the loop
-      # scanned found the symbol immediately (run 34952219435's diagnostic
-      # — 21329 total symbols, `_primae_build_identity_study` present,
-      # defined), so the false-red was in the scan mechanism, never in the
-      # build. Checking $APP/Primae directly is both correct (it's the
-      # only place the symbol can be, given no framework is ever produced
-      # here) and simpler than a many-thousand-file tree walk.
+      # destination never produces.
+      #
+      # nm INVOKED EXACTLY ONCE (2026-09-15, second false-red the same day):
+      # the first fix here called `nm -jU "$APP/Primae"` twice — once for
+      # the if-check, once for an on-failure diagnostic dump — and on run
+      # 34953399204 the TWO invocations, seconds apart on the identical
+      # unmodified file, disagreed: the if-check's `grep -qx` found nothing
+      # while the diagnostic's dump, moments later, printed
+      # `_primae_build_identity_study` cleanly (hex-dumped: no trailing
+      # whitespace, no \r, nothing `-x` should have refused). Genuinely
+      # unresolved whether this is `nm` racing a not-yet-fully-flushed
+      # just-linked binary or something else — but invoking nm twice on the
+      # same file and trusting them to agree was never safe regardless of
+      # the cause. Capture nm's output to a file ONCE and check/diagnose
+      # from that single capture, so the verdict and the diagnostic can
+      # never contradict each other again even if the underlying flake
+      # recurs.
       # ---------------------------------------------------------------
       - name: "Scheme-driven build, no -configuration override (what Xcode's Run button actually does)"
         run: |
@@ -370,7 +378,9 @@ jobs:
             echo "FAIL  scheme-driven build produced no Primae.app/Primae — see /tmp/scheme-run-build.log"
             exit 1
           fi
-          if nm -jU "$APP/Primae" 2>/dev/null | grep -qx "_primae_build_identity_study"; then
+          sync
+          nm -jU "$APP/Primae" > /tmp/scheme-run-nm.txt 2>&1
+          if grep -qx "_primae_build_identity_study" /tmp/scheme-run-nm.txt; then
             echo "ok    scheme-driven build (no -configuration) resolved to the study identity"
             echo "      found in: $APP/Primae"
           else
@@ -378,9 +388,9 @@ jobs:
             echo "      a configuration Xcode's Run button would not use, or the wrong one. This"
             echo "      is exactly the failure mode this step exists to catch."
             echo ""
-            echo "----- DIAGNOSTIC: nm -jU symbol count and identity-substring grep -----"
-            echo "total nm -jU lines: $(nm -jU "$APP/Primae" 2>&1 | wc -l)"
-            nm -jU "$APP/Primae" 2>&1 | grep -i "primae_build_identity" || echo "(no substring match at all)"
+            echo "----- DIAGNOSTIC: nm -jU symbol count and identity-substring grep (same capture as the check above) -----"
+            echo "total nm -jU lines: $(wc -l < /tmp/scheme-run-nm.txt)"
+            grep -i "primae_build_identity" /tmp/scheme-run-nm.txt || echo "(no substring match at all)"
             echo ""
             echo "----- DIAGNOSTIC (failure only): grep of /tmp/scheme-run-build.log for PrimaeNative -----"
             grep -n "PrimaeNative" /tmp/scheme-run-build.log || echo "(no lines matched \"PrimaeNative\")"
@@ -670,6 +680,7 @@ jobs:
           path: |
             /tmp/guard-a.log
             /tmp/scheme-run-build.log
+            /tmp/scheme-run-nm.txt
             /tmp/study-test.log
             /tmp/study-scan-build.log
             /tmp/release-study-build.log
