@@ -54,13 +54,13 @@ final class StudyDryRunUITests: XCTestCase {
             // relaunch alert's OK — confirm we're still inside the
             // parent area, on a screen that can see the probe buttons.
             XCTAssertTrue(
-                waitFor(label: "RED-PROOF-1 Vortest starten: A", in: app, timeout: 10),
+                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
                 "expected the research dashboard's pretest buttons to be visible after enrolment"
             )
         }
 
         XCTContext.runActivity(named: "2 — the Vortest/Post-Test/Nachtest flow") { _ in
-            let pretestA = element(labelPrefix: "RED-PROOF-2 Vortest starten: A", in: app)
+            let pretestA = element(labelPrefix: "Vortest starten: A", in: app)
             XCTAssertTrue(pretestA.waitForExistence(timeout: 5), "Vortest button for letter A must exist")
             pretestA.tap()
             // A successful cold probe calls onLeaveParentArea() (f08d997,
@@ -99,7 +99,7 @@ final class StudyDryRunUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 0.5)
                 value = phaseIndicator.value as? String ?? ""
             }
-            XCTAssertEqual(value, "RED-PROOF-3 9 von 4 abgeschlossen",
+            XCTAssertEqual(value, "1 von 4 abgeschlossen",
                             "the pretest freeWrite pass should have completed and advanced the phase indicator")
         }
 
@@ -113,7 +113,7 @@ final class StudyDryRunUITests: XCTestCase {
             // half-reapplied state where the outgoing participant's
             // data survived but the incoming one can't proceed.
             XCTAssertTrue(
-                waitFor(label: "RED-PROOF-4 Vortest starten: A", in: app, timeout: 10),
+                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
                 "expected the research dashboard to be usable for the newly-enrolled second participant too"
             )
         }
@@ -146,8 +146,8 @@ final class StudyDryRunUITests: XCTestCase {
             XCTAssertTrue(countText.waitForExistence(timeout: 5), "the participant-count hint must be visible")
             let count = participantCount(fromHint: countText.label)
             XCTAssertGreaterThanOrEqual(
-                count, 99,
-                "RED-PROOF-5 expected at least the two explicitly-enrolled participants to still be counted, got \(count) from '\(countText.label)'"
+                count, 2,
+                "expected at least the two explicitly-enrolled participants to still be counted, got \(count) from '\(countText.label)'"
             )
 
             let csvButton = element(label: "CSV exportieren", in: app)
