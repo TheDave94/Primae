@@ -335,6 +335,25 @@ jobs:
       # unconditional — `_primae_build_identity_normal` no longer exists
       # to satisfy the `-u`). Omitting `-configuration` here is the point,
       # not an oversight.
+      #
+      # CHECK, MEASURED not theorised (2026-09-15, fixing a false-red that
+      # stood since c57c3db): PrimaeNative NEVER resolves to a
+      # PackageFrameworks dynamic framework for this destination — it
+      # resolves to a single relocatable object, `PrimaeNative.o`, sitting
+      # at the Products root, statically merged into Primae.app/Primae
+      # itself (confirmed via the build log's own `-filelist`/`-u
+      # _primae_build_identity_study` linker invocation). The 2026-09-14
+      # "widen the scan to the whole Products tree, in case of a
+      # PackageFrameworks sibling" fix was chasing a framework that this
+      # destination never produces, AND that whole-tree walk-every-file
+      # loop had its own bug: a direct `nm -jU "$APP/Primae" | grep -qx
+      # _primae_build_identity_study` on the exact same binary the loop
+      # scanned found the symbol immediately (run 34952219435's diagnostic
+      # — 21329 total symbols, `_primae_build_identity_study` present,
+      # defined), so the false-red was in the scan mechanism, never in the
+      # build. Checking $APP/Primae directly is both correct (it's the
+      # only place the symbol can be, given no framework is ever produced
+      # here) and simpler than a many-thousand-file tree walk.
       # ---------------------------------------------------------------
       - name: "Scheme-driven build, no -configuration override (what Xcode's Run button actually does)"
         run: |
@@ -347,84 +366,24 @@ jobs:
             CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
             2>&1 | tee /tmp/scheme-run-build.log | tail -20
           APP=$(find /tmp/dd-scheme-run/Build/Products -maxdepth 2 -type d -name "Primae.app" | head -1)
-          if [ -z "$APP" ]; then
-            echo "FAIL  scheme-driven build produced no Primae.app — see /tmp/scheme-run-build.log"
+          if [ -z "$APP" ] || [ ! -f "$APP/Primae" ]; then
+            echo "FAIL  scheme-driven build produced no Primae.app/Primae — see /tmp/scheme-run-build.log"
             exit 1
           fi
-          # Scan every Mach-O under the whole Products directory for this
-          # build, not just inside $APP. PrimaeNative reaches the Primae
-          # app target only via a Frameworks (link) build phase — there is
-          # no Embed Frameworks / CopyFilesBuildPhase for it anywhere in
-          # project.pbxproj (checked directly, zero hits) — so if Xcode's
-          # automatic-type resolution for this local SwiftPM product
-          # builds it as a dynamic framework for this action/destination,
-          # that framework lands as a SIBLING of Primae.app under
-          # Build/Products/<config>-<sdk>/PackageFrameworks/, never copied
-          # into the bundle, and a scan confined to "$APP" reports the
-          # identity symbol absent even though the build genuinely carries
-          # it. 2026-09-14's fix widened the scan from a single hardcoded
-          # "$APP/Primae" path to every file inside $APP and still missed
-          # this — this widens it again to the whole Products tree for the
-          # derived-data root this step used, so a PackageFrameworks
-          # sibling is covered too.
-          FOUND=0
-          HIT=""
-          while IFS= read -r f; do
-            case "$(file -b "$f" 2>/dev/null)" in
-              *Mach-O*)
-                if nm -jU "$f" 2>/dev/null | grep -qx "_primae_build_identity_study"; then
-                  FOUND=1
-                  HIT="$f"
-                fi
-                ;;
-            esac
-          done < <(find /tmp/dd-scheme-run/Build/Products -type f)
-          if [ "$FOUND" -eq 1 ]; then
+          if nm -jU "$APP/Primae" 2>/dev/null | grep -qx "_primae_build_identity_study"; then
             echo "ok    scheme-driven build (no -configuration) resolved to the study identity"
-            echo "      found in: $HIT"
+            echo "      found in: $APP/Primae"
           else
-            echo "FAIL  scheme-driven build did not carry _primae_build_identity_study in any"
-            echo "      Mach-O under /tmp/dd-scheme-run/Build/Products (the .app bundle plus any"
-            echo "      sibling *.framework, such as a PackageFrameworks build) — it resolved to"
+            echo "FAIL  $APP/Primae does not carry _primae_build_identity_study — it resolved to"
             echo "      a configuration Xcode's Run button would not use, or the wrong one. This"
             echo "      is exactly the failure mode this step exists to catch."
             echo ""
-            # 2026-09-15: the widened Mach-O scan above (6218473) still
-            # fails here even though the build log confirms BUILD SUCCEEDED
-            # with -DSTUDY_BUILD compiled into PrimaeNative for both
-            # architectures, and the Products tree carries a plausibly-sized
-            # Primae.app/Primae plus a PrimaeNative.o at the Products root
-            # (no PackageFrameworks sibling — HANDOFF's framework theory
-            # doesn't apply to this destination). Never confirmed which of
-            # "symbol genuinely absent" vs "grep -qx false negative against
-            # nm's per-architecture fat-binary output" this actually is —
-            # dump raw nm output for the two most likely carriers directly,
-            # unconditionally, so the next read of this log has the answer
-            # instead of another round of theory.
-            echo "----- DIAGNOSTIC: raw nm -jU on \$APP/Primae, substring-grepped for the identity name -----"
-            if [ -n "$APP" ] && [ -f "$APP/Primae" ]; then
-              echo "file: $(file -b "$APP/Primae")"
-              echo "total nm -jU lines: $(nm -jU "$APP/Primae" 2>&1 | wc -l)"
-              nm -jU "$APP/Primae" 2>&1 | grep -i "primae_build_identity" || echo "(no substring match at all)"
-            else
-              echo "(\$APP/Primae does not exist)"
-            fi
-            echo ""
-            echo "----- DIAGNOSTIC: raw nm -jU on Products/PrimaeNative.o, substring-grepped -----"
-            PN_O=/tmp/dd-scheme-run/Build/Products/Debug-Study-iphonesimulator/PrimaeNative.o
-            if [ -f "$PN_O" ]; then
-              echo "file: $(file -b "$PN_O")"
-              echo "total nm -jU lines: $(nm -jU "$PN_O" 2>&1 | wc -l)"
-              nm -jU "$PN_O" 2>&1 | grep -i "primae_build_identity" || echo "(no substring match at all)"
-            else
-              echo "($PN_O does not exist)"
-            fi
+            echo "----- DIAGNOSTIC: nm -jU symbol count and identity-substring grep -----"
+            echo "total nm -jU lines: $(nm -jU "$APP/Primae" 2>&1 | wc -l)"
+            nm -jU "$APP/Primae" 2>&1 | grep -i "primae_build_identity" || echo "(no substring match at all)"
             echo ""
             echo "----- DIAGNOSTIC (failure only): grep of /tmp/scheme-run-build.log for PrimaeNative -----"
             grep -n "PrimaeNative" /tmp/scheme-run-build.log || echo "(no lines matched \"PrimaeNative\")"
-            echo ""
-            echo "----- DIAGNOSTIC (failure only): full Products tree under /tmp/dd-scheme-run/Build/Products -----"
-            find /tmp/dd-scheme-run/Build/Products -exec ls -la {} + || echo "(find produced no output)"
             echo ""
             echo "----- DIAGNOSTIC (failure only): showBuildSettings for -scheme Primae, no -configuration -----"
             xcodebuild -showBuildSettings \
