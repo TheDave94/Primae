@@ -405,6 +405,17 @@ jobs:
             exit 1
           fi
 
+      # -only-testing:PrimaeNativeTests (2026-09-15): this step runs the
+      # FULL scheme via build_study.sh, so it inherited the same
+      # PrimaeUITests-on-simulator flake the xcode_test job's narrowing
+      # (Layer 3, this file's top-of-file comment) already fixed there but
+      # not here — caught live when this exact flake (StudyDryRunUITests.
+      # testEnrolmentProbeCompletionSecondEnrolmentExport, share-sheet
+      # dismissal timing) failed THIS step on a build unrelated to it.
+      # Scoping here too for the same reason: this step exists to prove
+      # the study build's OWN logic, not to re-litigate a simulator UI
+      # test that Layer 4 (scripts/run_device_uitests.sh) exists
+      # specifically because simulator UI-test results aren't trustworthy.
       - name: "Build & test the study build"
         run: |
           set -o pipefail
@@ -412,6 +423,7 @@ jobs:
           PRIMAE_DERIVED_DATA=/tmp/dd-study \
             scripts/build_study.sh test \
               -enableCodeCoverage NO \
+              -only-testing:PrimaeNativeTests \
               2>&1 | tee /tmp/study-test.log | tail -20
 
       # The artefact that gets SCANNED must be built the same way as the
