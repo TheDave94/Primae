@@ -15,8 +15,11 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 5
     steps:
-      - name: "Report the actual Xcode build on this label"
+      - name: "Report the actual Xcode build, host OS, and simulator runtimes on this label"
         run: |
+          echo "--- host OS (sw_vers / uname) ---"
+          sw_vers
+          uname -a
           echo "--- /Applications, anything Xcode-named ---"
           ls -la /Applications | grep -i xcode || echo "(no match)"
           echo "--- xcode-select -p (current default) ---"
@@ -31,6 +34,12 @@ jobs:
               /usr/libexec/PlistBuddy -c "Print :DTXcodeBuild" "$app/Contents/Info.plist" 2>/dev/null || \
               echo "(no DTXcodeBuild key found)"
           done
+          echo "--- xcrun simctl list runtimes (every iOS runtime installed) ---"
+          xcrun simctl list runtimes
+          echo "--- xcrun simctl list devices available | grep -i ipad (device set for the named iPads) ---"
+          xcrun simctl list devices available | grep -i ipad || echo "(no iPad devices found)"
+          echo "--- does an iOS 26 simulator runtime still exist on this label? ---"
+          xcrun simctl list runtimes | grep -i "iOS 26" || echo "(no iOS 26 runtime found — confirms the 'iOS 27 simulators only' claim if true)"
 
   stroke_audit:
     name: "Skeleton & stroke audit (advisory)"
