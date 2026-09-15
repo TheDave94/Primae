@@ -9,6 +9,30 @@ on:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+# ---------------------------------------------------------------------
+# FOUR-LAYER SPLIT (2026-09-15). CI's job here is not "prove the app works
+# for a child" — that's the device's job, irreducibly. Two real defects
+# this project shipped were both simulator-invisible with CI green
+# throughout; trusting a simulator-only green as behavioral proof actively
+# launders false confidence. CI's job is catching what a clean, unattended,
+# always-on process CAN catch.
+#
+#   Layer 1 — stroke_audit, unwired_guards. Zero device/simulator
+#     dependency. Data-integrity + self-test-vacuity regressions.
+#   Layer 2 — resource_presence (below) + study_build's identity/
+#     compiled-out/orientation/bundle-ID scan. "Is the resource actually
+#     there, and is the shipped artefact actually what it claims to be."
+#   Layer 3 — xcode_test, scoped to PrimaeNativeTests only
+#     (-only-testing:). Fast, continuous, per-push logic-test signal;
+#     PrimaeUITests still COMPILES here (whole scheme builds-for-testing)
+#     but does not RUN, so a Swift/API regression in the test code is
+#     still caught without the false-confidence problem above.
+#   Layer 4 — Device-XCUITest. NOT part of this file, deliberately: GitHub's
+#     hosted runners have no iPad attached. scripts/run_device_uitests.sh
+#     runs PrimaeUITests against a real connected device from whichever
+#     seat has one — periodic/on-demand, not gated into push CI.
+# ---------------------------------------------------------------------
+
 jobs:
   stroke_audit:
     name: "Skeleton & stroke audit (advisory)"
@@ -73,6 +97,74 @@ jobs:
               for w in warnings: print("  "+w)
               sys.exit(0)  # advisory; do not fail CI
           print("No retrace/spike artifacts found.")
+          PY
+
+  resource_presence:
+    name: "Resource presence — study letters, sonification, ML model (Layer 2)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      # Zero Xcode/simulator dependency by design — this is the fast half
+      # of Layer 2, complementing (not replacing) study_build's slower
+      # nm-based identity scan and PrimaeNativeTests/ResourceResolutionTests
+      # .swift's real PrimaeBundle-resolution proof (Layer 3, runs under a
+      # simulator boot). This job checks the SOURCE TREE has what the study
+      # needs; it does not prove SwiftPM's .copy/.process resource handling
+      # resolves it at runtime the way the app actually does — that is
+      # what ResourceResolutionTests.swift is for, and this job does not
+      # attempt to duplicate it. What this job buys: a result in seconds,
+      # on every push, for the specific question "did a study-letter asset
+      # go missing from git" — asked by hand this session (a local-clone
+      # diff) after an on-device letter-loading symptom; see HANDOFF.md's
+      # 2026-09-15 session-two entry for the full incident.
+      - name: Study-letter and sonification/model resource check
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys
+
+          root = pathlib.Path("PrimaeNative")
+          study_letters = ["A", "F", "I", "L", "M"]  # TrainedLetterSubset.studyLetters
+          failures = []
+
+          for letter in study_letters:
+              for variant in ("Regular", "Light"):
+                  p = root / "Resources" / "Letters" / variant / letter / "strokes.json"
+                  if not p.is_file():
+                      failures.append(f"missing {p}")
+                      continue
+                  try:
+                      json.loads(p.read_text())
+                  except json.JSONDecodeError as e:
+                      failures.append(f"invalid JSON in {p}: {e}")
+
+              letter_dir = root / "Resources" / "Letters" / letter
+              phonemes = sorted(letter_dir.glob(f"{letter}_phoneme*.wav")) if letter_dir.is_dir() else []
+              if not phonemes:
+                  failures.append(f"no {letter}_phoneme*.wav under {letter_dir}")
+
+          carrier = root / "Resources" / "Sonification" / "spatial_carrier.wav"
+          if not carrier.is_file() or carrier.stat().st_size == 0:
+              failures.append(f"missing or empty {carrier} — the spatial arm's only sound; "
+                               f"without it the spatial arm is indistinguishable from silent control")
+
+          model = root / "MLResources" / "GermanLetterRecognizer.mlpackage"
+          manifest = model / "Manifest.json"
+          data_dir = model / "Data"
+          if not manifest.is_file():
+              failures.append(f"missing {manifest}")
+          if not data_dir.is_dir() or not any(data_dir.iterdir()):
+              failures.append(f"missing or empty {data_dir}")
+
+          if failures:
+              print("FAIL — study resource set is incomplete:")
+              for f in failures:
+                  print(f"  {f}")
+              sys.exit(1)
+
+          print(f"ok — all {len(study_letters)} study letters (Regular+Light strokes, "
+                f"phoneme audio), the spatial carrier tone, and the ML model package "
+                f"are present in the checked-out tree.")
           PY
 
   unwired_guards:
@@ -144,6 +236,21 @@ jobs:
       # satisfied by anything — that configuration cannot link at all
       # anymore, not just "isn't exercised here". This is the main test
       # job; it has to build the one configuration that still links.
+      # -only-testing:PrimaeNativeTests (2026-09-15, Layer 3 of the CI
+      # four-layer split — see this file's top-of-file comment): this job
+      # is the fast, continuous, per-push signal for business-logic
+      # regressions (scoring math, phase-state transitions, persistence
+      # failure handling), and a simulator's software audio stack does not
+      # reproduce real AVAudioSession timing — two real defects this
+      # project shipped were both simulator-invisible with this exact job
+      # green throughout. -only-testing: does not change what BUILDS: the
+      # whole scheme still builds-for-testing, so PrimaeUITests keeps
+      # compiling here and a Swift/API regression in it is still caught —
+      # it changes only what RUNS, so PrimaeUITests stops being trusted as
+      # a per-push behavioral proof it was never structurally able to be.
+      # Real device execution of PrimaeUITests is
+      # scripts/run_device_uitests.sh, dispatched by hand from a
+      # device-capable seat, not this job.
       - name: Build & Test — iPad simulator
         run: |
           set -o pipefail
@@ -153,6 +260,7 @@ jobs:
             -destination 'platform=iOS Simulator,name=${{ matrix.simulator }},OS=latest' \
             -configuration Debug-Study \
             -enableCodeCoverage NO \
+            -only-testing:PrimaeNativeTests \
             CODE_SIGNING_ALLOWED=NO \
             ENABLE_DEBUG_DYLIB=NO \
             -resultBundlePath /tmp/TestResults.xcresult \
@@ -280,6 +388,37 @@ jobs:
             echo "      sibling *.framework, such as a PackageFrameworks build) — it resolved to"
             echo "      a configuration Xcode's Run button would not use, or the wrong one. This"
             echo "      is exactly the failure mode this step exists to catch."
+            echo ""
+            # 2026-09-15: the widened Mach-O scan above (6218473) still
+            # fails here even though the build log confirms BUILD SUCCEEDED
+            # with -DSTUDY_BUILD compiled into PrimaeNative for both
+            # architectures, and the Products tree carries a plausibly-sized
+            # Primae.app/Primae plus a PrimaeNative.o at the Products root
+            # (no PackageFrameworks sibling — HANDOFF's framework theory
+            # doesn't apply to this destination). Never confirmed which of
+            # "symbol genuinely absent" vs "grep -qx false negative against
+            # nm's per-architecture fat-binary output" this actually is —
+            # dump raw nm output for the two most likely carriers directly,
+            # unconditionally, so the next read of this log has the answer
+            # instead of another round of theory.
+            echo "----- DIAGNOSTIC: raw nm -jU on \$APP/Primae, substring-grepped for the identity name -----"
+            if [ -n "$APP" ] && [ -f "$APP/Primae" ]; then
+              echo "file: $(file -b "$APP/Primae")"
+              echo "total nm -jU lines: $(nm -jU "$APP/Primae" 2>&1 | wc -l)"
+              nm -jU "$APP/Primae" 2>&1 | grep -i "primae_build_identity" || echo "(no substring match at all)"
+            else
+              echo "(\$APP/Primae does not exist)"
+            fi
+            echo ""
+            echo "----- DIAGNOSTIC: raw nm -jU on Products/PrimaeNative.o, substring-grepped -----"
+            PN_O=/tmp/dd-scheme-run/Build/Products/Debug-Study-iphonesimulator/PrimaeNative.o
+            if [ -f "$PN_O" ]; then
+              echo "file: $(file -b "$PN_O")"
+              echo "total nm -jU lines: $(nm -jU "$PN_O" 2>&1 | wc -l)"
+              nm -jU "$PN_O" 2>&1 | grep -i "primae_build_identity" || echo "(no substring match at all)"
+            else
+              echo "($PN_O does not exist)"
+            fi
             echo ""
             echo "----- DIAGNOSTIC (failure only): grep of /tmp/scheme-run-build.log for PrimaeNative -----"
             grep -n "PrimaeNative" /tmp/scheme-run-build.log || echo "(no lines matched \"PrimaeNative\")"
