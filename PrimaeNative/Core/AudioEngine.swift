@@ -410,7 +410,7 @@ private extension AudioEngine {
         let session  = AVAudioSession.sharedInstance()
         let category = session.category
         let canStart = category == .playback || category == .playAndRecord || category == .multiRoute
-        guard canStart || AVAudioApplication.shared.recordPermission == .granted else { return }
+        guard canStart else { return }
         // Deliberately LEFT synchronous, unlike play()'s setActive above —
         // this is the one call site where the ordering genuinely matters:
         // this is the path that runs when the engine ISN'T already
