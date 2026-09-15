@@ -9,7 +9,7 @@
          <ExecutionAction
             ActionType = "Xcode.IDEStandardExecutionActionsCore.ExecutionActionType.ShellScriptAction">
             <ActionContent
-               title = "Project-settings drift tripwire"
+               title = "Project-settings drift tripwire + build provenance gate"
                scriptText = "if [ &quot;${ACTION:-}&quot; = &quot;clean&quot; ]; then&#10;  exit 0&#10;fi&#10;python3 &quot;${SRCROOT}/../scripts/check_project_invariants.py&quot; --autofix&#10;">
                <EnvironmentBuildable>
                   <BuildableReference

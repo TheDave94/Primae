@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""check_project_invariants.py — drift tripwire for Info.plist / project.pbxproj.
+"""check_project_invariants.py — drift tripwire + build provenance gate.
 
 WHY THIS EXISTS. Xcode has repeatedly rewritten Primae/Info.plist and/or
 Primae/Primae.xcodeproj/project.pbxproj on open or save, silently
@@ -13,25 +13,45 @@ Xcode's to author — they're git's, checked in, decided. This is
 unchanged and does not mean "don't build via Xcode's UI"; that build
 stays, and stayed working the whole time. The two are different claims.
 
+THE DEVICE PATH IS XCODE'S UI, NOT A SCRIPT (supervisor ruling,
+2026-09-15, correcting scripts/deploy_verified_pilot_build.sh being
+handed to David as the way to get a provenance-attributable build onto
+the iPad — David was explicit the device path is the Run button, and a
+provenance requirement can be satisfied there just as well). This script
+is now also where that requirement lives: gate_provenance(), called at
+the end of every --autofix run, refuses the build outright when the tree
+can't be attributed to a commit, and otherwise prints the commit,
+branch, and resolved configuration into the build log where David reads
+it before installing. See gate_provenance()'s own docstring for exactly
+what is and isn't satisfiable at that point in the build.
+
+THREE THINGS THIS SCRIPT DOES NOW, IN ONE RUN (--autofix): heal known
+drift, gate provenance, never fail for the first reason, always fail for
+the second. They are different failure classes on purpose — see below.
+
 TWO MODES, because a local UI build and a CI dispatch have different
-correct responses to the exact same finding (supervisor ruling,
+correct responses to the exact same drift finding (supervisor ruling,
 2026-09-15, correcting the first version of this script — that version
 hard-failed a local Clean for a rewrite David never asked for, which
 made the guard itself the outage):
 
   --autofix (the Primae scheme's Pre-actions script; local, interactive):
-    for drift matching a KNOWN decided-shape violation (every check
+    for DRIFT matching a KNOWN decided-shape violation (every check
     below), restore the file from HEAD via `git checkout --`, print
-    exactly what was wrong and what was restored, and exit 0 — a
-    rewrite Xcode performs unprompted overrides no one, so undoing it
-    is not an authoring act either. Anything this script cannot
-    positively identify (an exception while parsing, a shape it has no
-    check for) is reported and left untouched — still exit 0. Never
-    fails the interactive build either way.
+    exactly what was wrong and what was restored — a rewrite Xcode
+    performs unprompted overrides no one, so undoing it is not an
+    authoring act either. Anything this script cannot positively
+    identify (an exception while parsing, a shape it has no check for)
+    is reported and left untouched. None of that fails the build. Then
+    gate_provenance() runs regardless, and THAT can fail the build — see
+    its own docstring for why that is not the same mistake as before.
 
-  (default, no flag; CI): report every finding and exit 1. A red CI run
-    costs nobody a waiting build — this is where "fail" is still the
-    right verb, and auto-fixing here would let a bad push look clean.
+  (default, no flag; CI): report every drift finding and exit 1. A red CI
+    run costs nobody a waiting build — this is where "fail" on drift is
+    still the right verb, and auto-fixing here would let a bad push look
+    clean. CI never calls gate_provenance() — a pushed commit is already
+    attributable by definition; the provenance question only exists for
+    an interactive install off a possibly-dirty local tree.
 
 ACTION=clean: skipped entirely, unconditionally, before any file is even
 read. A Clean produces no build settings and ships nothing; running this
@@ -76,6 +96,7 @@ absence) — CI is the only backstop for this specific finding, by
 construction, not by omission.
 """
 import argparse
+import os
 import pathlib
 import re
 import subprocess
@@ -201,6 +222,52 @@ def restore(path: pathlib.Path) -> None:
                    check=True)
 
 
+def gate_provenance() -> int:
+    """--autofix only, called after drift handling completes either way.
+    THE PROVENANCE REQUIREMENT (supervisor ruling, 2026-09-15): the binary
+    this build installs must be attributable to a commit. This is not
+    satisfied by "the two known files match HEAD" alone — any OTHER
+    uncommitted change anywhere in the tree means the build still isn't
+    attributable, and unlike Xcode's own unprompted rewrites, that dirt IS
+    something a person chose (or a real other process did), so it is not
+    this script's to silently override. This is the one place --autofix
+    is allowed to fail the build — refusing an unattributable install is
+    about the artefact, not about punishing anyone for Xcode's rewrites.
+    """
+    dirty = subprocess.run(["git", "-C", str(ROOT), "status", "--porcelain"],
+                            capture_output=True, text=True, check=True).stdout
+    if dirty.strip():
+        print("FATAL: the working tree is not clean — this build cannot be "
+              "attributed to a commit, and installing it would be a wasted "
+              "listen (or worse, if it passes).")
+        print(dirty, end="" if dirty.endswith("\n") else "\n")
+        print(f"Fix: commit or discard the changes above (git -C {ROOT} status), "
+              f"then build again.")
+        return 1
+
+    sha = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+    branch = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--abbrev-ref", "HEAD"],
+                             capture_output=True, text=True, check=True).stdout.strip()
+    # CONFIGURATION is a standard xcodebuild build setting; Xcode exports
+    # the full build-settings environment to a scheme Pre-action that
+    # names a target via EnvironmentBuildable (the same mechanism ACTION
+    # already relies on, in the scheme's own shell wrapper) — reasoned
+    # from Xcode's documented Pre-action behavior, NOT independently
+    # re-confirmed live: this sandbox's local xcodebuild access proved too
+    # unreliable this session (intermittent CoreSimulatorService/package-
+    # resolution failures) to capture a real environment dump. Coded
+    # defensively rather than assumed present, precisely because of that.
+    configuration = os.environ.get("CONFIGURATION", "<unknown — $CONFIGURATION was not set>")
+    print("================================================================")
+    print("PROVENANCE — this build is about to install:")
+    print(f"  commit:        {sha} ({sha[:7]})")
+    print(f"  branch:        {branch}")
+    print(f"  configuration: {configuration}")
+    print("================================================================")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--autofix", action="store_true",
@@ -213,14 +280,14 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001 — deliberately broad, see docstring
         if args.autofix:
             print(f"could not evaluate project-settings invariants: {e!r} "
-                  f"— reporting only, not touching anything, not failing the build")
-            return 0
+                  f"— reporting only, not touching anything")
+            return gate_provenance()
         print(f"FAIL — could not evaluate project-settings invariants: {e!r}")
         return 1
 
     if not findings:
         print("ok — Info.plist and project.pbxproj match the decided invariants")
-        return 0
+        return gate_provenance() if args.autofix else 0
 
     by_file: dict = {}
     for path, message in findings:
@@ -272,7 +339,7 @@ def main() -> int:
                   "for THIS build to use it (reasoned from Xcode's build model, not "
                   "independently observed — see module docstring). Build again.")
 
-    return 0
+    return gate_provenance()
 
 
 if __name__ == "__main__":
