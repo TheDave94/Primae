@@ -517,6 +517,17 @@ jobs:
               echo "ok    study UISupportedInterfaceOrientations~ipad has no Portrait entry:"
               echo "$study_orientations" | sed 's/^/        /'
             fi
+            study_full_screen=$(plist_value "$STUDY" "UIRequiresFullScreen")
+            if [ "$study_full_screen" != "true" ] && [ "$study_full_screen" != "1" ]; then
+              echo "FAIL  study UIRequiresFullScreen is '$study_full_screen', expected true."
+              echo "      Apple now requires an app to either support all four interface"
+              echo "      orientations or set UIRequiresFullScreen — this app deliberately"
+              echo "      does the latter (2026-09-15) since it declares landscape-only"
+              echo "      above; without this key the two conditions contradict each other."
+              rc=1
+            else
+              echo "ok    study UIRequiresFullScreen = $study_full_screen"
+            fi
           fi
 
           echo "SCAN_RESULT=$rc"
