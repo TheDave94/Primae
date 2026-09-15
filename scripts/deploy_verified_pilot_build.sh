@@ -1,9 +1,27 @@
 #!/bin/sh
-# deploy_verified_pilot_build.sh — the ONE command that puts a
-# provenance-attributable pilot build on the iPad.
+# deploy_verified_pilot_build.sh — provenance-attributable pilot build,
+# for a seat with no Xcode UI.
 #
-# WHY THIS EXISTS (supervisor ruling, 2026-09-15). A device listen against
-# a binary nobody can attribute to a commit is worthless, and worse if it
+# NOT DAVID'S PATH (supervisor ruling, 2026-09-15, correcting an earlier
+# version of this same ruling that handed him this script). David was
+# explicit: the device path is Xcode's own Run button, not a Terminal
+# script. The provenance requirement this script was built to satisfy —
+# the binary on the iPad must be attributable to a commit — is now
+# enforced from inside the build itself: the Primae scheme's own
+# Pre-action (scripts/check_project_invariants.py --autofix,
+# gate_provenance()) refuses the build when the tree can't be attributed
+# and prints commit/branch/configuration into Xcode's own build log
+# before anything installs. That is David's path; use it.
+#
+# This script still exists for a seat that has git and a shell but no
+# Xcode UI to press Run in — CI-adjacent tooling, a headless build
+# machine, or a future automated pilot-artefact pipeline. It is kept
+# working and current, just not the thing to hand a person at a keyboard
+# with Xcode open.
+#
+# WHY IT WAS BUILT (supervisor ruling, 2026-09-15, still the real
+# problem this solves for a scriptable seat). A device listen against a
+# binary nobody can attribute to a commit is worthless, and worse if it
 # passes: this session found the working tree carrying unrelated,
 # uncommitted Xcode rewrites (an iOS 27 deployment-target bump, a reverted
 # landscape lock, a reverted study/casual display-name split) at least
