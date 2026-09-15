@@ -26,6 +26,7 @@
 // through @testable internals.
 
 import XCTest
+import Foundation
 
 final class StudyDryRunUITests: XCTestCase {
 
@@ -108,7 +109,7 @@ final class StudyDryRunUITests: XCTestCase {
             enrolNewParticipant(app)
         }
 
-        XCTContext.runActivity(named: "5 — the export containing both") { _ in
+        try XCTContext.runActivity(named: "5 — the export containing both") { _ in
             let exportLink = element(label: "Datenexport", in: app)
             XCTAssertTrue(exportLink.waitForExistence(timeout: 5), "Datenexport sidebar entry must exist")
             exportLink.tap()
