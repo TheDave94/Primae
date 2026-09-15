@@ -15,9 +15,20 @@ surface for these two files. This script is the enforcement, wired into
 two places that don't depend on any seat remembering to check:
   1. The `Primae` scheme's Pre-actions build script — runs on every local
      build (Cmd-R, Cmd-B, test, archive), fails the build immediately.
-  2. `ios-build.yml`'s `unwired_guards` job — runs on every CI dispatch.
+  2. `ios-build.yml`'s `project_invariants` job — runs on every CI dispatch.
 Exit 0 and print "ok" on a clean match; exit 1 and name every specific
 drifted value otherwise. Silence on failure would be the same bug again.
+
+SELF-CHECK (supervisor, 2026-09-15): the local half of the wiring above
+lives inside Primae.xcscheme, itself a file Xcode rewrites — the exact
+failure mode this whole script exists to catch. This project has already
+shipped guards that were written once and never dispatched to again
+(CLAUDE.md, "Unwired-guard gate"); a drift guard that can't detect its
+own local removal is that same defect. check_scheme_wiring() below is
+the one invariant this closes: it runs from CI (which does not depend on
+the scheme's pre-action being intact to be reached) and fails loudly if
+the pre-action ever goes missing from the scheme file, rather than
+silently losing its only fast, no-seat-needed enforcement path.
 """
 import pathlib
 import re
@@ -26,6 +37,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INFO_PLIST = ROOT / "Primae" / "Info.plist"
 PBXPROJ = ROOT / "Primae" / "Primae.xcodeproj" / "project.pbxproj"
+XCSCHEME = ROOT / "Primae" / "Primae.xcodeproj" / "xcshareddata" / "xcschemes" / "Primae.xcscheme"
 
 failures: list[str] = []
 
@@ -117,16 +129,28 @@ def check_pbxproj() -> None:
                 f"re-maps checkpoints and changes the letter's physical size)")
 
 
+def check_scheme_wiring() -> None:
+    text = XCSCHEME.read_text()
+    if "check_project_invariants.py" not in text or "<PreActions>" not in text:
+        failures.append(
+            "Primae.xcscheme: the Pre-actions build script wiring this checker "
+            "into every local build is missing — this checker's own local, "
+            "no-seat-needed enforcement path has been removed (the CI job below "
+            "still runs regardless; this is the local half specifically)")
+
+
 def main() -> int:
     check_info_plist()
     check_pbxproj()
+    check_scheme_wiring()
     if failures:
         print("FAIL — project-settings drift detected. Xcode is not an authoring "
               "surface for these two files (see this script's header).")
         for f in failures:
             print(f"  - {f}")
         print()
-        print("Fix: git checkout -- Primae/Info.plist Primae/Primae.xcodeproj/project.pbxproj")
+        print("Fix: git checkout -- Primae/Info.plist Primae/Primae.xcodeproj/project.pbxproj "
+              "Primae/Primae.xcodeproj/xcshareddata/xcschemes/Primae.xcscheme")
         return 1
     print("ok — Info.plist and project.pbxproj match the decided invariants")
     return 0
