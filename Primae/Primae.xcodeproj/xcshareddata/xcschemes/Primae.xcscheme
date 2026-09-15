@@ -34,6 +34,20 @@
                ReferencedContainer = "container:Primae.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EE00000000000000000003EE"
+               BuildableName = "PrimaeUITests.xctest"
+               BlueprintName = "PrimaeUITests"
+               ReferencedContainer = "container:Primae.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -152,6 +166,16 @@
                   Identifier = "AudioEngineTests/testSuspendThenResume_doesNotCrash()">
                </Test>
             </SkippedTests>
+         </TestableReference>
+         <TestableReference
+            skipped = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "EE00000000000000000003EE"
+               BuildableName = "PrimaeUITests.xctest"
+               BlueprintName = "PrimaeUITests"
+               ReferencedContainer = "container:Primae.xcodeproj">
+            </BuildableReference>
          </TestableReference>
       </Testables>
    </TestAction>
