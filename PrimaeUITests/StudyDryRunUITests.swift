@@ -243,11 +243,19 @@ final class StudyDryRunUITests: XCTestCase {
     }
 
     /// Dismiss a UIActivityViewController without depending on a
-    /// locale-specific "Cancel"/"Abbrechen" label: tap a point clearly
-    /// outside the sheet/popover's content (top-left corner), which
-    /// dismisses either presentation style on iPad.
+    /// locale-specific "Cancel"/"Abbrechen" label. SwiftUI's `.sheet` on
+    /// iPad presents this as a drag-to-dismiss sheet, not a tap-outside
+    /// popover (2026-09-15, confirmed by CI: a top-left coordinate tap
+    /// left the sheet up and the confirm dialog never appeared) — swipe
+    /// down on the sheet itself, the standard XCUITest dismissal for
+    /// either presentation style.
     private func dismissShareSheet(_ app: XCUIApplication) {
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.02)).tap()
+        let sheet = app.sheets.firstMatch
+        if sheet.exists {
+            sheet.swipeDown(velocity: .fast)
+        } else {
+            app.swipeDown(velocity: .fast)
+        }
     }
 
     private func participantCount(fromHint label: String) -> Int {
