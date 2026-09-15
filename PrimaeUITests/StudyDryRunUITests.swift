@@ -31,7 +31,7 @@ import Foundation
 final class StudyDryRunUITests: XCTestCase {
 
     override func setUpWithError() throws {
-        continueAfterFailure = true   // RED-PROOF PASS: temporary, see TEMP commit
+        continueAfterFailure = false
     }
 
     /// One continuous session, matching what actually happens on the
@@ -54,14 +54,13 @@ final class StudyDryRunUITests: XCTestCase {
             // relaunch alert's OK — confirm we're still inside the
             // parent area, on a screen that can see the probe buttons.
             XCTAssertTrue(
-                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
+                waitFor(label: "RED-PROOF-1 Vortest starten: A", in: app, timeout: 10),
                 "expected the research dashboard's pretest buttons to be visible after enrolment"
             )
-            XCTFail("RED-PROOF-1 forced failure to prove this phase's activity can report red")
         }
 
         XCTContext.runActivity(named: "2 — the Vortest/Post-Test/Nachtest flow") { _ in
-            let pretestA = element(labelPrefix: "Vortest starten: A", in: app)
+            let pretestA = element(labelPrefix: "RED-PROOF-2 Vortest starten: A", in: app)
             XCTAssertTrue(pretestA.waitForExistence(timeout: 5), "Vortest button for letter A must exist")
             pretestA.tap()
             // A successful cold probe calls onLeaveParentArea() (f08d997,
@@ -78,7 +77,6 @@ final class StudyDryRunUITests: XCTestCase {
                 waitFor(labelDisappear: "Vortest starten: A", in: app, timeout: 10),
                 "the parent area should have closed onto the canvas after a successful pretest"
             )
-            XCTFail("RED-PROOF-2 forced failure to prove this phase's activity can report red")
         }
 
         XCTContext.runActivity(named: "3 — a session completing") { _ in
@@ -101,9 +99,8 @@ final class StudyDryRunUITests: XCTestCase {
                 Thread.sleep(forTimeInterval: 0.5)
                 value = phaseIndicator.value as? String ?? ""
             }
-            XCTAssertEqual(value, "1 von 4 abgeschlossen",
+            XCTAssertEqual(value, "RED-PROOF-3 9 von 4 abgeschlossen",
                             "the pretest freeWrite pass should have completed and advanced the phase indicator")
-            XCTFail("RED-PROOF-3 forced failure to prove this phase's activity can report red")
         }
 
         openParentArea(app)
@@ -116,10 +113,9 @@ final class StudyDryRunUITests: XCTestCase {
             // half-reapplied state where the outgoing participant's
             // data survived but the incoming one can't proceed.
             XCTAssertTrue(
-                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
+                waitFor(label: "RED-PROOF-4 Vortest starten: A", in: app, timeout: 10),
                 "expected the research dashboard to be usable for the newly-enrolled second participant too"
             )
-            XCTFail("RED-PROOF-4 forced failure to prove this phase's activity can report red")
         }
 
         XCTContext.runActivity(named: "5 — the export containing both") { _ in
@@ -150,8 +146,8 @@ final class StudyDryRunUITests: XCTestCase {
             XCTAssertTrue(countText.waitForExistence(timeout: 5), "the participant-count hint must be visible")
             let count = participantCount(fromHint: countText.label)
             XCTAssertGreaterThanOrEqual(
-                count, 2,
-                "expected at least the two explicitly-enrolled participants to still be counted, got \(count) from '\(countText.label)'"
+                count, 99,
+                "RED-PROOF-5 expected at least the two explicitly-enrolled participants to still be counted, got \(count) from '\(countText.label)'"
             )
 
             let csvButton = element(label: "CSV exportieren", in: app)
@@ -167,7 +163,6 @@ final class StudyDryRunUITests: XCTestCase {
                 waitForShareSheet(app, timeout: 5),
                 "the export share sheet should appear after a successful export"
             )
-            XCTFail("RED-PROOF-5 forced failure to prove this phase's activity can report red")
         }
     }
 
