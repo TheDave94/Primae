@@ -107,6 +107,15 @@ final class StudyDryRunUITests: XCTestCase {
 
         XCTContext.runActivity(named: "4 — a second enrolment preserving the first participant") { _ in
             enrolNewParticipant(app)
+            // The new (second) participant's own dashboard must be
+            // usable too -- this is what "preserving the first" is
+            // actually for: the reset must not have left the app in a
+            // half-reapplied state where the outgoing participant's
+            // data survived but the incoming one can't proceed.
+            XCTAssertTrue(
+                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
+                "expected the research dashboard to be usable for the newly-enrolled second participant too"
+            )
         }
 
         XCTContext.runActivity(named: "5 — the export containing both") { _ in
