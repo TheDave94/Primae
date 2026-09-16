@@ -25,7 +25,18 @@ struct ParentDashboardExporterTests {
         // The CSV now starts with a participantId comment line followed by the
         // letter table header. Both must be present for A/B analysis consumers.
         #expect(csv.hasPrefix("# participantId="))
-        #expect(csv.contains("letter,sessionCount,averageAccuracy,trend"))
+        #expect(csv.contains("letter,sessionCount,trend"))
+    }
+
+    // `averageAccuracy` was removed 2026-09-16 (supervisor ruling): it
+    // mixed thesis arms and phase types, and carried a mathematical
+    // floor of 0.5 under the (kept) four-phase flow — see D12 and the
+    // removal note in ParentDashboardExporter.swift and
+    // docs/APP_DOCUMENTATION.md's export-schema appendix. This guards
+    // against the column silently coming back.
+    @Test func csvDoesNotContainRemovedAverageAccuracyColumn() {
+        let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
+        #expect(!csv.contains("averageAccuracy"))
     }
 
     @Test func csvContainsLetterRows() {
@@ -46,7 +57,7 @@ struct ParentDashboardExporterTests {
     @Test func csvEmptySnapshotIsValid() {
         let csv = String(data: ParentDashboardExporter.csvData(from: DashboardSnapshot()), encoding: .utf8)!
         #expect(csv.hasPrefix("# participantId="))
-        #expect(csv.contains("letter,sessionCount,averageAccuracy,trend"))
+        #expect(csv.contains("letter,sessionCount,trend"))
     }
 
     @Test func csvIncludesParticipantIdAndConditionColumns() {

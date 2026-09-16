@@ -1486,10 +1486,23 @@ between children; the pilot's ~40 children × 3 trained letters sits far
 inside that bound.
 
 Additional sections in the export:
-* Per-letter aggregates (`letter,sessionCount,averageAccuracy,trend,
+* Per-letter aggregates (`letter,sessionCount,trend,
   recognitionSamples,recognitionAvg,speedTrend,freeformCompletionCount`)
   — `speedTrend` is a semicolon-joined trajectory; `freeformCompletionCount`
   surfaces blank-canvas usage that was previously collected but never exported.
+  **`averageAccuracy` REMOVED 2026-09-16 (supervisor ruling).** It mixed
+  thesis arms (`LetterAccuracyStat.accuracySamples` carries no condition
+  tag) and mixed phase types (fed by `LearningPhaseController
+  .overallScore`, the unweighted mean of every active phase's score,
+  which under the kept four-phase flow has a mathematical floor of 0.5
+  regardless of how poorly a child traced — see D12 in
+  `docs/DECISIONS.md`), and it was none of the outcomes Ch.6 of the
+  thesis defines (primary: `spatialDeviation`; secondaries:
+  `strokeCount`, `strokeOrder`, `reversedStrokeCount` — all computed
+  independently by stroke correspondence, D8). A column that could only
+  mislead an exploratory read of the export did not belong in the file
+  the thesis's export appendix documents. Guarded by
+  `ParentDashboardExporterTests.csvDoesNotContainRemovedAverageAccuracyColumn`.
 * Per-day session durations (`date,recordedAt,durationSeconds,
   wallClockSeconds,condition,inputDevice,letter`) — `recordedAt` is the
   full ISO-8601 timestamp (D-9); `letter` names the practised letter (or
@@ -2353,13 +2366,14 @@ Then a blank line, followed by five data sections.
 
 ## Section 1 — Per-letter aggregates
 
-One row per letter the child has practised.
+One row per letter the child has practised. `averageAccuracy` was
+removed from this row 2026-09-16 (supervisor ruling) — see the note
+above §"Additional sections in the export" for why.
 
 | Column | Type | Source | Range | Purpose |
 |---|---|---|---|---|
 | `letter` | string | `LetterAccuracyStat.letter` | A–Z, Ä, Ö, Ü, ß (uppercase) | Slicing key. |
 | `sessionCount` | int | `accuracySamples.count` | ≥ 0 | How often practised. |
-| `averageAccuracy` | float | `LetterAccuracyStat.averageAccuracy` | 0–1 | Mean session score. |
 | `trend` | float | `LetterAccuracyStat.trend` | signed slope | Linear-regression slope over trailing 10 samples. |
 | `recognitionSamples` | int | `LetterProgress.recognitionAccuracy.count` | 0–10 | CoreML readings retained. |
 | `recognitionAvg` | float | mean of `recognitionAccuracy` | 0–1 | Mean **calibrated** confidence. |

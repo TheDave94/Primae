@@ -102,10 +102,16 @@ struct ParentDashboardExporter {
         //   freeformCompletionCount — blank-canvas completions tracked
         //                separately from guided mastery.
         //   retrievalAccuracy — rolling mean of retrievalAttempts (cap 10).
-        lines.append(["letter","sessionCount","averageAccuracy","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount","retrievalAccuracy"].joined(separator: sep))
+        // `averageAccuracy` REMOVED 2026-09-16 (supervisor ruling): it
+        // mixed arms (`accuracySamples` carries no condition tag) AND
+        // mixed phases (fed by `overallScore`, which under the kept
+        // four-phase flow has a mathematical floor of 0.5 — D12), while
+        // being none of the outcomes Ch.6 defines. It could only mislead
+        // an exploratory read of the export. See docs/APP_DOCUMENTATION.md
+        // export-schema appendix for the removal note.
+        lines.append(["letter","sessionCount","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount","retrievalAccuracy"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
-            let avg = String(format: "%.4f", stat.averageAccuracy)
             let tnd = String(format: "%.6f", stat.trend)
             let cnt = stat.accuracySamples.count
             let prog = progress[stat.letter]
@@ -122,7 +128,7 @@ struct ParentDashboardExporter {
                 let acc = Double(attempts.filter { $0 }.count) / Double(attempts.count)
                 return String(format: "%.4f", acc)
             }()
-            lines.append([stat.letter, "\(cnt)", avg, tnd, "\(recCount)", recAvg, speedField, freeformField, retrievalField].joined(separator: sep))
+            lines.append([stat.letter, "\(cnt)", tnd, "\(recCount)", recAvg, speedField, freeformField, retrievalField].joined(separator: sep))
         }
         lines.append("")
 
@@ -352,9 +358,9 @@ struct ParentDashboardExporter {
                 }
             }
         }
-        // Per-letter accuracy aggregates split by thesis arm. The
-        // letter-row `averageAccuracy` above mixes arms because
-        // `letterStats.accuracySamples` carries no condition tag;
+        // Per-letter accuracy aggregates split by thesis arm.
+        // `letterStats.accuracySamples` (the source the removed
+        // letter-row `averageAccuracy` used) carries no condition tag;
         // `phaseSessionRecords` does, so it gives a clean per-arm
         // letter-level source. Format:
         // `letterByArm,letter,arm,sampleCount,averageScore`.
