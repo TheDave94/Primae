@@ -74,7 +74,25 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
 
     func allResourceURLs() -> [URL] {
         let fm = FileManager.default
-        return searchBundles.flatMap { b -> [URL] in
+        // DE-DUPLICATE BY RESOLVED PATH. `searchBundles` deliberately
+        // lists the module bundle AND the app bundle, and the app bundle
+        // CONTAINS the module bundle — so enumerating both roots hands
+        // back the same files twice, and more than twice once a test
+        // bundle is injected alongside them.
+        //
+        // Measured on device 2026-09-16 (iPad 00008103-000E60311AE8801E,
+        // Debug-Study), BEFORE this: the view-model held 295 letter
+        // assets where the built app contains 87 `strokes.json` files —
+        // a 3.4x over-collection that cost 16.8 s in the repository load
+        // and a 230.7 MB resident footprint, paid on every launch of a
+        // session the protocol specifies as ten to twenty minutes.
+        //
+        // Deduplicating here rather than downstream is the point: this is
+        // where the repetition is created, so every consumer benefits and
+        // none has to defend itself. Distinct files at distinct paths
+        // (Regular/ and Light/ subtrees) are unaffected.
+        var seen = Set<String>()
+        let all = searchBundles.flatMap { b -> [URL] in
             guard let root = b.resourceURL else { return [] }
             guard let enumerator = fm.enumerator(
                 at: root,
@@ -84,6 +102,9 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
             return enumerator.compactMap { $0 as? URL }.filter {
                 (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
             }
+        }
+        return all.filter { url in
+            seen.insert(url.resolvingSymlinksInPath().path).inserted
         }
     }
 
