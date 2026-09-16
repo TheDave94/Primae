@@ -1387,7 +1387,7 @@ public final class TracingViewModel {
         guard let idx = letters.firstIndex(where: { $0.name == nextName }) else { return }
         letterIndex = idx
         load(letter: letters[idx])
-        toast("Buchstabe: \(currentLetterName)")
+        toast("Buchstabe: \(currentLetterName) | pool=\(visible.count) \(visible.joined(separator: ",")) | idx=\(currentIdx) next=\(nextName) allLetters=\(letters.count)")
     }
 
     func previousLetter() {
