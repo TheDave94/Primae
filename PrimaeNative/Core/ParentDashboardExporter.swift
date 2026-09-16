@@ -192,7 +192,19 @@ struct ParentDashboardExporter {
         // `strokeCount`/`strokeOrder`/`reversedStrokeCount` are the
         // process-measure secondaries, appended after spatialDeviation
         // for the same newest-last reason, in that order.
-        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds","frechetDistance","checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe"].joined(separator: sep))
+        // Column name, not just doc comment (2026-09-16): the RETIRED
+        // field used to export under the bare name "frechetDistance" —
+        // the name a cold reader searching for the thesis's primary
+        // Fréchet-distance outcome would reach for first — while the
+        // live primary outcome exports as "spatialDeviation", which
+        // doesn't say "Fréchet" anywhere. That reader gets an always-
+        // empty column and no signal they picked the wrong one. See
+        // `retiredFrechetColumnName` for why this is fixed by renaming
+        // the OUTPUT column only, not the Swift property or its Codable
+        // key (`PhaseSessionRecord.frechetDistance` is untouched — this
+        // is a header-string change here plus a JSON post-process below,
+        // nothing that could affect decoding any file already on disk).
+        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe"].joined(separator: sep))
         // D11#1: filtered ONCE, here, and every aggregate below —
         // including the arm-split ones — reads `enrolledRecords`, never
         // `snapshot.phaseSessionRecords` directly. The raw-row loop and
@@ -203,14 +215,21 @@ struct ParentDashboardExporter {
         // comparison — the exact attribution this filter exists to
         // prevent.
         let enrolledRecords: [PhaseSessionRecord] = {
-            guard let enrolledAt else { return snapshot.phaseSessionRecords }
-            // Also discard rows lacking `recordedAt` when an `enrolledAt`
-            // exists — they default to `.threePhase` and would silently
-            // inflate that arm.
-            return snapshot.phaseSessionRecords.filter { rec in
-                guard let ts = rec.recordedAt else { return false }
-                return ts >= enrolledAt
-            }
+            let filtered: [PhaseSessionRecord] = {
+                guard let enrolledAt else { return snapshot.phaseSessionRecords }
+                // Also discard rows lacking `recordedAt` when an `enrolledAt`
+                // exists — they default to `.threePhase` and would silently
+                // inflate that arm.
+                return snapshot.phaseSessionRecords.filter { rec in
+                    guard let ts = rec.recordedAt else { return false }
+                    return ts >= enrolledAt
+                }
+            }()
+            // Tags the derived trained-letter post-test row (see
+            // `withDerivedPostTestTags`) so `probe == "posttest"` finds
+            // all five study letters' post-test rows in THIS export, not
+            // just the two untrained ones the live app tags itself.
+            return withDerivedPostTestTags(filtered)
         }()
         // D11#1, second half (2026-09-04): the four HEADLINE aggregates
         // further down (`phaseCompletionRate_*`, `averageFreeWriteScore`,
@@ -436,7 +455,7 @@ struct ParentDashboardExporter {
             let export = snapshotWithMetrics(from: snapshot, participantId: participantId,
                                              progress: progress, rawTraces: rawTraces,
                                              enrolledAt: enrolledAt)
-            return try encoder.encode(export)
+            return renamingRetiredFrechetKey(in: try encoder.encode(export))
         } catch {
             throw ExportError.encodingFailed(error.localizedDescription)
         }
@@ -454,7 +473,7 @@ struct ParentDashboardExporter {
                                     progress: $0.progress, rawTraces: $0.rawTraces,
                                     enrolledAt: $0.enrolledAt)
             }
-            return try encoder.encode(exports)
+            return renamingRetiredFrechetKey(in: try encoder.encode(exports))
         } catch {
             throw ExportError.encodingFailed(error.localizedDescription)
         }
@@ -485,12 +504,16 @@ struct ParentDashboardExporter {
             rawTraces.filter { $0.recordedAt >= at }
         } ?? rawTraces
         let filtered: DashboardSnapshot = {
-            guard let enrolledAt else { return snapshot }
+            guard let enrolledAt else {
+                var s = snapshot
+                s.phaseSessionRecords = withDerivedPostTestTags(s.phaseSessionRecords)
+                return s
+            }
             var s = snapshot
-            s.phaseSessionRecords = snapshot.phaseSessionRecords.filter { rec in
+            s.phaseSessionRecords = withDerivedPostTestTags(snapshot.phaseSessionRecords.filter { rec in
                 guard let ts = rec.recordedAt else { return false }
                 return ts >= enrolledAt
-            }
+            })
             s.sessionDurations = snapshot.sessionDurations.filter { rec in
                 guard let ts = rec.recordedAt else { return false }
                 return ts >= enrolledAt
@@ -641,5 +664,98 @@ struct ParentDashboardExporter {
     private static func dateTag() -> String {
         let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    // MARK: Export-time-only corrections (2026-09-16)
+    //
+    // Two fixes, both applied to COPIES built for export, never to
+    // anything persisted: PhaseSessionRecord's own Codable keys and
+    // on-disk format are untouched by either, so nothing already on a
+    // device is affected by landing this mid-pilot.
+
+    /// The CSV/TSV header name for the retired whole-path Fréchet field.
+    /// Not "frechetDistance" (2026-09-16) — that name is what a reader
+    /// hunting for the thesis's primary Fréchet-distance outcome reaches
+    /// for first, and this column is always empty; the real primary
+    /// outcome exports as "spatialDeviation". Kept in the same column
+    /// position for the schema-stability reason the field is kept at
+    /// all (`PhaseSessionRecord.frechetDistance`'s own doc comment).
+    static let retiredFrechetColumnName = "frechetDistance_RETIRED_alwaysEmpty"
+
+    /// Rewrites the JSON output's `frechetDistance` key to
+    /// `retiredFrechetColumnName`, wherever it appears in the
+    /// `phaseSessionRecords` array of an already-encoded export. Runs
+    /// AFTER `JSONEncoder` — not a change to `PhaseSessionRecord`'s own
+    /// Codable — specifically so nothing about how the struct decodes
+    /// (including any file already on a device from earlier today) can
+    /// be affected by this. A pure `Data` -> `Data` transform; falls
+    /// back to the untouched input on any parse failure rather than
+    /// producing empty or malformed output.
+    private static func renamingRetiredFrechetKey(in data: Data) -> Data {
+        guard let root = try? JSONSerialization.jsonObject(with: data) else { return data }
+        func rewrite(_ value: Any) -> Any {
+            if let dict = value as? [String: Any] {
+                var out: [String: Any] = [:]
+                for (key, v) in dict {
+                    let newKey = key == "frechetDistance" ? retiredFrechetColumnName : key
+                    out[newKey] = rewrite(v)
+                }
+                return out
+            }
+            if let array = value as? [Any] { return array.map(rewrite) }
+            return value
+        }
+        let rewritten = rewrite(root)
+        guard JSONSerialization.isValidJSONObject(rewritten),
+              let out = try? JSONSerialization.data(
+                withJSONObject: rewritten, options: [.prettyPrinted, .sortedKeys])
+        else { return data }
+        return out
+    }
+
+    /// Indices in `records` that are the derived post-test measurement
+    /// for a TRAINED letter — the freeWrite phase of that letter's final
+    /// training pass (thesis Ch.6, content/06-evaluation.typ §"Outcome
+    /// measures"). `StudyProbe.posttest.permits` deliberately refuses a
+    /// trained letter at record time (`StudyProbe.swift`'s own header:
+    /// "The trained letters' post-test is the freeWrite phase of their
+    /// final training pass... so this kind refuses a trained letter"),
+    /// so nothing in the live app ever tags this row — leaving the
+    /// export schema silent on which trained-letter row IS the
+    /// post-test measurement, discoverable only by timestamp ordering.
+    /// `records` must be chronological (both callers filter from the
+    /// append-ordered on-disk array without re-sorting) — "last" here
+    /// means latest in that order, which `enumerated()` preserves.
+    private static func derivedTrainedPostTestIndices(in records: [PhaseSessionRecord]) -> Set<Int> {
+        var lastIndexPerLetter: [String: Int] = [:]
+        for (i, rec) in records.enumerated() {
+            guard rec.phase == LearningPhase.freeWrite.rawName,
+                  rec.completed,
+                  rec.probe == nil,   // not already a pretest/delayed cold probe
+                  let subsetRaw = rec.trainedSubset,
+                  let subset = TrainedLetterSubset(rawValue: subsetRaw),
+                  subset.letters.contains(rec.letter)
+            else { continue }
+            lastIndexPerLetter[rec.letter] = i
+        }
+        return Set(lastIndexPerLetter.values)
+    }
+
+    /// Applies `derivedTrainedPostTestIndices`, returning export-only
+    /// copies with `probe` set to `StudyProbe.posttest.rawValue` where
+    /// derived — so `probe == "posttest"` finds all five study letters'
+    /// post-test rows (two tagged live, three tagged here), not just the
+    /// two untrained ones. Mutates copies only: `records` was already
+    /// read from disk/memory before this runs, and nothing here writes
+    /// back to any store.
+    private static func withDerivedPostTestTags(_ records: [PhaseSessionRecord]) -> [PhaseSessionRecord] {
+        let derived = derivedTrainedPostTestIndices(in: records)
+        guard !derived.isEmpty else { return records }
+        return records.enumerated().map { i, rec in
+            guard derived.contains(i) else { return rec }
+            var tagged = rec
+            tagged.probe = StudyProbe.posttest.rawValue
+            return tagged
+        }
     }
 }

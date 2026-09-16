@@ -152,7 +152,18 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// "delayed" (`StudyProbe.rawValue`) — or nil for a training pass
     /// (2026-09-04). Without it the pretest, the post-test and the
     /// delayed test on the same letter were indistinguishable rows.
-    let probe: String?
+    ///
+    /// `var`, not `let` (2026-09-16): the live app never sets this to
+    /// "posttest" for a TRAINED letter — `StudyProbe.posttest.permits`
+    /// deliberately refuses one, because a trained letter's post-test is
+    /// the freeWrite phase of its own final training pass (thesis Ch.6),
+    /// not a separate cold probe. That leaves the export schema silent on
+    /// which trained-letter row IS the post-test measurement — nothing
+    /// but timestamp ordering says so. `ParentDashboardExporter` mutates
+    /// this field on export-time COPIES ONLY (`withDerivedPostTestTags`)
+    /// to close that gap; nothing in the running app ever mutates a live
+    /// record, and this mutability is not used anywhere else.
+    var probe: String?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,

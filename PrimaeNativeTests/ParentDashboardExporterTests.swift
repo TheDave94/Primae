@@ -291,4 +291,86 @@ struct ParentDashboardExporterTests {
         #expect(csv.contains("1.2000;1.5000;1.8000"),
                 "Expected semicolon-joined speedTrend values — found:\n\(csv)")
     }
+
+    // MARK: - Retired frechetDistance no longer shares the primary outcome's name
+
+    /// The CSV header must not offer the bare name "frechetDistance" —
+    /// that column is retired and always empty, and it is exactly the
+    /// name a reader hunting for the primary Fréchet-distance outcome
+    /// (which exports as "spatialDeviation") would reach for first.
+    @Test func csvRetiredFrechetColumnIsUnambiguous() {
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: DashboardSnapshot(), progress: [:], enrolledAt: nil), encoding: .utf8)!
+        #expect(!csv.contains(",frechetDistance,"),
+                "The bare \"frechetDistance\" column name must not appear — found:\n\(csv)")
+        #expect(csv.contains(ParentDashboardExporter.retiredFrechetColumnName),
+                "Expected the renamed retired-column header — found:\n\(csv)")
+        #expect(csv.contains("spatialDeviation"),
+                "The live primary outcome's column must be unaffected")
+    }
+
+    /// Same rename, in the JSON export: the key literally named
+    /// "frechetDistance" must not appear anywhere in a phase row, even
+    /// when the (retired) field carries a non-nil value — proving the
+    /// rewrite works on the VALUE, not just on an already-empty field.
+    @Test func jsonRetiredFrechetKeyIsRenamed() throws {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.7, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: Date(timeIntervalSince1970: 1_770_000_000),
+            frechetDistance: 0.42, spatialDeviation: 0.05
+        ))
+        let data = try ParentDashboardExporter.jsonData(from: snap, progress: [:], enrolledAt: nil)
+        let json = String(data: data, encoding: .utf8)!
+        #expect(!json.contains("\"frechetDistance\""),
+                "The retired field's old JSON key must not survive the export — found:\n\(json)")
+        #expect(json.contains("\"\(ParentDashboardExporter.retiredFrechetColumnName)\""))
+        #expect(json.contains("0.42"), "The retired field's value must still be present under the new key")
+        #expect(json.contains("\"spatialDeviation\""))
+    }
+
+    // MARK: - Derived post-test tag for a trained letter's final pass
+
+    /// A trained letter's post-test is the freeWrite phase of its FINAL
+    /// training pass (thesis Ch.6) — the live app never tags this row
+    /// (`StudyProbe.posttest` refuses a trained letter), so the export
+    /// must derive it: the later of two completed freeWrite rows for a
+    /// trained letter gets `probe == "posttest"`; the earlier one does
+    /// not, and an untrained letter's live-tagged post-test row is
+    /// untouched.
+    @Test func csvDerivesPostTestTagForFinalTrainedPass() {
+        var snap = DashboardSnapshot()
+        let earlier = Date(timeIntervalSince1970: 1_770_000_000)
+        let later   = Date(timeIntervalSince1970: 1_770_000_100)
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.6, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: earlier, trainedSubset: "AFI"
+        ))
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.7, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: later, trainedSubset: "AFI"
+        ))
+        // Untrained letter's post-test, already tagged live by the app.
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "L", phase: "freeWrite", completed: true,
+            score: 0.5, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: later, trainedSubset: "AFI", probe: "posttest"
+        ))
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let lines = csv.components(separatedBy: "\n").filter { $0.hasPrefix("A,freeWrite,") || $0.hasPrefix("L,freeWrite,") }
+        #expect(lines.count == 3, "Expected exactly 3 freeWrite rows — found:\n\(lines)")
+        let earlierRow = lines.first { $0.contains("0.6000") }
+        let laterRow   = lines.first { $0.contains("0.7000") }
+        let untrainedRow = lines.first { $0.hasPrefix("L,") }
+        #expect(earlierRow?.hasSuffix(",") == true,
+                "The earlier (non-final) trained pass must NOT be tagged — found:\n\(earlierRow ?? "<missing>")")
+        #expect(laterRow?.hasSuffix("posttest") == true,
+                "The later (final) trained pass must be tagged posttest — found:\n\(laterRow ?? "<missing>")")
+        #expect(untrainedRow?.hasSuffix("posttest") == true,
+                "The live-tagged untrained post-test row must be unaffected — found:\n\(untrainedRow ?? "<missing>")")
+    }
 }
