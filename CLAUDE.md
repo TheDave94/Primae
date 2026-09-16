@@ -146,6 +146,20 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > invisible in the command's own output. Keep `xcodebuild` / `xcrun` as the
 > literal first word.
 >
+> **Extended 2026-09-16, same night — a variable-assignment or
+> command-substitution PREFIX breaks the match too.** `C=$(xcrun simctl
+> get_app_container …)` runs **sandboxed**: the call's leading word is `C=`,
+> not `xcrun`. Measured symptom is the exact one the exclusions exist to
+> prevent — `CoreSimulatorService connection became invalid. Simulator
+> services will no longer be available` — while the identical command with
+> `xcrun` bare at the front succeeds on the same device seconds later. This
+> is the same class as the `cd … && git commit` and `sh -c "git …"` shapes
+> above, and it is the THIRD distinct spelling of the trap to cost time:
+> **anything in front of the excluded word — a wrapper, a `cd`, an
+> assignment, a `$( )` capture — re-sandboxes the whole call.** Assign in one
+> call, use it in the next; never capture an excluded command inside a
+> substitution.
+>
 > **`xcrun xcresulttool` does NOT match `xcrun simctl *`.** It stays
 > sandboxed, so both its `--path` and its `--output-path` must sit somewhere
 > the sandbox can reach. Same for any command that is not literally
