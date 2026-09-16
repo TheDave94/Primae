@@ -57,6 +57,19 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         attach(app, name: "A-03-before-chevron-\(before)")
 
         next.tap()
+        // DIAGNOSTIC (2026-09-16): `nextLetter()` ends with
+        // `toast("Buchstabe: \(currentLetterName)")` and ALSO calls
+        // `load(letter:)`, which un-parks the session. So the toast's own
+        // text distinguishes the two candidate causes of a stuck pill:
+        //   toast present  -> nextLetter ran and `currentLetterName` DID
+        //                     change; the pill label is reading stale.
+        //   toast absent   -> nextLetter bailed at one of its guards
+        //                     (empty pool / name not found).
+        // Captured immediately, before the toast's lifetime expires.
+        let toast = element(labelPrefix: "Buchstabe:", in: app)
+        let toastText = toast.exists ? toast.label : "<no toast>"
+        attach(app, name: "A-03b-immediately-after-tap-toast")
+
         // nextLetter() -> load(letter:), which resets the phase controller
         // and reloads checkpoints; give it a beat to settle before reading.
         Thread.sleep(forTimeInterval: 2.0)
@@ -66,7 +79,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
 
         XCTAssertNotEqual(
             before, after,
-            "tapping 'Nächster Buchstabe' did not change the current letter: stayed on '\(before)'"
+            "tapping 'Nächster Buchstabe' did not change the current letter: stayed on '\(before)'. nextLetter() toast = \(toastText)"
         )
     }
 
@@ -80,7 +93,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
 
-        guard currentLetter(app) != nil else {
+        guard let before = currentLetter(app) else {
             attach(app, name: "A2-01-no-letter-pill-FAILURE")
             XCTFail("no 'Aktueller Buchstabe …' element after launch")
             return
@@ -90,6 +103,19 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         XCTAssertTrue(next.waitForExistence(timeout: 10))
         next.tap()
         Thread.sleep(forTimeInterval: 2.0)
+
+        // Letter IDENTITY, added 2026-09-16. This test previously asserted
+        // only the phase-indicator string, which reads "0 von 4
+        // abgeschlossen" whether or not the letter actually advanced — so
+        // it PASSED on the physical iPad while `testChevronAdvancesLetter`
+        // failed on the same tap, and the real bug shipped behind a green
+        // tick. Asserting the observable consequence of the button being
+        // pressed, not just a neighbouring piece of state, is the point.
+        let after = currentLetter(app)
+        XCTAssertNotEqual(
+            before, after,
+            "the chevron landed on the same letter ('\(before)') — this test must not pass while the letter never advances"
+        )
 
         let indicator = element(labelPrefix: "Lernphase", in: app)
         XCTAssertTrue(indicator.waitForExistence(timeout: 8),
