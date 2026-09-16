@@ -344,36 +344,70 @@ xcrun devicectl device install app --device "$UDID" \
 ```
 
 **If `devicectl`/Device Hub sit stuck establishing the tunnel, or the
-device never reaches `available (paired)` — two known, external causes,
-found and closed 2026-09-16, recorded here so the next seat doesn't lose
-an afternoon to either:**
+device never reaches `available (paired)` — root cause found and closed
+2026-09-16, recorded here so the next seat doesn't lose an afternoon to
+it. An earlier version of this note named `pkill remoted` as the fix;
+that masked the symptom rather than fixing it and has been replaced
+below, not left alongside it.**
 
-1. **Stuck CoreDevice tunnel (the actual cause, that day).** `remoted` —
-   the system daemon CoreDevice/Device Hub depend on to establish the
-   USB tunnel — gets stuck and never completes the handshake; `devicectl`
-   hangs (`Timed out waiting for CoreDeviceService to fully initialize`)
-   and Device Hub never lists the device as paired, even though the
-   device itself is fine. This is reported independently across iOS
-   17/18 and Xcode 15/16, still unresolved by Apple as of this writing —
-   **not** an Xcode 27/Device Hub regression, and not this project's
-   bug. Fix, run on the Mac (not from a sandboxed Claude Code seat —
-   killing a system daemon needs a real, unsandboxed terminal):
-   ```bash
-   sudo pkill remoted
-   ```
-   Then retry pairing/`devicectl list devices`. This resolved it for
-   David's iPad on 2026-09-16 — device went from absent-from-every-listing
-   to `available (paired)` immediately after.
+**Root cause: `CoreDeviceService` caches a stale tunnel address in the
+device's own published record.** The CoreDevice tunnel to a USB-connected
+device is a real, working link-local-IPv6 interface (`utun5`, MTU 16000,
+in the confirming session) — but the address CoreDeviceService hands out
+in the device record it publishes to every consumer (`devicectl`'s State
+column, Device Hub, Xcode's run-destination picker) can drift out of sync
+with the tunnel's actual live address. Every one of those consumers reads
+the stale record, tries to dial an address with no route in the table at
+all, and reports the device unreachable — `devicectl device info details`
+hangs for exactly this reason, dialling nowhere. The device is fine, the
+cable is fine; the daemon is holding a wrong address for its own tunnel.
 
-2. **VPNs can block the tunnel outright — a standing hazard, not a
-   one-off.** Per Apple TN3158, Xcode reaches a USB-connected device over
-   **link-local IPv6**. A VPN doing packet filtering, or configured with
-   `includeAllNetworks`, can block exactly that traffic — indistinguishable
-   from a stuck daemon or a bad cable unless you know to check it. This
-   estate runs **Mullvad**. If a device session won't pair or won't
-   install and `pkill remoted` above doesn't clear it, try with the VPN
-   fully disconnected (not just split-tunneled) before assuming a
-   hardware or cable fault.
+**Diagnostic that identifies it** — compare the daemon's own
+`tunnelIPAddressString` (visible via `devicectl device info details
+--json-output -` or `devicectl list devices --json-output -`, per-device,
+under the connection properties) against what the interface is actually
+using:
+```bash
+ifconfig | grep -A3 "^utun"        # find the CoreDevice tunnel (large MTU, e.g. 16000) and its live address
+netstat -rn -f inet6 | grep utun   # confirm whether a route exists for the CACHED address's /64 at all
+```
+If the cached `tunnelIPAddressString` has no matching route and doesn't
+match the live `ifconfig` address on the large-MTU `utun*` interface,
+that mismatch — not the cable, not the device — is the fault.
+
+**Fix, run on the Mac** (not from a sandboxed Claude Code seat — killing
+a system daemon needs a real, unsandboxed terminal):
+```bash
+sudo pkill -f CoreDeviceService
+```
+This resolved it for David's iPad on 2026-09-16 — device went from
+unreachable in every consumer to `connected` immediately after, and
+simulators for an unrelated project that were also mis-registering
+recovered at the same moment — same cache, same daemon, same fault.
+
+**Environment worth knowing, since it's plausibly relevant to how the
+address gets confused in the first place, not just decoration:** this
+estate has nine other `utun` interfaces up at once from Tailscale and
+Proton VPN — confirmed independently the same day (`ifconfig` on this
+machine: ten `utun` interfaces total, of which the CoreDevice tunnel is
+one; a Tailscale-shaped `100.64.0.0/10` address on another). The
+CoreDevice tunnel itself installs a **default route** (also confirmed
+independently: `netstat -rn` shows `default ... utun5`), into a routing
+table already carrying several other VPN-installed default routes. A
+crowded, competing default-route environment is a plausible contributor
+to an allocator handing out or caching the wrong address; it is not
+proven to be the mechanism, only named as present and worth ruling in or
+out if this recurs.
+
+**Standing hazard, kept for the separate, still-real reason it names:**
+per Apple TN3158, Xcode reaches a USB-connected device over link-local
+IPv6 in the first place. A VPN doing packet filtering, or configured with
+`includeAllNetworks`, can block that traffic outright — a different
+failure shape than the stale-cache one above (no address to be stale;
+the tunnel never comes up at all), but indistinguishable from it by
+symptom alone unless you check both. If the `pkill` above doesn't clear
+a stuck session, try again with the VPN fully disconnected, not just
+split-tunneled, before assuming a hardware or cable fault.
 
 **On-device distinctness (2026-09-07).** The study build ships under its own
 bundle identifier, display name, and icon — `com.flamingistan.primae.study` /
