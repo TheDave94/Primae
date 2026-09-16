@@ -262,6 +262,74 @@ Implications:
   rather than relying on this analytical bound.
   Implemented: `dfae2de` on `feat/order-invariant-primary-outcome`.
 
+- **D12 — The score composite has a mathematical floor of 0.5 under the
+  four-phase flow; `averageAccuracy` dropped from the export as a result
+  (ruling, David, 2026-09-16).** `PhaseSessionRecord.score` is not one
+  instrument across phase rows, and never was: `observe` and `direct`
+  are always exactly `1.0` (completion markers, not measurements),
+  `guided` is checkpoint-proximity COVERAGE, and `freeWrite` is
+  `WritingAssessment.overallScore`, a weighted 4-dimension composite
+  (Form 40% + Tempo 25% + Druck 15% + Rhythmus 20%) — see
+  `ParentDashboardStore.swift:10-37`. `LearningPhaseController
+  .overallScore` (`:108-111`) is the UNWEIGHTED MEAN of every active
+  phase's `score`, so under the four-phase flow two of its four terms
+  are unconditionally `1.0` and the composite has a mathematical FLOOR
+  of 0.5 — a child who traces nothing correctly in `guided` and
+  `freeWrite` (both 0) still yields exactly 0.5. It is not merely an
+  average of incomparable quantities: it is systematically inflated by
+  a fixed, uninformative floor. The four-phase flow is the
+  `ThesisCondition` case named `threePhase`, a Codable-rawValue
+  stability artifact whose `displayName` is "Vier Phasen"
+  (`ThesisCondition.swift:16-18`) — read the case name as historical,
+  not as a phase count. `.guidedOnly`/`.control` (single active phase)
+  have no floor, because nothing else is in the average to dilute it.
+
+  **What the floor does NOT touch, traced hop by hop 2026-09-16 rather
+  than assumed.** No outcome Ch.6 of the thesis defines is affected.
+  Ch.6 §"Outcome measures" defines the primary outcome
+  (`spatialDeviation`) and the secondaries (`strokeCount`,
+  `strokeOrder`, `reversedStrokeCount`) as computed by stroke
+  correspondence directly from the raw persisted trace (D8) — a
+  separate computation path from `score`/`overallScore`, sharing no
+  code with it. The exporter's own cross-arm FreeWrite aggregates
+  (`averageFreeWriteScore_<arm>`, `letterByArm`, `letterByAudioArm`)
+  already filter to `phase == .freeWrite` only, fixed in the 2026-09-04
+  audit for exactly this reason. The floor reaches neither. Its other
+  consumer, `LetterProgress.bestAccuracy`, is likewise not a confound:
+  it drives `LetterScheduler`'s adaptive priority and
+  `LetterPickerBar`'s partial-progress tint — operational and
+  child-facing UI, never an exported outcome — and D1 holds the
+  pedagogical flow constant across all three pilot audio arms.
+
+  **The one place it did reach, and the ruling.** The per-letter
+  `averageAccuracy` column was emitted unfiltered by phase AND by arm,
+  fed by `PhaseTransitionCoordinator.swift:384`'s `Double(vm
+  .phaseController.overallScore)` — the floored composite itself. It
+  read like a real accuracy measure and was not one, a latent trap for
+  anyone running exploratory analysis on the CSV beyond the three
+  pre-specified contrasts. DROPPED from the CSV header and the matching
+  per-letter row in `ParentDashboardExporter.swift` (`:213`), with
+  `docs/APP_DOCUMENTATION.md`'s export-schema appendix updated to
+  match. The underlying `LetterAccuracyStat.averageAccuracy` model
+  property was deliberately LEFT INTACT — it still backs the
+  parent-facing `ParentDashboardView` and `ResearchDashboardView`,
+  neither of which reads the CSV, so nothing broke there. Guarded by
+  `csvDoesNotContainRemovedAverageAccuracyColumn`
+  (`PrimaeNativeTests/ParentDashboardExporterTests.swift:37`), which
+  fails if the column returns. Implemented: `7305c55` on
+  `feat/order-invariant-primary-outcome`; CI-verified (run
+  `35109807497`, all 7 jobs).
+
+  **Recorded late, deliberately noted.** This entry was cited from
+  eight places in the repo before it existed — `ParentDashboardStore
+  .swift:36`, `LearningPhaseController.swift:96-97`,
+  `ParentDashboardExporter.swift:108`, and
+  `PhaseTransitionCoordinator.swift:40`/`:533` in code;
+  `APP_DOCUMENTATION.md:1425`/`:1498` in docs; and
+  `ParentDashboardExporterTests.swift:33` — plus the handoff. So the
+  ledger carried a hole exactly where its own series already skipped
+  the number. Written 2026-09-16 to close it, not drafted then.
+
 - **D13 — Sound delivery is matched across the two sound arms in
   LEVEL and in MOVEMENT-CONTINGENCY (rulings AE-1, AE-2, AE-2a, AE-2b,
   David, 2026-09-06).** Three points, each with the argument that

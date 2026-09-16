@@ -222,14 +222,26 @@ Found by the 2026-08-19 reconciliation; none of these was previously tracked.
 
 ---
 
-### D12 — Execute the D5 `direct`-phase cut
-**Effort:** M · **Priority:** P2
+### Direct-phase cut *(was headed "D12") — SUPERSEDED 2026-09-16; see `docs/DECISIONS.md` D5*
+**Effort:** — · **Priority:** closed
 
-`docs/DECISIONS.md` locks D5 (cut `direct`, move to three-phase `observe → guided → freeWrite`)
-on a six-paper evidence read, but the cut was never executed and appeared in no work log:
-`LearningPhase.swift:17` still declares `case direct = 1` and the exporter deliberately iterates
-it. Blast radius and the Codable `rawValue` backward-compat constraint are recorded in DECISIONS.
-Not pilot-blocking (flow is held constant across arms either way).
+This entry used to be headed "D12", which collided with a *different* `D12` in
+`docs/DECISIONS.md` (the score composite's floor — an unrelated decision). The two files run
+independent D-series, so the same number meant two different things depending which doc you were
+in. Retitled 2026-09-16 to give the number back; the item itself is unchanged below.
+
+Closed, not deferred. `docs/DECISIONS.md` D5 locked the cut of the `direct` phase
+(→ `observe → guided → freeWrite`) on a six-paper evidence read, but the cut was never executed —
+`LearningPhase.swift:17` still declares `direct = 1` and the exporter deliberately iterates it.
+David's ruling of 2026-09-16 keeps the four-phase flow and marks D5 **superseded** rather than
+executing it: the app has shipped the Direct phase since `559a1df` (2026-04), Ch.3 and Ch.6 are
+already written around the four-phase flow, and the pilot instrument is verified working on it.
+Read D5 for the full reasoning and its blast-radius estimate. If the Direct phase turns out to
+matter to the outcome, that is a finding for the main study, not a pilot blocker.
+
+> Note for the next reader: the D8/D9/D10/D11 numbers also collide between this file and
+> `docs/DECISIONS.md` (this file's D8 is the canvas redraw profile; DECISIONS' D8 is the primary
+> outcome). Only the D12 collision is resolved here. Flagged, not fixed.
 
 ---
 
