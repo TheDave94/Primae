@@ -1387,7 +1387,7 @@ public final class TracingViewModel {
         guard let idx = letters.firstIndex(where: { $0.name == nextName }) else { return }
         letterIndex = idx
         load(letter: letters[idx])
-        toast("Buchstabe: \(currentLetterName) | pool=\(visible.count) \(visible.joined(separator: ",")) | idx=\(currentIdx) next=\(nextName) allLetters=\(letters.count)")
+        toast("Buchstabe: \(currentLetterName)")
     }
 
     func previousLetter() {
@@ -1964,11 +1964,32 @@ public final class TracingViewModel {
         }
         let order = letterOrdering.orderedLetters()
         let rankMap = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($1, $0) })
-        return pool.sorted { a, b in
+        let ordered = pool.sorted { a, b in
             let ra = rankMap[a.uppercased()] ?? Int.max
             let rb = rankMap[b.uppercased()] ?? Int.max
             return ra == rb ? a < b : ra < rb
         }
+        // DE-DUPLICATE, order-preserving. This list is a navigation
+        // pool of NAMES, and both `nextLetter()` and `previousLetter()`
+        // navigate it BY INDEX — so a repeated name makes
+        // `visible[(idx + 1) % count]` resolve to the same letter and
+        // the chevron looks dead.
+        //
+        // Measured on device 2026-09-16 (iPad 00008103-000E60311AE8801E,
+        // Debug-Study): the study pool for a trained subset of F/I/L held
+        // FIFTEEN entries — five copies of each — and `letters` held 295
+        // assets in total, because `BundleLetterResourceProvider
+        // .searchBundles` enumerates the module bundle AND the main bundle
+        // and `allResourceURLs()` concatenates both, so every letter is
+        // collected more than once. `nextLetter()` then advanced from the
+        // first "I" to the second "I", leaving the pill unchanged on every
+        // tap. That is the whole of report 1.
+        //
+        // Deduplicating here fixes the navigation for any cause of a
+        // repeated name. The over-collection itself is a separate defect
+        // (295 assets where 87 files exist) and is NOT fixed here.
+        var seen = Set<String>()
+        return ordered.filter { seen.insert($0).inserted }
     }
 
     var activeStrokeIndex: Int { strokeTracker.currentStrokeIndex }
