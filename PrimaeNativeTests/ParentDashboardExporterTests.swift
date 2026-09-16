@@ -326,8 +326,16 @@ struct ParentDashboardExporterTests {
         #expect(!json.contains("\"frechetDistance\""),
                 "The retired field's old JSON key must not survive the export — found:\n\(json)")
         #expect(json.contains("\"\(ParentDashboardExporter.retiredFrechetColumnName)\""))
-        #expect(json.contains("0.42"), "The retired field's value must still be present under the new key")
         #expect(json.contains("\"spatialDeviation\""))
+        // Decode back rather than substring-match the value: JSON
+        // serializes 0.42 with its full binary-double representation
+        // (0.41999999999999998...), which "0.42" is not a substring of.
+        let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let records = try #require(root["phaseSessionRecords"] as? [[String: Any]])
+        let record = try #require(records.first)
+        let renamedValue = try #require(record[ParentDashboardExporter.retiredFrechetColumnName] as? Double)
+        #expect(abs(renamedValue - 0.42) < 0.0001,
+                "The retired field's value must still be present under the new key")
     }
 
     // MARK: - Derived post-test tag for a trained letter's final pass

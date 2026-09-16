@@ -193,7 +193,7 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
 
-        #expect(csv.contains("phaseDurationSeconds,frechetDistance,checkpointCoverage,spatialDeviation"),
+        #expect(csv.contains("phaseDurationSeconds,\(ParentDashboardExporter.retiredFrechetColumnName),checkpointCoverage,spatialDeviation"),
                 "the three measures append after the existing trailing column, newest last")
         #expect(csv.contains("0.123456"), "Fréchet exports at 6 dp — 0–1 letter space")
         #expect(csv.contains("0.8750"))
@@ -251,7 +251,7 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         let names = header.components(separatedBy: ",")
         let fields = row.components(separatedBy: ",")
         #expect(fields.count == names.count, "row and header must stay aligned")
-        let frechetIdx = try #require(names.firstIndex(of: "frechetDistance"))
+        let frechetIdx = try #require(names.firstIndex(of: ParentDashboardExporter.retiredFrechetColumnName))
         let coverageIdx = try #require(names.firstIndex(of: "checkpointCoverage"))
         let deviationIdx = try #require(names.firstIndex(of: "spatialDeviation"))
         let strokeCountIdx = try #require(names.firstIndex(of: "strokeCount"))
