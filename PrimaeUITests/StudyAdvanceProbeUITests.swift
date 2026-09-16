@@ -158,6 +158,123 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         attach(app, name: "B-03-second-participant-dashboard")
     }
 
+    // MARK: - Check C (report 2) — the audio arms
+
+    /// Report 2: does each sound arm actually get its own audio?
+    ///
+    /// Sets the researcher override for the arm through the app's own
+    /// Settings picker — the path a proctor would use — then RELAUNCHES,
+    /// because the picker's own hint says the change takes effect on the
+    /// next app start (the override is read at view-model init). Then it
+    /// sits through the observe window, during which the sound arms'
+    /// scripted two-second demonstration should be requested.
+    ///
+    /// WHAT THIS PROVES AND WHAT IT DOES NOT. The assertion here is weak
+    /// on purpose: this test only confirms the app reached and held the
+    /// observe phase. The evidence for the arm's audio is the app-side
+    /// log pulled off the device afterwards, and even that establishes
+    /// only that the engine was ASKED to play a named file — an XCUITest
+    /// cannot observe sound leaving a speaker, and no simulator or
+    /// device-side test can. That distinction is stated in the report.
+    @MainActor
+    func testPhonemeArmRequestsAudioDuringObserve() {
+        runAudioArmCheck(armDisplayName: "Phonem", tag: "C1-phonem")
+    }
+
+    @MainActor
+    func testSpatialArmRequestsAudioDuringObserve() {
+        runAudioArmCheck(armDisplayName: "Raumklang", tag: "C2-raumklang")
+    }
+
+    @MainActor
+    private func runAudioArmCheck(armDisplayName: String, tag: String) {
+        let app = XCUIApplication()
+        app.launch()
+
+        openParentArea(app)
+        openSettings(app)
+        selectAudioArm(armDisplayName, in: app)
+        attach(app, name: "\(tag)-arm-selected-\(armDisplayName)")
+
+        // The override is read at view-model init, so it needs a restart.
+        app.terminate()
+        app.launch()
+
+        // START THE PARKED SESSION. A study session launches parked
+        // (`StudyLaunchTests` asserts `vm.launchParked` at launch), so the
+        // observe phase — and with it the pre-task demonstration — does
+        // not begin until the proctor taps the observe area
+        // (SchuleWorldView.swift:461-464). Without this tap the app reaches
+        // the letter but never asks the engine to play anything: the first
+        // evidence pull showed seven LOAD lines and ZERO play requests.
+        let observeArea = element(label: "Beobachtungsphase", in: app)
+        XCTAssertTrue(observeArea.waitForExistence(timeout: 12),
+                      "the observe area must be present to start the parked session")
+        observeArea.tap()
+        attach(app, name: "\(tag)-session-started")
+
+        // Sit through the observe window: the demonstration is 2 s, and
+        // observe runs two guide-dot cycles with touch disabled.
+        Thread.sleep(forTimeInterval: 14.0)
+        attach(app, name: "\(tag)-observe-window-ended")
+
+        XCTAssertTrue(currentLetter(app) != nil,
+                      "the session should still be on a letter after the observe window")
+    }
+
+    /// Open the parent area's Einstellungen screen from the sidebar.
+    private func openSettings(_ app: XCUIApplication) {
+        let settings = element(label: "Einstellungen", in: app)
+        XCTAssertTrue(settings.waitForExistence(timeout: 8),
+                      "the Einstellungen entry must exist in the parent sidebar")
+        settings.tap()
+        // Screenshot BEFORE the assertion: when this failed on device the
+        // first time, the failure carried no evidence of what was on
+        // screen, which is exactly the information needed to fix it.
+        attach(app, name: "C0-einstellungen-opened")
+        // The researcher overrides (Thesis / Audio / trained-subset) sit
+        // BELOW the parent-facing rows. Measured on device: the first
+        // screen shows Schriftart, Buchstabenreihenfolge, Freies
+        // Schreiben, Erinnerungstest, Lautwert — the arm pickers are not
+        // in view and must be scrolled to.
+        let picker = scrollTo(prefix: "Audio-Arm überschreiben", in: app)
+        XCTAssertTrue(picker.exists,
+                      "the audio-arm override picker must be reachable by scrolling Einstellungen")
+    }
+
+    /// Swipe up until an element whose label starts with `prefix` exists.
+    /// Returns the element either way so the caller can assert.
+    @discardableResult
+    private func scrollTo(prefix: String, in app: XCUIApplication, swipes: Int = 8) -> XCUIElement {
+        let target = element(labelPrefix: prefix, in: app)
+        for _ in 0..<swipes {
+            if target.exists { return target }
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        return target
+    }
+
+    /// Drive the researcher audio-arm picker. The options are the arm
+    /// display names plus "Automatisch".
+    ///
+    /// Matches the picker by PREFIX, not exact label: a SwiftUI `Picker`
+    /// renders as a button whose accessibility label carries its current
+    /// value ("Audio-Arm überschreiben, Automatisch"), so an exact match
+    /// on the title alone never hits. That is how the first attempt
+    /// failed on device.
+    private func selectAudioArm(_ displayName: String, in app: XCUIApplication) {
+        let picker = scrollTo(prefix: "Audio-Arm überschreiben", in: app)
+        XCTAssertTrue(picker.exists, "audio-arm picker must exist")
+        picker.tap()
+        attach(app, name: "C0-picker-open")
+
+        let option = element(label: displayName, in: app)
+        XCTAssertTrue(option.waitForExistence(timeout: 8),
+                      "the '\(displayName)' option must be offered by the picker")
+        option.tap()
+    }
+
     // MARK: - Check C (report 2) — deliberately NOT automated
     //
     // Report 2 is about AUDIO. A simulator's software audio stack does not
