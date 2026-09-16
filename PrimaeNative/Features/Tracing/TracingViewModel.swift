@@ -1217,7 +1217,29 @@ public final class TracingViewModel {
             }
         case .spatial:
             let samples = PreTaskDemonstration.axisSweep(duration: duration)
-            guard !samples.isEmpty else { return }
+            guard !samples.isEmpty else {
+                // A FAULT, NOT A QUIET SKIP (C1-6) — symmetry with
+                // `.phoneme` (2026-09-17).
+                //
+                // The phoneme branch cannot reach its demonstration
+                // without a file: the carrier precondition and the
+                // phoneme precondition each refuse the session first, and
+                // the branch below logs a fault if it is somehow reached
+                // anyway. This branch had no such guarantee. `axisSweep`
+                // was the ONLY thing between the spatial arm and a
+                // demonstration that never plays, and returning here was
+                // silent: no sound, no on-screen signal, nothing in the
+                // record.
+                //
+                // For a study arm whose entire manipulation IS that sound,
+                // a silently-absent demonstration is a data-validity
+                // confound rather than a cosmetic gap — the session would
+                // run, record, and be analysed as though the spatial arm
+                // had been delivered. Refusing loudly costs nothing
+                // audible and cannot be mistaken for a delivered arm.
+                pilotAudioLogger.fault("Pre-task demonstration SKIPPED: axisSweep produced no samples for the spatial arm (duration \(duration, privacy: .public)s) — the arm's stimulus would be absent, so this is a fault and not a quiet skip.")
+                return
+            }
             preTaskDemoTask = Task { [weak self] in
                 guard let self, !Task.isCancelled else { return }
                 self.audio.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
