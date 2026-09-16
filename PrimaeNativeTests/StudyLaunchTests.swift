@@ -163,6 +163,40 @@ struct StudyLaunchTests {
         #expect(vm.animation.armedStrokes != nil)
     }
 
+    /// The chevron is the study session's ONLY way to reach the next
+    /// letter: the celebration overlay that advances in the casual build
+    /// is gated off under `studyMode`, and `loadRecommendedLetter()` just
+    /// forwards to `nextLetter()`. Confirmed broken on device
+    /// (2026-09-16, iPad 00008103-000E60311AE8801E): tapping it left the
+    /// pill on "L".
+    ///
+    /// Deliberately built on the REAL bundle repository, not
+    /// `FiveLetterProvider`. The fixture proves the pool logic in
+    /// isolation — `studyLaunchLoadsFirstTrainedLetter` above already
+    /// does — which is precisely why a break that only manifests against
+    /// the shipped corpus went unseen. A test that supplies its own
+    /// idealised letters cannot catch a corpus problem.
+    @Test("the chevron advances to the next trained letter (real bundle)")
+    func nextLetterAdvancesOnRealBundle() throws {
+        var deps = TracingDependencies.stub
+        deps.repo = LetterRepository(cache: NullLetterCache())
+        deps.studyMode = true
+        deps.audioCondition = .silent     // no phoneme precondition
+        deps.trainedSubset = try #require(TrainedLetterSubset(rawValue: "AFL"))
+        let vm = TracingViewModel(deps)
+
+        let pool = vm.visibleLetterNames
+        #expect(!pool.isEmpty,
+                "the study pool is empty, so `nextLetter()` bails at its first guard and the chevron can never advance the letter")
+        #expect(vm.letters.contains(where: { $0.name == "L" }),
+                "no asset named 'L' among the \(vm.letters.count) loaded: \(vm.letters.map(\.name).prefix(20))")
+
+        let before = vm.currentLetterName
+        vm.nextLetter()
+        #expect(vm.currentLetterName != before,
+                "the chevron did not advance: stayed on '\(before)'; pool=\(pool)")
+    }
+
     /// Outside a study session the launch letter is armed at init, before
     /// any view exists — against the 1024×1024 placeholder. After the
     /// canvas lays out the armed payload must be the laid-out geometry.
