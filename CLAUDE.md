@@ -337,6 +337,61 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > 136.6 MB → 82.7 MB**. 118 is exactly 2×59; 59 is exactly the Regular
 > weight's letter count, i.e. one asset per letter. Load halves and
 > footprint falls 39% on every launch. Commit `84f6704`.
+>
+> **The chevron fix (`17178c0`) — the duplicate navigation pool.**
+> `visibleLetterNames` returned FIFTEEN entries for a three-letter
+> trained subset (five copies of each) because `allResourceURLs()`
+> collected every letter file repeatedly. `nextLetter()` navigates that
+> pool BY INDEX — `visible[(idx + 1) % count]` — so from the first `"I"`
+> the successor was the second `"I"`, `load(letter:)` reloaded the same
+> letter, and the chevron looked dead on every tap. That was the whole of
+> report 1. Fixed at the navigation layer by de-duplicating the ordered
+> pool, and at the source by `84f6704` above.
+>
+> **DON'T "FIX" THE SPATIAL GLISSANDO — IT IS THE SPECIFICATION.**
+> Reported 2026-09-16 as a bug: the Raumklang arm plays a high→low→high
+> sweep *before* the child touches. It is the pre-task axis
+> demonstration, and it is required. `04-implementation.typ:17`
+> specifies it verbatim — "a scripted sweep point, independent of the
+> letter's shape and of the guide dot, runs once from the top of the
+> canvas to the bottom and back while the carrier's pitch follows it,
+> and once from the centre to the right edge, back through the centre to
+> the left edge, and back to the centre, a quarter-cycle out of phase".
+> `PreTaskDemonstration.axisSweep` implements exactly that
+> (`y = 0.5 - 0.5·cos 2πt`, `x = 0.5 - 0.5·cos(2πt + π/2)`) and
+> `SpatialSonification.pitchCents` maps it to 880→220→880 Hz. The header
+> gives the reason it must exist and must be matched across arms: "a
+> demonstration can INSTALL a crossmodal mapping rather than reveal one
+> already there... that arm's later tracing-task audio wouldn't just be
+> the arm's sound — it would be the arm's sound, already taught."
+> Removing or deferring it is a PROTOCOL change requiring the thesis to
+> move with it, not a code fix. Verified point-by-point against the spec
+> on 2026-09-17; the code conforms on every clause.
+>
+> **The spatial demonstration now fails loudly instead of skipping in
+> silence (`5a59c36`).** `armPreTaskDemonstration`'s `.spatial` branch
+> opened with `guard !samples.isEmpty else { return }` — unlike
+> `.phoneme`, which cannot reach its demonstration without a file because
+> the preconditions refuse the session first. That guard was the only
+> thing between the arm and a demonstration that never plays, and it
+> returned silently: no sound, no on-screen signal, nothing in the
+> record, so a session could run and be analysed as though the arm had
+> been delivered. Now logs a fault, matching "a fault, not a quiet skip
+> (C1-6)" — the standard this codebase already states for the phoneme
+> branch's equivalent case. Chosen under the 2026-09-16 standing rule
+> (prefer the option with no new audible artifact, no confound, no risk
+> to data validity, even at extra cost); it changes nothing audible,
+> because the path is currently unreachable.
+>
+> **Report 2's audio finding, and its limit.** Both sound arms were
+> driven on the physical device and both were shown to RESOLVE the right
+> asset and REQUEST playback: `arm=phoneme` → the letter's
+> `I_phoneme1.wav`; `arm=spatial` → the shared letter-independent
+> `spatial_carrier.wav`, `autoplay=true`, 2.0 s window, 40 axis samples.
+> **That establishes the engine was ASKED to play. It does not establish
+> that sound left the speaker** — no XCUITest can, on simulator or
+> device, and this is the caveat that must travel with the result. It was
+> later confirmed by ear that the spatial arm is audible.
 
 > **Correction (2026-09-03, measured from a sandboxed Claude Code seat on this
 > Mac — a different environment than claudebox above).** Neither `swift build`
