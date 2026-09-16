@@ -280,6 +280,63 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > `excludedCommands` — so the whole call runs sandboxed and dies on
 > CoreDeviceService. Issue the underlying bare `xcodebuild test …` instead;
 > the exact command is the script's own `exec` line.
+>
+> **FOUR findings from the 2026-09-16 late session. The third is the one
+> most likely to cost a future seat a wrong conclusion rather than just
+> time.**
+>
+> **1. `PrimaeNativeTests` structurally cannot build under `Release-Study`,
+> so the unit-test suite has only ever validated the DEBUG configuration.**
+> It references `#if DEBUG`-only members — `TracingViewModel
+> .awaitPlaybackDebounce` (`PrimaeNativeTests/AudioArmRoutingTests.swift:284`)
+> and `AudioEngine.debugShouldResumePlayback`
+> (`PrimaeNativeTests/AudioEngineTests.swift:72`). With
+> `ENABLE_TESTABILITY=NO` the module refuses to resolve at all
+> (`Unable to resolve Swift module dependency to a compatible module:
+> 'PrimaeNative'`); forcing `ENABLE_TESTABILITY=YES` on the command line
+> merely moves the failure to those members. `-skip-testing:` does NOT
+> prevent the BUILD, so the scheme's test action always compiles the target
+> and `xcodebuild test` can therefore **never** run under Release-Study.
+> That is exactly why `scripts/run_device_uitests.sh` defaults to
+> Debug-Study. No fix proposed — recorded so the gap is visible.
+>
+> **2. Unit tests cannot be RUN on the physical iPad from this seat.** The
+> injected test bundle fails to load:
+> `code signature … not valid for use in process: mapping process and
+> mapped file (non-platform) have different Team IDs`, producing
+> `Failed to load the test bundle`. UI tests are unaffected — they run in a
+> separate runner process. So a device-verified unit test is not available
+> as an instrument from a sandboxed seat; the UI test is.
+>
+> **3. Anything measured under a UI test measures the HARNESS, not the
+> app.** This one produced a wrong number tonight, and the error was 2×.
+> The UI-test build injects `PrimaeNativeTests.xctest`, which carries **its
+> own copies of the letter resources**: measured in a Debug-Study device
+> build, `strokes.json` appears **348 times across FOUR trees** (the app's
+> `PrimaeNative_PrimaeNative.bundle`, a `Frameworks/` copy, and two inside
+> `PlugIns/PrimaeNativeTests.xctest`) against **87 in the shipped app**.
+> `Bundle.main.resourceURL` enumeration descends into `PlugIns/` and
+> `Frameworks/`, so it collects all four. A count taken under test is
+> therefore inflated by the harness itself. **Measure the shipped
+> configuration or you are measuring the test rig.** The way that worked:
+> build `Release-Study` for the device, have the app write the numbers into
+> its own container, launch it with `devicectl`, and read them back with
+> `xcrun devicectl device copy from --domain-type appDataContainer
+> --domain-identifier com.flamingistan.primae.study`.
+>
+> **4. The resource over-collection: cause, fix, and the numbers.**
+> `BundleLetterResourceProvider.searchBundles` lists the module bundle AND
+> the app bundle, and the app bundle *contains* the module bundle, so
+> `allResourceURLs()` returned every letter file twice. Fixed at the source
+> by de-duplicating on `resolvingSymlinksInPath().path` — **not**
+> `standardizedFileURL`, because iOS containers appear as both `/var/…`
+> and `/private/var/…` and the latter does not resolve symlinks (measured;
+> the first attempt at this fix therefore removed only half the
+> duplication). Measured on the physical iPad in Release-Study, before →
+> after: **assets 118 → 59**, **repoLoad 14236 ms → 7069 ms**, **footprint
+> 136.6 MB → 82.7 MB**. 118 is exactly 2×59; 59 is exactly the Regular
+> weight's letter count, i.e. one asset per letter. Load halves and
+> footprint falls 39% on every launch. Commit `84f6704`.
 
 > **Correction (2026-09-03, measured from a sandboxed Claude Code seat on this
 > Mac — a different environment than claudebox above).** Neither `swift build`
