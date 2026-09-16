@@ -136,6 +136,61 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 >   from `gh auth token` against the same URL works. Use curl for reading CI
 >   results from a sandboxed seat.
 
+> **Follow-up (2026-09-16, sandboxed seat) — the block above, located
+> precisely, plus one call shape that silently loses the simulator.**
+> Measured while trying to run a simulator UI-test pass. It refines the
+> 2026-09-03 note; it does not contradict it (`xcodebuild` is still
+> blocked), but the block is narrower than "Simulator services will no
+> longer be available" reads — see D.
+>
+> **A. The `permissionDenied` on package resolution is the SwiftPM
+> home-directory state, probed directly.** `touch
+> ~/Library/Caches/org.swift.swiftpm/primae-probe` and `touch
+> ~/.swiftpm/probe` both return `Operation not permitted`. SwiftPM names
+> the same targets itself in the lock files it drops in `$TMPDIR`:
+> `_Users_musicbox_Library_Caches_org.swift.swiftpm_manifests_manifest.db.lock`
+> and `_Users_musicbox_.swiftpm.lock`. It is not fetching: `Package.swift`
+> declares zero remote dependencies, and the project references only
+> `XCLocalSwiftPackageReference "../../Primae"`. Five build attempts,
+> four distinct levers — fresh `-derivedDataPath`, a clone of an
+> already-resolved derived data (286 MB, `SourcePackages` present),
+> `-packageCachePath "$TMPDIR/…"`, `HOME` relocation, and
+> `-disableAutomaticPackageResolution
+> -onlyUsePackageVersionsFromResolvedFile` — all returned `BUILD_RC=74`
+> with the identical `xcodebuild: error: Could not resolve package
+> dependencies: error: permissionDenied` (twice). None of them redirects
+> the denied writes. Those lock files also show an earlier seat
+> resolving successfully against `/tmp/dd-sim-drive`, so this is
+> seat/sandbox state, not a property of the project.
+>
+> **B. Simulator access is scoped by CALL SHAPE, exactly as the signing
+> section below documents for `git commit` — same failure mode, a
+> different rule underneath.** A bare `xcrun simctl list devices
+> available` works, foreground *and* background, and returns the full
+> device list including a booted device. The same command inside a
+> nested shell does not: `sh -c 'xcrun simctl list devices available'` →
+> `CoreSimulatorService connection became invalid … Connection refused`.
+> Reproduced across two runs. This alone kills `/tmp/primae-sim-pass.sh`
+> as written, since its own usage line is `sh /tmp/primae-sim-pass.sh …`
+> — making its first `simctl` call a grandchild of the Bash tool call.
+>
+> **C. `/tmp` is not writable from this seat; `$TMPDIR` is — and they
+> are the same directory.** `touch /tmp/primae-probe-write` →
+> `Operation not permitted`; `touch "$TMPDIR/primae-probe"` succeeds.
+> `$TMPDIR` is `/tmp/claude-501`, a symlink to `/var/folders/ws/…/T`, so
+> `simctl io … screenshot "$TMPDIR/x.png"` reports its own output path as
+> `/var/folders/…/x.png` — one file, not a redirect. The sim pass
+> hardcodes `/tmp` for every log and for `-derivedDataPath`, so it cannot
+> run here as written; substituting `$TMPDIR` throughout is the fix.
+>
+> **D. Measured as NOT blocked, so don't over-read B:** `xcrun simctl
+> install`, `launch`, `io … screenshot`, and `spawn … log show` all
+> succeed (rc=0, with real app log lines returned). The unified-log
+> channel is reachable, so an audio-arm check's *instrument* is sound —
+> what a sandboxed seat cannot do is build the test bundle that would
+> drive the flow. "CoreSimulatorService connection became invalid"
+> printed by an `xcodebuild` run is not a statement about `simctl`.
+
 > **Commit signing runs IN a Claude Code session — invoking `git commit`
 > directly is not a handover. The physical touch reaching David is a
 > separate, less reliable step, and a failure there is not the same claim
