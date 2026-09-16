@@ -205,8 +205,10 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > regenerate it from F12's own conditions (`docs/ROADMAP.md:411`, which
 > requires it be **tracked** if ever adopted), not from the temp copy.
 >
-> **The 2026-09-16 simulator pass is INCONCLUSIVE — the app never renders in
-> the iOS 27 simulator. Measured; cause NOT established.** Running the
+> **The 2026-09-16 simulator question is ANSWERED — the Debug-Study hang is
+> `#if DEBUG`-specific and does NOT reach the pilot artefact.** (Header
+> corrected same evening from "INCONCLUSIVE", once the fork was actually run
+> rather than reasoned — see "RESOLVED" below.) Running the
 > three-check probe (`PrimaeUITests/StudyAdvanceProbeUITests`, committed
 > `62ae8bc`) end to end on the iPad Pro 11-inch (M5) / iOS 27.0 simulator:
 > all three checks failed, and **none failed for the reason it was written to
@@ -227,14 +229,57 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > disclaims parity. The device is separately reported working (RELAYED, not
 > measured here).
 >
-> **Not established:** whether the hang is an iOS-27-simulator
-> incompatibility, a Debug-Study-only symptom (DEBUG surfaces are compiled in
-> here, unlike the pilot artefact), or something that would also affect a
-> device. `MainAppView.swift:46` gates the root on `vm.isOnboardingComplete`
-> (`OnboardingView()` otherwise, full-screen, no rail), and
-> `PrimaeApp.swift:23` constructs `TracingViewModel()` at app init — both are
-> candidates to check first. A pass that needs a rendered app must settle
-> that question before it can say anything about the three reports.
+> **RESOLVED 2026-09-16, same evening — the fork, RUN rather than reasoned.**
+> Built **Release-Study for that same simulator** (same tooling, bare
+> `xcodebuild`, fresh `-derivedDataPath`) and launched it: it **renders
+> correctly** — the German *"Studie kann nicht starten — Kein Teilnehmer
+> eingeschrieben…"* screen, parent-area gear and rail all present
+> (`/tmp/claude-501/primae-shots/10-RELEASE-sim-20s.png`). Debug-Study freezes
+> on the same machine; Release-Study does not. **So the hang is Debug-only, it
+> does not affect the pilot artefact, and it is not a device-relevance
+> question for the study.** The DEBUG-compiled-in surfaces remain the cause
+> class to investigate IF anyone later wants a working Debug build — that is a
+> tooling fix, not a pilot blocker, and was deliberately not chased further.
+> (Ruled out en route, so nobody re-walks it: onboarding state is NOT the
+> cause. Onboarding is file-backed, not `UserDefaults`-backed —
+> `OnboardingCoordinator.swift:150-158`, `Application Support/PrimaeNative/
+> onboarding.json` — and that file is ABSENT on a fresh install, so
+> `isOnboardingComplete` is correctly `false` and `OnboardingView()` is the
+> branch that should render. `OnboardingView`'s gradient/progress-bar/footer
+> never appear either, so the app is not reaching a first frame at all.)
+>
+> **NAMED GAP — nothing has ever run the unit-test suite against the pilot
+> configuration.** `PrimaeNativeTests` structurally cannot compile against
+> `Release-Study`: it references `#if DEBUG`-only members —
+> `TracingViewModel.awaitPlaybackDebounce`
+> (`PrimaeNativeTests/AudioArmRoutingTests.swift:284`) and
+> `AudioEngine.debugShouldResumePlayback`
+> (`PrimaeNativeTests/AudioEngineTests.swift:72`). With `ENABLE_TESTABILITY=NO`
+> the module refuses to resolve at all
+> (`Unable to resolve Swift module dependency to a compatible module:
+> 'PrimaeNative'`); forcing `ENABLE_TESTABILITY=YES` on the command line
+> merely moves the failure to those members. `-skip-testing:` does NOT prevent
+> the BUILD, so the scheme's test action always compiles the target and
+> `xcodebuild test` can therefore **never** run under Release-Study — which is
+> precisely why `scripts/run_device_uitests.sh` defaults to Debug-Study.
+> **Consequence, plainly: the suite has only ever validated the Debug
+> configuration.** No fix proposed here, deliberately — recorded so the next
+> session sees it.
+>
+> **HAZARD — `xcodebuild test` overwrites the artefact you just verified.** A
+> test run rebuilds into the same `-derivedDataPath`, replacing the signed app
+> with an unsigned/testability variant. Measured: `devicectl device install`
+> then failed with `0xe800801c (No code signature found)` and `nm -jU`
+> returned no identity symbol at all. **Verify first, then build elsewhere** —
+> give `test` a different `-derivedDataPath` than the artefact you intend to
+> install.
+>
+> **HAZARD — `scripts/run_device_uitests.sh` cannot be invoked from a
+> sandboxed seat.** Its documented usage passes the target UDID as the
+> script's first argument, so the call's leading word is the script PATH — not an entry in
+> `excludedCommands` — so the whole call runs sandboxed and dies on
+> CoreDeviceService. Issue the underlying bare `xcodebuild test …` instead;
+> the exact command is the script's own `exec` line.
 
 > **Correction (2026-09-03, measured from a sandboxed Claude Code seat on this
 > Mac — a different environment than claudebox above).** Neither `swift build`
