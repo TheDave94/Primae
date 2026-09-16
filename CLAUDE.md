@@ -114,6 +114,114 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > `-allowProvisioningUpdates` and an unlocked, connected iPad. It is NOT automated
 > and never was.
 
+> **LIFTED (2026-09-16, evening — sandboxed seat on this Mac). The 2026-09-03
+> and 2026-09-16 blocks below are SUPERSEDED for this configuration;
+> `xcodebuild` and `xcrun simctl` now work from a sandboxed seat.** Measured,
+> not relayed. `~/.claude/settings.json`'s `sandbox.excludedCommands`
+> (`:216-224`) now carries `xcrun simctl *`, `xcodebuild *`,
+> `/Users/musicbox/.swiftpm/*`, and
+> `/Users/musicbox/Library/Caches/org.swift.swiftpm/*`. What that bought,
+> measured this session:
+> - Bare `xcodebuild -version` → `Xcode 27.0` (`27A266a`); bare
+>   `xcrun simctl list devices available` → the full device list.
+> - A full clean `xcodebuild build` at a **fresh** `-derivedDataPath` (so
+>   SwiftPM resolution ran from scratch, the exact thing that used to return
+>   `permissionDenied`) → `** BUILD SUCCEEDED **`, 115 compile invocations,
+>   zero `error:`, zero `permissionDenied`, zero `CoreSimulatorService`
+>   failures.
+> - `nm -jU …/Primae.app/Primae | grep primae_build_identity` →
+>   `_primae_build_identity_study`, exactly one hit.
+>
+> Do **not** read the older blocks as current. They remain accurate about the
+> configuration that produced them; re-measure before trusting either way.
+>
+> **The call-shape rule is NOT specific to `git` — it governs every entry in
+> `excludedCommands`, and it bit this session.** The match is on the call's
+> *leading top-level word*, so `rm -rf X; xcodebuild test …` runs **sandboxed**
+> (`rm` leads), while `xcodebuild test …` alone runs unsandboxed. Measured
+> consequence: the sandboxed variant wrote a result bundle with **no root
+> `Info.plist`** — `Data/` and `Staging/` present, never finalised — which
+> `xcrun xcresulttool` then refuses (`Failed to create a new result bundle
+> reader`). Nothing else about that run was wrong, and the mistake is
+> invisible in the command's own output. Keep `xcodebuild` / `xcrun` as the
+> literal first word.
+>
+> **`xcrun xcresulttool` does NOT match `xcrun simctl *`.** It stays
+> sandboxed, so both its `--path` and its `--output-path` must sit somewhere
+> the sandbox can reach. Same for any command that is not literally
+> `xcrun simctl …`.
+>
+> **`$TMPDIR` is NOT stable across Bash calls here, and `/tmp/claude-501` is
+> a real directory, not a symlink.** Measured: `$TMPDIR` expanded to
+> `/tmp/claude-501` in most foreground calls, but to
+> `/var/folders/ws/544vqfxj1dbfy9vvs3mwxrr00000gn/T/` in the background shell
+> and in at least one foreground call. The older claim that `$TMPDIR` is
+> `/tmp/claude-501`, "a symlink to `/var/folders/ws/…/T`", is **wrong on both
+> halves** — `ls -ld /tmp/claude-501` → `drwx------ … musicbox wheel`, a plain
+> directory, and the two paths are different directories. A file written under
+> one expansion is NOT visible under the other, which silently broke a backup
+> lookup mid-session. **Do not hardcode `$TMPDIR` across the steps of a
+> multi-step pass** — use an absolute path, or re-read it in each call.
+>
+> **Sandbox-level `/tmp` writes are still denied for NON-excluded commands**
+> (re-measured): `touch /tmp/probe` → `Operation not permitted`;
+> `touch $TMPDIR/probe` → OK; *reading* `/tmp` → OK. Cross-directory `mv`
+> is denied for non-excluded calls too. Excluded commands are unaffected —
+> they run unsandboxed and may write `/tmp` freely.
+>
+> **First thing a fresh seat will hit on a build: the provenance gate.** With
+> ANY uncommitted change present, the `Primae` scheme's Pre-action
+> (`scripts/check_project_invariants.py`, `gate_provenance()`, `:225-246`)
+> fails the build outright and prints the offending `git status --porcelain`
+> lines. That is by design — it is the one place `--autofix` is allowed to
+> fail — so **resolve the tree, never bypass the gate.** Untracked files count;
+> a fresh clone carrying two of them will not build. (2026-09-16: two untracked
+> files — `.mcp.json` and `PrimaeUITests/StudyAdvanceProbeUITests.swift` —
+> stopped a build dead after package resolution had already succeeded.)
+>
+> **`.mcp.json` state (2026-09-16).** A repo-root `.mcp.json` registering
+> `xcodebuildmcp` was present and being activated via
+> `.claude/settings.local.json` (`enableAllProjectMcpServers: true`) — i.e.
+> F12's *declined* bridge, live, while the study configuration is frozen.
+> It was moved aside (NOT deleted) to
+> `/tmp/claude-501/primae-mcp.json.aside`, sha256 `d3c212f8…`, to clear the
+> gate while keeping F12 declined. Note that path is a temp directory and may
+> be reaped — the file is four lines and its content is recoverable from this
+> entry's session transcript; if a future post-pilot session revisits F12,
+> regenerate it from F12's own conditions (`docs/ROADMAP.md:411`, which
+> requires it be **tracked** if ever adopted), not from the temp copy.
+>
+> **The 2026-09-16 simulator pass is INCONCLUSIVE — the app never renders in
+> the iOS 27 simulator. Measured; cause NOT established.** Running the
+> three-check probe (`PrimaeUITests/StudyAdvanceProbeUITests`, committed
+> `62ae8bc`) end to end on the iPad Pro 11-inch (M5) / iOS 27.0 simulator:
+> all three checks failed, and **none failed for the reason it was written to
+> test.** The app launches without crashing and stays alive (`launchctl list`
+> shows the process), but its UI freezes on a blank screen — black with a
+> spinner at 8 s, white with the same spinner at 20 s, and **byte-identical**
+> (`sha256 23eb09e5…`) ~6 min later, so the frame never changes. No
+> `Aktueller Buchstabe …` pill ever appears, so checks 1 and 2 could not
+> exercise the chevron at all; check 3's gear long-press reached the parent
+> area in one run and not the next. Check 2 (per-arm audio) is void: the
+> override was set and the unified log captured for each of
+> `phoneme`/`spatial`/`silent`, but no arm shows any app-level playback
+> request, because the app never reaches a phase in which audio is requested.
+>
+> **Do not read this as evidence about the three device reports.** The
+> simulator is iOS 27.0 under Xcode 27.0; the pilot artefact is Release-Study
+> on iOS 26.4 under Xcode 26.4, and `StudyAdvanceProbeUITests`' own header
+> disclaims parity. The device is separately reported working (RELAYED, not
+> measured here).
+>
+> **Not established:** whether the hang is an iOS-27-simulator
+> incompatibility, a Debug-Study-only symptom (DEBUG surfaces are compiled in
+> here, unlike the pilot artefact), or something that would also affect a
+> device. `MainAppView.swift:46` gates the root on `vm.isOnboardingComplete`
+> (`OnboardingView()` otherwise, full-screen, no rail), and
+> `PrimaeApp.swift:23` constructs `TracingViewModel()` at app init — both are
+> candidates to check first. A pass that needs a rendered app must settle
+> that question before it can say anything about the three reports.
+
 > **Correction (2026-09-03, measured from a sandboxed Claude Code seat on this
 > Mac — a different environment than claudebox above).** Neither `swift build`
 > nor `xcodebuild` works from here; there is no local fallback because only
