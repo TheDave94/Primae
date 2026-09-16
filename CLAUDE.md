@@ -343,6 +343,38 @@ xcrun devicectl device install app --device "$UDID" \
   /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app
 ```
 
+**If `devicectl`/Device Hub sit stuck establishing the tunnel, or the
+device never reaches `available (paired)` — two known, external causes,
+found and closed 2026-09-16, recorded here so the next seat doesn't lose
+an afternoon to either:**
+
+1. **Stuck CoreDevice tunnel (the actual cause, that day).** `remoted` —
+   the system daemon CoreDevice/Device Hub depend on to establish the
+   USB tunnel — gets stuck and never completes the handshake; `devicectl`
+   hangs (`Timed out waiting for CoreDeviceService to fully initialize`)
+   and Device Hub never lists the device as paired, even though the
+   device itself is fine. This is reported independently across iOS
+   17/18 and Xcode 15/16, still unresolved by Apple as of this writing —
+   **not** an Xcode 27/Device Hub regression, and not this project's
+   bug. Fix, run on the Mac (not from a sandboxed Claude Code seat —
+   killing a system daemon needs a real, unsandboxed terminal):
+   ```bash
+   sudo pkill remoted
+   ```
+   Then retry pairing/`devicectl list devices`. This resolved it for
+   David's iPad on 2026-09-16 — device went from absent-from-every-listing
+   to `available (paired)` immediately after.
+
+2. **VPNs can block the tunnel outright — a standing hazard, not a
+   one-off.** Per Apple TN3158, Xcode reaches a USB-connected device over
+   **link-local IPv6**. A VPN doing packet filtering, or configured with
+   `includeAllNetworks`, can block exactly that traffic — indistinguishable
+   from a stuck daemon or a bad cable unless you know to check it. This
+   estate runs **Mullvad**. If a device session won't pair or won't
+   install and `pkill remoted` above doesn't clear it, try with the VPN
+   fully disconnected (not just split-tunneled) before assuming a
+   hardware or cable fault.
+
 **On-device distinctness (2026-09-07).** The study build ships under its own
 bundle identifier, display name, and icon — `com.flamingistan.primae.study` /
 "Primae Studie" / `AppIcon-Study` (amber, role-swapped accent dot, a navy
