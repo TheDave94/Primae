@@ -367,20 +367,26 @@ public final class TracingViewModel {
         case act
     }
 
-    /// `nil` means NO cue, which is a decision and not a gap:
+    /// David's rule applied literally: the eye where the letter is SHOWN,
+    /// the finger in every phase where the CHILD acts. That is `direct`
+    /// ("Richtung lernen"), `guided` ("Nachspuren") and — deliberately
+    /// included — `freeWrite` ("Selbst schreiben").
     ///
-    /// - `freeWrite` withdraws all scaffolding by design, and it is the
-    ///   SCORED phase. "Selbst schreiben" reads like the strongest case for
-    ///   a finger, so this is the conservative choice and worth stating.
-    /// - Calibration suppresses the cue for the same reason the canvas
-    ///   suppresses the guide dot: it would scan over the researcher's own
-    ///   edits.
+    /// `freeWrite` was first left out on scaffolding grounds and that was
+    /// wrong: the no-scaffolding rule bars signals CONTINGENT ON THE HIDDEN
+    /// REFERENCE, and a turn cue carries no information about the letter at
+    /// all. "Selbst schreiben" is the most literal instance of "the child is
+    /// supposed to write itself", so excluding it contradicted the rule it
+    /// was meant to serve.
+    ///
+    /// `nil` means no cue, and after this the only case is calibration —
+    /// suppressed for the same reason the canvas suppresses the guide dot,
+    /// since it would scan over the researcher's own edits.
     var phaseCue: PhaseCue? {
         guard !isCalibrating else { return nil }
         switch learningPhase {
         case .observe:              return .watch
-        case .direct, .guided:      return .act
-        case .freeWrite:            return nil
+        case .direct, .guided, .freeWrite: return .act
         }
     }
 

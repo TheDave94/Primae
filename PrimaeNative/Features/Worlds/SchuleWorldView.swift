@@ -509,11 +509,12 @@ struct SchuleWorldView: View {
     /// break the scored phase. This line is the difference between a cue
     /// and a broken phase.
     ///
-    /// freeWrite deliberately gets NO cue: it withdraws all scaffolding by
-    /// design, and it is the scored phase. Worth stating because "Selbst
-    /// schreiben" reads like the strongest case FOR a finger — this is the
-    /// conservative choice, and it is one line to change if that reading
-    /// is the intended one.
+    /// freeWrite is INCLUDED. It was first left out on scaffolding grounds,
+    /// which was wrong: the no-scaffolding rule bars signals contingent on
+    /// the HIDDEN REFERENCE, and a turn cue carries no information about
+    /// the letter at all. "Selbst schreiben" is the most literal instance
+    /// of the child writing itself, so excluding it contradicted the rule
+    /// it was meant to serve.
     private var writingCueOverlay: some View {
         VStack {
             Spacer()

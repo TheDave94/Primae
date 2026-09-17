@@ -63,8 +63,8 @@ import CoreGraphics
                 "guided is 'Nachspuren' — the child traces, so this is the FINGER")
 
         vm.phaseController.resume(at: .freeWrite)
-        #expect(vm.phaseCue == nil,
-                "freeWrite withdraws all scaffolding by design and is the SCORED phase — the conservative choice is no cue, and it is recorded in `phaseCue`'s doc so it can be changed deliberately rather than by accident")
+        #expect(vm.phaseCue == .act,
+                "freeWrite is 'Selbst schreiben' — the most literal instance of the child writing itself, so it carries the finger. The no-scaffolding rule bars signals contingent on the HIDDEN REFERENCE, and a turn cue carries no information about the letter")
     }
 
     // NO "both cues" TEST EXISTS, deliberately. The defect was the pill
