@@ -1,9 +1,25 @@
 name: "iOS Build & Test"
 on:
+  # `feat/**` added 2026-09-17. It was absent, and every branch in use is
+  # now named `feat/...` — so pushes triggered NOTHING and every run on a
+  # branch had to be dispatched by hand (measured: of the last 100 runs,
+  # 86 were manual dispatches onto feat/order-invariant-primary-outcome
+  # and every other branch run was manual too; only main fires by itself).
+  # The sibling patterns `ux/**` and `roadmap-*` are still here from when
+  # branches were named that way, which is what shows auto-triggering was
+  # the intent and this was a naming gap rather than a policy.
+  #
+  # The cost of the gap was real and is why it is fixed rather than
+  # documented: CLAUDE.md says "always verify CI passes after pushing", and
+  # on this branch that silently did nothing — the chevron fix and the
+  # corpus fix (17178c0, 84f6704) sat unverified through ten commits, and
+  # the CI failure found on 2026-09-17 had to be discovered by dispatching
+  # by hand. The same would quietly apply to the Release-Study job added
+  # the same day.
   push:
-    branches: ["main", "ux/**", "roadmap-*"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**"]
   pull_request:
-    branches: ["main", "ux/**", "roadmap-*"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**"]
   workflow_dispatch:
 
 env:
