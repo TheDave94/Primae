@@ -32,7 +32,15 @@ final class PlaybackController {
     /// discard the file just loaded.
     var reloadBeforePlay: (@MainActor () -> Void)?
 
-    // MARK: - Tunable timings (live-adjustable from the debug audio panel)
+    // MARK: - Tunable timings
+    //
+    // NOT live-adjustable, and there is no "debug audio panel" — this
+    // header said there was until 2026-09-17, and nothing has ever set
+    // these after construction (MEASURED: the only references in
+    // `PrimaeNative/` are this file's init and its own reads). They are
+    // injectable at init, which is how the tests drive them; production
+    // always takes the defaults below. Corrected rather than left as a
+    // capability a reader would go looking for.
 
     var activeDebounceSeconds: TimeInterval
     var idleDebounceSeconds: TimeInterval
