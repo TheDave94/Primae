@@ -123,9 +123,24 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         attach(app, name: "A2-02-after-chevron")
 
         let value = indicator.value as? String ?? ""
-        XCTAssertEqual(
-            value, "0 von 4 abgeschlossen",
-            "a freshly loaded letter should start with no phases completed, got '\(value)'"
+        // 0 OR 1, not 0 alone (2026-09-17). This asserted exactly
+        // "0 von 4 abgeschlossen", which was safe only while the observe
+        // demonstration ran TWO passes: the test taps the chevron, sleeps
+        // 2 s, then reads, and two passes outlasted that read. Observe now
+        // advances after ONE pass — the supervisor's "einmal vorzeigen" —
+        // so by the time this reads, the demonstration has finished and
+        // the letter sits legitimately at 1 of 4. Pinning 0 would now
+        // assert that the demonstration had NOT completed, which is the
+        // opposite of the behaviour under test.
+        //
+        // What this test is for is that the chevron lands on a USABLE
+        // letter — the identity assertion above carries that, and this
+        // one carries that the landed letter has not arrived mid-flow or
+        // finished. Anything above 1 would mean the chevron landed on a
+        // letter already in progress.
+        XCTAssertTrue(
+            value == "0 von 4 abgeschlossen" || value == "1 von 4 abgeschlossen",
+            "a freshly loaded letter should start at 0 phases done, or at 1 once its single observe pass completes; got '\(value)'"
         )
     }
 
