@@ -161,6 +161,37 @@ hang. Swift Testing retries re-run the WHOLE target, not just the failures
 (FB20922425). And `PrimaeUITests` (6 tests) never runs in CI — Layer 3
 scopes the job to `PrimaeNativeTests`.
 
+**6. A git worktree CANNOT BUILD unless its directory is named `Primae`.**
+MEASURED 2026-09-17. The package is referenced as
+`XCLocalSwiftPackageReference "../../Primae"`, resolved relative to
+`<repo>/Primae/` — so it points at `<parent-of-repo>/Primae`, i.e. the repo
+root itself. A worktree at `/tmp/…/wtprobe/` therefore resolves to
+`/tmp/claude-501/Primae` and one at `.claude/worktrees/<name>/` resolves to
+`<repo>/.claude/worktrees/Primae`; **neither exists**, so neither can
+resolve package dependencies, and `xcodebuild` fails before compiling. This
+is why the six `agent-*` worktrees under `.claude/worktrees/` were found
+carrying committed changes and no verification: their agents could edit but
+not build. **Create parallel worktrees one level deeper, as
+`<anything>/Primae`** — the same rule as the scratch clone — or work in the
+main tree. Do not put them under `.claude/worktrees/`.
+
+**6. A git worktree CANNOT BUILD unless its directory is named `Primae`.**
+MEASURED 2026-09-17. The package is referenced as
+`XCLocalSwiftPackageReference "../../Primae"`, resolved relative to
+`/Users/musicbox/repos/Primae/Primae/` — so it points at
+`/Users/musicbox/repos/Primae`, the repo root itself. A worktree at
+`/tmp/claude-501/wtprobe/` therefore resolves to `/tmp/claude-501/Primae`,
+and one at `/Users/musicbox/repos/Primae/.claude/worktrees/agent-x/`
+resolves to `/Users/musicbox/repos/Primae/.claude/worktrees/Primae`.
+Neither path exists, so neither can resolve package dependencies and
+`xcodebuild` fails before compiling. This is why the six `agent-*`
+worktrees under `.claude/worktrees/` were found carrying committed changes
+and no verification: their agents could edit but not build. **Create
+parallel worktrees one level deeper, as `/tmp/claude-501/wt/agent-1/Primae`
+— the last path component must be `Primae`**, the same rule as the scratch
+clone — or work in the main tree. Do not put them under
+`.claude/worktrees/`.
+
 **5. A test must not mutate global state — Swift Testing runs suites in
 PARALLEL, and the failure shows up in someone else's test.** Measured the
 same day, by making the mistake: `LetterWeightFallbackTests` set
