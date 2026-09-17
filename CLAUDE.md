@@ -300,13 +300,39 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 > That is exactly why `scripts/run_device_uitests.sh` defaults to
 > Debug-Study. No fix proposed — recorded so the gap is visible.
 >
-> **2. Unit tests cannot be RUN on the physical iPad from this seat.** The
-> injected test bundle fails to load:
+> **2. Unit tests on the physical iPad — FIXED 2026-09-17, and the
+> recorded cause was wrong.** This entry used to read "cannot be RUN on the
+> physical iPad from this seat … a device-verified unit test is not
+> available as an instrument". The symptom was real and is quoted below,
+> but it was never a seat limitation and never a platform one: it was two
+> `DEVELOPMENT_TEAM` values disagreeing inside this project.
+>
+> Symptom, for recognition: the injected bundle failed to load with
 > `code signature … not valid for use in process: mapping process and
 > mapped file (non-platform) have different Team IDs`, producing
-> `Failed to load the test bundle`. UI tests are unaffected — they run in a
-> separate runner process. So a device-verified unit test is not available
-> as an instrument from a sandboxed seat; the UI test is.
+> `Failed to load the test bundle`, after which xcodebuild ran only
+> `PrimaeUITests` and reported nothing about the unit bundle — which is
+> why it read as "unit tests just don't work on device". UI tests were
+> unaffected because they run in a separate runner process.
+>
+> Cause, measured: the app target sets `DEVELOPMENT_TEAM = J7JH8FJK2W` in
+> both Study configurations, while the unit-test target set NO team, so it
+> inherited the PROJECT-level default `XMX37BH48B`. Two teams. Building
+> and reading the signatures back showed it plainly —
+> `Primae.app TeamIdentifier=J7JH8FJK2W` against
+> `PrimaeNativeTests.xctest TeamIdentifier=XMX37BH48B`.
+>
+> Fix (`b1ab17a`): set the unit-test target's `DEVELOPMENT_TEAM` to the
+> app's in Debug-Study and Release-Study. Both bundles now sign
+> `J7JH8FJK2W`, and the full suite runs on the device:
+> `✔ Test run with 901 tests in 90 suites passed after 186.966 seconds.`
+> **A device-verified unit test IS available as an instrument now** — it is
+> the strongest check this project has, and it costs one `xcodebuild test`
+> with `-destination "platform=iOS,id=<UDID>"`. Reach for it before the
+> simulator when the question is about real hardware.
+>
+> Still true: `xcrun devicectl device copy from` has no `bundleContainer`
+> domain, so the INSTALLED binary still cannot be pulled for `nm`.
 >
 > **3. Anything measured under a UI test measures the HARNESS, not the
 > app.** This one produced a wrong number tonight, and the error was 2×.
