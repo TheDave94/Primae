@@ -957,6 +957,18 @@ public final class TracingViewModel {
     /// run with the switch OFF. Reset by `reapplyParticipantIdentity` so an
     /// incoming child starts from their own assignment.
     private var cycleArmLetter: String?
+    /// Whether the spatial arm's pre-task demonstration runs the scripted
+    /// axis sweep or holds the carrier steady for the same window — the
+    /// supervisor's "Glissando weg" against the sweep `04-implementation
+    /// .typ:17` specifies. Captured at INIT with the three above, for the
+    /// same reason: whether the arm's mapping is INSTALLED by a
+    /// demonstration before the task is part of what the session IS, so it
+    /// must not be something a proctor can flip under the child half-way
+    /// through one. OFF is the default and the behaviour since 6fb7233c;
+    /// see `StudyComparisonSettings.spatialAxisDemonstration` for why OFF
+    /// is nevertheless a divergence from the written protocol rather than
+    /// a neutral default.
+    private let axisDemonstrationEnabled = StudyComparisonSettings.spatialAxisDemonstration
     /// Passes completed for the CURRENT letter. Reset when the letter
     /// changes and by `repeatCurrentLetterIfConfigured` when the count is
     /// exhausted.
@@ -1504,37 +1516,99 @@ public final class TracingViewModel {
                 if !Task.isCancelled { self.audio.stop() }
             }
         case .spatial:
-            // NO AXIS SWEEP (2026-09-17). The spatial arm's pre-task
-            // demonstration used to be a scripted two-second point
-            // sweeping the canvas while the carrier's pitch followed its
-            // vertical leg and its pan followed the horizontal one — the
-            // "axis demonstration" of 04-implementation.typ:17. The
-            // supervisor's note was "Glissando weg": on the device it
-            // reads as the arm playing a high-low-high slide at the child
-            // before anything has been touched, and it is the most
-            // conspicuous thing about the arm.
+            // TWO BEHAVIOURS, ONE SWITCH (2026-09-17). The spatial arm's
+            // pre-task demonstration is either the scripted axis sweep
+            // 04-implementation.typ:17 specifies, or the WINDOW alone with
+            // the carrier held steady — the behaviour the app has had since
+            // 6fb7233c, when the sweep was removed on the supervisor's
+            // "Glissando weg". `StudyComparisonSettings
+            // .spatialAxisDemonstration` selects between them, captured at
+            // init with the other comparison switches; see that property for
+            // why its OFF default is a protocol divergence and not a
+            // neutral choice.
             //
-            // What is kept is the WINDOW, not the movement. The carrier
-            // sounds for the same `duration` at the neutral rate, centre
-            // pan and zero pitch, so this arm still runs a demonstration
-            // of the same length as the phoneme arm's — the duration
-            // match that 04-implementation.typ:17 and 06-evaluation.typ:62
-            // both rest on — while carrying no scripted glissando.
-            // Dropping the window as well would have made this arm's
-            // demonstration shorter than the phoneme arm's, which is the
-            // one thing the shared window exists to prevent.
+            // WHAT BOTH SHARE. The carrier loads and autoplays for the same
+            // `duration` either way, and stops when the window ends, so this
+            // arm runs a demonstration of the same length as the phoneme
+            // arm's — the duration match that 04-implementation.typ:17 and
+            // 06-evaluation.typ:62 both rest on. Dropping the window would
+            // have made this arm's demonstration shorter than the phoneme
+            // arm's, which is the one thing the shared window exists to
+            // prevent. Neither behaviour is trace-coupled: this runs on its
+            // own scripted timeline, never through `TouchDispatcher`.
             //
-            // The tracing-time pitch mapping is untouched: pen Y still
-            // drives pitch in the guided phase through `TouchDispatcher`,
-            // and that is the arm's manipulation. Only the scripted
-            // pre-task sweep is gone.
+            // The tracing-time pitch mapping is untouched in both: pen Y
+            // still drives pitch in the guided phase through
+            // `TouchDispatcher`, and that is the arm's manipulation. The
+            // switch governs the pre-task demonstration only.
+            //
+            // `duration <= 0` makes `axisSweep` produce no samples. That is
+            // reachable from tests but not from production (the default is
+            // `PreTaskDemonstration.duration`, 2.0 s), and it is checked
+            // BEFORE the load precisely so the fault below cannot leave a
+            // looping carrier behind.
+            let sweepSamples = axisDemonstrationEnabled
+                ? PreTaskDemonstration.axisSweep(duration: duration)
+                : []
+            if axisDemonstrationEnabled && sweepSamples.isEmpty {
+                // A FAULT, NOT A QUIET SKIP (C1-6) — symmetry with
+                // `.phoneme` (2026-09-17).
+                //
+                // The phoneme branch cannot reach its demonstration
+                // without a file: the carrier precondition and the
+                // phoneme precondition each refuse the session first, and
+                // the branch above logs a fault if it is somehow reached
+                // anyway. This branch has no such guarantee. `axisSweep`
+                // is the ONLY thing between the spatial arm and a
+                // demonstration that never plays, and returning silently
+                // would leave: no sound, no on-screen signal, nothing in
+                // the record.
+                //
+                // For a study arm whose entire manipulation IS that sound,
+                // a silently-absent demonstration is a data-validity
+                // confound rather than a cosmetic gap — the session would
+                // run, record, and be analysed as though the spatial arm
+                // had been delivered. Refusing loudly costs nothing
+                // audible and cannot be mistaken for a delivered arm.
+                pilotAudioLogger.fault("Pre-task demonstration SKIPPED: axisSweep produced no samples for the spatial arm (duration \(duration, privacy: .public)s) — the arm's stimulus would be absent, so this is a fault and not a quiet skip.")
+                return
+            }
             audio.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
-            audio.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
-            audio.setSpatialPitch(cents: 0)
-            preTaskDemoTask = Task { [weak self] in
-                guard let self, !Task.isCancelled else { return }
-                try? await Task.sleep(for: .seconds(duration))
-                if !Task.isCancelled { self.audio.stop() }
+            if axisDemonstrationEnabled {
+                // ON: the axis demonstration, as specified. Pitch follows
+                // the sweep point's vertical leg, pan its horizontal one,
+                // one full top→bottom→top pass over the shared window.
+                preTaskDemoTask = Task { [weak self] in
+                    guard let self, !Task.isCancelled else { return }
+                    var previousElapsed: TimeInterval = 0
+                    for sample in sweepSamples {
+                        if Task.isCancelled { break }
+                        let dt = sample.elapsed - previousElapsed
+                        if dt > 0 { try? await Task.sleep(for: .seconds(dt)) }
+                        previousElapsed = sample.elapsed
+                        if Task.isCancelled { break }
+                        self.audio.setAdaptivePlayback(
+                            speed: 1.0,
+                            horizontalBias: Float(max(-1.0, min(1.0, sample.point.x * 2.0 - 1.0))))
+                        self.audio.setSpatialPitch(
+                            cents: SpatialSonification.pitchCents(forNormalizedY: sample.point.y))
+                    }
+                    // Same guard shape as the OFF branch below and as the
+                    // phoneme branch: a cancelled task means a fresher
+                    // demonstration or the real touch coupling is already
+                    // driving the engine, and stopping here would cut it.
+                    if !Task.isCancelled { self.audio.stop() }
+                }
+            } else {
+                // OFF: the window without the movement. Neutral rate,
+                // centre pan and zero pitch for the whole `duration`.
+                audio.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
+                audio.setSpatialPitch(cents: 0)
+                preTaskDemoTask = Task { [weak self] in
+                    guard let self, !Task.isCancelled else { return }
+                    try? await Task.sleep(for: .seconds(duration))
+                    if !Task.isCancelled { self.audio.stop() }
+                }
             }
         }
     }

@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
     @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
     @State private var comparisonPanning: Bool = StudyComparisonSettings.panningEnabled
+    @State private var comparisonAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration
     @State private var speechRate: Float = {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
         return stored > 0 ? stored : 0.42
@@ -312,6 +313,15 @@ struct SettingsView: View {
                         }))
                     .accessibilityHint("Ein ist die Vorgabe. Aus hält die Stereo-Ortung auf der Mitte, sodass die Sitzung auch über einen Lautsprecher funktioniert — die Anforderung \"Kopfhörer angeschlossen\" entfällt damit. Die Tonhöhen-Achse des Raumklang-Arms bleibt unverändert.")
 
+                    Toggle("Achsen-Vorführung (Raumklang, Glissando)", isOn: Binding(
+                        get: { comparisonAxisDemonstration },
+                        set: {
+                            comparisonAxisDemonstration = $0
+                            StudyComparisonSettings.spatialAxisDemonstration = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe und das Verhalten seit dem 17.09.: Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung. Ein stellt die Vorführung wieder her, die im Text der Arbeit steht: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten und die Ortung der Waagerechten. Die Begutachtung am Gerät hatte sie als Glissando beanstandet. Damit ist Aus eine Abweichung von der schriftlichen Spezifikation — die Entscheidung darüber liegt bei David, nicht im Code.")
+
                     Stepper(value: Binding(
                         get: { comparisonPresentationSpacing },
                         set: {
@@ -332,6 +342,7 @@ struct SettingsView: View {
                         comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
                         comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
                         comparisonPanning = StudyComparisonSettings.panningEnabled
+                        comparisonAxisDemonstration = StudyComparisonSettings.spatialAxisDemonstration
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
                         vm.markAssignmentOverrideChanged()
                     }

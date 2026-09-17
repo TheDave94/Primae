@@ -157,13 +157,56 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: guidedDotsVisibleKey) }
     }
 
+    /// Whether the spatial arm's pre-task demonstration runs the scripted
+    /// axis sweep, or holds the carrier steady for the same two-second
+    /// window. The supervisor's "Glissando weg" against the axis
+    /// demonstration the thesis specifies.
+    ///
+    /// THE TENSION, STATED PLAINLY, BECAUSE IT DOES NOT RESOLVE HERE.
+    /// `04-implementation.typ:17` specifies the scripted sweep as part of
+    /// the spatial arm: a point travelling the full canvas while the
+    /// carrier's pitch follows its vertical leg and its pan the horizontal
+    /// one, for a fixed two seconds matched with the phoneme arm's
+    /// demonstration. The rationale in `PreTaskDemonstration`'s header is
+    /// that a demonstration can INSTALL a crossmodal mapping rather than
+    /// reveal one already there — for this arm the sweep is not decoration,
+    /// it is where the mapping is taught.
+    ///
+    /// The supervisor's device review of 2026-09-17 said "Glissando weg":
+    /// on the device the sweep reads as the arm playing a high-low-high
+    /// slide at the child before anything has been touched, and it is the
+    /// most conspicuous thing about the arm.
+    ///
+    /// So OFF — this switch's default, and the behaviour the app has had
+    /// since commit 6fb7233c — is a PROTOCOL DIVERGENCE from the written
+    /// specification. A device left untouched runs the spatial arm without
+    /// the demonstration the thesis says it has, and roughly 28 locations
+    /// in the thesis (including `02-background.typ:107`) still describe the
+    /// sweep. ON restores exactly what was removed, unchanged.
+    ///
+    /// Neither position is a code decision and this file does not make it.
+    /// The ruling is David's; the thesis has to move with whichever way it
+    /// goes. The switch exists so the two options can be compared on the
+    /// device instead of argued about in the abstract — which is the whole
+    /// reason this file exists.
+    ///
+    /// OFF is the default anyway, because the default of every switch here
+    /// is the behaviour the device had before the switch existed: that is
+    /// what makes adding one safe to an enrolled study device, and it keeps
+    /// an untouched device identical to the one the 2026-09-17 review saw.
+    static let spatialAxisDemonstrationKey = prefix + "spatialAxisDemonstration"
+    static var spatialAxisDemonstration: Bool {
+        get { boolValue(spatialAxisDemonstrationKey, default: false) }
+        set { UserDefaults.standard.set(newValue, forKey: spatialAxisDemonstrationKey) }
+    }
+
     /// Restore every switch to the behaviour the app had before this file
     /// existed. Used by the researcher UI's reset row, and by tests.
     static func resetToDefaults() {
         for key in [observePassesKey, spokenFeedbackKey, allFiveLettersKey,
                     letterRepeatCountKey, cycleAllConditionsKey,
                     presentationSpacingKey, guidedDotsVisibleKey,
-                    panningEnabledKey] {
+                    panningEnabledKey, spatialAxisDemonstrationKey] {
             UserDefaults.standard.removeObject(forKey: key)
         }
     }

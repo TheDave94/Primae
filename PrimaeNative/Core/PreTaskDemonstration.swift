@@ -22,7 +22,15 @@
 //               across the FULL canvas range, independent of any
 //               specific letter's shape (a letter with a short stroke
 //               would otherwise give a foreshortened, letter-dependent
-//               sweep — see `axisSweep`).
+//               sweep — see `axisSweep`). NOTE (2026-09-17): this is
+//               what the spec above describes and no longer what a
+//               default device does. The sweep is behind
+//               `StudyComparisonSettings.spatialAxisDemonstration`,
+//               OFF by default, so the live behaviour is a two-second
+//               window with the carrier held steady — the same window
+//               and the same match, minus the movement. See the
+//               switch's doc comment for the protocol divergence that
+//               OFF default represents.
 //   .silent   — no audio is added. The unchanged ghost-letter animation
 //               (LetterAnimationGuide / AnimationGuideController) that
 //               already precedes tracing in every arm today IS the
@@ -68,15 +76,17 @@ enum PreTaskDemonstration {
     /// independently rather than only together — a clearer axis
     /// demonstration than a straight diagonal would give.
     ///
-    /// NO LONGER CALLED IN PRODUCTION (2026-09-17). The spatial arm's
-    /// pre-task demonstration stopped driving this when the scripted
-    /// sweep was removed on the supervisor's "Glissando weg" — see the
-    /// `.spatial` branch of `TracingViewModel.armPreTaskDemonstration`,
-    /// which now holds the carrier steady for the same two-second window
-    /// instead. The function and its tests are kept for one commit so the
-    /// removal of the call site can be verified by CI on its own before
-    /// the function itself is deleted; delete both together, not the
-    /// function alone.
+    /// CALLED ONLY WHEN THE COMPARISON SWITCH IS ON (2026-09-17). The
+    /// spatial arm's pre-task demonstration stopped driving this when the
+    /// scripted sweep was removed on the supervisor's "Glissando weg"
+    /// (6fb7233c), which held the carrier steady for the same two-second
+    /// window instead. It has a call site again:
+    /// `StudyComparisonSettings.spatialAxisDemonstration` selects between
+    /// the two, so this runs whenever that switch is ON — off by default,
+    /// and OFF is what the 6fb7233c commit established. See the `.spatial`
+    /// branch of `TracingViewModel.armPreTaskDemonstration`, and the
+    /// switch's own doc comment for why the OFF default is a divergence
+    /// from `04-implementation.typ:17` rather than a neutral choice.
     static func axisSweep(steps: Int = Self.sweepStepCount,
                           duration: TimeInterval = Self.duration) -> [SweepSample] {
         guard steps > 1, duration > 0 else { return [] }
