@@ -83,10 +83,23 @@ struct SettingsView: View {
                     orderingRow(strategy)
                 }
             }
+            // Hidden on the study build (2026-09-17). The toggle is INERT
+            // here: `vm.enableFreeformMode` is written by this row and read
+            // by nothing else — `grep` finds only this line and the
+            // assignment in `TracingViewModel`'s init. Its feature lives in
+            // `WerkstattWorldView` / `FreeformWritingView`, both
+            // `#if !STUDY_BUILD`, so on a study device it cannot exist and
+            // the switch cannot do anything. This is the same rule the
+            // calibration toggle below already follows: "a control that can
+            // no longer do anything shouldn't still invite a tap". Found
+            // because the device had it stored as `false` — someone tapped
+            // it and nothing happened.
+            #if !STUDY_BUILD
             Section("Freies Schreiben") {
                 Toggle("Freies Schreiben erlauben", isOn: $vm.enableFreeformMode)
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
+            #endif
             Section("Schreibrichtung") {
                 // Backward chaining for direct phase only: taps the
                 // last stroke first (Spooner 2014). Off by default.
