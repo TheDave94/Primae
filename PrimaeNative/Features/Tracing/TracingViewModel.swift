@@ -1043,6 +1043,16 @@ public final class TracingViewModel {
     }
 
     var accessibilityCanvasValue: String {
+        // No numeric readout in a study session (2026-09-17). The thesis
+        // is explicit that a child on a study device sees no numeric
+        // measure — "every numeric measure lives behind a parental gate"
+        // (03-architecture.typ:10) and study mode "removes every ... that
+        // is not the arm's designated audio" (:73). A VoiceOver user was
+        // hearing "50 Prozent fertig" on the tracing canvas, which is the
+        // one child-facing surface where the measure is being produced.
+        // Wording, not a number, is all that is left, so the state is
+        // still announced and only its precision is withheld.
+        if studyMode { return progress >= 1 ? "Fertig" : "In Arbeit" }
         let pct = Int(max(0, min(1, progress)) * 100)
         if pct == 0   { return "Nicht begonnen" }
         if pct == 100 { return "Fertig" }
@@ -1593,7 +1603,19 @@ public final class TracingViewModel {
         animation.onCycleComplete = { [weak self] in
             guard let self else { return }
             self.observeCycleCount += 1
-            if self.observeCycleCount >= 2,
+            // ONE pass, not two (2026-09-17). The supervisor's note was
+            // "einmal vorzeigen (vielleicht etwas langsamer)" — show it
+            // once, a bit slower — so the single pass now runs at
+            // `AnimationSpeed.slow` (see
+            // `AnimationGuideController.observeUnitsPerSecond`), which
+            // keeps the observe window roughly its former length while
+            // showing the letter one time instead of twice.
+            //
+            // The counter and its reset stay: `onCycleComplete` is
+            // re-armed on every observe entry, and the guided phase no
+            // longer drives the animator at all, so this counter can
+            // only ever count observe cycles.
+            if self.observeCycleCount >= 1,
                self.phaseController.currentPhase == .observe {
                 self.completeObservePhase()
             }
@@ -2058,10 +2080,19 @@ public final class TracingViewModel {
             freeWriteRecorder.startSession()
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
-            // Same animator as observe; auto-advance-after-2-cycles
-            // is gated on `currentPhase == .observe` so calling it
-            // here runs the scan without affecting progression.
-            startGuideAnimation()
+            // NO guide animation in the guided phase (2026-09-17). The
+            // animated guide dot is the OBSERVE phase's element — the
+            // thesis scopes it there ("the animation ends after two
+            // cycles", 03-architecture.typ:16) and describes guided as
+            // "the letter is shown as a ghost outline and the child
+            // traces it" with progress tracked by checkpoint proximity
+            // (:18), with no moving dot. Running the same animator here
+            // put a dot on the canvas for the whole time the child was
+            // tracing — the supervisor read it as the app tracing the
+            // letter for them ("beim nachfahren selbst kein Punkt").
+            // The ghost outline and the stroke start dots remain; those
+            // are what guided is specified to show.
+            stopGuideAnimation()
         }
         directTappedDots.removeAll()
         directPulsingTask?.cancel()
@@ -2326,7 +2357,10 @@ public final class TracingViewModel {
             preTaskDemoTask = nil
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
-            startGuideAnimation()
+            // No guide animation here either — see the note in the
+            // phase-entry path above. Guided shows the ghost outline and
+            // the stroke start dots, not a moving dot.
+            stopGuideAnimation()
             armPreTaskDemonstration(for: letter)
         }
         if let firstAudio = activeAudioFiles(for: letter).first {

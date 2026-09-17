@@ -37,9 +37,25 @@ final class AnimationGuideController {
 
     /// Begin the looping animation immediately for the supplied strokes.
     /// Replaces any in-flight animation.
+    /// Cell-relative units per second for the observe demonstration.
+    ///
+    /// `AnimationSpeed.slow` has existed since the guide was written and
+    /// was never wired to anything — every construction site took
+    /// `LetterAnimationGuide.build`'s 0.9 default, so the enum's three
+    /// cases were dead. Wired 2026-09-17 for the supervisor's "einmal
+    /// vorzeigen (vielleicht etwas langsamer)": one pass at 0.4x, which
+    /// is what `AnimationSpeed.slow` was defined to mean.
+    ///
+    /// Cell-relative, so the wall-clock length scales with the letter:
+    /// the five study letters span ~1 cell, so one slow pass lands in
+    /// the same order as the two normal passes it replaces rather than
+    /// halving the observe window.
+    private static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
+
     func start(strokes: LetterStrokes) {
         stop()
-        let guide = LetterAnimationGuide.build(from: strokes)
+        let guide = LetterAnimationGuide.build(from: strokes,
+                                               unitsPerSecond: Self.observeUnitsPerSecond)
         guard !guide.steps.isEmpty else { return }
         armedStrokes = strokes
 

@@ -60,26 +60,38 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
         vm.startParkedLetter()
         #expect(vm.animation.onCycleComplete != nil,
                 "starting the parked letter must install the auto-advance")
+        // ONE pass ends observe (2026-09-17). The letter is demonstrated
+        // once rather than twice, on the supervisor's review note ("einmal
+        // vorzeigen (vielleicht etwas langsamer)"); the single pass runs
+        // at `AnimationSpeed.slow` so the observe window keeps roughly
+        // its former length. This assertion used to be the opposite —
+        // "one cycle is not enough" — and the pair below it asserted that
+        // two cycles end observe.
         vm.animation.onCycleComplete?()
-        #expect(vm.learningPhase == .observe, "one cycle is not enough")
-        vm.animation.onCycleComplete?()
-        #expect(vm.learningPhase != .observe, "two cycles must end observe; got \(vm.learningPhase)")
+        #expect(vm.learningPhase != .observe,
+                "one full pass must end observe; got \(vm.learningPhase)")
     }
 
-    @Test("guided-phase animation loops do not pre-count toward the next letter's observe exit")
+    @Test("a fresh observe exits on its own pass, whatever ran before it")
     func observeCycleCountResetsPerLetter() {
         let vm = studyVM()
         vm.canvasSize = canvas
         vm.phaseController.resume(at: .guided)
-        // The same animator runs during guided; its cycles used to
-        // accumulate, so the NEXT observe exited after one cycle.
+        // Cycles fired while NOT in observe must not leave a later observe
+        // in a state it cannot leave. The failure mode this guarded has
+        // changed shape with one pass per observe (2026-09-17): a stale
+        // count can no longer cut observe short, because one cycle IS the
+        // target now. What is still worth pinning is that a fresh observe
+        // ends on its own pass — the phase gate in the handler is what
+        // makes that true, and it is the part that would silently break
+        // if the counter were trusted without it. (The guided phase no
+        // longer drives the animator at all; these calls are direct.)
         for _ in 0..<3 { vm.animation.onCycleComplete?() }
         vm.loadLetter(name: vm.currentLetterName)
         #expect(vm.learningPhase == .observe, "precondition: reload starts in observe")
         vm.animation.onCycleComplete?()
-        #expect(vm.learningPhase == .observe, "the first cycle of a fresh observe must not exit it")
-        vm.animation.onCycleComplete?()
-        #expect(vm.learningPhase != .observe)
+        #expect(vm.learningPhase != .observe,
+                "one pass ends observe regardless of what ran before it")
     }
 
     // MARK: - FreeWrite recording (T9 / T3)
