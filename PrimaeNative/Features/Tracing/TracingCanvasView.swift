@@ -124,41 +124,44 @@ struct TracingCanvasView: View {
                         context.fill(dot, with: .color(color.opacity(0.75)))
                     }
 
-                    // Endpoint ring (2026-09-17) — "Endpunkt einzeichnen".
-                    // ONE hollow ring at the LAST checkpoint of the FINAL
-                    // stroke: where the letter finishes. Chosen by David
-                    // from a rendered comparison of four candidates
-                    // (no marker / filled dot / this / a ring on every
-                    // stroke); the render is what the choice was made
-                    // against, so the colour matches it.
-                    //
-                    // Hollow on purpose. The start dots are filled, so the
-                    // end differs from them in FORM and not only in colour
-                    // — which matters here because the reader is five and
-                    // cannot read a legend. A ring on EVERY stroke was
-                    // rejected: it marks pen-lift points too (F's top bar,
-                    // A's crossbar) and competes with the start dots for
-                    // attention.
-                    //
-                    // This is also the answer to "Silent condition nur
-                    // optischer Endpunkt". That arm has no sound to signal
-                    // the end, and study mode removes the celebration
-                    // overlay, the chime and the completion HUD for EVERY
-                    // arm (`showCompletionHUD` guards on `!studyMode`;
-                    // PhaseTransitionCoordinator gates the rest), so for
-                    // the silent arm the canvas is the only place a
-                    // finished letter can be acknowledged at all.
-                    if let lastStroke = rawStrokes.strokes.last,
-                       let last = lastStroke.checkpoints.last {
-                        let end = CGPoint(x: ox + last.x * cellSize.width,
-                                          y: oy + last.y * cellSize.height)
-                        let ringR: CGFloat = 18
-                        let ring = Path(ellipseIn: CGRect(x: end.x - ringR,
-                                                          y: end.y - ringR,
-                                                          width: ringR * 2,
-                                                          height: ringR * 2))
-                        context.stroke(ring, with: .color(.red.opacity(0.85)), lineWidth: 5)
-                    }
+                // Endpoint ring (2026-09-17) — "Endpunkt einzeichnen".
+                // ONE hollow ring at the LAST checkpoint of the FINAL
+                // stroke: where the letter finishes. Chosen by David
+                // from a rendered comparison of four candidates
+                // (no marker / filled dot / this / a ring on every
+                // stroke); the render is what the choice was made
+                // against, so the colour matches it.
+                //
+                // Hollow on purpose. The start dots are filled, so the
+                // end differs from them in FORM and not only in colour
+                // — which matters here because the reader is five and
+                // cannot read a legend. A ring on EVERY stroke was
+                // rejected: it marks pen-lift points too (F's top bar,
+                // A's crossbar) and competes with the start dots for
+                // attention.
+                //
+                // This is also the answer to "Silent condition nur
+                // optischer Endpunkt". That arm has no sound to signal
+                // the end, and study mode removes the celebration
+                // overlay, the chime and the completion HUD for EVERY
+                // arm (`showCompletionHUD` guards on `!studyMode`;
+                // PhaseTransitionCoordinator gates the rest), so for
+                // the silent arm the canvas is the only place a
+                // finished letter can be acknowledged at all.
+                // NOT gated on `vm.showCheckpoints` — see the note above.
+                if vm.showEndpointRing, !vm.isCalibrating,
+                   let ringStrokes = vm.gridCellStrokes(at: i),
+                   let lastStroke = ringStrokes.strokes.last,
+                   let last = lastStroke.checkpoints.last {
+                    let end = CGPoint(x: ox + last.x * cellSize.width,
+                                      y: oy + last.y * cellSize.height)
+                    let ringR: CGFloat = 18
+                    let ring = Path(ellipseIn: CGRect(x: end.x - ringR,
+                                                      y: end.y - ringR,
+                                                      width: ringR * 2,
+                                                      height: ringR * 2))
+                    context.stroke(ring, with: .color(.red.opacity(0.85)), lineWidth: 5)
+                }
                 }
 
                 // Retained ink from previously-completed cells stays

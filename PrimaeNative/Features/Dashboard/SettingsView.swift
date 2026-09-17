@@ -284,7 +284,7 @@ struct SettingsView: View {
                             StudyComparisonSettings.guidedDotsVisible = $0
                             vm.markAssignmentOverrideChanged()
                         }))
-                    .accessibilityHint("Ein ist die Vorgabe. Aus zeichnet die Startpunkte weiter, lässt aber keine Tippeingabe darauf zu — die Frage, ob die Punkte nur gesehen werden sollen.")
+                    .accessibilityHint("Ein ist die Vorgabe: Anschauen und Nachspuren zeichnen an jedem Strichanfang einen Punkt. Aus zeichnet sie gar nicht mehr. Antippen war dort noch nie möglich — antippbare, nummerierte Punkte gibt es nur in der Richtung-lernen-Phase, und die sind von diesem Schalter nicht betroffen. Der Endpunkt-Ring am Buchstabenende bleibt in beiden Stellungen sichtbar.")
 
                     Toggle("Panning (Stereo-Ortung)", isOn: Binding(
                         get: { comparisonPanning },
@@ -319,7 +319,7 @@ struct SettingsView: View {
                         vm.markAssignmentOverrideChanged()
                     }
 
-                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Änderungen werden beim nächsten App-Start wirksam.")
+                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung — während einer laufenden Sitzung lässt sich die Messung nicht mehr verändern.")
                 }
             }
             // Hidden on STUDY_BUILD (2026-09-04): the overlay this

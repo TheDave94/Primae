@@ -455,16 +455,25 @@ struct SchuleWorldView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         // Under studyMode the tap never SKIPS: every child watches the
-        // same two animation cycles (and the arm's demonstration over
-        // them), so model exposure does not vary with a child's
+        // same single animation pass (and the arm's demonstration over
+        // it), so model exposure does not vary with a child's
         // impatience (audit 3.14a, 2026-09-04). It does START the parked
         // launch letter (`launchParked`, 2026-09-06) — a no-op once the
         // letter runs. The nav arrows still move on.
+        //
+        // The hint below is therefore mode-dependent (2026-09-17): it
+        // used to tell everyone "tap to go to the next phase", which on a
+        // study device is a promise the app deliberately does not keep.
+        // A VoiceOver user following it would tap, see nothing happen, and
+        // have no way to know the refusal was intentional. Reported from a
+        // supervisor's device review as "Auge und Finger".
         .onTapGesture {
             if vm.studyMode { vm.startParkedLetter() } else { vm.completeObservePhase() }
         }
         .accessibilityLabel("Beobachtungsphase")
-        .accessibilityHint("Tippe, um zur nächsten Phase zu wechseln")
+        .accessibilityHint(vm.studyMode
+            ? "Die Animation läuft einmal. Tippen startet den Buchstaben; die Phase wechselt danach von selbst."
+            : "Tippe, um zur nächsten Phase zu wechseln")
         .accessibilityAddTraits(.isButton)
     }
 

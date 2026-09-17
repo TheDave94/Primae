@@ -127,7 +127,7 @@ public final class TracingViewModel {
                let fresh = rawGlyphStrokes, !fresh.strokes.isEmpty,
                fresh != animation.armedStrokes {
                 switch phaseController.currentPhase {
-                case .observe: animation.startAfterDelay(0.3 + StudyComparisonSettings.presentationSpacingSeconds,
+                case .observe: animation.startAfterDelay(0.3 + presentationSpacing,
                                                 strokes: fresh)
                 case .guided:  animation.start(strokes: fresh)
                 case .direct, .freeWrite: break
@@ -310,8 +310,28 @@ public final class TracingViewModel {
     /// left to tap if the dots went away.
     var showCheckpoints: Bool {
         guard phaseController.showCheckpoints else { return false }
-        return StudyComparisonSettings.guidedDotsVisible
+        return dotsVisible
     }
+
+    /// Whether the endpoint ring renders — where the letter finishes.
+    ///
+    /// Deliberately NOT a member of `showCheckpoints` (2026-09-17). The
+    /// ring was first drawn inside that guard, which made the "Punkte
+    /// rausschmeißen" switch silently delete it — and that ring is the
+    /// SILENT ARM's only end-of-letter acknowledgement, because study mode
+    /// removes the celebration overlay, the chime and the completion HUD
+    /// for every arm. A researcher switching the dots off to compare would
+    /// have removed the very cue the silent condition depends on, with
+    /// nothing on screen to say so. The two are separate questions: one is
+    /// about showing start dots, the other about marking where the letter
+    /// ends, and the switch answers only the first.
+    ///
+    /// Phase-driven on its own terms: present in Observe and Guided, absent
+    /// in Direct (which draws its own numbered overlay) and in FreeWrite,
+    /// where the thesis withdraws all scaffolding so no signal contingent
+    /// on the hidden reference reaches the child while the outcome is being
+    /// produced.
+    var showEndpointRing: Bool { phaseController.showCheckpoints }
 
     /// Phase-driven ghost-line visibility, composed with user toggle.
     /// observe + guided ON; direct + freeWrite OFF (direct uses the
@@ -823,6 +843,22 @@ public final class TracingViewModel {
     /// proctor advances. 1 unless the comparison switch says otherwise —
     /// the supervisor's "Buchstabe dreimal?".
     private let letterRepeatCount = StudyComparisonSettings.letterRepeatCount
+    /// Whether this session draws the stroke start dots, and whether it
+    /// drives stereo pan, and how long it pauses between letters.
+    ///
+    /// Captured at INIT, like the three above and unlike their first
+    /// versions (2026-09-17). Those read `StudyComparisonSettings` live on
+    /// every call, which meant `panningEnabled` could be flipped MID-SESSION
+    /// from the researcher screen — the manipulation changing under the
+    /// child with no restart, which is precisely the failure mode the
+    /// switches' footer promises cannot happen ("Änderungen werden beim
+    /// nächsten App-Start wirksam"). A comparison run must be a property of
+    /// the session that was set up, not something a proctor can change
+    /// halfway through one.
+    private let dotsVisible = StudyComparisonSettings.guidedDotsVisible
+    /// Internal, not private: `TouchDispatcher` reads it on the touch path.
+    let panningEnabled = StudyComparisonSettings.panningEnabled
+    private let presentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
     /// Passes completed for the CURRENT letter. Reset when the letter
     /// changes and by `repeatCurrentLetterIfConfigured` when the count is
     /// exhausted.
@@ -2408,7 +2444,7 @@ public final class TracingViewModel {
                 letterLoadTime = nil
             } else {
                 armObserveAutoAdvance()
-                animation.startAfterDelay(0.3 + StudyComparisonSettings.presentationSpacingSeconds,
+                animation.startAfterDelay(0.3 + presentationSpacing,
                                               strokes: observeStrokes)
                 armPreTaskDemonstration(for: letter)
             }

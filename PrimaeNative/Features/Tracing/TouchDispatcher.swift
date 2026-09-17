@@ -359,7 +359,7 @@ final class TouchDispatcher {
         // CALL SITE rather than inside `AudioEngine`, whose
         // `setAdaptivePlayback` is the shared three-parameter seam the arms
         // are matched through — and which is on the DO-NOT list.
-        let rawBias = StudyComparisonSettings.panningEnabled
+        let rawBias = vm.panningEnabled
             ? (canvasNormalized.x * 2.0 - 1.0) + azimuthBias
             : 0
         let hBias = Float(max(-1.0, min(1.0, rawBias)))
