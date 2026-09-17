@@ -188,6 +188,31 @@ final class StudyAdvanceProbeUITests: XCTestCase {
 
     @MainActor
     private func runAudioArmCheck(armDisplayName: String, tag: String) {
+        // The audio-arm override is a PERSISTENT researcher setting, and
+        // these checks set it. Leaving it behind arms a forced arm on the
+        // study device: measured 2026-09-17, after these two checks ran on
+        // iPad 00008103-000E60311AE8801E, `Library/Preferences/
+        // com.flamingistan.primae.study.plist` carried
+        // `de.flamingistan.primae.audioConditionOverride = "spatial"` —
+        // and `PilotAudioCondition.defaultForInstall` returns that
+        // verbatim, so the next child on that iPad would have run the
+        // spatial arm whatever the design assigned. A check that measures
+        // an arm must not leave the device on it.
+        //
+        // Restored in a TEARDOWN BLOCK, not at the end of the body: with
+        // `continueAfterFailure = false` a failed assertion aborts the
+        // test, which is exactly the case that must not skip the restore.
+        addTeardownBlock { @MainActor in
+            let app = XCUIApplication()
+            app.launch()
+            self.openParentArea(app)
+            self.openSettings(app)
+            self.selectAudioArm("Automatisch", in: app)
+            // The override is read at view-model init, so leave the app
+            // closed rather than running on a stale arm.
+            app.terminate()
+        }
+
         let app = XCUIApplication()
         app.launch()
 
