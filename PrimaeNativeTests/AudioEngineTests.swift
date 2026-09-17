@@ -64,6 +64,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - Direct methods: stop() / play() / restart()
+    #if DEBUG
 
     @MainActor func testStop_setsIsPlayingFalse() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -111,6 +112,7 @@ final class AudioEngineTests: XCTestCase {
 
     /// AE-2: the loaded file's gain reaches the engine (the carrier is the
     /// target, so unity); a missing file leaves the previous gain alone.
+    #endif
     @MainActor func testLoadAudioFile_setsLoudnessGain() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: false)
@@ -128,6 +130,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - Interruption: .began
+    #if DEBUG
 
     @MainActor func testInterruptionBegan_stopsPlayback() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -197,6 +200,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - Route Change
+    #endif
 
     @MainActor func testRouteChange_oldDeviceUnavailable_stopsPlayback() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -242,6 +246,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - Lifecycle
+    #if DEBUG
 
     @MainActor func testSuspendForLifecycle_stopsPlayback() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -293,6 +298,7 @@ final class AudioEngineTests: XCTestCase {
                       "a play attempt after a no-file lifecycle blip must not be silently refused " +
                       "by a stuck appIsForeground=false — the 2026-09-15 regression")
     }
+    #endif
 
     @MainActor func testSuspendThenResume_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -314,6 +320,7 @@ final class AudioEngineTests: XCTestCase {
     // These tests use a strong local reference (not [weak self]) to prevent tearDown
     // from nil-ing `engine` before the async closure asserts, which would cause
     // vacuous passes via nil-coalescing.
+    #if DEBUG
 
     @MainActor func testPendingSafeEnginePause_firesAfterDelay() async throws {
         let localEngine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -397,6 +404,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - setAdaptivePlayback clamping
+    #endif
 
     @MainActor func testSetAdaptivePlayback_clampsBelowMinSpeed_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -418,6 +426,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - Interleaved / overlap scenarios
+    #if DEBUG
 
     @MainActor func testInterruptionDuringBackground_stateIsConsistent() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
@@ -460,6 +469,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     // MARK: - deinit: observer removal and retain cycle
+    #endif
 
     @MainActor func testDeinit_removesObserversAndDoesNotCrash() async {
         // autoreleasepool forces immediate ARC release — without it the test runner's own

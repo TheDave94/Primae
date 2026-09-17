@@ -2136,11 +2136,27 @@ public final class TracingViewModel {
     // MARK: - Debug
 
     #if DEBUG
-    var debugActivePathCount: Int { activePath.count }
     /// Raw-name of the participant's assigned A/B condition. Surfaced in the
     /// dashboard's debug-only Forschungsmetriken section so a researcher can
     /// confirm at a glance which arm the device is on.
     var thesisConditionRawName: String { thesisCondition.rawValue }
+    #endif
+
+    // Test-support surface, deliberately compiled in BOTH configurations
+    // (2026-09-17). These four were `#if DEBUG`-gated, and that is what
+    // made `PrimaeNativeTests` structurally unable to build under
+    // `Release-Study` — the configuration the PILOT actually ships. The
+    // unit suite had therefore only ever validated a configuration no
+    // participant ever runs, which is the wrong way round: a `-O` build
+    // is where an inliner bug would live (ROADMAP F11), and it was the
+    // one build with no test coverage at all.
+    //
+    // Read-only accessors plus one await; none of them mutates state, so
+    // compiling them in changes no behaviour. They are NOT on the
+    // ios-build.yml SURFACES list — that check is for child- and
+    // parent-facing surfaces compiled out of the study build, which these
+    // are not.
+    var debugActivePathCount: Int { activePath.count }
 
     /// Test-only deterministic await for the playback debounce window.
     /// Lets integration tests skip the real wall-clock sleep that made
@@ -2156,7 +2172,6 @@ public final class TracingViewModel {
     /// path. nil when a foreground window is currently open.
     var debugLetterLoadTime: CFTimeInterval? { letterLoadTime }
     var debugLetterActiveTimeAccumulated: TimeInterval { letterActiveTimeAccumulated }
-    #endif
 
     // MARK: - Private helpers
 
