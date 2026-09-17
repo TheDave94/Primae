@@ -32,7 +32,12 @@ struct SettingsView: View {
     /// `.preferredColorScheme`. Persisted under `primaeAppearance`.
     @AppStorage("primaeAppearance") private var appearance: String = "system"
 
-    private static let defaultsKey = "de.flamingistan.primae.selectedSchriftArt"
+    /// Internal, not private, so `NewParticipantResetTests` can read the key
+    /// from its owner rather than re-declaring the literal (2026-09-17). It
+    /// was a duplicated string there, which meant renaming the key here
+    /// would leave that test green — the suite's own comment one line down
+    /// already states the rule this violated.
+    static let defaultsKey = "de.flamingistan.primae.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.primae.letterOrdering"
     fileprivate static let speechRateKey = "de.flamingistan.primae.speechRate"
     fileprivate static let shortOnboardingKey = "de.flamingistan.primae.useShortOnboarding"

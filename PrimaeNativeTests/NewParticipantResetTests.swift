@@ -14,7 +14,7 @@ import Foundation
 @Suite(.serialized) @MainActor struct NewParticipantResetTests {
 
     private let studyModeKey   = StudyBuild.studyModeDefaultsKey
-    private let schriftArtKey  = "de.flamingistan.primae.selectedSchriftArt"
+    private let schriftArtKey  = SettingsView.defaultsKey   // from the owner, not re-declared
     // Read from the owner, not re-declared: a third copy of the string
     // would make this suite prove only that it agrees with itself.
     private let retrievalKey   = RetrievalScheduler.counterKey
