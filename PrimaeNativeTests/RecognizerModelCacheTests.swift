@@ -62,9 +62,28 @@ import Foundation
     /// The time limit is the point of this test, not decoration. A lock
     /// defect here does not assert — it deadlocks, and a deadlocked
     /// `xcodebuild test` never returns. The trait converts a wedged run
-    /// into a reported failure with a name attached. Three minutes: the
-    /// measured first-load floor on the hosted A16 simulator is > 60 s.
-    @Test(.timeLimit(.minutes(3)))
+    /// into a reported failure with a name attached. Ten minutes
+    /// (2026-09-17): a deadlock never returns, so any finite limit still
+    /// catches it — the limit only has to clear the SLOW case, and the
+    /// slow case is runner variance, not this code.
+    ///
+    /// Three minutes (the previous value, set against a >60 s measured
+    /// floor) stopped clearing it. CI run 35161501073, reproduced on a
+    /// re-run at the same SHA: these three probes reached 268 s and the
+    /// limit fired, while the same suite in isolation on an M5 simulator
+    /// passes in 0.4 s. The whole 900-test run took 276 s in that
+    /// attempt against 77 s in the last green run — the runner was ~3.5x
+    /// slower, and this suite is the run's critical path because it
+    /// parks on `loadModelIfNeeded`'s mutex. Nothing about the model
+    /// cache was wrong in that run: `first load: ok after 0.27 s`, and
+    /// the chevron/corpus fixes were separately verified on device.
+    ///
+    /// A note against the obvious next hypothesis: the cost is NOT the
+    /// per-URL `resolvingSymlinksInPath()` in `allResourceURLs()`.
+    /// Pruning the nested search root instead was implemented and
+    /// measured on 2026-09-17 — 44.966 s against 45.430 s, no
+    /// improvement — and discarded rather than shipped.
+    @Test(.timeLimit(.minutes(10)))
     func concurrentProbesAgreeAndTerminate() async {
         // The injected classifier keeps Vision out of the assertion path;
         // `isModelAvailable()` still drives the real static cache.
@@ -90,7 +109,7 @@ import Foundation
     /// Repeated probes must agree with each other and with the concurrent
     /// run: once `didAttemptLoad` is set the cache short-circuits, and a
     /// cache that re-decided per call would show up here as drift.
-    @Test(.timeLimit(.minutes(3)))
+    @Test(.timeLimit(.minutes(10)))
     func repeatedProbesAreStable() async {
         let recognizer = CoreMLLetterRecognizer(classifier: { _ in [] })
         let first = await recognizer.isModelAvailable()
@@ -105,7 +124,7 @@ import Foundation
     /// A second instance shares the STATIC cache, so it must agree with
     /// the first. This is the property that makes the cache worth having
     /// and the one a mis-scoped lock would break.
-    @Test(.timeLimit(.minutes(3)))
+    @Test(.timeLimit(.minutes(10)))
     func separateInstancesShareOneCache() async {
         let a = CoreMLLetterRecognizer(classifier: { _ in [] })
         let b = CoreMLLetterRecognizer(classifier: { _ in [] })
