@@ -1,13 +1,23 @@
 // NOTE: Intentionally uses XCTest — Swift Testing has no measure()/XCTMetric equivalent. Do not migrate.
 //
-// CI performance regression gate for StrokeTracker. Uses XCTMetric
-// (clock time + memory) to establish baselines. Build fails if
-// throughput regresses beyond the measured baseline.
+// Performance MEASUREMENT for StrokeTracker. Uses XCTMetric (clock time
+// + memory).
 //
-// Baselines are NOT hardcoded — XCTest's measure infrastructure stores
-// them in the .xcresult bundle and tracks regressions automatically. On
-// first run, baselines are established. Subsequent runs compare against
-// them.
+// "GATE" IS ASPIRATIONAL, CORRECTED 2026-09-17. This header used to say
+// "Build fails if throughput regresses beyond the measured baseline",
+// which is not true as the suite runs today: baselines are NOT hardcoded
+// and are NOT carried between runs — XCTest stores them in the .xcresult
+// bundle of the run that established them, and CI starts from a clean
+// checkout every time, so each run establishes fresh baselines and
+// compares against nothing. The five `measure` blocks here therefore
+// always pass. They are counted in the suite's test count, which is why
+// this note exists: a number that includes them is not a number of
+// pieces of evidence. Either commit baselines or drop the word "gate".
+//
+// One assertion in this file is a deliberate no-op: the `sum >= 0`
+// after the ten-thousand-iteration loop, whose comment says it exists to
+// prevent dead-code elimination. A sum of a non-negative quantity cannot
+// fail. It is not a correctness assertion and should not be read as one.
 
 import XCTest
 import CoreGraphics

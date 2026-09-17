@@ -14,16 +14,28 @@
 // A green suite was no evidence at all for that diff. These tests make the
 // coupling observable so the next attempt cannot pass by being inert.
 //
-// WHAT THE GATING TESTS DO AND DO NOT COVER. The first two tests assert
-// the view-model's own properties, which is necessary but NOT sufficient:
-// the brace defect was in which guard ENCLOSES which draw, and these
-// properties would have read the same either way. A property assertion
-// cannot see nesting. The render test further down is the one that
-// actually pins the coupling — it rasterises the canvas and looks for the
-// ring's pixels — and it is the reason this file exists.
+// WHAT THE GATING TESTS DO AND DO NOT COVER. The first tests assert the
+// view-model's own properties, which is necessary but NOT sufficient: the
+// brace defect was in which guard ENCLOSES which draw, and those properties
+// would have read the same either way. A property assertion cannot see
+// nesting.
+//
+// `CanvasDrawPlan` is what closes that, and it closes it STRUCTURALLY
+// rather than by assertion. The draw DECISIONS are computed in plain Swift
+// and handed to the render closure as one value, so the closure evaluates
+// no condition of its own for these elements and there is no brace whose
+// position can be wrong. `graphicsContext` cannot be constructed, so the
+// closure can never be invoked or spied on — this shape is the only way
+// the decision becomes assertable at all.
+//
+// A render-based test was tried and DELETED; see the note where it was,
+// below. It rendered a constant background rather than the canvas.
 
 import Testing
 import Foundation
+import SwiftUI
+import CoreGraphics
+import UIKit
 @testable import PrimaeNative
 
 @MainActor
@@ -93,6 +105,73 @@ import Foundation
         let vm2 = studyVM()
         vm2.canvasSize = canvas
         #expect(vm2.showCheckpoints, "the default keeps the start dots")
+    }
+
+    // THE RENDER TESTS THAT WERE HERE ARE GONE, and why is worth recording.
+    //
+    // Three tests rasterised `TracingCanvasView` with `ImageRenderer` and
+    // counted the ring's red pixels. They were removed 2026-09-17 after
+    // measuring what they actually rendered: observe and freeWrite came
+    // back BYTE-IDENTICAL (51534 "red" pixels each), i.e. the raster was a
+    // constant background, not the canvas. `ImageRenderer` does not run the
+    // layout pass the view's `GeometryReader` needs, so the `Canvas` drew
+    // nothing and the pixel counter was measuring the paper.
+    //
+    // That made the mutation check that "validated" them meaningless: a
+    // deliberately re-nested ring made the test fail, but it would have
+    // failed for ANY input, mutation or not. A test that cannot PASS is the
+    // mirror of the test that cannot fail, and it is just as worthless —
+    // it was caught only because the numbers were printed and compared.
+    //
+    // `CanvasDrawPlan` replaces them, and is the better instrument: the
+    // decision is a value in ordinary Swift, so the coupling is asserted
+    // directly instead of inferred from pixels. If a faithful render test
+    // is ever wanted, the view needs a layout pass first (`UIHostingController`
+    // in a window, or a fixed-size proposal that bypasses the GeometryReader).
+
+    // MARK: - The draw plan — the coupling, in plain Swift
+
+    /// `CanvasDrawPlan` exists so this assertion can be written at all.
+    /// `GraphicsContext` has no public initialiser, so the draw closure
+    /// cannot be invoked or spied on; the plan is the decision the closure
+    /// is handed, which makes the coupling an ordinary value comparison.
+    @Test("the draw plan keeps the ring when the start dots are switched off")
+    func planKeepsRingWithDotsOff() {
+        StudyComparisonSettings.guidedDotsVisible = false
+        defer { StudyComparisonSettings.resetToDefaults() }
+
+        let vm = studyVM()
+        vm.canvasSize = canvas
+        let plan = vm.canvasDrawPlan
+
+        #expect(plan.showsStartDots == false, "precondition: the dots switch must suppress the dots")
+        #expect(plan.showsEndpointRing,
+                "the draw plan drops the ring when the dots are off — the coupling defect, now visible without rendering")
+    }
+
+    @Test("the draw plan is phase-correct")
+    func planIsPhaseCorrect() {
+        StudyComparisonSettings.resetToDefaults()
+        let vm = studyVM()
+        vm.canvasSize = canvas
+
+        var plan = vm.canvasDrawPlan
+        #expect(plan.showsEndpointRing && plan.showsStartDots, "observe shows both")
+
+        vm.phaseController.resume(at: .guided)
+        plan = vm.canvasDrawPlan
+        #expect(plan.showsEndpointRing && plan.showsStartDots, "guided shows both")
+
+        vm.phaseController.resume(at: .direct)
+        plan = vm.canvasDrawPlan
+        #expect(plan.showsEndpointRing == false && plan.showsStartDots == false,
+                "direct draws its own numbered overlay and nothing of ours")
+
+        vm.phaseController.resume(at: .freeWrite)
+        plan = vm.canvasDrawPlan
+        #expect(plan.showsEndpointRing == false,
+                "freeWrite must show nothing contingent on the hidden reference")
+        #expect(plan.showsGhost == false, "freeWrite withdraws all scaffolding")
     }
 
     // MARK: - The switches are session properties, not live values

@@ -333,6 +333,42 @@ public final class TracingViewModel {
     /// produced.
     var showEndpointRing: Bool { phaseController.showCheckpoints }
 
+    /// What the tracing canvas should DRAW, decided in plain Swift.
+    ///
+    /// Extracted 2026-09-17 so the decisions are assertable without a
+    /// `GraphicsContext` — which cannot be constructed at all
+    /// (`GraphicsContext` is a `@frozen struct` with NO public initialiser;
+    /// SwiftUI vends instances into the draw closure), so nothing can
+    /// invoke or spy on that closure. Asserting the DECISION here, and
+    /// letting the closure only replay it, turns "is this draw inside the
+    /// right guard?" from an untestable structural question into a plain
+    /// `#expect`.
+    ///
+    /// The endpoint ring's own history is the argument for this shape. It
+    /// was drawn inside the start-dots guard; the fix for that was itself
+    /// inert because a closing brace was not moved; and every property
+    /// assertion read the same in both states. Only a rendered pixel — or
+    /// this, a value the closure is HANDED rather than a condition it
+    /// evaluates — can tell the two apart. The render test in
+    /// `StudyComparisonSwitchesTests` remains the end-to-end check; this
+    /// makes the same contract assertable in ordinary Swift.
+    struct CanvasDrawPlan: Equatable {
+        var showsGhost: Bool
+        var showsStartDots: Bool
+        var showsEndpointRing: Bool
+    }
+
+    var canvasDrawPlan: CanvasDrawPlan {
+        CanvasDrawPlan(
+            // The parent-facing display toggle AND the phase. freeWrite
+            // withdraws all scaffolding (Schmidt & Lee's guidance
+            // hypothesis); direct draws its own numbered overlay.
+            showsGhost: showGhost && showGhostForPhase,
+            showsStartDots: showCheckpoints && !isCalibrating,
+            showsEndpointRing: showEndpointRing && !isCalibrating
+        )
+    }
+
     /// Phase-driven ghost-line visibility, composed with user toggle.
     /// observe + guided ON; direct + freeWrite OFF (direct uses the
     /// numbered dots + arrow; freeWrite withdraws all scaffolding per

@@ -19,6 +19,9 @@ struct TracingCanvasView: View {
     @ViewBuilder
     private func tracingCanvas(geo: GeometryProxy) -> some View {
         Canvas { context, fullSize in
+            // The draw DECISIONS, resolved in plain Swift by the view model.
+            // This closure only replays them — see `CanvasDrawPlan`.
+            let plan = vm.canvasDrawPlan
             // Reserve the bottom band for the calibrator UI so the
             // glyph doesn't render under the translucent UI cards.
             // Reduces the geometry used for cell layout AND the
@@ -107,7 +110,7 @@ struct TracingCanvasView: View {
 
                 // Stroke start dots; suppressed during calibration so
                 // the calibrator's own numbered dots aren't doubled up.
-                if vm.showCheckpoints, !vm.isCalibrating,
+                if plan.showsStartDots,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty {
                     for (idx, stroke) in rawStrokes.strokes.enumerated() {
@@ -156,7 +159,7 @@ struct TracingCanvasView: View {
                 // the silent arm the canvas is the only place a
                 // finished letter can be acknowledged at all.
                 // NOT gated on `vm.showCheckpoints` — see the note above.
-                if vm.showEndpointRing, !vm.isCalibrating,
+                if plan.showsEndpointRing,
                    let ringStrokes = vm.gridCellStrokes(at: i),
                    let lastStroke = ringStrokes.strokes.last,
                    let last = lastStroke.checkpoints.last {
