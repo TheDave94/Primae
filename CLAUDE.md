@@ -107,6 +107,92 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
 
 ## Test Infrastructure
 
+### The test count is not a measure of evidence — MEASURED 2026-09-17
+
+A defect shipped through a fully green `PrimaeNativeTests` run (901 tests,
+90 suites) while the change under test was completely INERT: a block was
+de-indented without moving its enclosing brace, so nothing about the
+behaviour changed. `grep` over both test targets returned **zero** hits for
+the feature's symbol, its settings key and its view-model property. The
+suite was green because it never exercised the thing. Two consequences are
+now standing practice here.
+
+**1. Mutation-check every test written to pin a defect.** Break the thing
+deliberately, confirm the test goes RED, restore. No tooling: muter's last
+*release* is from 2023 and it only learned to detect Swift Testing kills on
+unreleased `master` (2026-07-21), so a targeted manual mutation is both
+cheaper and more honest. This is the only mechanism that mechanically
+answers "is this test load-bearing?", and today it caught a test of our own
+that failed for the WRONG reason (see below) — a test that cannot PASS is
+the mirror of one that cannot fail, and just as worthless.
+
+**2. Tests that cannot fail inflate the count.** Measured in this suite:
+`AudioEngineTests`' 36 methods skip unconditionally on the simulator
+(`XCTSkip` in `setUp`, correct — AVAudioEngine crashes the sim) and **CI is
+a simulator**, so 36 tests contribute to the count and nothing to CI's
+evidence. `PerformanceBenchmarkTests`' 5 have no assertions, and
+`StrokeTrackerRegressionGateTests`' 5 are `measure`-only with no committed
+baseline — CI starts clean, so each run establishes fresh baselines and
+compares against nothing. Do not read "N tests passed" as N pieces of
+evidence without checking what those tests can observe.
+
+**3. A `Canvas`'s draw closure cannot be tested directly, so extract the
+decisions.** `GraphicsContext` is a `@frozen struct` with **no public
+initialiser** — nothing can construct it, invoke the closure, or spy on it,
+and no mocking technique in Swift reaches it. The answer is structural:
+compute *what to draw* in plain Swift and hand it to the closure as a value
+(`TracingViewModel.CanvasDrawPlan` is the pattern), so the closure replays
+decisions it does not evaluate and there is no brace whose position can be
+wrong. Property assertions cannot see nesting; a value can.
+
+**4. `ImageRenderer` does NOT render a `Canvas` inside a `GeometryReader`.**
+Measured: two renders of `TracingCanvasView` — different phases, one with
+the ring and one without — came back **byte-identical** (51534 "red" pixels
+each). No layout pass runs, so the `Canvas` draws nothing and a pixel test
+measures the paper. A faithful snapshot needs a layout pass first
+(`UIHostingController` in a window, or a fixed-size proposal that bypasses
+the GeometryReader).
+
+**Hard limits worth knowing before trusting any other signal.** Swift has
+NO branch coverage (swiftlang/swift#81730, open since 2025-05-23) — and the
+inert defect moved no line anyway, so line, function and diff-coverage were
+all green. `.timeLimit` is minutes-only, so it cannot police a sub-second
+hang. Swift Testing retries re-run the WHOLE target, not just the failures
+(FB20922425). And `PrimaeUITests` (6 tests) never runs in CI — Layer 3
+scopes the job to `PrimaeNativeTests`.
+
+**5. A test must not mutate global state — Swift Testing runs suites in
+PARALLEL, and the failure shows up in someone else's test.** Measured the
+same day, by making the mistake: `LetterWeightFallbackTests` set
+`de.flamingistan.primae.fontWeight` in `UserDefaults.standard` to drive the
+Light→Regular fallback, and while it was set, `StrokeGeometryGoldenTests`
+loaded Light geometry and failed its frozen baseline — a test in a
+different file, with nothing in its own code wrong. If a behaviour depends
+on a setting, give the production type a **seam** for it
+(`LetterRepository.init(weight:)` was added for exactly this) and inject
+the value; never flip a global and rely on a `defer` to put it back, because
+the window between the two is where every other test runs.
+
+**MEASURED 2026-09-17 — a thorough test file that never executes.**
+`StrokeCalibrationOverlayHelpersTests.swift` is wholly `#if !STUDY_BUILD`
+(lines 4–151), so **none of it runs in the 907-suite**, and since
+`STUDY_BUILD` is unconditional there is no other configuration to run it
+in. The calibrator is the tool that PRODUCES the corpus, and it has no
+running coverage at all. Nothing to fix while the casual path is paused —
+recorded so the green suite is not read as covering it.
+
+**And 32 of the app's 100 source files have ZERO references from either
+test target** (a 2026-09-17 sweep; 19 of them compile into the study
+build). The study-facing ones, by risk: `StoreFileQuarantine` (data-loss
+prevention, wired into five stores), `CalibrationSessionLogger` (corpus
+capture, writes are `try?`-and-swallow by design), `SchuleWorldView` (the
+child-facing world, including its score→verdict and star thresholds),
+`SettingsView` (the proctor's arm configuration), and `LetterStars` /
+`PhaseDotIndicator` / `WorldSwitcherRail` (child-visible counts). Two
+numbered star totals are computed independently in `SchuleWorldView` and
+`WorldSwitcherRail`, each with a comment claiming they agree, and neither
+is tested.
+
 > **Note:** `xcodebuild` is NOT available on claudebox (Linux). Only Swift syntax
 > checking works locally. Full build/test runs on hosted macos-26 GitHub Actions
 > runners. Always verify CI passes after pushing.

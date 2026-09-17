@@ -174,6 +174,101 @@ import UIKit
         #expect(plan.showsGhost == false, "freeWrite withdraws all scaffolding")
     }
 
+    // MARK: - The switches' SEMANTICS, not just their storage
+
+    /// Each of these drives a production consumer. Before them the switches
+    /// had only round-trip assertions on UserDefaults — a comparison run
+    /// using any of them would have been unpinned.
+
+    /// `observePasses` = 2: observe must need BOTH cycles before it advances.
+    @Test("observePasses = 2 restores a two-cycle observe")
+    func observePassesTwoNeedsBothCycles() {
+        StudyComparisonSettings.observePasses = 2
+        defer { StudyComparisonSettings.resetToDefaults() }
+
+        let vm = studyVM()
+        vm.canvasSize = canvas
+        vm.startParkedLetter()
+        #expect(vm.learningPhase == .observe, "precondition: a study launch starts in observe")
+
+        vm.animation.onCycleComplete?()
+        #expect(vm.learningPhase == .observe,
+                "one cycle ended observe while observePasses is 2 — the switch is not reaching the exit test")
+
+        vm.animation.onCycleComplete?()
+        #expect(vm.learningPhase != .observe, "two cycles must end observe")
+    }
+
+    /// `letterRepeatCount` = 3: the same letter runs three times, and the
+    /// third pass is the last.
+    @Test("letterRepeatCount = 3 repeats the letter twice and then stops")
+    func letterRepeatCountRepeatsThenStops() {
+        StudyComparisonSettings.letterRepeatCount = 3
+        defer { StudyComparisonSettings.resetToDefaults() }
+
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        let vm = TracingViewModel(deps)
+        vm.canvasSize = canvas
+        vm.startParkedLetter()
+
+        #expect(vm.repeatCurrentLetterIfConfigured(), "pass 2 of 3 must start")
+        #expect(vm.repeatCurrentLetterIfConfigured(), "pass 3 of 3 must start")
+        #expect(vm.repeatCurrentLetterIfConfigured() == false,
+                "a fourth pass started — the repeat counter does not stop at the configured count")
+    }
+
+    @Test("letterRepeatCount = 1 never repeats")
+    func letterRepeatCountOneIsInert() {
+        StudyComparisonSettings.resetToDefaults()
+        let vm = studyVM()
+        vm.canvasSize = canvas
+        vm.startParkedLetter()
+        #expect(vm.repeatCurrentLetterIfConfigured() == false,
+                "the repeat fired at the default count of 1")
+    }
+
+    /// `spokenFeedbackInStudy` = true: the null-object substitution must
+    /// stand down, or the switch is inert. The silent ARM's silencing is
+    /// separate and must survive it.
+    ///
+    /// Compared by IDENTITY, not by type. `TracingDependencies.stub` injects
+    /// a null synthesiser AND a factory returning a null prompt player, so
+    /// `vm.speech is NullSpeechSynthesizer` is true on BOTH branches and the
+    /// first version of this test could not tell them apart — it failed for
+    /// that reason, which is how the distinction was found. Passing a
+    /// distinct instance and asking whether the view model ADOPTED it can.
+    @Test("spokenFeedbackInStudy restores the injected speech, but never for the silent arm")
+    func spokenFeedbackSwitchIsRealButArmAuthorityHolds() {
+        func adoptsInjectedSpeech(studyMode: Bool, spokenOn: Bool,
+                                  arm: PilotAudioCondition) -> Bool {
+            StudyComparisonSettings.resetToDefaults()
+            StudyComparisonSettings.spokenFeedbackInStudy = spokenOn
+            defer { StudyComparisonSettings.resetToDefaults() }
+
+            let injected = NullSpeechSynthesizer()   // a distinguishable instance
+            var deps = TracingDependencies.stub
+            deps.studyMode = studyMode
+            deps.audioCondition = arm
+            deps.speech = injected
+
+            let vm = TracingViewModel(deps)
+            return (vm.speech as AnyObject) === injected
+        }
+
+        #expect(adoptsInjectedSpeech(studyMode: false, spokenOn: false, arm: .phoneme),
+                "outside study mode the injected speech must be used — that is the casual path")
+
+        #expect(adoptsInjectedSpeech(studyMode: true, spokenOn: false, arm: .phoneme) == false,
+                "study mode with the switch OFF must substitute its own null synthesiser")
+
+        #expect(adoptsInjectedSpeech(studyMode: true, spokenOn: true, arm: .phoneme),
+                "the switch did not restore speech — it is inert")
+
+        #expect(adoptsInjectedSpeech(studyMode: true, spokenOn: true, arm: .silent) == false,
+                "the silent arm adopted the injected speech — C3-2 says no audio path may fire for that arm, and no comparison switch may override it")
+    }
+
     // MARK: - The switches are session properties, not live values
 
     /// A comparison switch must not be able to change the manipulation

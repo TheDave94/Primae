@@ -156,13 +156,27 @@ final class LetterRepository {
     private let cache: LetterCacheStoring
     private let userDefaults: UserDefaults
 
+    /// `weight` is a SEAM, added 2026-09-17 so a test can exercise the
+    /// Light→Regular polyline fallback without writing the global
+    /// `de.flamingistan.primae.fontWeight` default. It is not a convenience:
+    /// tests run in PARALLEL under Swift Testing, so a test that sets that
+    /// key makes every concurrently-running test load the wrong weight. The
+    /// first version of `LetterWeightFallbackTests` did exactly that and
+    /// broke `StrokeGeometryGoldenTests` — the golden read Light geometry
+    /// while the fallback suite had the key flipped. `nil` means the stored
+    /// preference, which is the production path.
     init(resources: LetterResourceProviding = BundleLetterResourceProvider(),
          cache: LetterCacheStoring = JSONLetterCache(),
-         userDefaults: UserDefaults = .standard) {
+         userDefaults: UserDefaults = .standard,
+         weight: FontWeight? = nil) {
         self.resources    = resources
         self.cache        = cache
         self.userDefaults = userDefaults
+        self.weight       = weight
     }
+
+    /// Injected weight, or nil to read the stored preference.
+    private let weight: FontWeight?
 
     /// Loads letters from bundle with cache fallback. Never empty —
     /// falls back to a hardcoded sample letter.
@@ -297,7 +311,7 @@ private extension LetterRepository {
     typealias ValidationResult = (letters: [LetterAsset], issues: [ValidationIssue])
 
     func loadBundledStrokeLettersWithValidation() -> ValidationResult {
-        let activeWeight = currentFontWeight()
+        let activeWeight = weight ?? currentFontWeight()
         let fallbackWeight: FontWeight = .regular
         let otherWeightFolders = Set(FontWeight.allCases
             .filter { $0 != activeWeight }
