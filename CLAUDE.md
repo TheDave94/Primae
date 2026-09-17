@@ -365,23 +365,49 @@ is tested.
 > branch that should render. `OnboardingView`'s gradient/progress-bar/footer
 > never appear either, so the app is not reaching a first frame at all.)
 >
-> **NAMED GAP — nothing has ever run the unit-test suite against the pilot
-> configuration.** `PrimaeNativeTests` structurally cannot compile against
-> `Release-Study`: it references `#if DEBUG`-only members —
-> `TracingViewModel.awaitPlaybackDebounce`
-> (`PrimaeNativeTests/AudioArmRoutingTests.swift:284`) and
-> `AudioEngine.debugShouldResumePlayback`
-> (`PrimaeNativeTests/AudioEngineTests.swift:72`). With `ENABLE_TESTABILITY=NO`
-> the module refuses to resolve at all
-> (`Unable to resolve Swift module dependency to a compatible module:
-> 'PrimaeNative'`); forcing `ENABLE_TESTABILITY=YES` on the command line
-> merely moves the failure to those members. `-skip-testing:` does NOT prevent
-> the BUILD, so the scheme's test action always compiles the target and
-> `xcodebuild test` can therefore **never** run under Release-Study — which is
-> precisely why `scripts/run_device_uitests.sh` defaults to Debug-Study.
-> **Consequence, plainly: the suite has only ever validated the Debug
-> configuration.** No fix proposed here, deliberately — recorded so the next
-> session sees it.
+> **THE PILOT CONFIGURATION IS NOW TEST-COVERED (2026-09-17). This entry
+> replaces a "NAMED GAP" that said the opposite; every clause of it was true
+> when written and is now false.** It read that `PrimaeNativeTests`
+> structurally cannot compile against `Release-Study` because it referenced
+> `#if DEBUG`-only members, that `-skip-testing:` does not prevent the
+> BUILD, and that `xcodebuild test` could therefore **never** run under the
+> configuration the pilot ships.
+>
+> **What fixed it (`6473b17e`).** Four read-only members on
+> `TracingViewModel` — `debugActivePathCount`, `awaitPlaybackDebounce()`,
+> `debugLetterLoadTime`, `debugLetterActiveTimeAccumulated` — are now
+> compiled in BOTH configurations (none mutates state, so compiling them in
+> changes no behaviour), and `AudioEngineTests`' uses of the still-gated
+> `AudioEngine.debug*` accessors are wrapped in per-method `#if DEBUG`, so
+> they simply do not compile under Release-Study.
+>
+> **MEASURED end to end on the physical iPad, 2026-09-17:**
+>
+> ```
+> xcodebuild build-for-testing -project Primae/Primae.xcodeproj \
+>   -scheme Primae -configuration Release-Study \
+>   -destination "generic/platform=iOS" \
+>   -derivedDataPath /tmp/dd-reltest ENABLE_TESTABILITY=YES \
+>   CODE_SIGNING_ALLOWED=NO
+> → ** TEST BUILD SUCCEEDED **, zero `error:` lines
+>
+> xcodebuild test -project Primae/Primae.xcodeproj -scheme Primae \
+>   -configuration Release-Study -destination "platform=iOS,id=<UDID>" \
+>   -derivedDataPath /tmp/dd-relrun ENABLE_TESTABILITY=YES \
+>   -allowProvisioningUpdates -only-testing:PrimaeNativeTests
+> → Test run with 960 tests in 98 suites passed after 182.768 seconds
+>   with 1 known issue.   ** TEST SUCCEEDED **
+> ```
+>
+> **The shipping configuration is covered**, at the same count as
+> Debug-Study. The known issue is
+> `CalibrationSessionLoggerTests.twoSavesInTheSameSecondCollide`, which is
+> deliberately marked. `ENABLE_TESTABILITY=YES` on the command line is
+> still REQUIRED — what this validates is the `-O` build with DEBUG
+> surfaces compiled out, not the signed artefact bit-for-bit. **ROADMAP
+> F11's blast radius is now bounded**: `swiftlang/swift#88173` is an
+> inliner crash in `-O` + `-default-isolation MainActor`, exactly this
+> configuration, and the whole suite runs clean there.
 >
 > **HAZARD — `xcodebuild test` overwrites the artefact you just verified.** A
 > test run rebuilds into the same `-derivedDataPath`, replacing the signed app
@@ -430,20 +456,18 @@ is tested.
 > most likely to cost a future seat a wrong conclusion rather than just
 > time.**
 >
-> **1. `PrimaeNativeTests` structurally cannot build under `Release-Study`,
-> so the unit-test suite has only ever validated the DEBUG configuration.**
-> It references `#if DEBUG`-only members — `TracingViewModel
-> .awaitPlaybackDebounce` (`PrimaeNativeTests/AudioArmRoutingTests.swift:284`)
-> and `AudioEngine.debugShouldResumePlayback`
-> (`PrimaeNativeTests/AudioEngineTests.swift:72`). With
-> `ENABLE_TESTABILITY=NO` the module refuses to resolve at all
-> (`Unable to resolve Swift module dependency to a compatible module:
-> 'PrimaeNative'`); forcing `ENABLE_TESTABILITY=YES` on the command line
-> merely moves the failure to those members. `-skip-testing:` does NOT
-> prevent the BUILD, so the scheme's test action always compiles the target
-> and `xcodebuild test` can therefore **never** run under Release-Study.
-> That is exactly why `scripts/run_device_uitests.sh` defaults to
-> Debug-Study. No fix proposed — recorded so the gap is visible.
+> **1. `PrimaeNativeTests` COULD NOT build under `Release-Study` — Fixed
+> 2026-09-17 (`6473b17e`); superseded by the entry above, kept here only so
+> this "FOUR findings" list is not read as current.** For the record of
+> what it was: the target referenced `#if DEBUG`-only members
+> (`TracingViewModel.awaitPlaybackDebounce`,
+> `AudioEngine.debugShouldResumePlayback`), `ENABLE_TESTABILITY=NO` made
+> the module refuse to resolve entirely, forcing `ENABLE_TESTABILITY=YES`
+> merely moved the failure to those members, and `-skip-testing:` does not
+> prevent the BUILD — so `xcodebuild test` could never run under
+> Release-Study. **All of that is now false**; the suite runs there, full
+> count, and `scripts/run_device_uitests.sh` defaulting to Debug-Study is
+> now a default rather than a necessity.
 >
 > **2. Unit tests on the physical iPad — FIXED 2026-09-17, and the
 > recorded cause was wrong.** This entry used to read "cannot be RUN on the
