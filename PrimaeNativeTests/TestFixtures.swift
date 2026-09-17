@@ -223,6 +223,15 @@ extension TracingDependencies {
             // direction they are asserting.
             studyMode:            false,
             participantEnrolled:  true,   // the precondition reads THIS, not the device
+            // Pin the arm-cycle comparison switch OFF, for the same reason
+            // as studyMode above and one sharper: `StudyComparisonSwitches
+            // Tests.resetRestoresDefaults` WRITES `cycleAllConditions = true`
+            // (no `defer`) before clearing it, and suites run in PARALLEL —
+            // so a fixture that read the global would hand whichever VM was
+            // constructed inside that window a cycling session. Tests that
+            // mean to exercise the cycle say so at the call site
+            // (`deps.cycleAllConditions = true`).
+            cycleAllConditions:   false,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Real AVAudioPlayer.play() in PromptPlayer adds enough

@@ -68,6 +68,20 @@ struct TracingDependencies {
     /// stub pins true) so the study precondition below is deterministic
     /// in tests; production reads `ParticipantStore.isEnrolled`.
     var participantEnrolled: Bool
+    /// Whether the session steps through all three audio arms, one per
+    /// letter, instead of running the single arm assigned from the
+    /// identifier — `StudyComparisonSettings.cycleAllConditions`, the
+    /// supervisor's "alle Konditionen oder nur eine Kondition".
+    ///
+    /// Carried HERE rather than read from the global inside the view
+    /// model, unlike the other comparison switches. Reason: a test must
+    /// be able to exercise the cycle without writing a key that every
+    /// other suite in the (parallel) run can observe — the trap
+    /// `LetterWeightFallbackTests` cost the suite once already. The value
+    /// is still read once, at dependency construction, so the "captured
+    /// at init, a proctor cannot change it mid-session" property the
+    /// other switches have is unchanged.
+    var cycleAllConditions: Bool
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -162,6 +176,8 @@ struct TracingDependencies {
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
+        // Device config, like studyMode — read once here, never live.
+        cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -203,6 +219,7 @@ struct TracingDependencies {
         self.enablePhonemeMode = enablePhonemeMode
         self.studyMode = studyMode
         self.participantEnrolled = participantEnrolled
+        self.cycleAllConditions = cycleAllConditions
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

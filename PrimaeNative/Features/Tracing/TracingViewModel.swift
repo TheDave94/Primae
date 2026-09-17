@@ -835,11 +835,25 @@ public final class TracingViewModel {
     private let letterRecognizer: LetterRecognizerProtocol
     /// German speech synthesiser; non-readers hear scores as speech
     /// rather than seeing numeric dashboards.
-    let speech: SpeechSynthesizing
+    ///
+    /// `var` since 2026-09-17, not `let`. The silent arm's authority
+    /// (C3-2) has to hold for an arm that is REACHED mid-session, not
+    /// only for one assigned at launch — see `applyArmAuthority`. Read
+    /// sites are unchanged: every consumer reads the property, so a swap
+    /// is visible to all of them at once.
+    private(set) var speech: SpeechSynthesizing
     /// Bundled MP3 prompts (phase entries, praise tiers, paper cues,
     /// retrieval). Falls back to `speech` when missing; dynamic
-    /// per-letter content goes through `speech` directly.
-    let prompts: any PromptPlaying
+    /// per-letter content goes through `speech` directly. `var` for the
+    /// same reason as `speech` above.
+    private(set) var prompts: any PromptPlaying
+    /// The speech/prompt pair this session uses whenever the arm is NOT
+    /// silent — i.e. exactly what init chose, which is already the null
+    /// pair when study mode silences speech. Kept so a mid-session step
+    /// OUT of the silent arm restores the same pair rather than
+    /// ratcheting the session silent for good.
+    private let audibleSpeech: SpeechSynthesizing
+    private let audiblePrompts: any PromptPlaying
     /// FreeWrite buffers + session timing + scoring.
     let freeWriteRecorder = FreeWritePhaseRecorder()
 
@@ -918,6 +932,31 @@ public final class TracingViewModel {
     /// Internal, not private: `TouchDispatcher` reads it on the touch path.
     let panningEnabled = StudyComparisonSettings.panningEnabled
     private let presentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
+    /// Whether this session steps through all three audio arms, one per
+    /// letter, instead of running the single arm assigned from the
+    /// identifier — the supervisor's "alle Konditionen oder nur eine
+    /// Kondition", offered as a comparison rather than adopted as the
+    /// design.
+    ///
+    /// Same capture-at-init rule as the switches above, reached by a
+    /// different route: it arrives through `TracingDependencies`, so a
+    /// test can drive it without writing a `UserDefaults` key that every
+    /// other suite in the parallel run would see. See the property's doc
+    /// in `TracingDependencies`.
+    private let cyclesAudioConditions: Bool
+    /// The letter whose trial the CURRENT audio arm belongs to. The arm is
+    /// a property of a letter's trial, so the cycle steps only when the
+    /// loaded letter actually CHANGES — a re-load of the same letter
+    /// (`startParkedLetter`, `repeatCurrentLetterIfConfigured`, a probe
+    /// re-entry, a proctor dismissal) must not consume an arm the child
+    /// has not finished using.
+    ///
+    /// `nil` until the launch letter is loaded: the first letter keeps the
+    /// arm assigned from the identifier, so a cycle-ON session's first
+    /// letter is the same letter-under-arm the same participant would have
+    /// run with the switch OFF. Reset by `reapplyParticipantIdentity` so an
+    /// incoming child starts from their own assignment.
+    private var cycleArmLetter: String?
     /// Passes completed for the CURRENT letter. Reset when the letter
     /// changes and by `repeatCurrentLetterIfConfigured` when the count is
     /// exhausted.
@@ -991,6 +1030,7 @@ public final class TracingViewModel {
         self.enablePhonemeMode      = deps.enablePhonemeMode
         self.studyMode              = deps.studyMode
         self.participantEnrolled    = deps.participantEnrolled
+        self.cyclesAudioConditions  = deps.cycleAllConditions
         self.enableRetrievalPrompts = deps.enableRetrievalPrompts
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
@@ -1009,8 +1049,19 @@ public final class TracingViewModel {
         // and no comparison switch may put sound into the one arm whose
         // entire manipulation is the absence of it.
         let silenceSpeech = armIsSilent || (deps.studyMode && !StudyComparisonSettings.spokenFeedbackInStudy)
-        self.speech                 = silenceSpeech ? NullSpeechSynthesizer() : deps.speech
-        self.prompts                = silenceSpeech ? NullPromptPlayer() : deps.makePromptPlayer(deps.speech)
+        // Built once, stored twice: `audible*` is the pair this session
+        // uses in every non-silent arm, and the live properties start
+        // there too (which IS the null pair when the arm assigned at
+        // launch is silent or study mode silences speech). A later arm
+        // step re-points the live pair and restores from here — see
+        // `applyArmAuthority`.
+        let audibleSpeech: SpeechSynthesizing = silenceSpeech ? NullSpeechSynthesizer() : deps.speech
+        let audiblePrompts: any PromptPlaying = silenceSpeech ? NullPromptPlayer()
+                                                                 : deps.makePromptPlayer(deps.speech)
+        self.audibleSpeech          = audibleSpeech
+        self.audiblePrompts         = audiblePrompts
+        self.speech                 = audibleSpeech
+        self.prompts                = audiblePrompts
         // Control condition uses fixed difficulty so the manipulation
         // can't confound the phase-progression IV. Study devices pin
         // difficulty at the standard tier for the same reason — the
@@ -1299,6 +1350,87 @@ public final class TracingViewModel {
             }
             return asset.audioFiles
         }
+    }
+
+    // MARK: - Within-subject arm cycle (comparison runs only)
+
+    /// Step the audio arm at a letter boundary when the session is a
+    /// cycle-all-conditions comparison run. Called from `load(letter:)`
+    /// only, and only after that method has recorded the OUTGOING letter's
+    /// unload row — both facts are load-bearing, see the call site.
+    ///
+    /// The step is keyed on the letter actually changing, not on `load`
+    /// being called: a re-load of the same letter is not a new trial, and
+    /// the arm a child is mid-way through must survive it. The cycle wraps
+    /// (silent → phoneme), which is what makes an all-five-letter session
+    /// work and what makes a proctor's back-and-forth navigation
+    /// well-defined.
+    private func cycleAudioConditionIfConfigured(toLetterNamed name: String) {
+        guard cyclesAudioConditions else { return }
+        guard let armLetter = cycleArmLetter else {
+            // Launch letter: ADOPTS the arm assigned from the identifier
+            // (or the researcher override) instead of consuming a step.
+            // So a cycle-ON session's first letter is the same
+            // letter-under-arm the same child would have run with the
+            // switch OFF, and the identifier's own modulo assignment
+            // distributes the cycle's starting point across children
+            // rather than starting everyone at `.phoneme`.
+            cycleArmLetter = name
+            return
+        }
+        guard armLetter != name else { return }
+        cycleArmLetter = name
+        applyArm(audioCondition.nextInCycle)
+    }
+
+    /// Make `next` the session's arm, with the authority the arm carries.
+    ///
+    /// Internal, not private, as a TEST SEAM — the same call this codebase
+    /// makes for `panningEnabled` and `LetterRepository.init(weight:)`.
+    /// The C3-2 property applied here is reachable on TWO paths: the
+    /// comparison cycle's letter boundary, and `reapplyParticipantIdentity`
+    /// on new-child enrolment. Only the first is testable without this
+    /// seam — enrolment's arm is UUID-derived, so a test driving it would
+    /// exercise the silent branch roughly one draw in three and quietly
+    /// pass the rest of the time. A property that holds two times in three
+    /// is not pinned.
+    func applyArm(_ next: PilotAudioCondition) {
+        guard next != audioCondition else { return }
+        audioCondition = next
+        applyArmAuthority()
+    }
+
+    /// The current arm's own authority (ruling C3-2), applied whenever the
+    /// arm CHANGES. At launch this is done by construction — the silent
+    /// arm is handed a `SilentAudio` engine and a null speech/prompt pair
+    /// (`init`) — but construction happens once, and the comparison cycle
+    /// can reach the silent arm later.
+    ///
+    /// What "silent" rests on for an arm reached mid-session, path by
+    /// path: the engine is stopped (its `stop()` clears the loaded file,
+    /// and its `play()` is a no-op without one), any in-flight pre-task
+    /// demonstration is cancelled, `activeAudioFiles` returns [] so no
+    /// load site can hand the engine a file, `TouchDispatcher`'s coupling
+    /// short-circuits on the live arm, and the speech/prompt pair becomes
+    /// the null one. Stepping back OUT restores the pair the session
+    /// began with, so this is a state, not a one-way ratchet.
+    ///
+    /// The remaining guarantee is the one construction gives and this
+    /// cannot: `vm.audio` stays the same object, so the ENGINE is a real
+    /// one holding no file rather than the `SilentAudio` no-op. Same
+    /// quiet, different mechanism.
+    private func applyArmAuthority() {
+        guard audioCondition == .silent else {
+            speech  = audibleSpeech
+            prompts = audiblePrompts
+            return
+        }
+        cancelPreTaskDemonstration()
+        speech.stop()
+        speech  = NullSpeechSynthesizer()
+        prompts = NullPromptPlayer()
+        audio.stop()
+        playback.request(.idle, immediate: true)
     }
 
     // MARK: - Pre-task sound-arm demonstration
@@ -2485,6 +2617,17 @@ public final class TracingViewModel {
         // .recordUnloadOfCurrentLetter (2026-09-04).
         phaseTransitions.recordUnloadOfCurrentLetter(
             touchStillActive: touchDispatcher.isSingleTouchInteractionActive)
+        // The arm steps HERE — after that unload row, and before anything
+        // below reads the arm (the pre-task demonstration, the audio file
+        // list, the phase rows). Both halves are deliberate (2026-09-17):
+        // the unload record stamps `audioCondition` onto the OUTGOING
+        // letter's final row, so stepping first would relabel a letter's
+        // last row with the NEXT letter's arm — the one corruption this
+        // feature could inflict on the export. Nothing below can fire
+        // mid-trace: `load(letter:)` is the only caller, it is synchronous
+        // and main-actor isolated, so the arm cannot change between a
+        // child's touch-down and touch-up.
+        cycleAudioConditionIfConfigured(toLetterNamed: letter.name)
         lastScheduledLetterPriority = 0   // only loadRecommendedLetter sets it, after this load
         phaseController.reset()
         // Cold-probe override (pretest / post-test / delayed), consumed
@@ -2932,7 +3075,15 @@ public final class TracingViewModel {
     private func reapplyParticipantIdentity() {
         guard studyMode else { return }
         thesisCondition = .threePhase   // studyMode always pins this; restated for symmetry.
-        audioCondition  = .defaultForInstall
+        // Through `applyArm`, not a bare assignment: the incoming child's
+        // arm carries its own authority with it (C3-2), so a switch from a
+        // sound arm into the silent one also silences speech here — the
+        // same hole this closes that the comparison cycle would otherwise
+        // open from the other direction. `cycleArmLetter` is cleared so the
+        // incoming child's FIRST letter adopts their assigned arm rather
+        // than consuming a step of the outgoing child's cycle.
+        applyArm(.defaultForInstall)
+        cycleArmLetter  = nil
         trainedSubset   = .defaultForInstall
         loadFirstTrainedLetter()
         participantIdentityChanged = false

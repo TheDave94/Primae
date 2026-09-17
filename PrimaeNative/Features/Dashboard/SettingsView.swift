@@ -292,8 +292,7 @@ struct SettingsView: View {
                             StudyComparisonSettings.cycleAllConditions = $0
                             vm.markAssignmentOverrideChanged()
                         }))
-                    .disabled(true)
-                    .accessibilityHint("Noch nicht wirksam. Ein Wechsel der Audio-Bedingung mitten in der Sitzung verlangt, dass die Arm-Autorität (C3-2: für den stillen Arm darf kein Audiosignal entstehen) nachträglich veränderbar wird. Das ist die Absicherung, auf der die Manipulation beruht — bewusst nicht angefasst.")
+                    .accessibilityHint("Aus ist die Vorgabe: jedes Kind läuft in dem einen Arm, der ihm zugewiesen wurde. Ein lässt die Sitzung alle drei Audio-Bedingungen durchlaufen, eine je Buchstabe, in der Reihenfolge Phonem, Raumklang, Ohne Ton und wieder von vorn. Den ersten Buchstaben behält das Kind in dem Arm, der ihm zugewiesen wurde. Die Bedingung wechselt nur zwischen zwei Buchstaben, nie mitten in einem — der laufende Versuch bleibt unangetastet, und ein erneutes Laden desselben Buchstabens verbraucht keine Bedingung. Für den stillen Arm gilt dabei dieselbe Absicherung wie bei der Zuweisung: es entsteht kein Tonsignal. Ein Vergleichslauf, keine Pilotbedingung.")
 
                     Toggle("Startpunkte anzeigen (Anschauen/Nachspuren)", isOn: Binding(
                         get: { comparisonGuidedDotsVisible },
