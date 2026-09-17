@@ -210,14 +210,31 @@ StrokeSpec = dict  # {"kind": "line", "anchors": [...]} | {"path": [...]}
 
 LETTERS: dict[str, list[StrokeSpec]] = {
     "A": [
-        {"kind": "line", "anchors": ["BL", "T"],
+        # TOP-DOWN (2026-09-17). These anchors were ["BL", "T"] and
+        # ["BR", "T"], i.e. both diagonals authored UP from the baseline
+        # to the apex — which made A the only letter in the corpus drawn
+        # against the writing direction, and the only one of the five
+        # study letters whose strokes ran upward (45 of the 48 remaining
+        # letters start top-down; A's own Schulschrift variant starts at
+        # the apex). A supervisor reviewing the study build read it as
+        # "Strichreihenfolge falsch". Reversed here so that a future
+        # regeneration cannot put it back.
+        #
+        # NOTE: this spec does not currently produce the shipped file. A
+        # is a STATIC ARTIFACT — the bake skips it ("hand-tuned via iPad
+        # calibrator"), and `PrimaeNative/Resources/Letters/Regular/A/
+        # strokes.json` is the source of truth. The two are kept in
+        # agreement deliberately; changing only one would leave the next
+        # person to lift the guard with a different letter than the one
+        # that ships.
+        {"kind": "line", "anchors": ["T", "BL"],
          "arms": ["straight_line"]},
-        {"kind": "line", "anchors": ["BR", "T"],
+        {"kind": "line", "anchors": ["T", "BR"],
          "arms": ["straight_line"]},
         {"kind": "line", "anchors": ["ML", "MR"],
          "arms": [{"strategy": "straight_line",
-                    "t_junction_start": 0,  # crossbar left meets stroke 0 (BL→T)
-                    "t_junction_end": 1}]},  # crossbar right meets stroke 1 (BR→T)
+                    "t_junction_start": 0,  # crossbar left meets stroke 0 (T→BL)
+                    "t_junction_end": 1}]},  # crossbar right meets stroke 1 (T→BR)
     ],
     "E": [
         # All three horizontal bars terminate at dt=5 from the right
