@@ -174,8 +174,8 @@ fileprivate final class RecordingAudio: AudioControlling {
                 "loadAudioFile(autoplay: true) schedules LOOPING playback — the demo must stop it when the 2 s window ends, or the phoneme keeps looping into the rest of the (touch-disabled) observe phase")
     }
 
-    @Test("spatial arm: axis demonstration loads the carrier and sweeps pitch/pan, then stops")
-    func spatialArm_sweepsAndStops() async {
+    @Test("spatial arm: the demonstration holds the carrier steady, then stops")
+    func spatialArm_holdsCarrierAndStops() async {
         let audio = RecordingAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .spatial).with(audio: audio).with(studyMode: true))
         audio.reset()
@@ -184,12 +184,20 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(audio.loadedFiles == [SpatialSonification.carrierToneFile])
         // Let the short demo run to completion.
         await waitUntil { audio.stopCount > 0 }
-        #expect(audio.setAdaptiveCount > 1,
-                "the axis sweep should drive pan across multiple scripted samples")
-        #expect(Set(audio.spatialPitches).count > 1,
-                "the axis sweep should drive a RANGE of pitches, not a constant value — got \(audio.spatialPitches)")
+        // NO SCRIPTED SWEEP (2026-09-17). This test used to require
+        // `setAdaptiveCount > 1` and a RANGE of pitches — it pinned the
+        // axis demonstration, which was removed on a supervisor's
+        // "Glissando weg". What replaces it is the same two-second WINDOW
+        // with the carrier held at the neutral rate, centre pan and zero
+        // pitch, so the arm still runs a demonstration of the same length
+        // as the phoneme arm's without a scripted glissando. Exactly one
+        // call of each, both neutral, is the whole of the new contract.
+        #expect(audio.setAdaptiveCount == 1,
+                "the demonstration sets the neutral rate and centre pan once, and does not sweep")
+        #expect(audio.spatialPitches.count == 1 && audio.spatialPitches.first == 0,
+                "the demonstration holds pitch at zero rather than sweeping it — got \(audio.spatialPitches)")
         #expect(audio.stopCount == 1,
-                "the demo must stop the looping carrier tone when the sweep finishes")
+                "the demo must stop the looping carrier tone when the window ends")
     }
 
     @Test("cancelPreTaskDemonstration before the task runs suppresses it entirely")

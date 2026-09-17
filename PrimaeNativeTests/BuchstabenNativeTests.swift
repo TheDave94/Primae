@@ -180,7 +180,26 @@ import AVFoundation
         #expect(vm.debugActivePathCount == 0)
     }
 
-    @Test func debounceTouchBurst_rapidTaps_onlyOnePlaybackIntent() {
+    /// Rewritten 2026-09-17, from the opposite assertion.
+    ///
+    /// This used to read `#expect(audio.playCount <= playsBefore + 1,
+    /// "Rapid taps should trigger at most 1 play")` — i.e. it pinned the
+    /// play-intent window as swallowing a stroke start while the engine
+    /// was SILENT. That is the behaviour a supervisor's device review
+    /// reported as "alle sounds müssen spielen": the deferred play only
+    /// fired if the machine was still active when the window elapsed, so
+    /// a stroke that both began and ended inside it never sounded.
+    ///
+    /// Each tap here is a touch on the letter, so each must be audible.
+    /// The assertion is a lower bound rather than an exact count because
+    /// `TouchDispatcher` gates activation on an EWMA-smoothed velocity, so
+    /// a tap's first sample can legitimately fall under the threshold.
+    /// What it does settle is the regression: the window no longer
+    /// collapses twenty taps into one play.
+    ///
+    /// Coalescing WITHIN a stroke is still asserted, in
+    /// `PlaybackControllerTests.playIntentWindow_coalescesWhileSounding_only`.
+    @Test func debounceTouchBurst_rapidTaps_everyTapSounds() {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
         let size = CGSize(width: 320, height: 480)
@@ -191,7 +210,9 @@ import AVFoundation
             vm.updateTouch(at: CGPoint(x: CGFloat(80+i), y: CGFloat(80+i)), t: t+0.0001, canvasSize: size)
             vm.endTouch()
         }
-        #expect(audio.playCount <= playsBefore + 1, "Rapid taps should trigger at most 1 play, got \(audio.playCount - playsBefore)")
+        let plays = audio.playCount - playsBefore
+        #expect(plays > 1,
+                "rapid taps must each sound, not collapse into one play; got \(plays) plays for 20 taps")
     }
 
     @Test func debounceWindow_afterExpiry_playbackIsAllowed() async {

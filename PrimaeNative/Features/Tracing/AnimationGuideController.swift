@@ -50,12 +50,21 @@ final class AnimationGuideController {
     /// the five study letters span ~1 cell, so one slow pass lands in
     /// the same order as the two normal passes it replaces rather than
     /// halving the observe window.
-    private static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
+    static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
+
+    /// Live speed for `start`, defaulting to the production value above.
+    /// Exposed because a test that waits for a cycle has to budget its
+    /// wall-clock window for whatever speed is in force, and at 0.4x that
+    /// budget stops fitting on a loaded CI runner — `onCycleComplete_
+    /// firesAtLeastOnce` observed zero cycles in its 3 s window on the
+    /// first CI run after the slow speed landed. Tests that only care
+    /// THAT a cycle fires set this; production never changes it.
+    var unitsPerSecond: TimeInterval = AnimationGuideController.observeUnitsPerSecond
 
     func start(strokes: LetterStrokes) {
         stop()
         let guide = LetterAnimationGuide.build(from: strokes,
-                                               unitsPerSecond: Self.observeUnitsPerSecond)
+                                               unitsPerSecond: unitsPerSecond)
         guard !guide.steps.isEmpty else { return }
         armedStrokes = strokes
 

@@ -64,6 +64,13 @@ import Testing
 
     @Test func onCycleComplete_firesAtLeastOnce() async {
         let c = AnimationGuideController()
+        // Run the loop at the former default speed, not the production
+        // one. Production slows the observe pass to 0.4x (2026-09-17) to
+        // demonstrate the letter once, more slowly, and this test only
+        // cares THAT a cycle fires — at the slow speed its wall-clock
+        // budget stops fitting on a loaded runner, which is exactly how
+        // it failed on the first CI run after that change.
+        c.unitsPerSecond = 0.9
         var cycles = 0
         c.onCycleComplete = { cycles += 1 }
         c.start(strokes: sampleStrokes())
