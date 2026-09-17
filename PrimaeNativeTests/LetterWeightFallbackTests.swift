@@ -104,29 +104,37 @@ private final class TwoWeightProvider: LetterResourceProviding {
     }
 
     @Test("with Regular active, no fallback branch is taken")
-    func regularActive_usesRegularForEverything() {
+    func regularActive_usesRegularForEverything() throws {
         let letters = loadLetters(weight: .regular)
         #expect(letters.count == 2, "expected A and B, got \(letters.map(\.name))")
-        #expect(lastX(letters.first { $0.name == "A" }!) == 0.90, "A must come from Regular")
-        #expect(lastX(letters.first { $0.name == "B" }!) == 0.70, "B must come from Regular")
+        let a = try #require(letters.first { $0.name == "A" }, "A missing with Regular active")
+        let b = try #require(letters.first { $0.name == "B" }, "B missing with Regular active")
+        #expect(lastX(a) == 0.90, "A must come from Regular")
+        #expect(lastX(b) == 0.70, "B must come from Regular")
     }
 
     @Test("with Light active, a letter present in Light uses the Light polyline")
-    func lightActive_prefersLight() {
+    func lightActive_prefersLight() throws {
         let letters = loadLetters(weight: .light)
-        let a = letters.first { $0.name == "A" }
-        #expect(a != nil, "A missing with Light active — got \(letters.map(\.name))")
-        #expect(lastX(a!) == 0.60,
+        let a = try #require(letters.first { $0.name == "A" },
+                             "A missing with Light active — got \(letters.map(\.name))")
+        #expect(lastX(a) == 0.60,
                 "A came from Regular while Light is active — the active weight must win wherever it has the letter")
     }
 
     @Test("with Light active, a letter Light lacks falls back to the Regular polyline")
-    func lightActive_fallsBackForMissingLetters() {
+    func lightActive_fallsBackForMissingLetters() throws {
         let letters = loadLetters(weight: .light)
-        let b = letters.first { $0.name == "B" }
-        #expect(b != nil,
-                "B vanished with Light active — the fallback did not splice it in, so a partial weight bundle would ship a MISSING LETTER rather than a mismatched one")
-        #expect(lastX(b!) == 0.70, "B must carry the Regular polyline")
+        // `try #require`, NOT `#expect` followed by a force-unwrap. The
+        // first version wrote `#expect(b != nil, …)` then `lastX(b!)`, and
+        // when the fallback did not fire the force-unwrap trapped — killing
+        // the whole app process instead of reporting one failed test, and
+        // taking the surrounding run down with it (crash log
+        // Primae-2026-09-17-171443.ips, SIGTRAP in `_assertionFailure` under
+        // this exact test). A test must fail as a test.
+        let b = try #require(letters.first { $0.name == "B" },
+                             "B vanished with Light active — the fallback did not splice it in, so a partial weight bundle would ship a MISSING LETTER rather than a mismatched one")
+        #expect(lastX(b) == 0.70, "B must carry the Regular polyline")
     }
 
     /// The invariant the fallback exists to preserve: with a partial active
