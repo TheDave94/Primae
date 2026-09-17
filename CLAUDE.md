@@ -391,6 +391,34 @@ is tested.
 > give `test` a different `-derivedDataPath` than the artefact you intend to
 > install.
 >
+> **HAZARD — a device test run REPLACES the pilot artefact ON THE iPAD, and
+> the identity guard does not catch it.** MEASURED 2026-09-17, from the
+> project's own `Primae/Primae.xcodeproj/project.pbxproj`:
+> `Debug-Study` and `Release-Study` both carry
+> `PRODUCT_BUNDLE_IDENTIFIER = com.flamingistan.primae.study`. One install
+> slot. So `xcodebuild test -destination "platform=iOS,id=<UDID>"` installs
+> its Debug-Study build **over** the pilot artefact and kills any running
+> instance — which is what a reinstall/open/close loop on the home screen
+> actually is. Observed by David as "the app gets installed, opened for 2
+> seconds then closed and repeat", and it is what a seat will mistake for a
+> product crash: an artefact seen alive at t+6 s and t+12 s and gone by
+> t+18 s, with NO crash log, is this, not a defect. `nm` cannot tell you
+> either, because both configurations link the same
+> `_primae_build_identity_study` — the guard separates study from casual,
+> not study-debug from study-release.
+>
+> **Consequence, and it is a pre-session gate: after ANY device test run,
+> the iPad's "Primae Studie" icon is a Debug-Study build with `#if DEBUG`
+> surfaces compiled IN — the thing the section above forbids on a child's
+> iPad. Reinstall the Release-Study artefact before every participant
+> session; treat a device test run as invalidating the installed artefact.**
+>
+> Considered and NOT done: giving Debug-Study its own bundle ID so the test
+> build installs sideways. It would change the configuration the device-test
+> instrument depends on — the instrument the Team-ID fix (`b1ab17a`) had just
+> made work — and a procedural gate costs nothing by comparison. Triaged and
+> dropped deliberately, not overlooked.
+>
 > **HAZARD — `scripts/run_device_uitests.sh` cannot be invoked from a
 > sandboxed seat.** Its documented usage passes the target UDID as the
 > script's first argument, so the call's leading word is the script PATH — not an entry in
