@@ -270,7 +270,7 @@ struct SettingsView: View {
                             StudyComparisonSettings.allFiveLetters = $0
                             vm.markAssignmentOverrideChanged()
                         }))
-                    .accessibilityHint("Aus ist die Vorgabe: das Kind übt 3 der 5 Buchstaben, die anderen 2 bleiben für den Nachtest ungeübt. Ein lässt jedes Kind alle 5 üben — damit entfällt der Vergleich geübt/ungeübt.")
+                    .accessibilityHint("Aus ist die Vorgabe: das Kind übt 3 der 5 Buchstaben, die anderen 2 bleiben für den Nachtest ungeübt. Ein lässt jedes Kind alle 5 üben — damit entfällt der Vergleich geübt/ungeübt. Die Daten eines solchen Durchlaufs sind ein Vergleichslauf: die Spalte „trainedSubset“ jeder Zeile steht dann auf „AFILM“ und die Spalte für ungeübt bleibt leer, statt eine 3er-Teilmenge zu behaupten. Ein Post-Test ist nicht möglich, weil es keinen ungeübten Buchstaben gibt.")
 
                     Picker("Wiederholungen je Buchstabe", selection: Binding(
                         get: { comparisonLetterRepeatCount },

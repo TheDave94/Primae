@@ -72,10 +72,23 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// insurance). Non-nil only on freeWrite rows that captured a trace;
     /// nil for other phases and for legacy records (decode-default).
     let rawTraceID: UUID?
-    /// The participant's trained 3-of-5 study-letter subset
-    /// (`TrainedLetterSubset.rawValue`, e.g. "AFI") so analysis can
-    /// partition trained vs untrained letters per row. Nil for legacy
-    /// records.
+    /// Which study letters were TRAINED for this row's session —
+    /// `TrainedLetterSubset.rawValue`, so analysis can partition trained
+    /// vs untrained letters per row. Nil for legacy records.
+    ///
+    /// Two shapes, and the column is the place to tell them apart
+    /// (2026-09-17). "AFI" and the nine others are the pilot's
+    /// counterbalanced 3-subsets, and the two letters absent from the
+    /// value are the within-child untrained baseline. "AFILM" is the
+    /// `allFiveLetters` comparison configuration, where every letter was
+    /// trained and there is NO untrained baseline — `untrainedLetters`
+    /// is empty on it, so a partition returns one group, not two. Before
+    /// this was fixed the column carried the assigned 3-subset even in an
+    /// all-five session, asserting a contrast the session had removed.
+    ///
+    /// This is the SESSION's trained set (`effectiveTrainedSubset`), not
+    /// the participant's assignment axis — the two differ only under that
+    /// switch, and the assignment is recoverable from the identifier.
     let trainedSubset: String?
     /// Measured-phase duration in seconds — for freeWrite rows, the
     /// first-to-last raw-trace sample span (excludes the trailing 2.0 s

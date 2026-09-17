@@ -890,7 +890,14 @@ public final class TracingViewModel {
     /// contrast the post-test rests on — the supervisor's "jedes Kind
     /// alle 5 Buchstaben? Aber jeder Buchstabe nur einmal?", offered as a
     /// comparison rather than adopted as the design.
-    private let allFiveLetters = StudyComparisonSettings.allFiveLetters
+    ///
+    /// Assigned in `init`, not from a property initialiser (2026-09-17),
+    /// so `TracingDependencies.allFiveLetters` can inject it. Still
+    /// captured ONCE — `StudyComparisonSwitchesTests
+    /// .switchesAreCapturedAtInit` pins that, and this switch changes
+    /// the practice pool, which must not move under a child. `nil` on
+    /// the dependency means the device's own setting, unchanged.
+    private let allFiveLetters: Bool
     /// How many times each letter's full four-phase flow runs before the
     /// proctor advances. 1 unless the comparison switch says otherwise —
     /// the supervisor's "Buchstabe dreimal?".
@@ -975,6 +982,10 @@ public final class TracingViewModel {
         self.thesisCondition        = effectiveCondition
         self.audioCondition         = deps.audioCondition
         self.trainedSubset          = deps.trainedSubset
+        // Captured from the injection seam when a test supplies one, the
+        // device's own key otherwise. Same once-per-VM capture as
+        // `observePasses` above.
+        self.allFiveLetters         = deps.allFiveLetters ?? StudyComparisonSettings.allFiveLetters
         self.enablePaperTransfer    = deps.enablePaperTransfer
         self.enableFreeformMode     = deps.enableFreeformMode
         self.enablePhonemeMode      = deps.enablePhonemeMode
@@ -1518,8 +1529,21 @@ public final class TracingViewModel {
         if let studyLetterSourceFailure {
             return "Keine Buchstaben aus dem Bundle geladen (\(studyLetterSourceFailure))"
         }
+        // Under the `allFiveLetters` comparison switch there is no
+        // untrained letter, so the post-test has no population at all —
+        // `permits` below would refuse every letter for that reason, but
+        // its generic message reads as a per-letter refusal and hides the
+        // fact that the whole design's within-child contrast is
+        // unavailable in this configuration. Say so, and say why (2026-09-17).
+        //
+        // Keyed on the STATE (an empty untrained set), not on the switch
+        // label, so it stays true if some other configuration ever
+        // trains every letter.
+        if kind == .posttest, effectiveTrainedSubset.untrainedLetters.isEmpty {
+            return "Kein Post-Test in dieser Sitzung: das Kind hat alle fünf Buchstaben geübt — es gibt keinen ungeübten Buchstaben. Der Vergleich geübt/ungeübt entfällt damit, und die Sitzung ist ein Vergleichslauf, kein Pilotenlauf."
+        }
         guard kind.permits(letter: letter,
-                           untrained: trainedSubset.untrainedLetters,
+                           untrained: effectiveTrainedSubset.untrainedLetters,
                            studyLetters: studyBaseLetters) else {
             return "Buchstabe für diesen Test nicht zulässig"
         }
@@ -2154,6 +2178,43 @@ public final class TracingViewModel {
             + "ablegen (Format: mp3, wav, m4a, aac, flac oder ogg; H5)."
     }
 
+    /// The letters this SESSION actually trains — which is what every
+    /// consumer that reasons about trained-vs-untrained must read, and
+    /// what every exported row must be stamped with.
+    ///
+    /// Normally the assignment axis's subset (`trainedSubset`, from UUID
+    /// byte 9 / the researcher override). Under the `allFiveLetters`
+    /// comparison switch it is `.allFive` instead: the session practises
+    /// all five, so "trained" is all five and `untrainedLetters` is
+    /// EMPTY.
+    ///
+    /// WHY THIS EXISTS (2026-09-17). The switch used to widen the
+    /// practice pool and nothing else, so three readers kept answering
+    /// from the 3-subset assignment while the child trained five:
+    ///   - `PhaseTransitionCoordinator` stamped `trainedSubset.rawValue`
+    ///     on every exported row (both `:226` and `:433`), so the row
+    ///     asserted the child was untrained on two letters the child had
+    ///     just practised;
+    ///   - `startColdProbe` gated the post-test on
+    ///     `trainedSubset.untrainedLetters`, so those two trained letters
+    ///     were offered and ACCEPTED as the "untrained" probe;
+    ///   - `ParentDashboardExporter.derivedTrainedPostTestIndices`
+    ///     re-derived "was this letter trained" from the same column, so
+    ///     the post-test tag was withheld from the letters that had in
+    ///     fact been trained.
+    /// Every analysis that partitions trained from untrained from the
+    /// export would have been wrong for those rows, and the contrast the
+    /// design rests on was fabricated by the bookkeeping rather than
+    /// measured. One owner for the question, so the three cannot
+    /// disagree again.
+    ///
+    /// With the switch OFF this is `trainedSubset` itself, so every
+    /// stamped value, gate and pool is byte-identical to the behaviour
+    /// before this property existed.
+    var effectiveTrainedSubset: TrainedLetterSubset {
+        allFiveLetters ? .allFive : trainedSubset
+    }
+
     /// Visible letters, sorted by `letterOrdering`. `studyMode` pins the
     /// pool to the 5-letter UPPERCASE pilot stimulus set regardless of
     /// `showAllLetters`; outside study sessions the app stays
@@ -2161,13 +2222,20 @@ public final class TracingViewModel {
     var visibleLetterNames: [String] {
         let pool: [String]
         if studyMode {
-            // Practice pool = the participant's trained 3 of the 5
-            // study letters (uppercase). The H6 post-test covers all 5;
-            // the untrained 2 are the within-child baseline.
+            // Practice pool = the letters this session trains
+            // (uppercase): the assigned 3 of the 5 study letters, or all
+            // five under the `allFiveLetters` comparison switch. The H6
+            // post-test covers all 5 either way; the untrained 2 are the
+            // within-child baseline when there are any.
+            //
+            // Reads `effectiveTrainedSubset` rather than re-deciding the
+            // switch here — the pool and the stamped row must not be able
+            // to disagree about which letters were trained, and this is
+            // the same fact.
             pool = letters
                 .filter {
                     studyBaseLetters.contains($0.baseLetter)
-                    && (allFiveLetters || trainedSubset.letters.contains($0.baseLetter))
+                    && effectiveTrainedSubset.letters.contains($0.baseLetter)
                     && $0.letterCase == .upper
                 }
                 .map(\.name)

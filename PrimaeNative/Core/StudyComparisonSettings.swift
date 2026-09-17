@@ -67,7 +67,15 @@ enum StudyComparisonSettings {
     /// reserved for the post-test contrast.
     ///
     /// ON removes the within-child trained/untrained contrast, because
-    /// there are then no untrained letters. The researcher UI states this.
+    /// there are then no untrained letters. The researcher UI states this,
+    /// and so does the DATA (2026-09-17, was not true before): every row
+    /// written under this switch is stamped `trainedSubset == "AFILM"`
+    /// (`TracingViewModel.effectiveTrainedSubset`), the all-five case of
+    /// `TrainedLetterSubset`, whose `untrainedLetters` is empty. Before
+    /// that fix the rows still carried the assigned 3-subset, so an
+    /// export of an all-five run asserted the child was untrained on two
+    /// letters it had practised — a fabricated contrast, and the post-test
+    /// offered those same two letters as the "untrained" probe.
     static let allFiveLettersKey = prefix + "allFiveLetters"
     static var allFiveLetters: Bool {
         get { boolValue(allFiveLettersKey, default: false) }

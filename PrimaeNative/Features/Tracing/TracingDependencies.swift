@@ -37,6 +37,20 @@ struct TracingDependencies {
     /// byte 8). Filters the practice pool under `studyMode` only; the
     /// H6 post-test covers all 5 letters regardless.
     var trainedSubset: TrainedLetterSubset
+    /// Seam for the `allFiveLetters` comparison switch
+    /// (`StudyComparisonSettings.allFiveLetters`). `nil` — the default,
+    /// and what every production caller uses — reads the switch from
+    /// `UserDefaults` at view-model construction, which is the behaviour
+    /// an untouched device has always had.
+    ///
+    /// Injected for the same reason `trainedSubset` and `studyMode` are:
+    /// the switch changes `visibleLetterNames`, so a test that drove it
+    /// through the global key would present a five-letter practice pool
+    /// to every other test running in parallel (Swift Testing runs
+    /// suites concurrently — see `LetterWeightFallbackTests`' header for
+    /// what that cost when it happened for real). Tests that mean to
+    /// exercise the switch set it here, where no other test can see it.
+    var allFiveLetters: Bool?
     var schriftArt: SchriftArt
     var letterOrdering: LetterOrderingStrategy
     var enablePaperTransfer: Bool
@@ -109,6 +123,10 @@ struct TracingDependencies {
         audioCondition: PilotAudioCondition = .defaultForInstall,
         // Third axis, same assignment shape (independent UUID byte).
         trainedSubset: TrainedLetterSubset = .defaultForInstall,
+        // `nil` = read `StudyComparisonSettings.allFiveLetters` at VM
+        // init, i.e. the device's own setting. Tests inject a value so
+        // the global key is never written.
+        allFiveLetters: Bool? = nil,
         schriftArt: SchriftArt = {
             if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.primae.selectedSchriftArt")
                 ?? UserDefaults.standard.string(forKey: "selectedSchriftArt") {
@@ -177,6 +195,7 @@ struct TracingDependencies {
         self.thesisCondition = thesisCondition
         self.audioCondition = audioCondition
         self.trainedSubset = trainedSubset
+        self.allFiveLetters = allFiveLetters
         self.schriftArt = schriftArt
         self.letterOrdering = letterOrdering
         self.enablePaperTransfer = enablePaperTransfer

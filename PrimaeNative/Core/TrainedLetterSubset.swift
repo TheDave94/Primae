@@ -11,12 +11,30 @@
 // deterministic UUID-byte assignment (its own decorrelated byte),
 // researcher override in `ParticipantStore`, captured as `let` at VM
 // init, stamped on every `PhaseSessionRecord`, exported per row.
+//
+// TWO SETS, ONE TYPE, AND WHY THEY DIVERGED (2026-09-17). This type
+// used to carry exactly one meaning: "the 3 letters this participant
+// trains". The `allFiveLetters` comparison switch
+// (`StudyComparisonSettings`) broke that identity — under it the
+// session practises all five while the ASSIGNMENT is still a 3-subset,
+// and the row stamped the assignment as though it were the training
+// record. Every exported row then asserted the child was untrained on
+// two letters the child had in fact practised, and the post-test
+// offered those same two letters as the "untrained" probe: the
+// contrast the study rests on was fabricated by its own bookkeeping.
+// The fix is the `allFive` case below, so the type can say "all five
+// trained, no untrained complement" instead of asserting a 3-subset
+// that is no longer what happened. `allFive` is deliberately NOT one
+// of the ten assignment buckets — see `allSubsets`.
 
 import Foundation
 
-/// One of the C(5,3) = 10 possible trained 3-subsets of the study set.
-/// `rawValue` is the canonical sorted concatenation (e.g. "AFI") —
-/// the CSV export keys on it, so it must stay stable.
+/// Either one of the C(5,3) = 10 possible trained 3-subsets of the
+/// study set, or the all-five case that the `allFiveLetters` comparison
+/// switch produces. `rawValue` is the canonical sorted concatenation —
+/// "AFI" (3, one of the ten assignment buckets) or "AFILM" (5, the
+/// comparison configuration, never assigned) — and the CSV export keys
+/// on it, so it must stay stable.
 struct TrainedLetterSubset: RawRepresentable, Codable, Equatable, Hashable, Sendable {
     let rawValue: String
 
@@ -29,6 +47,12 @@ struct TrainedLetterSubset: RawRepresentable, Codable, Equatable, Hashable, Send
     /// All 10 subsets in deterministic lexicographic order — index i of
     /// this array is what the UUID-modulo assignment selects, so the
     /// order is load-bearing for reproducibility. Do not reorder.
+    ///
+    /// EXACTLY TEN, ALWAYS. `assign` indexes this array by
+    /// `byte % count`, so an eleventh entry would not merely add a
+    /// bucket — it would change which subset EVERY participant is
+    /// assigned. The all-five comparison case is therefore a separate
+    /// static (`allFive`), never an element here.
     static let allSubsets: [TrainedLetterSubset] = {
         var result: [TrainedLetterSubset] = []
         let l = studyLetters
@@ -42,15 +66,38 @@ struct TrainedLetterSubset: RawRepresentable, Codable, Equatable, Hashable, Send
         return result
     }()
 
+    /// "AFILM" — every study letter trained. The `allFiveLetters`
+    /// comparison configuration's trained set, and the value stamped on
+    /// every row of a session run under that switch.
+    ///
+    /// Its purpose is to be DISTINGUISHABLE in the export from a real
+    /// 3-subset run. It is: every assigned value is exactly 3 characters
+    /// drawn from the ten above, this one is 5 and is in no assignment
+    /// bucket, and `untrainedLetters` on it is EMPTY — so an analysis
+    /// that partitions trained from untrained reads "no untrained
+    /// letter" rather than a fabricated pair. A run under the switch is
+    /// a comparison run, not pilot data, and the row now says so in the
+    /// same column the pilot rows use.
+    static let allFive = TrainedLetterSubset(validated: studyLetters.joined())
+
     /// Internal non-validating init for the canonical enumeration.
     private init(validated: String) { self.rawValue = validated }
 
-    /// Failable public init — accepts only one of the 10 canonical
-    /// subsets (letters sorted, all from the study set). A stored
-    /// override or record carrying anything else decodes to nil and
-    /// falls back to derivation, same shape as the arm enums.
+    /// Failable public init — accepts one of the 10 canonical 3-subsets
+    /// or the all-five case. A stored override or record carrying
+    /// anything else decodes to nil and falls back to derivation, same
+    /// shape as the arm enums.
+    ///
+    /// `allFive` is accepted so an exported "AFILM" round-trips through
+    /// this type rather than decoding to nil — the exporter's
+    /// derived-post-test pass (`ParentDashboardExporter
+    /// .derivedTrainedPostTestIndices`) re-reads the column through this
+    /// initialiser, and a nil there would silently drop the post-test
+    /// tag from every letter of an all-five run. A researcher override
+    /// of "AFILM" is likewise meaningful rather than inert.
     init?(rawValue: String) {
-        guard Self.allSubsets.contains(where: { $0.rawValue == rawValue }) else { return nil }
+        guard Self.allSubsets.contains(where: { $0.rawValue == rawValue })
+                || rawValue == Self.allFive.rawValue else { return nil }
         self.rawValue = rawValue
     }
 
@@ -58,11 +105,24 @@ struct TrainedLetterSubset: RawRepresentable, Codable, Equatable, Hashable, Send
     /// filtering against `LetterAsset.baseLetter`.
     var letters: Set<String> { Set(rawValue.map(String.init)) }
 
-    /// The 2 study letters this participant does NOT train — the
+    /// The study letters this participant does NOT train — the
     /// within-child post-test baseline.
+    ///
+    /// EMPTY under `allFive`: there is no untrained letter to be the
+    /// baseline, and this property says so rather than inventing the two
+    /// the assignment axis happens to name. This is the single point the
+    /// post-test gate and the researcher UI both read, so neither can
+    /// offer an "untrained" letter that was trained.
     var untrainedLetters: Set<String> { Set(Self.studyLetters).subtracting(letters) }
 
-    /// Proctor-facing label, e.g. "A · F · I".
+    /// Whether this is the all-five comparison case rather than one of
+    /// the ten assignment buckets. Callers that must refuse a
+    /// within-child contrast (the post-test gate, the researcher UI)
+    /// branch on `untrainedLetters.isEmpty` instead — the state, not the
+    /// label — but this is what makes the case legible in the record.
+    var isAllFive: Bool { self == .allFive }
+
+    /// Proctor-facing label, e.g. "A · F · I", or all five.
     var displayName: String { rawValue.map(String.init).joined(separator: " · ") }
 
     /// Deterministically assign a participant to a trained subset from

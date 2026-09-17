@@ -174,8 +174,11 @@ struct ParentDashboardExporter {
         // `recognition_confidence_raw` is the pre-calibration softmax
         // probability, used to quantify the calibrator's effect.
         // `audioCondition` (pilot audio arm), `trainedSubset` (the
-        // participant's trained 3-of-5 letters, e.g. "AFI" — partition
-        // trained vs untrained per row), and `phaseDurationSeconds`
+        // letters trained in that row's session — a 3-of-5 value like
+        // "AFI" for a pilot run, or "AFILM" for an all-five comparison
+        // run, in which case there is no untrained complement to
+        // partition against; see `PhaseSessionRecord.trainedSubset`),
+        // and `phaseDurationSeconds`
         // (freeWrite measured-phase time: first-to-last raw sample,
         // excluding the trailing 2.0 s quiet-window auto-advance) are
         // appended last, newest-last, so the legacy column order is
@@ -732,6 +735,17 @@ struct ParentDashboardExporter {
     /// `records` must be chronological (both callers filter from the
     /// append-ordered on-disk array without re-sorting) — "last" here
     /// means latest in that order, which `enumerated()` preserves.
+    ///
+    /// Reads the `trainedSubset` column, which is the SESSION's trained
+    /// set (`TracingViewModel.effectiveTrainedSubset`), not the
+    /// participant's assignment. Under the `allFiveLetters` comparison
+    /// switch that column is "AFILM" — the all-five case of
+    /// `TrainedLetterSubset` — so this derivation tags all five letters'
+    /// final training pass, which is correct there: with no untrained
+    /// letter, every letter's post-test IS its own last training
+    /// freeWrite. `TrainedLetterSubset.init?(rawValue:)` accepts that
+    /// value for this reason; a nil here would have dropped the tag from
+    /// every letter of an all-five run.
     private static func derivedTrainedPostTestIndices(in records: [PhaseSessionRecord]) -> Set<Int> {
         var lastIndexPerLetter: [String: Int] = [:]
         for (i, rec) in records.enumerated() {

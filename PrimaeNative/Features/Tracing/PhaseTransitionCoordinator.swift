@@ -223,7 +223,11 @@ final class PhaseTransitionCoordinator {
             recognition: m.recognition,   // computed above; was dropped (audit 2026-09-04)
             inputDevice: traceInputDevice() ?? vm.detector.effectiveKind.rawValue,
             rawTraceID: m.traceID,
-            trainedSubset: vm.trainedSubset.rawValue,
+            // The letters this SESSION trained, not the assignment axis
+            // (2026-09-17) — under `allFiveLetters` the two differ, and
+            // stamping the assignment made the row claim the child was
+            // untrained on two letters the child had practised.
+            trainedSubset: vm.effectiveTrainedSubset.rawValue,
             phaseDurationSeconds: m.duration,
             frechetDistance: nil,
             checkpointCoverage: m.coverage,
@@ -430,7 +434,11 @@ final class PhaseTransitionCoordinator {
                 // finger-written letter (audit 2026-09-05).
                 inputDevice: isFreeWrite ? (traceInputDevice() ?? device) : device,
                 rawTraceID: isFreeWrite ? m.traceID : nil,
-                trainedSubset: vm.trainedSubset.rawValue,
+                // Same correction as the incomplete-row stamp above:
+                // this column says which letters the CHILD trained, so it
+                // reads the session's trained set, not the assignment
+                // axis. Identical value with the comparison switch off.
+                trainedSubset: vm.effectiveTrainedSubset.rawValue,
                 phaseDurationSeconds: isFreeWrite ? m.duration : nil,
                 frechetDistance: nil,
                 checkpointCoverage: isFreeWrite ? m.coverage : nil,

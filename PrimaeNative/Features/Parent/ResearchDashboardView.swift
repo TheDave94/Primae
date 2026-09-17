@@ -129,11 +129,21 @@ struct ResearchDashboardView: View {
             Text("\(vm.audioCondition.displayName) · \(vm.thesisCondition.displayName)")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(Color.inkSoft)
-            // Third axis, for proctor handoff checks: which 3 of the 5
-            // study letters this participant trains.
-            Text("Trainiert: \(vm.trainedSubset.displayName)")
+            // Third axis, for proctor handoff checks: which of the 5
+            // study letters this SESSION trains. Normally the assigned
+            // 3-subset; all five under the `allFiveLetters` comparison
+            // switch, in which case the assignment axis is shown
+            // alongside so the proctor can still read it off — the
+            // assignment still decides the counterbalancing, it just is
+            // no longer what the child practised.
+            Text("Trainiert: \(vm.effectiveTrainedSubset.displayName)")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(Color.inkSoft)
+            if vm.effectiveTrainedSubset.isAllFive {
+                Text("Zuweisung (Zähler-Achse, nicht der Übungsumfang): \(vm.trainedSubset.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+            }
             Text(ParticipantStore.participantId.uuidString)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Color.inkSoft)
@@ -512,6 +522,16 @@ struct ResearchDashboardView: View {
     /// normal practice pool by design). Tapping one starts a single COLD
     /// `freeWrite` pass (see `startPostTest(letter:)`) and leaves the
     /// parent area so the child sees the tracing canvas directly.
+    /// The study letters this SESSION did not train — the post-test's
+    /// whole population. Empty when the session trained all five (the
+    /// `allFiveLetters` comparison switch), which is exactly the
+    /// condition the section below renders honestly instead of claiming
+    /// a contrast. One owner, read by the count and the button list
+    /// alike, so the prose and the buttons cannot disagree.
+    private var untrainedForThisSession: Set<String> {
+        vm.effectiveTrainedSubset.untrainedLetters
+    }
+
     private var postTestSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Three cold probes (2026-09-04): pretest and delayed test on
@@ -525,10 +545,24 @@ struct ResearchDashboardView: View {
 
             sectionHeader(title: "Post-Test (ungeübte Buchstaben)",
                           subtitle: "Einmaliger, ungeübter Schreibversuch — kein Vorführen, kein Nachspuren")
-            Text("Diese \(vm.trainedSubset.untrainedLetters.count) Buchstaben hat das Kind NICHT geübt. Ein Antippen startet direkt einen einzigen freien Schreibversuch — Anschauen- und Nachspuren-Phase werden übersprungen, da sie selbst bereits Übung wären. Der Post-Test der drei geübten Buchstaben ist die Selbst-schreiben-Phase ihres letzten Durchgangs.")
-                .font(.caption)
-                .foregroundStyle(Color.inkSoft)
-            probeButtons(kind: .posttest, letters: Array(vm.trainedSubset.untrainedLetters).sorted())
+            // Reads the SESSION's untrained set, not the assignment axis
+            // (2026-09-17). Under the `allFiveLetters` comparison switch
+            // the assignment still names a 3-subset while the child
+            // trained all five, so this section used to print "Diese 2
+            // Buchstaben hat das Kind NICHT geübt" and offer exactly
+            // those two trained letters as the untrained probe. The
+            // count and the buttons now come from the same set the
+            // export stamps.
+            if untrainedForThisSession.isEmpty {
+                Text("In dieser Sitzung wurden ALLE FÜNF Buchstaben geübt (Vergleichseinstellung „Alle fünf Buchstaben üben“). Es gibt damit keinen ungeübten Buchstaben und keinen Post-Test: der Vergleich geübt/ungeübt, auf dem die Auswertung aufbaut, ist in dieser Konfiguration nicht verfügbar. Die Daten dieser Sitzung sind ein Vergleichslauf — die Spalte „trainedSubset“ weist sie als „AFILM“ aus, nicht als 3er-Teilmenge.")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+            } else {
+                Text("Diese \(untrainedForThisSession.count) Buchstaben hat das Kind NICHT geübt. Ein Antippen startet direkt einen einzigen freien Schreibversuch — Anschauen- und Nachspuren-Phase werden übersprungen, da sie selbst bereits Übung wären. Der Post-Test der geübten Buchstaben ist die Selbst-schreiben-Phase ihres letzten Durchgangs.")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+                probeButtons(kind: .posttest, letters: Array(untrainedForThisSession).sorted())
+            }
 
             sectionHeader(title: "Nachtest (verzögert, alle fünf Buchstaben)",
                           subtitle: "Wochen später, auf dem wiederhergestellten Teilnehmer (siehe „Teilnehmer wiederherstellen“)")
