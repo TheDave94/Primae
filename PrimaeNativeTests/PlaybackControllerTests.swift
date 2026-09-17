@@ -62,17 +62,53 @@ final class Box<T> {
         #expect(isPlaying.value == false)
     }
 
-    @Test func playIntentDebounce_coalescesRapidBurst() {
-        // Fire 5 play-intents in quick succession; expect exactly 1 audible play.
+    /// The dedup window coalesces only what is ALREADY SOUNDING.
+    ///
+    /// Rewritten 2026-09-17. This test used to fire five idle/active
+    /// cycles and assert `playCount <= 2` — pinning the window as
+    /// swallowing plays for a STOPPED engine too. That is the behaviour a
+    /// supervisor's device review reported as "alle sounds müssen
+    /// spielen": a play intent arriving inside the window on a silent
+    /// engine was deferred to the end of the window, and only fired if
+    /// the machine was still active by then. A stroke that both began and
+    /// ended inside the window therefore never sounded at all, and one
+    /// that outlived it started up to 100 ms late — their "Latenz?".
+    /// A, F and L are the multi-stroke study letters, so this was the
+    /// ordinary cadence of three of the five.
+    ///
+    /// What the window is still FOR is the other case, tested second
+    /// below: repeated play intents within a single stroke, where the
+    /// sound is already running and a fresh `audio.play()` is pure churn.
+    ///
+    /// Uses `apply` directly rather than `request` so the two cases are
+    /// distinguished by engine state alone, with no dependence on how the
+    /// state machine folds repeated transitions.
+    @Test func playIntentWindow_coalescesWhileSounding_only() {
+        let (c, audio, _) = make()
+        c.apply(.play)
+        #expect(audio.playCount == 1)
+        // Still sounding: a second intent inside the window is churn.
+        c.apply(.play)
+        #expect(audio.playCount == 1,
+                "a play intent while the engine is already sounding must be swallowed; got \(audio.playCount)")
+        // Pen up, then pen down — the engine is silent now, so the sound
+        // must start at once: no deferral, and no dropped stroke.
+        c.apply(.stop)
+        c.apply(.play)
+        #expect(audio.playCount == 2,
+                "a play intent while the engine is SILENT must start sound immediately; got \(audio.playCount)")
+    }
+
+    /// The multi-stroke cadence: every pen-down must sound, even inside
+    /// one dedup window. This is the regression the rewrite above closes.
+    @Test func playIntentWindow_neverSwallowsAStrokeStart() {
         let (c, audio, _) = make()
         for _ in 0..<5 {
-            c.request(.idle, immediate: true)
-            c.request(.active, immediate: true)
+            c.apply(.stop)
+            c.apply(.play)
         }
-        // The first cycle plays; subsequent ones are inside the 0.1s dedup window,
-        // so audio.playCount should NOT grow to 5.
-        #expect(audio.playCount <= 2,
-                "Play-intent dedup should coalesce rapid bursts; got \(audio.playCount)")
+        #expect(audio.playCount == 5,
+                "every stroke start must sound, even inside the dedup window; got \(audio.playCount)")
     }
 
     @Test func activeWithoutResumeIntent_doesNotPlay() {

@@ -121,52 +121,49 @@ final class PlaybackController {
     /// Whether the last command this controller issued to the engine was
     /// a play (true) or a stop (false).
     private var audioIsRunning = false
-    /// A play that the dedup window swallowed while the engine was
-    /// STOPPED. The window exists to coalesce rapid stop/play cycles
-    /// into one `audio.play()`; dropping the play outright left a stroke
-    /// that outlived the window silent with `isPlaying` true (class two,
-    /// 2026-09-05). Deferred to the end of the window instead, and fired
-    /// only if the machine is still active and the engine still silent.
-    private var deferredPlay: Task<Void, Never>?
-
     func apply(_ cmd: PlaybackStateMachine.Command) {
         switch cmd {
         case .play:
             let now = CACurrentMediaTime()
             let sinceLast = now - lastPlayIntentWallTime
-            if sinceLast < playIntentDebounceSeconds {
+            // Coalesce ONLY what is already sounding (2026-09-17).
+            //
+            // A play intent that arrives while the engine is running is
+            // redundant — the sound is already there — so swallowing it
+            // costs nothing and is what the window is for.
+            //
+            // A play intent that arrives while the engine is SILENT is not
+            // a burst, it is a stroke beginning: the child lifted the pen
+            // and has touched down again. Deferring that one to the end of
+            // the window is audible in two ways, both reported from the
+            // supervisor's device review:
+            //   - it withholds sound for up to `playIntentDebounceSeconds`
+            //     at the start of every stroke that follows a lift by less
+            //     than that (their "Latenz?"), and
+            //   - the deferred play it scheduled only fired if the machine
+            //     was STILL active when the window elapsed, so a stroke
+            //     that both began and ended inside the window was silent
+            //     for its whole duration (their "alle sounds müssen
+            //     spielen").
+            // The second is a dropped sound, not a late one — which is why
+            // this is a defect fix and not a tuning change. A, F and L are
+            // the multi-stroke study letters, so this is the ordinary
+            // cadence of three of the five.
+            if sinceLast < playIntentDebounceSeconds, audioIsRunning {
                 onIsPlayingChanged(true)
-                if !audioIsRunning { scheduleDeferredPlay(after: playIntentDebounceSeconds - sinceLast) }
                 return
             }
-            deferredPlay?.cancel(); deferredPlay = nil
             lastPlayIntentWallTime = now
             reloadBeforePlay?()
             audio.play()
             audioIsRunning = true
             onIsPlayingChanged(true)
         case .stop:
-            deferredPlay?.cancel(); deferredPlay = nil
             audio.stop()
             audioIsRunning = false
             onIsPlayingChanged(false)
         case .none:
             break
-        }
-    }
-
-    private func scheduleDeferredPlay(after delay: TimeInterval) {
-        deferredPlay?.cancel()
-        let sleeper = sleep
-        deferredPlay = Task { [weak self] in
-            try? await sleeper(.seconds(max(0, delay)))
-            guard !Task.isCancelled, let self,
-                  self.machine.state == .active, !self.audioIsRunning else { return }
-            self.lastPlayIntentWallTime = CACurrentMediaTime()
-            self.reloadBeforePlay?()
-            self.audio.play()
-            self.audioIsRunning = true
-            self.onIsPlayingChanged(true)
         }
     }
 
@@ -235,7 +232,6 @@ final class PlaybackController {
     /// Cancel any in-flight debounced transition AND any pending audio
     /// lifecycle work (AVAudioSession deactivation etc.).
     func cancelPending() {
-        deferredPlay?.cancel(); deferredPlay = nil
         pendingTransition?.cancel()
         pendingTransition = nil
         pendingTarget = nil
