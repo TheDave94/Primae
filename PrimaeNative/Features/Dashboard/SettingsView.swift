@@ -20,6 +20,7 @@ struct SettingsView: View {
     @State private var comparisonCycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions
     @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
     @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
+    @State private var comparisonPanning: Bool = StudyComparisonSettings.panningEnabled
     @State private var speechRate: Float = {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
         return stored > 0 ? stored : 0.42
@@ -264,8 +265,7 @@ struct SettingsView: View {
                         Text("2").tag(2)
                         Text("3").tag(3)
                     }
-                    .disabled(true)
-                    .accessibilityHint("Noch nicht wirksam — die Wiederholung eines Buchstabens ändert die Abfolge der Sitzung, nicht nur eine Anzeige, und wird als eigener Schritt umgesetzt.")
+                    .accessibilityHint("Wie oft der komplette Ablauf eines Buchstabens läuft, bevor die Studienleitung weiterschaltet. Nach jeder Wiederholung wird derselbe Buchstabe erneut vorgemacht und nachgefahren; jede Wiederholung wird als eigener Datensatz geschrieben. 1 ist die Vorgabe.")
 
                     Toggle("Alle Konditionen durchlaufen", isOn: Binding(
                         get: { comparisonCycleAllConditions },
@@ -275,7 +275,7 @@ struct SettingsView: View {
                             vm.markAssignmentOverrideChanged()
                         }))
                     .disabled(true)
-                    .accessibilityHint("Noch nicht wirksam — der Wechsel der Bedingung mitten in der Sitzung wird als eigener Schritt umgesetzt.")
+                    .accessibilityHint("Noch nicht wirksam. Ein Wechsel der Audio-Bedingung mitten in der Sitzung verlangt, dass die Arm-Autorität (C3-2: für den stillen Arm darf kein Audiosignal entstehen) nachträglich veränderbar wird. Das ist die Absicherung, auf der die Manipulation beruht — bewusst nicht angefasst.")
 
                     Toggle("Startpunkte anzeigen (Anschauen/Nachspuren)", isOn: Binding(
                         get: { comparisonGuidedDotsVisible },
@@ -285,6 +285,15 @@ struct SettingsView: View {
                             vm.markAssignmentOverrideChanged()
                         }))
                     .accessibilityHint("Ein ist die Vorgabe. Aus zeichnet die Startpunkte weiter, lässt aber keine Tippeingabe darauf zu — die Frage, ob die Punkte nur gesehen werden sollen.")
+
+                    Toggle("Panning (Stereo-Ortung)", isOn: Binding(
+                        get: { comparisonPanning },
+                        set: {
+                            comparisonPanning = $0
+                            StudyComparisonSettings.panningEnabled = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Ein ist die Vorgabe. Aus hält die Stereo-Ortung auf der Mitte, sodass die Sitzung auch über einen Lautsprecher funktioniert — die Anforderung \"Kopfhörer angeschlossen\" entfällt damit. Die Tonhöhen-Achse des Raumklang-Arms bleibt unverändert.")
 
                     Stepper(value: Binding(
                         get: { comparisonPresentationSpacing },
@@ -305,6 +314,7 @@ struct SettingsView: View {
                         comparisonLetterRepeatCount = StudyComparisonSettings.letterRepeatCount
                         comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
                         comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
+                        comparisonPanning = StudyComparisonSettings.panningEnabled
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
                         vm.markAssignmentOverrideChanged()
                     }

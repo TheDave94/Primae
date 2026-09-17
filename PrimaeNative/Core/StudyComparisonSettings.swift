@@ -105,6 +105,30 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(max(0, newValue), forKey: presentationSpacingKey) }
     }
 
+    /// Whether the trace coupling drives stereo pan. The supervisor's
+    /// "auch ohne Panning".
+    ///
+    /// ON is the current behaviour and the default. OFF holds the bias at
+    /// zero for the whole session, which makes the sound arms usable over
+    /// a LOUDSPEAKER — the axis the thesis says is meaningless without
+    /// headphones ("the pan axis is meaningless over a loudspeaker, the
+    /// spatial arm requires headphones", 04-implementation.typ:44), and
+    /// which `06-evaluation.typ:56` lists as a per-device precondition
+    /// ("headphones are connected, since the pan axis of both sound arms
+    /// and the pitch axis of the spatial arm are otherwise degraded or
+    /// void"). Turning it off therefore removes a precondition rather than
+    /// satisfying one: it is a comparison configuration, and the arms stop
+    /// being matched on the axis 04-implementation.typ:66 declares them
+    /// matched on.
+    ///
+    /// The pitch axis is untouched — the spatial arm is still the spatial
+    /// arm. Only pan goes.
+    static let panningEnabledKey = prefix + "panningEnabled"
+    static var panningEnabled: Bool {
+        get { boolValue(panningEnabledKey, default: true) }
+        set { UserDefaults.standard.set(newValue, forKey: panningEnabledKey) }
+    }
+
     /// Whether the tracing phases draw the stroke start dots at all. The
     /// supervisor's "Punkte rausschmeißen" (throw the dots out) against
     /// "Punkte nur sehen?" (only see them) — the pair is drawn-vs-not,
@@ -130,7 +154,8 @@ enum StudyComparisonSettings {
     static func resetToDefaults() {
         for key in [observePassesKey, spokenFeedbackKey, allFiveLettersKey,
                     letterRepeatCountKey, cycleAllConditionsKey,
-                    presentationSpacingKey, guidedDotsVisibleKey] {
+                    presentationSpacingKey, guidedDotsVisibleKey,
+                    panningEnabledKey] {
             UserDefaults.standard.removeObject(forKey: key)
         }
     }

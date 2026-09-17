@@ -351,7 +351,18 @@ final class TouchDispatcher {
         let azimuthBias = vm.pencilPressure != nil ? cos(vm.pencilAzimuth) * 0.2 : 0
         // Pan follows absolute x across the whole canvas (not the
         // active cell), so a right-hand cell sounds from the right.
-        let hBias = Float(max(-1.0, min(1.0, (canvasNormalized.x * 2.0 - 1.0) + azimuthBias)))
+        //
+        // Suppressed by the comparison switch (2026-09-17) — the
+        // supervisor's "auch ohne Panning". Zeroing the bias leaves the
+        // rate coupling AND the spatial arm's pitch drive untouched, so
+        // each arm stays itself and only the pan axis goes. Applied at the
+        // CALL SITE rather than inside `AudioEngine`, whose
+        // `setAdaptivePlayback` is the shared three-parameter seam the arms
+        // are matched through — and which is on the DO-NOT list.
+        let rawBias = StudyComparisonSettings.panningEnabled
+            ? (canvasNormalized.x * 2.0 - 1.0) + azimuthBias
+            : 0
+        let hBias = Float(max(-1.0, min(1.0, rawBias)))
         vm.audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
         // Spatial arm only: pen Y additionally drives the carrier pitch

@@ -819,6 +819,14 @@ public final class TracingViewModel {
     /// alle 5 Buchstaben? Aber jeder Buchstabe nur einmal?", offered as a
     /// comparison rather than adopted as the design.
     private let allFiveLetters = StudyComparisonSettings.allFiveLetters
+    /// How many times each letter's full four-phase flow runs before the
+    /// proctor advances. 1 unless the comparison switch says otherwise —
+    /// the supervisor's "Buchstabe dreimal?".
+    private let letterRepeatCount = StudyComparisonSettings.letterRepeatCount
+    /// Passes completed for the CURRENT letter. Reset when the letter
+    /// changes and by `repeatCurrentLetterIfConfigured` when the count is
+    /// exhausted.
+    private var letterPasses = 1
     /// Idempotency key for `reloadStrokeCheckpoints`. Reset when source
     /// data changes (e.g. calibration save).
     private var lastCheckpointKey: CheckpointBuildKey?
@@ -1441,6 +1449,7 @@ public final class TracingViewModel {
     var allLetterNames: [String] { letters.map(\.name) }
 
     func nextLetter() {
+        letterPasses = 1
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? -1
@@ -1452,6 +1461,7 @@ public final class TracingViewModel {
     }
 
     func previousLetter() {
+        letterPasses = 1
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? 0
@@ -1462,6 +1472,33 @@ public final class TracingViewModel {
         toast("Buchstabe: \(currentLetterName)")
     }
 
+    /// Restart the CURRENT letter from observe when the comparison switch
+    /// asks for more than one pass per letter — the supervisor's
+    /// "Buchstabe dreimal?". Returns true when it restarted, so the caller
+    /// can skip what it would otherwise do next.
+    ///
+    /// Advancement BETWEEN letters stays a proctor action
+    /// (06-evaluation.typ:15); this only repeats the letter the proctor is
+    /// already on, and only while the switch is on. At the default of 1 it
+    /// returns false immediately and nothing changes.
+    ///
+    /// Safe against the abandonment-row path: `load(letter:)` calls
+    /// `recordUnloadOfCurrentLetter` for the OUTGOING letter first, and
+    /// that returns early when `phaseController.isLetterSessionComplete`
+    /// (PhaseTransitionCoordinator:194) — which it is, the letter having
+    /// just completed. So a repeat cannot manufacture a `completed: false`
+    /// row for a letter that in fact finished.
+    @discardableResult
+    func repeatCurrentLetterIfConfigured() -> Bool {
+        guard letterRepeatCount > 1, letterPasses < letterRepeatCount,
+              letters.indices.contains(letterIndex) else { return false }
+        letterPasses += 1
+        resetLetter()
+        load(letter: letters[letterIndex])
+        toast("Buchstabe \(currentLetterName) — \(letterPasses). von \(letterRepeatCount)")
+        return true
+    }
+
     /// Demo word list — Austrian Volksschule 1. Klasse Woche-1
     /// tracing words, ordered shortest → longest. Every word
     /// composes from letters in the demo bundle.
@@ -1470,6 +1507,7 @@ public final class TracingViewModel {
     ]
 
     func randomLetter() {
+        letterPasses = 1
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }
         let randomName = visible[Int.random(in: 0..<visible.count)]
