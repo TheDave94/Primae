@@ -46,8 +46,14 @@ struct SchuleWorldView: View {
                 .padding(.bottom, 86)
                 .shadow(color: Color.ink.opacity(0.08), radius: 18, y: 4)
 
-            if vm.learningPhase == .observe, !vm.isCalibrating {
-                observeOverlay
+            // The turn cue: eye while the letter is demonstrated, finger
+            // when the child acts. The DECISION lives on the view model as
+            // `phaseCue` so it is assertable — a view's structure is not,
+            // and this view had no test coverage at all.
+            switch vm.phaseCue {
+            case .watch: observeOverlay
+            case .act:   writingCueOverlay
+            case nil:    EmptyView()
             }
 
             // Post-freeWrite overlays serialise through the queue
@@ -444,8 +450,18 @@ struct SchuleWorldView: View {
         VStack {
             Spacer()
             HStack(spacing: 18) {
+                // EYE ONLY. The finger is not hidden here so much as MOVED
+                // to the phase where it is true — see `writingCueOverlay`.
+                //
+                // Reported from a supervisor's device review as "Auge und
+                // Finger", disambiguated by David 2026-09-17: the eye
+                // belongs to the phase where the letter is SHOWN, the
+                // finger to the phases where the CHILD acts. This pill
+                // showed both at once, so a child watching the
+                // demonstration was shown a finger telling them to write —
+                // and in study mode the tap does nothing anyway, so the
+                // gesture it invited was one the app deliberately refuses.
                 Text("👁️").font(.system(size: 36))
-                Text("👆").font(.system(size: 36))
             }
             .padding(.horizontal, 28).padding(.vertical, 16)
             .background(Color.brand, in: Capsule())
@@ -475,6 +491,41 @@ struct SchuleWorldView: View {
             ? "Die Animation läuft von selbst ab und die Phase wechselt danach. Tippen ist nicht nötig."
             : "Tippe, um zur nächsten Phase zu wechseln")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// The child's turn — the counterpart to `observeOverlay`'s eye.
+    ///
+    /// David 2026-09-17, disambiguating the supervisor's "Auge und Finger"
+    /// note: the eye belongs to the phase where the letter is SHOWN, the
+    /// finger to the phases where the CHILD acts. Shown here for the
+    /// numbered-dot phase ("Richtung lernen") and the tracing phase
+    /// ("Nachspuren").
+    ///
+    /// **`allowsHitTesting(false)` is load-bearing, not tidiness.**
+    /// `observeOverlay` covers the canvas with a `contentShape` and a tap
+    /// handler, which is harmless there because touches are disabled
+    /// during observe. In guided the child's finger IS the input, so an
+    /// interactive overlay at this position would swallow every trace and
+    /// break the scored phase. This line is the difference between a cue
+    /// and a broken phase.
+    ///
+    /// freeWrite deliberately gets NO cue: it withdraws all scaffolding by
+    /// design, and it is the scored phase. Worth stating because "Selbst
+    /// schreiben" reads like the strongest case FOR a finger — this is the
+    /// conservative choice, and it is one line to change if that reading
+    /// is the intended one.
+    private var writingCueOverlay: some View {
+        VStack {
+            Spacer()
+            Text("👆").font(.system(size: 36))
+                .padding(.horizontal, 28).padding(.vertical, 16)
+                .background(Color.brand, in: Capsule())
+                .shadow(color: Color.brand.opacity(0.30), radius: 12, y: 4)
+                .padding(.bottom, 100)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Bottom bar (phase dots + letter nav)

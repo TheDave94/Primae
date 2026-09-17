@@ -349,6 +349,41 @@ public final class TracingViewModel {
     /// produced.
     var showEndpointRing: Bool { phaseController.showCheckpoints }
 
+    /// Which turn cue the child sees, if any — the supervisor's "Auge und
+    /// Finger", disambiguated by David 2026-09-17: the eye belongs to the
+    /// phase where the letter is SHOWN, the finger to the phases where the
+    /// CHILD acts.
+    ///
+    /// Extracted here rather than left as a condition inside
+    /// `SchuleWorldView`, which had ZERO test coverage (audit 2026-09-17) —
+    /// a `some View`'s structure cannot be asserted, but a value can. This
+    /// is the same move `CanvasDrawPlan` makes for the canvas: the decision
+    /// becomes an ordinary comparison, so the rule cannot be broken by a
+    /// brace or a condition in the wrong place without a test noticing.
+    enum PhaseCue: Equatable {
+        /// 👁️ — the letter is being demonstrated; watch.
+        case watch
+        /// 👆 — it is the child's turn to act on the letter.
+        case act
+    }
+
+    /// `nil` means NO cue, which is a decision and not a gap:
+    ///
+    /// - `freeWrite` withdraws all scaffolding by design, and it is the
+    ///   SCORED phase. "Selbst schreiben" reads like the strongest case for
+    ///   a finger, so this is the conservative choice and worth stating.
+    /// - Calibration suppresses the cue for the same reason the canvas
+    ///   suppresses the guide dot: it would scan over the researcher's own
+    ///   edits.
+    var phaseCue: PhaseCue? {
+        guard !isCalibrating else { return nil }
+        switch learningPhase {
+        case .observe:              return .watch
+        case .direct, .guided:      return .act
+        case .freeWrite:            return nil
+        }
+    }
+
     /// What the tracing canvas should DRAW, decided in plain Swift.
     ///
     /// Extracted 2026-09-17 so the decisions are assertable without a
