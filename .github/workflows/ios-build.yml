@@ -306,6 +306,72 @@ jobs:
             /tmp/xcode-test.log
             /tmp/TestResults.xcresult
 
+  # Release-Study unit tests (2026-09-17). The xcode_test job above runs
+  # Debug-Study, and until this job existed that was the ONLY configuration
+  # the unit suite could compile under — so the configuration the pilot
+  # SHIPS (`-O`, DEBUG surfaces compiled out) had no automated unit coverage
+  # at all. That is the wrong way round: `-O` plus
+  # `.defaultIsolation(MainActor.self)` is the exact configuration of the
+  # known inliner crash (ROADMAP F11).
+  #
+  # It compiles and passes now; three blockers were fixed on 2026-09-17 (see
+  # that day's "make PrimaeNativeTests build and pass under Release-Study"
+  # commit, and the STUDY_BUILD build-config commit it depends on). This job
+  # is what keeps it that way — without something running it, the capability
+  # rots silently the next time a `#if DEBUG`-gated member or a
+  # `#if STUDY_BUILD` branch is added.
+  #
+  # ENABLE_TESTABILITY=YES is required because the test target uses
+  # `@testable import`. It exposes internal symbols WITHOUT changing
+  # optimisation, so the code under test is still the -O build; the shipped
+  # artefact is built separately by study_build with testability OFF.
+  release_study_tests:
+    name: "Release-Study unit tests (macos-26 / Xcode 26)"
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select Xcode 26.4
+        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+
+      - name: Show Xcode + Swift version
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Resolve Swift Package dependencies
+        run: |
+          xcodebuild -resolvePackageDependencies \
+            -project Primae/Primae.xcodeproj \
+            -scheme Primae
+
+      - name: Unit tests — Release-Study
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Primae/Primae.xcodeproj \
+            -scheme Primae \
+            -destination 'platform=iOS Simulator,name=iPad (A16),OS=latest' \
+            -configuration Release-Study \
+            -enableCodeCoverage NO \
+            -only-testing:PrimaeNativeTests \
+            ENABLE_TESTABILITY=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            ENABLE_DEBUG_DYLIB=NO \
+            -resultBundlePath /tmp/ReleaseStudyResults.xcresult \
+            2>&1 | tee /tmp/release-study-test.log
+
+      - name: Extract failure summary
+        if: failure()
+        run: |
+          ERRORS=$(grep -E "error:|#expect.*failed|XCTAssert.*failed|Test.*FAILED" \
+            /tmp/release-study-test.log 2>/dev/null \
+            | grep -v "^Binary" | head -15 \
+            || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+          printf '%s' "$ERRORS" > /tmp/ci_errors.txt
+          cat /tmp/ci_errors.txt
+
   study_build:
     name: "Study build — identity + compile-out verification (macos-26 / Xcode 26)"
     runs-on: macos-26
