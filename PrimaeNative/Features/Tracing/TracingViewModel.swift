@@ -1226,46 +1226,36 @@ public final class TracingViewModel {
                 if !Task.isCancelled { self.audio.stop() }
             }
         case .spatial:
-            let samples = PreTaskDemonstration.axisSweep(duration: duration)
-            guard !samples.isEmpty else {
-                // A FAULT, NOT A QUIET SKIP (C1-6) — symmetry with
-                // `.phoneme` (2026-09-17).
-                //
-                // The phoneme branch cannot reach its demonstration
-                // without a file: the carrier precondition and the
-                // phoneme precondition each refuse the session first, and
-                // the branch below logs a fault if it is somehow reached
-                // anyway. This branch had no such guarantee. `axisSweep`
-                // was the ONLY thing between the spatial arm and a
-                // demonstration that never plays, and returning here was
-                // silent: no sound, no on-screen signal, nothing in the
-                // record.
-                //
-                // For a study arm whose entire manipulation IS that sound,
-                // a silently-absent demonstration is a data-validity
-                // confound rather than a cosmetic gap — the session would
-                // run, record, and be analysed as though the spatial arm
-                // had been delivered. Refusing loudly costs nothing
-                // audible and cannot be mistaken for a delivered arm.
-                pilotAudioLogger.fault("Pre-task demonstration SKIPPED: axisSweep produced no samples for the spatial arm (duration \(duration, privacy: .public)s) — the arm's stimulus would be absent, so this is a fault and not a quiet skip.")
-                return
-            }
+            // NO AXIS SWEEP (2026-09-17). The spatial arm's pre-task
+            // demonstration used to be a scripted two-second point
+            // sweeping the canvas while the carrier's pitch followed its
+            // vertical leg and its pan followed the horizontal one — the
+            // "axis demonstration" of 04-implementation.typ:17. The
+            // supervisor's note was "Glissando weg": on the device it
+            // reads as the arm playing a high-low-high slide at the child
+            // before anything has been touched, and it is the most
+            // conspicuous thing about the arm.
+            //
+            // What is kept is the WINDOW, not the movement. The carrier
+            // sounds for the same `duration` at the neutral rate, centre
+            // pan and zero pitch, so this arm still runs a demonstration
+            // of the same length as the phoneme arm's — the duration
+            // match that 04-implementation.typ:17 and 06-evaluation.typ:62
+            // both rest on — while carrying no scripted glissando.
+            // Dropping the window as well would have made this arm's
+            // demonstration shorter than the phoneme arm's, which is the
+            // one thing the shared window exists to prevent.
+            //
+            // The tracing-time pitch mapping is untouched: pen Y still
+            // drives pitch in the guided phase through `TouchDispatcher`,
+            // and that is the arm's manipulation. Only the scripted
+            // pre-task sweep is gone.
+            audio.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+            audio.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
+            audio.setSpatialPitch(cents: 0)
             preTaskDemoTask = Task { [weak self] in
                 guard let self, !Task.isCancelled else { return }
-                self.audio.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
-                var previousElapsed: TimeInterval = 0
-                for sample in samples {
-                    if Task.isCancelled { break }
-                    let dt = sample.elapsed - previousElapsed
-                    if dt > 0 { try? await Task.sleep(for: .seconds(dt)) }
-                    previousElapsed = sample.elapsed
-                    if Task.isCancelled { break }
-                    self.audio.setAdaptivePlayback(
-                        speed: 1.0,
-                        horizontalBias: Float(max(-1.0, min(1.0, sample.point.x * 2.0 - 1.0))))
-                    self.audio.setSpatialPitch(
-                        cents: SpatialSonification.pitchCents(forNormalizedY: sample.point.y))
-                }
+                try? await Task.sleep(for: .seconds(duration))
                 if !Task.isCancelled { self.audio.stop() }
             }
         }

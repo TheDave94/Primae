@@ -67,6 +67,16 @@ enum PreTaskDemonstration {
     /// quarter-cycle out of phase so the two axes are audible moving
     /// independently rather than only together — a clearer axis
     /// demonstration than a straight diagonal would give.
+    ///
+    /// NO LONGER CALLED IN PRODUCTION (2026-09-17). The spatial arm's
+    /// pre-task demonstration stopped driving this when the scripted
+    /// sweep was removed on the supervisor's "Glissando weg" — see the
+    /// `.spatial` branch of `TracingViewModel.armPreTaskDemonstration`,
+    /// which now holds the carrier steady for the same two-second window
+    /// instead. The function and its tests are kept for one commit so the
+    /// removal of the call site can be verified by CI on its own before
+    /// the function itself is deleted; delete both together, not the
+    /// function alone.
     static func axisSweep(steps: Int = Self.sweepStepCount,
                           duration: TimeInterval = Self.duration) -> [SweepSample] {
         guard steps > 1, duration > 0 else { return [] }
