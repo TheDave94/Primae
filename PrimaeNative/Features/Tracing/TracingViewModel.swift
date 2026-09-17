@@ -127,7 +127,8 @@ public final class TracingViewModel {
                let fresh = rawGlyphStrokes, !fresh.strokes.isEmpty,
                fresh != animation.armedStrokes {
                 switch phaseController.currentPhase {
-                case .observe: animation.startAfterDelay(0.3, strokes: fresh)
+                case .observe: animation.startAfterDelay(0.3 + StudyComparisonSettings.presentationSpacingSeconds,
+                                                strokes: fresh)
                 case .guided:  animation.start(strokes: fresh)
                 case .direct, .freeWrite: break
                 }
@@ -298,7 +299,19 @@ public final class TracingViewModel {
 
     /// Whether stroke-start dots render in the current phase
     /// (Pearson & Gallagher 1983 GRRM).
-    var showCheckpoints: Bool { phaseController.showCheckpoints }
+    ///
+    /// Suppressed entirely when `StudyComparisonSettings.guidedDotsVisible`
+    /// is off — the supervisor's "Punkte rausschmeißen" against "Punkte
+    /// nur sehen?". Applied HERE rather than in `LearningPhaseController`
+    /// so the phase model stays a model: this is a device setting, not a
+    /// property of a phase. The Direct phase is unaffected by construction
+    /// — `phaseController.showCheckpoints` is already false there, because
+    /// that phase renders its own numbered overlay and would have nothing
+    /// left to tap if the dots went away.
+    var showCheckpoints: Bool {
+        guard phaseController.showCheckpoints else { return false }
+        return StudyComparisonSettings.guidedDotsVisible
+    }
 
     /// Phase-driven ghost-line visibility, composed with user toggle.
     /// observe + guided ON; direct + freeWrite OFF (direct uses the
@@ -791,8 +804,21 @@ public final class TracingViewModel {
     /// Internal (not private) so tests can drive `onCycleComplete`
     /// deterministically instead of waiting on real animation time.
     let animation: AnimationGuideController
-    /// Observe-phase cycle counter for auto-advance after the second loop.
+    /// Observe-phase cycle counter for auto-advance.
     private var observeCycleCount: Int = 0
+    /// Passes the observe demonstration makes before the phase advances.
+    /// One, unless `StudyComparisonSettings.observePasses` restores the
+    /// former two-pass behaviour for comparison — the supervisor's
+    /// "einmal vorzeigen (vielleicht etwas langsamer)" made one pass the
+    /// behaviour and this switch the way back to two.
+    private let observePasses = StudyComparisonSettings.observePasses
+    /// Whether this session practises all five study letters instead of
+    /// the counterbalanced three. Off by default; on makes every letter
+    /// trained, which removes the within-child trained/untrained
+    /// contrast the post-test rests on — the supervisor's "jedes Kind
+    /// alle 5 Buchstaben? Aber jeder Buchstabe nur einmal?", offered as a
+    /// comparison rather than adopted as the design.
+    private let allFiveLetters = StudyComparisonSettings.allFiveLetters
     /// Idempotency key for `reloadStrokeCheckpoints`. Reset when source
     /// data changes (e.g. calibration save).
     private var lastCheckpointKey: CheckpointBuildKey?
@@ -863,8 +889,21 @@ public final class TracingViewModel {
         self.letterRecognizer       = deps.letterRecognizer
         // Same studyMode silencing rationale as `haptics` above — and the
         // silent arm hears no speech or prompt in ANY mode (C3-2).
-        self.speech                 = (deps.studyMode || armIsSilent) ? NullSpeechSynthesizer() : deps.speech
-        self.prompts                = (deps.studyMode || armIsSilent) ? NullPromptPlayer() : deps.makePromptPlayer(deps.speech)
+        //
+        // The study-mode half is now switchable, on the supervisor's
+        // "Voiceover??" (2026-09-17): `StudyComparisonSettings
+        // .spokenFeedbackInStudy` restores the casual app's spoken
+        // feedback inside a study session so the two can be compared.
+        // Default OFF, i.e. the thesis behaviour ("no spoken prompts",
+        // 03-architecture.typ:73) — an untouched device is unchanged.
+        //
+        // The SILENT-ARM half stays unconditional and is evaluated first:
+        // that is the arm's authority (C3-2), not a display preference,
+        // and no comparison switch may put sound into the one arm whose
+        // entire manipulation is the absence of it.
+        let silenceSpeech = armIsSilent || (deps.studyMode && !StudyComparisonSettings.spokenFeedbackInStudy)
+        self.speech                 = silenceSpeech ? NullSpeechSynthesizer() : deps.speech
+        self.prompts                = silenceSpeech ? NullPromptPlayer() : deps.makePromptPlayer(deps.speech)
         // Control condition uses fixed difficulty so the manipulation
         // can't confound the phase-progression IV. Study devices pin
         // difficulty at the standard tier for the same reason — the
@@ -1605,7 +1644,7 @@ public final class TracingViewModel {
             // re-armed on every observe entry, and the guided phase no
             // longer drives the animator at all, so this counter can
             // only ever count observe cycles.
-            if self.observeCycleCount >= 1,
+            if self.observeCycleCount >= self.observePasses,
                self.phaseController.currentPhase == .observe {
                 self.completeObservePhase()
             }
@@ -1987,7 +2026,7 @@ public final class TracingViewModel {
             pool = letters
                 .filter {
                     studyBaseLetters.contains($0.baseLetter)
-                    && trainedSubset.letters.contains($0.baseLetter)
+                    && (allFiveLetters || trainedSubset.letters.contains($0.baseLetter))
                     && $0.letterCase == .upper
                 }
                 .map(\.name)
@@ -2331,7 +2370,8 @@ public final class TracingViewModel {
                 letterLoadTime = nil
             } else {
                 armObserveAutoAdvance()
-                animation.startAfterDelay(0.3, strokes: observeStrokes)
+                animation.startAfterDelay(0.3 + StudyComparisonSettings.presentationSpacingSeconds,
+                                              strokes: observeStrokes)
                 armPreTaskDemonstration(for: letter)
             }
         }

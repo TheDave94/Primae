@@ -8,6 +8,18 @@ struct SettingsView: View {
     @State private var conditionOverride: ThesisCondition? = ParticipantStore.conditionOverride
     @State private var audioConditionOverride: PilotAudioCondition? = ParticipantStore.audioConditionOverride
     @State private var trainedSubsetOverride: TrainedLetterSubset? = ParticipantStore.trainedSubsetOverride
+    // Comparison switches for the questions a supervisor left open on
+    // 2026-09-17 (see `StudyComparisonSettings`). Held as `@State` and
+    // written through, matching the pickers above rather than reading
+    // UserDefaults from the body. Every default is the current
+    // behaviour, so an untouched device is unchanged.
+    @State private var comparisonObservePasses: Int = StudyComparisonSettings.observePasses
+    @State private var comparisonSpokenFeedback: Bool = StudyComparisonSettings.spokenFeedbackInStudy
+    @State private var comparisonAllFiveLetters: Bool = StudyComparisonSettings.allFiveLetters
+    @State private var comparisonLetterRepeatCount: Int = StudyComparisonSettings.letterRepeatCount
+    @State private var comparisonCycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions
+    @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
+    @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
     @State private var speechRate: Float = {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
         return stored > 0 ? stored : 0.42
@@ -197,6 +209,107 @@ struct SettingsView: View {
                         }
                     }
                     .accessibilityHint("Nur für Studienleitung. Legt fest, welche 3 der 5 Studienbuchstaben dieses Kind übt, anstatt die automatische Zuweisung zu verwenden — für ausgewogenes Counterbalancing. Änderung wird beim nächsten App-Start wirksam.")
+                }
+
+                // COMPARISON MODE (2026-09-17). Each row is one question a
+                // supervisor left open rather than a decision, and each
+                // switch puts BOTH options within reach so they can be
+                // compared on the device. Defaults are the current
+                // behaviour in every case; nothing here changes anything
+                // until it is touched.
+                //
+                // A session run with any of these off-default is a
+                // COMPARISON run, not pilot data: rows record the session
+                // as normal but the configuration they were produced
+                // under is not the pre-specified one. The footer says so.
+                Section("Vergleichsmodus (Studienleitung)") {
+                    Picker("Vorzeigen", selection: Binding(
+                        get: { comparisonObservePasses },
+                        set: {
+                            comparisonObservePasses = $0
+                            StudyComparisonSettings.observePasses = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("Einmal").tag(1)
+                        Text("Zweimal").tag(2)
+                    }
+                    .accessibilityHint("Wie oft die Anschauen-Animation läuft, bevor die Phase weitergeht. Einmal ist die Vorgabe; zweimal stellt das frühere Verhalten wieder her. Der Durchlauf ist in beiden Fällen langsamer als früher.")
+
+                    Toggle("Sprachausgabe im Studienmodus", isOn: Binding(
+                        get: { comparisonSpokenFeedback },
+                        set: {
+                            comparisonSpokenFeedback = $0
+                            StudyComparisonSettings.spokenFeedbackInStudy = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: die Studie entfernt jede Sprachausgabe. Ein stellt die Sprech-Rückmeldung der normalen App wieder her, damit beide Optionen verglichen werden können.")
+
+                    Toggle("Alle fünf Buchstaben üben", isOn: Binding(
+                        get: { comparisonAllFiveLetters },
+                        set: {
+                            comparisonAllFiveLetters = $0
+                            StudyComparisonSettings.allFiveLetters = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: das Kind übt 3 der 5 Buchstaben, die anderen 2 bleiben für den Nachtest ungeübt. Ein lässt jedes Kind alle 5 üben — damit entfällt der Vergleich geübt/ungeübt.")
+
+                    Picker("Wiederholungen je Buchstabe", selection: Binding(
+                        get: { comparisonLetterRepeatCount },
+                        set: {
+                            comparisonLetterRepeatCount = $0
+                            StudyComparisonSettings.letterRepeatCount = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("1").tag(1)
+                        Text("2").tag(2)
+                        Text("3").tag(3)
+                    }
+                    .disabled(true)
+                    .accessibilityHint("Noch nicht wirksam — die Wiederholung eines Buchstabens ändert die Abfolge der Sitzung, nicht nur eine Anzeige, und wird als eigener Schritt umgesetzt.")
+
+                    Toggle("Alle Konditionen durchlaufen", isOn: Binding(
+                        get: { comparisonCycleAllConditions },
+                        set: {
+                            comparisonCycleAllConditions = $0
+                            StudyComparisonSettings.cycleAllConditions = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .disabled(true)
+                    .accessibilityHint("Noch nicht wirksam — der Wechsel der Bedingung mitten in der Sitzung wird als eigener Schritt umgesetzt.")
+
+                    Toggle("Startpunkte anzeigen (Anschauen/Nachspuren)", isOn: Binding(
+                        get: { comparisonGuidedDotsVisible },
+                        set: {
+                            comparisonGuidedDotsVisible = $0
+                            StudyComparisonSettings.guidedDotsVisible = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Ein ist die Vorgabe. Aus zeichnet die Startpunkte weiter, lässt aber keine Tippeingabe darauf zu — die Frage, ob die Punkte nur gesehen werden sollen.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonPresentationSpacing },
+                        set: {
+                            comparisonPresentationSpacing = $0
+                            StudyComparisonSettings.presentationSpacingSeconds = $0
+                            vm.markAssignmentOverrideChanged()
+                        }), in: 0...10, step: 0.5) {
+                        Text("Abstand zwischen Buchstaben: \(comparisonPresentationSpacing, specifier: "%.1f") s")
+                    }
+                    .accessibilityHint("Pause zwischen dem Ende eines Buchstabens und dem Beginn des nächsten. 0 ist die Vorgabe.")
+
+                    Button("Vergleichsmodus zurücksetzen", role: .destructive) {
+                        StudyComparisonSettings.resetToDefaults()
+                        comparisonObservePasses = StudyComparisonSettings.observePasses
+                        comparisonSpokenFeedback = StudyComparisonSettings.spokenFeedbackInStudy
+                        comparisonAllFiveLetters = StudyComparisonSettings.allFiveLetters
+                        comparisonLetterRepeatCount = StudyComparisonSettings.letterRepeatCount
+                        comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
+                        comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
+                        comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
+                        vm.markAssignmentOverrideChanged()
+                    }
+
+                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Änderungen werden beim nächsten App-Start wirksam.")
                 }
             }
             // Hidden on STUDY_BUILD (2026-09-04): the overlay this
