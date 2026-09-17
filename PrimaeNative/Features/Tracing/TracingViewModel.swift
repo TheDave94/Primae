@@ -126,11 +126,27 @@ public final class TracingViewModel {
             if animation.armedStrokes != nil,
                let fresh = rawGlyphStrokes, !fresh.strokes.isEmpty,
                fresh != animation.armedStrokes {
-                switch phaseController.currentPhase {
-                case .observe: animation.startAfterDelay(0.3 + presentationSpacing,
-                                                strokes: fresh)
-                case .guided:  animation.start(strokes: fresh)
-                case .direct, .freeWrite: break
+                // OBSERVE ONLY, and the narrowing is deliberate. `.guided`
+                // used to re-arm the demonstration here, which is exactly
+                // the supervisor's "beim nachfahren selbst kein Punkt": in
+                // guided the CHILD traces, and a guide dot running over
+                // their own attempt is a second, competing cue on the one
+                // phase that produces the scored trace.
+                //
+                // It was DEAD, not correct — and it is worth being precise
+                // about why, because the distinction decides whether this
+                // is testable. Guided entry calls `stop()`, and `stop()`
+                // nils `armedStrokes` (`AnimationGuideController.swift:149`)
+                // while the guard above requires it non-nil. So the branch
+                // could not fire, and NO TEST THROUGH THIS PATH CAN FAIL:
+                // the guard rejects the state before the phase is ever
+                // consulted. It is removed as a trap a later refactor
+                // could arm — not as a fix for a live defect, and
+                // deliberately without a test that would only look like
+                // evidence (audit 2026-09-17).
+                if phaseController.currentPhase == .observe {
+                    animation.startAfterDelay(0.3 + presentationSpacing,
+                                              strokes: fresh)
                 }
             }
         }
