@@ -201,22 +201,29 @@ For **each of the three trained letters** (the ones named on the
 "Aktiver Teilnehmer" card), in order:
 
 ### 4a · Observe (Anschauen)
-- The guide-dot animation runs for **two full cycles** (roughly 5–11
-  seconds depending on the letter — I, being short, is at the fast
-  end; M is slower). **Do not expect a tap to skip this** — under
-  study mode a tap does nothing here except start the parked launch
-  letter the very first time. It auto-advances on its own after both
-  cycles. If it seems stuck past ~15 seconds, that's a defect, not
-  patience being tested.
+- The guide-dot animation runs for **one pass** (roughly 6–14 seconds
+  depending on the letter — I, being short, is at the fast end; M is
+  slower). It plays at 0.4x, which is why a single pass is longer than
+  half of the two it replaced: the window grew about 25%, from ~5–11 s
+  to ~6–14 s. **Do not expect a tap to skip this** — under study mode a
+  tap does nothing here except start the parked launch letter the very
+  first time. It auto-advances on its own after the pass. If it seems
+  stuck past ~20 seconds, that's a defect, not patience being tested.
+  (The tripwire was ~15 s and had four seconds of headroom; the window
+  change left it about one, so it moved.)
 - **What plays, per arm, in the first ~2 seconds of this window:**
   - **Phonem:** the letter's own recorded sound, once (may loop
     briefly to fill the 2 s window on four of the five letters —
     that's expected, not a bug).
-  - **Raumklang:** a synthetic tone that sweeps — pitch high-to-low-
-    to-high while a point moves top-to-bottom-to-top on the canvas, then
-    the same tone panning left-right-left as a point moves
-    center-right-center-left-center. You should clearly hear pitch and
-    pan moving independently, not just together.
+  - **Raumklang:** a synthetic tone, STEADY. It holds the neutral rate at
+    centre pan and zero pitch for the 2 s window — no sweep. It used to
+    sweep the pitch and pan across the canvas; that was removed on
+    2026-09-17 ("Glissando weg"), because on the device it read as the
+    arm playing a high-low-high slide at the child before anything had
+    been touched. **Expect a plain held tone and nothing else.** What the
+    arm does with pitch and pan happens during the child's own tracing,
+    not here — the demonstration no longer teaches the mapping, only
+    occupies the same window as the phoneme arm's.
   - **Ohne Ton:** nothing added — just the guide-dot animation,
     silent, same length as the other two arms.
 - The demonstration is cancelled instantly if you touch the canvas

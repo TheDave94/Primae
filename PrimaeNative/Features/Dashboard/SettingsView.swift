@@ -319,7 +319,7 @@ struct SettingsView: View {
                         vm.markAssignmentOverrideChanged()
                     }
 
-                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung — während einer laufenden Sitzung lässt sich die Messung nicht mehr verändern.")
+                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung. Wird ein Schalter während einer laufenden Sitzung umgestellt, sperrt die App die Sitzung bis zum Neustart — die Meldung nennt dabei den Studienarm, obwohl nur eine Sitzungseinstellung geändert wurde; gemeint ist immer „bitte App neu starten“.")
                 }
             }
             // Hidden on STUDY_BUILD (2026-09-04): the overlay this

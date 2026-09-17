@@ -472,7 +472,7 @@ struct SchuleWorldView: View {
         }
         .accessibilityLabel("Beobachtungsphase")
         .accessibilityHint(vm.studyMode
-            ? "Die Animation läuft einmal. Tippen startet den Buchstaben; die Phase wechselt danach von selbst."
+            ? "Die Animation läuft von selbst ab und die Phase wechselt danach. Tippen ist nicht nötig."
             : "Tippe, um zur nächsten Phase zu wechseln")
         .accessibilityAddTraits(.isButton)
     }

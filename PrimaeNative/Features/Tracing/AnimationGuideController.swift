@@ -46,10 +46,18 @@ final class AnimationGuideController {
     /// vorzeigen (vielleicht etwas langsamer)": one pass at 0.4x, which
     /// is what `AnimationSpeed.slow` was defined to mean.
     ///
-    /// Cell-relative, so the wall-clock length scales with the letter:
-    /// the five study letters span ~1 cell, so one slow pass lands in
-    /// the same order as the two normal passes it replaces rather than
-    /// halving the observe window.
+    /// Cell-relative, so the wall-clock length scales with the letter.
+    ///
+    /// THE WINDOW IS NOT LENGTH-PRESERVED — it is 1.25x LONGER. One pass
+    /// at 0.4x takes `L/0.36` where two passes at 1.0x took `2L/0.9`, so
+    /// the ratio is `2.778/2.222`. Halving the passes would have preserved
+    /// it exactly; 0.4 is not 0.5. The five study letters therefore run
+    /// ~6.25-13.75 s rather than the ~5-11 s the thesis and
+    /// `docs/STUDY_DEVICE_DRYRUN.md` quote, and the dry-run's "stuck past
+    /// ~15 seconds is a defect" tripwire is left with about a second of
+    /// headroom where it had four. (Per-segment flooring at 1/240 s and a
+    /// flat 1/60 s first segment drift the true ratio slightly above 1.25
+    /// for checkpoint-dense letters.)
     static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
 
     /// Live speed for `start`, defaulting to the production value above.

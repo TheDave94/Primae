@@ -1372,6 +1372,21 @@ public final class TracingViewModel {
     func loadLetter(name: String) {
         guard let idx = letters.firstIndex(where: { $0.name == name }) else { return }
         letterIndex = idx
+        // Reset the repeat counter HERE, not in `load(letter:)` (2026-09-17).
+        // It used to be reset only by `nextLetter`/`previousLetter`/
+        // `randomLetter`, so any other way of changing letter leaked the
+        // pass count — and this is the path the cold probes take
+        // (`startColdProbe`). With the repeat switch at 3, a post-test
+        // probe on an UNTRAINED letter could inherit a stale count, then
+        // repeat after its one-shot override had already been consumed,
+        // re-entering observe and writing training rows for a letter the
+        // design requires to be untrained. Default is 1, so this could not
+        // reach pilot data — but it is exactly the contrast H6 rests on.
+        //
+        // Deliberately NOT in `load(letter:)`: the repeat path calls that
+        // directly, and resetting there would make the repeat reset its
+        // own counter and loop forever.
+        letterPasses = 1
         load(letter: letters[idx])
         toast("Buchstabe: \(currentLetterName)")
     }

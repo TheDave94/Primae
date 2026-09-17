@@ -110,7 +110,7 @@ line numbers — line numbers drift, names don't.
 - [ ] Phase enters with the **brand-blue pill** in the lower portion of the canvas showing only **👁️ 👆** (no text — children can't read).
 - [ ] **Voiceover** speaks "Pass jetzt gut auf!" (recorded ElevenLabs MP3 if `Resources/Prompts/phase_observe.mp3` is bundled, otherwise system TTS fallback).
   - If broken: `SpeechSynthesizer.swift:ChildSpeechLibrary.phaseEntry(.observe)` or `PromptPlayer.swift`.
-- [ ] **Animated guide dot** (amber) traces along the letter's strokes inside the canvas. Loops.
+- [ ] **Animated guide dot** (amber) traces along the letter's strokes inside the canvas. Plays ONE pass, more slowly than it used to; it no longer loops.
 - [ ] **Tapping anywhere** on the canvas advances to the next phase.
 
 ### 4.2 · Direct phase (Richtung lernen)

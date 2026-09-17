@@ -123,6 +123,13 @@ struct TracingCanvasView: View {
                         let color: Color = isComplete ? .green : (isActive ? .blue : .gray)
                         context.fill(dot, with: .color(color.opacity(0.75)))
                     }
+                }
+                // ^ the ring below is a SIBLING of the dots block, not a
+                // child of it. The first attempt at this fix de-indented
+                // the ring without moving this brace, which left it nested
+                // and made the whole decoupling inert — indentation is not
+                // semantics, and nothing in the test suite touched either
+                // the ring or the switch, so a green run proved nothing.
 
                 // Endpoint ring (2026-09-17) — "Endpunkt einzeichnen".
                 // ONE hollow ring at the LAST checkpoint of the FINAL
@@ -161,7 +168,6 @@ struct TracingCanvasView: View {
                                                       width: ringR * 2,
                                                       height: ringR * 2))
                     context.stroke(ring, with: .color(.red.opacity(0.85)), lineWidth: 5)
-                }
                 }
 
                 // Retained ink from previously-completed cells stays

@@ -357,8 +357,11 @@ ProgressStore.recordRecognitionSample
 - Numbered start dots indicating where each stroke begins.
 - A "Schau mal genau hin." prompt is spoken via TTS on phase entry.
 - The child taps anywhere on the overlay to advance — or the phase
-  auto-advances after the second full animation cycle so a child who
-  can't read isn't stuck.
+  auto-advances after the animation's single pass so a child who
+  can't read isn't stuck. The pass plays at 0.4x, so one pass is about
+  25% LONGER than the two it replaced (~6-14 s for the five study
+  letters, not ~5-11 s). The pass count is a researcher comparison
+  switch (`observePasses`, default 1).
 
 **What the code does**
 - `LearningPhaseController.currentPhase = .observe` (initial state).
@@ -374,7 +377,7 @@ ProgressStore.recordRecognitionSample
   animation.onCycleComplete = { [weak self] in
       guard let self else { return }
       self.observeCycleCount += 1
-      if self.observeCycleCount >= 2,
+      if self.observeCycleCount >= self.observePasses,
          self.phaseController.currentPhase == .observe {
           self.completeObservePhase()
       }
