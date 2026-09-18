@@ -72,7 +72,7 @@ import UIKit
     }
 
     /// And the converse: the ring stays a phase question, not a switch one.
-    @Test("the endpoint ring is present in observe and guided, absent in direct and freeWrite")
+    @Test("the endpoint ring is present in observe and guided, absent in freeWrite")
     func endpointRingIsPhaseDriven() {
         StudyComparisonSettings.resetToDefaults()
         let vm = studyVM()
@@ -83,9 +83,17 @@ import UIKit
         vm.phaseController.resume(at: .guided)
         #expect(vm.showEndpointRing, "guided should carry the endpoint ring")
 
+        // The `.direct` leg that used to sit here is gone: the phase left
+        // the session (2026-09-18), so `resume` refuses it and the
+        // controller stays on `.guided`. Asserting `showEndpointRing ==
+        // false` against `.guided` would have been asserting a false thing
+        // about the wrong phase. What replaced it is the contract that made
+        // it stale — the phase cannot be entered at all, from any seam.
         vm.phaseController.resume(at: .direct)
-        #expect(vm.showEndpointRing == false,
-                "direct draws its own numbered overlay; the ring would compete with it")
+        #expect(vm.phaseController.currentPhase == .guided,
+                "resume entered .direct — the tapping-the-points phase is not part of a session")
+        #expect(vm.showEndpointRing,
+                "a refused resume must leave the phase, and its ring, untouched")
 
         vm.phaseController.resume(at: .freeWrite)
         #expect(vm.showEndpointRing == false,
@@ -164,8 +172,10 @@ import UIKit
 
         vm.phaseController.resume(at: .direct)
         plan = vm.canvasDrawPlan
-        #expect(plan.showsEndpointRing == false && plan.showsStartDots == false,
-                "direct draws its own numbered overlay and nothing of ours")
+        #expect(vm.phaseController.currentPhase == .guided,
+                "resume entered .direct — the tapping-the-points phase is not part of a session")
+        #expect(plan.showsEndpointRing && plan.showsStartDots,
+                "a refused resume must leave the phase, and its draw plan, untouched")
 
         vm.phaseController.resume(at: .freeWrite)
         plan = vm.canvasDrawPlan

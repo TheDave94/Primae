@@ -302,8 +302,8 @@ private final class StampCapturingStore: ParentDashboardStoring {
         let vm = studyVM(dashboardStore: store, oncePerCondition: true)
         try await runFullSession(vm, store: store)
 
-        #expect(store.stamps.count == 4,
-                "expected 4 phase rows, got \(store.stamps.count)")
+        #expect(store.stamps.count == 3,
+                "expected 3 phase rows, got \(store.stamps.count)")
         let expected = vm.comparisonConfigurationStamp
         #expect(expected != nil, "precondition: the seam must produce a stamp")
         for stamp in store.stamps {
@@ -320,7 +320,7 @@ private final class StampCapturingStore: ParentDashboardStoring {
         let vm = studyVM(dashboardStore: store, oncePerCondition: false)
         try await runFullSession(vm, store: store)
 
-        #expect(store.stamps.count == 4)
+        #expect(store.stamps.count == 3)
         for stamp in store.stamps {
             let text = stamp ?? ""
             for name in pinnedAtDefault {
@@ -445,7 +445,7 @@ private final class StampCapturingStore: ParentDashboardStoring {
 
     // MARK: - Driver
 
-    /// One full four-phase session, driven from the public entry
+    /// One full three-phase session, driven from the public entry
     /// (`advanceLearningPhase`), captured at the store seam. Mirrors
     /// `AllFiveLettersRowTruthTests.runFullSession`; the recogniser hop
     /// is a Task, so the wait is on the observable outcome, bounded.
@@ -457,11 +457,17 @@ private final class StampCapturingStore: ParentDashboardStoring {
         try #require(vm.strokeTracker.definition != nil,
                      "fixture letter has no stroke definition — the freeWrite branch would bail out and wipe the recorder")
 
+        // TWO advances, not three: `.direct` left the session (2026-09-18),
+        // so observe → guided → freeWrite is the whole walk. A third
+        // advance would complete the session, and the coordinator's
+        // `advance()` returns on `isLetterSessionComplete` — writing no
+        // rows at all.
         vm.phaseController.advance(score: 1.0)   // observe
-        vm.phaseController.advance(score: 1.0)   // direct
         vm.phaseController.advance(score: 0.8)   // guided
         try #require(vm.phaseController.currentPhase == .freeWrite,
                      "the phase walk did not reach freeWrite, got \(vm.phaseController.currentPhase)")
+        try #require(!vm.phaseController.isLetterSessionComplete,
+                     "the walk must stop short of completion — a completed session makes the coordinator's advance a no-op")
 
         vm.freeWriteRecorder.startSession(now: 100.0)
         for i in 0...18 {

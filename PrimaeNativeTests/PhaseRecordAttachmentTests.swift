@@ -136,7 +136,7 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
 
 @Suite @MainActor struct PhaseRecordAttachmentTests {
 
-    /// A completed four-phase session, captured at the store seam.
+    /// A completed three-phase session, captured at the store seam.
     private struct Session {
         let calls: [CapturingDashboardStore.Call]
         let traces: [RawTrace]
@@ -171,12 +171,17 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
         try #require(vm.strokeTracker.definition != nil,
                      "fixture letter has no stroke definition — the freeWrite branch would bail out and clear the recorder")
 
-        // Walk observe → direct → guided, leaving currentPhase == .freeWrite
-        // with three scores banked, so the completion emits four rows.
+        // Walk observe → guided, leaving currentPhase == .freeWrite with TWO
+        // scores banked, so the completion emits three rows. `.direct` left
+        // the session (2026-09-18), so this is two advances rather than
+        // three; a third would complete the session and the coordinator's
+        // `advance()` would return on its `isLetterSessionComplete` guard
+        // without writing anything.
         vm.phaseController.advance(score: 1.0)   // observe
-        vm.phaseController.advance(score: 1.0)   // direct
         vm.phaseController.advance(score: 0.8)   // guided
         #expect(vm.phaseController.currentPhase == .freeWrite)
+        #expect(!vm.phaseController.isLetterSessionComplete,
+                "a completed session makes the coordinator's advance a no-op, and the driver would then measure nothing")
 
         // A traced horizontal stroke along the fixture's reference
         // (y = 0.50 normalised → y = 200 on a 400×400 canvas). Real
@@ -215,16 +220,21 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
 
     // MARK: - 1. One row per scored phase
 
-    @Test("a completed four-phase session emits exactly one row per phase")
+    @Test("a completed three-phase session emits exactly one row per phase")
     func emitsOneRowPerScoredPhase() async throws {
         let s = try await runSession()
 
-        #expect(s.calls.count == 4,
-                "expected 4 phase rows, got \(s.calls.count): \(s.calls.map(\.phase))")
+        #expect(s.calls.count == 3,
+                "expected 3 phase rows, got \(s.calls.count): \(s.calls.map(\.phase))")
 
         // Keys must be LearningPhase.rawName values, not ad-hoc strings.
+        // The expected set is SPELLED OUT rather than read from
+        // `LearningPhase.allCases` or from a controller's `activePhases`:
+        // an expectation computed from the implementation could never fail.
+        // `.direct` is absent because no session runs it (2026-09-18), so
+        // its row is absent too — one row per SCORED phase.
         let phases = Set(s.calls.map(\.phase))
-        #expect(phases == Set(LearningPhase.allCases.map(\.rawName)),
+        #expect(phases == Set([LearningPhase.observe, .guided, .freeWrite].map(\.rawName)),
                 "phase keys drifted from LearningPhase.rawName: \(phases.sorted())")
 
         for call in s.calls {
@@ -291,11 +301,15 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
 
     // MARK: - 3. Every other phase carries none
 
-    @Test("observe, direct and guided rows carry no measurement fields")
+    /// `.direct` is no longer one of the non-freeWrite rows: no session
+    /// runs that phase (2026-09-18), and `emitsOneRowPerScoredPhase` above
+    /// pins that no `direct` row is written at all — which is the stronger
+    /// statement, so nothing is lost by dropping it from this loop.
+    @Test("observe and guided rows carry no measurement fields")
     func nonFreeWriteRowsCarryNoMeasurementFields() async throws {
         let s = try await runSession()
 
-        for phase in [LearningPhase.observe, .direct, .guided] {
+        for phase in [LearningPhase.observe, .guided] {
             let call = try row(phase, in: s.calls)
             #expect(call.measurementFieldCount == 0,
                     "\(phase.rawName) row must carry no measurement fields, but carries: \(call.populatedFields.sorted())")

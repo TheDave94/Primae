@@ -270,7 +270,7 @@ private final class RowCapturingStore: ParentDashboardStoring {
 
     // MARK: - 4. The row: what the export actually carries
 
-    /// THE load-bearing test. Drives a real four-phase session through the
+    /// THE load-bearing test. Drives a real three-phase session through the
     /// coordinator and reads the `trainedSubset` argument off every
     /// `recordPhaseSession` call — i.e. the column, not a view-model
     /// property that merely ought to reach it.
@@ -280,8 +280,8 @@ private final class RowCapturingStore: ParentDashboardStoring {
         let vm = studyVM(allFiveLetters: true, dashboardStore: store)
         try await runFullSession(vm, store: store)
 
-        #expect(store.calls.count == 4,
-                "expected 4 phase rows, got \(store.calls.count): \(store.calls.map(\.phase))")
+        #expect(store.calls.count == 3,
+                "expected 3 phase rows, got \(store.calls.count): \(store.calls.map(\.phase))")
         for call in store.calls {
             #expect(call.trainedSubset == "AFILM",
                     "the \(call.phase) row of an all-five session stamps '\(call.trainedSubset ?? "nil")' — anything 3-lettered makes the export assert the child was untrained on two letters it practised")
@@ -296,7 +296,15 @@ private final class RowCapturingStore: ParentDashboardStoring {
         let vm = studyVM(allFiveLetters: false, dashboardStore: store)
         try await runFullSession(vm, store: store)
 
-        #expect(store.calls.count == 4)
+        // The row SHAPE is pinned here, not just the count: one row per
+        // active phase, in canonical order. A three-phase session emits
+        // three rows as of 2026-09-18 (was four); an analyst counting rows
+        // per letter sees 3, so the count is a data-shape fact and not
+        // merely an implementation detail of this fixture.
+        #expect(store.calls.count == 3,
+                "expected 3 phase rows, got \(store.calls.count): \(store.calls.map(\.phase))")
+        #expect(store.calls.map(\.phase) == ["observe", "guided", "freeWrite"],
+                "the session's rows are \(store.calls.map(\.phase)) — .direct has no row because no session runs it")
         for call in store.calls {
             #expect(call.trainedSubset == "AFI",
                     "the \(call.phase) row stamped '\(call.trainedSubset ?? "nil")' — the default path must be byte-identical to the behaviour before the fix")
@@ -375,7 +383,7 @@ private final class RowCapturingStore: ParentDashboardStoring {
 
     // MARK: - Driver
 
-    /// One full four-phase session, driven from the public entry
+    /// One full three-phase session, driven from the public entry
     /// (`advanceLearningPhase`), captured at the store seam. Mirrors
     /// `PhaseRecordAttachmentTests.runSession`; the recogniser hop is a
     /// Task, so the wait is on the observable outcome, bounded.
@@ -387,11 +395,19 @@ private final class RowCapturingStore: ParentDashboardStoring {
         try #require(vm.strokeTracker.definition != nil,
                      "fixture letter has no stroke definition — the freeWrite branch would bail out and wipe the recorder")
 
+        // TWO advances, not three. `.direct` left the session (2026-09-18),
+        // so observe → guided → freeWrite is the whole walk: the second
+        // advance lands on freeWrite and the session is NOT yet complete.
+        // A third advance here would set `isLetterSessionComplete`, and
+        // `PhaseTransitionCoordinator.advance` returns on that guard —
+        // emitting no rows at all, which is a fixture failure that would
+        // read as a logic failure.
         vm.phaseController.advance(score: 1.0)   // observe
-        vm.phaseController.advance(score: 1.0)   // direct
         vm.phaseController.advance(score: 0.8)   // guided
         try #require(vm.phaseController.currentPhase == .freeWrite,
                      "the phase walk did not reach freeWrite, got \(vm.phaseController.currentPhase)")
+        try #require(!vm.phaseController.isLetterSessionComplete,
+                     "the walk must stop short of completion — a completed session makes the coordinator's advance a no-op")
 
         vm.freeWriteRecorder.startSession(now: 100.0)
         for i in 0...18 {
