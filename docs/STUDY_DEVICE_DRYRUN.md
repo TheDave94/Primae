@@ -229,20 +229,18 @@ For **each of the three trained letters** (the ones named on the
 - The demonstration is cancelled instantly if you touch the canvas
   early — that's correct, not a glitch.
 
-### 4b · Direct (Richtung lernen)
-- Numbered dots appear over each stroke's start point. Tap them **in
-  order**. The next expected one pulses. A correct tap advances a
-  brief directional arrow along the stroke — that part is real. **The
-  tap-sound and the haptics are not**: under study mode the app
-  substitutes silent no-op objects for both the prompt player and the
-  haptic engine (`TracingViewModel.init`), so a correct tap is silent
-  and a wrong dot gives no haptic either — only the visual pulse on
-  the wrong dot and the arrow on a correct one are present, in every
-  arm. Don't expect to hear or feel anything here; that's correct, not
-  a defect.
-- No arm-specific sound here in any arm — this phase is unaffected by
-  the audio condition.
-- All dots tapped in order → auto-advances.
+### 4b · (removed 2026-09-18) — the tapping-points phase
+- **This phase no longer runs.** It was "Direct (Richtung lernen)":
+  numbered dots over each stroke's start point, tapped in order. David's
+  ruling — "the whole tapping the points part should go" — took it out of
+  the session, so a letter's flow is now **observe → guided → freeWrite**.
+- **You should never see numbered dots during a session.** If you do, that
+  is a regression worth reporting, not a step to work through.
+- The section is kept, rather than deleted, so a proctor working from an
+  older printout can find out what happened to the step they expected.
+- Implementation note: the `LearningPhase.direct` case still exists (it is
+  `Codable` and stored rows reference it); it is simply not in
+  `LearningPhaseController.activePhases`, so no session runs it.
 
 ### 4c · Guided (Nachspuren)
 - A faint ghost letter appears. Trace it with your finger or the
