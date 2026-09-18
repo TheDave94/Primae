@@ -138,6 +138,38 @@ struct SchuleWorldView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.overlayQueue.currentOverlay)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
+        // STUDY AUTO-ADVANCE (2026-09-18). Reported from the device as two
+        // complaints that are one defect: "the canvas gets blank and gets
+        // stuck there" and "the letters don't auto advance".
+        //
+        // Gating the celebration overlay out of the study build is CORRECT
+        // — it is reward-class UI and every arm must end a trial
+        // identically (audit C1/C2). But the overlay's dismiss closure was
+        // ALSO the only caller of `loadRecommendedLetter()`, the function
+        // that advances to the next letter. So a study letter ended in
+        // `.freeWrite` — a phase that draws a BLANK canvas by design — and
+        // stayed there until a proctor tapped the chevron.
+        //
+        // `loadRecommendedLetter()` already carried a study branch
+        // (`nextLetter()`, fixed deterministic order) written for exactly
+        // this call; its own comment notes it is defensive because the
+        // overlay that would trigger it is gated off. That branch was dead
+        // code, because nothing called it.
+        //
+        // HERE, NOT IN `PhaseTransitionCoordinator.recordSessionCompletion`.
+        // That was where it first went, and it broke four suites that pass
+        // in isolation — that function is the RECORDING path, so making it
+        // also navigate gave every test that completes a letter an extra
+        // letter load under it. The casual path does not work that way
+        // either: its advance lives in a view closure. A flow concern
+        // belongs to the flow's owner.
+        //
+        // Nothing is enqueued, chimed or spoken, so the C1/C2 equity is
+        // untouched — all three arms advance identically.
+        .onChange(of: vm.isPhaseSessionComplete) { _, complete in
+            guard complete, vm.studyMode else { return }
+            vm.loadRecommendedLetter()
+        }
         }
     }
 

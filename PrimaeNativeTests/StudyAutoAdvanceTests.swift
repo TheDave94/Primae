@@ -19,14 +19,23 @@
 // deterministically. It was dead code — nothing called it — and this is the
 // half of the fix that a unit test can reach.
 //
-// NOT PINNED: the WIRING — that `recordSessionCompletion` now schedules
-// that call. That is the half that actually fixes the bug, and three
-// attempts to reach it from a unit test all failed on their own
-// precondition with `phase=.observe` after four `advance()` calls, i.e.
-// the coordinator does not walk a fixture session through the phases. That
-// is a property of driving a session from a test, not of the fix, and it
-// is recorded rather than papered over: **the wiring is verified by
-// reading and must be confirmed on a device.**
+// NOT PINNED: the WIRING — that `SchuleWorldView` calls that function when
+// a letter completes. That is the half that actually fixes the bug, and it
+// is a VIEW concern, so a unit test cannot reach it. It is recorded rather
+// than papered over: **the wiring is verified by reading and must be
+// confirmed on a device.**
+//
+// The wiring went through three shapes before landing there, and the two
+// rejected ones are worth knowing. It began in
+// `PhaseTransitionCoordinator.recordSessionCompletion`, first on a deferred
+// `Task` and then called synchronously. BOTH broke suites that pass in
+// isolation — `StudyCleanConfigTests`, `PhaseRecordAttachmentTests`,
+// `AuditThirdPassTests`, `ComparisonConfigurationStampTests` — because that
+// function is the RECORDING path and making it also navigate gave every
+// test that completes a letter an extra letter load underneath it. The
+// deferred version leaked differently: its task fired after the test that
+// created it had finished. The casual path puts its advance in a view
+// closure, and the study path now does the same.
 //
 // The earlier attempts are worth knowing about because two of them LOOKED
 // like they tested the behaviour: they drove phases, asserted a letter

@@ -391,40 +391,6 @@ final class PhaseTransitionCoordinator {
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration,
                             fallbackText: ChildSpeechLibrary.celebration)
-        } else {
-            // STUDY AUTO-ADVANCE (2026-09-18). Gating out the celebration
-            // overlay is CORRECT — it is reward-class UI and every arm must
-            // end a trial identically (audit C1/C2). But the overlay was
-            // also the ONLY thing that advanced the session, so a study
-            // letter ended in `.freeWrite` — a phase that draws a BLANK
-            // canvas by design — and stayed there until a proctor tapped
-            // the chevron. Reported from the device as two different
-            // complaints: "the canvas gets blank and gets stuck there" and
-            // "the letters don't auto advance". Same defect, seen twice.
-            //
-            // `loadRecommendedLetter()` ALREADY carries a study branch
-            // (`nextLetter()`, fixed deterministic order) written for
-            // exactly this call — its own comment even says it is defensive
-            // because the overlay that would trigger it is gated off. That
-            // branch was dead code: nothing called it. This is the call.
-            //
-            // NOTHING is enqueued, chimed or spoken here, so the C1/C2
-            // equity is untouched — all three arms advance identically.
-            //
-            // SYNCHRONOUS ON PURPOSE. The first version deferred this on a
-            // `Task` with a 1.5 s sleep so the transition would be
-            // perceptible. That was wrong twice over. It broke two suites
-            // that pass in isolation — the deferred task fired AFTER the
-            // test that created it had finished and touched state while
-            // other suites ran in parallel, which is the same class of
-            // leak as a test mutating a global. And the pause was not
-            // needed: this runs at the end of freeWrite, which is already
-            // preceded by a 2 s quiet window, and the next letter's observe
-            // brings its own pacing.
-            //
-            // Called directly, so the advance happens inside the
-            // completion — no work outlives the call.
-            vm.loadRecommendedLetter()
         }
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()
