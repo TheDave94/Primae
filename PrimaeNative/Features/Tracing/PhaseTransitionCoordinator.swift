@@ -21,6 +21,17 @@ final class PhaseTransitionCoordinator {
     /// `playback` and `touchDispatcher`.
     weak var vm: TracingViewModel?
 
+    /// Pause before the study build loads the next letter after one
+    /// completes. Exists so the transition is perceptible rather than
+    /// instantaneous — the casual path gets the same pacing for free from
+    /// the child dismissing the celebration overlay.
+    ///
+    /// A property, not a constant, so a test can set it to 0 and assert the
+    /// advance without sleeping. Deliberately NOT a `static`: a global a
+    /// test mutates is visible to every suite running in parallel, which is
+    /// the trap `LetterWeightFallbackTests` cost this project once already.
+    var studyAutoAdvanceDelay: TimeInterval = 1.5
+
     // MARK: - Public entry (forwarded from VM)
 
     /// Score the active phase, queue post-freeWrite overlays, advance
@@ -391,6 +402,37 @@ final class PhaseTransitionCoordinator {
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration,
                             fallbackText: ChildSpeechLibrary.celebration)
+        } else {
+            // STUDY AUTO-ADVANCE (2026-09-18). Gating out the celebration
+            // overlay is CORRECT — it is reward-class UI and every arm must
+            // end a trial identically (audit C1/C2). But the overlay was
+            // also the ONLY thing that advanced the session, so a study
+            // letter ended in `.freeWrite` — a phase that draws a BLANK
+            // canvas by design — and stayed there until a proctor tapped
+            // the chevron. Reported from the device as two different
+            // complaints: "the canvas gets blank and gets stuck there" and
+            // "the letters don't auto advance". Same defect, seen twice.
+            //
+            // `loadRecommendedLetter()` ALREADY carries a study branch
+            // (`nextLetter()`, fixed deterministic order) written for
+            // exactly this call — its own comment even says it is defensive
+            // because the overlay that would trigger it is gated off. That
+            // branch was dead code: nothing called it. This is the call.
+            //
+            // NOTHING is enqueued, chimed or spoken here, so the C1/C2
+            // equity is untouched — all three arms advance identically.
+            // The delay exists only so the transition is perceptible; the
+            // casual path gets the same pacing from the child dismissing
+            // the celebration.
+            let delay = studyAutoAdvanceDelay
+            let letter = vm.currentLetterName
+            Task { @MainActor [weak vm] in
+                if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
+                guard let vm, vm.studyMode,
+                      vm.currentLetterName == letter,   // proctor did not move on
+                      vm.isPhaseSessionComplete else { return }
+                vm.loadRecommendedLetter()
+            }
         }
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()
