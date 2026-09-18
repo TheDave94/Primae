@@ -543,25 +543,40 @@ is tested.
 > report 1. Fixed at the navigation layer by de-duplicating the ordered
 > pool, and at the source by `84f6704` above.
 >
-> **DON'T "FIX" THE SPATIAL GLISSANDO — IT IS THE SPECIFICATION.**
-> Reported 2026-09-16 as a bug: the Raumklang arm plays a high→low→high
-> sweep *before* the child touches. It is the pre-task axis
-> demonstration, and it is required. `04-implementation.typ:17`
-> specifies it verbatim — "a scripted sweep point, independent of the
-> letter's shape and of the guide dot, runs once from the top of the
-> canvas to the bottom and back while the carrier's pitch follows it,
-> and once from the centre to the right edge, back through the centre to
-> the left edge, and back to the centre, a quarter-cycle out of phase".
-> `PreTaskDemonstration.axisSweep` implements exactly that
-> (`y = 0.5 - 0.5·cos 2πt`, `x = 0.5 - 0.5·cos(2πt + π/2)`) and
-> `SpatialSonification.pitchCents` maps it to 880→220→880 Hz. The header
-> gives the reason it must exist and must be matched across arms: "a
-> demonstration can INSTALL a crossmodal mapping rather than reveal one
-> already there... that arm's later tracing-task audio wouldn't just be
-> the arm's sound — it would be the arm's sound, already taught."
-> Removing or deferring it is a PROTOCOL change requiring the thesis to
-> move with it, not a code fix. Verified point-by-point against the spec
-> on 2026-09-17; the code conforms on every clause.
+> **THE SPATIAL GLISSANDO IS OUT — RULED 2026-09-18. This block replaces
+> one that said the opposite; that instruction is superseded, not
+> softened.** It used to read "DON'T FIX THE SPATIAL GLISSANDO — IT IS
+> THE SPECIFICATION", on the grounds that `04-implementation.typ:17`
+> specifies the scripted sweep verbatim and that removing it is a protocol
+> change requiring the thesis to move with it. That reasoning was sound on
+> its own terms and the ruling rejects its premise.
+>
+> **David's ruling, in his words:** the glissando "was just distracting not
+> helping", and **the study contrasts SILENCE vs LETTER-UNRELATED SOUND vs
+> PHONEME.**
+>
+> Under that contrast the sweep was not serving the symmetry it was
+> written for — it was breaking it. The phoneme arm's demonstration is a
+> pure EXPOSURE (here is the sound); the sweep made the spatial arm's
+> demonstration a MAPPING LESSON, a different KIND of event rather than
+> the same event with different audio. **A steady carrier for the same
+> two-second window is the correct matched demonstration:** each arm
+> presents its own sound, for the same length, and teaches nothing beyond
+> it. So `6fb7233`'s removal STANDS.
+>
+> `PreTaskDemonstration.axisSweep` survives only behind
+> `StudyComparisonSettings.spatialAxisDemonstration` (OFF by default,
+> matching the ruling) as a researcher affordance for hearing the old
+> behaviour — NOT as an open protocol question.
+>
+> **THE THESIS IS NOW THE OUTSTANDING WORK.** ~28 locations still describe
+> the sweep as present, including `02-background.typ:107`. **And the
+> reword is mechanically blocked until both move together:** MEASURED in
+> `/Users/musicbox/repos/master-thesis`, `docs/design-facts.json` requires
+> the literal string `"axis demonstration"` for
+> `content/04-implementation.typ` and for the background chapter, and
+> `scripts/check_design_currency.py` enforces it. Update the prose and the
+> fact in the same pass, or the check fails for a reason that is correct.
 >
 > **The spatial demonstration now fails loudly instead of skipping in
 > silence (`5a59c36`).** `armPreTaskDemonstration`'s `.spatial` branch

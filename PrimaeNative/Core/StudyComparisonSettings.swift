@@ -174,33 +174,38 @@ enum StudyComparisonSettings {
     /// window. The supervisor's "Glissando weg" against the axis
     /// demonstration the thesis specifies.
     ///
-    /// THE TENSION, STATED PLAINLY, BECAUSE IT DOES NOT RESOLVE HERE.
-    /// `04-implementation.typ:17` specifies the scripted sweep as part of
-    /// the spatial arm: a point travelling the full canvas while the
-    /// carrier's pitch follows its vertical leg and its pan the horizontal
-    /// one, for a fixed two seconds matched with the phoneme arm's
-    /// demonstration. The rationale in `PreTaskDemonstration`'s header is
-    /// that a demonstration can INSTALL a crossmodal mapping rather than
-    /// reveal one already there — for this arm the sweep is not decoration,
-    /// it is where the mapping is taught.
+    /// **RULED 2026-09-18: the sweep is OUT, and OFF is now the RULED
+    /// behaviour rather than a divergence.** David: the glissando "was just
+    /// distracting not helping", and the study contrasts **silence vs
+    /// letter-unrelated sound vs phoneme**.
     ///
-    /// The supervisor's device review of 2026-09-17 said "Glissando weg":
-    /// on the device the sweep reads as the arm playing a high-low-high
-    /// slide at the child before anything has been touched, and it is the
-    /// most conspicuous thing about the arm.
+    /// UNDER THAT CONTRAST THE SWEEP WAS BREAKING THE SYMMETRY IT WAS
+    /// WRITTEN TO SERVE. Its rationale was that a demonstration can INSTALL
+    /// a crossmodal mapping rather than reveal one already there. But the
+    /// phoneme arm's demonstration is a pure EXPOSURE — here is the sound —
+    /// and the sweep made this arm's demonstration a MAPPING LESSON, a
+    /// different KIND of event rather than the same event with different
+    /// audio. A steady carrier for the same window is the matched
+    /// demonstration: each arm presents its own sound, for the same length,
+    /// teaching nothing beyond it.
     ///
-    /// So OFF — this switch's default, and the behaviour the app has had
-    /// since commit 6fb7233c — is a PROTOCOL DIVERGENCE from the written
-    /// specification. A device left untouched runs the spatial arm without
-    /// the demonstration the thesis says it has, and roughly 28 locations
-    /// in the thesis (including `02-background.typ:107`) still describe the
-    /// sweep. ON restores exactly what was removed, unchanged.
+    /// So `6fb7233`'s removal STANDS, and the machinery below survives only
+    /// as a researcher affordance — a way to hear the old behaviour on the
+    /// device — not as an open protocol question.
     ///
-    /// Neither position is a code decision and this file does not make it.
-    /// The ruling is David's; the thesis has to move with whichever way it
-    /// goes. The switch exists so the two options can be compared on the
-    /// device instead of argued about in the abstract — which is the whole
-    /// reason this file exists.
+    /// **THE THESIS HAS NOT MOVED YET, and that is now the outstanding
+    /// work.** Roughly 28 locations still describe the sweep as present,
+    /// including `02-background.typ:107`; CLAUDE.md's "DON'T FIX THE
+    /// SPATIAL GLISSANDO" block instructed the opposite of this ruling and
+    /// is corrected; and **the thesis repo's currency check will block the
+    /// reword.** MEASURED in `/Users/musicbox/repos/master-thesis`:
+    /// `docs/design-facts.json` requires the literal string
+    /// `"axis demonstration"` for `content/04-implementation.typ` and for
+    /// the background chapter, and `scripts/check_design_currency.py`
+    /// enforces it. Removing the phrase from the prose therefore fails that
+    /// check until the fact is updated too — **update both together**, or
+    /// the check will look broken for a reason that is actually correct.
+    /// The same files live in the THESIS repo, not this one.
     ///
     /// OFF is the default anyway, because the default of every switch here
     /// is the behaviour the device had before the switch existed: that is

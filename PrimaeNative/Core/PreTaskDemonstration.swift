@@ -18,19 +18,30 @@
 // Content per arm:
 //   .phoneme  — a sound-letter exposure: the letter's own phoneme,
 //               played once.
-//   .spatial  — an axis demonstration: a scripted pitch/pan sweep
-//               across the FULL canvas range, independent of any
-//               specific letter's shape (a letter with a short stroke
-//               would otherwise give a foreshortened, letter-dependent
-//               sweep — see `axisSweep`). NOTE (2026-09-17): this is
-//               what the spec above describes and no longer what a
-//               default device does. The sweep is behind
-//               `StudyComparisonSettings.spatialAxisDemonstration`,
-//               OFF by default, so the live behaviour is a two-second
-//               window with the carrier held steady — the same window
-//               and the same match, minus the movement. See the
-//               switch's doc comment for the protocol divergence that
-//               OFF default represents.
+//   .spatial  — the carrier played STEADILY for the same two-second
+//               window. It used to be an axis demonstration: a scripted
+//               pitch/pan sweep across the full canvas range,
+//               independent of any specific letter's shape.
+//
+//               **RULED OUT 2026-09-18, and the reason is the design,
+//               not the distraction.** David: the glissando "was just
+//               distracting not helping", and the study contrasts
+//               SILENCE vs LETTER-UNRELATED SOUND vs PHONEME. Under
+//               that contrast the sweep was not serving the symmetry it
+//               was written for — it was breaking it. The phoneme arm's
+//               demonstration is a pure EXPOSURE (here is the sound); the
+//               sweep made this arm's demonstration a MAPPING LESSON,
+//               which is a different KIND of event rather than the same
+//               event with different audio. A steady carrier for the
+//               same window is the correct matched demonstration: each
+//               arm presents its own sound, for the same length, and
+//               teaches nothing beyond it.
+//
+//               So `6fb7233`'s removal STANDS. The sweep survives only
+//               behind `StudyComparisonSettings.spatialAxisDemonstration`
+//               (OFF by default, matching the ruling) as a researcher
+//               affordance, NOT as an open protocol question — see that
+//               switch's doc comment.
 //   .silent   — no audio is added. The unchanged ghost-letter animation
 //               (LetterAnimationGuide / AnimationGuideController) that
 //               already precedes tracing in every arm today IS the
