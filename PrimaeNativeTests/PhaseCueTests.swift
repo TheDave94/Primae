@@ -43,9 +43,17 @@ import CoreGraphics
         return vm
     }
 
-    /// The rule David stated, phase by phase. `direct` is "Richtung lernen"
-    /// and `guided` is "Nachspuren" — both are the CHILD acting; `observe`
-    /// is the letter being shown.
+    /// The rule David stated, phase by phase. `guided` is "Nachspuren" and
+    /// `freeWrite` is "Selbst schreiben" — both are the CHILD acting;
+    /// `observe` is the letter being shown.
+    ///
+    /// `direct` ("Richtung lernen", numbered-dot tapping) is NOT walked any
+    /// more: it left the session on 2026-09-18 ("the whole tapping the
+    /// points part should go"), and `resume(at:)` refuses an inactive
+    /// phase, so attempting it here would silently leave the phase
+    /// unchanged and assert against the wrong state. The enum case and
+    /// `phaseCue`'s branch for it both remain — the case is `Codable` and
+    /// reachable from stored rows.
     @Test("the eye marks the demonstration and the finger marks the child's turn")
     func cueFollowsThePhase() {
         let vm = studyVM()
@@ -53,10 +61,6 @@ import CoreGraphics
         vm.phaseController.resume(at: .observe)
         #expect(vm.phaseCue == .watch,
                 "observe shows the letter being demonstrated — the child watches, so this is the EYE")
-
-        vm.phaseController.resume(at: .direct)
-        #expect(vm.phaseCue == .act,
-                "direct is 'Richtung lernen' (numbered-dot tapping) — the child acts, so this is the FINGER")
 
         vm.phaseController.resume(at: .guided)
         #expect(vm.phaseCue == .act,

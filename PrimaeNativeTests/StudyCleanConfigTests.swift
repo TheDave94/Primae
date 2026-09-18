@@ -246,17 +246,27 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     // path that never sets `spatialDeviation`), and the freeWrite end
     // condition (checkpoint completion ended the trial mid-gesture).
 
-    @Test("studyMode pins the pedagogical axis to the full four-phase flow")
+    @Test("studyMode pins the pedagogical axis to the observed flow, freeWrite included")
     func studyMode_pinsThesisConditionToThreePhase() {
         // `.guidedOnly` is the flow an enrolled install can draw from
         // UUID byte 0 — and it has NO freeWrite phase. The VM must not
-        // honour it under studyMode.
+        // honour it under studyMode; freeWrite is the primary outcome.
         var deps = studyDeps()
         deps.thesisCondition = .guidedOnly
         let vm = TracingViewModel(deps)
         #expect(vm.thesisCondition == .threePhase)
-        #expect(vm.activePhases == LearningPhase.allCases,
+
+        // The study flow is observe → guided → freeWrite (2026-09-18):
+        // `direct` left the session on David's "the whole tapping the
+        // points part should go", so this asserts the flow's CONTENT —
+        // freeWrite present, and the phase that left absent — rather than
+        // equality with `allCases`, which stopped being the same claim.
+        #expect(vm.activePhases.contains(.freeWrite),
                 "a study flow without freeWrite has no primary outcome and no post-test")
+        #expect(vm.activePhases.contains(.observe) && vm.activePhases.contains(.guided),
+                "the study flow is observe → guided → freeWrite, got \(vm.activePhases.map(\.rawName))")
+        #expect(vm.activePhases.contains(.direct) == false,
+                "`.direct` is back in the session — it was removed on 2026-09-18 and the tapping-points phase is not part of the study flow")
     }
 
     @Test("non-studyMode honours the injected pedagogical condition (A/B flow preserved)")
