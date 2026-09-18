@@ -83,7 +83,14 @@ struct LearningPhaseController: Equatable {
     var activePhases: [LearningPhase] {
         switch condition {
         case .threePhase:
-            return LearningPhase.allCases
+            // `.direct` is NOT in the session (2026-09-18). "The whole
+            // tapping the points part should go" — the child tapped
+            // numbered stroke-start dots to learn directionality, and it
+            // is the one phase that is neither watching nor writing. The
+            // ENUM CASE STAYS: it is `Codable` and reachable from stored
+            // rows, and `rawValue` ordering is relied on elsewhere. What
+            // changes is that no session runs it.
+            return LearningPhase.allCases.filter { $0 != .direct }
         case .guidedOnly, .control:
             return [.guided]
         }
@@ -153,21 +160,20 @@ struct LearningPhaseController: Equatable {
         let clamped = max(0, min(1, score))
         phaseScores[currentPhase] = clamped
 
-        // Determine next phase under current condition
-        let nextPhase: LearningPhase?
-        switch condition {
-        case .threePhase:
-            nextPhase = currentPhase.next
-        case .guidedOnly, .control:
-            // Only one phase — always complete after guided.
-            nextPhase = nil
-        }
-
-        guard let next = nextPhase else {
+        // Walk the ACTIVE list, not `rawValue + 1`. Those agreed while
+        // every phase was active; they stopped agreeing the moment a phase
+        // was excluded, and stepping by raw value would land the session on
+        // a phase it is not supposed to run. Reading the list means the
+        // condition's own definition of the sequence is the only one.
+        let phases = activePhases
+        guard let idx = phases.firstIndex(of: currentPhase),
+              idx + 1 < phases.count else {
+            // Last active phase — the letter is done. Covers
+            // `.guidedOnly`/`.control` (a single phase) as well.
             isLetterSessionComplete = true
             return false
         }
-        currentPhase = next
+        currentPhase = phases[idx + 1]
         return true
     }
 
