@@ -41,22 +41,26 @@ import CoreGraphics
         return vm
     }
 
-    /// Drive the coordinator to the end of the letter and WAIT for it.
+    /// Complete the letter through the REAL post-freeWrite entry point.
     ///
-    /// The wait is not politeness: the freeWrite step hands off to the
-    /// CoreML recognizer and RETURNS (`runRecognizerForFreeWrite`), so the
-    /// letter completes on a later turn, not inside `advance()`. Driving
-    /// the phases synchronously and asserting immediately was the first
-    /// version of this test, and it failed on its own precondition —
-    /// which is exactly what that precondition is for.
+    /// Two earlier versions of this test drove `advance()` repeatedly to
+    /// walk the phases, and both failed on their own precondition. The
+    /// reason is worth recording: the freeWrite step hands off to the
+    /// recognizer and RETURNS (`runRecognizerForFreeWrite`), so the letter
+    /// completes on a later turn — and with the fixture's nil-result stub
+    /// recognizer it never completed at all. Driving a whole session
+    /// through the phase machinery was fighting the harness to reach a
+    /// path that is directly callable.
     ///
-    /// `advance()` returns early once the session is complete, so
-    /// over-calling is safe and cannot loop.
-    private func completeLetterAndWait(_ vm: TracingViewModel) async {
-        for _ in 0..<8 { vm.phaseTransitions.advance() }
-        for _ in 0..<80 where !vm.isPhaseSessionComplete {
-            try? await Task.sleep(for: .milliseconds(25))
-        }
+    /// `completePostFreeWriteRecognition` IS that path: it is what the
+    /// recognizer calls back into, it is internal, and in study mode it
+    /// goes straight to `celebrateFreeWrite` → `recordSessionCompletion`
+    /// (study sessions never retry — see its own branch).
+    private func completeLetter(_ vm: TracingViewModel) async {
+        for _ in 0..<4 { vm.phaseTransitions.advance() }        // walk to freeWrite
+        vm.phaseTransitions.completePostFreeWriteRecognition(score: 1.0, result: nil)
+        // The completion schedules the advance on a Task; give it a turn.
+        try? await Task.sleep(for: .milliseconds(150))
     }
 
     @Test("a completed study letter advances to the next one by itself")
@@ -65,12 +69,9 @@ import CoreGraphics
         vm.startParkedLetter()
         let first = vm.currentLetterName
 
-        await completeLetterAndWait(vm)
+        await completeLetter(vm)
         #expect(vm.isPhaseSessionComplete,
-                "precondition: driving the phases must complete the letter, or this test proves nothing about what happens after")
-
-        // The advance is scheduled, not synchronous — give the Task a turn.
-        try? await Task.sleep(for: .milliseconds(150))
+                "precondition: the letter must actually complete, or this test proves nothing about what happens after")
 
         #expect(vm.currentLetterName != first,
                 "the study session stayed on '\(first)' after the letter completed. The celebration overlay is gated out under STUDY_BUILD and was the only caller of `loadRecommendedLetter()`, so nothing advanced — a child at the end of a letter sees a blank canvas and the session stops.")
@@ -89,8 +90,7 @@ import CoreGraphics
         vm.startParkedLetter()
         let first = vm.currentLetterName
 
-        await completeLetterAndWait(vm)
-        try? await Task.sleep(for: .milliseconds(150))
+        await completeLetter(vm)
 
         #expect(vm.currentLetterName == first,
                 "a casual session advanced by itself — the celebration overlay is the casual advance path, and skipping it would swallow the reward the child is meant to dismiss")
