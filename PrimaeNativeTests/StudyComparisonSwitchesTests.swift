@@ -323,6 +323,15 @@ import UIKit
         StudyComparisonSettings.presentationSpacingSeconds = 4
         StudyComparisonSettings.panningEnabled = false
         StudyComparisonSettings.guidedDotsVisible = false
+        StudyComparisonSettings.spatialAxisDemonstration = true
+        // The two trigger-boundary switches (2026-09-17). Their own file,
+        // `TriggerBoundaryTests`, deliberately writes no key it then
+        // asserts on — a parallel suite resetting mid-test would make that
+        // flaky — so the reset coverage for these two lives here with the
+        // other nine, where the assertions are all "equals the default"
+        // and a concurrent reset can only reinforce them.
+        StudyComparisonSettings.soundGateRadiusFactor = 6.0
+        StudyComparisonSettings.soundGateVelocityFloor = 0
 
         StudyComparisonSettings.resetToDefaults()
 
@@ -334,5 +343,9 @@ import UIKit
         #expect(StudyComparisonSettings.presentationSpacingSeconds == 0)
         #expect(StudyComparisonSettings.panningEnabled)
         #expect(StudyComparisonSettings.guidedDotsVisible)
+        #expect(StudyComparisonSettings.soundGateRadiusFactor
+                    == StudyComparisonSettings.soundGateRadiusFactorDefault)
+        #expect(StudyComparisonSettings.soundGateVelocityFloor
+                    == StudyComparisonSettings.soundGateVelocityFloorDefault)
     }
 }

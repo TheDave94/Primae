@@ -1165,7 +1165,22 @@ public final class TracingViewModel {
         self.playback = pb
         // Same pattern for touchDispatcher / phaseTransitions.
         let td = TouchDispatcher()
+        // The sound gate's two ANDed trigger boundaries, captured HERE —
+        // once, at view-model construction, so a proctor cannot move them
+        // under a child mid-session (the property `StudyComparisonSwitches
+        // Tests.switchesAreCapturedAtInit` pins for the older switches).
+        //
+        // One of them lands on the dispatcher, which the VM owns for the
+        // life of the session. The other lands on the GRID, not on a
+        // tracker: cells are rebuilt from scratch on every letter and every
+        // preset flip (`SequenceGridController.load`), so a value written
+        // onto `strokeTracker` in place would be silently discarded at the
+        // next letter — an inert switch, which is the failure this project
+        // has already shipped once. `grid.soundGateRadiusFactor` re-applies
+        // itself to every cell it builds, so no load path can miss it.
         self.touchDispatcher = td
+        td.playbackActivationVelocityThreshold = CGFloat(deps.soundGateVelocityFloor)
+        grid.soundGateRadiusFactor = CGFloat(deps.soundGateRadiusFactor)
         let ptc = PhaseTransitionCoordinator()
         self.phaseTransitions = ptc
         pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }

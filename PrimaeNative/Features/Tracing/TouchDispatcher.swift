@@ -29,8 +29,18 @@ final class TouchDispatcher {
 
     /// EWMA smoothing factor; calibrated for iPad-finger writing.
     var velocitySmoothingAlpha: CGFloat = 0.22
-    /// Minimum smoothed velocity (pt/s) before playback goes `.active`.
-    var playbackActivationVelocityThreshold: CGFloat = 22
+    /// Minimum smoothed velocity (pt/s) before playback goes `.active` —
+    /// one half of the ANDed boundary that decides WHEN the arm's sound
+    /// starts (`vm.strokeTracker.isNearStroke` is the other).
+    ///
+    /// The value here is the production default — taken from the one named
+    /// constant so it cannot drift from the switch's own default;
+    /// `TracingViewModel` overwrites it once at construction from
+    /// `StudyComparisonSettings.soundGateVelocityFloor`, the supervisor's
+    /// "Trigger boundaries" (2026-09-17), so a comparison run can move it
+    /// and an untouched device keeps this value.
+    var playbackActivationVelocityThreshold: CGFloat =
+        CGFloat(StudyComparisonSettings.soundGateVelocityFloorDefault)
     /// Sub-pixel hysteresis so digitiser noise on a held finger doesn't
     /// accumulate spurious motion.
     var minimumTouchMoveDistance: CGFloat = 1.5

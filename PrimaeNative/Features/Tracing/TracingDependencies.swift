@@ -82,6 +82,28 @@ struct TracingDependencies {
     /// at init, a proctor cannot change it mid-session" property the
     /// other switches have is unchanged.
     var cycleAllConditions: Bool
+    /// Reach of the sound gate as a multiple of the adapted checkpoint
+    /// radius — `StudyComparisonSettings.soundGateRadiusFactor`, the
+    /// supervisor's "Trigger boundaries" (2026-09-17). Applied to every
+    /// cell's tracker through `SequenceGridController`.
+    ///
+    /// Carried HERE for the same reason as `cycleAllConditions` above, and
+    /// one of the two seams exists for a reason the other does not have: the
+    /// DEFAULT ARGUMENT of this and the next property is an expression that
+    /// READS a `UserDefaults` key, and default arguments are evaluated at
+    /// every `TracingDependencies(...)` call site — including
+    /// `TracingDependencies.stub`, which nearly every VM-building test in
+    /// the suite goes through. A test that wrote these keys to drive the
+    /// switch would therefore hand its value to whatever other test was
+    /// constructing a fixture inside the write window. `stub` pins both
+    /// explicitly, so the keys are never read by a test unless the test
+    /// asks for that by passing a value here.
+    var soundGateRadiusFactor: Double
+    /// Smoothed-velocity floor (pt/s) below which playback stays `.idle`
+    /// even with the finger on the letter —
+    /// `StudyComparisonSettings.soundGateVelocityFloor`, read and
+    /// captured at the same point as the factor above.
+    var soundGateVelocityFloor: Double
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -178,6 +200,10 @@ struct TracingDependencies {
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
         // Device config, like studyMode — read once here, never live.
         cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
+        // Both halves of the sound gate's ANDed trigger boundary. Device
+        // config like `cycleAllConditions`, read once here and never live.
+        soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor,
+        soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -220,6 +246,8 @@ struct TracingDependencies {
         self.studyMode = studyMode
         self.participantEnrolled = participantEnrolled
         self.cycleAllConditions = cycleAllConditions
+        self.soundGateRadiusFactor = soundGateRadiusFactor
+        self.soundGateVelocityFloor = soundGateVelocityFloor
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

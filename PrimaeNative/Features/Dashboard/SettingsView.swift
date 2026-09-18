@@ -22,6 +22,8 @@ struct SettingsView: View {
     @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
     @State private var comparisonPanning: Bool = StudyComparisonSettings.panningEnabled
     @State private var comparisonAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration
+    @State private var comparisonTriggerRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor
+    @State private var comparisonTriggerVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor
     @State private var speechRate: Float = {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
         return stored > 0 ? stored : 0.42
@@ -333,6 +335,43 @@ struct SettingsView: View {
                     }
                     .accessibilityHint("Pause zwischen dem Ende eines Buchstabens und dem Beginn des nächsten. 0 ist die Vorgabe.")
 
+                    // TRIGGER BOUNDARIES (2026-09-17). The supervisor's note
+                    // was a noun phrase, so these two rows do double duty:
+                    // at their defaults they READ OUT the boundaries the
+                    // session is actually running (which no screen showed
+                    // before), and moving them makes the comparison
+                    // possible. The two are ANDed — sound needs BOTH the
+                    // finger near the letter and the finger moving — which
+                    // is why they are two rows and not one.
+                    Picker("Ton-Trigger: Nähe zum Buchstaben", selection: Binding(
+                        get: { comparisonTriggerRadiusFactor },
+                        set: {
+                            comparisonTriggerRadiusFactor = $0
+                            StudyComparisonSettings.soundGateRadiusFactor = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("1× (nur auf dem Strich)").tag(1.0)
+                        Text("2×").tag(2.0)
+                        Text("3× (Vorgabe)").tag(3.0)
+                        Text("4×").tag(4.0)
+                        Text("6× (ganze Zelle)").tag(6.0)
+                    }
+                    .accessibilityHint("Wie weit der Finger vom nächsten Prüfpunkt entfernt sein darf, damit der Ton des Arms überhaupt erlaubt ist — als Vielfaches des Trefferradius. 3× ist die Vorgabe und war der fest eingebaute Wert. Gemessen am 17.09.: Der Trefferradius eines Studienbuchstabens ist 0,1, der größte Abstand zweier Prüfpunkte ist 0,028 — entlang des Strichs liegt der Finger also bei jeder Einstellung mindestens 3,6-fach nah genug, und dieser Wert wirkt nur, wenn das Kind den Strich verlässt. Aus derselben Messung folgt, dass die zweite Zeile die ist, die im Alltag greift.")
+
+                    Picker("Ton-Trigger: Bewegung", selection: Binding(
+                        get: { comparisonTriggerVelocityFloor },
+                        set: {
+                            comparisonTriggerVelocityFloor = $0
+                            StudyComparisonSettings.soundGateVelocityFloor = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("Ohne Bewegungsschwelle").tag(0.0)
+                        Text("22 pt/s (Vorgabe)").tag(22.0)
+                        Text("44 pt/s").tag(44.0)
+                        Text("66 pt/s").tag(66.0)
+                    }
+                    .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. 22 pt/s ist die Vorgabe und war der fest eingebaute Wert; darunter bleibt der Ton still, auch wenn der Finger auf dem Buchstaben liegt. Ohne Bewegungsschwelle folgt der Ton allein der Nähe. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und Bewegung.")
+
                     Button("Vergleichsmodus zurücksetzen", role: .destructive) {
                         StudyComparisonSettings.resetToDefaults()
                         comparisonObservePasses = StudyComparisonSettings.observePasses
@@ -344,6 +383,8 @@ struct SettingsView: View {
                         comparisonPanning = StudyComparisonSettings.panningEnabled
                         comparisonAxisDemonstration = StudyComparisonSettings.spatialAxisDemonstration
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
+                        comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
+                        comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor
                         vm.markAssignmentOverrideChanged()
                     }
 

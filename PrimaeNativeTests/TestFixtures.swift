@@ -232,6 +232,17 @@ extension TracingDependencies {
             // mean to exercise the cycle say so at the call site
             // (`deps.cycleAllConditions = true`).
             cycleAllConditions:   false,
+            // Pin both trigger-boundary switches for the same reason, and
+            // a sharper one: their DEFAULT ARGUMENTS read a UserDefaults
+            // key, so an unpinned fixture would evaluate those reads at
+            // every `TracingDependencies(stub…)` construction in the
+            // parallel run — i.e. every VM-building test would sample
+            // whatever the trigger-boundary suite had written at that
+            // instant. Pinning makes the read never happen. Tests that
+            // mean to exercise these say so at the call site
+            // (`deps.soundGateRadiusFactor = …`).
+            soundGateRadiusFactor: StudyComparisonSettings.soundGateRadiusFactorDefault,
+            soundGateVelocityFloor: StudyComparisonSettings.soundGateVelocityFloorDefault,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Real AVAudioPlayer.play() in PromptPlayer adds enough

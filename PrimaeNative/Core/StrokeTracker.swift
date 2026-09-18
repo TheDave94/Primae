@@ -14,6 +14,28 @@ final class StrokeTracker {
     /// 1.0 = standard; >1.0 = more lenient (easy); <1.0 = stricter (hard).
     var radiusMultiplier: CGFloat = 1.0
 
+    /// How far from the next expected checkpoint `isNearStroke` still
+    /// reports true, as a multiple of the ADAPTED hit radius
+    /// (`checkpointRadius * radiusMultiplier`) — i.e. the reach of the
+    /// sound gate, the trigger boundary that decides whether the arm's
+    /// audio is allowed to play at all.
+    ///
+    /// 3.0 is what this was hardcoded to (the literal `* 3.0` this
+    /// replaces), and remains the default — taken from the ONE named
+    /// constant so the tracker, the grid and the researcher control cannot
+    /// drift apart;
+    /// `StudyComparisonSettings.soundGateRadiusFactor` moves it for
+    /// comparison runs, captured once at session start and applied to
+    /// every cell's tracker by `SequenceGridController`.
+    ///
+    /// It widens the SOUND gate only. The hit boundary on the next line is
+    /// untouched — the factor cannot make a checkpoint easier or harder to
+    /// consume. See `StudyComparisonSettings.soundGateRadiusFactor` for the
+    /// measured reason a "wider/narrower sound gate" comparison is in
+    /// practice a comparison of what happens OFF the stroke.
+    var soundGateRadiusFactor: CGFloat =
+        CGFloat(StudyComparisonSettings.soundGateRadiusFactorDefault)
+
     /// Closure called when a stroke is completed. The integer parameter is the completed stroke index.
     var onStrokeCompleted: ((Int) -> Void)?
 
@@ -97,7 +119,7 @@ final class StrokeTracker {
         let dist = hypot(dx, dy)
 
         let threshold = definition.checkpointRadius * radiusMultiplier
-        isNearStroke = dist <= threshold * 3.0
+        isNearStroke = dist <= threshold * soundGateRadiusFactor
         if dist <= threshold {
             self.progress[current].nextCheckpoint += 1
             if self.progress[current].nextCheckpoint >= stroke.checkpoints.count {

@@ -200,13 +200,105 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: spatialAxisDemonstrationKey) }
     }
 
+    /// How far from the next expected checkpoint the child's finger may be
+    /// and still have the arm's sound allowed to play, as a MULTIPLE of the
+    /// checkpoint radius — the supervisor's "Trigger boundaries".
+    ///
+    /// WHY THIS SWITCH EXISTS AND WHY IT IS THE ONE THAT MOVES. The
+    /// supervisor's note is a noun phrase: it names the class of boundary
+    /// that decides when the app responds to the child, and proposes no
+    /// value. Five such boundaries exist and four of them are buried bare
+    /// literals in four different files (the checkpoint hit radius,
+    /// `StrokeTracker.swift:99`; this sound gate, `:100`; the 1.5 pt
+    /// minimum move and the 0.22 EWMA, `TouchDispatcher.swift:31,36`; the
+    /// 0.1/0.03/0.12 s playback debounces and the 22 pt/s floor,
+    /// `TouchDispatcher.swift:33` + `PlaybackController.swift:75-77`).
+    /// None was named, none was visible, none was switchable.
+    ///
+    /// This one and the velocity floor below are the two that are ANDed to
+    /// produce the single boundary a child actually experiences — WHEN THE
+    /// LETTER'S SOUND STARTS — so they are the pair that makes "are these
+    /// boundaries right?" answerable by moving them. They are two switches
+    /// and not one because they are ANDed: a run that moved both at once
+    /// could not attribute what changed.
+    ///
+    /// THE MEASUREMENT THAT SET THE DEFAULT'S RANGE, taken 2026-09-17
+    /// against the five study letters (`TrainedLetterSubset.studyLetters`
+    /// = A F I L M), read from `Resources/Letters/Regular/*/strokes.json`
+    /// — the weight `LetterRepository` defaults to. In study mode
+    /// difficulty is pinned at `.standard` (`TracingViewModel.swift:1123-1127`,
+    /// and the errorless ramp above it is `if !studyMode`), so
+    /// `radiusMultiplier` is 1.0, and every study letter's authored
+    /// `checkpointRadius` is 0.1. The hit boundary is therefore 0.1 and
+    /// this gate is 3 × 0.1 = 0.3 — while the LARGEST gap between two
+    /// consecutive checkpoints in any study letter is 0.0278 (A; I 0.0266,
+    /// L 0.0242, F 0.0242, M 0.0197). So along the stroke the default gate
+    /// is satisfied with a 10.8× margin, and even at the TIGHTEST setting
+    /// offered (1×, where the gate IS the hit boundary) it clears the
+    /// largest on-stroke gap by 3.6×. No setting in this range can
+    /// therefore close the gate on a child who is tracing the stroke —
+    /// this factor is live only when the finger is OFF it, which is exactly
+    /// when a child would notice the sound stopping. Recorded rather than
+    /// glossed, because it is the reason the velocity floor below is the
+    /// switch that binds and this one is the switch that bounds.
+    ///
+    /// SPACE CAVEAT, recorded because the numbers above are not in the same
+    /// coordinates the running app compares in: they are the stroke JSON's
+    /// glyph-bbox values. The shipped app remaps each checkpoint through the
+    /// glyph rect — anisotropically, `x` by the rect's width and `y` by its
+    /// height — and scales `checkpointRadius` by `sqrt(width × height)`
+    /// instead (`TracingViewModel.swift:3007-3012`), so the effective ratio
+    /// is glyph-dependent rather than the flat 3.6×..15.2× above. Not
+    /// reproduced here because `PrimaeLetterRenderer.normalizedGlyphRect`
+    /// refuses to run under test (`guard !isRunningTests`). The conclusion
+    /// is unaffected: the correction is an aspect ratio, not an order of
+    /// magnitude, and the tightest margin above is 3.6×.
+    ///
+    /// 1.0 is the floor of the range: at 1× the gate IS the hit boundary,
+    /// which is the tightest setting the tracker's own logic has an
+    /// interpretation for (below it, a checkpoint could advance while the
+    /// sound gate reported "not near"). 6× is a deliberately generous
+    /// ceiling. Default 3.0, the hardcoded value this has had since the
+    /// tracker was written, so an untouched device is unchanged.
+    static let soundGateRadiusFactorKey = prefix + "soundGateRadiusFactor"
+    /// The value above that an untouched device runs, named so the
+    /// researcher control and the production default cannot drift apart.
+    static let soundGateRadiusFactorDefault: Double = 3.0
+    static var soundGateRadiusFactor: Double {
+        get { max(1.0, doubleValue(soundGateRadiusFactorKey,
+                                   default: soundGateRadiusFactorDefault)) }
+        set { UserDefaults.standard.set(max(1.0, newValue), forKey: soundGateRadiusFactorKey) }
+    }
+
+    /// The smoothed touch velocity (pt/s) below which the letter's sound
+    /// is held at `.idle` even with the finger on the letter — the second
+    /// half of the same ANDed boundary, and the half that BINDS. Because
+    /// the radius gate above is saturated along the stroke, this is the
+    /// gate that decides whether a child tracing correctly hears the
+    /// letter at all (`TouchDispatcher.swift:381-384`).
+    ///
+    /// Default 22.0, the hardcoded value since the dispatcher was written.
+    /// 0.0 is a legitimate comparison — sound follows proximity alone,
+    /// with no motion requirement — and is included as a setting because
+    /// it is the "both options" the note implies when read as "should the
+    /// trigger require movement at all?".
+    static let soundGateVelocityFloorKey = prefix + "soundGateVelocityFloor"
+    /// The default above, named for the same reason as its sibling.
+    static let soundGateVelocityFloorDefault: Double = 22.0
+    static var soundGateVelocityFloor: Double {
+        get { max(0, doubleValue(soundGateVelocityFloorKey,
+                                 default: soundGateVelocityFloorDefault)) }
+        set { UserDefaults.standard.set(max(0, newValue), forKey: soundGateVelocityFloorKey) }
+    }
+
     /// Restore every switch to the behaviour the app had before this file
     /// existed. Used by the researcher UI's reset row, and by tests.
     static func resetToDefaults() {
         for key in [observePassesKey, spokenFeedbackKey, allFiveLettersKey,
                     letterRepeatCountKey, cycleAllConditionsKey,
                     presentationSpacingKey, guidedDotsVisibleKey,
-                    panningEnabledKey, spatialAxisDemonstrationKey] {
+                    panningEnabledKey, spatialAxisDemonstrationKey,
+                    soundGateRadiusFactorKey, soundGateVelocityFloorKey] {
             UserDefaults.standard.removeObject(forKey: key)
         }
     }

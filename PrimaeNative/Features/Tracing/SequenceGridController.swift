@@ -17,6 +17,22 @@ final class SequenceGridController {
     /// connect across cell boundaries.
     private(set) var wordRendering: PrimaeLetterRenderer.WordRendering?
 
+    /// Reach of each cell's sound gate, as a multiple of the adapted
+    /// checkpoint radius — `StudyComparisonSettings.soundGateRadiusFactor`,
+    /// the supervisor's "Trigger boundaries", set once by the view model at
+    /// session start.
+    ///
+    /// It lives HERE rather than on the trackers because cells are rebuilt
+    /// from scratch on every `load` (every letter, every preset flip), so a
+    /// value written onto a tracker in place would be lost at the next
+    /// letter — which is the shape that makes a switch silently inert. The
+    /// `didSet` re-applies to cells already built, so the assignment is
+    /// order-independent.
+    var soundGateRadiusFactor: CGFloat =
+        CGFloat(StudyComparisonSettings.soundGateRadiusFactorDefault) {
+        didSet { applyToTrackers() }
+    }
+
     init(sequence: TracingSequence, preset: InputPreset) {
         self.sequence = sequence
         self.preset = preset.resolved(forSequenceLength: sequence.items.count)
@@ -25,6 +41,7 @@ final class SequenceGridController {
         }
         self.activeCellIndex = 0
         self.wordRendering = nil
+        applyToTrackers()
     }
 
     /// Replace the sequence and/or preset, rebuilding cells and resetting
@@ -38,6 +55,14 @@ final class SequenceGridController {
         }
         self.activeCellIndex = 0
         self.wordRendering = nil
+        applyToTrackers()
+    }
+
+    /// Push `soundGateRadiusFactor` onto every cell's tracker. Called from
+    /// the property's `didSet` and after every rebuild, so no path can leave
+    /// a cell carrying the built-in default while the session runs another.
+    private func applyToTrackers() {
+        for cell in cells { cell.tracker.soundGateRadiusFactor = soundGateRadiusFactor }
     }
 
     /// Assign per-cell frames. `.word` sequences route through
