@@ -21,17 +21,6 @@ final class PhaseTransitionCoordinator {
     /// `playback` and `touchDispatcher`.
     weak var vm: TracingViewModel?
 
-    /// Pause before the study build loads the next letter after one
-    /// completes. Exists so the transition is perceptible rather than
-    /// instantaneous — the casual path gets the same pacing for free from
-    /// the child dismissing the celebration overlay.
-    ///
-    /// A property, not a constant, so a test can set it to 0 and assert the
-    /// advance without sleeping. Deliberately NOT a `static`: a global a
-    /// test mutates is visible to every suite running in parallel, which is
-    /// the trap `LetterWeightFallbackTests` cost this project once already.
-    var studyAutoAdvanceDelay: TimeInterval = 1.5
-
     // MARK: - Public entry (forwarded from VM)
 
     /// Score the active phase, queue post-freeWrite overlays, advance
@@ -421,18 +410,21 @@ final class PhaseTransitionCoordinator {
             //
             // NOTHING is enqueued, chimed or spoken here, so the C1/C2
             // equity is untouched — all three arms advance identically.
-            // The delay exists only so the transition is perceptible; the
-            // casual path gets the same pacing from the child dismissing
-            // the celebration.
-            let delay = studyAutoAdvanceDelay
-            let letter = vm.currentLetterName
-            Task { @MainActor [weak vm] in
-                if delay > 0 { try? await Task.sleep(for: .seconds(delay)) }
-                guard let vm, vm.studyMode,
-                      vm.currentLetterName == letter,   // proctor did not move on
-                      vm.isPhaseSessionComplete else { return }
-                vm.loadRecommendedLetter()
-            }
+            //
+            // SYNCHRONOUS ON PURPOSE. The first version deferred this on a
+            // `Task` with a 1.5 s sleep so the transition would be
+            // perceptible. That was wrong twice over. It broke two suites
+            // that pass in isolation — the deferred task fired AFTER the
+            // test that created it had finished and touched state while
+            // other suites ran in parallel, which is the same class of
+            // leak as a test mutating a global. And the pause was not
+            // needed: this runs at the end of freeWrite, which is already
+            // preceded by a 2 s quiet window, and the next letter's observe
+            // brings its own pacing.
+            //
+            // Called directly, so the advance happens inside the
+            // completion — no work outlives the call.
+            vm.loadRecommendedLetter()
         }
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()
