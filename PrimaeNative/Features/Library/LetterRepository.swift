@@ -316,7 +316,23 @@ private extension LetterRepository {
         let otherWeightFolders = Set(FontWeight.allCases
             .filter { $0 != activeWeight }
             .map { $0.folder })
-        let allJSONURLs = resources.allResourceURLs().filter {
+        // ENUMERATE THE BUNDLE ONCE FOR THE WHOLE LOAD, not once per
+        // letter. This value used to be re-derived inside
+        // `findAudioAssets(for:)`, which the letter loop below calls once
+        // per letter — so the cost was
+        // `letters × files × bundles × 2` FILESYSTEM operations, because
+        // `allResourceURLs()` does a `resourceValues(forKeys:)` stat AND a
+        // `resolvingSymlinksInPath()` per file, across BOTH search
+        // bundles. With 157 files in the shipped resource tree and ~59
+        // letters that is on the order of 37,000 filesystem calls per
+        // launch, for a value that cannot change during one.
+        //
+        // Measured symptom, reported from the device 2026-09-18: "the app
+        // takes really long to load". The work is pure and
+        // bundle-determined, so hoisting it is a pure win — the same URLs
+        // reach every consumer, computed once.
+        let allResources = resources.allResourceURLs()
+        let allJSONURLs = allResources.filter {
             $0.pathExtension.lowercased() == "json"
         }
         // Accept URLs that are either under the active weight's subtree
@@ -382,7 +398,7 @@ private extension LetterRepository {
 
             let imageBase = isLowercaseFolder ? "\(base)_l" : base
 
-            let allAudio = findAudioAssets(for: base)
+            let allAudio = findAudioAssets(for: base, in: allResources)
             if allAudio.isEmpty {
                 // A valid strokes.json is enough to trace; letters
                 // without recordings stay silent on proximity events.
@@ -435,9 +451,15 @@ private extension LetterRepository {
         return (name, phoneme)
     }
 
-    func findAudioAssets(for base: String) -> [String] {
+    /// - Parameter allResources: the bundle's file list, passed IN rather
+    ///   than re-derived here. This function is called once per letter from
+    ///   `loadBundledStrokeLettersWithValidation`, and it used to call
+    ///   `resources.allResourceURLs()` itself — which enumerates both
+    ///   bundles doing a stat and a symlink resolution per file. That made
+    ///   the whole load quadratic in files × letters; see the note on
+    ///   `allResources` there for the measurement and the symptom.
+    func findAudioAssets(for base: String, in allResources: [URL]) -> [String] {
         let supported    = Set(["mp3", "wav", "m4a", "aac", "flac", "ogg"])
-        let allResources = resources.allResourceURLs()
         let bundleRoots: [String] = resources.searchBundles.compactMap {
             guard let p = $0.resourceURL?.path else { return nil }
             return p.hasSuffix("/") ? p : p + "/"
