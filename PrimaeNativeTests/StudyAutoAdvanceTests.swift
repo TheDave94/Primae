@@ -71,7 +71,7 @@ import CoreGraphics
 
         await completeLetter(vm)
         #expect(vm.isPhaseSessionComplete,
-                "precondition: the letter must actually complete, or this test proves nothing about what happens after")
+                "precondition: the letter must actually complete, or this test proves nothing about what happens after. Observed state — phase=\(vm.learningPhase), didComplete=\(vm.didCompleteCurrentLetter), activePhases=\(vm.activePhases.map(\.rawName))")
 
         #expect(vm.currentLetterName != first,
                 "the study session stayed on '\(first)' after the letter completed. The celebration overlay is gated out under STUDY_BUILD and was the only caller of `loadRecommendedLetter()`, so nothing advanced — a child at the end of a letter sees a blank canvas and the session stops.")
