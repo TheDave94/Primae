@@ -41,11 +41,22 @@ import CoreGraphics
         return vm
     }
 
-    /// Drive the coordinator until it stops advancing. `advance()` returns
-    /// early once the letter session is complete, so this is safe to
-    /// over-call and cannot loop forever.
-    private func completeLetter(_ vm: TracingViewModel) {
+    /// Drive the coordinator to the end of the letter and WAIT for it.
+    ///
+    /// The wait is not politeness: the freeWrite step hands off to the
+    /// CoreML recognizer and RETURNS (`runRecognizerForFreeWrite`), so the
+    /// letter completes on a later turn, not inside `advance()`. Driving
+    /// the phases synchronously and asserting immediately was the first
+    /// version of this test, and it failed on its own precondition —
+    /// which is exactly what that precondition is for.
+    ///
+    /// `advance()` returns early once the session is complete, so
+    /// over-calling is safe and cannot loop.
+    private func completeLetterAndWait(_ vm: TracingViewModel) async {
         for _ in 0..<8 { vm.phaseTransitions.advance() }
+        for _ in 0..<80 where !vm.isPhaseSessionComplete {
+            try? await Task.sleep(for: .milliseconds(25))
+        }
     }
 
     @Test("a completed study letter advances to the next one by itself")
@@ -54,12 +65,12 @@ import CoreGraphics
         vm.startParkedLetter()
         let first = vm.currentLetterName
 
-        completeLetter(vm)
+        await completeLetterAndWait(vm)
         #expect(vm.isPhaseSessionComplete,
                 "precondition: driving the phases must complete the letter, or this test proves nothing about what happens after")
 
         // The advance is scheduled, not synchronous — give the Task a turn.
-        try? await Task.sleep(for: .milliseconds(120))
+        try? await Task.sleep(for: .milliseconds(150))
 
         #expect(vm.currentLetterName != first,
                 "the study session stayed on '\(first)' after the letter completed. The celebration overlay is gated out under STUDY_BUILD and was the only caller of `loadRecommendedLetter()`, so nothing advanced — a child at the end of a letter sees a blank canvas and the session stops.")
@@ -78,8 +89,8 @@ import CoreGraphics
         vm.startParkedLetter()
         let first = vm.currentLetterName
 
-        completeLetter(vm)
-        try? await Task.sleep(for: .milliseconds(120))
+        await completeLetterAndWait(vm)
+        try? await Task.sleep(for: .milliseconds(150))
 
         #expect(vm.currentLetterName == first,
                 "a casual session advanced by itself — the celebration overlay is the casual advance path, and skipping it would swallow the reward the child is meant to dismiss")
