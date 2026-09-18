@@ -24,9 +24,16 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
     case control
 
     /// German display label for the parent dashboard and thesis reports.
+    ///
+    /// `.threePhase` read **"Vier Phasen"** until 2026-09-18. That was
+    /// defensible while four phases ran — D12 documented the name as
+    /// historical rather than a count — but `direct` left the flow that day
+    /// (D5), so it became a plain mislabel in the proctor's arm picker and
+    /// the research dashboard. The CASE NAME is unchanged: it is a
+    /// `Codable` raw value and renaming it would break stored rows.
     var displayName: String {
         switch self {
-        case .threePhase: return "Vier Phasen"
+        case .threePhase: return "Drei Phasen"
         case .guidedOnly: return "Nur Nachspuren"
         case .control:    return "Kontrollgruppe"
         }

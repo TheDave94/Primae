@@ -27,7 +27,16 @@ Implications:
 ## Locked decisions
 
 - **D1 — Arm structure: audio-only-varies.** Every participant gets the SAME pedagogical flow; the three arms differ ONLY in audio (phoneme / spatial / silent — the middle arm was arbitrary-sound until 2026-07-06). NOT a crossed pedagogical×audio design. Simplifies the arm build to swap-enum + branch-audio.
-- **D5 — `direct` phase: CUT (move to three-phase `observe → guided → freeWrite`). SUPERSEDED 2026-09-16 — the four-phase flow is KEPT; the Direct phase stays.** Originally decided on a six-paper both-sides evidence read (see "Evidence base for D5"); status carried since 2026-09-04 as "decided, NOT executed," naming the fork between this entry and the shipped four-phase app. David's ruling closes the fork by keeping the app as built, not by executing the cut: the app has shipped the Direct phase since `559a1df` (2026-04, "Add directionality teaching phase between observe and guided"); two thesis chapters (Ch.3 §"The learning flow", Ch.6 §"Randomisation and apparatus preconditions") are already written around the four-phase flow; the pilot instrument is verified working on the device on this flow; and the traced process measures (stroke count, order, reversed-direction) are provably uncontaminated by Direct-phase tapping — `tapDirectDot` (`TracingViewModel.swift:1727`) never touches `activePath`, `freeWriteRecorder`, or `RawTraceStore`, which come exclusively from the FreeWrite phase that Direct-phase taps never reach. Executing the cut instead would mean ~12 Swift files, two docs, and tests, plus rewriting Ch.3 and Ch.6, then re-verifying the instrument — to make a working, already-verified pilot match a decision made once and never executed. If the Direct phase turns out to matter to the outcome, that is a finding for the main study, not a blocker for this pilot.
+- **D5 — `direct` phase: CUT (move to three-phase `observe → guided → freeWrite`). RULED 2026-09-18 — the cut is EXECUTED.** David: *"The whole tapping the points part should go."* `LearningPhaseController.activePhases` excludes `.direct` for `.threePhase`, and `advance` walks the active list rather than `rawValue + 1` (those two agreed only while every phase was active). The `LearningPhase.direct` CASE REMAINS — it is `Codable`, stored rows reference it, and `rawValue` ordering is relied on — but no session runs it.
+
+  **HISTORY, kept because a log is a log.** Originally decided on a six-paper both-sides evidence read (see "Evidence base for D5"); carried since 2026-09-04 as "decided, NOT executed". **2026-09-16: SUPERSEDED — the four-phase flow is KEPT.** That entry closed the fork by keeping the app as built: Direct had shipped since `559a1df`; two thesis chapters (Ch.3 §"The learning flow", Ch.6 §"Randomisation and apparatus preconditions") were already written around four phases; the instrument was verified on that flow; and — still true, and unaffected by the cut — the traced process measures (stroke count, order, reversed-direction) are provably uncontaminated by Direct-phase tapping, because `tapDirectDot` never touches `activePath`, `freeWriteRecorder` or `RawTraceStore`.
+
+  **THE 2026-09-16 ENTRY NAMED ITS OWN COST, AND THAT LIST IS NOW THE WORK.** It wrote that executing the cut "would mean ~12 Swift files, two docs, and tests, plus rewriting Ch.3 and Ch.6, then re-verifying the instrument." Executed and measured 2026-09-18:
+  - **The export is THREE rows per letter, not four.** `PhaseTransitionCoordinator` writes one row per SCORED phase, so no `direct` row is written for any letter in any arm. This is an analysis-shape change and three test files pinned the old count.
+  - **D12's mathematical floor of 0.5 is now 1/3** — with three phases only `observe` scores an unconditional 1.0.
+  - **`ThesisCondition.threePhase.displayName` read "Vier Phasen"** while the flow ran three. Corrected.
+  - **Ch.3 and Ch.6 still describe the four-phase flow.** NOT YET MOVED — this is the outstanding thesis work the cut implies, and the same class as the glissando: the code changed first, the prose must follow.
+  - Dead-but-kept, deliberately: `TracingViewModel.tapDirectDot`, `DirectPhaseDotsOverlay`, and the `.direct` branches of `isTouchEnabled` / `showCheckpoints` / `useCheckpointGating`.
 
 - **D8 — Primary accuracy outcome: order-invariant spatial deviation
   via STROKE CORRESPONDENCE, not shape normalisation and not discrete
@@ -262,26 +271,36 @@ Implications:
   rather than relying on this analytical bound.
   Implemented: `dfae2de` on `feat/order-invariant-primary-outcome`.
 
-- **D12 — The score composite has a mathematical floor of 0.5 under the
-  four-phase flow; `averageAccuracy` dropped from the export as a result
-  (ruling, David, 2026-09-16).** `PhaseSessionRecord.score` is not one
-  instrument across phase rows, and never was: `observe` and `direct`
-  are always exactly `1.0` (completion markers, not measurements),
-  `guided` is checkpoint-proximity COVERAGE, and `freeWrite` is
+- **D12 — The score composite has a mathematical floor; `averageAccuracy`
+  dropped from the export as a result (ruling, David, 2026-09-16).** **THE
+  FLOOR IS 1/3, NOT 0.5 (re-measured 2026-09-18).** This entry was written
+  under the four-phase flow and its arithmetic changed when `direct` left
+  the session (D5 above): with three phases only ONE term is an
+  unconditional `1.0`. The ARGUMENT is unaffected — a fixed uninformative
+  floor still inflates the composite — but every `0.5` below is now `1/3`,
+  and any analysis that hard-coded 0.5 is wrong.
+  `PhaseSessionRecord.score` is not one
+  instrument across phase rows, and never was: `observe` is always exactly
+  `1.0` (a completion marker, not a measurement), `guided` is
+  checkpoint-proximity COVERAGE, and `freeWrite` is
   `WritingAssessment.overallScore`, a weighted 4-dimension composite
   (Form 40% + Tempo 25% + Druck 15% + Rhythmus 20%) — see
   `ParentDashboardStore.swift:10-37`. `LearningPhaseController
   .overallScore` (`:108-111`) is the UNWEIGHTED MEAN of every active
-  phase's `score`, so under the four-phase flow two of its four terms
-  are unconditionally `1.0` and the composite has a mathematical FLOOR
-  of 0.5 — a child who traces nothing correctly in `guided` and
-  `freeWrite` (both 0) still yields exactly 0.5. It is not merely an
+  phase's `score`, so under the CURRENT three-phase flow one of its three
+  terms is unconditionally `1.0` and the composite has a mathematical FLOOR
+  of **1/3** — a child who traces nothing correctly in `guided` and
+  `freeWrite` (both 0) still yields exactly 1/3. (Under the four-phase flow
+  it was 0.5, from two unconditional terms.) It is not merely an
   average of incomparable quantities: it is systematically inflated by
-  a fixed, uninformative floor. The four-phase flow is the
+  a fixed, uninformative floor. The flow is the
   `ThesisCondition` case named `threePhase`, a Codable-rawValue
-  stability artifact whose `displayName` is "Vier Phasen"
+  stability artifact whose `displayName` was "Vier Phasen"
   (`ThesisCondition.swift:16-18`) — read the case name as historical,
-  not as a phase count. `.guidedOnly`/`.control` (single active phase)
+  not as a phase count. **That label was corrected to "Drei Phasen" on
+  2026-09-18**: it stopped being defensible as a historical name when the
+  flow actually became three phases (D5), leaving it a plain mislabel in
+  the proctor's picker. `.guidedOnly`/`.control` (single active phase)
   have no floor, because nothing else is in the average to dilute it.
 
   **What the floor does NOT touch, traced hop by hop 2026-09-16 rather

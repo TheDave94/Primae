@@ -101,11 +101,14 @@ struct LearningPhaseController: Equatable {
     ///
     /// NOT a clean accuracy signal under `.threePhase` (found
     /// 2026-09-04 — see `PhaseSessionRecord.score` and DECISIONS.md
-    /// D12): `observe` and `direct` always score exactly `1.0`
-    /// (completion markers, not measurements), so with all 4 phases
-    /// active this average has a mathematical FLOOR of 0.5 — a child
-    /// who traces nothing correctly in `guided`/`freeWrite` (both 0)
-    /// still yields `overallScore` = 0.5. This value feeds
+    /// D12): `observe` always scores exactly `1.0` (a completion marker,
+    /// not a measurement), so with the CURRENT three phases active this
+    /// average has a mathematical FLOOR of **1/3** — a child who traces
+    /// nothing correctly in `guided`/`freeWrite` (both 0) still yields
+    /// `overallScore` = 1/3. **The floor was 0.5 while `direct` was in the
+    /// flow** (two unconditional terms of four; the phase left the session
+    /// on 2026-09-18 — see D5), so any analysis or comment still quoting
+    /// 0.5 is stale. This value feeds
     /// `LetterProgress.bestAccuracy` and
     /// `ParentDashboardStoring.recordSession`'s `accuracy` — both
     /// systematically inflated for that condition, not merely an
