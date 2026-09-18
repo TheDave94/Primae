@@ -43,11 +43,25 @@ import CoreGraphics
 
     private let canvas = CGSize(width: 400, height: 400)
 
+    private func makeAsset(_ name: String) -> LetterAsset {
+        LetterAsset(id: name, name: name, baseLetter: name, letterCase: .upper,
+                    audioFiles: ["\(name).mp3"],
+                    strokes: LetterStrokes(letter: name, checkpointRadius: 0.1, strokes: []),
+                    phonemeAudioFiles: ["\(name)_phoneme1.mp3"])
+    }
+
+    /// THREE letters, and that is load-bearing rather than decoration.
+    /// `TracingDependencies.stub` serves a ONE-letter pool, so advancing
+    /// from it lands back on the same letter (`visible[(idx + 1) % 1]`) —
+    /// which made the first version of this test assert that a letter HAD
+    /// changed while the fixture could not possibly change it. Two letters
+    /// would do; three mirrors the study subset the other suites use.
     private func studyVM() -> TracingViewModel {
         var deps = TracingDependencies.stub
         deps.studyMode = true
         let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
+        vm.letters = ["A", "F", "I"].map(makeAsset)
         return vm
     }
 
@@ -76,6 +90,7 @@ import CoreGraphics
         deps.studyMode = false
         let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
+        vm.letters = ["A", "F", "I"].map(makeAsset)
         vm.startParkedLetter()
 
         // No assertion about WHICH letter: the casual path is
