@@ -236,7 +236,14 @@ final class PhaseTransitionCoordinator {
             strokeOrder: m.strokeProcess?.matchedReferenceOrderField,
             reversedStrokeCount: m.strokeProcess?.reversedStrokeCount,
             studyMode: vm.studyMode,
-            probe: vm.currentProbe?.rawValue
+            probe: vm.currentProbe?.rawValue,
+            // What this SESSION runs under, captured at the row's
+            // construction and carried on the record — never re-read at
+            // export time, which would stamp an old session with whatever
+            // the device says then. nil for a pilot session (all twelve
+            // switches at their defaults), so this column is empty on
+            // every pilot row.
+            comparisonConfiguration: vm.comparisonConfigurationStamp
         )
     }
 
@@ -447,7 +454,10 @@ final class PhaseTransitionCoordinator {
                 strokeOrder: isFreeWrite ? m.strokeProcess?.matchedReferenceOrderField : nil,
                 reversedStrokeCount: isFreeWrite ? m.strokeProcess?.reversedStrokeCount : nil,
                 studyMode: vm.studyMode,
-                probe: vm.currentProbe?.rawValue
+                probe: vm.currentProbe?.rawValue,
+                // Same stamp, same rule as the incomplete-row site above:
+                // captured here, from the session, and never at export.
+                comparisonConfiguration: vm.comparisonConfigurationStamp
             )
         }
         commitCompletion(letter: vm.currentLetterName,

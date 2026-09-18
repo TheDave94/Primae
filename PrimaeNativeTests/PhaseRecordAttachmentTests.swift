@@ -110,7 +110,8 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
                             strokeOrder: String?,
                             reversedStrokeCount: Int?,
                             studyMode: Bool?,
-                            probe: String?) {
+                            probe: String?,
+                            comparisonConfiguration: String?) {
         calls.append(Call(letter: letter, phase: phase, completed: completed,
                           score: score, condition: condition,
                           audioCondition: audioCondition,

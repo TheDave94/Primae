@@ -213,7 +213,19 @@ struct ParentDashboardExporter {
         // key (`PhaseSessionRecord.frechetDistance` is untouched — this
         // is a header-string change here plus a JSON post-process below,
         // nothing that could affect decoding any file already on disk).
-        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe"].joined(separator: sep))
+        // `comparisonConfiguration` appended LAST (2026-09-18): the
+        // non-default researcher switches this row's session ran under,
+        // or EMPTY for a pilot row. Without it a comparison run's rows
+        // and a pilot run's rows were the same 27 columns, same order,
+        // same names, and could not be told apart once merged across
+        // sessions — eleven of the twelve switches left no trace at all
+        // (the twelfth, `allFiveLetters`, only indirectly, through
+        // `trainedSubset == "AFILM"`). Newest-last for the same reason
+        // every other recent column is: existing parsers index the
+        // legacy order. The value rides on the record and is never
+        // recomputed here — see `PhaseSessionRecord
+        // .comparisonConfiguration`.
+        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration"].joined(separator: sep))
         // D11#1: filtered ONCE, here, and every aggregate below —
         // including the arm-split ones — reads `enrolledRecords`, never
         // `snapshot.phaseSessionRecords` directly. The raw-row loop and
@@ -296,7 +308,14 @@ struct ParentDashboardExporter {
                 rec.studyMode.map(String.init) ?? "",
                 // Cold-probe kind: pretest / posttest / delayed; empty for
                 // a training pass (2026-09-04).
-                rec.probe ?? ""
+                rec.probe ?? "",
+                // The session's comparison stamp, read off the RECORD
+                // (2026-09-18). Deliberately not read from
+                // `StudyComparisonSettings`: that would stamp every row
+                // in the file with the configuration of the device the
+                // export ran on, which for a session run yesterday is
+                // simply wrong. Empty for a pilot row.
+                rec.comparisonConfiguration ?? ""
             ]
             lines.append(row.map { delimitedField($0, separator: sep) }.joined(separator: sep))
         }

@@ -40,8 +40,13 @@ enum StudyComparisonSettings {
     /// langsamer)" — 1 is the new behaviour, 2 is what it was. The pass
     /// runs at `AnimationSpeed.slow` either way.
     static let observePassesKey = prefix + "observePasses"
+    /// The value an untouched device runs, named so the default the
+    /// STAMP compares against cannot drift from the default the getter
+    /// falls back to. Same reason `soundGateRadiusFactorDefault` is
+    /// named further down.
+    static let observePassesDefault: Int = 1
     static var observePasses: Int {
-        get { intValue(observePassesKey, default: 1) }
+        get { intValue(observePassesKey, default: observePassesDefault) }
         set { UserDefaults.standard.set(newValue, forKey: observePassesKey) }
     }
 
@@ -54,8 +59,9 @@ enum StudyComparisonSettings {
     ///
     /// Default OFF, i.e. the thesis behaviour.
     static let spokenFeedbackKey = prefix + "spokenFeedbackInStudy"
+    static let spokenFeedbackInStudyDefault: Bool = false
     static var spokenFeedbackInStudy: Bool {
-        get { boolValue(spokenFeedbackKey, default: false) }
+        get { boolValue(spokenFeedbackKey, default: spokenFeedbackInStudyDefault) }
         set { UserDefaults.standard.set(newValue, forKey: spokenFeedbackKey) }
     }
 
@@ -77,8 +83,9 @@ enum StudyComparisonSettings {
     /// letters it had practised — a fabricated contrast, and the post-test
     /// offered those same two letters as the "untrained" probe.
     static let allFiveLettersKey = prefix + "allFiveLetters"
+    static let allFiveLettersDefault: Bool = false
     static var allFiveLetters: Bool {
-        get { boolValue(allFiveLettersKey, default: false) }
+        get { boolValue(allFiveLettersKey, default: allFiveLettersDefault) }
         set { UserDefaults.standard.set(newValue, forKey: allFiveLettersKey) }
     }
 
@@ -86,8 +93,9 @@ enum StudyComparisonSettings {
     /// proctor advances. The supervisor's "Buchstabe dreimal?".
     /// Default 1, which is what the app does today.
     static let letterRepeatCountKey = prefix + "letterRepeatCount"
+    static let letterRepeatCountDefault: Int = 1
     static var letterRepeatCount: Int {
-        get { max(1, intValue(letterRepeatCountKey, default: 1)) }
+        get { max(1, intValue(letterRepeatCountKey, default: letterRepeatCountDefault)) }
         set { UserDefaults.standard.set(max(1, newValue), forKey: letterRepeatCountKey) }
     }
 
@@ -99,8 +107,9 @@ enum StudyComparisonSettings {
     /// arm per child. ON makes the design within-subject for comparison
     /// runs only; it is not a pilot configuration.
     static let cycleAllConditionsKey = prefix + "cycleAllConditions"
+    static let cycleAllConditionsDefault: Bool = false
     static var cycleAllConditions: Bool {
-        get { boolValue(cycleAllConditionsKey, default: false) }
+        get { boolValue(cycleAllConditionsKey, default: cycleAllConditionsDefault) }
         set { UserDefaults.standard.set(newValue, forKey: cycleAllConditionsKey) }
     }
 
@@ -108,8 +117,9 @@ enum StudyComparisonSettings {
     /// observe entry. The supervisor's "Abstand zwischen Darstellung?".
     /// Default 0 — no pause, as today.
     static let presentationSpacingKey = prefix + "presentationSpacingSeconds"
+    static let presentationSpacingSecondsDefault: Double = 0
     static var presentationSpacingSeconds: Double {
-        get { max(0, doubleValue(presentationSpacingKey, default: 0)) }
+        get { max(0, doubleValue(presentationSpacingKey, default: presentationSpacingSecondsDefault)) }
         set { UserDefaults.standard.set(max(0, newValue), forKey: presentationSpacingKey) }
     }
 
@@ -132,8 +142,9 @@ enum StudyComparisonSettings {
     /// The pitch axis is untouched — the spatial arm is still the spatial
     /// arm. Only pan goes.
     static let panningEnabledKey = prefix + "panningEnabled"
+    static let panningEnabledDefault: Bool = true
     static var panningEnabled: Bool {
-        get { boolValue(panningEnabledKey, default: true) }
+        get { boolValue(panningEnabledKey, default: panningEnabledDefault) }
         set { UserDefaults.standard.set(newValue, forKey: panningEnabledKey) }
     }
 
@@ -152,8 +163,9 @@ enum StudyComparisonSettings {
     /// guided dots are inert either way. Touch in Observe is disabled by
     /// the phase controller regardless.
     static let guidedDotsVisibleKey = prefix + "guidedDotsVisible"
+    static let guidedDotsVisibleDefault: Bool = true
     static var guidedDotsVisible: Bool {
-        get { boolValue(guidedDotsVisibleKey, default: true) }
+        get { boolValue(guidedDotsVisibleKey, default: guidedDotsVisibleDefault) }
         set { UserDefaults.standard.set(newValue, forKey: guidedDotsVisibleKey) }
     }
 
@@ -195,8 +207,9 @@ enum StudyComparisonSettings {
     /// what makes adding one safe to an enrolled study device, and it keeps
     /// an untouched device identical to the one the 2026-09-17 review saw.
     static let spatialAxisDemonstrationKey = prefix + "spatialAxisDemonstration"
+    static let spatialAxisDemonstrationDefault: Bool = false
     static var spatialAxisDemonstration: Bool {
-        get { boolValue(spatialAxisDemonstrationKey, default: false) }
+        get { boolValue(spatialAxisDemonstrationKey, default: spatialAxisDemonstrationDefault) }
         set { UserDefaults.standard.set(newValue, forKey: spatialAxisDemonstrationKey) }
     }
 
@@ -350,8 +363,9 @@ enum StudyComparisonSettings {
     /// the default is the behaviour the device had before the switch
     /// existed, so an untouched device is byte-identical to today's.
     static let oncePerConditionKey = prefix + "oncePerCondition"
+    static let oncePerConditionDefault: Bool = false
     static var oncePerCondition: Bool {
-        get { boolValue(oncePerConditionKey, default: false) }
+        get { boolValue(oncePerConditionKey, default: oncePerConditionDefault) }
         set { UserDefaults.standard.set(newValue, forKey: oncePerConditionKey) }
     }
 
@@ -386,5 +400,121 @@ enum StudyComparisonSettings {
     private static func doubleValue(_ key: String, default fallback: Double) -> Double {
         guard UserDefaults.standard.object(forKey: key) != nil else { return fallback }
         return UserDefaults.standard.double(forKey: key)
+    }
+}
+
+// MARK: - The configuration a session ran under, ON THE ROW
+
+/// The twelve comparison switches RESOLVED — the values one session
+/// actually runs under, as opposed to the device's settings, which may
+/// have moved since that session finished.
+///
+/// WHY THIS TYPE EXISTS (2026-09-18). Every switch in
+/// `StudyComparisonSettings` changes what a session IS, and ELEVEN of the
+/// twelve left no trace in the exported data: a comparison run's rows
+/// carried the same 27 columns, in the same order, with the same names as
+/// a pilot run's. The only exception was `allFiveLetters`, which
+/// disclosed itself indirectly through `trainedSubset == "AFILM"`. So the
+/// claim in the header above — "any row produced under a non-default
+/// switch is a comparison run rather than pilot data" — was true of what
+/// the session WAS and false of what the row SAID, and an export merged
+/// across sessions could not be partitioned into pilot and comparison
+/// rows at all.
+///
+/// THE VALUE IS CARRIED ON THE ROW, AND IT IS FIXED WHEN THE ROW IS
+/// WRITTEN. It is deliberately NOT recomputed at export time: an export
+/// can happen days after the session, on a device whose switches have
+/// since been changed, so a read at export time would stamp yesterday's
+/// session with today's configuration. `PhaseSessionRecord
+/// .comparisonConfiguration` is the carrier, and
+/// `PhaseTransitionCoordinator` is where it is filled in.
+///
+/// WHAT IT IS NOT. Not a study arm (`audioCondition` and `condition` are
+/// the arms, and both already ride on every row), not a participant
+/// property, and not a hash — a hash would be compact and useless, since
+/// an analyst could neither read it nor check it. A default
+/// configuration, i.e. the PILOT, stamps NOTHING AT ALL: `nonDefaultStamp`
+/// is nil and the exported column is empty, so every pilot row remains
+/// byte-identical in meaning to what it was before this file changed.
+struct StudyComparisonConfiguration: Equatable {
+
+    // Declaration order IS the stamp's field order, and is stable: an
+    // analyst parsing a stamp can rely on it, and a test pins it. Adding
+    // a switch means adding a field here, its default check below, and
+    // the name in `nonDefaultStamp` — the compiler cannot yet enforce
+    // that, so the list in `nonDefaultStamp` is the one place to keep
+    // complete.
+
+    var observePasses: Int = StudyComparisonSettings.observePassesDefault
+    var spokenFeedbackInStudy: Bool = StudyComparisonSettings.spokenFeedbackInStudyDefault
+    var allFiveLetters: Bool = StudyComparisonSettings.allFiveLettersDefault
+    var letterRepeatCount: Int = StudyComparisonSettings.letterRepeatCountDefault
+    var cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditionsDefault
+    var presentationSpacingSeconds: Double = StudyComparisonSettings.presentationSpacingSecondsDefault
+    var panningEnabled: Bool = StudyComparisonSettings.panningEnabledDefault
+    var guidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisibleDefault
+    var spatialAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstrationDefault
+    var soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactorDefault
+    var soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloorDefault
+    var oncePerCondition: Bool = StudyComparisonSettings.oncePerConditionDefault
+
+    /// All twelve at their production defaults — the PILOT configuration,
+    /// and the value a `PhaseSessionRecord` written before this type
+    /// existed decodes as.
+    static let defaults = StudyComparisonConfiguration()
+
+    /// The compact stamp written onto every row this session produces:
+    /// the NON-DEFAULT switches only, `name=value` pairs in declaration
+    /// order joined by `;` — e.g. `observePasses=2;panningEnabled=false`.
+    ///
+    /// NIL when every switch is at its default, which is the pilot case
+    /// and must stay the pilot case: a nil here means the row's column is
+    /// empty, so existing pilot analysis is unaffected by this field
+    /// existing.
+    ///
+    /// Readable by a human AND parseable by a machine — the properties'
+    /// own names, not the `UserDefaults` key strings, so the stamp can be
+    /// read against this file without a key-name lookup. No value can
+    /// contain `;` or `=`, so the split is unambiguous; the separator is
+    /// not a comma, so the field needs no CSV quoting.
+    var nonDefaultStamp: String? {
+        var entries: [String] = []
+        if observePasses != Self.defaults.observePasses {
+            entries.append("observePasses=\(observePasses)")
+        }
+        if spokenFeedbackInStudy != Self.defaults.spokenFeedbackInStudy {
+            entries.append("spokenFeedbackInStudy=\(spokenFeedbackInStudy)")
+        }
+        if allFiveLetters != Self.defaults.allFiveLetters {
+            entries.append("allFiveLetters=\(allFiveLetters)")
+        }
+        if letterRepeatCount != Self.defaults.letterRepeatCount {
+            entries.append("letterRepeatCount=\(letterRepeatCount)")
+        }
+        if cycleAllConditions != Self.defaults.cycleAllConditions {
+            entries.append("cycleAllConditions=\(cycleAllConditions)")
+        }
+        if presentationSpacingSeconds != Self.defaults.presentationSpacingSeconds {
+            entries.append("presentationSpacingSeconds=\(presentationSpacingSeconds)")
+        }
+        if panningEnabled != Self.defaults.panningEnabled {
+            entries.append("panningEnabled=\(panningEnabled)")
+        }
+        if guidedDotsVisible != Self.defaults.guidedDotsVisible {
+            entries.append("guidedDotsVisible=\(guidedDotsVisible)")
+        }
+        if spatialAxisDemonstration != Self.defaults.spatialAxisDemonstration {
+            entries.append("spatialAxisDemonstration=\(spatialAxisDemonstration)")
+        }
+        if soundGateRadiusFactor != Self.defaults.soundGateRadiusFactor {
+            entries.append("soundGateRadiusFactor=\(soundGateRadiusFactor)")
+        }
+        if soundGateVelocityFloor != Self.defaults.soundGateVelocityFloor {
+            entries.append("soundGateVelocityFloor=\(soundGateVelocityFloor)")
+        }
+        if oncePerCondition != Self.defaults.oncePerCondition {
+            entries.append("oncePerCondition=\(oncePerCondition)")
+        }
+        return entries.isEmpty ? nil : entries.joined(separator: ";")
     }
 }

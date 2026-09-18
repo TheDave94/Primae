@@ -1038,6 +1038,25 @@ public final class TracingViewModel {
     /// is nevertheless a divergence from the written protocol rather than
     /// a neutral default.
     private let axisDemonstrationEnabled = StudyComparisonSettings.spatialAxisDemonstration
+    /// What THIS session runs under, as the stamp every row it writes
+    /// carries: the non-default comparison switches, or nil when the
+    /// session is at every default — the PILOT case, and the case that
+    /// must stay an empty column so existing pilot analysis is untouched.
+    ///
+    /// BUILT ONCE, IN `init`, from the values this session actually
+    /// RESOLVED — the injected `TracingDependencies` seams for the five
+    /// switches that have one, this type's own captured `let`s for the
+    /// other seven — and never recomputed. Deliberately not read at
+    /// export time: the export can happen days after the session, on a
+    /// device whose switches have since been changed, and a read there
+    /// would stamp yesterday's rows with today's configuration. See
+    /// `StudyComparisonConfiguration`.
+    ///
+    /// It is a property of the SESSION rather than of the switch file, so
+    /// the value that reaches `PhaseSessionRecord
+    /// .comparisonConfiguration` is the one the child's session ran
+    /// under, even if a proctor moves a switch afterwards.
+    let comparisonConfigurationStamp: String?
     /// Passes completed for the CURRENT letter. Reset when the letter
     /// changes and by `repeatCurrentLetterIfConfigured` when the count is
     /// exhausted.
@@ -1130,7 +1149,11 @@ public final class TracingViewModel {
         // that is the arm's authority (C3-2), not a display preference,
         // and no comparison switch may put sound into the one arm whose
         // entire manipulation is the absence of it.
-        let silenceSpeech = armIsSilent || (deps.studyMode && !StudyComparisonSettings.spokenFeedbackInStudy)
+        // Read ONCE into a local, so the substitution below and the
+        // session's configuration stamp further down cannot disagree
+        // about which value this session ran under.
+        let spokenFeedbackInStudy = StudyComparisonSettings.spokenFeedbackInStudy
+        let silenceSpeech = armIsSilent || (deps.studyMode && !spokenFeedbackInStudy)
         // Built once, stored twice: `audible*` is the pair this session
         // uses in every non-silent arm, and the live properties start
         // there too (which IS the null pair when the arm assigned at
@@ -1212,6 +1235,28 @@ public final class TracingViewModel {
         grid.soundGateRadiusFactor = CGFloat(deps.soundGateRadiusFactor)
         let ptc = PhaseTransitionCoordinator()
         self.phaseTransitions = ptc
+        // The session's comparison configuration, stamped once, here.
+        // Every value is one this session already resolved — the `let`s
+        // above and the `TracingDependencies` seams — so the stamp cannot
+        // drift from the behaviour it describes, and it is fixed before
+        // the first row can be written. It sits at the end of the
+        // property assignments (immediately before the `[weak self]`
+        // wiring below) because Swift requires every stored property
+        // initialised before `self` may escape.
+        self.comparisonConfigurationStamp = StudyComparisonConfiguration(
+            observePasses: observePasses,
+            spokenFeedbackInStudy: spokenFeedbackInStudy,
+            allFiveLetters: allFiveLetters,
+            letterRepeatCount: letterRepeatCount,
+            cycleAllConditions: deps.cycleAllConditions,
+            presentationSpacingSeconds: presentationSpacing,
+            panningEnabled: panningEnabled,
+            guidedDotsVisible: dotsVisible,
+            spatialAxisDemonstration: axisDemonstrationEnabled,
+            soundGateRadiusFactor: deps.soundGateRadiusFactor,
+            soundGateVelocityFloor: deps.soundGateVelocityFloor,
+            oncePerCondition: deps.oncePerCondition
+        ).nonDefaultStamp
         pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }
         pb.reloadBeforePlay   = { [weak self] in self?.reloadActiveAudioFile() }
         td.vm = self

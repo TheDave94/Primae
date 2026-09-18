@@ -380,16 +380,39 @@ struct ParentDashboardExporterTests {
         ))
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
-        let lines = csv.components(separatedBy: "\n").filter { $0.hasPrefix("A,freeWrite,") || $0.hasPrefix("L,freeWrite,") }
+        let allLines = csv.components(separatedBy: "\n")
+
+        // COLUMN-AWARE, NOT SUFFIX-BASED. These three assertions used
+        // `hasSuffix` as a proxy for "the value of the `probe` column",
+        // which was only ever true because `probe` happened to be the
+        // LAST column. `comparisonConfiguration` was appended after it
+        // (2026-09-18) and broke the proxy — the row now ends
+        // `…,posttest,` — without changing anything this test means to
+        // check. Deriving the index from the header keeps the assertion
+        // honest the next time a column is appended, which is the whole
+        // point of asserting a column rather than a row suffix.
+        let header = allLines.first { $0.hasPrefix("letter,phase,") } ?? ""
+        let headerColumns = header.components(separatedBy: ",")
+        guard let probeIndex = headerColumns.firstIndex(of: "probe") else {
+            Issue.record("the CSV header has no `probe` column — header was: \(header)")
+            return
+        }
+        func probeValue(of row: String?) -> String? {
+            guard let row else { return nil }
+            let fields = row.components(separatedBy: ",")
+            return fields.indices.contains(probeIndex) ? fields[probeIndex] : nil
+        }
+
+        let lines = allLines.filter { $0.hasPrefix("A,freeWrite,") || $0.hasPrefix("L,freeWrite,") }
         #expect(lines.count == 3, "Expected exactly 3 freeWrite rows — found:\n\(lines)")
         let earlierRow = lines.first { $0.contains("0.6000") }
         let laterRow   = lines.first { $0.contains("0.7000") }
         let untrainedRow = lines.first { $0.hasPrefix("L,") }
-        #expect(earlierRow?.hasSuffix(",") == true,
+        #expect(probeValue(of: earlierRow) == "",
                 "The earlier (non-final) trained pass must NOT be tagged — found:\n\(earlierRow ?? "<missing>")")
-        #expect(laterRow?.hasSuffix("posttest") == true,
+        #expect(probeValue(of: laterRow) == "posttest",
                 "The later (final) trained pass must be tagged posttest — found:\n\(laterRow ?? "<missing>")")
-        #expect(untrainedRow?.hasSuffix("posttest") == true,
+        #expect(probeValue(of: untrainedRow) == "posttest",
                 "The live-tagged untrained post-test row must be unaffected — found:\n\(untrainedRow ?? "<missing>")")
     }
 }
