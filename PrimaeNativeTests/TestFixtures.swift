@@ -243,6 +243,13 @@ extension TracingDependencies {
             // (`deps.soundGateRadiusFactor = …`).
             soundGateRadiusFactor: StudyComparisonSettings.soundGateRadiusFactorDefault,
             soundGateVelocityFloor: StudyComparisonSettings.soundGateVelocityFloorDefault,
+            // Pin the once-per-condition demonstration switch, same reason
+            // as `cycleAllConditions` above: a suite that writes the
+            // global key would otherwise hand whichever VM was
+            // constructed inside that window a session with a suppressed
+            // demonstration. Tests that mean to exercise it say so at the
+            // call site (`deps.oncePerCondition = true`).
+            oncePerCondition:     false,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Real AVAudioPlayer.play() in PromptPlayer adds enough
@@ -290,5 +297,11 @@ extension TracingDependencies {
     }
     func with(trainedSubset: TrainedLetterSubset) -> TracingDependencies {
         var copy = self; copy.trainedSubset = trainedSubset; return copy
+    }
+    func with(oncePerCondition: Bool) -> TracingDependencies {
+        var copy = self; copy.oncePerCondition = oncePerCondition; return copy
+    }
+    func with(cycleAllConditions: Bool) -> TracingDependencies {
+        var copy = self; copy.cycleAllConditions = cycleAllConditions; return copy
     }
 }

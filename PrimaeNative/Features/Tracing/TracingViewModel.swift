@@ -985,6 +985,34 @@ public final class TracingViewModel {
     /// other suite in the parallel run would see. See the property's doc
     /// in `TracingDependencies`.
     private let cyclesAudioConditions: Bool
+    /// Whether the pre-task demonstration is delivered once per audio
+    /// CONDITION per session instead of on every letter load — the
+    /// supervisor's "Einmal pro Kondition", OFF by default. Captured at
+    /// INIT through `TracingDependencies`, same rule as
+    /// `cyclesAudioConditions` beside it. See
+    /// `StudyComparisonSettings.oncePerCondition` for the semantics and
+    /// for the protocol consequence of switching it ON.
+    private let demonstrationsOncePerCondition: Bool
+    /// The audio conditions whose pre-task demonstration this SESSION has
+    /// already delivered. Read only when
+    /// `demonstrationsOncePerCondition` is ON; EMPTY and never written
+    /// otherwise, so the default path is untouched by its existence.
+    ///
+    /// Written where a demonstration is actually ARMED — not on entry to
+    /// `armPreTaskDemonstration` — so a branch that faults before arming
+    /// (the phoneme arm's missing-file fault, the spatial arm's empty-
+    /// sweep fault) does not consume the condition's one demonstration.
+    /// The silent arm never writes: it adds no audio by construction
+    /// (`PreTaskDemonstration`'s header), so there is nothing for this
+    /// switch to suppress there, and the ghost-letter animation that IS
+    /// its matched equivalent is a separate mechanism that keeps running
+    /// per letter.
+    ///
+    /// Session-scoped, not device-scoped: cleared by
+    /// `reapplyParticipantIdentity` so the next child enrolled on this
+    /// iPad starts from an empty set rather than inheriting the outgoing
+    /// child's used-up conditions.
+    private var demonstratedAudioConditions: Set<PilotAudioCondition> = []
     /// The letter whose trial the CURRENT audio arm belongs to. The arm is
     /// a property of a letter's trial, so the cycle steps only when the
     /// loaded letter actually CHANGES — a re-load of the same letter
@@ -1084,6 +1112,7 @@ public final class TracingViewModel {
         self.studyMode              = deps.studyMode
         self.participantEnrolled    = deps.participantEnrolled
         self.cyclesAudioConditions  = deps.cycleAllConditions
+        self.demonstrationsOncePerCondition = deps.oncePerCondition
         self.enableRetrievalPrompts = deps.enableRetrievalPrompts
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
@@ -1531,6 +1560,19 @@ public final class TracingViewModel {
         preTaskDemoTask?.cancel()
         preTaskDemoTask = nil
         guard studyMode else { return }
+        // "Einmal pro Kondition" (comparison runs only, OFF by default).
+        // ON delivers this demonstration at the first letter loaded in
+        // each audio condition and on no later letter in it; OFF is the
+        // behaviour every build before the switch had — a demonstration
+        // ahead of EVERY letter. The read is here, beside the other
+        // guards; the write is at each arming point below, so a branch
+        // that faults before it arms does not consume the condition. See
+        // `StudyComparisonSettings.oncePerCondition` for why OFF is the
+        // default and what ON costs the protocol.
+        if demonstrationsOncePerCondition,
+           demonstratedAudioConditions.contains(audioCondition) {
+            return
+        }
         switch audioCondition {
         case .silent:
             // No added audio — the unchanged ghost-letter animation
@@ -1544,6 +1586,10 @@ public final class TracingViewModel {
                 pilotAudioLogger.fault("Pre-task demonstration SKIPPED: no phoneme file for \(letter.name, privacy: .public) — the session should have been refused.")
                 return
             }
+            // Past this branch's only failure path, so the condition's
+            // one demonstration is spent HERE and not on a letter whose
+            // phoneme file was missing.
+            demonstratedAudioConditions.insert(audioCondition)
             preTaskDemoTask = Task { [weak self] in
                 // `.cancel()` only flips this flag — it does NOT stop
                 // the closure from starting, so a task cancelled before
@@ -1629,6 +1675,12 @@ public final class TracingViewModel {
                 pilotAudioLogger.fault("Pre-task demonstration SKIPPED: axisSweep produced no samples for the spatial arm (duration \(duration, privacy: .public)s) — the arm's stimulus would be absent, so this is a fault and not a quiet skip.")
                 return
             }
+            // Past the fault guard above, so the condition's one
+            // demonstration is spent here rather than on the letter that
+            // hit the empty-sweep fault. BOTH sub-branches below deliver a
+            // demonstration — the sweep, or the steady window — so this
+            // sits ahead of the split, not inside one half of it.
+            demonstratedAudioConditions.insert(audioCondition)
             audio.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
             if axisDemonstrationEnabled {
                 // ON: the axis demonstration, as specified. Pitch follows
@@ -3214,6 +3266,15 @@ public final class TracingViewModel {
         // than consuming a step of the outgoing child's cycle.
         applyArm(.defaultForInstall)
         cycleArmLetter  = nil
+        // The incoming child's session has demonstrated nothing yet
+        // (2026-09-17). Without this, an iPad with `oncePerCondition` ON
+        // would carry the OUTGOING child's used-up conditions into the
+        // next child's session — and since the app is deliberately not
+        // relaunched between children (`resetForNewParticipant`), the
+        // second child in the same arm would be denied the demonstration
+        // entirely, silently. Cleared before `loadFirstTrainedLetter`
+        // below, which is what arms that child's first demonstration.
+        demonstratedAudioConditions.removeAll()
         trainedSubset   = .defaultForInstall
         loadFirstTrainedLetter()
         participantIdentityChanged = false

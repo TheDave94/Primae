@@ -104,6 +104,19 @@ struct TracingDependencies {
     /// `StudyComparisonSettings.soundGateVelocityFloor`, read and
     /// captured at the same point as the factor above.
     var soundGateVelocityFloor: Double
+    /// Whether the pre-task sound demonstration is delivered once per
+    /// audio CONDITION per session instead of once per letter —
+    /// `StudyComparisonSettings.oncePerCondition`, the supervisor's
+    /// "Einmal pro Kondition".
+    ///
+    /// Carried HERE rather than read from the global inside the view
+    /// model, for the same reason `cycleAllConditions` above is: a test
+    /// must be able to drive the behaviour without writing a key that
+    /// every other suite in the (parallel) run can observe. The value is
+    /// still read once, at dependency construction, so the "captured at
+    /// init, a proctor cannot change it mid-session" property the other
+    /// switches have is unchanged.
+    var oncePerCondition: Bool
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -204,6 +217,8 @@ struct TracingDependencies {
         // config like `cycleAllConditions`, read once here and never live.
         soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor,
         soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor,
+        // Same capture-at-construction rule as `cycleAllConditions` above.
+        oncePerCondition: Bool = StudyComparisonSettings.oncePerCondition,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -248,6 +263,7 @@ struct TracingDependencies {
         self.cycleAllConditions = cycleAllConditions
         self.soundGateRadiusFactor = soundGateRadiusFactor
         self.soundGateVelocityFloor = soundGateVelocityFloor
+        self.oncePerCondition = oncePerCondition
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

@@ -24,6 +24,7 @@ struct SettingsView: View {
     @State private var comparisonAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration
     @State private var comparisonTriggerRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor
     @State private var comparisonTriggerVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor
+    @State private var comparisonOncePerCondition: Bool = StudyComparisonSettings.oncePerCondition
     @State private var speechRate: Float = {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
         return stored > 0 ? stored : 0.42
@@ -324,6 +325,15 @@ struct SettingsView: View {
                         }))
                     .accessibilityHint("Aus ist die Vorgabe und das Verhalten seit dem 17.09.: Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung. Ein stellt die Vorführung wieder her, die im Text der Arbeit steht: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten und die Ortung der Waagerechten. Die Begutachtung am Gerät hatte sie als Glissando beanstandet. Damit ist Aus eine Abweichung von der schriftlichen Spezifikation — die Entscheidung darüber liegt bei David, nicht im Code.")
 
+                    Toggle("Vorführung nur einmal je Kondition", isOn: Binding(
+                        get: { comparisonOncePerCondition },
+                        set: {
+                            comparisonOncePerCondition = $0
+                            StudyComparisonSettings.oncePerCondition = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: vor jedem Buchstaben läuft die Vorführung des Arms erneut — jede Spur beginnt mit derselben Darbietung. Ein lässt sie nur beim ersten Buchstaben einer Audio-Bedingung laufen; alle weiteren Buchstaben derselben Bedingung beginnen ohne Vorführung. Bei fester Kondition hört das Kind sie also genau einmal, vor dem ersten Buchstaben. Bei „Alle Konditionen durchlaufen“ bekommt jede Bedingung ihre eigene Vorführung, sodass bei fünf Buchstaben drei Vorführungen laufen und der vierte und fünfte leer ausgehen. Die Arme bleiben dabei untereinander gleich lang — alle verlieren die späteren Vorführungen gleichermaßen —, aber die Sitzung ist nicht mehr die, die der Trockenlauf beschreibt, und für den Raumklang-Arm wird die Tonhöhen-/Ortungszuordnung dadurch nur einmal gelegt statt vor jedem Buchstaben. Ein Vergleichslauf, keine Pilotbedingung. Der Zähler gilt je Kind: bei „Neuer Teilnehmer“ beginnt er von vorn.")
+
                     Stepper(value: Binding(
                         get: { comparisonPresentationSpacing },
                         set: {
@@ -382,6 +392,7 @@ struct SettingsView: View {
                         comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
                         comparisonPanning = StudyComparisonSettings.panningEnabled
                         comparisonAxisDemonstration = StudyComparisonSettings.spatialAxisDemonstration
+                        comparisonOncePerCondition = StudyComparisonSettings.oncePerCondition
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
                         comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
                         comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor

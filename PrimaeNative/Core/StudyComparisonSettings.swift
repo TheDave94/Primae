@@ -291,6 +291,70 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(max(0, newValue), forKey: soundGateVelocityFloorKey) }
     }
 
+    /// Whether the pre-task sound demonstration is delivered ONCE PER
+    /// AUDIO CONDITION per session rather than once per letter. The
+    /// supervisor's "Einmal pro Kondition".
+    ///
+    /// OFF is the default and the behaviour the app has today: the
+    /// demonstration is armed on EVERY fresh letter load
+    /// (`TracingViewModel.armPreTaskDemonstration`, called from
+    /// `load(letter:)`'s observe and direct-to-guided entries), so every
+    /// letter's trace is preceded by the same exposure. That per-letter
+    /// firing is recorded as intended in `docs/STUDY_DEVICE_DRYRUN.md`
+    /// ("The demonstration in 4a plays again on every letter entry —
+    /// that's intended (every trace is preceded by the same exposure),
+    /// not a repeat-content bug"), and this switch is the note that
+    /// questions it.
+    ///
+    /// WHY THIS READING. The demonstration is the only behaviour in the
+    /// app whose content IS the audio condition and which runs once per
+    /// letter: the ghost-letter animation repeats per letter too, but it
+    /// is identical in all three arms, and the per-touch coupling is the
+    /// arm's manipulation rather than a demonstration of it. So "einmal
+    /// pro Kondition" has exactly one referent in the code, and this is
+    /// it.
+    ///
+    /// ON — what this switch selects, and it is a COMPARISON
+    /// CONFIGURATION rather than a neutral one. The demonstration is
+    /// delivered at the FIRST letter loaded in each audio condition and
+    /// NOT on any later letter in that condition. With the arm fixed for
+    /// the session (the pilot's between-subjects design) that means the
+    /// child hears it exactly once, before the first letter, and every
+    /// later letter runs its observe phase with no demonstration at all.
+    /// With `cycleAllConditions` ON each arm's demonstration lands on its
+    /// own first letter, so a five-letter cycle delivers three
+    /// demonstrations and the fourth and fifth letters get none.
+    ///
+    /// THE CONSEQUENCE, STATED PLAINLY BECAUSE IT IS A PROTOCOL ONE.
+    /// `04-implementation.typ:17` and `06-evaluation.typ:62` both rest on
+    /// the arms' demonstrations being of the SAME LENGTH, structurally
+    /// matched across arms. Suppressing the demonstration for later
+    /// letters does not break the arms' match with EACH OTHER — every arm
+    /// loses its later-letter demonstration under this switch, so the
+    /// arms stay matched to one another — but it does change what the
+    /// session IS. For the spatial arm the demonstration is where the
+    /// pitch/pan mapping is INSTALLED rather than merely revealed (see
+    /// `PreTaskDemonstration`'s header), so a child who hears it once has
+    /// had that mapping taught once instead of re-taught per letter; and
+    /// the observe window of every letter after the first no longer
+    /// carries the exposure the dry-run document describes. Any data
+    /// produced under this switch is comparison-run data, like every
+    /// other switch in this file.
+    ///
+    /// The count is per SESSION, and a new participant starts a new
+    /// session: `reapplyParticipantIdentity` clears it when the proctor
+    /// enrols the next child, so the incoming child is not silently
+    /// denied the demonstration the outgoing one already used up.
+    ///
+    /// OFF is the default anyway, by the rule every switch here follows:
+    /// the default is the behaviour the device had before the switch
+    /// existed, so an untouched device is byte-identical to today's.
+    static let oncePerConditionKey = prefix + "oncePerCondition"
+    static var oncePerCondition: Bool {
+        get { boolValue(oncePerConditionKey, default: false) }
+        set { UserDefaults.standard.set(newValue, forKey: oncePerConditionKey) }
+    }
+
     /// Restore every switch to the behaviour the app had before this file
     /// existed. Used by the researcher UI's reset row, and by tests.
     static func resetToDefaults() {
@@ -298,7 +362,8 @@ enum StudyComparisonSettings {
                     letterRepeatCountKey, cycleAllConditionsKey,
                     presentationSpacingKey, guidedDotsVisibleKey,
                     panningEnabledKey, spatialAxisDemonstrationKey,
-                    soundGateRadiusFactorKey, soundGateVelocityFloorKey] {
+                    soundGateRadiusFactorKey, soundGateVelocityFloorKey,
+                    oncePerConditionKey] {
             UserDefaults.standard.removeObject(forKey: key)
         }
     }
