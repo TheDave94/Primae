@@ -169,6 +169,23 @@ import CryptoKit
                 "study letters without <L>_phoneme<n>.mp3: \(missing.joined(separator: ", "))")
     }
 
+    @Test("the real bundle carries a NAME recording for every study letter")
+    func studyLetterNameAudioResolves() throws {
+        // Counterpart to `studyLetterPhonemesResolve`, and it did not exist
+        // until 2026-09-18 — reported from the device as "F has no sound for
+        // some reason". The phoneme path WAS pinned; the name/word path had
+        // no coverage at all, so a letter whose name recordings failed to
+        // resolve would have looked exactly like a letter with no assets.
+        let repo = LetterRepository(resources: BundleLetterResourceProvider(),
+                                    cache: NullLetterCache())
+        let letters = try repo.loadBundledLettersOnly().get()
+        let missing = TrainedLetterSubset.studyLetters.filter { name in
+            letters.first(where: { $0.name == name })?.audioFiles.isEmpty ?? true
+        }
+        #expect(missing.isEmpty,
+                "study letters with NO name audio resolved: \(missing.joined(separator: ", "))")
+    }
+
     /// `_meta.json` records bake-time provenance per weight. Missing, the
     /// repository falls through to defaults without complaint.
     @Test("each bundled letter weight carries its _meta.json")
