@@ -434,6 +434,19 @@ final class AudioEngineTests: XCTestCase {
                       "the .ended option .shouldResume must have been parsed out of the forged " +
                       "userInfo — canResumePlayback()'s last term needs it while the resume gate " +
                       "is still required")
+        // Re-read after a further settle. attemptResumePlayback's refusal
+        // branch calls pendingSafeEnginePause(), which pauses the engine
+        // 0.2 s later — so an engine that was running at the assertion
+        // above and has stopped now is the signature of THAT branch having
+        // run, i.e. canResumePlayback() was false at the moment it was
+        // evaluated even though every term reads true by now.
+        let settle = expectation(description: "past pendingSafeEnginePause's 0.2 s")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { settle.fulfill() }
+        await fulfillment(of: [settle], timeout: 2.0)
+        XCTAssertTrue(engine.debugIsEngineRunning,
+                      "the engine must STILL be running half a second later — if it stopped, " +
+                      "attemptResumePlayback took its pendingSafeEnginePause() refusal branch")
+
         XCTAssertTrue(engine.isPlaying,
                       "ending the interruption must actually resume playback, not just restart the " +
                       "engine and abandon attemptResumePlayback's own resume intent — this is the " +
