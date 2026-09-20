@@ -238,6 +238,15 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback           = true
         interruptionResumeGateRequired = false
         interruptionShouldResume       = true
+        // An explicit play() is the user's intent and outranks a stale
+        // interruption flag: iOS does not guarantee an `.ended`
+        // notification for every `.began` (an interruption that started
+        // while the app was suspended arrives as `.began` on resume with
+        // no `.ended`), and `interrupted` was otherwise cleared only by
+        // `.ended` — leaving every later play() refused for the rest of
+        // the session, both sound arms silent, nothing in the export
+        // (audit 2026-09-06, R5).
+        interrupted                    = false
         // Was a synchronous `setActive(true)` here (Xcode "AVAudioSession
         // Hang Risk": can block the main thread while the session is
         // active). `play()` is the hot path — it runs on every touch that
