@@ -2,8 +2,14 @@
 //
 // Tests exercise AudioEngine directly via forged AVAudioSession notification userInfo payloads,
 // asserting state machine transitions on isPlaying and #if DEBUG accessors.
-// Observers in AudioEngine are registered with object: nil on .main queue; tests run on main
-// thread by default so drainMain() (RunLoop.main.run) is sufficient to flush synchronous delivery.
+//
+// NOTIFICATION DELIVERY IS ASYNCHRONOUS — READ `postInterruption` BEFORE ADDING A TEST HERE.
+// AudioEngine observes via a Swift-concurrency `for await` sequence, which a RunLoop pump does
+// NOT service, so `postInterruption`/`postRouteChange` are `async` and MUST be awaited before
+// asserting on state they are supposed to change. The note that used to stand here claimed the
+// observers were "on .main queue" and that `drainMain()` "is sufficient to flush synchronous
+// delivery" — MEASURED WRONG on device 2026-09-20, and the reason several tests in this file
+// were reading state from before their own notification landed.
 
 import XCTest
 import AVFoundation
@@ -134,7 +140,7 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testInterruptionBegan_stopsPlayback() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .began)
+        await postInterruption(type: .began)
         XCTAssertFalse(engine.isPlaying, "isPlaying must be false after interruption began")
         XCTAssertTrue(engine.debugInterrupted, "interrupted flag must be set")
         XCTAssertFalse(engine.debugInterruptionShouldResume,
@@ -149,7 +155,7 @@ final class AudioEngineTests: XCTestCase {
     /// session is refused and both sound arms go silent with no trace.
     @MainActor func testPlayAfterBeganWithoutEnded_clearsInterrupted() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .began)
+        await postInterruption(type: .began)
         XCTAssertTrue(engine.debugInterrupted, "precondition: .began sets interrupted")
         engine.play()
         XCTAssertFalse(engine.debugInterrupted,
@@ -160,9 +166,9 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testInterruptionBegan_isIdempotent() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .began)
+        await postInterruption(type: .began)
         let interruptedAfterFirst = engine.debugInterrupted
-        postInterruption(type: .began)
+        await postInterruption(type: .began)
         XCTAssertEqual(engine.debugInterrupted, interruptedAfterFirst,
                        "Double .began must not corrupt interrupted flag")
         XCTAssertFalse(engine.isPlaying)
@@ -172,8 +178,8 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testInterruptionEnded_shouldResumeFalse_remainsPaused() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .began)
-        postInterruption(type: .ended, shouldResume: false)
+        await postInterruption(type: .began)
+        await postInterruption(type: .ended, shouldResume: false)
         XCTAssertFalse(engine.isPlaying, "Must stay paused when shouldResume=false")
         XCTAssertFalse(engine.debugInterrupted, "interrupted flag must clear on .ended")
         XCTAssertFalse(engine.debugInterruptionShouldResume,
@@ -182,8 +188,8 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testInterruptionEnded_shouldResumeTrue_setsFlag() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .began)
-        postInterruption(type: .ended, shouldResume: true)
+        await postInterruption(type: .began)
+        await postInterruption(type: .ended, shouldResume: true)
         // Even without a loaded file, the flag must reflect the system's intent
         XCTAssertFalse(engine.debugInterrupted, "interrupted must clear on .ended")
         XCTAssertTrue(engine.debugInterruptionShouldResume,
@@ -192,7 +198,7 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testInterruptionEnded_withoutPrecedingBegan_isHarmless() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .ended, shouldResume: true)
+        await postInterruption(type: .ended, shouldResume: true)
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugInterrupted)
     }
@@ -219,32 +225,32 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testRouteChange_oldDeviceUnavailable_stopsPlayback() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postRouteChange(reason: .oldDeviceUnavailable)
+        await postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertFalse(engine.isPlaying, "oldDeviceUnavailable must stop playback")
     }
 
     @MainActor func testRouteChange_oldDeviceUnavailable_isIdempotent() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postRouteChange(reason: .oldDeviceUnavailable)
-        postRouteChange(reason: .oldDeviceUnavailable)
+        await postRouteChange(reason: .oldDeviceUnavailable)
+        await postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertFalse(engine.isPlaying)
     }
 
     @MainActor func testRouteChange_newDeviceAvailable_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postRouteChange(reason: .newDeviceAvailable)
+        await postRouteChange(reason: .newDeviceAvailable)
         XCTAssertFalse(engine.isPlaying) // no file; no shouldResume intent
     }
 
     @MainActor func testRouteChange_categoryChange_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postRouteChange(reason: .categoryChange)
+        await postRouteChange(reason: .categoryChange)
         XCTAssertFalse(engine.isPlaying)
     }
 
     @MainActor func testRouteChange_wakeFromSleep_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postRouteChange(reason: .wakeFromSleep)
+        await postRouteChange(reason: .wakeFromSleep)
         XCTAssertFalse(engine.isPlaying)
     }
 
@@ -397,7 +403,7 @@ final class AudioEngineTests: XCTestCase {
         engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
         XCTAssertTrue(engine.isPlaying, "precondition: playback started")
 
-        postInterruption(type: .began)
+        await postInterruption(type: .began)
         // handleInterruptionValues' .began case schedules the same
         // pendingSafeEnginePause() idle-pause used everywhere else in
         // this file; wait past its 0.2s debounce so the engine is
@@ -408,10 +414,14 @@ final class AudioEngineTests: XCTestCase {
         await fulfillment(of: [pausedExp], timeout: 1.0)
         XCTAssertFalse(engine.debugIsEngineRunning, "precondition: the engine must actually be paused")
 
-        postInterruption(type: .ended, shouldResume: true)
+        await postInterruption(type: .ended, shouldResume: true)
 
         XCTAssertTrue(engine.debugIsEngineRunning,
                       "ending the interruption must restart the paused engine")
+        XCTAssertTrue(engine.debugShouldResumePlayback,
+                      "the resume intent must have SURVIVED the interruption — if this is false, " +
+                      "the .began path captured isPlaying after it was already zeroed (the " +
+                      "ordering defect fixed 2026-09-20), and canResumePlayback() will refuse")
         XCTAssertTrue(engine.isPlaying,
                       "ending the interruption must actually resume playback, not just restart the " +
                       "engine and abandon attemptResumePlayback's own resume intent — this is the " +
@@ -446,10 +456,10 @@ final class AudioEngineTests: XCTestCase {
     @MainActor func testInterruptionDuringBackground_stateIsConsistent() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
-        postInterruption(type: .began)
+        await postInterruption(type: .began)
         XCTAssertTrue(engine.debugInterrupted)
         XCTAssertFalse(engine.debugAppIsForeground)
-        postInterruption(type: .ended, shouldResume: true)
+        await postInterruption(type: .ended, shouldResume: true)
         engine.resumeAfterLifecycle()
         XCTAssertFalse(engine.debugInterrupted)
         XCTAssertTrue(engine.debugAppIsForeground)
@@ -457,11 +467,11 @@ final class AudioEngineTests: XCTestCase {
 
     @MainActor func testRouteChangeDuringInterruption_doesNotCorruptState() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        postInterruption(type: .began)
-        postRouteChange(reason: .oldDeviceUnavailable)
+        await postInterruption(type: .began)
+        await postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertTrue(engine.debugInterrupted, "interrupted must remain set after route change during interruption")
         XCTAssertFalse(engine.isPlaying)
-        postInterruption(type: .ended, shouldResume: true)
+        await postInterruption(type: .ended, shouldResume: true)
         XCTAssertFalse(engine.debugInterrupted)
         XCTAssertTrue(engine.debugInterruptionShouldResume)
     }
@@ -498,8 +508,8 @@ final class AudioEngineTests: XCTestCase {
         XCTAssertNil(weakRef,
                      "AudioEngine must deallocate — retain cycle in observer closure suspected if this fails")
         // Post notifications after deinit — must not crash (observers must have been removed)
-        postInterruption(type: .began)
-        postRouteChange(reason: .oldDeviceUnavailable)
+        await postInterruption(type: .began)
+        await postRouteChange(reason: .oldDeviceUnavailable)
         // Reaching here = no EXC_BAD_ACCESS from dangling observer
     }
 
@@ -572,10 +582,41 @@ final class AudioEngineTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// Post an AVAudioSession interruption notification with forged userInfo.
-    /// object: nil matches AudioEngine's observer registration which uses object: nil (any sender).
+    /// How long to let the engine's asynchronous observers run before a test
+    /// reads state a posted notification is supposed to have changed.
+    /// Measured sufficient 2026-09-20 (the diagnostic read the PROCESSED
+    /// `.ended` state after this wait, and stale state before it).
+    private static let observerSettleSeconds: Double = 0.4
+
+    /// Post an AVAudioSession interruption notification with forged userInfo,
+    /// and WAIT until `AudioEngine` has actually processed it.
+    ///
+    /// **WHY THIS IS `async` — AND WHY YOU MUST `await` IT.**
+    ///
+    /// `AudioEngine` does NOT observe these notifications through an
+    /// observer registered on the main run loop. It observes them through a
+    /// Swift-concurrency sequence —
+    /// `for await notification in NotificationCenter.default.notifications(…)`
+    /// (`AudioEngine.swift:139`) — and **`RunLoop.main.run(until:)` does not
+    /// service that sequence.** Pumping the run loop cannot deliver it.
+    ///
+    /// This was measured on hardware 2026-09-20, and it is the reason an
+    /// entire class of assertions in this file was worthless: immediately
+    /// after posting `.began` the engine's flags were still
+    /// `.began`-unprocessed, and immediately after posting `.ended` they
+    /// were the `.began` signature. Every test that posted a notification
+    /// here and then asserted on the result was reading state from BEFORE
+    /// the notification landed — including tests that appeared to pass.
+    /// The old `drainMain()` fallback below cannot fix it, and the header
+    /// comment that claimed those observers are "on .main queue" was wrong.
+    ///
+    /// **THIS IS THE STANDARD PATTERN FOR THIS FILE: post, `await`
+    /// delivery, then assert.** Do not assert on a forged notification
+    /// without awaiting it.
+    ///
+    /// object: nil matches AudioEngine's observer registration (object: nil = any sender).
     @MainActor private func postInterruption(type: AVAudioSession.InterruptionType,
-                                  shouldResume: Bool = false) {
+                                  shouldResume: Bool = false) async {
         var userInfo: [AnyHashable: Any] = [
             AVAudioSessionInterruptionTypeKey: type.rawValue
         ]
@@ -588,11 +629,14 @@ final class AudioEngineTests: XCTestCase {
             object: nil,
             userInfo: userInfo
         )
-        drainMain()
+        await awaitObserverDelivery()
     }
 
     /// Post an AVAudioSession route change notification with forged userInfo.
-    @MainActor private func postRouteChange(reason: AVAudioSession.RouteChangeReason) {
+    /// Same `async` contract and the same reason as `postInterruption` — the
+    /// route-change observer is also a `for await` sequence
+    /// (`AudioEngine.swift:160`).
+    @MainActor private func postRouteChange(reason: AVAudioSession.RouteChangeReason) async {
         let userInfo: [AnyHashable: Any] = [
             AVAudioSessionRouteChangeReasonKey: reason.rawValue
         ]
@@ -601,12 +645,26 @@ final class AudioEngineTests: XCTestCase {
             object: nil,
             userInfo: userInfo
         )
-        drainMain()
+        await awaitObserverDelivery()
     }
 
-    /// Drain the main RunLoop long enough for .main-queue observers to fire synchronously.
-    /// Observers in AudioEngine are registered on .main queue; XCTest runs test methods on the
-    /// main thread, so RunLoop.main.run(until:) is the correct and sufficient drain mechanism.
+    /// Suspend until the engine's async observers have had a chance to run.
+    /// See `postInterruption` for why a RunLoop pump cannot substitute.
+    @MainActor private func awaitObserverDelivery() async {
+        let delivered = expectation(description: "async observers processed the notification")
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.observerSettleSeconds) {
+            delivered.fulfill()
+        }
+        await fulfillment(of: [delivered], timeout: 2.0)
+    }
+
+    /// Pumps the main RunLoop for 0.05 s.
+    ///
+    /// **It does NOT deliver `AudioEngine`'s notification observers** —
+    /// they are Swift-concurrency sequences, not run-loop observers
+    /// (measured 2026-09-20; see `postInterruption`). Retained only for the
+    /// few synchronous main-queue hops elsewhere in this file. Never use it
+    /// to wait for a posted notification.
     @MainActor private func drainMain() {
         RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
     }

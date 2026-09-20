@@ -146,8 +146,29 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 if let typeValue,
                    let type = AVAudioSession.InterruptionType(rawValue: typeValue) {
                     if type == .began {
-                        self.isPlaying = false
-                        self.handleInterruptionBegan()
+                        // READ THE RESUME INTENT BEFORE THIS BRANCH CHANGES
+                        // ANY STATE, and pass it in explicitly.
+                        //
+                        // Until 2026-09-20 this line was
+                        // `self.isPlaying = false` followed by
+                        // `self.handleInterruptionBegan()`, whose first act
+                        // was `let savedResumeIntent = isPlaying` — so the
+                        // intent was ALWAYS captured as false no matter what
+                        // was actually playing. `stop()` →
+                        // `finishStop()` then cleared `shouldResumePlayback`
+                        // and the function restored the false back over it,
+                        // leaving `canResumePlayback()` to refuse and
+                        // `attemptResumePlayback()` to take its pause branch.
+                        // Playback did not resume after an interruption —
+                        // measured on hardware 2026-09-20, and the same
+                        // defect the R5-era test comment calls "the
+                        // 2026-09-15 regression".
+                        //
+                        // Passing the intent as a parameter is the fix the
+                        // ruling asked for (the ordering, not the symptom):
+                        // the dependency is now impossible to re-break
+                        // silently by reordering statements above it.
+                        self.handleInterruptionBegan(resumeIntent: self.isPlaying)
                     } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
                         if self.canResumePlayback() { self.attemptResumePlayback() }
                     }
@@ -516,8 +537,13 @@ private extension AudioEngine {
         isPlaying = false
     }
 
-    func handleInterruptionBegan() {
-        let savedResumeIntent = isPlaying
+    /// - Parameter resumeIntent: whether playback was active immediately
+    ///   BEFORE the interruption, captured by the caller before it applies
+    ///   any state changes. It cannot be read here: by the time this runs
+    ///   the interruption is already being handled. See the caller's
+    ///   comment for the defect this parameter exists to make unrepeatable.
+    func handleInterruptionBegan(resumeIntent: Bool) {
+        let savedResumeIntent = resumeIntent
         player.pause()
         isPlaying = false
         stop()
