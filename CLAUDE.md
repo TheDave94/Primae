@@ -212,17 +212,23 @@ in. The calibrator is the tool that PRODUCES the corpus, and it has no
 running coverage at all. Nothing to fix while the casual path is paused —
 recorded so the green suite is not read as covering it.
 
-**And 32 of the app's 100 source files have ZERO references from either
-test target** (a 2026-09-17 sweep; 19 of them compile into the study
-build). The study-facing ones, by risk: `StoreFileQuarantine` (data-loss
-prevention, wired into five stores), `CalibrationSessionLogger` (corpus
-capture, writes are `try?`-and-swallow by design), `SchuleWorldView` (the
-child-facing world, including its score→verdict and star thresholds),
-`SettingsView` (the proctor's arm configuration), and `LetterStars` /
-`PhaseDotIndicator` / `WorldSwitcherRail` (child-visible counts). Two
-numbered star totals are computed independently in `SchuleWorldView` and
-`WorldSwitcherRail`, each with a comment claiming they agree, and neither
-is tested.
+**And 27 of the app's 100 source files have ZERO references from either
+test target** (re-measured 2026-09-20). The 2026-09-17 sweep said 32;
+**`ce5a6dea` — "test: cover three zero-coverage files" — had already
+remediated three of those the same day the number was written down**, so
+do not re-derive 32. What still matters, by risk:
+**`SchuleWorldView` (the child-facing world — the screen the participant
+actually uses, including its score→verdict and star thresholds) and
+`WorldSwitcherRail` (child-visible counts) are referenced only in
+COMMENTS from either test target, never in code.** Two numbered star
+totals are computed independently in those two files, each with a comment
+claiming they agree, and neither is tested. `SettingsView` (the proctor's
+arm configuration) is barely reached — exactly one code hit, a single
+`static let` — with its ~25 proctor `@State` properties untested.
+`StoreFileQuarantine` (data-loss prevention), `CalibrationSessionLogger`
+(corpus capture) and `LetterStars` / `PhaseDotIndicator` **are now
+genuinely covered** (`ce5a6dea`, `4c9ff51f`); the 2026-09-17 list must
+not be read as current.
 
 > **Note:** `xcodebuild` is NOT available on claudebox (Linux). Only Swift syntax
 > checking works locally. Full build/test runs on hosted macos-26 GitHub Actions
@@ -569,14 +575,25 @@ is tested.
 > matching the ruling) as a researcher affordance for hearing the old
 > behaviour — NOT as an open protocol question.
 >
-> **THE THESIS IS NOW THE OUTSTANDING WORK.** ~28 locations still describe
-> the sweep as present, including `02-background.typ:107`. **And the
-> reword is mechanically blocked until both move together:** MEASURED in
+> **THE THESIS IS NOW THE OUTSTANDING WORK.** Measured 2026-09-20:
+> **6** locations still describe the sweep as present (strict), **12** if
+> locations presupposing a mapping-teaching demonstration are counted too
+> — `content/04-implementation.typ:17`, `docs/DECISIONS.md:118`,
+> `docs/DECISIONS.md:127-130`, `docs/THESIS_FRAMING.md:485-487`,
+> `docs/design-facts.json:40`, `docs/design-facts.json:56`, plus (loose)
+> `02-background.typ:107`, `06-evaluation.typ:62`, `07-conclusion.typ:9`
+> and three more. (`glissando` appears ZERO times in the thesis; the
+> earlier "~28 locations" figure was relayed with no derivation and
+> overcounts by 2.3×–4.7×.) **And the reword is mechanically blocked
+> until both move together:** MEASURED in
 > `/Users/musicbox/repos/master-thesis`, `docs/design-facts.json` requires
 > the literal string `"axis demonstration"` for
-> `content/04-implementation.typ` and for the background chapter, and
-> `scripts/check_design_currency.py` enforces it. Update the prose and the
-> fact in the same pass, or the check fails for a reason that is correct.
+> `content/04-implementation.typ` and `docs/THESIS_FRAMING.md` — **NOT
+> for the background chapter, which is not in `thesis_must_contain` at
+> all** — and `scripts/check_design_currency.py` enforces it as a
+> whitespace-normalised, case-insensitive substring test. Update the prose
+> and the fact in the same pass, or the check fails for a reason that is
+> correct.
 >
 > **The spatial demonstration now fails loudly instead of skipping in
 > silence (`5a59c36`).** `armPreTaskDemonstration`'s `.spatial` branch

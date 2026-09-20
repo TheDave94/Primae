@@ -104,7 +104,11 @@ Implications:
   full rationale in `StrokeProcessMeasures.swift`'s header.
 
 - **D9 — Pre-task sound-arm demonstration: both arms taught, not
-  matched in form.** Both sound arms (`.phoneme`, `.spatial`) get a
+  matched in form.** **THE SPATIAL DEMONSTRATION'S FORM IS SUPERSEDED —
+  RULED 2026-09-18; read "Correction 2026-09-18" at the end of this entry
+  before acting on the arm description below. The spatial arm plays a
+  STEADY CARRIER, not the sweep described here.** Both sound arms
+  (`.phoneme`, `.spatial`) get a
   brief, scripted demonstration immediately before the tracing task
   begins for each letter — not audio-coupled to the child's own trace.
   The `.phoneme` arm gets a sound-letter exposure: the letter's own
@@ -220,6 +224,69 @@ Implications:
     No time-on-task cost: the demonstration is layered inside the
     observe window (two guide-dot cycles, 5–11 s on A F I L M) that
     every arm runs identically.
+
+  **Correction 2026-09-18 (David's ruling) — THE SPATIAL SWEEP IS OUT;
+  the spatial arm now plays a STEADY CARRIER for the same 2.0 s
+  window.** David: the glissando "was just distracting not helping",
+  and **the study contrasts SILENCE vs LETTER-UNRELATED SOUND vs
+  PHONEME.**
+  - **Why the sweep had to go.** Under that contrast the sweep was not
+    serving the symmetry it was written for — it was breaking it. The
+    phoneme arm's demonstration is a pure EXPOSURE: here is the sound,
+    and nothing beyond it. The sweep made the spatial arm's
+    demonstration a MAPPING LESSON — a different KIND of event rather
+    than the same event with different audio. A steady carrier for the
+    same two-second window is the matched demonstration the contrast
+    requires: each arm presents its own sound, for the same length, and
+    teaches nothing beyond it. This supersedes in part the 2026-09-14
+    correction above, whose "the two demonstrations do different jobs"
+    reasoning rested on the spatial demonstration's job being to teach
+    the mapping.
+  - **What changed in code.** `6fb7233` removed the scripted sweep.
+    `PreTaskDemonstration.axisSweep` survives ONLY behind
+    `StudyComparisonSettings.spatialAxisDemonstration` — OFF by default,
+    matching the ruling — as a researcher affordance for hearing the old
+    behaviour, NOT as an open protocol question. At that default the
+    `.spatial` branch runs the carrier at fixed rate, centre pan and
+    zero pitch offset for the full window
+    (`TracingViewModel.armPreTaskDemonstration`).
+  - **The demonstration still exists, and for the same reason.** A
+    demonstration can install a mapping rather than reveal one, so both
+    sound arms get one and neither is uniquely taught. What the ruling
+    removes is one arm's demonstration TEACHING the very mapping it is
+    meant to make legible; the exposure frame is now the operative one
+    for both sound arms.
+  - **The residual, restated.** The "residual, disclosed" paragraph
+    above describes the spatial side as "fixed and synthetic ... the
+    sweep's". That no longer matches the delivered stimulus. The two
+    sound arms still differ from each other — a real spoken recording
+    with natural length variation capped to the window, versus a
+    synthetic carrier held steady — and that remains a disclosed,
+    uncontrolled asymmetry, but it is no longer the sweep-versus-
+    recording asymmetry. Ch.6 §Threats to validity must be updated with
+    it (thesis ledger T2).
+  - **A fault, not a quiet skip.** The `.spatial` branch's empty-samples
+    guard used to `return` silently, so a session could run and be
+    analysed as though the arm had been delivered. It now logs a fault
+    (`5a59c36`), matching the standard this file already states for the
+    phoneme branch's equivalent case.
+  - **THE THESIS HAS NOT MOVED — this is the outstanding work.** The
+    thesis still describes the sweep. Measured 2026-09-20: **6**
+    locations state it as present (strict), **12** if locations
+    presupposing a mapping-teaching demonstration are counted too —
+    `content/04-implementation.typ:17`, `docs/DECISIONS.md:118`,
+    `docs/DECISIONS.md:127-130`, `docs/THESIS_FRAMING.md:485-487`,
+    `docs/design-facts.json:40`, `docs/design-facts.json:56`, plus
+    (loose) `content/02-background.typ:107`,
+    `content/06-evaluation.typ:62`, `content/07-conclusion.typ:9`,
+    `docs/DECISIONS.md:141-142`, `docs/DECISIONS.md:181`,
+    `docs/THESIS_FRAMING.md:499-501`. **Prose and fact must move in the
+    same pass or the check fails for a reason that is correct:**
+    `design-facts.json` requires the literal string "axis demonstration"
+    for `content/04-implementation.typ` and `docs/THESIS_FRAMING.md` —
+    NOT for the background chapter — and `check_design_currency.py`
+    enforces it as a whitespace-normalised substring test.
+
 - **D10 — Stroke-correspondence matching-policy parameters: DEFERRED
   pending pilot data.** D8's exhaustive-search assignment forces
   maximum cardinality (exactly `min(traced, reference)` pairs always
