@@ -430,6 +430,10 @@ final class AudioEngineTests: XCTestCase {
                       "the resume intent must have SURVIVED the interruption — if this is false, " +
                       "the .began path captured isPlaying after it was already zeroed (the " +
                       "ordering defect fixed 2026-09-20), and canResumePlayback() will refuse")
+        XCTAssertTrue(engine.debugInterruptionShouldResume,
+                      "the .ended option .shouldResume must have been parsed out of the forged " +
+                      "userInfo — canResumePlayback()'s last term needs it while the resume gate " +
+                      "is still required")
         XCTAssertTrue(engine.isPlaying,
                       "ending the interruption must actually resume playback, not just restart the " +
                       "engine and abandon attemptResumePlayback's own resume intent — this is the " +
