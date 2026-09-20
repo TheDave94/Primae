@@ -93,18 +93,29 @@ import Testing
     @Test("defaultForInstall uses ThesisCondition.assign when enrolled")
     func enrolled_uses_assign() {
         let previous = ParticipantStore.isEnrolled
-        defer { ParticipantStore.isEnrolled = previous }
+        let previousOverride = ParticipantStore.conditionOverride
+        defer {
+            ParticipantStore.isEnrolled = previous
+            ParticipantStore.conditionOverride = previousOverride
+        }
+        // The override is cleared too — this suite never did, and
+        // `defaultForInstall` consults it FIRST (`ThesisCondition.swift:48`),
+        // so a device carrying a stored override from an earlier session
+        // silently changed what this test measured. That is how it failed on
+        // the iPad on 2026-09-20.
+        ParticipantStore.conditionOverride = nil
         ParticipantStore.isEnrolled = true
-        // The equality below restates production's own expression, so on its
-        // own it proves little. The line after it is the load-bearing one:
-        // `assign(participantId:)` can never return `.threePhase`, so an
-        // implementation that ignored `isEnrolled` and fell through to the
-        // non-enrolled default fails here unconditionally. (Audit 2026-09-20
-        // flagged this pair as a tautology; mutation-checked and kept — see
-        // the commit message.)
+
+        // Stated plainly: this equality restates production's own
+        // expression. It is still not inert — an implementation that
+        // ignored `isEnrolled` and fell through to `.threePhase` would
+        // disagree whenever the stored id does not map to `.threePhase`.
+        // But `.threePhase` IS a reachable `assign` outcome (byte % 3 == 0,
+        // `ThesisCondition.swift:63` — and the iPad's id maps there), so
+        // there is no unconditional inequality to assert and the
+        // discriminating power is ~2/3 of ids. Recorded rather than
+        // papered over with an assertion that is true only by luck.
         #expect(ThesisCondition.defaultForInstall
                     == ThesisCondition.assign(participantId: ParticipantStore.participantId))
-        #expect(ThesisCondition.defaultForInstall != .threePhase,
-                "an enrolled install must not report the non-enrolled default")
     }
 }

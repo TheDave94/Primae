@@ -164,6 +164,9 @@ import CoreGraphics
         let viaTotal = LetterStars.total(for: rows.mapValues { progress($0) })
         #expect(viaTotal == byHand,
                 "LetterStars.total must be the sum of LetterStars.stars — the property both view badges now share by construction")
-        #expect(viaTotal == 6, "observe(1)+guided(1)+freeWrite(1) + 1+1 + 1 = 6, got \(viaTotal)")
+        // A: observe 1.0>=0.0, guided 0.9>=0.5, freeWrite 0.5>=0.4  -> 3
+        // F: observe 1.0>=0.0, guided 0.5>=0.5, freeWrite 0.4>=0.4  -> 3
+        // I: observe 1.0>=0.0                                        -> 1
+        #expect(viaTotal == 7, "3 + 3 + 1 = 7, got \(viaTotal)")
     }
 }
