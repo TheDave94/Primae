@@ -418,6 +418,14 @@ final class AudioEngineTests: XCTestCase {
 
         XCTAssertTrue(engine.debugIsEngineRunning,
                       "ending the interruption must restart the paused engine")
+        // The three terms canResumePlayback() needs, asserted individually
+        // so a failure names WHICH one is wrong instead of collapsing into
+        // one opaque "did not resume" at the end.
+        XCTAssertFalse(engine.debugInterrupted,
+                       ".ended must clear `interrupted` — otherwise canResumePlayback() refuses")
+        XCTAssertTrue(engine.debugAppIsForeground,
+                      "`appIsForeground` must be true for any resume; suspendForLifecycle is the " +
+                      "only thing that clears it, and this test never calls it")
         XCTAssertTrue(engine.debugShouldResumePlayback,
                       "the resume intent must have SURVIVED the interruption — if this is false, " +
                       "the .began path captured isPlaying after it was already zeroed (the " +
