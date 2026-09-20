@@ -18,13 +18,6 @@ final class AudioEngineTests: XCTestCase {
 
     override class func setUp() {
         super.setUp()
-        // NOT on the simulator, and this guard is load-bearing: class setUp
-        // runs BEFORE instance setUp, so the instance-level XCTSkip that
-        // protects a simulator run cannot protect this. Touching the shared
-        // audio session here would be the first thing a simulator run does.
-        // (Added 2026-09-20, when the scheme stopped skipping this class
-        // outright — see the `<SkippedTests>` note there.)
-        #if !targetEnvironment(simulator)
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
             try AVAudioSession.sharedInstance().setActive(true)
@@ -32,13 +25,10 @@ final class AudioEngineTests: XCTestCase {
             // XCTSkip is not available at class level; individual tests will skip via instance setUp.
             print("AudioEngineTests: AVAudioSession.setActive failed at class setUp: \(error)")
         }
-        #endif
     }
 
     override class func tearDown() {
-        #if !targetEnvironment(simulator)
         try? AVAudioSession.sharedInstance().setActive(false)
-        #endif
         super.tearDown()
     }
 

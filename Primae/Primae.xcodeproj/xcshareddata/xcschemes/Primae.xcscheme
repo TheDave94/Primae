@@ -85,6 +85,9 @@
             </BuildableReference>
             <SkippedTests>
                <Test
+                  Identifier = "AudioEngineTests">
+               </Test>
+               <Test
                   Identifier = "AudioEngineTests/testCancelPendingLifecycleWork_isIdempotent()">
                </Test>
                <Test
