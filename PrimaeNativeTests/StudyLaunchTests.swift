@@ -211,17 +211,26 @@ struct StudyLaunchTests {
         #expect(armedAtInit != nil, "the observe demonstration is armed at init outside a study")
         vm.canvasSize = CGSize(width: 1200, height: 800)
         let laidOut = vm.rawGlyphStrokes
-        // UNCONDITIONAL, and the changed-geometry precondition is asserted
-        // rather than assumed. This was an `if laidOut != armedAtInit { ... }`
-        // guard whose body reduced to its own predicate given the assertion
-        // above it — and which did nothing at all in the common case
-        // (audit 2026-09-20). A re-arm that did not actually re-arm must
-        // fail here, not pass quietly.
-        #expect(laidOut != armedAtInit,
-                "1200x800 must lay out differently from the 1024x1024 placeholder; if not, this test proves nothing")
-        #expect(vm.animation.armedStrokes == laidOut, "armed payload must equal the post-layout geometry")
-        #expect(vm.animation.armedStrokes != armedAtInit,
-                "the armed payload must have been REPLACED by the laid-out geometry, not left at the placeholder's")
+        #expect(vm.animation.armedStrokes == laidOut,
+                "the armed payload must be the same geometry the renderer uses")
+
+        // WHAT THIS TEST CANNOT SHOW, and why — measured 2026-09-20 (audit).
+        // That the payload CHANGED. The re-arm is real production behaviour
+        // (`canvasSize.didSet` re-lays out and re-arms, added for the
+        // 2026-09-06 stretched-guide-dot defect), and an assertion that the
+        // payload differs from the init one was tried and FAILED here: a
+        // headless VM has no laid-out grid, so `rawGlyphStrokes` takes its
+        // documented fallback both before and after (`:502`, "Falls through
+        // to bbox-relative when the cell hasn't laid out yet") and the two
+        // payloads are identical by construction.
+        //
+        // The previous form hid exactly this behind
+        // `if laidOut != armedAtInit { ... }` — a guard that is always
+        // false, so it asserted nothing while the test read as covering a
+        // re-arm it never observed. Naming the gap rather than papering
+        // over it; observing the re-arm needs a laid-out view, not a unit
+        // test.
+        _ = armedAtInit
         vm.animation.stop()
         #expect(vm.animation.armedStrokes == nil)
     }
