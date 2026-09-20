@@ -134,8 +134,14 @@ import Testing
         }
         ParticipantStore.audioConditionOverride = nil
         ParticipantStore.isEnrolled = true
-        let expected = PilotAudioCondition.assign(participantId: ParticipantStore.participantId)
-        #expect(PilotAudioCondition.defaultForInstall == expected)
+        // Restates production's own expression, so on its own it proves
+        // little — but it is not inert: an implementation that ignored
+        // `isEnrolled` would return `.phoneme` and disagree with the
+        // id-derived arm whenever the id does not map to phoneme.
+        // Mutation-checked 2026-09-20 (see the commit message); the residual
+        // id-dependence is recorded rather than papered over.
+        let derived = PilotAudioCondition.assign(participantId: ParticipantStore.participantId)
+        #expect(PilotAudioCondition.defaultForInstall == derived)
     }
 
     // MARK: - Researcher override

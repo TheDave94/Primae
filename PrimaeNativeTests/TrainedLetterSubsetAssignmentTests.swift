@@ -183,8 +183,16 @@ import Testing
         }
         ParticipantStore.trainedSubsetOverride = nil
         ParticipantStore.isEnrolled = true
-        let expected = TrainedLetterSubset.assign(participantId: ParticipantStore.participantId)
-        #expect(TrainedLetterSubset.defaultForInstall == expected)
+        // Restates production's own expression, so on its own it proves
+        // little — but it is not inert: an implementation that ignored
+        // `isEnrolled` would return `allSubsets[0]` and disagree with the
+        // id-derived value whenever the id does not map to subset 0.
+        // Mutation-checked 2026-09-20 (see the commit message); the residual
+        // id-dependence is recorded rather than papered over.
+        let derived = TrainedLetterSubset.assign(participantId: ParticipantStore.participantId)
+        #expect(TrainedLetterSubset.defaultForInstall == derived)
+        #expect(TrainedLetterSubset.allSubsets.count > 1,
+                "the mutation above is only detectable because more than one subset exists")
     }
 
     @Test("trainedSubsetOverride wins over modulo assignment and round-trips")

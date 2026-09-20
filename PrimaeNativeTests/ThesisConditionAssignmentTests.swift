@@ -95,7 +95,16 @@ import Testing
         let previous = ParticipantStore.isEnrolled
         defer { ParticipantStore.isEnrolled = previous }
         ParticipantStore.isEnrolled = true
-        let expected = ThesisCondition.assign(participantId: ParticipantStore.participantId)
-        #expect(ThesisCondition.defaultForInstall == expected)
+        // The equality below restates production's own expression, so on its
+        // own it proves little. The line after it is the load-bearing one:
+        // `assign(participantId:)` can never return `.threePhase`, so an
+        // implementation that ignored `isEnrolled` and fell through to the
+        // non-enrolled default fails here unconditionally. (Audit 2026-09-20
+        // flagged this pair as a tautology; mutation-checked and kept — see
+        // the commit message.)
+        #expect(ThesisCondition.defaultForInstall
+                    == ThesisCondition.assign(participantId: ParticipantStore.participantId))
+        #expect(ThesisCondition.defaultForInstall != .threePhase,
+                "an enrolled install must not report the non-enrolled default")
     }
 }

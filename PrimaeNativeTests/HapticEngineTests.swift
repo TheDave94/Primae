@@ -50,16 +50,20 @@ import QuartzCore
 
 @Suite struct HapticEventEquatabilityTests {
 
-    @Test func allCases_pairwiseDistinct() {
-        // Exhaustive pairwise distinctness. (The previous form asserted
-        // `c == c` for each case, which cannot fail — 2026-09-04.)
-        let cases: [HapticEvent] = [.strokeBegan, .checkpointHit, .strokeCompleted, .letterCompleted, .offPath]
-        for (i, a) in cases.enumerated() {
-            for (j, b) in cases.enumerated() where i != j {
-                #expect(a != b, "\(a) and \(b) must be distinct haptic events")
-            }
-        }
-    }
+    // DELETED 2026-09-20 (audit): `allCases_pairwiseDistinct` hand-listed
+    // the five events and asserted they were pairwise unequal. `HapticEvent`
+    // is a payload-free enum with synthesised `Equatable`
+    // (`HapticEngine.swift:20-31`), so distinctness is a language guarantee:
+    // no edit to production could make that loop fail. It was "fixed" once
+    // before, from `c == c` to this form, and still asserted nothing.
+    //
+    // It is deleted rather than rewritten because the property actually
+    // worth pinning — that each event gets a DISTINCT haptic treatment —
+    // lives in `UIKitHapticEngine.fire`'s use of
+    // UIImpactFeedbackGenerator/UINotificationFeedbackGenerator, which
+    // vends nothing a unit test can observe. (The switch there is already
+    // exhaustive, so a NEW case cannot silently ship without a decision.)
+    // Recorded rather than papered over, per this repo's standard.
 
     @Test func differentCases_notEqual() {
         #expect(HapticEvent.strokeBegan != .strokeCompleted)

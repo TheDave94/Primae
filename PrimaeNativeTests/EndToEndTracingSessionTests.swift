@@ -201,6 +201,13 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(!vm.currentLetterName.isEmpty, "[\(label)] letter name empty")
         #expect(!vm.progress.isNaN,            "[\(label)] progress NaN")
         #expect(!vm.progress.isInfinite,        "[\(label)] progress infinite")
-        #expect(!(vm.isPlaying ? "Audio is currently playing" : "Audio is currently paused").isEmpty)
+        // REMOVED 2026-09-20 (audit): a line here asserted
+        // `!(vm.isPlaying ? "Audio is currently playing" : "Audio is currently
+        // paused").isEmpty` — a ternary over two non-empty string LITERALS,
+        // so it was true in every state of `vm` and no production value was
+        // read at all. Deleted rather than rewritten: there is no production
+        // audio-state accessibility string to assert against (grepped for
+        // "Audio is currently" under PrimaeNative/ — zero hits), so there
+        // was nothing here to make failable.
     }
 }

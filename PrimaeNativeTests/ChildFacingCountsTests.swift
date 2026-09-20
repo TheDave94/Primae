@@ -71,27 +71,59 @@ import CoreGraphics
                 "the comparison is `>=` — a score AT the threshold earns the star")
     }
 
-    /// `maxStars` derives from `LearningPhase.allCases.count` so a
-    /// phase-model change propagates. This is the assertion that makes that
-    /// derivation load-bearing: a literal that drifted away from the number
-    /// of phases that can actually earn a star fails here.
-    @Test("a letter passed on every phase earns exactly maxStars")
+    /// LITERAL on both sides, deliberately. The previous form read
+    /// `stars(for: allPhasesScored(1.0)) == LetterStars.maxStars` — and
+    /// `allPhasesScored` is built from `LearningPhase.allCases` while
+    /// `maxStars` IS `LearningPhase.allCases.count`, so both sides were the
+    /// same expression and the four-case/three-phase mismatch this file
+    /// exists to catch was invisible to it (audit 2026-09-20).
+    @Test("a row covering every phase key at 1.0 earns one star per key")
     func perfectLetterEarnsMaxStars() {
-        #expect(LetterStars.stars(for: allPhasesScored(1.0)) == LetterStars.maxStars,
-                "maxStars must equal the number of phases that can earn a star")
+        #expect(LetterStars.stars(for: allPhasesScored(1.0)) == 4,
+                "every one of the four phase keys is covered at 1.0, so all four earn")
     }
 
-    @Test("no score row can earn more than maxStars")
-    func maxStarsIsACeiling() {
+    /// The number that decides what a child actually sees, and the one the
+    /// tautology above was hiding: a SESSION runs three phases since
+    /// `.direct` left the flow (D5, 2026-09-18), so a perfect session earns
+    /// three stars — while `LetterStars.maxStars` stays 4 as a cross-surface
+    /// cap over every phase that has EVER existed. Both numbers are pinned
+    /// as literals so a phase-model change fails here rather than agreeing
+    /// with itself.
+    @Test("a completed session earns its own phase count, which is not maxStars")
+    func completedSessionEarnsTheSessionCount() {
+        let controller = LearningPhaseController(condition: .threePhase)
+        let sessionPhases = controller.activePhases
+        #expect(sessionPhases.count == 3,
+                "the study session runs three phases (observe/guided/freeWrite) since 2026-09-18")
+        #expect(controller.maxStars == 3,
+                "the session's own total is its active-phase count, not allCases.count")
+
+        let sessionRow = Dictionary(uniqueKeysWithValues:
+            sessionPhases.map { ($0.rawName, 1.0) })
+        #expect(LetterStars.stars(for: sessionRow) == 3,
+                "a perfect three-phase session earns three stars")
+        #expect(LetterStars.maxStars == 4,
+                "maxStars is the cross-surface cap over all four phase keys, not the session total")
+    }
+
+    /// EXACT counts, not a ceiling. The ceiling form (`earned <= maxStars`)
+    /// was entailed for all sixteen masks by `stars` counting at most one
+    /// star per `allCases` element — it could not fail (audit 2026-09-20).
+    /// Each subset must earn exactly the number of keys it sets.
+    @Test("each subset of a full-score row earns exactly its own key count")
+    func eachSubsetEarnsItsOwnKeyCount() {
         for mask in 0..<(1 << LearningPhase.allCases.count) {
             var row: [String: Double] = [:]
+            var expected = 0
             for (index, phase) in LearningPhase.allCases.enumerated()
             where mask & (1 << index) != 0 {
                 row[phase.rawName] = 1.0
+                expected += 1
             }
             let earned = LetterStars.stars(for: row)
-            #expect(earned <= LetterStars.maxStars,
-                    "subset \(mask) earned \(earned), above maxStars \(LetterStars.maxStars)")
+            #expect(earned == expected,
+                    "subset \(mask) sets \(expected) keys at 1.0 and must earn exactly that")
         }
     }
 
@@ -104,7 +136,7 @@ import CoreGraphics
             LearningPhase.allCases.map { ($0.displayName, 1.0) })
         #expect(LetterStars.stars(for: byDisplayName) == 0,
                 "displayName is UI copy — a change to it must not be able to read as progress")
-        #expect(LetterStars.stars(for: allPhasesScored(1.0)) == LetterStars.maxStars,
+        #expect(LetterStars.stars(for: allPhasesScored(1.0)) == 4,
                 "rawName is the persisted key — a full row must be recognised in full")
     }
 

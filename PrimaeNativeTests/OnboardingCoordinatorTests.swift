@@ -59,8 +59,20 @@ private func makeStore() -> JSONOnboardingStore {
     }
     @Test func skip_marksAllNonCompleteStepsAsCompleted() {
         var c = makeCoordinator(); c.skip()
-        let expected = Set(OnboardingStep.allCases.filter { $0 != .complete })
-        #expect(c.completedSteps == expected)
+        // LITERALS. The previous form built the expectation from
+        // `OnboardingStep.allCases.filter { $0 != .complete }` while the
+        // implementation is `steps.forEach { insert($0) }; remove(.complete)`
+        // over `steps = allCases` — so the expectation was the
+        // implementation's own set and could not fail (audit 2026-09-20).
+        // `OnboardingStep` has seven cases; skip must complete SIX.
+        #expect(!c.completedSteps.contains(.complete),
+                "skip must not mark the completion step itself as completed")
+        #expect(c.completedSteps.contains(.welcome),
+                "every step before the end must be marked")
+        #expect(c.completedSteps.contains(.rewardIntro),
+                "including the last step before completion")
+        #expect(c.completedSteps.count == 6,
+                "six of the seven steps, got \(c.completedSteps.count)")
     }
     @Test func resume_jumpsToSpecifiedStep() {
         var c = makeCoordinator(); c.resume(at: .directDemo)

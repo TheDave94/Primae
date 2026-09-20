@@ -43,4 +43,19 @@ enum LetterStars {
     /// unreachable, which was already true under the study condition and is
     /// now true for the casual one too.
     static let maxStars: Int = LearningPhase.allCases.count
+
+    /// The child-visible star total across every letter on the device.
+    ///
+    /// ONE definition, deliberately. Two views used to compute this
+    /// privately and separately — `SchuleWorldView.totalStars` and
+    /// `WorldSwitcherRail.starTotal` — each carrying a comment claiming it
+    /// agreed with the other. They were textually identical, which is the
+    /// only reason they agreed; nothing enforced it, and neither had a
+    /// single test reference (audit 2026-09-20). Both now call this, so
+    /// agreement is structural rather than a coincidence of duplication.
+    static func total(for progress: [String: LetterProgress]) -> Int {
+        progress.values.reduce(0) { acc, prog in
+            acc + stars(for: prog.phaseScores)
+        }
+    }
 }

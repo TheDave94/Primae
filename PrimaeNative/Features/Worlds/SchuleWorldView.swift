@@ -293,15 +293,18 @@ struct SchuleWorldView: View {
     /// colour swatch + short German encouragement only. Numeric
     /// scores live in the research dashboard and CSV/TSV export.
     private func feedbackCard(title: String, score: CGFloat, subtitle: String) -> some View {
-        let tint: Color = score >= 0.7 ? .green : (score >= 0.5 ? .yellow : .orange)
-        let starsEarned = score >= 0.85 ? 3 : (score >= 0.6 ? 2 : (score >= 0.35 ? 1 : 0))
-        let praise: String
-        switch starsEarned {
-        case 3: praise = "Super gemacht!"
-        case 2: praise = "Gut gemacht!"
-        case 1: praise = "Schon ganz gut."
-        default: praise = "Probier es nochmal."
+        // Every threshold and string lives in `FreeWriteFeedback` so it can
+        // be asserted on — this body returns `some View` and is unreachable
+        // from a test (audit 2026-09-20). The rendering below is unchanged.
+        let feedback = FreeWriteFeedback(score: score)
+        let tint: Color
+        switch feedback.tintBand {
+        case .green:  tint = .green
+        case .yellow: tint = .yellow
+        case .orange: tint = .orange
         }
+        let starsEarned = feedback.starsEarned
+        let praise = feedback.praise
         return HStack(spacing: 14) {
             // Mood swatch — colour conveys quality without a number.
             ZStack {
@@ -309,9 +312,7 @@ struct SchuleWorldView: View {
                     .fill(tint.opacity(0.22))
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(tint.opacity(0.55), lineWidth: 1)
-                Image(systemName: starsEarned >= 2
-                                  ? "hand.thumbsup.fill"
-                                  : "sparkles")
+                Image(systemName: feedback.symbolName)
                     .font(.display(FontSize.md))
                     .foregroundStyle(tint)
             }
@@ -394,12 +395,12 @@ struct SchuleWorldView: View {
     }
     #endif
 
-    /// Total stars across all letters — same computation as the
-    /// world rail's badge so the two displays always agree.
+    /// Total stars across all letters. Delegates to `LetterStars.total`, so
+    /// it cannot drift from the world rail's badge — the two used to be
+    /// separate copies of the same expression, agreeing only because both
+    /// were duplicated verbatim (audit 2026-09-20).
     private var totalStars: Int {
-        vm.allProgress.values.reduce(0) { acc, prog in
-            acc + LetterStars.stars(for: prog.phaseScores)
-        }
+        LetterStars.total(for: vm.allProgress)
     }
 
     /// Persistent header pill (star + running total). Mirrors the

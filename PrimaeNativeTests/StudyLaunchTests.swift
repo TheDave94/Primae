@@ -211,10 +211,17 @@ struct StudyLaunchTests {
         #expect(armedAtInit != nil, "the observe demonstration is armed at init outside a study")
         vm.canvasSize = CGSize(width: 1200, height: 800)
         let laidOut = vm.rawGlyphStrokes
+        // UNCONDITIONAL, and the changed-geometry precondition is asserted
+        // rather than assumed. This was an `if laidOut != armedAtInit { ... }`
+        // guard whose body reduced to its own predicate given the assertion
+        // above it — and which did nothing at all in the common case
+        // (audit 2026-09-20). A re-arm that did not actually re-arm must
+        // fail here, not pass quietly.
+        #expect(laidOut != armedAtInit,
+                "1200x800 must lay out differently from the 1024x1024 placeholder; if not, this test proves nothing")
         #expect(vm.animation.armedStrokes == laidOut, "armed payload must equal the post-layout geometry")
-        if laidOut != armedAtInit {
-            #expect(vm.animation.armedStrokes != armedAtInit)
-        }
+        #expect(vm.animation.armedStrokes != armedAtInit,
+                "the armed payload must have been REPLACED by the laid-out geometry, not left at the placeholder's")
         vm.animation.stop()
         #expect(vm.animation.armedStrokes == nil)
     }

@@ -77,13 +77,20 @@ import Foundation
 
     @Test func sequence_equalityIncludesIdentity() {
         // Equatable compares all properties INCLUDING id: two structurally
-        // identical sequences are NOT equal, a copy is. (The previous form
-        // asserted `a == a`, which cannot fail — 2026-09-04.)
+        // identical sequences are NOT equal, and two built from the SAME id
+        // ARE. The 2026-09-04 pass replaced `a == a` with `a == copy` where
+        // `copy` was `a` — still a value copy, still unable to be unequal
+        // (audit 2026-09-20). The equal pair below is CONSTRUCTED from a
+        // shared id, so both halves can fail.
         let a = TracingSequence.singleLetter("A")
         let b = TracingSequence.singleLetter("A")
+        #expect(a.id != b.id)
         #expect(a != b, "different ids must make structurally identical sequences unequal")
-        let copy = a
-        #expect(a == copy)
+
+        let sharedID = UUID()
+        let c = TracingSequence(id: sharedID, kind: .singleLetter("A"))
+        let d = TracingSequence(id: sharedID, kind: .singleLetter("A"))
+        #expect(c == d, "the same id and the same kind must compare equal")
     }
 
     // MARK: - Audio policy default

@@ -228,7 +228,14 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
             #expect(vm.phaseController.currentPhase == .observe,
                     "the phase controller must be reset even when no letter load followed")
             #expect(vm.progress == 0)
-            #expect(vm.directTappedDots.isEmpty)
+            // REMOVED 2026-09-20 (audit): a line here asserted
+            // `vm.directTappedDots.isEmpty`. `directTappedDots` is written
+            // ONLY by `tapDirectDot`, which is guarded on
+            // `currentPhase == .direct` — a phase no session enters since
+            // the 2026-09-18 cut — so the collection is empty in every test
+            // that does not call it, and the assertion could not fail.
+            // Deleted rather than rewritten: there is no reachable state in
+            // which it is non-empty.
             vm.loadLetter(name: vm.currentLetterName)   // what the next probe/letter would do
             #expect(store.phaseCalls.isEmpty,
                     "no phantom row may be written for the outgoing child's stale phase state: \(store.phaseCalls.count)")
