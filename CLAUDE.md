@@ -305,6 +305,22 @@ not be read as current.
 > call, use it in the next; never capture an excluded command inside a
 > substitution.
 >
+> **Extended again, 2026-09-21 — `time` is a fourth spelling of the same
+> trap, and the `cd` case bites even when the target is the directory you're
+> already in.** `time xcodebuild test …` ran sandboxed (`time` leads, not
+> `xcodebuild`) and failed on the same `CoreSimulatorService`/permission
+> shape as the traps above. Separately, three `git commit -S` attempts this
+> same night were each issued as `cd /Users/musicbox/repos/Primae && git
+> commit -S …` — redundant, since that was already the working directory —
+> and each ran sandboxed anyway, masking a real signing question behind
+> `KEY_UNUSABLE`/`Operation not permitted`-shaped errors for hours before the
+> shape itself was checked. The rule from above already covers this (`cd` is
+> already named), but "the cd target is already cwd" reads as harmless and
+> isn't: the match is on the literal string, not on whether the prefix
+> changes anything. Issue an excluded command as a bare call with nothing
+> before it, full stop — never prepend `cd` even to the current directory,
+> never time it, never wrap it.
+>
 > **`xcrun xcresulttool` does NOT match `xcrun simctl *`.** It stays
 > sandboxed, so both its `--path` and its `--output-path` must sit somewhere
 > the sandbox can reach. Same for any command that is not literally
