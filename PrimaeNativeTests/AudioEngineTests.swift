@@ -59,6 +59,32 @@ final class AudioEngineTests: XCTestCase {
         // Ensure AVAudioEngine is in a known running state before any test that checks isRunning.
         // resumeAfterLifecycle() calls startIfNeeded() which starts the engine if not yet running.
         engine?.resumeAfterLifecycle()
+
+        // HARDENING (2026-09-21) — A FAILING ASSERTION MUST NOT WEDGE THE HOST.
+        //
+        // Measured: this class's interruption-recovery test completes in ~2 s
+        // when it passes, but force its assertion to fail and the whole test
+        // host hangs — xcodebuild never returned and had to be killed (rc=137
+        // at a 90 s bound). `continueAfterFailure = false` unwinds the test
+        // body at the failure with a `pendingSafeEnginePause()` still
+        // scheduled and a resume still in flight, and nothing drained that
+        // state, so teardown never completed.
+        //
+        // This block runs however the body exited, including on an abort, and
+        // positively quiesces the engine before releasing it. It is
+        // deliberately belt-and-braces on top of `tearDown()`: tearDown is
+        // what runs on the normal path, this is what has to run when the
+        // normal path did not.
+        addTeardownBlock { @MainActor [weak self] in
+            guard let self else { return }
+            // Cancel the pending pause/resume work AND stop the engine, so no
+            // Task is left holding a reference or mid-await when it is freed.
+            self.engine?.stopAndReset()
+            self.engine = nil
+            // Then let the main actor actually run those cancellations to
+            // completion before the host moves on.
+            try? await Task.sleep(for: .milliseconds(300))
+        }
     }
 
     @MainActor override func tearDown() async throws {
