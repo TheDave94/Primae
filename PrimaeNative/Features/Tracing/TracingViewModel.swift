@@ -1026,10 +1026,12 @@ public final class TracingViewModel {
     /// run with the switch OFF. Reset by `reapplyParticipantIdentity` so an
     /// incoming child starts from their own assignment.
     private var cycleArmLetter: String?
-    /// Whether the spatial arm's pre-task demonstration runs the scripted
-    /// axis sweep or holds the carrier steady for the same window — the
-    /// supervisor's "Glissando weg" against the sweep `04-implementation
-    /// .typ:17` specifies. Captured at INIT with the three above, for the
+    /// Whether the spatial arm's pre-task demonstration runs the OLD scripted
+    /// axis sweep or holds the carrier steady for the same window. STEADY IS
+    /// THE RULED BEHAVIOUR (2026-09-18, "Glissando weg") and the default; the
+    /// sweep is kept only as this researcher affordance, and the thesis now
+    /// specifies the steady carrier rather than the sweep.
+    /// Captured at INIT with the three above, for the
     /// same reason: whether the arm's mapping is INSTALLED by a
     /// demonstration before the task is part of what the session IS, so it
     /// must not be something a proctor can flip under the child half-way
@@ -1664,15 +1666,15 @@ public final class TracingViewModel {
             }
         case .spatial:
             // TWO BEHAVIOURS, ONE SWITCH (2026-09-17). The spatial arm's
-            // pre-task demonstration is either the scripted axis sweep
-            // 04-implementation.typ:17 specifies, or the WINDOW alone with
-            // the carrier held steady — the behaviour the app has had since
-            // 6fb7233c, when the sweep was removed on the supervisor's
-            // "Glissando weg". `StudyComparisonSettings
-            // .spatialAxisDemonstration` selects between them, captured at
-            // init with the other comparison switches; see that property for
-            // why its OFF default is a protocol divergence and not a
-            // neutral choice.
+            // pre-task demonstration is either the WINDOW alone with the
+            // carrier held steady — the RULED behaviour (2026-09-18) and the
+            // default — or the old scripted axis sweep, kept only as a
+            // researcher affordance. The sweep left the flow on the
+            // supervisor's "Glissando weg" (6fb7233c) and is no longer what
+            // the protocol specifies, so OFF is not a divergence.
+            // `StudyComparisonSettings.spatialAxisDemonstration` selects
+            // between them, captured at init with the other comparison
+            // switches.
             //
             // WHAT BOTH SHARE. The carrier loads and autoplays for the same
             // `duration` either way, and stops when the window ends, so this
@@ -1728,7 +1730,9 @@ public final class TracingViewModel {
             demonstratedAudioConditions.insert(audioCondition)
             audio.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
             if axisDemonstrationEnabled {
-                // ON: the axis demonstration, as specified. Pitch follows
+                // ON: the OLD axis demonstration, kept as a researcher
+                // affordance only — not the specified behaviour since the
+                // 2026-09-18 ruling. Pitch follows
                 // the sweep point's vertical leg, pan its horizontal one,
                 // one full top→bottom→top pass over the shared window.
                 preTaskDemoTask = Task { [weak self] in
