@@ -89,17 +89,24 @@ final class StudyDryRunUITests: XCTestCase {
             // completes the session regardless of drawn shape.
             drawFreeWriteStroke(app)
             // PhaseDotIndicator's accessibilityValue is unconditional
-            // (not studyMode-gated) and reports "N von 4 abgeschlossen".
-            // A cold probe only ever completes the one phase it landed
-            // in, so the expected value is exactly 1.
+            // (not studyMode-gated) and reports "N von M abgeschlossen",
+            // where M is the session's phase count. A cold probe only ever
+            // completes the one phase it landed in, so the expected value
+            // is exactly 1.
+            //
+            // DENOMINATOR UPDATED 2026-09-21: this pinned "von 4", which
+            // the 2026-09-18 cut made wrong — a session runs THREE phases
+            // now (D5), so the indicator reads "1 von 3". Nothing caught
+            // it because PrimaeUITests never runs in CI. Caught by running
+            // the suite on the physical iPad.
             let phaseIndicator = element(labelPrefix: "Lernphase", in: app)
             let deadline = Date().addingTimeInterval(8)   // > 2.0s quiet window + scoring
             var value = phaseIndicator.value as? String ?? ""
-            while Date() < deadline, value != "1 von 4 abgeschlossen" {
+            while Date() < deadline, value != "1 von 3 abgeschlossen" {
                 Thread.sleep(forTimeInterval: 0.5)
                 value = phaseIndicator.value as? String ?? ""
             }
-            XCTAssertEqual(value, "1 von 4 abgeschlossen",
+            XCTAssertEqual(value, "1 von 3 abgeschlossen",
                             "the pretest freeWrite pass should have completed and advanced the phase indicator")
         }
 

@@ -105,7 +105,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         Thread.sleep(forTimeInterval: 2.0)
 
         // Letter IDENTITY, added 2026-09-16. This test previously asserted
-        // only the phase-indicator string, which reads "0 von 4
+        // only the phase-indicator string, which reads "0 von M
         // abgeschlossen" whether or not the letter actually advanced — so
         // it PASSED on the physical iPad while `testChevronAdvancesLetter`
         // failed on the same tap, and the real bug shipped behind a green
@@ -138,8 +138,16 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         // one carries that the landed letter has not arrived mid-flow or
         // finished. Anything above 1 would mean the chevron landed on a
         // letter already in progress.
+        //
+        // DENOMINATOR UPDATED 2026-09-21: this pinned "von 4", which the
+        // 2026-09-18 cut made wrong — a session runs THREE phases now
+        // (D5), and the app correctly renders "0 von 3 abgeschlossen".
+        // The 2026-09-17 note above updated the NUMERATOR for the
+        // observe-passes change but the denominator was missed, and
+        // nothing caught it because PrimaeUITests never runs in CI.
+        // Caught by running the suite on the physical iPad.
         XCTAssertTrue(
-            value == "0 von 4 abgeschlossen" || value == "1 von 4 abgeschlossen",
+            value == "0 von 3 abgeschlossen" || value == "1 von 3 abgeschlossen",
             "a freshly loaded letter should start at 0 phases done, or at 1 once its single observe pass completes; got '\(value)'"
         )
     }
