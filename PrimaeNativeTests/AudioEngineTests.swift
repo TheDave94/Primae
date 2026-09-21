@@ -153,8 +153,20 @@ final class AudioEngineTests: XCTestCase {
     /// `.began`. A `play()` after an un-ended `.began` is the user's intent
     /// and must clear `interrupted`; otherwise every later play() in the
     /// session is refused and both sound arms go silent with no trace.
+    ///
+    /// A FILE MUST BE LOADED FIRST, and this test never did — which is why it
+    /// failed on hardware the first time it was ever run (2026-09-21). `play()`
+    /// opens with `guard currentFile != nil else { return }`, so with no file
+    /// it returns before reaching the very line this test exists to check,
+    /// and `interrupted` is left set. The fix it guards was correct the whole
+    /// time; the test was asserting a consequence of a code path it never
+    /// entered. Loading the carrier puts it on the path the child's own touch
+    /// takes.
     @MainActor func testPlayAfterBeganWithoutEnded_clearsInterrupted() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: playback started")
+
         await postInterruption(type: .began)
         XCTAssertTrue(engine.debugInterrupted, "precondition: .began sets interrupted")
         engine.play()
