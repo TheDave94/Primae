@@ -544,9 +544,32 @@ private extension AudioEngine {
     ///   comment for the defect this parameter exists to make unrepeatable.
     func handleInterruptionBegan(resumeIntent: Bool) {
         let savedResumeIntent = resumeIntent
+        // Hold the loaded file across the stop() below, for the same reason
+        // and by the same shape as `resumeIntent` above: read BEFORE the
+        // state-clearing call, restored after.
+        //
+        // `stop()` routes to `finishStop()`, which sets `currentFile = nil`.
+        // That is right for its other callers — a finger-lift ends playback
+        // and the next `play()` loads afresh — but an INTERRUPTION is not
+        // the user stopping playback: we intend to resume the same sound,
+        // and there must be something left to resume. Measured 2026-09-21:
+        // with the file gone, `attemptResumePlayback()` restarted the engine
+        // and then bailed at its `currentFile != nil` guard, leaving
+        // `isPlaying` false with no pause scheduled, so playback never came
+        // back after an interruption (and `play()`'s own `currentFile != nil`
+        // guard meant the R5 stale-flag fix could not reach that case
+        // either).
+        //
+        // Deliberately NOT changing `finishStop()` to skip clearing the file
+        // under some flag: that is the stale-flag-dependent branching that
+        // produced the defect this file was just fixed for. `stop()` and
+        // `finishStop()` keep their meaning for every other caller; only what
+        // an INTERRUPTION discards changes here.
+        let file = currentFile
         player.pause()
         isPlaying = false
         stop()
+        currentFile = file
         // Restore resume intent — stop() clears shouldResumePlayback,
         // but we need it preserved so playback resumes after interruption ends.
         shouldResumePlayback = savedResumeIntent

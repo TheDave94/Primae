@@ -161,6 +161,28 @@ hang. Swift Testing retries re-run the WHOLE target, not just the failures
 (FB20922425). And `PrimaeUITests` (6 tests) never runs in CI — Layer 3
 scopes the job to `PrimaeNativeTests`.
 
+**AND `PrimaeUITests` CAN RUN ON THE PHYSICAL iPAD — MEASURED 2026-09-21, and
+it found two defects the same hour.** The suite is not scheme-skipped (unlike
+`AudioEngineTests`), so a bare `xcodebuild test … -only-testing:PrimaeUITests
+-destination "platform=iOS,id=<UDID>"` drives it on real hardware; four of the
+six passed, including BOTH per-arm audio probes
+(`testPhonemeArmRequestsAudioDuringObserve`, `testSpatialArmRequestsAudioDuringObserve`).
+So two standing claims in `docs/STUDY_DEVICE_DRYRUN.md` are false and should
+not be repeated: "the suite runs on a simulator" (`:66`) and "it does not
+switch arms" (`:59`).
+
+**What it caught: the phase indicator's DENOMINATOR, stale since the
+2026-09-18 cut.** Two tests pinned `"0 von 4 abgeschlossen"` / `"1 von 4
+abgeschlossen"`; the app renders **"von 3"** because a session runs three
+phases (D5). `StudyAdvanceProbeUITests.swift:142` had already been updated
+once for the observe-passes change and the denominator was missed;
+`StudyDryRunUITests.swift:98-103` was missed entirely. **Nothing else
+exercises those strings, and `PrimaeUITests` never runs in CI — so the
+denominator went unnoticed for three days.** Lesson, and it generalises:
+a UI-test string that encodes a phase count, a star count or a row count is
+a doc-currency site; grep `von 4`, `von 3`, row-count literals and
+`allCases.count` when the phase model moves.
+
 **6. A git worktree CANNOT BUILD unless its directory is named `Primae`.**
 MEASURED 2026-09-17. The package is referenced as
 `XCLocalSwiftPackageReference "../../Primae"`, resolved relative to
@@ -508,6 +530,36 @@ not be read as current.
 >
 > Still true: `xcrun devicectl device copy from` has no `bundleContainer`
 > domain, so the INSTALLED binary still cannot be pulled for `nm`.
+>
+> **BUT `xcrun devicectl` reaches further than this file recorded — MEASURED
+> 2026-09-21, and the omission cost real work.** All of these work from a
+> sandboxed seat:
+> - **`xcrun devicectl device capture screenshot --device
+>   00008103-000E60311AE8801E --destination /tmp/primae-live.png`** — a
+>   2732×2048 PNG of the LIVE iPad. This is how the child-facing screen gets
+>   checked without a human holding the device; it is the answer to "is the
+>   tracing UI correct right now". Also `device capture screen-record`.
+>   **Substitute the current UDID from `xcrun devicectl list devices`, and
+>   write to an absolute path: `$TMPDIR` is not stable across calls, so a
+>   path that expanded in one call does not exist in the next.**
+> - `xcrun devicectl device process launch --device
+>   00008103-000E60311AE8801E --terminate-existing
+>   com.flamingistan.primae.study` — relaunch cleanly between runs.
+> - `device info lockState` (is it unlocked?), `device info voiceover`,
+>   `device settings voiceover`, `device info mountpoint`,
+>   `device orientation`, `device pasteboard`, `device sysdiagnose`.
+> - `device copy from` with **container-relative** sources:
+>   `--source tmp/primae_progress_ALL_2026-09-18_161622_all38.csv` and
+>   `--source "Library/Preferences/com.flamingistan.primae.study.plist"`.
+>   A bare filename gives `CoreDeviceError error 7000`. The app's live
+>   preferences and its `Library/Application Support/PrimaeNative/` files
+>   (progress, dashboard, archive) are readable this way.
+>
+> Two corrections that follow: an "open forge PR" question IS answerable here
+> (`git ls-remote origin 'refs/pull/*'` — the REST API 403s and the web UI
+> redirects to login, which is what misled an earlier pass), and
+> `xcrun xcresulttool` IS usable via `get object --legacy` (only the newer
+> `get --path …` form and `get test-results summary` are sandbox-blocked).
 >
 > **3. Anything measured under a UI test measures the HARNESS, not the
 > app.** This one produced a wrong number tonight, and the error was 2×.
