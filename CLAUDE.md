@@ -321,6 +321,75 @@ not be read as current.
 > before it, full stop — never prepend `cd` even to the current directory,
 > never time it, never wrap it.
 >
+> **CORRECTION, same night — the cd-prefix trap explained SOME of that
+> night's `KEY_UNUSABLE` failures, not all of them, and the remaining ones
+> are a separate, permanent finding: a Claude Code seat cannot sign commits
+> in this project, full stop.** After the three cd-prefixed attempts above
+> were correctly diagnosed as call-shape, a fourth attempt — `git add
+> CLAUDE.md && git commit -S -m …`, genuinely bare, leading word literally
+> `git`, no `cd`, no wrapper, the identical shape a working commit from
+> David's own terminal had just used successfully on the same repo/branch —
+> failed identically (`Couldn't load public key … No such file or
+> directory`, `KEY_UNUSABLE`). A direct `ssh-keygen -Y sign` test, also
+> correctly bare-shaped, had already failed the same way earlier the same
+> night. Three consistent, correctly-shaped failures from the same Claude
+> Code session, none of them a call-shape artifact. The session that ran
+> them has **no controlling TTY** — `tty` → not a tty; `[ -t 0 ]` / `[ -t 1 ]`
+> both false — confirmed unconditionally and independent of call shape.
+> `yubi-sign.sh`'s design depends on writing the physical-key touch prompt
+> to a real terminal; a seat with no controlling TTY cannot deliver that
+> prompt regardless of how the command is shaped. David's terminal working
+> proves the key, the wrapper, and libfido2 are all fine — it does not
+> and cannot prove a Claude Code seat can sign, because the seat's
+> structural limitation (no TTY) is orthogonal to whether the signing
+> chain itself works. **This was already this project's standing
+> convention (signing is David's, on his terminal); tonight re-confirmed it
+> the hard way, at the cost of hours chasing what looked like — and partly
+> was — a call-shape bug.** A future session hitting `KEY_UNUSABLE` from a
+> Claude Code seat should check `tty`/`[ -t 0 ]`/`[ -t 1 ]` FIRST, before
+> re-deriving the call-shape investigation above: if there's no controlling
+> TTY, that's the whole answer, and no amount of correcting the command
+> shape will fix it.
+>
+> **THIRD AND FINAL, same night — `xcodebuild`/`swift build` package
+> resolution from a Claude Code seat on this machine fails with
+> `permissionDenied`, PERMANENTLY, and it is not fixable from the seat.**
+> Every candidate tried this session was ruled out in turn: not a
+> directory-ownership issue (`ls -ldO`/`ls -le` show normal bits, no ACL, no
+> immutable flags); not Claude Code's own `allowWrite` list (reproduces
+> identically through a fully unsandboxed, `git`-led call); not a Full
+> Disk Access/TCC gap (the canonical `TCC.db` canary test, plus a full
+> estate-repo search, turned up nothing); not a stale SwiftPM cache (David
+> repopulated it fresh from his own terminal — confirmed clean resolve
+> there — and the identical `xcodebuild -resolvePackageDependencies`, run
+> immediately after from this seat with no flags, failed the same way);
+> not a `-clonedSourcePackagesDirPath`/`-packageCachePath` redirect (tested
+> directly against a directory already on the `allowWrite` list, failed
+> identically); not a Claude Code config regression (`~/.claude/settings.json`
+> carries every `excludedCommands` entry this file's own history says it
+> should, nothing missing). **The actual cause was already documented
+> before tonight started:** `homelab-ops/docs/maps/apple-build-capacity.md`,
+> measured 2026-08-17, found the identical shape on this exact machine and
+> named the mechanism — a single-process compiler invocation (`swiftc`)
+> can have its cache path redirected around the sandbox successfully, but
+> `xcodebuild`/`swift build` delegate the actual resolution/build work to
+> child processes, and *"confinement is per-process and does not transfer
+> across a delegation boundary."* Redirecting the target directory doesn't
+> help because the write attempt is made by a delegated child process that
+> the seat's unsandboxed status was never extended to, regardless of which
+> directory it targets. **This is the same category of limitation as the
+> no-TTY signing finding above — both are the same underlying fact,
+> restated for two different Apple toolchain paths: a Claude Code seat on
+> this machine cannot run `xcodebuild`/`xcrun devicectl test` locally, full
+> stop, the same way it cannot complete a signing touch prompt.** The
+> working pattern is and remains what CI and David's terminal already do:
+> **CI builds** (hosted `macos-26` runners), **David's terminal runs local
+> device tests and signs.** A future session hitting `permissionDenied` on
+> package resolution from a CC seat should stop at this paragraph rather
+> than re-running tonight's whole elimination sequence — cache state,
+> config content and flag redirects have all already been ruled out here,
+> on this machine, the same night.
+>
 > **`xcrun xcresulttool` does NOT match `xcrun simctl *`.** It stays
 > sandboxed, so both its `--path` and its `--output-path` must sit somewhere
 > the sandbox can reach. Same for any command that is not literally
