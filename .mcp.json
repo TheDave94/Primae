@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "xcode": {
+      "type": "stdio",
+      "command": "xcrun",
+      "args": ["mcpbridge"],
+      "env": { "DEVELOPER_DIR": "/Applications/Xcode-beta.app/Contents/Developer" }
+    }
+  }
+}
