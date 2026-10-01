@@ -408,8 +408,36 @@ Architecture is German-only by design (curriculum-specific). For German-speaking
 
 For motor-impaired children, expose the direct-phase dot tap as a Switch Control target and render a parallel "Switch Control hint" overlay that highlights the next-expected dot in high contrast.
 
-### F11 — iOS 27 SDK move
-**Effort:** S–M · **Priority:** P1 (post-pilot; hard deadline if the App Store mandates the iOS 27 SDK, projected ~April 2027 — unconfirmed as of 2026-07-07)
+### F11 — iOS 27 SDK move ✅ **DONE 2026-10-01**
+**Effort:** S–M · **Priority:** was P1 (post-pilot; hard deadline if the App Store mandates the iOS 27 SDK)
+
+**LANDED 2026-10-01.** `bin/toolchain.pin` is the single place the pin lives:
+**Xcode major 27**, CI runner label `xcode-27`, deployment target 27.0.
+Applied: `Package.swift` tools-version `6.3` → **`6.4`** (required — `.iOS(.v27)`
+does not exist in 6.3; the compiler rejects the manifest), `.iOS(.v26)` →
+`.v27`, all 12 `IPHONEOS_DEPLOYMENT_TARGET` `26.0` → `27.0`, CI
+`runs-on: macos-26` → `xcode-27`.
+
+**Both gates cleared, measured:**
+- **CI availability** — `xcode-27` is the correct label (see the corrected note
+  below; the earlier `macos-27` search was the wrong identifier).
+- **Xcode 27 stability** — the `-O` gate, which was the real one. A
+  `Release-Study` `-O` build SUCCEEDED on Xcode 27.2, and `PrimaeNativeTests`
+  is green (1045 tests, 0 failed, 0 skipped) under the pinned config. This is
+  the gate that mattered because swiftlang/swift#88173 is an `-O`-only inliner
+  crash in exactly this project's configuration.
+
+**⚠️ CONSEQUENCE: iOS 26 devices can no longer install this build.** The study
+iPad runs iOS 27.2 (measured 2026-10-01), so the pilot is unaffected, but a
+school iPad on iOS 26.x could not install it. Taken on explicit instruction
+rather than derived — reverting is a separate decision, not a cleanup.
+
+**Still true:** the pin is by MAJOR version, so it cannot distinguish 27.0
+from 27.2, and this machine has both. Record the EXACT build with the
+artefact (`build_study.sh` prints it on every run). Pin = what we accept; build
+stamp = what actually ran.
+
+**Historical — the gates as they stood when this was open:**
 
 Per the 2026-07-07 readiness audit the app already satisfies both mandatory iOS 27 migrations (never used `UIDesignRequiresCompatibility`; pure SwiftUI App lifecycle), uses none of the reported deprecations (`UIScreen.main`, SceneKit), and no AVAudioSession / AVSpeechSynthesizer deprecations surfaced — `AudioEngine.swift` is unthreatened. The move is therefore a toolchain bump, gated on:
 - **Xcode 27 stability** — early betas crash the compiler; there is a known inliner crash with exactly our configuration, `-default-isolation MainActor` + `-O` (swiftlang/swift#88173). **Verify a Release build, not just Debug CI, before adopting.**
@@ -421,7 +449,31 @@ Per the 2026-07-07 readiness audit the app already satisfies both mandatory iOS 
   `Release-Study` `-O` compile on Xcode 27 beta. That is one clean compile, not a cleared gate —
   swiftlang/swift#88173 is an inliner crash, so absence on one build is weak evidence.
 
-### F12 — Xcode MCP bridge *(declined 2026-08-15; revisit post-pilot)*
+### F12 — Xcode MCP bridge ✅ **ADOPTED 2026-10-01** *(was: declined 2026-08-15)*
+**Effort:** S to adopt · **Priority:** P3 (post-pilot only)
+
+**ADOPTED 2026-10-01** (commit `599436fb`, `.mcp.json` at repo root as the
+conditions below require) — this entry said "declined" for weeks after that
+commit landed, which is exactly the doc-currency failure this project keeps
+measuring. Corrected here.
+
+It is **already load-bearing**: the CLI is how the F11 pin was verified from a
+Claude Code seat at all. Bare `xcodebuild` package resolution fails from this
+seat (`permissionDenied`); `xcodebuildmcp` resolves, builds, and runs the full
+suite successfully. See CLAUDE.md's superseded-block note.
+
+How the conditions below are met:
+- **Pinned to a named workspace/scheme, checked in** — `.mcp.json` is tracked at
+  the repo root, not `~/.claude.json`. In practice every invocation passes
+  `--project-path` / `--scheme` explicitly on the command line rather than
+  relying on session defaults.
+- **Reports which surface it built** — the CLI prints the derived-data path,
+  selected tests, and result bundle on every run.
+- **`xcodebuild` remains the documented fallback** — unchanged in CLAUDE.md and
+  the workflows' own history.
+
+Note the CLI is a *different* tool from the `xcrun mcpbridge` server in
+`.mcp.json`; both are the "Xcode MCP bridge" this entry meant.
 **Effort:** S to adopt · **Priority:** P3 (post-pilot only)
 
 An Xcode MCP bridge would let a session drive builds / tests / simulators directly instead of shelling out to `xcodebuild`. **Declined for now**, and the reason is structural rather than a matter of taste: this project exposes **two build surfaces** — the SPM package (`Package.swift` → `PrimaeNative`, where `PrimaeNativeTests` actually lives) and `Primae/Primae.xcodeproj` (three schemes) — and a bridge binds to one workspace at a time. A bridge pointed at the wrong surface reports green for a target nobody meant to validate, and that failure is silent: a green is a green. Not an acceptable risk while the study configuration is frozen and heading into device validation, where a false green propagates straight into the pilot.

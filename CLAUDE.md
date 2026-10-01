@@ -62,7 +62,7 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 ## Architecture
 - **Main target**: Uses `.defaultIsolation(MainActor.self)` — all types are implicitly @MainActor
 - **Test target**: Uses `.swiftLanguageMode(.v5)` — do NOT change this
-- **CI**: GitHub Actions on hosted macos-26 runners with Xcode 26.4 (simulator matrix: iPad Pro 13-inch (M5) + iPad (A16))
+- **CI**: GitHub Actions on the hosted **`xcode-27`** runner image (simulator matrix: iPad Pro 13-inch (M5) + iPad (A16)). Toolchain pinned by `bin/toolchain.pin` — see "The toolchain pin has landed" below.
 - **Remotes**: `origin` is the Forgejo forge at `https://git.flamingistan.com/David/Primae.git` — that is where you push. The GitHub repo `TheDave94/Primae` is a **push mirror** of the forge, not the origin: branches and workflow files reach it automatically, with nobody pushing to GitHub directly. CI runs there, so `gh run list --repo TheDave94/Primae` is the right way to read results and the wrong way to imagine the data flows.
 - **Learning phases**: observe → direct → guided → freeWrite (managed by PhaseController)
 - **Stroke data**: JSON files in `Resources/Letters/{letter}/strokes.json` with normalized coordinates
@@ -350,6 +350,23 @@ not be read as current.
 > re-deriving the call-shape investigation above: if there's no controlling
 > TTY, that's the whole answer, and no amount of correcting the command
 > shape will fix it.
+>
+> **SUPERSEDED 2026-10-01 — the claim below is FALSE, and the way it is
+> false matters more than the fact.** Everything in this block was measured
+> about ONE invocation path: `xcodebuild`/`swift build` invoked bare. The
+> elimination sequence is sound *for that path* and I am not disputing any of
+> it. What was never varied was the PATH. Using the `xcodebuildmcp` CLI (npm
+> global; ROADMAP F12 adoption, `599436fb`) instead, from this same seat:
+> package resolution, a full build, and the complete `PrimaeNativeTests`
+> suite (1045 tests, 0 failed, 0 skipped) all succeeded on 2026-10-01. The
+> Node wrapper reaches the same toolchain through a delegation chain that
+> evidently is not the one hitting the denial.
+>
+> **So the "CI builds, David's terminal runs local tests" fallback this
+> project has been operating under is no longer forced.** Prefer
+> `xcodebuildmcp` from a seat; fall back to bare `xcodebuild` as before. Keep
+> the lessons below — they explain why the bare path failed, which is still
+> true and still worth not re-deriving.
 >
 > **THIRD AND FINAL, same night — `xcodebuild`/`swift build` package
 > resolution from a Claude Code seat on this machine fails with
@@ -1301,20 +1318,49 @@ guard survives exactly as designed, and now has nothing left to catch
 Xcode's UI doing wrong, because there is no longer a wrong way to reach it
 from there.
 
-### ⚠️ The pilot artefact is built by a toolchain CI does not exercise
+### ✅ The toolchain pin has landed (2026-10-01) — and the gap is closed
 
-This workstation runs **Xcode 27 beta**; `ios-build.yml` pins **Xcode 26.4** on
-`macos-26`. A device build made here is therefore compiled by a compiler no CI
-job has ever run. That gap matters more than usual for `Release-Study`, because
-it is the only `-O` build in the project and `-O` + `-default-isolation MainActor`
-is the exact configuration of the known inliner crash swiftlang/swift#88173
-(ROADMAP F11).
+**The pilot artefact and CI now build with the SAME toolchain.** `bin/toolchain.pin`
+is the single place the pin lives: **Xcode major 27**, CI runner label
+`xcode-27`, deployment target 27.0. This supersedes the "built by a toolchain
+CI does not exercise" warning that stood here before.
 
-Until a toolchain pin lands (see ROADMAP F11), **record the toolchain with the
-artefact** — `build_study.sh` prints `xcodebuild -version` on every run, so
-capture that output alongside the build. A pilot binary whose compiler version
-is unknown is not a reproducible artefact, and the thesis will be asked which
-one built it.
+What changed, and why each part is load-bearing on the others:
+
+- **`Package.swift` `swift-tools-version: 6.3` → `6.4`.** Not incidental:
+  `.iOS(.v27)` **does not exist** in PackageDescription 6.3. The compiler
+  rejects the manifest outright — `error: 'v27' is unavailable … introduced in
+  PackageDescription 6.4`. A 6.3 manifest cannot express an iOS 27 target.
+- **`platforms: .iOS(.v26)` → `.v27`**, and all 12 `IPHONEOS_DEPLOYMENT_TARGET`
+  entries `26.0` → `27.0`.
+- **CI `runs-on: macos-26` → `xcode-27`**, and the per-job
+  `sudo xcode-select /Applications/Xcode_26.4.app` replaced by a version print.
+  The image LABEL is the pin; naming a path on a specific runner OS gave the
+  toolchain two names that could disagree (the image moved macOS 26 → 27 on
+  2026-09-10).
+
+**⚠️ This DROPS SUPPORT FOR EVERY iOS 26 DEVICE.** A school iPad still on
+iOS 26.x cannot install this build. The study iPad runs **iOS 27.2**
+(measured 2026-10-01) so the pilot itself is unaffected — but this is a
+device-support decision, not a free toolchain bump, and it was taken on
+explicit instruction rather than derived. Reverting it is a separate
+decision, not a cleanup.
+
+**The `-O` gate is cleared.** F11 gated adoption on verifying a **Release**
+build — not just Debug CI — because swiftlang/swift#88173 is an inliner crash
+in exactly this project's configuration (`-O` + `-default-isolation
+MainActor`). A `Release-Study` `-O` build on **Xcode 27.2** SUCCEEDED
+(2026-10-01), and the full suite is green under the pinned config. One clean
+`-O` run is meaningful precisely *because* that bug is `-O`-only, but it is
+one compiler run, not a cleared gate.
+
+**Still record the EXACT build with the artefact.** The pin is by MAJOR
+version (27.x) per the estate decision, so it cannot distinguish 27.0 from
+27.2 — and this machine has both (`Xcode.app` 27.0 release `27A266a`,
+`Xcode-beta.app` 27.2 beta `27B5019j`). Pin = what we accept; build stamp =
+what actually ran. `build_study.sh` prints `xcodebuild -version` on every run;
+capture it. A pilot binary whose exact compiler is unknown is not a
+reproducible artefact, and the thesis will be asked which one built it.
 
 ## Credentials and the ELEVENLABS_API_KEY pattern
 
