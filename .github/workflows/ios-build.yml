@@ -201,7 +201,7 @@ jobs:
         run: python3 scripts/check_project_invariants.py
 
   unwired_guards:
-    name: "Unwired-guard gate (macos-26 / Xcode 26)"
+    name: "Unwired-guard gate (xcode-27)"
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
@@ -214,12 +214,13 @@ jobs:
       # exit early and the gate would report a guard as unreachable when it
       # is merely unhosted. Invoking rather than grepping is what makes the
       # gate trustworthy; this is the cost of that choice.
-      - name: Select Xcode 26.4
-        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
-      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
-      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
-      # pair — the image label is the pin, not a path on a specific runner OS.
-      run: xcodebuild -version
+      # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
+      # `xcode-27` runner label IS the pin — it ran macOS 26 before
+      # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
+      # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
+      # toolchain twice, by two names that could disagree.
+      - name: Report toolchain version
+        run: xcodebuild -version
 
       # FIRST, prove the gate can fail. A scan trusted before its own
       # self-test has run is a scan whose CLEAN means nothing — and this
@@ -234,7 +235,7 @@ jobs:
         run: sh scripts/check_unwired_guards.sh
 
   xcode_test:
-    name: "Build & Test — ${{ matrix.simulator }} (macos-26 / Xcode 26)"
+    name: "Build & Test — ${{ matrix.simulator }} (xcode-27)"
     runs-on: xcode-27
     strategy:
       fail-fast: false
@@ -248,12 +249,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26.4
-        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
-      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
-      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
-      # pair — the image label is the pin, not a path on a specific runner OS.
-      run: xcodebuild -version
+      # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
+      # `xcode-27` runner label IS the pin — it ran macOS 26 before
+      # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
+      # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
+      # toolchain twice, by two names that could disagree.
+      - name: Report toolchain version
+        run: xcodebuild -version
 
       - name: Show Xcode + Swift version
         run: |
@@ -350,18 +352,19 @@ jobs:
   # optimisation, so the code under test is still the -O build; the shipped
   # artefact is built separately by study_build with testability OFF.
   release_study_tests:
-    name: "Release-Study unit tests (macos-26 / Xcode 26)"
+    name: "Release-Study unit tests (xcode-27)"
     runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26.4
-        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
-      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
-      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
-      # pair — the image label is the pin, not a path on a specific runner OS.
-      run: xcodebuild -version
+      # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
+      # `xcode-27` runner label IS the pin — it ran macOS 26 before
+      # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
+      # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
+      # toolchain twice, by two names that could disagree.
+      - name: Report toolchain version
+        run: xcodebuild -version
 
       - name: Show Xcode + Swift version
         run: |
@@ -401,18 +404,19 @@ jobs:
           cat /tmp/ci_errors.txt
 
   study_build:
-    name: "Study build — identity + compile-out verification (macos-26 / Xcode 26)"
+    name: "Study build — identity + compile-out verification (xcode-27)"
     runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
-      - name: Select Xcode 26.4
-        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
-      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
-      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
-      # pair — the image label is the pin, not a path on a specific runner OS.
-      run: xcodebuild -version
+      # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
+      # `xcode-27` runner label IS the pin — it ran macOS 26 before
+      # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
+      # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
+      # toolchain twice, by two names that could disagree.
+      - name: Report toolchain version
+        run: xcodebuild -version
 
       - name: Resolve Swift Package dependencies
         run: |
