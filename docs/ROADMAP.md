@@ -222,7 +222,7 @@ Found by the 2026-08-19 reconciliation; none of these was previously tracked.
 
 ---
 
-### Direct-phase cut *(was headed "D12") — SUPERSEDED 2026-09-16; see `docs/DECISIONS.md` D5*
+### Direct-phase cut *(was headed "D12") — EXECUTED 2026-09-18; the 2026-09-16 "SUPERSEDED" verdict was itself superseded*
 **Effort:** — · **Priority:** closed
 
 This entry used to be headed "D12", which collided with a *different* `D12` in
@@ -230,6 +230,19 @@ This entry used to be headed "D12", which collided with a *different* `D12` in
 independent D-series, so the same number meant two different things depending which doc you were
 in. Retitled 2026-09-16 to give the number back; the item itself is unchanged below.
 
+**CORRECTED 2026-10-01.** The historical paragraph below was written 2026-09-16
+and was true for two days. David re-ruled on 2026-09-18 — "the whole
+tapping the points part should go" — and the cut is LIVE:
+`LearningPhaseController.activePhases` filters `.direct` out of
+`.threePhase` (`e77a96ff`), a session runs observe → guided → freeWrite,
+and the export writes three rows per letter (one per scored phase).
+`LearningPhase.direct` the CASE stays — it is `Codable`, stored rows
+reference it, and `rawValue` ordering is relied on. `docs/DECISIONS.md`
+D5 records the executed cut (the 2026-09-16 reversal is kept there as
+history); the remaining lag is thesis prose — Ch.3 and Ch.6 still
+describe four phases, and that move is David's.
+
+*Historical, accurate 2026-09-16 → 2026-09-18, kept for the record:*
 Closed, not deferred. `docs/DECISIONS.md` D5 locked the cut of the `direct` phase
 (→ `observe → guided → freeWrite`) on a six-paper evidence read, but the cut was never executed —
 `LearningPhase.swift:17` still declares `direct = 1` and the exporter deliberately iterates it.

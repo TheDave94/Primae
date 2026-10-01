@@ -56,16 +56,29 @@ suite deliberately does not and cannot cover these, not an oversight:
   headphones is a hardware fact XCUITest cannot observe; Sections 4b/4c
   (below) and the audio arm checks stay manual.
 - **The three-finger proctor gesture** — not simulated by this suite.
-- **All three audio arms, end to end** — the automated suite exercises
-  ONE cold-probe pass structurally; it does not switch arms or listen
-  for sound in any of them. Section 6's per-arm re-runs are still
-  entirely David's.
+- **All three audio arms, end to end** — CORRECTED 2026-10-01: this
+  bullet used to claim the automated suite "does not switch arms".
+  Measured 2026-09-21, `PrimaeUITests` runs ON THE PHYSICAL iPAD (bare
+  `xcodebuild test -only-testing:PrimaeUITests -destination
+  "platform=iOS,id=<UDID>"`), and both per-arm audio probes passed
+  there — `testPhonemeArmRequestsAudioDuringObserve` and
+  `testSpatialArmRequestsAudioDuringObserve` — each driving its arm via
+  the audio override. What no XCUITest can do, on any destination, is
+  LISTEN: the probes prove the arm requested the right asset, not that
+  sound left the speaker. Section 6's per-arm listening pass is still
+  David's. And a device UI-test run REPLACES the pilot artefact with a
+  Debug-Study build (same bundle ID — `nm` cannot tell them apart), so
+  reinstall Release-Study before any participant session.
 
 Where a step below is now also covered by the automated suite, it says
 so inline — that does not mean skip it on a real device dry-run, since
-the suite runs on a simulator and proves the LOGIC, not the physical
-experience; it means a failure there is no longer a surprise waiting
-for the next manual pass to catch.
+CI runs the suite on a simulator only (Layer 3 scopes to
+PrimaeNativeTests; `PrimaeUITests` never runs there) and no automated
+run anywhere proves the PHYSICAL experience; it means a failure there
+is no longer a surprise waiting for the next manual pass to catch. The
+UI suite can additionally be driven on the physical iPad from a
+device-capable seat — see the audio-arms bullet above for what that
+does and does not establish.
 
 ---
 

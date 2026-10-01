@@ -391,10 +391,19 @@ ProgressStore.recordRecognitionSample
 
 **Trigger to next phase**
 - `completeObservePhase()` → `advanceLearningPhase()` → phase becomes
-  `.direct`. The verbal prompt for `.direct` ("Tippe die Punkte der
-  Reihe nach.") is spoken immediately.
+  `.guided` (since the 2026-09-18 `direct` cut, DECISIONS.md D5 — see
+  the banner in §3.2). The verbal prompt for `.guided` ("Jetzt fährst
+  du die Linien nach.") is spoken on phase entry.
 
-### 3.2 Phase: Direct (Richtung lernen)
+### 3.2 Phase: Direct (Richtung lernen) — CUT 2026-09-18 (D5); no session runs it
+
+> **This phase no longer runs.** David's 2026-09-18 ruling cut `direct`
+> from the session (DECISIONS.md D5): a session is
+> `observe → guided → freeWrite`, and the export writes no `direct` row
+> (three rows per letter, one per scored phase). The section below is
+> kept because the CODE is kept (`tapDirectDot`,
+> `DirectPhaseDotsOverlay`, the `.direct` branches) — it describes
+> dead-but-present paths, not the live pipeline.
 
 **What the child sees and does**
 - The same letter glyph is shown.
