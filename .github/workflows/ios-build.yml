@@ -202,7 +202,7 @@ jobs:
 
   unwired_guards:
     name: "Unwired-guard gate (macos-26 / Xcode 26)"
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
@@ -215,7 +215,11 @@ jobs:
       # is merely unhosted. Invoking rather than grepping is what makes the
       # gate trustworthy; this is the cost of that choice.
       - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
+      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
+      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
+      # pair — the image label is the pin, not a path on a specific runner OS.
+      run: xcodebuild -version
 
       # FIRST, prove the gate can fail. A scan trusted before its own
       # self-test has run is a scan whose CLEAN means nothing — and this
@@ -231,7 +235,7 @@ jobs:
 
   xcode_test:
     name: "Build & Test — ${{ matrix.simulator }} (macos-26 / Xcode 26)"
-    runs-on: macos-26
+    runs-on: xcode-27
     strategy:
       fail-fast: false
       matrix:
@@ -245,7 +249,11 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
+      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
+      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
+      # pair — the image label is the pin, not a path on a specific runner OS.
+      run: xcodebuild -version
 
       - name: Show Xcode + Swift version
         run: |
@@ -343,13 +351,17 @@ jobs:
   # artefact is built separately by study_build with testability OFF.
   release_study_tests:
     name: "Release-Study unit tests (macos-26 / Xcode 26)"
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
 
       - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
+      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
+      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
+      # pair — the image label is the pin, not a path on a specific runner OS.
+      run: xcodebuild -version
 
       - name: Show Xcode + Swift version
         run: |
@@ -390,13 +402,17 @@ jobs:
 
   study_build:
     name: "Study build — identity + compile-out verification (macos-26 / Xcode 26)"
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
 
       - name: Select Xcode 26.4
-        run: sudo xcode-select -s /Applications/Xcode_26.4.app/Contents/Developer
+        # Toolchain pinned by bin/toolchain.pin (ROADMAP F11). The `xcode-27`
+      # runner label is the pin; it was macOS 26 before 2026-09-10 and is
+      # macOS 27 now, so do NOT reintroduce a `macos-26` + /Applications/Xcode_26.4.app
+      # pair — the image label is the pin, not a path on a specific runner OS.
+      run: xcodebuild -version
 
       - name: Resolve Swift Package dependencies
         run: |

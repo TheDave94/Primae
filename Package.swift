@@ -1,10 +1,28 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.4
+//
+// TOOLS VERSION IS 6.4, NOT 6.3, AND THAT IS LOAD-BEARING (2026-10-01,
+// ROADMAP F11 — the iOS 27 SDK move). `.iOS(.v27)` does not exist in
+// PackageDescription 6.3: the compiler rejects the manifest outright with
+//
+//     error: 'v27' is unavailable
+//     note: 'v27' was introduced in PackageDescription 6.4
+//
+// so a `.v26` manifest cannot express an iOS 27 deployment target at all.
+// Lowering this back to 6.3 to "stay compatible" silently reintroduces that
+// error. Measured on Xcode 27.2 (Swift 6.4) before the change; the manifest
+// now resolves `.v27` to 27.0.
+//
+// Deployment target 26.0 -> 27.0 DROPS SUPPORT FOR EVERY iOS 26 DEVICE.
+// The study iPad runs iOS 27.2 (measured 2026-10-01), so the pilot itself is
+// unaffected — but this is a device-support decision, not a free toolchain
+// bump: a school iPad still on iOS 26.x cannot install this build. Recorded
+// here deliberately rather than left implicit.
 import PackageDescription
 
 let package = Package(
     name: "PrimaeNative",
     platforms: [
-        .iOS(.v26),
+        .iOS(.v27),
         .macOS(.v15)
     ],
     products: [
