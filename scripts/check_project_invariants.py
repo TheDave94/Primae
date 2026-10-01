@@ -147,13 +147,26 @@ _BLOCK_RE = re.compile(
 def check_pbxproj() -> None:
     text = PBXPROJ.read_text()
 
-    # The iOS 27 move is explicitly gated behind the on-device audio
-    # listen (supervisor ruling, 2026-09-15) — it opens on evidence, not
-    # because an editor bumped a build setting while the project was open.
-    if re.search(r"IPHONEOS_DEPLOYMENT_TARGET\s*=\s*27", text):
+    # The iOS 27 deployment-target move WAS gated here behind the on-device
+    # audio listen (supervisor ruling, 2026-09-15) — it opened on evidence,
+    # not because an editor bumped a build setting while the project was open.
+    #
+    # GATE OPENED 2026-10-01 on David's explicit instruction, in the same
+    # session as the F11 toolchain pin (bin/toolchain.pin). 27.0 is now the
+    # EXPECTED value, and the tripwire is INVERTED rather than deleted: Xcode
+    # has silently rewritten this file before, so what is worth failing on now
+    # is the value being MISSING, not present.
+    #
+    # This was a deliberate change to a supervisor control, not a bug fix.
+    # Read the commit message before touching it. Revisiting the iOS 26
+    # device-support exclusion (a school iPad still on iOS 26.x cannot install
+    # this build) is a separate decision with its own evidence — not something
+    # to undo quietly here.
+    if not re.search(r"IPHONEOS_DEPLOYMENT_TARGET\s*=\s*27\.0", text):
         findings.append((PBXPROJ,
-            "IPHONEOS_DEPLOYMENT_TARGET = 27.x found — the iOS 27 move is gated "
-            "behind the on-device audio listen and has not been opened"))
+            "IPHONEOS_DEPLOYMENT_TARGET = 27.0 expected (pinned 2026-10-01, see "
+            "bin/toolchain.pin) but not found — this file has been silently "
+            "rewritten before; restore with git rather than re-deriving"))
 
     # These two keys belong in Info.plist only; Xcode's INFOPLIST_KEY_*
     # auto-generation is a second, competing encoding of the same facts
