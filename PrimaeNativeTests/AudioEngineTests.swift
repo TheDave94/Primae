@@ -77,9 +77,14 @@ final class AudioEngineTests: XCTestCase {
         // normal path did not.
         addTeardownBlock { @MainActor [weak self] in
             guard let self else { return }
-            // Cancel the pending pause/resume work AND stop the engine, so no
-            // Task is left holding a reference or mid-await when it is freed.
-            self.engine?.stopAndReset()
+            // Cancel the pending pause/resume work, then stop playback — so
+            // no Task is left holding a reference or mid-await when the
+            // engine is freed. `stopAndReset()` (which also halts the
+            // underlying AVAudioEngine) is fileprivate to AudioEngine.swift;
+            // `stop()` is the accessible equivalent minus that one call, and
+            // the engine left running matches the normal tearDown path below.
+            self.engine?.cancelPendingLifecycleWork()
+            self.engine?.stop()
             self.engine = nil
             // Then let the main actor actually run those cancellations to
             // completion before the host moves on.
