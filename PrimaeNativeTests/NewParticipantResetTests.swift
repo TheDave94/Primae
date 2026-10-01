@@ -303,6 +303,73 @@ import Foundation
         }
     }
 
+    /// A participant who did NOTHING must not be sealed — the phantom-N
+    /// defect (2026-10-01, F1 in docs/AUDIT_2026-10-01.md).
+    ///
+    /// WHY THIS IS NOT A NICETY. `allParticipantExportSources` emits every
+    /// sealed archive, and the combined export writes each one as a complete
+    /// block with a valid `# participantId=` header and its full column set.
+    /// An archive with no rows is indistinguishable in the output file from a
+    /// child who was enrolled and did nothing — which is exactly the
+    /// population an N derived from that file is supposed to exclude. Nothing
+    /// errors; the file is well-formed; the only symptom is a denominator that
+    /// is too large, in every per-arm breakdown derived from it.
+    ///
+    /// MEASURED on the study iPad rather than reasoned: 43 sealed archives,
+    /// 25 of them carrying zero phase rows (18 with real data). So the
+    /// "proctor taps Neuer Teilnehmer twice" path is the COMMON case in a
+    /// multi-child session, not the rare edge case it reads like.
+    ///
+    /// Driven through two consecutive resets with nothing recorded between
+    /// them — the shape that produces the phantom — rather than one reset on a
+    /// fresh install, so the test would still fail if the guard were widened
+    /// to seal only when some OTHER store (progress, traces) had content.
+    @Test("a participant who recorded nothing is not sealed — an empty archive would inflate the analysed N")
+    func emptyParticipantIsNotSealed() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = TracingViewModel(.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: archive)
+                .with(studyMode: true))
+
+            // Child 1 does real work, so it MUST be sealed — this is the
+            // control that stops the guard from over-reaching into "never seal
+            // anyone", which would reintroduce the 2026-09-14 data-loss defect.
+            let child1 = ParticipantStore.participantId
+            dashboard.recordPhaseSession(letter: "A", phase: "freeWrite", completed: true,
+                                         score: 0.8, schedulerPriority: 0, condition: .threePhase)
+            _ = vm.resetForNewParticipant()
+
+            // Child 2 is enrolled and immediately superseded WITHOUT recording
+            // anything — the phantom-producing sequence.
+            let child2 = vm.resetForNewParticipant()
+            await archive.flush()
+
+            let sealed = archive.archivedParticipants
+            #expect(sealed.contains { $0.participantId == child1 },
+                    "the child that DID work must still be sealed — losing this is the 2026-09-14 data-loss defect returning")
+            #expect(sealed.contains { $0.snapshot.phaseSessionRecords.contains { $0.letter == "A" } },
+                    "the sealed record must carry that child's actual row, not an empty snapshot")
+            #expect(!sealed.contains { $0.participantId == child2 },
+                    "the child that recorded nothing must NOT be sealed: an empty archive exports as a full block with a valid participantId header and zero rows, inflating N and every per-arm denominator")
+
+            // The property the export's N actually rests on. Scoped to the
+            // ARCHIVED participants deliberately: the CURRENT participant is
+            // appended unconditionally by `allParticipantExportSources`,
+            // and legitimately has no rows yet — they are mid-session. That
+            // is not a phantom; it is the child currently being tested. Only
+            // the sealed set accumulates across the whole sitting, so only
+            // the sealed set is the population a denominator must count.
+            let archived = vm.allParticipantExportSources.dropLast()
+            #expect(!archived.isEmpty)
+            #expect(archived.allSatisfy { !$0.snapshot.phaseSessionRecords.isEmpty },
+                    "every ARCHIVED export source must carry rows; an archived child who did nothing must not exist")
+        }
+    }
+
     /// Async counterpart of `withRestoredState` for tests that need to
     /// `await` a store flush mid-body.
     private func withRestoredStateAsync(_ body: () async -> Void) async {

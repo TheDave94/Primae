@@ -3235,14 +3235,38 @@ public final class TracingViewModel {
         // stores' `.reset()` calls immediately below, which mutate the
         // stores, not this already-copied struct. See
         // `ParticipantArchiveStore.swift`.
-        participantArchive.archive(ArchivedParticipant(
-            participantId: ParticipantStore.participantId,
-            enrolledAt: ParticipantStore.enrolledAt,
-            archivedAt: Date(),
-            snapshot: dashboardStore.snapshot,
-            progress: progressStore.allProgress,
-            rawTraces: rawTraceStore.traces
-        ))
+        //
+        // ONLY WHEN THEY ACTUALLY DID SOMETHING (2026-10-01, F1). This was
+        // unconditional, and a proctor tapping "Neuer Teilnehmer" twice
+        // sealed the never-used participant in between: a complete,
+        // well-formed block with a valid participantId header and zero data
+        // rows. Nothing errored — but `allParticipantExportSources` emits
+        // every sealed archive, so the combined export counted those phantoms
+        // toward N and every per-arm denominator derived from it.
+        //
+        // MEASURED on the study iPad, not theorised: 43 sealed archives, 25
+        // of them with zero phase rows (18 with data). So this is the common
+        // case in a multi-child session, not the rare double-tap edge case it
+        // reads like above.
+        //
+        // The guard reads the SNAPSHOT's two append-only series rather than
+        // `progress`/`rawTraces`: a child who traced produced phase rows, and
+        // those are what the export's N is derived from. Checking the richer
+        // stores instead would keep a phantom alive for a child who somehow
+        // touched progress without completing a phase.
+        let outgoingSnapshot = dashboardStore.snapshot
+        let outgoingDidAnything = !outgoingSnapshot.phaseSessionRecords.isEmpty
+            || !outgoingSnapshot.sessionDurations.isEmpty
+        if outgoingDidAnything {
+            participantArchive.archive(ArchivedParticipant(
+                participantId: ParticipantStore.participantId,
+                enrolledAt: ParticipantStore.enrolledAt,
+                archivedAt: Date(),
+                snapshot: outgoingSnapshot,
+                progress: progressStore.allProgress,
+                rawTraces: rawTraceStore.traces
+            ))
+        }
         participantIdentityChanged = true
         // Close the outgoing child's in-flight trial FIRST: a pending
         // quiet-window task, an in-flight recognition, or the ink still
