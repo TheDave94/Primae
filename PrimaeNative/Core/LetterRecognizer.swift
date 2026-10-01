@@ -13,6 +13,20 @@ import OSLog
 import Synchronization
 import Vision
 
+/// Case- and diacritic-insensitive match between a model label and the
+/// letter the child was asked to write. The model has 53 classes (A–Z,
+/// a–z, ß) and NO umlaut class, so a well-written Ä/Ö/Ü/ä/ö/ü is
+/// predicted as its base letter; compared case-only, every umlaut
+/// production read as wrong and, outside study mode, triggered the retry
+/// cue whenever the model was confident (class two, 2026-09-05). ß is its
+/// own class and folds to itself.
+enum LetterMatch {
+    nonisolated static func matches(predicted: String, expected: String) -> Bool {
+        let opts: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
+        return predicted.compare(expected, options: opts) == .orderedSame
+    }
+}
+
 // MARK: - Classifier intermediate type
 
 /// Framework-agnostic projection of a Vision
@@ -230,7 +244,21 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
         modelCache.withLock { cache in
             if cache.didAttemptLoad { return cache.model }
             cache.didAttemptLoad = true
+            let started = Date()
             cache.model = loadModel()
+            // Measured on hosted CI simulators (job logs, 2026-09-04): the
+            // first load took ~32 s on the iPad Pro (M5) leg and > 60 s on
+            // iPad (A16), with every caller parked on this lock meanwhile.
+            // Logged so a slow or failed first load is a console fact, not
+            // an inference from a timed-out test.
+            let elapsed = Date().timeIntervalSince(started)
+            let resolved = resolveModelURL()?.url.lastPathComponent ?? "none"
+            // Read the inout cache into locals BEFORE the log call: the
+            // os_log interpolation is an escaping autoclosure and may not
+            // capture `cache` (CI run 1634, 2026-09-04).
+            let outcome = cache.model == nil ? "FAILED" : "ok"
+            recognizerLogger.info(
+                "GermanLetterRecognizer first load: \(outcome, privacy: .public) after \(elapsed, format: .fixed(precision: 2)) s (resolved: \(resolved, privacy: .public))")
             return cache.model
         }
     }
@@ -324,10 +352,21 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
     ) -> RecognitionResult? {
         guard let top = classifications.first else { return nil }
         let rawTopLetter = top.identifier
+        // The history is the EXPECTED letter's form-accuracy history
+        // (`ConfidenceCalibrator.historyBoost`: "a strong history of
+        // writing the expected letter"). Passing it for every candidate
+        // inflated a WRONG prediction's confidence by the same 10 %
+        // (audit 2026-09-06); only the candidate that matches the
+        // expected letter has a history to be boosted by.
+        func history(for candidate: String) -> [CGFloat] {
+            guard let expected = expectedLetter,
+                  LetterMatch.matches(predicted: candidate, expected: expected) else { return [] }
+            return historicalFormScores
+        }
         let calibratedTopConfidence = calibrator.calibrate(
             rawConfidence: CGFloat(top.confidence),
             predictedLetter: rawTopLetter,
-            historicalFormScores: historicalFormScores
+            historicalFormScores: history(for: rawTopLetter)
         )
         let topThree: [RecognitionResult.TopCandidate] = classifications
             .prefix(3)
@@ -335,14 +374,14 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
                 let conf = calibrator.calibrate(
                     rawConfidence: CGFloat(obs.confidence),
                     predictedLetter: obs.identifier,
-                    historicalFormScores: historicalFormScores
+                    historicalFormScores: history(for: obs.identifier)
                 )
                 return .init(letter: obs.identifier, confidence: conf)
             }
 
         let isCorrect: Bool
         if let expected = expectedLetter {
-            isCorrect = rawTopLetter.caseInsensitiveCompare(expected) == .orderedSame
+            isCorrect = LetterMatch.matches(predicted: rawTopLetter, expected: expected)
         } else {
             isCorrect = false
         }
@@ -477,7 +516,7 @@ struct StubLetterRecognizer: LetterRecognizerProtocol {
         #if DEBUG
         if let result, let expected = expectedLetter {
             let actuallyCorrect =
-                result.predictedLetter.caseInsensitiveCompare(expected) == .orderedSame
+                LetterMatch.matches(predicted: result.predictedLetter, expected: expected)
             assert(
                 result.isCorrect == actuallyCorrect,
                 "StubLetterRecognizer: result.isCorrect (\(result.isCorrect)) " +

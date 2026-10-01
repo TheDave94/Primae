@@ -21,6 +21,11 @@ struct TracingDependencies {
     /// insurance). Separate from `dashboardStore` to keep its hot
     /// <100 KB persist path lean.
     var rawTraceStore: RawTraceStoring
+    /// Durable, per-participant seal of an outgoing child's complete
+    /// record, written before `TracingViewModel.resetForNewParticipant`
+    /// wipes the live stores above for the next child. See
+    /// `ParticipantArchiveStore.swift`.
+    var participantArchive: ParticipantArchiving
     var onboardingStore: OnboardingStoring
     var notificationScheduler: LocalNotificationScheduler
     var thesisCondition: ThesisCondition
@@ -32,6 +37,20 @@ struct TracingDependencies {
     /// byte 8). Filters the practice pool under `studyMode` only; the
     /// H6 post-test covers all 5 letters regardless.
     var trainedSubset: TrainedLetterSubset
+    /// Seam for the `allFiveLetters` comparison switch
+    /// (`StudyComparisonSettings.allFiveLetters`). `nil` — the default,
+    /// and what every production caller uses — reads the switch from
+    /// `UserDefaults` at view-model construction, which is the behaviour
+    /// an untouched device has always had.
+    ///
+    /// Injected for the same reason `trainedSubset` and `studyMode` are:
+    /// the switch changes `visibleLetterNames`, so a test that drove it
+    /// through the global key would present a five-letter practice pool
+    /// to every other test running in parallel (Swift Testing runs
+    /// suites concurrently — see `LetterWeightFallbackTests`' header for
+    /// what that cost when it happened for real). Tests that mean to
+    /// exercise the switch set it here, where no other test can see it.
+    var allFiveLetters: Bool?
     var schriftArt: SchriftArt
     var letterOrdering: LetterOrderingStrategy
     var enablePaperTransfer: Bool
@@ -45,6 +64,59 @@ struct TracingDependencies {
     /// (thesis-truth-condition; see `TracingViewModel.resolvedStrokes`).
     /// Off by default.
     var studyMode: Bool
+    /// Whether a participant is enrolled on this device. Injected (the
+    /// stub pins true) so the study precondition below is deterministic
+    /// in tests; production reads `ParticipantStore.isEnrolled`.
+    var participantEnrolled: Bool
+    /// Whether the session steps through all three audio arms, one per
+    /// letter, instead of running the single arm assigned from the
+    /// identifier — `StudyComparisonSettings.cycleAllConditions`, the
+    /// supervisor's "alle Konditionen oder nur eine Kondition".
+    ///
+    /// Carried HERE rather than read from the global inside the view
+    /// model, unlike the other comparison switches. Reason: a test must
+    /// be able to exercise the cycle without writing a key that every
+    /// other suite in the (parallel) run can observe — the trap
+    /// `LetterWeightFallbackTests` cost the suite once already. The value
+    /// is still read once, at dependency construction, so the "captured
+    /// at init, a proctor cannot change it mid-session" property the
+    /// other switches have is unchanged.
+    var cycleAllConditions: Bool
+    /// Reach of the sound gate as a multiple of the adapted checkpoint
+    /// radius — `StudyComparisonSettings.soundGateRadiusFactor`, the
+    /// supervisor's "Trigger boundaries" (2026-09-17). Applied to every
+    /// cell's tracker through `SequenceGridController`.
+    ///
+    /// Carried HERE for the same reason as `cycleAllConditions` above, and
+    /// one of the two seams exists for a reason the other does not have: the
+    /// DEFAULT ARGUMENT of this and the next property is an expression that
+    /// READS a `UserDefaults` key, and default arguments are evaluated at
+    /// every `TracingDependencies(...)` call site — including
+    /// `TracingDependencies.stub`, which nearly every VM-building test in
+    /// the suite goes through. A test that wrote these keys to drive the
+    /// switch would therefore hand its value to whatever other test was
+    /// constructing a fixture inside the write window. `stub` pins both
+    /// explicitly, so the keys are never read by a test unless the test
+    /// asks for that by passing a value here.
+    var soundGateRadiusFactor: Double
+    /// Smoothed-velocity floor (pt/s) below which playback stays `.idle`
+    /// even with the finger on the letter —
+    /// `StudyComparisonSettings.soundGateVelocityFloor`, read and
+    /// captured at the same point as the factor above.
+    var soundGateVelocityFloor: Double
+    /// Whether the pre-task sound demonstration is delivered once per
+    /// audio CONDITION per session instead of once per letter —
+    /// `StudyComparisonSettings.oncePerCondition`, the supervisor's
+    /// "Einmal pro Kondition".
+    ///
+    /// Carried HERE rather than read from the global inside the view
+    /// model, for the same reason `cycleAllConditions` above is: a test
+    /// must be able to drive the behaviour without writing a key that
+    /// every other suite in the (parallel) run can observe. The value is
+    /// still read once, at dependency construction, so the "captured at
+    /// init, a proctor cannot change it mid-session" property the other
+    /// switches have is unchanged.
+    var oncePerCondition: Bool
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -88,9 +160,10 @@ struct TracingDependencies {
         streakStore: StreakStoring = JSONStreakStore(),
         dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(),
         rawTraceStore: RawTraceStoring = JSONRawTraceStore(),
+        participantArchive: ParticipantArchiving = JSONParticipantArchiveStore(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
-        // Default to the full four-phase flow unless the install opted
+        // Default to the full three-phase flow unless the install opted
         // into the thesis A/B study; gate lives on ThesisCondition for
         // testability.
         thesisCondition: ThesisCondition = .defaultForInstall,
@@ -99,6 +172,10 @@ struct TracingDependencies {
         audioCondition: PilotAudioCondition = .defaultForInstall,
         // Third axis, same assignment shape (independent UUID byte).
         trainedSubset: TrainedLetterSubset = .defaultForInstall,
+        // `nil` = read `StudyComparisonSettings.allFiveLetters` at VM
+        // init, i.e. the device's own setting. Tests inject a value so
+        // the global key is never written.
+        allFiveLetters: Bool? = nil,
         schriftArt: SchriftArt = {
             if let raw = UserDefaults.standard.string(forKey: "de.flamingistan.primae.selectedSchriftArt")
                 ?? UserDefaults.standard.string(forKey: "selectedSchriftArt") {
@@ -133,6 +210,15 @@ struct TracingDependencies {
         // ON in a study build (B2), OFF otherwise, and a stored value
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
+        participantEnrolled: Bool = ParticipantStore.isEnrolled,
+        // Device config, like studyMode — read once here, never live.
+        cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
+        // Both halves of the sound gate's ANDed trigger boundary. Device
+        // config like `cycleAllConditions`, read once here and never live.
+        soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor,
+        soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor,
+        // Same capture-at-construction rule as `cycleAllConditions` above.
+        oncePerCondition: Bool = StudyComparisonSettings.oncePerCondition,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -160,17 +246,24 @@ struct TracingDependencies {
         self.streakStore = streakStore
         self.dashboardStore = dashboardStore
         self.rawTraceStore = rawTraceStore
+        self.participantArchive = participantArchive
         self.onboardingStore = onboardingStore
         self.notificationScheduler = notificationScheduler
         self.thesisCondition = thesisCondition
         self.audioCondition = audioCondition
         self.trainedSubset = trainedSubset
+        self.allFiveLetters = allFiveLetters
         self.schriftArt = schriftArt
         self.letterOrdering = letterOrdering
         self.enablePaperTransfer = enablePaperTransfer
         self.enableFreeformMode = enableFreeformMode
         self.enablePhonemeMode = enablePhonemeMode
         self.studyMode = studyMode
+        self.participantEnrolled = participantEnrolled
+        self.cycleAllConditions = cycleAllConditions
+        self.soundGateRadiusFactor = soundGateRadiusFactor
+        self.soundGateVelocityFloor = soundGateVelocityFloor
+        self.oncePerCondition = oncePerCondition
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

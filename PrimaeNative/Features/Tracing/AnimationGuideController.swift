@@ -21,6 +21,11 @@ final class AnimationGuideController {
     var onCycleComplete: (@MainActor () -> Void)? = nil
 
     private var task: Task<Void, Never>?
+    /// The strokes the running or pending animation was armed with —
+    /// nil when idle. Read by `TracingViewModel.canvasSize.didSet` to
+    /// re-arm an observe demonstration that was armed before the canvas
+    /// had laid out (audit 2026-09-06), and by tests.
+    private(set) var armedStrokes: LetterStrokes? = nil
     /// Deferred-start task for `startAfterDelay(_:strokes:)`. Tracked
     /// separately so `stop()` can cancel either phase cleanly.
     private var startTask: Task<Void, Never>?
@@ -32,10 +37,44 @@ final class AnimationGuideController {
 
     /// Begin the looping animation immediately for the supplied strokes.
     /// Replaces any in-flight animation.
+    /// Cell-relative units per second for the observe demonstration.
+    ///
+    /// `AnimationSpeed.slow` has existed since the guide was written and
+    /// was never wired to anything — every construction site took
+    /// `LetterAnimationGuide.build`'s 0.9 default, so the enum's three
+    /// cases were dead. Wired 2026-09-17 for the supervisor's "einmal
+    /// vorzeigen (vielleicht etwas langsamer)": one pass at 0.4x, which
+    /// is what `AnimationSpeed.slow` was defined to mean.
+    ///
+    /// Cell-relative, so the wall-clock length scales with the letter.
+    ///
+    /// THE WINDOW IS NOT LENGTH-PRESERVED — it is 1.25x LONGER. One pass
+    /// at 0.4x takes `L/0.36` where two passes at 1.0x took `2L/0.9`, so
+    /// the ratio is `2.778/2.222`. Halving the passes would have preserved
+    /// it exactly; 0.4 is not 0.5. The five study letters therefore run
+    /// ~6.25-13.75 s rather than the ~5-11 s the thesis and
+    /// `docs/STUDY_DEVICE_DRYRUN.md` quote, and the dry-run's "stuck past
+    /// ~15 seconds is a defect" tripwire is left with about a second of
+    /// headroom where it had four. (Per-segment flooring at 1/240 s and a
+    /// flat 1/60 s first segment drift the true ratio slightly above 1.25
+    /// for checkpoint-dense letters.)
+    static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
+
+    /// Live speed for `start`, defaulting to the production value above.
+    /// Exposed because a test that waits for a cycle has to budget its
+    /// wall-clock window for whatever speed is in force, and at 0.4x that
+    /// budget stops fitting on a loaded CI runner — `onCycleComplete_
+    /// firesAtLeastOnce` observed zero cycles in its 3 s window on the
+    /// first CI run after the slow speed landed. Tests that only care
+    /// THAT a cycle fires set this; production never changes it.
+    var unitsPerSecond: TimeInterval = AnimationGuideController.observeUnitsPerSecond
+
     func start(strokes: LetterStrokes) {
         stop()
-        let guide = LetterAnimationGuide.build(from: strokes)
+        let guide = LetterAnimationGuide.build(from: strokes,
+                                               unitsPerSecond: unitsPerSecond)
         guard !guide.steps.isEmpty else { return }
+        armedStrokes = strokes
 
         task = Task { [weak self, sleeper] in
             // Pre-attentive start cue: park the dot at the first step
@@ -92,6 +131,7 @@ final class AnimationGuideController {
     /// ahead of the letter ghost fade-in on a fresh letter load.
     func startAfterDelay(_ seconds: TimeInterval, strokes: LetterStrokes) {
         startTask?.cancel()
+        armedStrokes = strokes
         startTask = Task { [weak self, sleeper] in
             try? await sleeper(.seconds(seconds))
             guard !Task.isCancelled, let self else { return }
@@ -106,5 +146,6 @@ final class AnimationGuideController {
         task?.cancel()
         task = nil
         guidePoint = nil
+        armedStrokes = nil
     }
 }

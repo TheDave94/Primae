@@ -39,21 +39,19 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
 
 @Suite @MainActor struct MeasurementLayerTests {
 
-    // MARK: - 2a. Fréchet is captured, not just displayed
+    // MARK: - 2a. spatialDeviation is captured, not just displayed
 
-    @Test("no assessment yet → no Fréchet distance to record")
-    func frechetNilBeforeAssessment() {
+    @Test("no assessment yet → no spatial deviation to record")
+    func spatialDeviationNilBeforeAssessment() {
         let r = FreeWritePhaseRecorder()
-        #expect(r.lastFrechetDistance == nil)
+        #expect(r.lastSpatialDeviation == nil)
         r.startSession(now: 0)
-        #expect(r.lastFrechetDistance == nil,
+        #expect(r.lastSpatialDeviation == nil,
                 "a fresh session has measured nothing")
-        // The debug mirror still hands the overlay a drawable 0.
-        #expect(r.lastDistance == 0)
     }
 
-    @Test("single-cell assess records the raw Fréchet distance")
-    func singleCellAssessRecordsFrechet() throws {
+    @Test("single-cell assess records the raw spatial deviation")
+    func singleCellAssessRecordsSpatialDeviation() throws {
         let ref = lineReference()
         let r = FreeWritePhaseRecorder()
         r.startSession(now: 0)
@@ -65,10 +63,11 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         }
         _ = r.assess(reference: ref, canvasSize: canvas, now: 1.0)
 
-        let recorded = try #require(r.lastFrechetDistance)
-        let expected = FreeWriteScorer.rawDistance(
-            tracedPoints: r.points.map { CGPoint(x: $0.x / 100, y: $0.y / 100) },
-            reference: ref)
+        let recorded = try #require(r.lastSpatialDeviation)
+        let normalised = r.points.map { CGPoint(x: $0.x / 100, y: $0.y / 100) }
+        let expected = try #require(StrokeProcessScorer.analyze(
+            points: normalised, strokeStartIndices: r.strokeStartIndices, reference: ref
+        )).spatialDeviation
         #expect(abs(recorded - expected) < 1e-9,
                 "the recorded value must be the scorer's raw distance, untransformed")
         #expect(recorded > 0, "an offset trace is not a perfect overlay")
@@ -82,9 +81,10 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         let canvas = CGSize(width: 100, height: 100)
         r.record(point: CGPoint(x: 10, y: 50), timestamp: 0, force: 0, canvasSize: canvas)
         _ = r.assess(reference: ref, canvasSize: canvas, now: 1.0)
-        // rawDistance signals "not comparable" with .greatestFiniteMagnitude,
-        // which is isFinite — it must never reach the export as a number.
-        #expect(r.lastFrechetDistance == nil)
+        // A single point can't form a stroke comparable to the
+        // reference — StrokeProcessScorer.analyze reports nil, which
+        // must never reach the export as a defaulted number.
+        #expect(r.lastSpatialDeviation == nil)
     }
 
     @Test("clearAll drops the distance so it can't bleed to the next letter")
@@ -98,40 +98,15 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
                      timestamp: Double(i) * 0.05, force: 0, canvasSize: canvas)
         }
         _ = r.assess(reference: ref, canvasSize: canvas, now: 1.0)
-        #expect(r.lastFrechetDistance != nil)
+        #expect(r.lastSpatialDeviation != nil)
         r.clearAll()
-        #expect(r.lastFrechetDistance == nil)
+        #expect(r.lastSpatialDeviation == nil)
     }
 
-    @Test("multi-cell assess records the mean per-cell distance")
-    func multiCellAssessRecordsMeanDistance() throws {
-        let ref = lineReference()
-        let r = FreeWritePhaseRecorder()
-        r.startSession(now: 0)
-        let canvas = CGSize(width: 200, height: 100)
-        let left  = CGRect(x: 0, y: 0, width: 100, height: 100)
-        let right = CGRect(x: 100, y: 0, width: 100, height: 100)
-        // Ink in both cells, each offset from its cell-local reference.
-        for i in 0...8 {
-            r.record(point: CGPoint(x: 10 + 10 * Double(i), y: 60),
-                     timestamp: Double(i) * 0.05, force: 0, canvasSize: canvas)
-        }
-        for i in 0...8 {
-            r.record(point: CGPoint(x: 110 + 10 * Double(i), y: 65),
-                     timestamp: 1.0 + Double(i) * 0.05, force: 0, canvasSize: canvas)
-        }
-        _ = r.assess(cellReferences: [(frame: left, reference: ref),
-                                      (frame: right, reference: ref)],
-                     canvasSize: canvas, now: 2.0)
-        let mean = try #require(r.lastFrechetDistance)
-        #expect(mean > 0)
-        #expect(mean.isFinite && mean < .greatestFiniteMagnitude)
-    }
+    // MARK: - 2b. Why spatialDeviation is primary: coverage saturates, it doesn't
 
-    // MARK: - 2b. Why Fréchet is primary: coverage saturates, it doesn't
-
-    @Test("two traces both saturate checkpoint coverage at 1.0 but differ in Fréchet")
-    func coverageSaturatesWhereFrechetDiscriminates() {
+    @Test("two traces both saturate checkpoint coverage at 1.0 but differ in spatialDeviation")
+    func coverageSaturatesWhereSpatialDeviationDiscriminates() throws {
         let ref = lineReference(checkpointRadius: 0.2)
 
         // Tidy trace: straight along the reference.
@@ -155,14 +130,16 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         #expect(coverage(sloppy) == 1.0,
                 "the sloppy trace still reaches every checkpoint — coverage is at ceiling")
 
-        let dTidy = FreeWriteScorer.rawDistance(tracedPoints: tidy, reference: ref)
-        let dSloppy = FreeWriteScorer.rawDistance(tracedPoints: sloppy, reference: ref)
+        let dTidy = try #require(StrokeProcessScorer.analyze(
+            points: tidy, strokeStartIndices: [], reference: ref)).spatialDeviation
+        let dSloppy = try #require(StrokeProcessScorer.analyze(
+            points: sloppy, strokeStartIndices: [], reference: ref)).spatialDeviation
         #expect(dSloppy > dTidy,
-                "Fréchet must still separate two traces that coverage calls identical")
+                "spatialDeviation must still separate two traces that coverage calls identical")
     }
 
-    @Test("Fréchet keeps ranking traces after formAccuracy has clamped to 0")
-    func frechetDiscriminatesBelowTheFormAccuracyFloor() {
+    @Test("spatialDeviation keeps ranking traces after formAccuracy has clamped to 0")
+    func spatialDeviationDiscriminatesBelowTheFormAccuracyFloor() throws {
         let ref = lineReference(checkpointRadius: 0.05)
         // Both traces sit far outside checkpointRadius * 3 (= 0.15), so
         // the clamped formAccuracy reads 0 for each and loses the
@@ -175,16 +152,18 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         #expect(aBad.formAccuracy == 0)
         #expect(aWorse.formAccuracy == 0)
 
-        let dBad = FreeWriteScorer.rawDistance(tracedPoints: bad, reference: ref)
-        let dWorse = FreeWriteScorer.rawDistance(tracedPoints: worse, reference: ref)
+        let dBad = try #require(StrokeProcessScorer.analyze(
+            points: bad, strokeStartIndices: [], reference: ref)).spatialDeviation
+        let dWorse = try #require(StrokeProcessScorer.analyze(
+            points: worse, strokeStartIndices: [], reference: ref)).spatialDeviation
         #expect(dWorse > dBad,
                 "the raw distance is the only one of the two that still ranks these")
     }
 
     // MARK: - 2c. Both measures reach the record and the CSV
 
-    @Test("freeWrite row stores Fréchet distance + checkpoint coverage")
-    func storeRecordsBothAccuracyMeasures() throws {
+    @Test("freeWrite row stores Fréchet distance + checkpoint coverage + spatial deviation")
+    func storeRecordsAllThreeAccuracyMeasures() throws {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: tmp) }
@@ -194,31 +173,71 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
             schedulerPriority: 0.4, condition: .threePhase, audioCondition: .phoneme,
             assessment: nil, recognition: nil, inputDevice: "finger",
             rawTraceID: nil, trainedSubset: "AIM", phaseDurationSeconds: 6.25,
-            frechetDistance: 0.083412, checkpointCoverage: 1.0)
+            frechetDistance: 0.083412, checkpointCoverage: 1.0,
+            spatialDeviation: 0.067321)
 
         let rec = try #require(store.snapshot.phaseSessionRecords.last)
         #expect(rec.frechetDistance == 0.083412)
         #expect(rec.checkpointCoverage == 1.0)
+        #expect(rec.spatialDeviation == 0.067321)
     }
 
-    @Test("per-phase CSV gains frechetDistance + checkpointCoverage columns")
-    func csvCarriesBothAccuracyMeasures() {
+    @Test("per-phase CSV gains frechetDistance + checkpointCoverage + spatialDeviation columns")
+    func csvCarriesAllThreeAccuracyMeasures() {
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "I", phase: "freeWrite", completed: true, score: 0.6,
             schedulerPriority: 0, recordedAt: Date(timeIntervalSince1970: 1_770_000_000),
             phaseDurationSeconds: 4.5, frechetDistance: 0.123456,
-            checkpointCoverage: 0.875))
+            checkpointCoverage: 0.875, spatialDeviation: 0.098765))
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
 
-        #expect(csv.contains("phaseDurationSeconds,frechetDistance,checkpointCoverage"),
-                "the two measures append after the existing trailing column")
+        #expect(csv.contains("phaseDurationSeconds,\(ParentDashboardExporter.retiredFrechetColumnName),checkpointCoverage,spatialDeviation"),
+                "the three measures append after the existing trailing column, newest last")
         #expect(csv.contains("0.123456"), "Fréchet exports at 6 dp — 0–1 letter space")
         #expect(csv.contains("0.8750"))
+        #expect(csv.contains("0.098765"), "spatial deviation exports at 6 dp — same letter space")
     }
 
-    @Test("non-freeWrite and legacy rows leave both columns empty")
+    @Test("store records stroke count/order/direction")
+    func storeRecordsStrokeProcessMeasures() throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let store = JSONParentDashboardStore(fileURL: tmp)
+        store.recordPhaseSession(
+            letter: "M", phase: "freeWrite", completed: true, score: 0.72,
+            schedulerPriority: 0.4, condition: .threePhase, audioCondition: .phoneme,
+            assessment: nil, recognition: nil, inputDevice: "finger",
+            rawTraceID: nil, trainedSubset: "AIM", phaseDurationSeconds: 6.25,
+            frechetDistance: 0.083412, checkpointCoverage: 1.0,
+            spatialDeviation: 0.067321, strokeCount: 2, strokeOrder: "0,1",
+            reversedStrokeCount: 1)
+
+        let rec = try #require(store.snapshot.phaseSessionRecords.last)
+        #expect(rec.strokeCount == 2)
+        #expect(rec.strokeOrder == "0,1")
+        #expect(rec.reversedStrokeCount == 1)
+    }
+
+    @Test("per-phase CSV gains strokeCount + strokeOrder + reversedStrokeCount columns")
+    func csvCarriesStrokeProcessMeasures() {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "I", phase: "freeWrite", completed: true, score: 0.6,
+            schedulerPriority: 0, recordedAt: Date(timeIntervalSince1970: 1_770_000_000),
+            phaseDurationSeconds: 4.5, strokeCount: 3, strokeOrder: "1,0,2",
+            reversedStrokeCount: 2))
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+
+        #expect(csv.contains("spatialDeviation,strokeCount,strokeOrder,reversedStrokeCount"),
+                "the three process measures append after spatialDeviation, newest last")
+        #expect(csv.contains("1,0,2"), "the raw matched-order correspondence exports verbatim")
+    }
+
+    @Test("non-freeWrite and legacy rows leave all measurement columns empty")
     func nonFreeWriteRowsLeaveMeasuresEmpty() throws {
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords.append(PhaseSessionRecord(
@@ -232,12 +251,20 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         let names = header.components(separatedBy: ",")
         let fields = row.components(separatedBy: ",")
         #expect(fields.count == names.count, "row and header must stay aligned")
-        let frechetIdx = try #require(names.firstIndex(of: "frechetDistance"))
+        let frechetIdx = try #require(names.firstIndex(of: ParentDashboardExporter.retiredFrechetColumnName))
         let coverageIdx = try #require(names.firstIndex(of: "checkpointCoverage"))
+        let deviationIdx = try #require(names.firstIndex(of: "spatialDeviation"))
+        let strokeCountIdx = try #require(names.firstIndex(of: "strokeCount"))
+        let strokeOrderIdx = try #require(names.firstIndex(of: "strokeOrder"))
+        let reversedIdx = try #require(names.firstIndex(of: "reversedStrokeCount"))
         // Empty, never a defaulted 0 — a 0 distance reads as a perfect
         // overlay and a 0 coverage as a blank page.
         #expect(fields[frechetIdx].isEmpty)
         #expect(fields[coverageIdx].isEmpty)
+        #expect(fields[deviationIdx].isEmpty)
+        #expect(fields[strokeCountIdx].isEmpty)
+        #expect(fields[strokeOrderIdx].isEmpty)
+        #expect(fields[reversedIdx].isEmpty)
     }
 
     @Test("legacy JSON without the new keys decodes to nil, not 0")
@@ -251,6 +278,10 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         let rec = try JSONDecoder().decode(PhaseSessionRecord.self, from: legacy)
         #expect(rec.frechetDistance == nil)
         #expect(rec.checkpointCoverage == nil)
+        #expect(rec.strokeCount == nil)
+        #expect(rec.strokeOrder == nil)
+        #expect(rec.reversedStrokeCount == nil)
+        #expect(rec.spatialDeviation == nil)
     }
 
     // MARK: - 3. End-inclusive freeWrite time

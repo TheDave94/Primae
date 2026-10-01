@@ -28,6 +28,13 @@ protocol StreakStoring {
     /// Record a practice session. Returns any newly earned RewardEvents.
     @discardableResult
     func recordSession(date: Date, lettersCompleted: [String], accuracy: Double) -> [RewardEvent]
+    /// Same, with whether the daily goal is reached after this session —
+    /// the store cannot see the goal, so `.dailyGoalMet` was never awarded
+    /// (class two, 2026-09-05). Requirement with a forwarding default so
+    /// doubles that implement the base method still conform.
+    @discardableResult
+    func recordSession(date: Date, lettersCompleted: [String], accuracy: Double,
+                       dailyGoalReached: Bool) -> [RewardEvent]
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
@@ -38,6 +45,11 @@ extension StreakStoring {
     /// Default empty set so older conformers that pre-date the badge UI
     /// still compile. Production stores override with the persisted set.
     var earnedRewards: Set<RewardEvent> { [] }
+    @discardableResult
+    func recordSession(date: Date, lettersCompleted: [String], accuracy: Double,
+                       dailyGoalReached: Bool) -> [RewardEvent] {
+        recordSession(date: date, lettersCompleted: lettersCompleted, accuracy: accuracy)
+    }
 }
 
 // MARK: - Persisted model
@@ -94,6 +106,11 @@ final class JSONStreakStore: StreakStoring {
 
     @discardableResult
     func recordSession(date: Date, lettersCompleted: [String], accuracy: Double) -> [RewardEvent] {
+        recordSession(date: date, lettersCompleted: lettersCompleted, accuracy: accuracy, dailyGoalReached: false)
+    }
+
+    func recordSession(date: Date, lettersCompleted: [String], accuracy: Double,
+                       dailyGoalReached: Bool) -> [RewardEvent] {
         guard !lettersCompleted.isEmpty else { return [] }
 
         let dayString = dayKey(for: date)
@@ -130,6 +147,7 @@ final class JSONStreakStore: StreakStoring {
         newRewards += checkReward(.streakWeek, condition: state.currentStreak >= 7)
         newRewards += checkReward(.streakMonth, condition: state.currentStreak >= 30)
         newRewards += checkReward(.centuryClub, condition: state.totalCompletions >= 100)
+        newRewards += checkReward(.dailyGoalMet, condition: dailyGoalReached)
         // allLettersComplete: every supported uppercase letter.
         let allAlphabet = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZ".map { String($0) }
             + ["Ä", "Ö", "Ü", "ß"])
@@ -191,8 +209,10 @@ final class JSONStreakStore: StreakStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
+                // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
                     "StreakStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "StreakStore", error: error)
             }
         }
     }
@@ -204,9 +224,22 @@ final class JSONStreakStore: StreakStoring {
     }
 
     private static func load(from url: URL) -> StreakState? {
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(StreakState.self, from: data)
-        else { return nil }
+        // No file is the normal first launch; an UNREADABLE file is a
+        // finding — logged and moved aside, never silently overwritten by
+        // the next save (audit 2026-09-04; same rule as the other stores).
+        // An unreadable file (transient I/O, data protection while locked)
+        // is NOT a decode failure — return nil without touching it, as the
+        // other three stores do (review 2026-09-05).
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoded: StreakState
+        do {
+            decoded = try JSONDecoder().decode(StreakState.self, from: data)
+        } catch {
+            storePersistenceLogger.error(
+                "StreakStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
+            StoreFileQuarantine.quarantine(url)
+            return nil
+        }
         // Refuse a future-schema file — see ProgressStore.load.
         if let v = decoded.schemaVersion, v > streakSchemaVersion {
             storePersistenceLogger.warning(

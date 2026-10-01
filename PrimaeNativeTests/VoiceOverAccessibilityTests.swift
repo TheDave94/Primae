@@ -85,17 +85,53 @@ fileprivate final class LocalMockAudioController: AudioControlling {
         #expect(audioController.loadedAutoplay.last == true,
                 "replayAudio must request autoplay so the file actually plays")
     }
-    @Test func nextLetter_isCallable() {
-        vm.nextLetter()
-        #expect(!vm.currentLetterName.isEmpty)
+    /// A THREE-letter pool, because navigation cannot be observed on a
+    /// one-letter one: `nextLetter()` is `visible[(idx + 1) % count]`, so
+    /// with a single visible letter it lands back on the same name. The
+    /// three tests below used to assert only `!vm.currentLetterName.isEmpty`
+    /// — a non-optional `String` — on a fixture that could not move, so
+    /// none of them could fail (audit 2026-09-20). Built the same way
+    /// `StudyAutoAdvanceTests` builds its own pool.
+    private func threeLetterVM() -> TracingViewModel {
+        let v = TracingViewModel(.stub.with(audio: LocalMockAudioController()))
+        v.letters = ["A", "F", "I"].map { name in
+            LetterAsset(id: name, name: name, baseLetter: name, letterCase: .upper,
+                        audioFiles: ["\(name).mp3"],
+                        strokes: LetterStrokes(letter: name, checkpointRadius: 0.1, strokes: []),
+                        phonemeAudioFiles: ["\(name)_phoneme1.mp3"])
+        }
+        v.loadLetter(name: "A")
+        return v
     }
-    @Test func previousLetter_isCallable() {
-        vm.previousLetter()
-        #expect(!vm.currentLetterName.isEmpty)
+
+    @Test func nextLetter_movesToAnotherLetter() {
+        let v = threeLetterVM()
+        let before = v.currentLetterName
+        v.nextLetter()
+        #expect(v.currentLetterName != before,
+                "nextLetter must move off '\(before)', not reload it")
+        #expect(v.letters.contains { $0.name == v.currentLetterName },
+                "nextLetter must land on a letter in the pool")
     }
-    @Test func randomLetter_isCallable() {
-        vm.randomLetter()
-        #expect(!vm.currentLetterName.isEmpty)
+
+    @Test func previousLetter_movesToAnotherLetter() {
+        let v = threeLetterVM()
+        let before = v.currentLetterName
+        v.previousLetter()
+        #expect(v.currentLetterName != before,
+                "previousLetter must move off '\(before)', not reload it")
+        #expect(v.letters.contains { $0.name == v.currentLetterName },
+                "previousLetter must land on a letter in the pool")
+    }
+
+    @Test func randomLetter_staysInThePoolAndActuallyVaries() {
+        let v = threeLetterVM()
+        var seen: Set<String> = []
+        for _ in 0..<20 { v.randomLetter(); seen.insert(v.currentLetterName) }
+        #expect(seen.isSubset(of: Set(v.letters.map(\.name))),
+                "randomLetter must never land outside the pool — saw \(seen)")
+        #expect(seen.count >= 2,
+                "20 draws from a three-letter pool landed on only \(seen); P(all 20 identical) is ~1e-9, so this means it is not random")
     }
     @Test func resetLetter_resetsProgress() {
         vm.progress = 0.75

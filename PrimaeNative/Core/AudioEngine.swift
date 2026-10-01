@@ -67,6 +67,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// full volume instead of resuming mid-ramp.
     private var fadeOutTask: Task<Void, Never>?
 
+    /// Per-file loudness gain for `currentFile` (ruling AE-2, 2026-09-06;
+    /// computed by AudioEngine+Loudness at load). "Full volume" for the
+    /// player is THIS value, not 1.0, so every file plays at one RMS.
+    private(set) var loudnessGain: Float = 1.0
+
     // MARK: - Debug accessors
 
     #if DEBUG
@@ -92,7 +97,24 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             try AVAudioSession.sharedInstance().setCategory(
                 .playback, mode: .default, options: [.interruptSpokenAudioAndMixWithOthers]
             )
-            try? AVAudioSession.sharedInstance().setActive(true)
+            // Also deliberately left synchronous, same reasoning as
+            // startIfNeeded()'s: engine.start() right below needs the
+            // session genuinely active first, this is a one-time call at
+            // app launch (not the hot path play() is), and `init` is
+            // exactly the kind of control flow LESSONS.md says never to
+            // restructure. Logging added (2026-09-15) — a failed
+            // activation here previously fell straight through to
+            // `engine.start()` unlogged; `engine.start()` can still
+            // report success even when the session itself never
+            // genuinely activated, which reads as "audio running" while
+            // producing silence. Same shape as the logged failure branch
+            // right below; this does not change control flow, only
+            // whether the failure is visible.
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                log.error("Failed to activate audio session at init: \(error.localizedDescription)")
+            }
             if !engine.isRunning {
                 do { try engine.start() } catch {
                     player.stop()
@@ -124,8 +146,29 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                 if let typeValue,
                    let type = AVAudioSession.InterruptionType(rawValue: typeValue) {
                     if type == .began {
-                        self.isPlaying = false
-                        self.handleInterruptionBegan()
+                        // READ THE RESUME INTENT BEFORE THIS BRANCH CHANGES
+                        // ANY STATE, and pass it in explicitly.
+                        //
+                        // Until 2026-09-20 this line was
+                        // `self.isPlaying = false` followed by
+                        // `self.handleInterruptionBegan()`, whose first act
+                        // was `let savedResumeIntent = isPlaying` — so the
+                        // intent was ALWAYS captured as false no matter what
+                        // was actually playing. `stop()` →
+                        // `finishStop()` then cleared `shouldResumePlayback`
+                        // and the function restored the false back over it,
+                        // leaving `canResumePlayback()` to refuse and
+                        // `attemptResumePlayback()` to take its pause branch.
+                        // Playback did not resume after an interruption —
+                        // measured on hardware 2026-09-20, and the same
+                        // defect the R5-era test comment calls "the
+                        // 2026-09-15 regression".
+                        //
+                        // Passing the intent as a parameter is the fix the
+                        // ruling asked for (the ordering, not the symptom):
+                        // the dependency is now impossible to re-break
+                        // silently by reordering statements above it.
+                        self.handleInterruptionBegan(resumeIntent: self.isPlaying)
                     } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
                         if self.canResumePlayback() { self.attemptResumePlayback() }
                     }
@@ -161,8 +204,32 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         do {
             player.stop()
             currentFile = try AVAudioFile(forReading: url)
+            loudnessGain = Self.loudnessGain(forFileAt: url)
+            player.volume = loudnessGain
             prepareCurrentTrack()
-            guard engine.isRunning else { startIfNeeded(); return }
+            // Was `guard engine.isRunning else { startIfNeeded(); return }` —
+            // that starts the engine and then unconditionally abandons THIS
+            // load: autoplay is never set and attemptResumePlayback() never
+            // runs for it, so the file loads and schedules but never
+            // actually plays. `engine.isRunning` becomes false via
+            // `pendingSafeEnginePause()` (~0.2s after it fires) — reached
+            // from backgrounding, from an audio interruption beginning, or
+            // from attemptResumePlayback's own "can't resume" branch; NOT
+            // from an ordinary gap between two unrelated plays in the
+            // foreground (checked directly — those three are the only
+            // call sites). So this bites specifically on the next load
+            // after a backgrounding/interruption cycle, or a repeat call
+            // while resumption was already failing for some other reason
+            // — narrower than "every gap," but real, and it silently
+            // drops exactly the case a resume is supposed to restore.
+            // Matches `play()`'s own `if !engine.isRunning { startIfNeeded() }`
+            // below, which does NOT bail out — that's the correct shape
+            // already proven elsewhere in this file; `startIfNeeded()`
+            // itself still returns early (silently) when the session
+            // genuinely can't start, so this doesn't force a play attempt
+            // that couldn't have succeeded anyway.
+            if !engine.isRunning { startIfNeeded() }
+            guard engine.isRunning else { return }
             shouldResumePlayback = autoplay
             if autoplay { attemptResumePlayback() } else { isPlaying = false }
         } catch {
@@ -188,14 +255,40 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // volume snapshot mid-ramp.
         fadeOutTask?.cancel()
         fadeOutTask = nil
-        player.volume = 1.0
+        player.volume = loudnessGain
         shouldResumePlayback           = true
         interruptionResumeGateRequired = false
         interruptionShouldResume       = true
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            log.error("Failed to activate audio session: \(error.localizedDescription)")
+        // An explicit play() is the user's intent and outranks a stale
+        // interruption flag: iOS does not guarantee an `.ended`
+        // notification for every `.began` (an interruption that started
+        // while the app was suspended arrives as `.began` on resume with
+        // no `.ended`), and `interrupted` was otherwise cleared only by
+        // `.ended` — leaving every later play() refused for the rest of
+        // the session, both sound arms silent, nothing in the export
+        // (audit 2026-09-06, R5).
+        interrupted                    = false
+        // Was a synchronous `setActive(true)` here (Xcode "AVAudioSession
+        // Hang Risk": can block the main thread while the session is
+        // active). `play()` is the hot path — it runs on every touch that
+        // triggers audio during a session — and by the time it runs the
+        // session is virtually always ALREADY active: AudioEngine
+        // activates once at init and this file never deactivates it
+        // outside a lifecycle suspend (see `stop()`'s doc comment), so
+        // this call is a redundant reactivation on every tap, not a real
+        // state transition. Safe to fire off-main without waiting: if the
+        // engine genuinely isn't running, `startIfNeeded()` right below
+        // still does its OWN synchronous setActive before `engine.start()`
+        // — that ordering guarantee is preserved exactly where it's
+        // actually load-bearing, this call just stops being the thing
+        // that blocks every ordinary tap for it.
+        let sessionLogger = log
+        Task.detached(priority: .userInitiated) {
+            do {
+                try await AVAudioSession.sharedInstance().setActive(true)
+            } catch {
+                sessionLogger.error("Failed to activate audio session (async): \(error.localizedDescription)")
+            }
         }
         if !engine.isRunning { startIfNeeded() }
         attemptResumePlayback()
@@ -276,8 +369,19 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func resumeAfterLifecycle() {
-        guard currentFile != nil else { shouldResumePlayback = false; return }
+        // DEFECT (2026-09-15): `appIsForeground` used to flip back to true
+        // only AFTER this early-return guard. `currentFile` is nil almost
+        // always between strokes (finishStop(), the tail of every stop(),
+        // nils it), so any scene-phase blip — Control Center, a
+        // notification banner, the app switcher, screen lock — that fires
+        // suspend/resume while no file is loaded left `appIsForeground`
+        // stuck false for the rest of the process: `canResumePlayback()`
+        // gates on it, so every later play attempt in both sound arms was
+        // silently refused while `isPlaying` kept reading true. Set it
+        // unconditionally, before the guard, so a foreground transition is
+        // always recorded regardless of what's currently loaded.
         appIsForeground = true
+        guard currentFile != nil else { shouldResumePlayback = false; return }
         cancelPendingLifecycleWork()
         startIfNeeded()
         if let file = currentFile, !player.isPlaying {
@@ -336,8 +440,29 @@ private extension AudioEngine {
         let session  = AVAudioSession.sharedInstance()
         let category = session.category
         let canStart = category == .playback || category == .playAndRecord || category == .multiRoute
-        guard canStart || AVAudioApplication.shared.recordPermission == .granted else { return }
-        try? AVAudioSession.sharedInstance().setActive(true)
+        guard canStart else { return }
+        // Deliberately LEFT synchronous, unlike play()'s setActive above —
+        // this is the one call site where the ordering genuinely matters:
+        // this is the path that runs when the engine ISN'T already
+        // running (post-interruption recovery, first-ever start), so
+        // `engine.start()` right below actually needs the session
+        // confirmed active first, not just redundantly reactivated.
+        // Deferring this into a Task would also break the loadAudioFile /
+        // attemptResumePlayback fix (2026-09-15): both now check
+        // `engine.isRunning` immediately after calling this function and
+        // bail out if it's still false — a synchronous `engine.start()`
+        // here is what makes that check meaningful. Called far less often
+        // than play() (only when the engine genuinely isn't running), so
+        // its contribution to the hang-risk warning is the smaller one.
+        // Logging added (2026-09-15) — same reasoning as init's: a failed
+        // activation here fell straight through to `engine.start()`
+        // unlogged, and `engine.start()` not throwing does not mean the
+        // session actually activated. Control flow is unchanged.
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            log.error("Failed to activate audio session in startIfNeeded: \(error.localizedDescription)")
+        }
         do {
             try engine.start()
         } catch {
@@ -354,7 +479,13 @@ private extension AudioEngine {
     }
 
     func attemptResumePlayback() {
-        guard engine.isRunning else { startIfNeeded(); return }
+        // Same fix, same reason as loadAudioFile: don't start the engine
+        // and then abandon the resume attempt. This is the function that
+        // actually calls player.play() (interruption-ended, route-change,
+        // resumeAfterLifecycle, and play() itself all funnel through it),
+        // so the old shape here was the most consequential copy of the bug.
+        if !engine.isRunning { startIfNeeded() }
+        guard engine.isRunning else { return }
         guard currentFile != nil else { return }
         prepareCurrentTrack()
         guard canResumePlayback() else {
@@ -406,11 +537,39 @@ private extension AudioEngine {
         isPlaying = false
     }
 
-    func handleInterruptionBegan() {
-        let savedResumeIntent = isPlaying
+    /// - Parameter resumeIntent: whether playback was active immediately
+    ///   BEFORE the interruption, captured by the caller before it applies
+    ///   any state changes. It cannot be read here: by the time this runs
+    ///   the interruption is already being handled. See the caller's
+    ///   comment for the defect this parameter exists to make unrepeatable.
+    func handleInterruptionBegan(resumeIntent: Bool) {
+        let savedResumeIntent = resumeIntent
+        // Hold the loaded file across the stop() below, for the same reason
+        // and by the same shape as `resumeIntent` above: read BEFORE the
+        // state-clearing call, restored after.
+        //
+        // `stop()` routes to `finishStop()`, which sets `currentFile = nil`.
+        // That is right for its other callers — a finger-lift ends playback
+        // and the next `play()` loads afresh — but an INTERRUPTION is not
+        // the user stopping playback: we intend to resume the same sound,
+        // and there must be something left to resume. Measured 2026-09-21:
+        // with the file gone, `attemptResumePlayback()` restarted the engine
+        // and then bailed at its `currentFile != nil` guard, leaving
+        // `isPlaying` false with no pause scheduled, so playback never came
+        // back after an interruption (and `play()`'s own `currentFile != nil`
+        // guard meant the R5 stale-flag fix could not reach that case
+        // either).
+        //
+        // Deliberately NOT changing `finishStop()` to skip clearing the file
+        // under some flag: that is the stale-flag-dependent branching that
+        // produced the defect this file was just fixed for. `stop()` and
+        // `finishStop()` keep their meaning for every other caller; only what
+        // an INTERRUPTION discards changes here.
+        let file = currentFile
         player.pause()
         isPlaying = false
         stop()
+        currentFile = file
         // Restore resume intent — stop() clears shouldResumePlayback,
         // but we need it preserved so playback resumes after interruption ends.
         shouldResumePlayback = savedResumeIntent

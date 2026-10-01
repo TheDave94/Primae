@@ -50,6 +50,23 @@ enum PilotAudioCondition: String, Codable, CaseIterable, Sendable {
     /// No audio at all — the silent control arm.
     case silent
 
+    /// The next arm in the cycle order, wrapping back to the first.
+    ///
+    /// Declared order IS the cycle order: phoneme → spatial → silent →
+    /// phoneme. Derived from `allCases` rather than spelled out as a
+    /// `switch` so a fourth arm added later joins the cycle automatically
+    /// instead of silently repeating one of the three.
+    ///
+    /// Used by `TracingViewModel`'s within-subject comparison run
+    /// (`StudyComparisonSettings.cycleAllConditions`) to step the arm at a
+    /// letter boundary, and by nothing else — the pilot's own assignment
+    /// path is `assign(participantId:)` / `defaultForInstall`.
+    var nextInCycle: PilotAudioCondition {
+        let arms = Self.allCases
+        guard let idx = arms.firstIndex(of: self) else { return self }
+        return arms[(idx + 1) % arms.count]
+    }
+
     /// German display label for the parent dashboard and thesis reports.
     /// Display-only: the CSV/TSV/JSON export keys on `rawValue`, never on
     /// this string, so wording can change without touching the data.

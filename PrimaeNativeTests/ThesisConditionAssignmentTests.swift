@@ -27,30 +27,50 @@ import Testing
         #expect(seen.count == 3)
     }
 
-    @Test("Distribution across arms is roughly uniform")
+    @Test("Distribution across arms is uniform to within the 256 % 3 residual")
     func roughly_uniform_distribution() {
+        // Same band and reasoning as PilotAudioConditionAssignmentTests:
+        // n = 100 000, expected 33 203–33 594 (86/85/85 residual), band
+        // 32 583–34 250 ≥ 4.1 sd on both sides (2026-09-06).
         var counts: [ThesisCondition: Int] = [:]
-        let n = 3000
+        let n = 100_000
         for _ in 0..<n {
             counts[ThesisCondition.assign(participantId: UUID()), default: 0] += 1
         }
-        // Uniform is 1/3 each = ~1000. Allow +/- 200 for 3000 samples.
         for arm in ThesisCondition.allCases {
             let c = counts[arm] ?? 0
-            #expect(c > 800 && c < 1200,
-                    "Arm \(arm) got \(c) assignments; expected ~1000 ± 200")
+            #expect(c > 32_583 && c < 34_250,
+                    "Arm \(arm) got \(c) assignments; expected 33 203–33 594, band 32 583–34 250")
         }
     }
 
-    @Test("Known-byte UUIDs map deterministically")
+    @Test("Known-byte UUIDs map deterministically off byte 0")
     func deterministic_by_first_byte() {
-        // First byte = 0 → threePhase, 1 → guidedOnly, 2 → control, 3 → threePhase, ...
-        // The exact mapping only matters in that it's consistent.
-        let byteZero = UUID(uuid: (0, 0, 0, 0, 0, 0, 0, 0,
-                                   0, 0, 0, 0, 0, 0, 0, 0))
-        let a1 = ThesisCondition.assign(participantId: byteZero)
-        let a2 = ThesisCondition.assign(participantId: byteZero)
-        #expect(a1 == a2)
+        // Byte 0 = 0 → threePhase, 1 → guidedOnly, 2 → control. Pinned
+        // to the actual mapping — the previous form of this test compared
+        // assign(x) with assign(x), which cannot fail, so the two sibling
+        // suites' "independent of byte 0" tests rested on nothing.
+        func id(byte0: UInt8) -> UUID {
+            UUID(uuid: (byte0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+        }
+        #expect(ThesisCondition.assign(participantId: id(byte0: 0)) == .threePhase)
+        #expect(ThesisCondition.assign(participantId: id(byte0: 1)) == .guidedOnly)
+        #expect(ThesisCondition.assign(participantId: id(byte0: 2)) == .control)
+        #expect(ThesisCondition.assign(participantId: id(byte0: 3)) == .threePhase)
+    }
+
+    /// Mirror of the sibling suites' decorrelation tests: changing only
+    /// byte 9 (TrainedLetterSubset) or byte 15 (PilotAudioCondition) must
+    /// not move the pedagogical arm.
+    @Test("Pedagogical arm is independent of the subset and audio-arm bytes")
+    func decorrelated_from_other_axes() {
+        let a = UUID(uuid: (7, 1, 2, 3, 4, 5, 6, 7, 8, 0,   10, 11, 12, 13, 14, 0))
+        let b = UUID(uuid: (7, 1, 2, 3, 4, 5, 6, 7, 8, 255, 10, 11, 12, 13, 14, 0))
+        let c = UUID(uuid: (7, 1, 2, 3, 4, 5, 6, 7, 8, 0,   10, 11, 12, 13, 14, 255))
+        #expect(ThesisCondition.assign(participantId: a) == ThesisCondition.assign(participantId: b),
+                "must not depend on byte 9")
+        #expect(ThesisCondition.assign(participantId: a) == ThesisCondition.assign(participantId: c),
+                "must not depend on byte 15")
     }
 
     // MARK: - Enrollment gating
@@ -73,9 +93,29 @@ import Testing
     @Test("defaultForInstall uses ThesisCondition.assign when enrolled")
     func enrolled_uses_assign() {
         let previous = ParticipantStore.isEnrolled
-        defer { ParticipantStore.isEnrolled = previous }
+        let previousOverride = ParticipantStore.conditionOverride
+        defer {
+            ParticipantStore.isEnrolled = previous
+            ParticipantStore.conditionOverride = previousOverride
+        }
+        // The override is cleared too — this suite never did, and
+        // `defaultForInstall` consults it FIRST (`ThesisCondition.swift:48`),
+        // so a device carrying a stored override from an earlier session
+        // silently changed what this test measured. That is how it failed on
+        // the iPad on 2026-09-20.
+        ParticipantStore.conditionOverride = nil
         ParticipantStore.isEnrolled = true
-        let expected = ThesisCondition.assign(participantId: ParticipantStore.participantId)
-        #expect(ThesisCondition.defaultForInstall == expected)
+
+        // Stated plainly: this equality restates production's own
+        // expression. It is still not inert — an implementation that
+        // ignored `isEnrolled` and fell through to `.threePhase` would
+        // disagree whenever the stored id does not map to `.threePhase`.
+        // But `.threePhase` IS a reachable `assign` outcome (byte % 3 == 0,
+        // `ThesisCondition.swift:63` — and the iPad's id maps there), so
+        // there is no unconditional inequality to assert and the
+        // discriminating power is ~2/3 of ids. Recorded rather than
+        // papered over with an assertion that is true only by luck.
+        #expect(ThesisCondition.defaultForInstall
+                    == ThesisCondition.assign(participantId: ParticipantStore.participantId))
     }
 }

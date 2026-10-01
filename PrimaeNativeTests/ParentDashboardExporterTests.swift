@@ -25,7 +25,18 @@ struct ParentDashboardExporterTests {
         // The CSV now starts with a participantId comment line followed by the
         // letter table header. Both must be present for A/B analysis consumers.
         #expect(csv.hasPrefix("# participantId="))
-        #expect(csv.contains("letter,sessionCount,averageAccuracy,trend"))
+        #expect(csv.contains("letter,sessionCount,trend"))
+    }
+
+    // `averageAccuracy` was removed 2026-09-16 (supervisor ruling): it
+    // mixed thesis arms and phase types, and carried a mathematical
+    // floor of 1/3 under the three-phase flow — see D12 and the
+    // removal note in ParentDashboardExporter.swift and
+    // docs/APP_DOCUMENTATION.md's export-schema appendix. This guards
+    // against the column silently coming back.
+    @Test func csvDoesNotContainRemovedAverageAccuracyColumn() {
+        let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
+        #expect(!csv.contains("averageAccuracy"))
     }
 
     @Test func csvContainsLetterRows() {
@@ -35,7 +46,10 @@ struct ParentDashboardExporterTests {
     }
 
     @Test func csvContainsDurationSection() {
-        let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot()), encoding: .utf8)!
+        // Duration rows are filtered on enrolment like the phase rows
+        // (review 2026-09-05); pin the fixture to "no enrolment" so the
+        // test-device's own enrolledAt cannot hide the 2026-03 rows.
+        let csv = String(data: ParentDashboardExporter.csvData(from: makeSnapshot(), enrolledAt: nil), encoding: .utf8)!
         #expect(csv.contains("date,recordedAt,durationSeconds,wallClockSeconds,condition,inputDevice"))
         #expect(csv.contains("2026-03-01"))
     }
@@ -43,7 +57,7 @@ struct ParentDashboardExporterTests {
     @Test func csvEmptySnapshotIsValid() {
         let csv = String(data: ParentDashboardExporter.csvData(from: DashboardSnapshot()), encoding: .utf8)!
         #expect(csv.hasPrefix("# participantId="))
-        #expect(csv.contains("letter,sessionCount,averageAccuracy,trend"))
+        #expect(csv.contains("letter,sessionCount,trend"))
     }
 
     @Test func csvIncludesParticipantIdAndConditionColumns() {
@@ -122,6 +136,76 @@ struct ParentDashboardExporterTests {
         // inputDevice.
         #expect(csv.contains("A,freeWrite,true,0.7000,0.0000,threePhase,\(isoTs),O,0.6200,,false,,,,,"),
                 "Expected session-aligned recognition + timestamp — found:\n\(csv)")
+    }
+
+    /// A multi-stroke letter's `strokeOrder` is comma-joined ("0,2,1" for
+    /// a crossbar-first A). Unquoted, that field split a CSV row into
+    /// extra columns and shifted `reversedStrokeCount`, `studyMode` and
+    /// `probe` to the right — every A, F and L freeWrite row in the pilot
+    /// (audit 2026-09-04, class one). The row must parse back to exactly
+    /// as many fields as the header, with the order intact.
+    @Test func csvQuotesCommaJoinedStrokeOrder() throws {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.7, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: Date(timeIntervalSince1970: 1_770_000_000),
+            spatialDeviation: 0.05, strokeCount: 3, strokeOrder: "0,2,1",
+            reversedStrokeCount: 1, studyMode: true, probe: "posttest"
+        ))
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let lines = csv.components(separatedBy: "\n")
+        let headerIdx = try #require(lines.firstIndex { $0.hasPrefix("letter,phase,completed,") })
+        let header = lines[headerIdx].components(separatedBy: ",")
+        let row = try #require(lines.dropFirst(headerIdx + 1).first { $0.hasPrefix("A,freeWrite,") })
+        let fields = Self.parseCSVRow(row)
+        #expect(fields.count == header.count,
+                "row has \(fields.count) fields, header \(header.count):\n\(row)")
+        #expect(fields[header.firstIndex(of: "strokeOrder")!] == "0,2,1")
+        #expect(fields[header.firstIndex(of: "reversedStrokeCount")!] == "1")
+        #expect(fields[header.firstIndex(of: "studyMode")!] == "true")
+        #expect(fields[header.firstIndex(of: "probe")!] == "posttest")
+        #expect(row.contains("\"0,2,1\""), "the comma-joined field must be quoted, RFC 4180")
+
+        // TSV: no tab in the field, so it stays unquoted and splits cleanly.
+        let tsv = String(data: ParentDashboardExporter.tsvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let tsvRow = try #require(tsv.components(separatedBy: "\n").first { $0.hasPrefix("A\tfreeWrite\t") })
+        let tsvFields = tsvRow.components(separatedBy: "\t")
+        #expect(tsvFields.count == header.count)
+        #expect(tsvFields[header.firstIndex(of: "strokeOrder")!] == "0,2,1")
+    }
+
+    /// Minimal RFC 4180 reader for one row: quoted fields may contain the
+    /// separator; a doubled quote inside a quoted field is one quote.
+    private static func parseCSVRow(_ row: String) -> [String] {
+        var fields: [String] = []
+        var current = ""
+        var inQuotes = false
+        var it = row.makeIterator()
+        var pending: Character? = nil
+        func next() -> Character? {
+            if let p = pending { pending = nil; return p }
+            return it.next()
+        }
+        while let ch = next() {
+            if inQuotes {
+                if ch == "\"" {
+                    if let n = it.next() {
+                        if n == "\"" { current.append("\"") } else { inQuotes = false; pending = n }
+                    } else { inQuotes = false }
+                } else { current.append(ch) }
+            } else if ch == "\"" {
+                inQuotes = true
+            } else if ch == "," {
+                fields.append(current); current = ""
+            } else {
+                current.append(ch)
+            }
+        }
+        fields.append(current)
+        return fields
     }
 
     /// Phase rows without a recognition sample (guided / observe / direct,
@@ -217,5 +301,118 @@ struct ParentDashboardExporterTests {
                 "Expected speedTrend column header")
         #expect(csv.contains("1.2000;1.5000;1.8000"),
                 "Expected semicolon-joined speedTrend values — found:\n\(csv)")
+    }
+
+    // MARK: - Retired frechetDistance no longer shares the primary outcome's name
+
+    /// The CSV header must not offer the bare name "frechetDistance" —
+    /// that column is retired and always empty, and it is exactly the
+    /// name a reader hunting for the primary Fréchet-distance outcome
+    /// (which exports as "spatialDeviation") would reach for first.
+    @Test func csvRetiredFrechetColumnIsUnambiguous() {
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: DashboardSnapshot(), progress: [:], enrolledAt: nil), encoding: .utf8)!
+        #expect(!csv.contains(",frechetDistance,"),
+                "The bare \"frechetDistance\" column name must not appear — found:\n\(csv)")
+        #expect(csv.contains(ParentDashboardExporter.retiredFrechetColumnName),
+                "Expected the renamed retired-column header — found:\n\(csv)")
+        #expect(csv.contains("spatialDeviation"),
+                "The live primary outcome's column must be unaffected")
+    }
+
+    /// Same rename, in the JSON export: the key literally named
+    /// "frechetDistance" must not appear anywhere in a phase row, even
+    /// when the (retired) field carries a non-nil value — proving the
+    /// rewrite works on the VALUE, not just on an already-empty field.
+    @Test func jsonRetiredFrechetKeyIsRenamed() throws {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.7, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: Date(timeIntervalSince1970: 1_770_000_000),
+            frechetDistance: 0.42, spatialDeviation: 0.05
+        ))
+        let data = try ParentDashboardExporter.jsonData(from: snap, progress: [:], enrolledAt: nil)
+        let json = String(data: data, encoding: .utf8)!
+        #expect(!json.contains("\"frechetDistance\""),
+                "The retired field's old JSON key must not survive the export — found:\n\(json)")
+        #expect(json.contains("\"\(ParentDashboardExporter.retiredFrechetColumnName)\""))
+        #expect(json.contains("\"spatialDeviation\""))
+        // Decode back rather than substring-match the value: JSON
+        // serializes 0.42 with its full binary-double representation
+        // (0.41999999999999998...), which "0.42" is not a substring of.
+        let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        let records = try #require(root["phaseSessionRecords"] as? [[String: Any]])
+        let record = try #require(records.first)
+        let renamedValue = try #require(record[ParentDashboardExporter.retiredFrechetColumnName] as? Double)
+        #expect(abs(renamedValue - 0.42) < 0.0001,
+                "The retired field's value must still be present under the new key")
+    }
+
+    // MARK: - Derived post-test tag for a trained letter's final pass
+
+    /// A trained letter's post-test is the freeWrite phase of its FINAL
+    /// training pass (thesis Ch.6) — the live app never tags this row
+    /// (`StudyProbe.posttest` refuses a trained letter), so the export
+    /// must derive it: the later of two completed freeWrite rows for a
+    /// trained letter gets `probe == "posttest"`; the earlier one does
+    /// not, and an untrained letter's live-tagged post-test row is
+    /// untouched.
+    @Test func csvDerivesPostTestTagForFinalTrainedPass() {
+        var snap = DashboardSnapshot()
+        let earlier = Date(timeIntervalSince1970: 1_770_000_000)
+        let later   = Date(timeIntervalSince1970: 1_770_000_100)
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.6, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: earlier, trainedSubset: "AFI"
+        ))
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "A", phase: "freeWrite", completed: true,
+            score: 0.7, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: later, trainedSubset: "AFI"
+        ))
+        // Untrained letter's post-test, already tagged live by the app.
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "L", phase: "freeWrite", completed: true,
+            score: 0.5, schedulerPriority: 0, condition: .threePhase,
+            recordedAt: later, trainedSubset: "AFI", probe: "posttest"
+        ))
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let allLines = csv.components(separatedBy: "\n")
+
+        // COLUMN-AWARE, NOT SUFFIX-BASED. These three assertions used
+        // `hasSuffix` as a proxy for "the value of the `probe` column",
+        // which was only ever true because `probe` happened to be the
+        // LAST column. `comparisonConfiguration` was appended after it
+        // (2026-09-18) and broke the proxy — the row now ends
+        // `…,posttest,` — without changing anything this test means to
+        // check. Deriving the index from the header keeps the assertion
+        // honest the next time a column is appended, which is the whole
+        // point of asserting a column rather than a row suffix.
+        let header = allLines.first { $0.hasPrefix("letter,phase,") } ?? ""
+        let headerColumns = header.components(separatedBy: ",")
+        guard let probeIndex = headerColumns.firstIndex(of: "probe") else {
+            Issue.record("the CSV header has no `probe` column — header was: \(header)")
+            return
+        }
+        func probeValue(of row: String?) -> String? {
+            guard let row else { return nil }
+            let fields = row.components(separatedBy: ",")
+            return fields.indices.contains(probeIndex) ? fields[probeIndex] : nil
+        }
+
+        let lines = allLines.filter { $0.hasPrefix("A,freeWrite,") || $0.hasPrefix("L,freeWrite,") }
+        #expect(lines.count == 3, "Expected exactly 3 freeWrite rows — found:\n\(lines)")
+        let earlierRow = lines.first { $0.contains("0.6000") }
+        let laterRow   = lines.first { $0.contains("0.7000") }
+        let untrainedRow = lines.first { $0.hasPrefix("L,") }
+        #expect(probeValue(of: earlierRow) == "",
+                "The earlier (non-final) trained pass must NOT be tagged — found:\n\(earlierRow ?? "<missing>")")
+        #expect(probeValue(of: laterRow) == "posttest",
+                "The later (final) trained pass must be tagged posttest — found:\n\(laterRow ?? "<missing>")")
+        #expect(probeValue(of: untrainedRow) == "posttest",
+                "The live-tagged untrained post-test row must be unaffected — found:\n\(untrainedRow ?? "<missing>")")
     }
 }

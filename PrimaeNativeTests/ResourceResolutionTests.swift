@@ -39,6 +39,7 @@
 
 import Testing
 import Foundation
+import CryptoKit
 @testable import PrimaeNative
 
 @Suite struct ResourceResolutionTests {
@@ -146,20 +147,43 @@ import Foundation
 
     // MARK: - Letter assets
 
-    /// Enumerated through the real provider, not a fixture. The study set
-    /// is the five letters a pilot participant actually traces.
-    @Test("the real bundle carries audio for every study letter")
-    func studyLetterAudioResolves() {
-        let audioExtensions: Set<String> = ["mp3", "wav", "m4a", "aac", "flac", "ogg"]
-        let urls = BundleLetterResourceProvider().allResourceURLs()
-            .filter { audioExtensions.contains($0.pathExtension.lowercased()) }
-
-        let silent = TrainedLetterSubset.studyLetters.filter { letter in
-            !urls.contains { $0.deletingLastPathComponent().lastPathComponent
-                .compare(letter, options: .caseInsensitive) == .orderedSame }
+    /// Enumerated through the real provider, not a fixture. Until
+    /// 2026-09-06 this asserted "some audio file in each study letter's
+    /// folder" — true of the letter-NAME clips, which no sound arm plays
+    /// under studyMode: the phoneme arm needs `<L>_phoneme<n>.mp3`
+    /// (`LetterAsset.phonemeAudioFiles`, refused otherwise) and the
+    /// spatial arm plays the bundled carrier. It stayed green in exactly
+    /// the state where the phoneme arm cannot start. ROADMAP H5 closed
+    /// 2026-09-14: the five recordings landed, this test flipped from a
+    /// `withKnownIssue` to a real failure ("Known issue was not
+    /// recorded"), and the wrapper came off here so it stays a gate.
+    @Test("the real bundle carries a phoneme recording for every study letter (H5)")
+    func studyLetterPhonemesResolve() throws {
+        let repo = LetterRepository(resources: BundleLetterResourceProvider(),
+                                    cache: NullLetterCache())
+        let letters = try repo.loadBundledLettersOnly().get()
+        let missing = TrainedLetterSubset.studyLetters.filter { name in
+            letters.first(where: { $0.name == name })?.phonemeAudioFiles.isEmpty ?? true
         }
-        #expect(silent.isEmpty,
-                "study letters with no bundled audio: \(silent.joined(separator: ", ")) — they trace in silence in every sound arm")
+        #expect(missing.isEmpty,
+                "study letters without <L>_phoneme<n>.mp3: \(missing.joined(separator: ", "))")
+    }
+
+    @Test("the real bundle carries a NAME recording for every study letter")
+    func studyLetterNameAudioResolves() throws {
+        // Counterpart to `studyLetterPhonemesResolve`, and it did not exist
+        // until 2026-09-18 — reported from the device as "F has no sound for
+        // some reason". The phoneme path WAS pinned; the name/word path had
+        // no coverage at all, so a letter whose name recordings failed to
+        // resolve would have looked exactly like a letter with no assets.
+        let repo = LetterRepository(resources: BundleLetterResourceProvider(),
+                                    cache: NullLetterCache())
+        let letters = try repo.loadBundledLettersOnly().get()
+        let missing = TrainedLetterSubset.studyLetters.filter { name in
+            letters.first(where: { $0.name == name })?.audioFiles.isEmpty ?? true
+        }
+        #expect(missing.isEmpty,
+                "study letters with NO name audio resolved: \(missing.joined(separator: ", "))")
     }
 
     /// `_meta.json` records bake-time provenance per weight. Missing, the
@@ -170,6 +194,34 @@ import Foundation
             !Self.resolvesInPackageBundle("Resources/Letters/\($0)/_meta.json")
         }
         #expect(missing.isEmpty, "weights missing _meta.json: \(missing.joined(separator: ", "))")
+    }
+
+    /// `LetterRepository.verifyBakeMetadataOnce` recomputes the bundled
+    /// font's SHA-256 against `_meta.json` and LOGS a mismatch ("never
+    /// fatal"). Nothing asserted it (audit 2026-09-06): a font swapped
+    /// without a re-bake leaves every strokes.json golden green while the
+    /// rendered ghost and the glyph-bbox → cell mapping the pinned
+    /// checkpoints are projected through no longer match. Assert it here
+    /// so a swap fails CI the way a strokes.json drift does.
+    @Test("the bundled font matches the bake provenance hash of each weight")
+    func bundledFontMatchesBakeMeta() throws {
+        struct Meta: Decodable { let fontPath: String; let fontSha256: String }
+        let bundle = PrimaeBundle.resources
+        let roots = [bundle.bundleURL, bundle.resourceURL].compactMap { $0 }
+        func url(_ rel: String) -> URL? {
+            roots.map { $0.appendingPathComponent(rel) }
+                 .first { FileManager.default.fileExists(atPath: $0.path) }
+        }
+        for weight in ["Regular", "Light"] {
+            let metaURL = try #require(url("Resources/Letters/\(weight)/_meta.json"))
+            let meta = try JSONDecoder().decode(Meta.self, from: Data(contentsOf: metaURL))
+            let fontFile = (meta.fontPath as NSString).lastPathComponent
+            let fontURL = try #require(url("Resources/Fonts/\(fontFile)"), "bundled font \(fontFile) for \(weight) missing")
+            let digest = SHA256.hash(data: try Data(contentsOf: fontURL))
+                .map { String(format: "%02x", $0) }.joined()
+            #expect(digest == meta.fontSha256,
+                    "\(weight): bundled \(fontFile) sha256 \(digest) ≠ _meta.json \(meta.fontSha256) — the strokes were baked from a different font; re-run scripts/generate_strokes_auto.py --weight \(weight.lowercased())")
+        }
     }
 
     // MARK: - The resolver itself

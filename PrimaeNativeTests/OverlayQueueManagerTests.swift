@@ -202,11 +202,26 @@ private func sampleResult(_ predicted: String = "A",
         let q = OverlayQueueManager(sleeper: fakeSleeper)
         q.enqueue(.kpOverlay, duration: 0.05)
         q.enqueue(.celebration(stars: 1))
-        // Yield until the auto-advance Task has had a chance to run.
-        // Two yields covers the dispatch → sleep-await → resume → advance
-        // cycle; bump to three for headroom on slow runners.
-        for _ in 0..<3 { await Task.yield() }
-        #expect(q.currentOverlay == .celebration(stars: 1))
+        // Poll to a deadline rather than yielding a FIXED number of times
+        // (2026-09-17). A fixed count is a bet on the scheduler, and the
+        // advance is a Task spawned on its own (OverlayQueueManager.swift
+        // :179) — three yields was already a bump from two, made "for
+        // headroom on slow runners". Under Release-Study, the configuration
+        // the PILOT ships, that bet lost: this assertion failed after the
+        // spawned task had not been scheduled. The manager carries no
+        // configuration-dependent code at all (`grep '#if' ` over the file
+        // is empty), so the difference is scheduling, not behaviour.
+        //
+        // Yielding in a loop is not a longer sleep — it is the same wait
+        // without the scheduler assumption, and it still fails loudly if
+        // the advance never happens.
+        var yields = 0
+        while q.currentOverlay != .celebration(stars: 1), yields < 1_000 {
+            await Task.yield()
+            yields += 1
+        }
+        #expect(q.currentOverlay == .celebration(stars: 1),
+                "the timed overlay never auto-advanced: still \(String(describing: q.currentOverlay)) after \(yields) yields")
     }
 
     @Test func modalOverlay_doesNotAutoAdvance() async {

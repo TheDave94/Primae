@@ -7,7 +7,33 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// LearningPhase.rawName: "observe", "direct", "guided", or "freeWrite".
     let phase: String
     let completed: Bool
-    /// Phase accuracy score (0–1). For freeWrite equals WritingAssessment.overallScore.
+    /// Phase accuracy score (0–1) — **NOT the same instrument across
+    /// phases, despite sharing this one column** (found 2026-09-04, in
+    /// the same audit that found the confidence-calibrator mixup):
+    ///   - `observe`, `direct`: always exactly `1.0` — a completion
+    ///     marker, not a measurement. `direct`'s dot-tap ordering isn't
+    ///     reflected in this score at all, despite the "pass/fail"
+    ///     framing in `PhaseTransitionCoordinator.advance()`.
+    ///   - `guided`: checkpoint-proximity COVERAGE (`vm.progress` —
+    ///     fraction of reference checkpoints reached within radius).
+    ///     Purely geometric proximity; unrelated to trace SHAPE.
+    ///   - `freeWrite`: `WritingAssessment.overallScore` — a weighted
+    ///     4-dimension composite (Form 40% + Tempo 25% + Druck 15% +
+    ///     Rhythmus 20%), itself a different instrument again from
+    ///     `guided`'s coverage fraction.
+    /// Comparing `score` ACROSS phase-type rows (e.g. "guided vs.
+    /// freeWrite accuracy") compares three structurally different
+    /// quantities under one name. WORSE: `LearningPhaseController
+    /// .overallScore` (which feeds `LetterProgress.bestAccuracy` and
+    /// `ParentDashboardStoring.recordSession`'s own `accuracy`) is the
+    /// unweighted MEAN of every active phase's `score` — under
+    /// `.threePhase` (all 3 phases active), one of the three terms
+    /// (observe) is unconditionally `1.0`, so `overallScore`
+    /// has a mathematical FLOOR of 1/3 regardless of how poorly the
+    /// child actually traced (guided=0, freeWrite=0 still yields
+    /// `overallScore` = 1/3). That value is not merely mismatched
+    /// across phases — under `.threePhase` it is systematically
+    /// inflated by a fixed, uninformative floor. See DECISIONS.md D12.
     let score: Double
     /// Spaced-repetition priority assigned when this session was scheduled.
     let schedulerPriority: Double
@@ -46,34 +72,135 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// insurance). Non-nil only on freeWrite rows that captured a trace;
     /// nil for other phases and for legacy records (decode-default).
     let rawTraceID: UUID?
-    /// The participant's trained 3-of-5 study-letter subset
-    /// (`TrainedLetterSubset.rawValue`, e.g. "AFI") so analysis can
-    /// partition trained vs untrained letters per row. Nil for legacy
-    /// records.
+    /// Which study letters were TRAINED for this row's session —
+    /// `TrainedLetterSubset.rawValue`, so analysis can partition trained
+    /// vs untrained letters per row. Nil for legacy records.
+    ///
+    /// Two shapes, and the column is the place to tell them apart
+    /// (2026-09-17). "AFI" and the nine others are the pilot's
+    /// counterbalanced 3-subsets, and the two letters absent from the
+    /// value are the within-child untrained baseline. "AFILM" is the
+    /// `allFiveLetters` comparison configuration, where every letter was
+    /// trained and there is NO untrained baseline — `untrainedLetters`
+    /// is empty on it, so a partition returns one group, not two. Before
+    /// this was fixed the column carried the assigned 3-subset even in an
+    /// all-five session, asserting a contrast the session had removed.
+    ///
+    /// This is the SESSION's trained set (`effectiveTrainedSubset`), not
+    /// the participant's assignment axis — the two differ only under that
+    /// switch, and the assignment is recoverable from the identifier.
     let trainedSubset: String?
     /// Measured-phase duration in seconds — for freeWrite rows, the
     /// first-to-last raw-trace sample span (excludes the trailing 2.0 s
     /// quiet-window auto-advance by construction). Nil for other phases
     /// and legacy records.
     let phaseDurationSeconds: Double?
-    /// **Primary accuracy outcome.** Raw discrete-Fréchet distance
-    /// (Eiter & Mannila 1994) between the freeWrite trace and the
-    /// reference glyph, both arc-length resampled to a common point
-    /// count, in reference-normalised 0–1 units. Lower is better; 0 is a
-    /// perfect overlay. Unbounded above and never clamped, so unlike
-    /// `formAccuracy` (a rescaled, clamped transform of the same
-    /// distance) and `checkpointCoverage` it does not saturate at
-    /// ceiling. Nil for non-freeWrite phases, legacy records, and traces
-    /// too short to compare. See APP_DOCUMENTATION §4.12.
+    /// **RETIRED** (2026-09-04) — kept declared, Codable, and in the
+    /// `recordPhaseSession` signature ONLY for backward-compatible
+    /// decode of any earlier local JSON (same precedent as
+    /// `ThesisCondition`'s deprecated-but-decodable `case direct`); no
+    /// code populates it any more. Was: raw discrete-Fréchet distance
+    /// (Eiter & Mannila 1994) applied to the WHOLE concatenated trace
+    /// vs. the whole concatenated reference. Retired because that
+    /// application conflated two different questions in one number —
+    /// shape accuracy and stroke sequence — which is exactly the defect
+    /// `spatialDeviation`'s stroke-correspondence redesign fixes
+    /// properly: Fréchet distance itself is NOT retired, it is now
+    /// computed WITHIN each matched stroke pair (see
+    /// `StrokeProcessMeasures`), and the sequence signal this field used
+    /// to approximate is now `strokeOrder` / `reversedStrokeCount`
+    /// directly, rather than inferred from an inflated whole-path
+    /// distance number.
     let frechetDistance: Double?
+    /// **PRIMARY accuracy outcome.** Order-invariant spatial deviation
+    /// via STROKE CORRESPONDENCE (2026-09-04, superseding the
+    /// 2026-09-03 whole-trace-Hausdorff design): each traced stroke is
+    /// matched to its best-fitting reference stroke, and this is the
+    /// mean discrete-Fréchet distance across the matched pairs, in
+    /// reference-normalised 0–1 units — see `StrokeProcessMeasures` for
+    /// the full rationale, including why shape normalisation
+    /// (Procrustes) was rejected: this task has a fixed reference and a
+    /// defined canvas, so position/scale already carry real signal, and
+    /// rotation-invariance would be actively wrong (upside-down is an
+    /// error, not a nuisance parameter). Lower is better; unbounded
+    /// above and never clamped (unlike `formAccuracy`, a rescaled/
+    /// clamped transform of this same distance, it does not saturate at
+    /// ceiling). Nil for non-freeWrite phases, legacy records, and
+    /// traces too short to compare.
+    let spatialDeviation: Double?
     /// **Secondary accuracy outcome.** Fraction of the reference's
     /// checkpoints reached during the measured freeWrite phase (0–1),
     /// from `StrokeTracker.overallProgress`. Retained alongside the
-    /// Fréchet distance because it is the measure the app's own UI and
-    /// the earlier pilot rounds used — but it is bounded and saturates
-    /// at 1.0, which is why it is not the primary. Nil for non-freeWrite
+    /// primary because it is the measure the app's own UI and the
+    /// earlier pilot rounds used — but it is bounded and saturates at
+    /// 1.0, which is why it is not the primary. Nil for non-freeWrite
     /// phases and legacy records.
     let checkpointCoverage: Double?
+    /// **SECONDARY process outcome** (2026-09-03). Number of strokes the
+    /// child actually drew. The reference's own expected count is a
+    /// per-letter constant in the bundle (`reference.strokes.count`),
+    /// not duplicated into every row. Nil for non-freeWrite phases,
+    /// legacy records, and traces too short to compare.
+    let strokeCount: Int?
+    /// **SECONDARY process outcome** (2026-09-03). Comma-joined sequence
+    /// of matched reference-stroke indices, in the order the child
+    /// traced them — e.g. "0,2,1", or "0,-" when a traced stroke had no
+    /// reference counterpart (more traced strokes than the reference
+    /// has) — see `StrokeProcessMeasures` for why the raw correspondence
+    /// is recorded rather than one order-conformance scalar. Nil under
+    /// the same conditions as `strokeCount`.
+    let strokeOrder: String?
+    /// **SECONDARY process outcome** (2026-09-03). Of the matched
+    /// strokes, how many were traced in the reverse direction relative
+    /// to the reference stroke's own checkpoint order. Nil under the
+    /// same conditions as `strokeCount`.
+    let reversedStrokeCount: Int?
+    /// Whether the study configuration was active when this row was
+    /// written (ruling C3-2, 2026-09-04). Without it a silent-arm row from
+    /// an enrolled non-study session — TTS prompts, chimes and praise all
+    /// audible — was indistinguishable from a study row. Nil for legacy
+    /// records.
+    let studyMode: Bool?
+    /// Which cold probe this row belongs to — "pretest", "posttest",
+    /// "delayed" (`StudyProbe.rawValue`) — or nil for a training pass
+    /// (2026-09-04). Without it the pretest, the post-test and the
+    /// delayed test on the same letter were indistinguishable rows.
+    ///
+    /// `var`, not `let` (2026-09-16): the live app never sets this to
+    /// "posttest" for a TRAINED letter — `StudyProbe.posttest.permits`
+    /// deliberately refuses one, because a trained letter's post-test is
+    /// the freeWrite phase of its own final training pass (thesis Ch.6),
+    /// not a separate cold probe. That leaves the export schema silent on
+    /// which trained-letter row IS the post-test measurement — nothing
+    /// but timestamp ordering says so. `ParentDashboardExporter` mutates
+    /// this field on export-time COPIES ONLY (`withDerivedPostTestTags`)
+    /// to close that gap; nothing in the running app ever mutates a live
+    /// record, and this mutability is not used anywhere else.
+    var probe: String?
+    /// Which COMPARISON configuration this row's session ran under —
+    /// `StudyComparisonConfiguration.nonDefaultStamp`, e.g.
+    /// `observePasses=2;panningEnabled=false` — or nil for a session
+    /// whose twelve switches were all at their defaults, which is the
+    /// PILOT case and writes an EMPTY column (2026-09-18).
+    ///
+    /// Why it is needed: a comparison run's rows and a pilot run's rows
+    /// carried the same 27 columns, in the same order, with the same
+    /// names, so once rows were merged across sessions the two could not
+    /// be told apart. The one exception was `allFiveLetters`, which
+    /// disclosed itself indirectly through `trainedSubset == "AFILM"`;
+    /// the other eleven switches left no trace at all.
+    ///
+    /// Captured when the RECORD is constructed, never at export time —
+    /// the export can happen days later, on a device whose switches have
+    /// since been changed, and a read there would stamp an old session
+    /// with the current configuration.
+    ///
+    /// Nil is also what every record written before this field existed
+    /// decodes as (decode-default, like every other field added since the
+    /// pilot began) — and that is the honest value: those sessions ran
+    /// the defaults, because every switch's default IS the behaviour the
+    /// app had before that switch existed.
+    var comparisonConfiguration: String?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
@@ -86,7 +213,14 @@ struct PhaseSessionRecord: Codable, Equatable {
          trainedSubset: String? = nil,
          phaseDurationSeconds: Double? = nil,
          frechetDistance: Double? = nil,
-         checkpointCoverage: Double? = nil) {
+         checkpointCoverage: Double? = nil,
+         spatialDeviation: Double? = nil,
+         strokeCount: Int? = nil,
+         strokeOrder: String? = nil,
+         reversedStrokeCount: Int? = nil,
+         studyMode: Bool? = nil,
+         probe: String? = nil,
+         comparisonConfiguration: String? = nil) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
@@ -109,6 +243,13 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.phaseDurationSeconds    = phaseDurationSeconds
         self.frechetDistance         = frechetDistance
         self.checkpointCoverage      = checkpointCoverage
+        self.spatialDeviation        = spatialDeviation
+        self.strokeCount             = strokeCount
+        self.strokeOrder             = strokeOrder
+        self.reversedStrokeCount     = reversedStrokeCount
+        self.studyMode               = studyMode
+        self.probe                   = probe
+        self.comparisonConfiguration = comparisonConfiguration
     }
 
     init(from decoder: Decoder) throws {
@@ -149,6 +290,23 @@ struct PhaseSessionRecord: Codable, Equatable {
         // is the honest value — those sessions never measured it.
         frechetDistance          = try? c.decode(Double.self, forKey: .frechetDistance)
         checkpointCoverage       = try? c.decode(Double.self, forKey: .checkpointCoverage)
+        // Added 2026-09-03 with the order-invariant primary outcome;
+        // nil for every record written before this — those sessions
+        // never measured it, and their frechetDistance is what stays
+        // re-derivable from raw traces if it's ever wanted retroactively.
+        spatialDeviation         = try? c.decode(Double.self, forKey: .spatialDeviation)
+        // Added 2026-09-03 with spatialDeviation, same reasoning: nil
+        // for every record written before this, re-derivable from the
+        // raw trace if ever wanted retroactively.
+        strokeCount              = try? c.decode(Int.self, forKey: .strokeCount)
+        strokeOrder              = try? c.decode(String.self, forKey: .strokeOrder)
+        reversedStrokeCount      = try? c.decode(Int.self, forKey: .reversedStrokeCount)
+        studyMode                = try? c.decode(Bool.self, forKey: .studyMode)
+        probe                    = try? c.decode(String.self, forKey: .probe)
+        // Added 2026-09-18 with the comparison-run stamp; nil for every
+        // record written before it, which is also the correct value —
+        // those sessions ran the switches' defaults.
+        comparisonConfiguration  = try? c.decode(String.self, forKey: .comparisonConfiguration)
     }
 }
 
@@ -218,13 +376,22 @@ struct SessionDurationRecord: Codable, Equatable {
     /// a fragile `recordedAt` join against the per-phase rows. Nil for
     /// legacy records.
     let letter: String?
+    /// Same stamps as the phase row, so a duration can be attributed to
+    /// an arm and a timepoint without a `recordedAt` join (review
+    /// 2026-09-05). Nil on legacy rows.
+    let audioCondition: PilotAudioCondition?
+    let studyMode: Bool?
+    let probe: String?
 
     init(dateString: String, durationSeconds: TimeInterval,
          wallClockSeconds: TimeInterval? = nil,
          condition: ThesisCondition = .threePhase,
          recordedAt: Date? = Date(),
          inputDevice: String? = nil,
-         letter: String? = nil) {
+         letter: String? = nil,
+         audioCondition: PilotAudioCondition? = nil,
+         studyMode: Bool? = nil,
+         probe: String? = nil) {
         self.dateString = dateString
         self.durationSeconds = durationSeconds
         self.wallClockSeconds = wallClockSeconds
@@ -232,6 +399,9 @@ struct SessionDurationRecord: Codable, Equatable {
         self.recordedAt = recordedAt
         self.inputDevice = inputDevice
         self.letter = letter
+        self.audioCondition = audioCondition
+        self.studyMode = studyMode
+        self.probe = probe
     }
 
     init(from decoder: Decoder) throws {
@@ -243,11 +413,18 @@ struct SessionDurationRecord: Codable, Equatable {
         recordedAt = try? c.decode(Date.self, forKey: .recordedAt)
         inputDevice = try? c.decode(String.self, forKey: .inputDevice)
         letter = try? c.decode(String.self, forKey: .letter)
+        audioCondition = try? c.decode(PilotAudioCondition.self, forKey: .audioCondition)
+        studyMode = try? c.decode(Bool.self, forKey: .studyMode)
+        probe = try? c.decode(String.self, forKey: .probe)
     }
 }
 
 struct DashboardSnapshot: Codable, Equatable {
     var letterStats: [String: LetterAccuracyStat] = [:]
+    /// Transient (not encoded — DashboardSnapshot has explicit CodingKeys):
+    /// set by `init(from:)` when the aggregate block was undecodable,
+    /// read by `load(from:)`.
+    var letterStatsUndecodable = false
     var sessionDurations: [SessionDurationRecord] = []
     var phaseSessionRecords: [PhaseSessionRecord] = []
     var schemaVersion: Int? = dashboardSchemaVersion
@@ -262,10 +439,40 @@ struct DashboardSnapshot: Codable, Equatable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        letterStats = try c.decode([String: LetterAccuracyStat].self, forKey: .letterStats)
-        sessionDurations = try c.decode([SessionDurationRecord].self, forKey: .sessionDurations)
-        // phaseSessionRecords was added after initial release; default to empty for old JSON files.
-        phaseSessionRecords = (try? c.decode([PhaseSessionRecord].self, forKey: .phaseSessionRecords)) ?? []
+        // Aggregates only: one malformed entry must not throw the whole
+        // snapshot — and with it every phaseSessionRecord — into quarantine
+        // (audit 2026-09-04). Logged, then rebuilt from the rows on use.
+        if let stats = try? c.decode([String: LetterAccuracyStat].self, forKey: .letterStats) {
+            letterStats = stats
+        } else {
+            storePersistenceLogger.error("DashboardSnapshot: letterStats undecodable — starting with none; phase rows are kept.")
+            letterStats = [:]
+            letterStatsUndecodable = true   // `load(from:)` preserves a copy of the file
+        }
+        // Element-wise (2026-09-04): `[T].self` is all-or-nothing, so ONE
+        // malformed row used to throw the whole array away — and for
+        // `phaseSessionRecords` the `try? … ?? []` then presented the
+        // study's entire record set as "legacy file, no records", with
+        // the next save persisting the loss. Rows that fail are dropped
+        // individually and counted in the log.
+        let durations = try c.decode(LossyArray<SessionDurationRecord>.self, forKey: .sessionDurations)
+        sessionDurations = durations.elements
+        if durations.droppedCount > 0 {
+            storePersistenceLogger.error(
+                "DashboardSnapshot: dropped \(durations.droppedCount) undecodable sessionDurations row(s); \(durations.elements.count) kept.")
+        }
+        // phaseSessionRecords was added after initial release; absent
+        // key → empty (legacy file). Present key → element-wise.
+        if c.contains(.phaseSessionRecords),
+           let records = try? c.decode(LossyArray<PhaseSessionRecord>.self, forKey: .phaseSessionRecords) {
+            phaseSessionRecords = records.elements
+            if records.droppedCount > 0 {
+                storePersistenceLogger.error(
+                    "DashboardSnapshot: dropped \(records.droppedCount) undecodable phaseSessionRecords row(s); \(records.elements.count) kept — these are study rows; the file is worth inspecting.")
+            }
+        } else {
+            phaseSessionRecords = []
+        }
         schemaVersion = try? c.decode(Int.self, forKey: .schemaVersion)
     }
 
@@ -358,29 +565,46 @@ struct DashboardSnapshot: Codable, Equatable {
         let records = phaseSessionRecords
             .filter { $0.phase == LearningPhase.freeWrite.rawName && $0.completed && $0.formAccuracy != nil }
         guard !records.isEmpty else { return nil }
-        let count = Double(records.count)
+        // Each dimension over ITS OWN present values: the decoder sets the
+        // four independently, so a row missing one dimension used to add
+        // 0 to that numerator and 1 to the shared denominator
+        // (audit 2026-09-04).
+        func mean(_ xs: [Double]) -> Double { xs.isEmpty ? 0 : xs.reduce(0, +) / Double(xs.count) }
         return (
-            form:     records.compactMap(\.formAccuracy).reduce(0, +)     / count,
-            tempo:    records.compactMap(\.tempoConsistency).reduce(0, +) / count,
-            pressure: records.compactMap(\.pressureControl).reduce(0, +)  / count,
-            rhythm:   records.compactMap(\.rhythmScore).reduce(0, +)      / count
+            form:     mean(records.compactMap(\.formAccuracy)),
+            tempo:    mean(records.compactMap(\.tempoConsistency)),
+            pressure: mean(records.compactMap(\.pressureControl)),
+            rhythm:   mean(records.compactMap(\.rhythmScore))
         )
     }
 
     /// Pearson correlation between scheduler priority and subsequent accuracy improvement.
     /// Positive values indicate the scheduler is correctly prioritising struggling letters.
-    var schedulerEffectivenessProxy: Double {
+    var schedulerEffectivenessProxy: Double { schedulerEffectivenessProxyIfDefined ?? 0 }
+
+    /// nil when fewer than two freeWrite pairs exist or a variance is
+    /// zero — the exporter writes an empty cell rather than a `0.0000`
+    /// indistinguishable from a real r = 0 (review 2026-09-05).
+    var schedulerEffectivenessProxyIfDefined: Double? {
         var pairs: [(priority: Double, delta: Double)] = []
         let letters = Set(phaseSessionRecords.map { $0.letter })
         for letter in letters {
-            let records = phaseSessionRecords.filter { $0.letter == letter && $0.completed }
+            // D11#2: sorted explicitly by `recordedAt` — `filter` only
+            // preserves `phaseSessionRecords`' own order, which happens
+            // to be chronological today (append-only writes) but was
+            // enforced by nothing. The delta pairing below depends on
+            // true chronological order.
+            // freeWrite rows only — see the exporter twin (audit 2026-09-04).
+            let records = phaseSessionRecords
+                .filter { $0.letter == letter && $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
+                .sorted { ($0.recordedAt ?? .distantPast) < ($1.recordedAt ?? .distantPast) }
             guard records.count >= 2 else { continue }
             for i in 0..<(records.count - 1) {
                 pairs.append((priority: records[i].schedulerPriority,
                                delta: records[i + 1].score - records[i].score))
             }
         }
-        guard pairs.count >= 2 else { return 0 }
+        guard pairs.count >= 2 else { return nil }
         let n = Double(pairs.count)
         let xs = pairs.map { $0.priority }
         let ys = pairs.map { $0.delta }
@@ -389,7 +613,9 @@ struct DashboardSnapshot: Codable, Equatable {
         let numerator = zip(xs, ys).reduce(0.0) { $0 + ($1.0 - xMean) * ($1.1 - yMean) }
         let xVar = xs.reduce(0.0) { $0 + ($1 - xMean) * ($1 - xMean) }
         let yVar = ys.reduce(0.0) { $0 + ($1 - yMean) * ($1 - yMean) }
-        guard xVar > 0, yVar > 0 else { return 0 }
+        // Undefined, not zero: the docstring's contract, which the
+        // exporter turns into an empty cell (audit 2026-09-06).
+        guard xVar > 0, yVar > 0 else { return nil }
         return numerator / sqrt(xVar * yVar)
     }
 }
@@ -407,7 +633,19 @@ protocol ParentDashboardStoring {
                        wallClockSeconds: TimeInterval?,
                        date: Date, condition: ThesisCondition,
                        inputDevice: String?)
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?)
+    /// Stamped variant (review 2026-09-05): arm / study flag / probe on the
+    /// duration row. A requirement WITH a forwarding default (extension
+    /// below), so doubles that only implement the base method still
+    /// conform, while the JSON store overrides it with dynamic dispatch.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?,
+                       audioCondition: PilotAudioCondition?,
+                       studyMode: Bool?,
+                       probe: String?)
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
@@ -420,30 +658,71 @@ extension ParentDashboardStoring {
     /// participant's assigned arm explicitly.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: nil, recognition: nil, inputDevice: nil, rawTraceID: nil, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: nil, recognition: nil, inputDevice: nil, rawTraceID: nil, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil, spatialDeviation: nil, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
     }
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: nil, inputDevice: nil, rawTraceID: nil, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: nil, inputDevice: nil, rawTraceID: nil, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil, spatialDeviation: nil, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
     }
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: nil, rawTraceID: nil, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: nil, rawTraceID: nil, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil, spatialDeviation: nil, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
     }
     /// Pre-3-of-5 full signature — forwards with no subset/duration so
     /// existing call sites and tests compile unchanged.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: nil, phaseDurationSeconds: nil, frechetDistance: nil, checkpointCoverage: nil, spatialDeviation: nil, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
     }
     /// Pre-measurement-layer full signature — forwards with no Fréchet
     /// distance / checkpoint coverage so existing call sites and tests
     /// compile unchanged.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
-                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: nil, checkpointCoverage: nil)
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: nil, checkpointCoverage: nil, spatialDeviation: nil, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
+    }
+    /// Pre-order-invariant-primary full signature — forwards with no
+    /// spatial deviation so existing call sites and tests compile
+    /// unchanged.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: nil, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
+    }
+    /// Pre-stroke-process full signature — forwards with no stroke
+    /// count/order/direction so existing call sites and tests (including
+    /// this session's own order-invariant-primary commit) compile
+    /// unchanged.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: nil, strokeOrder: nil, reversedStrokeCount: nil, studyMode: nil, probe: nil, comparisonConfiguration: nil)
+    }
+    /// Pre-studyMode-stamp full signature (before 2026-09-04) — forwards
+    /// with `studyMode: nil` so earlier call sites and tests compile.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: nil, probe: nil, comparisonConfiguration: nil)
+    }
+    /// Pre-probe full signature (studyMode but no probe, 2026-09-04) —
+    /// forwards with `probe: nil`.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: nil, comparisonConfiguration: nil)
     }
     /// Backward-compatible recordSession overload — new fields populate as nil.
+    /// Forwarding default for the stamped variant — see the requirement.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?,
+                       audioCondition: PilotAudioCondition?,
+                       studyMode: Bool?,
+                       probe: String?) {
+        recordSession(letter: letter, accuracy: accuracy, durationSeconds: durationSeconds,
+                      wallClockSeconds: wallClockSeconds, date: date, condition: condition,
+                      inputDevice: inputDevice)
+    }
+
     func recordSession(letter: String, accuracy: Double,
                        durationSeconds: TimeInterval, date: Date,
                        condition: ThesisCondition) {
@@ -500,6 +779,19 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                        wallClockSeconds: TimeInterval? = nil,
                        date: Date, condition: ThesisCondition,
                        inputDevice: String? = nil) {
+        recordSession(letter: letter, accuracy: accuracy, durationSeconds: durationSeconds,
+                      wallClockSeconds: wallClockSeconds, date: date, condition: condition,
+                      inputDevice: inputDevice, audioCondition: nil, studyMode: nil, probe: nil)
+    }
+
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?,
+                       audioCondition: PilotAudioCondition?,
+                       studyMode: Bool?,
+                       probe: String?) {
         let key = LetterProgress.canonicalKey(letter)
         // Word-mode sessions arrive with multi-character keys
         // (`"BUCH"`); adding those to `letterStats` would corrupt the
@@ -537,7 +829,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                                        condition: condition,
                                        recordedAt: date,
                                        inputDevice: inputDevice,
-                                       letter: letter)
+                                       // Canonical for single letters, like the
+                                       // phase rows; a word label keeps its case
+                                       // (review 2026-09-05).
+                                       letter: letter.count == 1 ? LetterProgress.canonicalKey(letter) : letter,
+                                       audioCondition: audioCondition,
+                                       studyMode: studyMode,
+                                       probe: probe)
             )
             if snapshot.sessionDurations.count > Self.sessionDurationsCap {
                 snapshot.sessionDurations.removeFirst(
@@ -548,7 +846,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         persist()
     }
 
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil) {
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil, spatialDeviation: Double? = nil, strokeCount: Int? = nil, strokeOrder: String? = nil, reversedStrokeCount: Int? = nil, studyMode: Bool? = nil, probe: String? = nil, comparisonConfiguration: String? = nil) {
         let record = PhaseSessionRecord(
             letter: LetterProgress.canonicalKey(letter),
             phase: phase,
@@ -564,7 +862,14 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             trainedSubset: trainedSubset,
             phaseDurationSeconds: phaseDurationSeconds,
             frechetDistance: frechetDistance,
-            checkpointCoverage: checkpointCoverage
+            checkpointCoverage: checkpointCoverage,
+            spatialDeviation: spatialDeviation,
+            strokeCount: strokeCount,
+            strokeOrder: strokeOrder,
+            reversedStrokeCount: reversedStrokeCount,
+            studyMode: studyMode,
+            probe: probe,
+            comparisonConfiguration: comparisonConfiguration
         )
         snapshot.phaseSessionRecords.append(record)
         if snapshot.phaseSessionRecords.count > Self.phaseSessionRecordsCap {
@@ -605,8 +910,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
+                // Loud now (2026-09-14) — see PersistenceFailureCenter.
+                // This store carries the pilot's primary outcome rows;
+                // a silently-swallowed write here is the worst case of
+                // the defect that type exists to close.
                 storePersistenceLogger.warning(
                     "ParentDashboardStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "ParentDashboardStore", error: error)
             }
         }
     }
@@ -618,9 +928,27 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     }
 
     private static func load(from url: URL) -> DashboardSnapshot? {
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(DashboardSnapshot.self, from: data)
-        else { return nil }
+        // No file yet is the ordinary first-launch case and stays quiet.
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        let decoded: DashboardSnapshot
+        do {
+            decoded = try JSONDecoder().decode(DashboardSnapshot.self, from: data)
+            if decoded.letterStatsUndecodable {
+                // The rows are kept in memory and the next persist rewrites
+                // the file; keep the original bytes beside it so the bad
+                // aggregate stays inspectable (review 2026-09-05).
+                StoreFileQuarantine.preserveCopy(url)
+            }
+        } catch {
+            // See ProgressStore.load: an existing-but-undecodable file
+            // silently came up empty and was overwritten on the next
+            // persist. These are the study's phase records — move the
+            // file aside so nothing is destroyed.
+            storePersistenceLogger.error(
+                "ParentDashboardStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
+            StoreFileQuarantine.quarantine(url)
+            return nil
+        }
         // Refuse files written by a future schema rather than
         // mis-decoding them. See ProgressStore.load.
         if let v = decoded.schemaVersion, v > dashboardSchemaVersion {

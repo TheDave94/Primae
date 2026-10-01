@@ -1,13 +1,22 @@
 // LearningPhase.swift
 // PrimaeNative
 //
-// Four-step Gradual Release of Responsibility flow (Fisher & Frey 2013):
-// observe → direct → guided → freeWrite ("I do" / "Start" / "We do" / "You do").
+// Gradual Release of Responsibility flow (Fisher & Frey 2013):
+// observe → guided → freeWrite ("I do" / "We do" / "You do").
+//
+// FOUR CASES, THREE IN A SESSION (2026-09-18). `direct` ("Richtung lernen",
+// tapping numbered stroke-start dots) left the session on David's "the
+// whole tapping the points part should go". **The case remains** — it is
+// `Codable`, reachable from stored rows, and `rawValue` ordering is relied
+// on — but no condition runs it: see `LearningPhaseController.activePhases`.
+// So `allCases` is NOT the session's phase list and must not be used as
+// one; `activePhases` is.
 
 import Foundation
 
-/// Represents one of the four phases in the letter-learning sequence.
-/// The phase determines canvas scaffolding and how input is scored.
+/// Represents one of the four cases in the letter-learning sequence —
+/// three phases run per session (`direct` is kept for Codable, never
+/// active). The phase determines canvas scaffolding and how input is scored.
 enum LearningPhase: Int, Codable, CaseIterable, Comparable, Equatable, Sendable {
     /// Watch the animated letter formation. Touch disabled; tap replays.
     case observe   = 0

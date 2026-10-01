@@ -23,16 +23,37 @@ struct ResearchDashboardView: View {
     /// Proctor-facing studyMode as STORED, which is not necessarily what
     /// this session is running. See `studyDeviceSection`.
     @State private var studyModePending = StudyBuild.resolveStudyMode()
+    /// "Teilnehmer wiederherstellen" (delayed retention test): the UUID
+    /// typed from the first session's export header, and the inline
+    /// error for a malformed one.
+    @State private var restoreIDText = ""
+    @State private var restoreError: String?
     @State private var showExportError = false
+    /// Proctor-facing refusal reason from a cold-probe button
+    /// (`startColdProbe`/`startPostTest` return non-nil on refusal).
+    /// Surfaced via `.alert` so a silent VM refusal is never
+    /// indistinguishable from the dismissal itself doing nothing
+    /// (2026-09-15).
+    @State private var probeError: String?
+    /// Closes the WHOLE parent area (its own root `NavigationSplitView`
+    /// dismiss), not just this detail column. Defaults to a no-op so any
+    /// other construction site keeps compiling. `dismiss()` from a
+    /// `NavigationSplitView` detail column is not guaranteed to dismiss
+    /// the enclosing `.fullScreenCover` — this is the belt to that
+    /// braces (2026-09-15).
+    var onLeaveParentArea: () -> Void = {}
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 participantHeader
-                // Spatial-arm validity guard: stereo pan is void on the
-                // iPad speakers, so a speaker-run spatial session is
-                // invalid data. Researcher-facing only (parent-gated).
-                if vm.audioCondition == .spatial && !headphonesConnected {
+                // Sound-arm validity guard: stereo pan is void on the iPad
+                // speakers, and BOTH sound arms drive pan (thesis Ch.6:
+                // "the pan axis of both sound arms … otherwise degraded").
+                // Until 2026-09-04 only the spatial arm was warned; a
+                // speaker-run phoneme session was silently accepted.
+                // Researcher-facing only (parent-gated).
+                if vm.audioCondition != .silent && !headphonesConnected {
                     headphoneWarning
                 }
                 schreibmotorikSection
@@ -75,7 +96,10 @@ struct ResearchDashboardView: View {
             Label("Keine Kopfhörer verbunden", systemImage: "exclamationmark.triangle.fill")
                 .font(.body(FontSize.md, weight: .semibold))
                 .foregroundStyle(.red)
-            Text("Dieses Gerät ist dem Raumklang-Arm zugeordnet. Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos — eine so durchgeführte Session ist ungültige Studien-Daten. Vor der Session Kopfhörer verbinden.")
+            Text((vm.audioCondition == .spatial
+                  ? "Dieses Gerät ist dem Raumklang-Arm zugeordnet. "
+                  : "Dieses Gerät ist dem Phonem-Arm zugeordnet. ")
+                 + "Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos — eine so durchgeführte Session ist ungültige Studien-Daten. Vor der Session Kopfhörer verbinden.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
         }
@@ -105,11 +129,21 @@ struct ResearchDashboardView: View {
             Text("\(vm.audioCondition.displayName) · \(vm.thesisCondition.displayName)")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(Color.inkSoft)
-            // Third axis, for proctor handoff checks: which 3 of the 5
-            // study letters this participant trains.
-            Text("Trainiert: \(vm.trainedSubset.displayName)")
+            // Third axis, for proctor handoff checks: which of the 5
+            // study letters this SESSION trains. Normally the assigned
+            // 3-subset; all five under the `allFiveLetters` comparison
+            // switch, in which case the assignment axis is shown
+            // alongside so the proctor can still read it off — the
+            // assignment still decides the counterbalancing, it just is
+            // no longer what the child practised.
+            Text("Trainiert: \(vm.effectiveTrainedSubset.displayName)")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(Color.inkSoft)
+            if vm.effectiveTrainedSubset.isAllFive {
+                Text("Zuweisung (Zähler-Achse, nicht der Übungsumfang): \(vm.trainedSubset.displayName)")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+            }
             Text(ParticipantStore.participantId.uuidString)
                 .font(.system(.caption2, design: .monospaced))
                 .foregroundStyle(Color.inkSoft)
@@ -147,6 +181,25 @@ struct ResearchDashboardView: View {
             // correct from the toggle. The three sibling research
             // controls in SettingsView already say "wirksam beim
             // nächsten App-Start"; this one now behaves that way too.
+            #if STUDY_BUILD
+            // Ruling Q1 (2026-09-04): the study binary IS the instrument
+            // and cannot be configured out of it — no toggle here, and
+            // `StudyBuild.resolveStudyMode` ignores any stored value.
+            HStack(spacing: 10) {
+                Image(systemName: "lock.fill").foregroundStyle(Color.inkSoft)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Studienmodus: An (Studien-Build)")
+                        .font(.body(FontSize.md, weight: .semibold))
+                    Text("In diesem Build fest eingeschaltet und nicht abschaltbar — das Gerät spurt exakt das gebündelte Stimulus-Set nach, sämtliches Nicht-Arm-Feedback ist stumm.")
+                        .font(.caption)
+                        .foregroundStyle(Color.inkSoft)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.secondarySystemBackground),
+                        in: RoundedRectangle(cornerRadius: 8))
+            #else
             Toggle(isOn: Binding(
                 get: { studyModePending },
                 set: {
@@ -176,6 +229,7 @@ struct ResearchDashboardView: View {
             .padding(.vertical, 8)
             .background(Color(.secondarySystemBackground),
                         in: RoundedRectangle(cornerRadius: 8))
+            #endif
 
             Divider().padding(.vertical, 2)
             Text("Neuen Teilnehmer beginnen")
@@ -202,6 +256,38 @@ struct ResearchDashboardView: View {
                     .padding(.vertical, 4)
             }
             .buttonStyle(.borderedProminent)
+
+            Divider().padding(.vertical, 2)
+            Text("Teilnehmer wiederherstellen (Nachtest)")
+                .font(.body(FontSize.md, weight: .semibold))
+            Text("Für den verzögerten Nachtest: die Teilnehmer-ID aus dem Export-Header der ersten Sitzung (`# participantId=…`) eingeben. Studienarm und geübte Buchstaben leiten sich wieder aus der ID ab; ein damals gesetzter Override muss aus dem Export erneut gesetzt werden. Wirksam nach Neustart.")
+                .font(.caption)
+                .foregroundStyle(Color.inkSoft)
+            TextField("Teilnehmer-ID (UUID)", text: $restoreIDText)
+                .textFieldStyle(.roundedBorder)
+                .font(.body(FontSize.sm))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.characters)
+            if let restoreError {
+                Label(restoreError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+            Button {
+                if ParticipantStore.restoreParticipant(uuidString: restoreIDText) != nil {
+                    restoreError = nil
+                    vm.markParticipantRestored()   // block tracing until the relaunch
+                    showRelaunchAlert = true
+                } else {
+                    restoreError = "Keine gültige UUID — die ID steht in der ersten Zeile des CSV/JSON-Exports der ersten Sitzung."
+                }
+            } label: {
+                Label("Teilnehmer wiederherstellen", systemImage: "person.crop.circle.badge.clock")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+            }
+            .buttonStyle(.bordered)
+            .disabled(restoreIDText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Divider().padding(.vertical, 2)
             Button(role: .destructive) {
@@ -255,6 +341,14 @@ struct ResearchDashboardView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Die Export-Datei konnte nicht erstellt werden. Es wurde nichts gelöscht.")
+        }
+        .alert("Test kann nicht starten", isPresented: Binding(
+            get: { probeError != nil },
+            set: { if !$0 { probeError = nil } }
+        ), presenting: probeError) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { reason in
+            Text(reason)
         }
     }
 
@@ -428,19 +522,70 @@ struct ResearchDashboardView: View {
     /// normal practice pool by design). Tapping one starts a single COLD
     /// `freeWrite` pass (see `startPostTest(letter:)`) and leaves the
     /// parent area so the child sees the tracing canvas directly.
+    /// The study letters this SESSION did not train — the post-test's
+    /// whole population. Empty when the session trained all five (the
+    /// `allFiveLetters` comparison switch), which is exactly the
+    /// condition the section below renders honestly instead of claiming
+    /// a contrast. One owner, read by the count and the button list
+    /// alike, so the prose and the buttons cannot disagree.
+    private var untrainedForThisSession: Set<String> {
+        vm.effectiveTrainedSubset.untrainedLetters
+    }
+
     private var postTestSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            // Three cold probes (2026-09-04): pretest and delayed test on
+            // all five study letters, post-test on the untrained pair.
+            // Each opens the letter directly in the freeWrite phase —
+            // no demonstration, no scaffolding, audio off, letter not
+            // shown — and tags the row with its kind (`probe` column).
+            sectionHeader(title: "Vortest (alle fünf Buchstaben, vor dem Training)",
+                          subtitle: "Einmaliger, kalter Schreibversuch je Buchstabe — Kovariate der Analyse")
+            probeButtons(kind: .pretest, letters: TrainedLetterSubset.studyLetters)
+
             sectionHeader(title: "Post-Test (ungeübte Buchstaben)",
                           subtitle: "Einmaliger, ungeübter Schreibversuch — kein Vorführen, kein Nachspuren")
-            Text("Diese \(vm.trainedSubset.untrainedLetters.count) Buchstaben hat das Kind NICHT geübt. Ein Antippen startet direkt einen einzigen freien Schreibversuch — Anschauen- und Nachspuren-Phase werden übersprungen, da sie selbst bereits Übung wären.")
-                .font(.caption)
-                .foregroundStyle(Color.inkSoft)
-            ForEach(Array(vm.trainedSubset.untrainedLetters).sorted(), id: \.self) { letter in
+            // Reads the SESSION's untrained set, not the assignment axis
+            // (2026-09-17). Under the `allFiveLetters` comparison switch
+            // the assignment still names a 3-subset while the child
+            // trained all five, so this section used to print "Diese 2
+            // Buchstaben hat das Kind NICHT geübt" and offer exactly
+            // those two trained letters as the untrained probe. The
+            // count and the buttons now come from the same set the
+            // export stamps.
+            if untrainedForThisSession.isEmpty {
+                Text("In dieser Sitzung wurden ALLE FÜNF Buchstaben geübt (Vergleichseinstellung „Alle fünf Buchstaben üben“). Es gibt damit keinen ungeübten Buchstaben und keinen Post-Test: der Vergleich geübt/ungeübt, auf dem die Auswertung aufbaut, ist in dieser Konfiguration nicht verfügbar. Die Daten dieser Sitzung sind ein Vergleichslauf — die Spalte „trainedSubset“ weist sie als „AFILM“ aus, nicht als 3er-Teilmenge.")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+            } else {
+                Text("Diese \(untrainedForThisSession.count) Buchstaben hat das Kind NICHT geübt. Ein Antippen startet direkt einen einzigen freien Schreibversuch — Anschauen- und Nachspuren-Phase werden übersprungen, da sie selbst bereits Übung wären. Der Post-Test der geübten Buchstaben ist die Selbst-schreiben-Phase ihres letzten Durchgangs.")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+                probeButtons(kind: .posttest, letters: Array(untrainedForThisSession).sorted())
+            }
+
+            sectionHeader(title: "Nachtest (verzögert, alle fünf Buchstaben)",
+                          subtitle: "Wochen später, auf dem wiederhergestellten Teilnehmer (siehe „Teilnehmer wiederherstellen“)")
+            probeButtons(kind: .delayed, letters: TrainedLetterSubset.studyLetters)
+        }
+    }
+
+    /// One button per letter for a cold probe of `kind`; each opens the
+    /// letter directly in freeWrite and leaves the parent area.
+    private func probeButtons(kind: StudyProbe, letters: [String]) -> some View {
+        VStack(spacing: 8) {
+            ForEach(letters, id: \.self) { letter in
                 Button {
-                    vm.startPostTest(letter: letter)
-                    dismiss()
+                    if let reason = vm.startColdProbe(letter: letter, kind: kind) {
+                        probeError = reason
+                    } else {
+                        onLeaveParentArea()
+                        // Belt-and-braces: dismisses this detail column if
+                        // that alone is ever sufficient. A no-op otherwise.
+                        dismiss()
+                    }
                 } label: {
-                    Label("Post-Test starten: \(letter)", systemImage: "pencil.and.outline")
+                    Label("\(kind.displayName) starten: \(letter)", systemImage: "pencil.and.outline")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 4)
                 }

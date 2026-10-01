@@ -3,8 +3,9 @@
 //
 // Audit finding 19: `PhaseTransitionCoordinator.recordSessionCompletion`
 // discards the `LearningPhase` type into `[String: Double]` and then
-// re-derives it with eight `phase == "freeWrite"` string comparisons to
-// decide which of six fields to attach. Nothing tested that decision.
+// re-derives it with `phase == "freeWrite"` string comparisons to decide
+// which of the measurement fields (seven as of 2026-09-03, was six) to
+// attach. Nothing tested that decision.
 // `MeasurementLayerTests` builds a `PhaseSessionRecord` directly and
 // tests the *exporter*; every other `recordPhaseSession` reference in
 // the suite is a direct store call or a no-op stub. So a coordinator
@@ -37,19 +38,32 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
         let condition: ThesisCondition
         let audioCondition: PilotAudioCondition
         let trainedSubset: String?
-        // The six freeWrite-only measurement fields.
+        // The ten freeWrite-only measurement fields (2026-09-03: added
+        // spatialDeviation, the order-invariant primary outcome, and the
+        // three stroke process fields).
         let assessment: WritingAssessment?
         let recognition: RecognitionSample?
         let rawTraceID: UUID?
         let phaseDurationSeconds: Double?
         let frechetDistance: Double?
         let checkpointCoverage: Double?
+        let spatialDeviation: Double?
+        let strokeCount: Int?
+        let strokeOrder: String?
+        let reversedStrokeCount: Int?
+        let studyMode: Bool?
+        let probe: String?
 
-        /// How many of the six are populated. 6 on freeWrite, 0 elsewhere.
+        /// How many of the ten declared fields are populated. 9 on
+        /// freeWrite (frechetDistance is RETIRED as of 2026-09-04 — kept
+        /// declared for Codable backward compat, never populated — see
+        /// PhaseSessionRecord.frechetDistance), 0 elsewhere.
         var measurementFieldCount: Int {
             [assessment != nil, recognition != nil, rawTraceID != nil,
              phaseDurationSeconds != nil, frechetDistance != nil,
-             checkpointCoverage != nil].filter { $0 }.count
+             checkpointCoverage != nil, spatialDeviation != nil,
+             strokeCount != nil, strokeOrder != nil,
+             reversedStrokeCount != nil].filter { $0 }.count
         }
 
         /// Names of the populated fields — makes a failure say *which*
@@ -62,6 +76,10 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
             if phaseDurationSeconds != nil { out.insert("phaseDurationSeconds") }
             if frechetDistance != nil { out.insert("frechetDistance") }
             if checkpointCoverage != nil { out.insert("checkpointCoverage") }
+            if spatialDeviation != nil { out.insert("spatialDeviation") }
+            if strokeCount != nil { out.insert("strokeCount") }
+            if strokeOrder != nil { out.insert("strokeOrder") }
+            if reversedStrokeCount != nil { out.insert("reversedStrokeCount") }
             return out
         }
     }
@@ -86,7 +104,14 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
                             trainedSubset: String?,
                             phaseDurationSeconds: Double?,
                             frechetDistance: Double?,
-                            checkpointCoverage: Double?) {
+                            checkpointCoverage: Double?,
+                            spatialDeviation: Double?,
+                            strokeCount: Int?,
+                            strokeOrder: String?,
+                            reversedStrokeCount: Int?,
+                            studyMode: Bool?,
+                            probe: String?,
+                            comparisonConfiguration: String?) {
         calls.append(Call(letter: letter, phase: phase, completed: completed,
                           score: score, condition: condition,
                           audioCondition: audioCondition,
@@ -95,7 +120,13 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
                           rawTraceID: rawTraceID,
                           phaseDurationSeconds: phaseDurationSeconds,
                           frechetDistance: frechetDistance,
-                          checkpointCoverage: checkpointCoverage))
+                          checkpointCoverage: checkpointCoverage,
+                          spatialDeviation: spatialDeviation,
+                          strokeCount: strokeCount,
+                          strokeOrder: strokeOrder,
+                          reversedStrokeCount: reversedStrokeCount,
+                          studyMode: studyMode,
+                          probe: probe))
     }
 
     func reset() {}
@@ -105,7 +136,7 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
 
 @Suite @MainActor struct PhaseRecordAttachmentTests {
 
-    /// A completed four-phase session, captured at the store seam.
+    /// A completed three-phase session, captured at the store seam.
     private struct Session {
         let calls: [CapturingDashboardStore.Call]
         let traces: [RawTrace]
@@ -140,12 +171,17 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
         try #require(vm.strokeTracker.definition != nil,
                      "fixture letter has no stroke definition — the freeWrite branch would bail out and clear the recorder")
 
-        // Walk observe → direct → guided, leaving currentPhase == .freeWrite
-        // with three scores banked, so the completion emits four rows.
+        // Walk observe → guided, leaving currentPhase == .freeWrite with TWO
+        // scores banked, so the completion emits three rows. `.direct` left
+        // the session (2026-09-18), so this is two advances rather than
+        // three; a third would complete the session and the coordinator's
+        // `advance()` would return on its `isLetterSessionComplete` guard
+        // without writing anything.
         vm.phaseController.advance(score: 1.0)   // observe
-        vm.phaseController.advance(score: 1.0)   // direct
         vm.phaseController.advance(score: 0.8)   // guided
         #expect(vm.phaseController.currentPhase == .freeWrite)
+        #expect(!vm.phaseController.isLetterSessionComplete,
+                "a completed session makes the coordinator's advance a no-op, and the driver would then measure nothing")
 
         // A traced horizontal stroke along the fixture's reference
         // (y = 0.50 normalised → y = 200 on a 400×400 canvas). Real
@@ -184,29 +220,36 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
 
     // MARK: - 1. One row per scored phase
 
-    @Test("a completed four-phase session emits exactly one row per phase")
+    @Test("a completed three-phase session emits exactly one row per phase")
     func emitsOneRowPerScoredPhase() async throws {
         let s = try await runSession()
 
-        #expect(s.calls.count == 4,
-                "expected 4 phase rows, got \(s.calls.count): \(s.calls.map(\.phase))")
+        #expect(s.calls.count == 3,
+                "expected 3 phase rows, got \(s.calls.count): \(s.calls.map(\.phase))")
 
         // Keys must be LearningPhase.rawName values, not ad-hoc strings.
+        // The expected set is SPELLED OUT rather than read from
+        // `LearningPhase.allCases` or from a controller's `activePhases`:
+        // an expectation computed from the implementation could never fail.
+        // `.direct` is absent because no session runs it (2026-09-18), so
+        // its row is absent too — one row per SCORED phase.
         let phases = Set(s.calls.map(\.phase))
-        #expect(phases == Set(LearningPhase.allCases.map(\.rawName)),
+        #expect(phases == Set([LearningPhase.observe, .guided, .freeWrite].map(\.rawName)),
                 "phase keys drifted from LearningPhase.rawName: \(phases.sorted())")
 
         for call in s.calls {
             #expect(call.letter == "A")
             #expect(call.completed, "\(call.phase) row should be marked completed")
             #expect((0...1).contains(call.score), "\(call.phase) score out of domain")
+            // C3-2 (2026-09-04): every row says which configuration wrote it.
+            #expect(call.studyMode == false, "\(call.phase) row must carry studyMode=false for this non-study fixture")
         }
     }
 
-    // MARK: - 2. freeWrite carries all six
+    // MARK: - 2. freeWrite carries all nine active measurement fields
 
-    @Test("the freeWrite row carries all six measurement fields")
-    func freeWriteRowCarriesAllSixMeasurementFields() async throws {
+    @Test("the freeWrite row carries all nine active measurement fields")
+    func freeWriteRowCarriesAllNineMeasurementFields() async throws {
         let s = try await runSession()
         let fw = try row(.freeWrite, in: s.calls)
 
@@ -216,25 +259,37 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
         #expect(fw.recognition != nil, "recognition missing from freeWrite row")
         #expect(fw.rawTraceID != nil, "rawTraceID missing from freeWrite row")
         #expect(fw.phaseDurationSeconds != nil, "phaseDurationSeconds missing from freeWrite row")
-        #expect(fw.frechetDistance != nil, "frechetDistance missing — the PRIMARY outcome")
-        #expect(fw.checkpointCoverage != nil, "checkpointCoverage missing — the SECONDARY outcome")
+        // frechetDistance is RETIRED (2026-09-04) — must stay nil even on
+        // a well-formed freeWrite row; see PhaseSessionRecord.frechetDistance.
+        #expect(fw.frechetDistance == nil, "frechetDistance is retired and must never be populated")
+        #expect(fw.checkpointCoverage != nil, "checkpointCoverage missing — a SECONDARY outcome")
+        #expect(fw.spatialDeviation != nil, "spatialDeviation missing — the PRIMARY, order-invariant outcome")
+        #expect(fw.strokeCount != nil, "strokeCount missing — a SECONDARY process outcome")
+        #expect(fw.strokeOrder != nil, "strokeOrder missing — a SECONDARY process outcome")
+        #expect(fw.reversedStrokeCount != nil, "reversedStrokeCount missing — a SECONDARY process outcome")
 
-        #expect(fw.measurementFieldCount == 6,
-                "freeWrite row carries \(fw.measurementFieldCount)/6: \(fw.populatedFields.sorted())")
+        #expect(fw.measurementFieldCount == 9,
+                "freeWrite row carries \(fw.measurementFieldCount)/9 active fields: \(fw.populatedFields.sorted())")
+
+        // The fixture traces ONE continuous stroke (no beginStroke()
+        // calls) — well-formed process fields should say so.
+        #expect(fw.strokeCount == 1, "fixture traces one continuous stroke, got \(fw.strokeCount as Any)")
+        let order = try #require(fw.strokeOrder)
+        #expect(!order.isEmpty, "strokeOrder must name at least the one matched stroke")
+        let reversed = try #require(fw.reversedStrokeCount)
+        #expect((0...1).contains(reversed), "at most the one traced stroke can be reversed, got \(reversed)")
 
         // Well-formed, not merely present.
         let span = try #require(fw.phaseDurationSeconds)
         #expect(span > 0, "measured span must be positive, got \(span)")
         #expect(abs(span - 1.8) < 0.001, "19 samples at 0.1 s → 1.8 s, got \(span)")
 
-        let frechet = try #require(fw.frechetDistance)
-        #expect(frechet.isFinite, "frechetDistance must be finite, got \(frechet)")
-        // A distance is >= 0 by construction, so that bound held whether the
-        // pipeline was right or wrong. The bound that CAN fail is the upper
-        // one: a value past the unit-square diagonal is not normalised letter
-        // space, which is how an unnormalised pixel distance would surface.
-        #expect(frechet <= 2.0.squareRoot(),
-                "frechetDistance outside normalised letter space: \(frechet)")
+        // A Hausdorff/Fréchet-family distance in normalised letter space
+        // cannot exceed the unit square's diagonal.
+        let deviation = try #require(fw.spatialDeviation)
+        #expect(deviation.isFinite, "spatialDeviation must be finite, got \(deviation)")
+        #expect(deviation <= 2.0.squareRoot(),
+                "spatialDeviation outside normalised letter space: \(deviation)")
 
         let coverage = try #require(fw.checkpointCoverage)
         #expect((0...1).contains(coverage), "coverage out of domain: \(coverage)")
@@ -246,11 +301,15 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
 
     // MARK: - 3. Every other phase carries none
 
-    @Test("observe, direct and guided rows carry no measurement fields")
+    /// `.direct` is no longer one of the non-freeWrite rows: no session
+    /// runs that phase (2026-09-18), and `emitsOneRowPerScoredPhase` above
+    /// pins that no `direct` row is written at all — which is the stronger
+    /// statement, so nothing is lost by dropping it from this loop.
+    @Test("observe and guided rows carry no measurement fields")
     func nonFreeWriteRowsCarryNoMeasurementFields() async throws {
         let s = try await runSession()
 
-        for phase in [LearningPhase.observe, .direct, .guided] {
+        for phase in [LearningPhase.observe, .guided] {
             let call = try row(phase, in: s.calls)
             #expect(call.measurementFieldCount == 0,
                     "\(phase.rawName) row must carry no measurement fields, but carries: \(call.populatedFields.sorted())")
@@ -263,6 +322,10 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
             #expect(call.phaseDurationSeconds == nil, "\(phase.rawName) picked up phaseDurationSeconds")
             #expect(call.frechetDistance == nil, "\(phase.rawName) picked up frechetDistance")
             #expect(call.checkpointCoverage == nil, "\(phase.rawName) picked up checkpointCoverage")
+            #expect(call.spatialDeviation == nil, "\(phase.rawName) picked up spatialDeviation")
+            #expect(call.strokeCount == nil, "\(phase.rawName) picked up strokeCount")
+            #expect(call.strokeOrder == nil, "\(phase.rawName) picked up strokeOrder")
+            #expect(call.reversedStrokeCount == nil, "\(phase.rawName) picked up reversedStrokeCount")
         }
 
         // Exactly one row in the session owns the measurement fields.
@@ -300,6 +363,14 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
                 "timestamps and points must stay parallel")
         #expect(trace.forces.count == trace.points.count,
                 "forces and points must stay parallel")
+        // The reference the trial was scored against rides with the
+        // trace (2026-09-04) — offline re-scoring needs the mapped
+        // polyline, not the bundle's bbox-relative one.
+        let reference = try #require(trace.referenceStrokes,
+                                     "the raw trace must carry the reference it was scored against")
+        #expect(reference.strokes.count == 1)
+        #expect(reference.strokes.first?.checkpoints.count == 50,
+                "the fixture letter's 50 checkpoints, mapped into canvas space")
     }
 
     // MARK: - 5. Assignment axes stamped on every row

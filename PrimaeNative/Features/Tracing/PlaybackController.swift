@@ -23,8 +23,24 @@ final class PlaybackController {
     /// post-init so the VM can wire `[weak self]` after `self.playback`
     /// is assigned (two-phase init seam).
     var onIsPlayingChanged: (Bool) -> Void
+    /// Runs immediately before every `audio.play()`. The VM wires the
+    /// arm-file reload here: `AudioEngine.stop()` discards its file and
+    /// `play()` is a no-op without one, so a play after the idle
+    /// transition (a mid-stroke pause) was silent until the next
+    /// touch-down (audit 2026-09-06). Load then play in one synchronous
+    /// block — `play()` cancels an in-flight fade-out, so the fade cannot
+    /// discard the file just loaded.
+    var reloadBeforePlay: (@MainActor () -> Void)?
 
-    // MARK: - Tunable timings (live-adjustable from the debug audio panel)
+    // MARK: - Tunable timings
+    //
+    // NOT live-adjustable, and there is no "debug audio panel" — this
+    // header said there was until 2026-09-17, and nothing has ever set
+    // these after construction (MEASURED: the only references in
+    // `PrimaeNative/` are this file's init and its own reads). They are
+    // injectable at init, which is how the tests drive them; production
+    // always takes the defaults below. Corrected rather than left as a
+    // capability a reader would go looking for.
 
     var activeDebounceSeconds: TimeInterval
     var idleDebounceSeconds: TimeInterval
@@ -38,6 +54,15 @@ final class PlaybackController {
     /// In-flight debounced transition. Read-only so tests can await it
     /// instead of sleeping past the debounce.
     private(set) var pendingTransition: Task<Void, Never>?
+    /// Target of `pendingTransition`. A repeated debounced request for
+    /// the SAME target keeps the running timer instead of restarting it:
+    /// `updateAdaptivePlayback` issues `request(.idle, immediate: false)`
+    /// on every move sample (8–16 ms apart), so a timer restarted per
+    /// sample could only ever fire after the finger STOPPED moving —
+    /// continuous off-path movement never went idle and the documented
+    /// proximity gate (`isNearStroke`, APP_DOCUMENTATION §7.3) was
+    /// activation-only (audit 2026-09-06).
+    private var pendingTarget: PlaybackStateMachine.State?
     private var lastPlayIntentWallTime: CFTimeInterval = 0
 
     // MARK: - Sleep injection
@@ -74,7 +99,23 @@ final class PlaybackController {
         set { machine.resumeIntent = newValue }
     }
 
-    func forceIdle() { machine.forceIdle() }
+    /// Force the pure state machine to `.idle` WITHOUT issuing an
+    /// `audio.stop()` — every call site already stopped the engine
+    /// itself (directly, or via `apply(.stop)`) immediately before
+    /// calling this, as a safety-net reset of the machine's tracked
+    /// state. `audioIsRunning` must be reset alongside it: it used to
+    /// stay stale-true, so a `.play` request landing inside the
+    /// play-intent debounce window shortly after (e.g. re-entering the
+    /// canvas right after an out-of-bounds excursion) took the
+    /// "coalesce rapid taps" branch, which reports `isPlaying = true`
+    /// to the VM but skips BOTH the immediate and the deferred
+    /// `audio.play()` — the deferred fallback exists exactly for a
+    /// stopped engine, and its own guard (`!audioIsRunning`) refused to
+    /// believe the engine was stopped (audit 2026-09-06).
+    func forceIdle() {
+        machine.forceIdle()
+        audioIsRunning = false
+    }
 
     /// Direct synchronous state transition (no debounce). Used by the
     /// app-lifecycle path where semantics require immediate effect.
@@ -85,19 +126,49 @@ final class PlaybackController {
 
     /// Apply a command from `transition(to:)`. Lifts the audio call out so
     /// lifecycle callers can choose when to issue the audio side-effect.
+    /// Whether the last command this controller issued to the engine was
+    /// a play (true) or a stop (false).
+    private var audioIsRunning = false
     func apply(_ cmd: PlaybackStateMachine.Command) {
         switch cmd {
         case .play:
             let now = CACurrentMediaTime()
-            if now - lastPlayIntentWallTime < playIntentDebounceSeconds {
+            let sinceLast = now - lastPlayIntentWallTime
+            // Coalesce ONLY what is already sounding (2026-09-17).
+            //
+            // A play intent that arrives while the engine is running is
+            // redundant — the sound is already there — so swallowing it
+            // costs nothing and is what the window is for.
+            //
+            // A play intent that arrives while the engine is SILENT is not
+            // a burst, it is a stroke beginning: the child lifted the pen
+            // and has touched down again. Deferring that one to the end of
+            // the window is audible in two ways, both reported from the
+            // supervisor's device review:
+            //   - it withholds sound for up to `playIntentDebounceSeconds`
+            //     at the start of every stroke that follows a lift by less
+            //     than that (their "Latenz?"), and
+            //   - the deferred play it scheduled only fired if the machine
+            //     was STILL active when the window elapsed, so a stroke
+            //     that both began and ended inside the window was silent
+            //     for its whole duration (their "alle sounds müssen
+            //     spielen").
+            // The second is a dropped sound, not a late one — which is why
+            // this is a defect fix and not a tuning change. A, F and L are
+            // the multi-stroke study letters, so this is the ordinary
+            // cadence of three of the five.
+            if sinceLast < playIntentDebounceSeconds, audioIsRunning {
                 onIsPlayingChanged(true)
                 return
             }
             lastPlayIntentWallTime = now
+            reloadBeforePlay?()
             audio.play()
+            audioIsRunning = true
             onIsPlayingChanged(true)
         case .stop:
             audio.stop()
+            audioIsRunning = false
             onIsPlayingChanged(false)
         case .none:
             break
@@ -108,8 +179,10 @@ final class PlaybackController {
     /// corresponding audio command fires synchronously before return. Without
     /// immediate, the transition is debounced by the active/idle timing.
     func request(_ target: PlaybackStateMachine.State, immediate: Bool) {
+        if !immediate, pendingTransition != nil, pendingTarget == target { return }
         pendingTransition?.cancel()
         pendingTransition = nil
+        pendingTarget = nil
 
         let wouldChange: Bool
         if target == .active && (!machine.appIsForeground || !machine.resumeIntent) {
@@ -120,6 +193,16 @@ final class PlaybackController {
 
         if immediate {
             apply(machine.transition(to: target))
+            // Ruling AE-2b (2026-09-06): a pen that STOPS produces no
+            // further samples, and only a sample could request idle — so
+            // a finger held still on the path kept the loop playing at
+            // its last rate until it lifted or crawled. Every active
+            // sample now arms a stall timeout of one idle debounce; the
+            // next active sample re-arms it, a stationary pen lets it
+            // fire, and the sound resumes at the next movement (at the
+            // pitch and pan of wherever the pen now is). Both sound arms
+            // go through this identically.
+            if target == .active, machine.state == .active { armStallIdle() }
             return
         }
 
@@ -127,10 +210,30 @@ final class PlaybackController {
 
         let delay = target == .active ? activeDebounceSeconds : idleDebounceSeconds
         let sleeper = sleep
+        pendingTarget = target
         pendingTransition = Task { [weak self] in
             try? await sleeper(.seconds(delay))
             guard !Task.isCancelled, let self else { return }
+            self.pendingTransition = nil
+            self.pendingTarget = nil
             self.apply(self.machine.transition(to: target))
+        }
+    }
+
+    /// Debounced idle that fires unless another active sample arrives
+    /// within `idleDebounceSeconds` — the movement-contingency of the
+    /// coupling (see `request`).
+    private func armStallIdle() {
+        pendingTransition?.cancel()
+        let delay = idleDebounceSeconds
+        let sleeper = sleep
+        pendingTarget = .idle
+        pendingTransition = Task { [weak self] in
+            try? await sleeper(.seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.pendingTransition = nil
+            self.pendingTarget = nil
+            self.apply(self.machine.transition(to: .idle))
         }
     }
 
@@ -139,6 +242,7 @@ final class PlaybackController {
     func cancelPending() {
         pendingTransition?.cancel()
         pendingTransition = nil
+        pendingTarget = nil
         audio.cancelPendingLifecycleWork()
     }
 

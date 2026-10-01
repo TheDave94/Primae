@@ -134,21 +134,23 @@ class TestG3VacuousPass(unittest.TestCase):
         poly = []
         for i in range(n):
             x = i / (n - 1)
-            y = 0.5 + random.gauss(0, 0.002)  # zero-mean noise
+            # Sub-pixel jitter that keeps every segment's turn angle far
+            # below the π/12 straightness class (σ = 0.002 with 1/59
+            # spacing reached 0.56 rad and was NOT straight — the old
+            # test hid that behind an `if`; CI run 1645).
+            y = 0.5 + random.gauss(0, 0.0002)  # zero-mean noise
             poly.append((x, y))
         result = ai.gate_g3_per_stroke(poly, poly, self._bbox(),
-                                         threshold=10.0,
-                                         min_turn_angle_std=None) \
-            if False else ai.gate_g3_per_stroke(poly, poly, self._bbox(),
-                                                  threshold=10.0)
-        # Either passes as STRAIGHT (signed_cum near 0) or vacuous
-        # via insufficient_measured_points / low p95 noise — both
-        # acceptable. The critical property: must NOT vacuous via
-        # signed_cum since noise is zero-mean.
-        if result.get("reason") == "not_applicable_not_straight":
-            # If it vacuous-passes, signed_cum should NOT be the trigger
-            self.assertLess(abs(result.get("signed_cum_ref", 0.0)),
-                             ai.G3_STRAIGHTNESS_SIGNED_CUM_RAD)
+                                         threshold=10.0)
+        # Zero-mean noise must NOT knock the stroke out of the STRAIGHT
+        # class: the assertion used to sit inside an `if` that is false
+        # on the correct path, so the test asserted nothing when G3
+        # behaved (audit 2026-09-04).
+        self.assertNotEqual(result.get("reason"), "not_applicable_not_straight",
+                            f"zero-mean jitter classified as not straight: {result}")
+        self.assertTrue(result["pass"], result)
+        self.assertLess(abs(result.get("signed_cum_ref", 0.0)),
+                        ai.G3_STRAIGHTNESS_SIGNED_CUM_RAD)
 
     def test_sustained_curvature_reference_vacuous_via_p95(self):
         # Reference polyline tracing a tight arc with per-segment
@@ -208,18 +210,25 @@ class TestG3StraightStroke(unittest.TestCase):
         poly = []
         for i in range(50):
             t = i / 49.0
-            # Two flat halves with a small bump in the middle.
-            if 0.45 < t < 0.55:
-                y = 0.55  # ~5 px above the baseline at y=50
+            # A gentle bump: 3 px (0.03 of the 100 px bbox) reached over
+            # ten points and released over ten, so no segment's turn angle
+            # leaves the straightness class (a 5 px step in one segment
+            # was classified NOT straight and the old test returned early
+            # — CI run 1645), while the deviation stays clearly > 1 px.
+            if 0.30 <= t <= 0.50:
+                y = 0.5 + 0.03 * (t - 0.30) / 0.20
+            elif 0.50 < t <= 0.70:
+                y = 0.5 + 0.03 * (0.70 - t) / 0.20
             else:
                 y = 0.5
             poly.append((t, y))
         result = ai.gate_g3_per_stroke(poly, poly, bbox, threshold=5.0)
-        # If the bump puts the reference's max turn-angle above π/12,
-        # G3 vacuous-passes the stroke as not-straight. Accept that;
-        # otherwise verify the deviation is meaningfully > 0.
-        if result.get("reason") == "not_applicable_not_straight":
-            return  # Acceptable: bump too sharp for "straight"
+        # The early `return` on "not_applicable_not_straight" let a G3 that
+        # classifies everything as not-straight pass this test green
+        # (audit 2026-09-04). A ~5 px bump on a 100 px baseline is a
+        # straight stroke with a measurable deviation — assert both.
+        self.assertNotEqual(result.get("reason"), "not_applicable_not_straight",
+                            f"the bump must not disqualify the stroke: {result}")
         self.assertIsNotNone(result["deviation_px"])
         self.assertGreater(result["deviation_px"], 1.0)
 

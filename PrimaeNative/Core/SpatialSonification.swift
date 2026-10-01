@@ -18,6 +18,7 @@
 //   range, comfortable headroom.
 
 import CoreGraphics
+import Foundation
 
 enum SpatialSonification {
     /// Seamlessly-looped neutral carrier: band-limited triangle,
@@ -28,6 +29,32 @@ enum SpatialSonification {
     /// Path shape matches the letter-audio convention (bundle-root
     /// relative, resolved by `AudioEngine.resourceURL(for:)`).
     static let carrierToneFile = "Resources/Sonification/spatial_carrier.wav"
+
+    /// Where the carrier resolves, by the same two lookups `AudioEngine`
+    /// uses (resource-root path, then the subdirectory API), or nil. The
+    /// spatial arm's stimulus AND its demonstration are this one file;
+    /// the engine only logs a warning when it is missing, so a study
+    /// session checks it up front (ruling C1-6, 2026-09-05).
+    static func carrierToneURL() -> URL? {
+        let ns = carrierToneFile as NSString
+        let name = (ns.lastPathComponent as NSString).deletingPathExtension
+        let ext = ns.pathExtension
+        let dir = ns.deletingLastPathComponent
+        for bundle in [Bundle.main, Bundle.module] {
+            if let root = bundle.resourceURL {
+                let candidate = root.appendingPathComponent(carrierToneFile)
+                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
+            }
+            if !dir.isEmpty,
+               let url = bundle.url(forResource: name, withExtension: ext.isEmpty ? nil : ext, subdirectory: dir) { return url }
+            // Flat fallback — the engine's third lookup, for a bundling that
+            // flattens the tree. Without it this precondition would refuse
+            // the whole arm while the engine still played the file
+            // (review 2026-09-05).
+            if let url = bundle.url(forResource: name, withExtension: ext.isEmpty ? nil : ext) { return url }
+        }
+        return nil
+    }
 
     /// Authored frequency of the carrier file, Hz. Pitch offsets are
     /// cents relative to this.

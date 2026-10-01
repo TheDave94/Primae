@@ -84,10 +84,28 @@ import CoreGraphics
             id: UUID(), letter: "A", recordedAt: Date(timeIntervalSince1970: 1_770_000_000),
             points: [CGPoint(x: 1.5, y: 2.5), CGPoint(x: 3.5, y: 4.5)],
             timestamps: [0.0, 0.25], forces: [0.0, 0.9],
-            strokeStartIndices: [1], canvasSize: CGSize(width: 800, height: 600))
+            strokeStartIndices: [1], canvasSize: CGSize(width: 800, height: 600),
+            referenceStrokes: LetterStrokes(letter: "A", checkpointRadius: 0.05, strokes: [
+                StrokeDefinition(id: 1, checkpoints: [Checkpoint(x: 0.1, y: 0.2), Checkpoint(x: 0.9, y: 0.2)])
+            ]))
         let data = try JSONEncoder().encode(trace)
         let back = try JSONDecoder().decode(RawTrace.self, from: data)
         #expect(back == trace)
+        #expect(back.referenceStrokes?.strokes.first?.checkpoints.count == 2)
+    }
+
+    @Test("a trace written before referenceStrokes existed still decodes")
+    func legacyTraceWithoutReferenceDecodes() throws {
+        let legacyJSON = """
+        {"id":"00000000-0000-0000-0000-000000000001","letter":"A",
+         "recordedAt":1770000000,"points":[[1.5,2.5]],"timestamps":[0],
+         "forces":[0],"strokeStartIndices":[],"canvasSize":[800,600]}
+        """.data(using: .utf8)!
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .secondsSince1970
+        let back = try decoder.decode(RawTrace.self, from: legacyJSON)
+        #expect(back.referenceStrokes == nil)
+        #expect(back.points.count == 1)
     }
 
     // MARK: - Reset wipes the store
@@ -118,18 +136,29 @@ import CoreGraphics
     // MARK: - JSON-backed store persistence
 
     @Test("JSONRawTraceStore appends, caps, persists, and resets")
-    func jsonStoreRoundTrips() {
+    func jsonStoreRoundTrips() async {
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("\(UUID().uuidString).json")
         defer { try? FileManager.default.removeItem(at: tmp) }
         let store = JSONRawTraceStore(fileURL: tmp)
-        let trace = RawTrace(id: UUID(), letter: "B", recordedAt: Date(),
-                             points: [CGPoint(x: 5, y: 5)], timestamps: [0], forces: [0],
-                             strokeStartIndices: [], canvasSize: CGSize(width: 100, height: 100))
-        store.append(trace)
+        func trace(_ letter: String) -> RawTrace {
+            RawTrace(id: UUID(), letter: letter, recordedAt: Date(),
+                     points: [CGPoint(x: 5, y: 5)], timestamps: [0], forces: [0],
+                     strokeStartIndices: [], canvasSize: CGSize(width: 100, height: 100))
+        }
+        store.append(trace("B"))
         #expect(store.traces.count == 1)
-        // A fresh instance over the same file decodes the persisted trace.
-        // (persist is async; reset is synchronous on the in-memory array.)
+        // Persists: a fresh instance over the same file decodes it
+        // (the test used to claim this and never did it — audit 2026-09-04).
+        await store.flush()
+        let reopened = JSONRawTraceStore(fileURL: tmp)
+        #expect(reopened.traces.count == 1 && reopened.traces.first?.letter == "B",
+                "the persisted trace must come back from disk; got \(reopened.traces.count)")
+        // Caps at 500, dropping the OLDEST.
+        for i in 0..<520 { store.append(trace("C\(i)")) }
+        #expect(store.traces.count == 500, "cap is 500, got \(store.traces.count)")
+        #expect(store.traces.first?.letter == "C20", "the oldest traces are the ones dropped")
+        // Resets.
         store.reset()
         #expect(store.traces.isEmpty)
     }
@@ -188,6 +217,32 @@ import CoreGraphics
                 "CSV must NOT reference the rawTraceID — it stays derived-only")
         #expect(!csv.contains("rawTraceID"),
                 "CSV header must not gain a rawTraceID column")
+    }
+
+    /// "Teilnehmer wiederherstellen" with a different id re-stamps
+    /// `enrolledAt` and filters the rows, but the traces were exported
+    /// whole — the previous child's ink under this participantId
+    /// (audit 2026-09-06). Same rule for both now; a same-id restore
+    /// keeps the original instant, so nothing of that child is lost.
+    @Test("JSON export filters raw traces by enrolment like the rows")
+    func jsonFiltersTracesBeforeEnrolment() throws {
+        let enrolledAt = Date(timeIntervalSince1970: 1_770_000_000)
+        let before = UUID(), after = UUID()
+        func trace(_ id: UUID, _ at: Date) -> RawTrace {
+            RawTrace(id: id, letter: "A", recordedAt: at,
+                     points: [CGPoint(x: 1, y: 2)], timestamps: [0], forces: [0],
+                     strokeStartIndices: [], canvasSize: CGSize(width: 10, height: 10))
+        }
+        let traces = [trace(before, enrolledAt.addingTimeInterval(-60)),
+                      trace(after, enrolledAt.addingTimeInterval(60))]
+        let filtered = String(data: try ParentDashboardExporter.jsonData(
+            from: DashboardSnapshot(), progress: [:], rawTraces: traces, enrolledAt: enrolledAt), encoding: .utf8)!
+        #expect(!filtered.contains(before.uuidString), "a pre-enrolment trace is another child's ink")
+        #expect(filtered.contains(after.uuidString))
+        let unenrolled = String(data: try ParentDashboardExporter.jsonData(
+            from: DashboardSnapshot(), progress: [:], rawTraces: traces, enrolledAt: nil), encoding: .utf8)!
+        #expect(unenrolled.contains(before.uuidString) && unenrolled.contains(after.uuidString),
+                "no enrolment, no filter — dev exports stay complete")
     }
 
     @Test("exportFileURL JSON (the pre-wipe archive shape) embeds traces")

@@ -2,6 +2,16 @@ import SwiftUI
 import UIKit
 import CoreText
 
+/// Ink width of the live stroke. Named so it can be tested against the
+/// renderer's actual formula — the pressure tests used to assert
+/// arithmetic written in the test file (audit 2026-09-04).
+enum InkStyle {
+    /// 14 pt for a finger (no pressure); 8 pt + 14 pt·pressure for a Pencil.
+    static func width(forPressure pressure: CGFloat?) -> CGFloat {
+        pressure.map { 8 + $0 * 14 } ?? 14
+    }
+}
+
 struct TracingCanvasView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -9,6 +19,9 @@ struct TracingCanvasView: View {
     @ViewBuilder
     private func tracingCanvas(geo: GeometryProxy) -> some View {
         Canvas { context, fullSize in
+            // The draw DECISIONS, resolved in plain Swift by the view model.
+            // This closure only replays them — see `CanvasDrawPlan`.
+            let plan = vm.canvasDrawPlan
             // Reserve the bottom band for the calibrator UI so the
             // glyph doesn't render under the translucent UI cards.
             // Reduces the geometry used for cell layout AND the
@@ -52,7 +65,9 @@ struct TracingCanvasView: View {
                 // Background glyph as a vector path from the OTF
                 // outline (resolution-independent). Skipped in word
                 // mode — the whole-word image was drawn above.
-                if wordRendering == nil,
+                // Not in study freeWrite: the child writes from memory
+                // there (`showsReferenceGlyph`, 2026-09-04).
+                if wordRendering == nil, vm.showsReferenceGlyph,
                    let glyph = PrimaeLetterRenderer.glyphPath(
                        letter: cellLetter, size: cellSize, schriftArt: vm.schriftArt,
                        openTypeFeatures: PrimaeLetterRenderer.openTypeFeatures(
@@ -64,9 +79,16 @@ struct TracingCanvasView: View {
 
                 // Ghost scaffolding follows GRRM: phase drives default
                 // visibility (observe/guided on, freeWrite off); user
-                // toggle adds in observe/guided only. Suppressed during
-                // calibration where the fat blue paths obscure edits.
-                if (vm.showGhostForPhase || (vm.showGhost && vm.learningPhase != .freeWrite)),
+                // toggle adds in observe/guided only — NOT direct, which
+                // deliberately withdraws all scaffolding (numbered dots +
+                // arrow only) per Schmidt & Lee's Guidance Hypothesis
+                // fading (`showGhostForPhase`'s own doc comment). The
+                // prior `vm.learningPhase != .freeWrite` check let the
+                // toggle re-add the ghost during `.direct` too,
+                // contradicting that. Suppressed during calibration
+                // where the fat blue paths obscure edits.
+                if (vm.showGhostForPhase
+                        || (vm.showGhost && (vm.learningPhase == .observe || vm.learningPhase == .guided))),
                    !vm.isCalibrating,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty {
@@ -88,7 +110,7 @@ struct TracingCanvasView: View {
 
                 // Stroke start dots; suppressed during calibration so
                 // the calibrator's own numbered dots aren't doubled up.
-                if vm.showCheckpoints, !vm.isCalibrating,
+                if plan.showsStartDots,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty {
                     for (idx, stroke) in rawStrokes.strokes.enumerated() {
@@ -104,6 +126,51 @@ struct TracingCanvasView: View {
                         let color: Color = isComplete ? .green : (isActive ? .blue : .gray)
                         context.fill(dot, with: .color(color.opacity(0.75)))
                     }
+                }
+                // ^ the ring below is a SIBLING of the dots block, not a
+                // child of it. The first attempt at this fix de-indented
+                // the ring without moving this brace, which left it nested
+                // and made the whole decoupling inert — indentation is not
+                // semantics, and nothing in the test suite touched either
+                // the ring or the switch, so a green run proved nothing.
+
+                // Endpoint ring (2026-09-17) — "Endpunkt einzeichnen".
+                // ONE hollow ring at the LAST checkpoint of the FINAL
+                // stroke: where the letter finishes. Chosen by David
+                // from a rendered comparison of four candidates
+                // (no marker / filled dot / this / a ring on every
+                // stroke); the render is what the choice was made
+                // against, so the colour matches it.
+                //
+                // Hollow on purpose. The start dots are filled, so the
+                // end differs from them in FORM and not only in colour
+                // — which matters here because the reader is five and
+                // cannot read a legend. A ring on EVERY stroke was
+                // rejected: it marks pen-lift points too (F's top bar,
+                // A's crossbar) and competes with the start dots for
+                // attention.
+                //
+                // This is also the answer to "Silent condition nur
+                // optischer Endpunkt". That arm has no sound to signal
+                // the end, and study mode removes the celebration
+                // overlay, the chime and the completion HUD for EVERY
+                // arm (`showCompletionHUD` guards on `!studyMode`;
+                // PhaseTransitionCoordinator gates the rest), so for
+                // the silent arm the canvas is the only place a
+                // finished letter can be acknowledged at all.
+                // NOT gated on `vm.showCheckpoints` — see the note above.
+                if plan.showsEndpointRing,
+                   let ringStrokes = vm.gridCellStrokes(at: i),
+                   let lastStroke = ringStrokes.strokes.last,
+                   let last = lastStroke.checkpoints.last {
+                    let end = CGPoint(x: ox + last.x * cellSize.width,
+                                      y: oy + last.y * cellSize.height)
+                    let ringR: CGFloat = 18
+                    let ring = Path(ellipseIn: CGRect(x: end.x - ringR,
+                                                      y: end.y - ringR,
+                                                      width: ringR * 2,
+                                                      height: ringR * 2))
+                    context.stroke(ring, with: .color(.red.opacity(0.85)), lineWidth: 5)
                 }
 
                 // Retained ink from previously-completed cells stays
@@ -122,7 +189,7 @@ struct TracingCanvasView: View {
                 if isActiveCell, vm.activePath.count > 1 {
                     var path = Path()
                     path.addLines(vm.activePath)
-                    let inkWidth: CGFloat = vm.pencilPressure.map { 8 + $0 * 14 } ?? 14
+                    let inkWidth = InkStyle.width(forPressure: vm.pencilPressure)
                     context.stroke(path, with: .color(.canvasInkStroke),
                                    style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
                 }
@@ -130,6 +197,33 @@ struct TracingCanvasView: View {
                 // Lingering ink — snapshot of the just-completed trace
                 // held visible for ~5 s after the phase transition so
                 // the child sees their own work before it clears.
+                // FreeWrite: every completed stroke stays on screen until
+                // the phase ends. The current stroke vanished at pen-lift,
+                // so a child writing A, F or L from memory placed the next
+                // stroke against a blank canvas (audit 2026-09-04). Same
+                // buffer the scorer reads, so what is shown is what is
+                // measured. Single-cell path (the study layout).
+                if isActiveCell, vm.learningPhase == .freeWrite, vm.gridCells.count == 1 {
+                    let pts = vm.freeWritePoints
+                    let starts = ([0] + vm.freeWriteStrokeStartIndices.filter { $0 > 0 && $0 < pts.count }).sorted()
+                    // COMPLETED strokes only: while a touch is down the
+                    // last segment is the live stroke, drawn above at its
+                    // pressure width — re-stroking it here at a fixed width
+                    // hid the pressure response (review 2026-09-05).
+                    let touchDown = vm.activePath.count > 1
+                    var inked = Path()
+                    for (b, startIdx) in starts.enumerated() {
+                        let isLast = b + 1 == starts.count
+                        if isLast && touchDown { continue }
+                        let endIdx = isLast ? pts.count : starts[b + 1]
+                        guard endIdx - startIdx > 1 else { continue }
+                        inked.addLines(Array(pts[startIdx..<endIdx]))
+                    }
+                    context.stroke(inked, with: .color(.canvasInkStroke),
+                                   style: StrokeStyle(lineWidth: InkStyle.width(forPressure: nil),
+                                                      lineCap: .round, lineJoin: .round))
+                }
+
                 if isActiveCell, vm.lingeringInk.count > 1 {
                     var path = Path()
                     path.addLines(vm.lingeringInk)
@@ -197,17 +291,23 @@ struct TracingCanvasView: View {
                                style: StrokeStyle(lineWidth: 3))
             }
 
-            // Canvas-wide progress (whole sequence).
-            let clampedProgress = max(0, min(1, vm.progress))
-            let trackRect = CGRect(x: 0, y: size.height - 8, width: size.width,                    height: 8)
-            let fillRect  = CGRect(x: 0, y: size.height - 8, width: size.width * clampedProgress, height: 8)
+            // Canvas-wide progress (whole sequence) — not on a study
+            // outcome trial (audit 2026-09-04).
+            if vm.showsProgressFeedback {
+                let clampedProgress = max(0, min(1, vm.progress))
+                let trackRect = CGRect(x: 0, y: size.height - 8, width: size.width,                    height: 8)
+                let fillRect  = CGRect(x: 0, y: size.height - 8, width: size.width * clampedProgress, height: 8)
 
-            context.fill(Path(trackRect), with: .color(.black.opacity(0.1)))
-            context.fill(Path(fillRect),  with: .color(differentiateWithoutColor ? .blue : .green))
+                context.fill(Path(trackRect), with: .color(.black.opacity(0.1)))
+                context.fill(Path(fillRect),  with: .color(differentiateWithoutColor ? .blue : .green))
+            }
         }
         .contentShape(Rectangle())
     }
 
+    // COMPILED OUT OF THE STUDY BUILD — see the call site's comment
+    // above (`body`'s `.overlay(Group { ... })` for `.kpOverlay`).
+    #if !STUDY_BUILD
     @ViewBuilder
     private func freeWriteKPOverlay() -> some View {
         Canvas { context, size in
@@ -264,6 +364,7 @@ struct TracingCanvasView: View {
         .onTapGesture { vm.overlayQueue.dismiss() }
         // Auto-dismiss owned by OverlayQueueManager.
     }
+    #endif
 
     var body: some View {
         GeometryReader { geo in
@@ -271,11 +372,13 @@ struct TracingCanvasView: View {
                 tracingCanvas(geo: geo)
                     .modifier(TracingCanvasAccessibility(vm: vm))
 
-                ProgressPill(progress: vm.progress,
-                             differentiateWithoutColor: differentiateWithoutColor)
-                    .equatable()
-                    .padding(.leading, 12)
-                    .padding(.bottom, 16)
+                if vm.showsProgressFeedback {
+                    ProgressPill(progress: vm.progress,
+                                 differentiateWithoutColor: differentiateWithoutColor)
+                        .equatable()
+                        .padding(.leading, 12)
+                        .padding(.bottom, 16)
+                }
             }
             .onAppear { vm.canvasSize = geo.size }
             .onChange(of: geo.size) { _, newSize in vm.canvasSize = newSize }
@@ -297,7 +400,7 @@ struct TracingCanvasView: View {
                         vm.beginTouch(at: pt, t: t)
                     },
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
-                    onSingleTouchEnded:  { vm.endTouch() },
+                    onSingleTouchEnded:  { vm.endTouch(fromPencil: false) },
                     // Two-finger swipe cycles audio variants.
                     onTwoFingerSwipeUp:   { vm.nextAudioVariant() },
                     onTwoFingerSwipeDown: { vm.previousAudioVariant() }
@@ -318,7 +421,7 @@ struct TracingCanvasView: View {
                         vm.pencilAzimuth  = azimuth
                         vm.updateTouch(at: pt, t: t, canvasSize: size)
                     },
-                    onEnded:  { vm.endTouch() },
+                    onEnded:  { vm.endTouch(fromPencil: true) },
                     onPencilSqueeze: { vm.replayAudio() }
                 )
                 // Suspend tracing during calibration so a drag doesn't
@@ -336,9 +439,22 @@ struct TracingCanvasView: View {
             )
             .overlay(
                 Group {
+                    // KP (Knowledge of Performance) overlay — child-
+                    // reachable, not the tracing task (feedback ABOUT the
+                    // trace after it's done, not the trace itself), not
+                    // proctor-facing, not a research surface. Enqueue
+                    // site already `!studyMode`-gated
+                    // (PhaseTransitionCoordinator.celebrateFreeWrite);
+                    // compiled out here too so `freeWriteKPOverlay()`
+                    // itself is absent from the study binary, matching
+                    // the other overlay surfaces (RecognitionFeedbackView
+                    // etc.) rather than leaving this one as the sole
+                    // runtime-only exception.
+                    #if !STUDY_BUILD
                     if case .kpOverlay = vm.overlayQueue.currentOverlay {
                         freeWriteKPOverlay()
                     }
+                    #endif
                 }
             )
             .overlay(
@@ -703,7 +819,14 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
 
         func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?, in view: UIView) {
             guard let tracked = trackedTouch, touches.contains(tracked) else { return }
-            onSingleTouchMoved(tracked.location(in: view), tracked.timestamp, canvasSize)
+            // Coalesced samples: the tracker advances at most one checkpoint
+            // per update, so a 200-checkpoint stroke needed 200 delivered
+            // events — a fast child could not complete M or O at 60 Hz
+            // (class two, 2026-09-05). Deliver every sample.
+            let samples = event?.coalescedTouches(for: tracked) ?? [tracked]
+            for s in samples {
+                onSingleTouchMoved(s.location(in: view), s.timestamp, canvasSize)
+            }
         }
 
         func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -813,31 +936,51 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
         }
 
         override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-            guard let touch = event?.allTouches?.first else { return nil }
-            return touch.type == .pencil ? self : nil
+            // `allTouches` is an unordered Set: with a resting palm its
+            // `.first` could be the finger, and the pencil stroke then
+            // fell through to the finger overlay (audit 2026-09-04).
+            guard let touches = event?.allTouches else { return nil }
+            return touches.contains { $0.type == .pencil } ? self : nil
         }
 
         // Pencil callbacks are delivered on the main thread; no hop
         // needed.
         override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let t = touches.first, t.type == .pencil else { return }
+            // `touches` is an unordered Set: with a resting palm ALSO
+            // routed here (this view's `hitTest` claims the whole event
+            // once any pencil touch is present, so a palm hit-testing
+            // into the same region rides along), `.first` could be the
+            // palm and the pencil sample was silently dropped — the same
+            // defect `hitTest` was fixed for below, left in the sibling
+            // delegate methods (audit 2026-09-06). Find the pencil touch
+            // specifically; never picked = never take a palm's word for
+            // where the pencil is.
+            guard let t = touches.first(where: { $0.type == .pencil }) else { return }
             coordinator?.onBegan(t.location(in: self), t.timestamp)
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard let t = touches.first, t.type == .pencil else { return }
-            let pressure = t.force / max(t.maximumPossibleForce, 1)
-            coordinator?.onMoved(t.location(in: self), t.timestamp, pressure,
-                                  t.azimuthAngle(in: self), canvasSize)
+            guard let t = touches.first(where: { $0.type == .pencil }) else { return }
+            // Every coalesced sample, for the same reason as the finger
+            // overlay (class two, 2026-09-05).
+            let samples = event?.coalescedTouches(for: t) ?? [t]
+            for s in samples {
+                let pressure = s.force / max(s.maximumPossibleForce, 1)
+                coordinator?.onMoved(s.location(in: self), s.timestamp, pressure,
+                                      s.azimuthAngle(in: self), canvasSize)
+            }
         }
 
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard touches.first?.type == .pencil else { return }
+            // A simultaneous lift (pencil + resting palm in the same
+            // batch) must not let the palm's presence in the Set hide
+            // the pencil's end — check membership, not `.first`.
+            guard touches.contains(where: { $0.type == .pencil }) else { return }
             coordinator?.onEnded()
         }
 
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-            guard touches.first?.type == .pencil else { return }
+            guard touches.contains(where: { $0.type == .pencil }) else { return }
             coordinator?.onEnded()
         }
     }

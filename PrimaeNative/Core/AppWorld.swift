@@ -9,7 +9,7 @@ import Foundation
 
 /// One of the three child-facing worlds.
 enum AppWorld: String, CaseIterable, Identifiable, Sendable {
-    /// Buchstaben-Schule — guided four-phase letter learning.
+    /// Buchstaben-Schule — guided three-phase letter learning.
     case schule
     #if !STUDY_BUILD
     /// Schreibwerkstatt — freeform letter and word writing.

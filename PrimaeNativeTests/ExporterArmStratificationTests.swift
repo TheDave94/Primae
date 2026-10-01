@@ -184,8 +184,9 @@ import Foundation
         let m = metrics(csv())
 
         // threePhase: letter A has 3 completed records → 2 pairs.
-        //   pairs = (prio 0.1, Δ +0.4), (prio 0.5, Δ −0.1)
-        //   two points, opposite signs → r = −1 exactly.
+        //   scores 0.2 → 0.6 → 0.7: pairs = (prio 0.1, Δ +0.4), (prio 0.5, Δ +0.1)
+        //   two points, priority up while delta down → r = −1 exactly
+        //   (n = 2 is ±1 by construction; the test checks the sign).
         let proxy = try #require(m["schedulerEffectivenessProxy_threePhase"],
             "threePhase scheduler proxy is missing")
         let r = try #require(Double(proxy), "proxy '\(proxy)' does not parse")
@@ -196,6 +197,44 @@ import Foundation
         #expect(m["schedulerEffectivenessProxy_guidedOnly"] == nil,
                 "an arm with <2 pairs must be omitted, not emitted as 0")
         #expect(m["schedulerEffectivenessProxy_control"] == nil)
+    }
+
+    // D11#2 regression, exporter side: the per-arm proxy's `chrono` local
+    // used to be array (insertion) order, not `recordedAt` order. The
+    // fixture above happens to insert already in chronological order, so
+    // it can't tell the two apart — this one deliberately doesn't.
+    @Test("schedulerEffectivenessProxy_ is independent of record insertion order")
+    func schedulerProxyPerArm_insertionOrderIndependent() throws {
+        func snap(_ records: [PhaseSessionRecord]) -> DashboardSnapshot {
+            var s = DashboardSnapshot()
+            s.phaseSessionRecords = records
+            return s
+        }
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let chronological = [
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true,
+                                score: 0.2, schedulerPriority: 0.1,
+                                condition: .threePhase, recordedAt: base),
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true,
+                                score: 0.6, schedulerPriority: 0.5,
+                                condition: .threePhase, recordedAt: base.addingTimeInterval(60)),
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true,
+                                score: 0.5, schedulerPriority: 0.9,
+                                condition: .threePhase, recordedAt: base.addingTimeInterval(120)),
+        ]
+        let chronoCSV = ParentDashboardExporter.csvData(
+            from: snap(chronological), participantId: pid, progress: [:], enrolledAt: nil)
+        let reversedCSV = ParentDashboardExporter.csvData(
+            from: snap(chronological.reversed()), participantId: pid, progress: [:], enrolledAt: nil)
+
+        func proxy(_ data: Data) throws -> Double {
+            let lines = String(data: data, encoding: .utf8)!.split(separator: "\n").map(String.init)
+            let m = metrics(lines)
+            let raw = try #require(m["schedulerEffectivenessProxy_threePhase"])
+            return try #require(Double(raw))
+        }
+        #expect(abs(try proxy(chronoCSV) - (try proxy(reversedCSV))) < 1e-9,
+                "the per-arm proxy must be keyed on recordedAt, not insertion order")
     }
 
     // MARK: - 5. letterByArm
@@ -321,6 +360,57 @@ import Foundation
                 "pre-enrolment record inflated letterByAudioArm's sample count: \(byAudioRow)")
     }
 
+    // MARK: - 9. Pre-enrolment rows never reach the HEADLINE aggregates either
+    //
+    // D11#1's second half (2026-09-04): `phaseCompletionRate_*`,
+    // `averageFreeWriteScore`, `schedulerEffectivenessProxy` and the four
+    // Schreibmotorik averages are computed properties of the snapshot and
+    // ran over every record on disk — the filter never reached them, even
+    // after the ticket was marked closed.
+
+    @Test("a pre-enrolment record does not reach phaseCompletionRate, averageFreeWriteScore or the Schreibmotorik averages")
+    func preEnrolmentRowsExcludedFromHeadlineAggregates() throws {
+        let enrolledAt = Date(timeIntervalSince1970: 1_000_000)
+        let enrolled = PhaseSessionRecord(
+            letter: "B", phase: "freeWrite", completed: true,
+            score: 1.0, schedulerPriority: 0.0,
+            condition: .threePhase, audioCondition: .phoneme,
+            recordedAt: enrolledAt.addingTimeInterval(60),
+            assessment: WritingAssessment(formAccuracy: 1, tempoConsistency: 1,
+                                          pressureControl: 1, rhythmScore: 1))
+        // A pre-enrolment freeWrite row at 0.0 on every scale, and a
+        // pre-enrolment observe row — the only observe row in the
+        // snapshot, so its completion-rate key must not appear at all.
+        let strayFreeWrite = PhaseSessionRecord(
+            letter: "B", phase: "freeWrite", completed: true,
+            score: 0.0, schedulerPriority: 0.0,
+            condition: .threePhase, audioCondition: .phoneme,
+            recordedAt: enrolledAt.addingTimeInterval(-1800),
+            assessment: WritingAssessment(formAccuracy: 0, tempoConsistency: 0,
+                                          pressureControl: 0, rhythmScore: 0))
+        let strayObserve = PhaseSessionRecord(
+            letter: "B", phase: "observe", completed: true,
+            score: 1.0, schedulerPriority: 0.0,
+            condition: .threePhase, audioCondition: .phoneme,
+            recordedAt: enrolledAt.addingTimeInterval(-3600))
+        let s = DashboardSnapshot(phaseSessionRecords: [strayObserve, strayFreeWrite, enrolled])
+
+        let data = ParentDashboardExporter.csvData(
+            from: s, participantId: pid, progress: [:], enrolledAt: enrolledAt)
+        let lines = String(data: data, encoding: .utf8)!
+            .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let m = metrics(lines)
+
+        #expect(m["phaseCompletionRate_observe"] == nil,
+                "a phase completed only by pre-enrolment rows must not appear: \(m["phaseCompletionRate_observe"] ?? "nil")")
+        #expect(m["averageFreeWriteScore"].flatMap(Double.init) == 1.0,
+                "pre-enrolment freeWrite score 0.0 leaked into the headline average: \(m["averageFreeWriteScore"] ?? "nil")")
+        #expect(m["averageFormAccuracy"].flatMap(Double.init) == 1.0,
+                "pre-enrolment form 0.0 leaked into averageFormAccuracy: \(m["averageFormAccuracy"] ?? "nil")")
+        #expect(m["averageRhythmScore"].flatMap(Double.init) == 1.0,
+                "pre-enrolment rhythm 0.0 leaked into averageRhythmScore: \(m["averageRhythmScore"] ?? "nil")")
+    }
+
     // MARK: - Shared well-formedness
 
     /// Arity, integer sample count, and a score inside [0,1] with the
@@ -342,4 +432,86 @@ import Foundation
             #expect(!row[2].isEmpty, "\(family) arm field is empty")
         }
     }
+
+    // MARK: - 6. letterBy* families read freeWrite rows only (audit 2026-09-04)
+
+    /// observe/direct rows carry a constant score of 1.0 and guided
+    /// carries coverage; averaging them into `letterByArm` floored the
+    /// per-arm accuracy near 0.5 and compared the arms on a completion
+    /// counter. Only the freeWrite production row is an accuracy.
+    @Test("letterByArm and letterByAudioArm ignore completed non-freeWrite rows")
+    func letterByArmFamiliesAreFreeWriteOnly() throws {
+        var snap = DashboardSnapshot()
+        let t = Date(timeIntervalSince1970: 1_770_000_000)
+        snap.phaseSessionRecords = [
+            PhaseSessionRecord(letter: "A", phase: "observe", completed: true, score: 1.0,
+                               schedulerPriority: 0, condition: .threePhase, audioCondition: .spatial, recordedAt: t),
+            PhaseSessionRecord(letter: "A", phase: "direct", completed: true, score: 1.0,
+                               schedulerPriority: 0, condition: .threePhase, audioCondition: .spatial, recordedAt: t),
+            PhaseSessionRecord(letter: "A", phase: "guided", completed: true, score: 0.9,
+                               schedulerPriority: 0, condition: .threePhase, audioCondition: .spatial, recordedAt: t),
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true, score: 0.3,
+                               schedulerPriority: 0, condition: .threePhase, audioCondition: .spatial, recordedAt: t),
+        ]
+        let lines = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+            .components(separatedBy: "\n")
+        let byArm = family("letterByArm", in: lines)
+        #expect(byArm == [["letterByArm", "A", "threePhase", "1", "0.3000"]],
+                "one freeWrite row, its own score — got \(byArm)")
+        let byAudio = family("letterByAudioArm", in: lines)
+        #expect(byAudio == [["letterByAudioArm", "A", "spatial", "1", "0.3000"]],
+                "got \(byAudio)")
+    }
+
+    /// The proxy pairs consecutive rows per letter. Within one pass those
+    /// are observe → direct → guided → freeWrite — three different
+    /// instruments — so a guided row must not form a "learning delta"
+    /// with the freeWrite row that follows it (audit 2026-09-04).
+    @Test("schedulerEffectivenessProxy_ pairs freeWrite rows only")
+    func proxyIgnoresNonFreeWriteRows() throws {
+        let t0 = Date(timeIntervalSince1970: 1_770_000_000)
+        func fw(_ score: Double, _ prio: Double, _ offset: Double) -> PhaseSessionRecord {
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true, score: score,
+                               schedulerPriority: prio, condition: .threePhase, recordedAt: t0.addingTimeInterval(offset))
+        }
+        func guided(_ offset: Double) -> PhaseSessionRecord {
+            PhaseSessionRecord(letter: "A", phase: "guided", completed: true, score: 1.0,
+                               schedulerPriority: 0.9, condition: .threePhase, recordedAt: t0.addingTimeInterval(offset))
+        }
+        // Four passes: the guided rows interleave with the freeWrite rows.
+        // Three freeWrite pairs, so r is a real correlation, not the
+        // degenerate n = 2 case that is ±1 by construction (review 2026-09-05).
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords = [guided(0), fw(0.2, 0.1, 1), guided(2), fw(0.6, 0.5, 3), guided(4), fw(0.7, 0.9, 5), guided(6), fw(0.55, 1.3, 7)]
+        let lines = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+            .components(separatedBy: "\n")
+        // Two steps, not a nested #require — nesting expands the macro recursively.
+        let raw = try #require(metrics(lines)["schedulerEffectivenessProxy_threePhase"])
+        let r = try #require(Double(raw))
+        // freeWrite-only pairs: (0.1, +0.4), (0.5, +0.1), (0.9, −0.15) → r ≈ −0.9986
+        // (not collinear — a −0.2 third delta made r exactly −1, CI run 1649).
+        // With the guided rows paired in, deltas alternate sign and r moves far from that.
+        #expect(r < -0.98 && r > -1.0, "expected r ≈ -0.995 from the three freeWrite pairs, got \(r)")
+        #expect(abs(snap.schedulerEffectivenessProxy - r) < 1e-4,
+                "the store's own proxy must agree with the exporter: \(snap.schedulerEffectivenessProxy)")
+        // Fewer than two pairs: an EMPTY cell, not a fabricated 0.0000.
+        var thin = DashboardSnapshot()
+        thin.phaseSessionRecords = [fw(0.2, 0.1, 1)]
+        let thinLines = String(data: ParentDashboardExporter.csvData(
+            from: thin, progress: [:], enrolledAt: nil), encoding: .utf8)!.components(separatedBy: "\n")
+        #expect(thinLines.contains("schedulerEffectivenessProxy,"), "undefined proxy must export as an empty cell")
+        #expect(thin.schedulerEffectivenessProxyIfDefined == nil)
+        // Zero variance (every pair at the same priority): undefined too,
+        // per the docstring — the store returned 0 here (audit 2026-09-06).
+        var flat = DashboardSnapshot()
+        flat.phaseSessionRecords = [fw(0.2, 0.5, 1), fw(0.6, 0.5, 3), fw(0.7, 0.5, 5)]
+        #expect(flat.schedulerEffectivenessProxyIfDefined == nil,
+                "zero priority variance must be undefined, not 0: \(String(describing: flat.schedulerEffectivenessProxyIfDefined))")
+        let flatLines = String(data: ParentDashboardExporter.csvData(
+            from: flat, progress: [:], enrolledAt: nil), encoding: .utf8)!.components(separatedBy: "\n")
+        #expect(flatLines.contains("schedulerEffectivenessProxy,"), "zero-variance proxy must export as an empty cell")
+    }
+
 }

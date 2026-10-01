@@ -29,8 +29,18 @@ final class TouchDispatcher {
 
     /// EWMA smoothing factor; calibrated for iPad-finger writing.
     var velocitySmoothingAlpha: CGFloat = 0.22
-    /// Minimum smoothed velocity (pt/s) before playback goes `.active`.
-    var playbackActivationVelocityThreshold: CGFloat = 22
+    /// Minimum smoothed velocity (pt/s) before playback goes `.active` —
+    /// one half of the ANDed boundary that decides WHEN the arm's sound
+    /// starts (`vm.strokeTracker.isNearStroke` is the other).
+    ///
+    /// The value here is the production default — taken from the one named
+    /// constant so it cannot drift from the switch's own default;
+    /// `TracingViewModel` overwrites it once at construction from
+    /// `StudyComparisonSettings.soundGateVelocityFloor`, the supervisor's
+    /// "Trigger boundaries" (2026-09-17), so a comparison run can move it
+    /// and an untouched device keeps this value.
+    var playbackActivationVelocityThreshold: CGFloat =
+        CGFloat(StudyComparisonSettings.soundGateVelocityFloorDefault)
     /// Sub-pixel hysteresis so digitiser noise on a held finger doesn't
     /// accumulate spurious motion.
     var minimumTouchMoveDistance: CGFloat = 1.5
@@ -45,6 +55,9 @@ final class TouchDispatcher {
     /// we schedule a quiet-window phase advance (~2 s); a re-touch
     /// cancels it.
     private var freeWriteAutoAdvanceTask: Task<Void, Never>?
+    /// Device that began the current session; events from the other
+    /// device are ignored until it ends (review 2026-09-05).
+    private var sessionIsPencil = false
     private let freeWriteQuietSeconds: TimeInterval = 2.0
 
     /// Tracks the previous in-bounds state so the out-of-bounds warning
@@ -55,15 +68,27 @@ final class TouchDispatcher {
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
         guard let vm else { return }
+        // A study session that cannot deliver its stimulus does not
+        // trace at all — see TracingViewModel.studyPreconditionFailure.
+        guard vm.sessionBlockReason == nil             else { return }
         guard vm.phaseController.isTouchEnabled       else { return }
         guard vm.phaseController.currentPhase != .direct else { return }  // handled by DirectPhaseDotsOverlay
         guard !isSingleTouchInteractionActive         else { return }
+        // A freeWrite production that has been scored (quiet window
+        // fired, recognizer in flight) accepts no more ink: its measures
+        // were latched from the buffer as it was, and a later stroke used
+        // to land in the raw trace but not in the row (review 2026-09-05).
+        guard !(vm.didCompleteCurrentLetter && vm.phaseController.currentPhase == .freeWrite) else { return }
 
         // Re-touch cancels a pending freeWrite auto-advance.
         freeWriteAutoAdvanceTask?.cancel()
         freeWriteAutoAdvanceTask = nil
+        // A real touch beginning always supersedes an in-flight
+        // pre-task demonstration — see PreTaskDemonstration.
+        vm.cancelPreTaskDemonstration()
 
         isSingleTouchInteractionActive = true
+        sessionIsPencil                = vm.lastTouchDownWasPencil
         vm.playback.resumeIntent       = true
         lastPoint                      = p
         lastTimestamp                  = t
@@ -76,22 +101,33 @@ final class TouchDispatcher {
         // polyline at lifts (F→P confusion otherwise).
         if vm.phaseController.currentPhase == .freeWrite {
             vm.freeWriteRecorder.beginStroke()
+            // The pen-down sample IS the stroke's start: without it the
+            // trace began 1.5 pt into the stroke and the duration
+            // excluded the pen-down→first-move interval (audit 2026-09-04).
+            vm.freeWriteRecorder.record(point: p, timestamp: t,
+                                        force: vm.pencilPressure ?? 0,
+                                        canvasSize: vm.canvasSize)
         }
         // FreeWrite fades real-time feedback (Schmidt & Lee 2005
         // Guidance Hypothesis); gate haptics + ticks on intensity.
         if vm.feedbackIntensity > 0 { vm.haptics.fire(.strokeBegan) }
         // endTouch's stop() clears currentFile; reload before the next
-        // play() would silently fail.
-        if vm.letters.indices.contains(vm.letterIndex) {
-            let files = vm.activeAudioFiles(for: vm.letters[vm.letterIndex])
-            if files.indices.contains(vm.audioIndex) {
-                vm.audio.loadAudioFile(named: files[vm.audioIndex], autoplay: false)
-            }
-        }
+        // play() would silently fail. (PlaybackController reloads again
+        // before each play, for the same reason mid-stroke.)
+        vm.reloadActiveAudioFile()
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
         guard let vm else { return }
+        // The Pencil overlay stamps `pencilPressure` before every move; the
+        // finger overlay never does. A move from the device that does not
+        // own this session is dropped (and a stray pencil stamp cleared) so
+        // a resting hand and the pen cannot interleave into one stroke.
+        let eventIsPencil = vm.pencilPressure != nil
+        if eventIsPencil != sessionIsPencil {
+            if !sessionIsPencil { vm.pencilPressure = nil; vm.pencilAzimuth = 0 }
+            return
+        }
         guard isSingleTouchInteractionActive else { return }
         guard let lastPoint                  else { return }
 
@@ -108,10 +144,20 @@ final class TouchDispatcher {
             vm.isPlaying = false
             vm.playback.cancelPending()
             vm.playback.forceIdle()
-            vm.strokeTracker.resetCurrentStroke()
-            vm.activePath.removeAll(keepingCapacity: true)
-            vm.toast("Probier's nochmal")
-            vm.speech.speak("Probier's nochmal")
+            if vm.phaseController.currentPhase == .freeWrite {
+                // Free production: what was drawn stays in the record
+                // (and on screen); the excursion simply ends this stroke,
+                // so the re-entry does not fuse with it into one
+                // mis-shaped stroke. No retry cue — the phase gives no
+                // feedback (audit 2026-09-04).
+                vm.freeWriteRecorder.beginStroke()
+                vm.activePath.removeAll(keepingCapacity: true)
+            } else {
+                vm.strokeTracker.resetCurrentStroke()
+                vm.activePath.removeAll(keepingCapacity: true)
+                vm.toast("Probier's nochmal")
+                vm.speech.speak("Probier's nochmal")
+            }
         }
         wasInBounds = isWithinCanvasBounds
 
@@ -183,8 +229,12 @@ final class TouchDispatcher {
         self.lastTimestamp = t
     }
 
-    func endTouch() {
+    func endTouch(fromPencil: Bool? = nil) {
         guard let vm else { return }
+        // A lift from the device that does not own the session (the Pencil
+        // lifting while a resting finger is the tracked touch) must not end
+        // the finger's stroke (review 2026-09-05).
+        if let fromPencil, isSingleTouchInteractionActive, fromPencil != sessionIsPencil { return }
         isSingleTouchInteractionActive = false
         lastPoint                      = nil
         lastTimestamp                  = nil
@@ -203,7 +253,7 @@ final class TouchDispatcher {
         // signal; re-touch within the window cancels.
         if vm.phaseController.currentPhase == .freeWrite,
            !vm.didCompleteCurrentLetter,
-           !vm.freeWritePoints.isEmpty {
+           vm.freeWritePoints.count >= 2 {   // a one-sample contact (a palm) is not a production
             scheduleFreeWriteAutoAdvance()
         }
     }
@@ -237,11 +287,11 @@ final class TouchDispatcher {
         guard canvasSize != vm.canvasSize,
               !vm.letters.isEmpty,
               vm.letterIndex < vm.letters.count else { return }
-        // Re-flow cells BEFORE reloading checkpoints — reload reads
-        // per-cell frames.
-        vm.grid.layout(in: canvasSize, schriftArt: vm.schriftArt)
-        vm.reloadStrokeCheckpoints(for: vm.letters[vm.letterIndex],
-                                    usingSize: canvasSize)
+        // Assign the VM's size (its didSet re-flows the cells and reloads
+        // the checkpoints in that order) instead of doing both here while
+        // `vm.canvasSize` stayed stale — the scorer and the persisted
+        // RawTrace read `vm.canvasSize` (review 2026-09-05).
+        vm.canvasSize = canvasSize
     }
 
     /// Push the live "checkpoints per second" figure into the recorder
@@ -294,11 +344,35 @@ final class TouchDispatcher {
             vm.playback.request(.idle, immediate: true)
             return
         }
+        // Sound-off production (locked pilot design: "sound-off
+        // post-test", DECISIONS.md header; thesis Ch.2 §2.5 / Ch.6). In
+        // study mode the freeWrite phase — the study's outcome, and the
+        // H6 post-test route, which enters freeWrite directly — must never
+        // hear the arm's audio. `feedbackIntensity` (0.0 in freeWrite)
+        // fades haptics + ticks only; this coupling was NOT gated, so a
+        // sound arm kept playing during free production (thesis-side
+        // audit, 2026-09-04). Study-mode only: outside the study the
+        // phoneme stays the glyph's auditory anchor in every phase.
+        if vm.studyMode, vm.phaseController.currentPhase == .freeWrite {
+            vm.playback.request(.idle, immediate: true)
+            return
+        }
         let speed       = Self.mapVelocityToSpeed(smoothedVelocity)
         let azimuthBias = vm.pencilPressure != nil ? cos(vm.pencilAzimuth) * 0.2 : 0
         // Pan follows absolute x across the whole canvas (not the
         // active cell), so a right-hand cell sounds from the right.
-        let hBias = Float(max(-1.0, min(1.0, (canvasNormalized.x * 2.0 - 1.0) + azimuthBias)))
+        //
+        // Suppressed by the comparison switch (2026-09-17) — the
+        // supervisor's "auch ohne Panning". Zeroing the bias leaves the
+        // rate coupling AND the spatial arm's pitch drive untouched, so
+        // each arm stays itself and only the pan axis goes. Applied at the
+        // CALL SITE rather than inside `AudioEngine`, whose
+        // `setAdaptivePlayback` is the shared three-parameter seam the arms
+        // are matched through — and which is on the DO-NOT list.
+        let rawBias = vm.panningEnabled
+            ? (canvasNormalized.x * 2.0 - 1.0) + azimuthBias
+            : 0
+        let hBias = Float(max(-1.0, min(1.0, rawBias)))
         vm.audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
 
         // Spatial arm only: pen Y additionally drives the carrier pitch
@@ -325,6 +399,21 @@ final class TouchDispatcher {
     /// against vacuous completion on empty stroke definitions.
     private func handleStrokeCompletionIfReached() {
         guard let vm else { return }
+        // Study freeWrite ends ONLY through the pen-lift quiet window
+        // (`scheduleFreeWriteAutoAdvance`) — the contract this file's
+        // own header states ("FreeWrite has no canonical-stroke
+        // completion path") and APP_DOCUMENTATION §6.4.1 / Appendix A
+        // document. The tracker keeps running in freeWrite (it feeds
+        // `checkpointCoverage`), so without this gate an accurate,
+        // canonical-order trace ended the trial the instant its last
+        // checkpoint was hit — mid-gesture — while the recorder kept
+        // appending until the recognizer returned: the SCORED trace and
+        // the PERSISTED raw trace diverged, and the best writers' trials
+        // were truncated (missing stroke tails, shorter
+        // `phaseDurationSeconds`) in a way correlated with the outcome
+        // itself. Study-mode only: the multi-cell word path outside the
+        // study relies on this cell advance (2026-09-04).
+        if vm.studyMode, vm.phaseController.currentPhase == .freeWrite { return }
         let hasStrokes = (vm.strokeTracker.definition?.strokes.isEmpty == false)
         guard hasStrokes, vm.strokeTracker.isComplete else { return }
         // Snapshot BEFORE advancing — after the grid moves the cursor,

@@ -14,7 +14,16 @@ struct SchuleWorldView: View {
     @State private var showLetterPicker = false
 
     var body: some View {
-        if vm.visibleLetterNames.isEmpty {
+        if let failure = vm.sessionBlockReason {
+            // Proctor-facing hard stop (ruling C3-6): the canvas is not
+            // rendered at all, so a phoneme-arm session without its
+            // recordings cannot be run and cannot be missed.
+            ContentUnavailableView(
+                "Studie kann nicht starten",
+                systemImage: "exclamationmark.octagon.fill",
+                description: Text(failure)
+            )
+        } else if vm.visibleLetterNames.isEmpty {
             ContentUnavailableView(
                 "Buchstaben nicht geladen",
                 systemImage: "exclamationmark.triangle",
@@ -37,8 +46,14 @@ struct SchuleWorldView: View {
                 .padding(.bottom, 86)
                 .shadow(color: Color.ink.opacity(0.08), radius: 18, y: 4)
 
-            if vm.learningPhase == .observe, !vm.isCalibrating {
-                observeOverlay
+            // The turn cue: eye while the letter is demonstrated, finger
+            // when the child acts. The DECISION lives on the view model as
+            // `phaseCue` so it is assertable — a view's structure is not,
+            // and this view had no test coverage at all.
+            switch vm.phaseCue {
+            case .watch: observeOverlay
+            case .act:   writingCueOverlay
+            case nil:    EmptyView()
             }
 
             // Post-freeWrite overlays serialise through the queue
@@ -88,6 +103,13 @@ struct SchuleWorldView: View {
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
             }
 
+            // LetterWheelPicker itself is compiled out of the study
+            // build (see its header) — `showLetterPicker` can never
+            // actually be true there once `letterPill` stops setting it
+            // (see letterPill's own comment), but this construction
+            // site needs its own guard regardless since the TYPE is
+            // absent from the study binary.
+            #if !STUDY_BUILD
             if showLetterPicker {
                 LetterWheelPicker(
                     letters: vm.visibleLetterNames,
@@ -98,7 +120,7 @@ struct SchuleWorldView: View {
                         // completion without reopening the picker.
                         // Study sessions hide star chips (reward-class).
                         vm.studyMode ? 0 : LetterStars.stars(
-                            for: (vm.allProgress[name] ?? LetterProgress()).phaseScores)
+                            for: (vm.allProgress[LetterProgress.canonicalKey(name)] ?? LetterProgress()).phaseScores)
                     },
                     onSelect: { letter in
                         vm.loadLetter(name: letter)
@@ -110,11 +132,44 @@ struct SchuleWorldView: View {
                 )
                 .zIndex(30)
             }
+            #endif
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.overlayQueue.currentOverlay)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
+        // STUDY AUTO-ADVANCE (2026-09-18). Reported from the device as two
+        // complaints that are one defect: "the canvas gets blank and gets
+        // stuck there" and "the letters don't auto advance".
+        //
+        // Gating the celebration overlay out of the study build is CORRECT
+        // — it is reward-class UI and every arm must end a trial
+        // identically (audit C1/C2). But the overlay's dismiss closure was
+        // ALSO the only caller of `loadRecommendedLetter()`, the function
+        // that advances to the next letter. So a study letter ended in
+        // `.freeWrite` — a phase that draws a BLANK canvas by design — and
+        // stayed there until a proctor tapped the chevron.
+        //
+        // `loadRecommendedLetter()` already carried a study branch
+        // (`nextLetter()`, fixed deterministic order) written for exactly
+        // this call; its own comment notes it is defensive because the
+        // overlay that would trigger it is gated off. That branch was dead
+        // code, because nothing called it.
+        //
+        // HERE, NOT IN `PhaseTransitionCoordinator.recordSessionCompletion`.
+        // That was where it first went, and it broke four suites that pass
+        // in isolation — that function is the RECORDING path, so making it
+        // also navigate gave every test that completes a letter an extra
+        // letter load under it. The casual path does not work that way
+        // either: its advance lives in a view closure. A flow concern
+        // belongs to the flow's owner.
+        //
+        // Nothing is enqueued, chimed or spoken, so the C1/C2 equity is
+        // untouched — all three arms advance identically.
+        .onChange(of: vm.isPhaseSessionComplete) { _, complete in
+            guard complete, vm.studyMode else { return }
+            vm.loadRecommendedLetter()
+        }
         }
     }
 
@@ -126,6 +181,14 @@ struct SchuleWorldView: View {
     private var queuedModalOverlay: some View {
         switch vm.overlayQueue.currentOverlay {
         case .recognitionBadge(let result):
+            // Enqueue sites are already `!studyMode`-gated (see
+            // RecognitionFeedbackView.swift's header) — this can never
+            // actually be `.recognitionBadge` under studyMode. The
+            // `#else EmptyView()` branch is unreachable in practice, not
+            // a behavior change; it exists because RecognitionFeedbackView
+            // itself is compiled out of the study binary and this switch
+            // must still type-check there.
+            #if !STUDY_BUILD
             VStack {
                 Spacer().frame(height: 88)
                 RecognitionFeedbackView(
@@ -139,28 +202,44 @@ struct SchuleWorldView: View {
                         ? .opacity
                         : .opacity.combined(with: .scale(scale: 0.9)))
             .zIndex(12)
+            #else
+            EmptyView()
+            #endif
         case .paperTransfer(let letter):
+            #if !STUDY_BUILD
             PaperTransferView(letter: letter) { score in
                 vm.submitPaperTransfer(score: score)
             }
             .transition(.opacity)
             .zIndex(15)
+            #else
+            EmptyView()
+            #endif
         case .celebration(let stars):
+            #if !STUDY_BUILD
             CompletionCelebrationOverlay(starsEarned: stars, maxStars: vm.maxStars) {
                 vm.loadRecommendedLetter()
             }
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(20)
+            #else
+            EmptyView()
+            #endif
         case .rewardCelebration(let event):
             // 2.5 s one-shot achievement celebration. Queue auto-
             // dismisses; tap-to-dismiss for impatient users.
+            #if !STUDY_BUILD
             RewardCelebrationOverlay(event: event)
                 .onTapGesture { vm.overlayQueue.dismiss() }
                 .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
                 .zIndex(25)
+            #else
+            EmptyView()
+            #endif
         case .retrievalPrompt(let letter, let distractors):
             // Spaced-retrieval prompt. Modal — child must answer
             // before tracing begins.
+            #if !STUDY_BUILD
             RetrievalPromptView(
                 target: letter,
                 distractors: distractors,
@@ -171,6 +250,9 @@ struct SchuleWorldView: View {
             )
             .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
             .zIndex(22)
+            #else
+            EmptyView()
+            #endif
         case .kpOverlay:
             // Rendered inside `TracingCanvasView` — it needs canvas
             // geometry and reference-stroke data.
@@ -211,15 +293,18 @@ struct SchuleWorldView: View {
     /// colour swatch + short German encouragement only. Numeric
     /// scores live in the research dashboard and CSV/TSV export.
     private func feedbackCard(title: String, score: CGFloat, subtitle: String) -> some View {
-        let tint: Color = score >= 0.7 ? .green : (score >= 0.5 ? .yellow : .orange)
-        let starsEarned = score >= 0.85 ? 3 : (score >= 0.6 ? 2 : (score >= 0.35 ? 1 : 0))
-        let praise: String
-        switch starsEarned {
-        case 3: praise = "Super gemacht!"
-        case 2: praise = "Gut gemacht!"
-        case 1: praise = "Schon ganz gut."
-        default: praise = "Probier es nochmal."
+        // Every threshold and string lives in `FreeWriteFeedback` so it can
+        // be asserted on — this body returns `some View` and is unreachable
+        // from a test (audit 2026-09-20). The rendering below is unchanged.
+        let feedback = FreeWriteFeedback(score: score)
+        let tint: Color
+        switch feedback.tintBand {
+        case .green:  tint = .green
+        case .yellow: tint = .yellow
+        case .orange: tint = .orange
         }
+        let starsEarned = feedback.starsEarned
+        let praise = feedback.praise
         return HStack(spacing: 14) {
             // Mood swatch — colour conveys quality without a number.
             ZStack {
@@ -227,9 +312,7 @@ struct SchuleWorldView: View {
                     .fill(tint.opacity(0.22))
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(tint.opacity(0.55), lineWidth: 1)
-                Image(systemName: starsEarned >= 2
-                                  ? "hand.thumbsup.fill"
-                                  : "sparkles")
+                Image(systemName: feedback.symbolName)
                     .font(.display(FontSize.md))
                     .foregroundStyle(tint)
             }
@@ -263,9 +346,11 @@ struct SchuleWorldView: View {
     private var topRow: some View {
         HStack {
             letterPill
+            #if !STUDY_BUILD
             if vm.currentLetterHasVariants {
                 variantToggle
             }
+            #endif
             Spacer()
             // Persistent star badge is reward-class — off in study mode.
             if !vm.studyMode, totalStars > 0 {
@@ -275,6 +360,15 @@ struct SchuleWorldView: View {
         .padding(.horizontal, 16)
     }
 
+    // COMPILED OUT OF THE STUDY BUILD. `currentLetterHasVariants`
+    // already returns false under studyMode ("a child-reachable variant
+    // toggle would swap F's scorer reference geometry mid-study" — its
+    // own doc comment), so this was already runtime-unreachable there;
+    // gating the declaration too closes the gap between "unreachable"
+    // and "absent from the binary", matching the other compiled-out
+    // overlay surfaces. The CI identity scan asserts this via SURFACES
+    // (ios-build.yml).
+    #if !STUDY_BUILD
     /// Toggle between the standard glyph and its alternate form
     /// (currently only Druckschrift k via OpenType `ss02`).
     private var variantToggle: some View {
@@ -299,13 +393,14 @@ struct SchuleWorldView: View {
         .accessibilityLabel("Buchstaben-Variante umschalten")
         .accessibilityValue(vm.showingVariant ? "Variante" : "Standard")
     }
+    #endif
 
-    /// Total stars across all letters — same computation as the
-    /// world rail's badge so the two displays always agree.
+    /// Total stars across all letters. Delegates to `LetterStars.total`, so
+    /// it cannot drift from the world rail's badge — the two used to be
+    /// separate copies of the same expression, agreeing only because both
+    /// were duplicated verbatim (audit 2026-09-20).
     private var totalStars: Int {
-        vm.allProgress.values.reduce(0) { acc, prog in
-            acc + LetterStars.stars(for: prog.phaseScores)
-        }
+        LetterStars.total(for: vm.allProgress)
     }
 
     /// Persistent header pill (star + running total). Mirrors the
@@ -328,7 +423,18 @@ struct SchuleWorldView: View {
         .accessibilityLabel("\(count) Sterne gesamt")
     }
 
+    // The free-jump letter picker this pill opens is compiled out of
+    // the study build (see LetterWheelPicker.swift's header) — a
+    // direct-jump shortcut is the same class of risk `letterOrdering`'s
+    // studyMode pin exists to prevent, and `nextLetter()`/
+    // `previousLetter()` (the bottom-bar nav arrows) remain as the
+    // sole, sequence-respecting way to move between letters there. The
+    // current-letter TEXT stays visible either way — that's task
+    // context (which letter am I tracing), not the picker affordance —
+    // just non-interactive and without the "tap to change" chevron
+    // under STUDY_BUILD.
     private var letterPill: some View {
+        #if !STUDY_BUILD
         Button {
             withAnimation { showLetterPicker = true }
         } label: {
@@ -356,6 +462,16 @@ struct SchuleWorldView: View {
         .accessibilityLabel("Aktueller Buchstabe \(vm.currentLetterName)")
         .accessibilityHint("Tippen oder gedrückt halten, um einen anderen Buchstaben zu wählen")
         .accessibilityAddTraits(.isButton)
+        #else
+        Text(vm.currentLetterName)
+            .font(.display(FontSize.lg, weight: .bold))
+            .foregroundStyle(Color.ink)
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .background(AppSurface.card, in: Capsule())
+            .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
+            .shadow(color: Color.ink.opacity(0.08), radius: 5, y: 2)
+            .accessibilityLabel("Aktueller Buchstabe \(vm.currentLetterName)")
+        #endif
     }
 
     // MARK: - Observe overlay
@@ -367,8 +483,18 @@ struct SchuleWorldView: View {
         VStack {
             Spacer()
             HStack(spacing: 18) {
+                // EYE ONLY. The finger is not hidden here so much as MOVED
+                // to the phase where it is true — see `writingCueOverlay`.
+                //
+                // Reported from a supervisor's device review as "Auge und
+                // Finger", disambiguated by David 2026-09-17: the eye
+                // belongs to the phase where the letter is SHOWN, the
+                // finger to the phases where the CHILD acts. This pill
+                // showed both at once, so a child watching the
+                // demonstration was shown a finger telling them to write —
+                // and in study mode the tap does nothing anyway, so the
+                // gesture it invited was one the app deliberately refuses.
                 Text("👁️").font(.system(size: 36))
-                Text("👆").font(.system(size: 36))
             }
             .padding(.horizontal, 28).padding(.vertical, 16)
             .background(Color.brand, in: Capsule())
@@ -377,10 +503,63 @@ struct SchuleWorldView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
-        .onTapGesture { vm.completeObservePhase() }
+        // Under studyMode the tap never SKIPS: every child watches the
+        // same single animation pass (and the arm's demonstration over
+        // it), so model exposure does not vary with a child's
+        // impatience (audit 3.14a, 2026-09-04). It does START the parked
+        // launch letter (`launchParked`, 2026-09-06) — a no-op once the
+        // letter runs. The nav arrows still move on.
+        //
+        // The hint below is therefore mode-dependent (2026-09-17): it
+        // used to tell everyone "tap to go to the next phase", which on a
+        // study device is a promise the app deliberately does not keep.
+        // A VoiceOver user following it would tap, see nothing happen, and
+        // have no way to know the refusal was intentional. Reported from a
+        // supervisor's device review as "Auge und Finger".
+        .onTapGesture {
+            if vm.studyMode { vm.startParkedLetter() } else { vm.completeObservePhase() }
+        }
         .accessibilityLabel("Beobachtungsphase")
-        .accessibilityHint("Tippe, um zur nächsten Phase zu wechseln")
+        .accessibilityHint(vm.studyMode
+            ? "Die Animation läuft von selbst ab und die Phase wechselt danach. Tippen ist nicht nötig."
+            : "Tippe, um zur nächsten Phase zu wechseln")
         .accessibilityAddTraits(.isButton)
+    }
+
+    /// The child's turn — the counterpart to `observeOverlay`'s eye.
+    ///
+    /// David 2026-09-17, disambiguating the supervisor's "Auge und Finger"
+    /// note: the eye belongs to the phase where the letter is SHOWN, the
+    /// finger to the phases where the CHILD acts. Shown here for the
+    /// numbered-dot phase ("Richtung lernen") and the tracing phase
+    /// ("Nachspuren").
+    ///
+    /// **`allowsHitTesting(false)` is load-bearing, not tidiness.**
+    /// `observeOverlay` covers the canvas with a `contentShape` and a tap
+    /// handler, which is harmless there because touches are disabled
+    /// during observe. In guided the child's finger IS the input, so an
+    /// interactive overlay at this position would swallow every trace and
+    /// break the scored phase. This line is the difference between a cue
+    /// and a broken phase.
+    ///
+    /// freeWrite is INCLUDED. It was first left out on scaffolding grounds,
+    /// which was wrong: the no-scaffolding rule bars signals contingent on
+    /// the HIDDEN REFERENCE, and a turn cue carries no information about
+    /// the letter at all. "Selbst schreiben" is the most literal instance
+    /// of the child writing itself, so excluding it contradicted the rule
+    /// it was meant to serve.
+    private var writingCueOverlay: some View {
+        VStack {
+            Spacer()
+            Text("👆").font(.system(size: 36))
+                .padding(.horizontal, 28).padding(.vertical, 16)
+                .background(Color.brand, in: Capsule())
+                .shadow(color: Color.brand.opacity(0.30), radius: 12, y: 4)
+                .padding(.bottom, 100)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 
     // MARK: - Bottom bar (phase dots + letter nav)

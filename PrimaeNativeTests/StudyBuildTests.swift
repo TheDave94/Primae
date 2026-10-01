@@ -26,24 +26,26 @@ import Foundation
         return UserDefaults(suiteName: suite)!
     }
 
-    @Test("Build identity matches the compilation condition")
+    /// Asserted UNCONDITIONALLY, and that is the point. Both of these used
+    /// to be `#if STUDY_BUILD ... #else ...` pairs, but `STUDY_BUILD` is
+    /// unconditional for both targets (`Package.swift:51`, `:72`), so the
+    /// `#else` halves are dead and EITHER branch passes whichever way the
+    /// build is configured — a test that cannot fail (audit 2026-09-20).
+    /// Stated flatly, they pin a real decision: this repo builds study-only
+    /// since 2026-09-14, so removing `.define("STUDY_BUILD")` must turn
+    /// these red.
+    @Test("Build identity is the study one — this repo builds study-only")
     func buildIdentity() {
-        #if STUDY_BUILD
-        #expect(StudyBuild.isActive)
-        #expect(StudyBuild.marker == "PRIMAE_BUILD_STUDY")
-        #else
-        #expect(!StudyBuild.isActive)
-        #expect(StudyBuild.marker == "PRIMAE_BUILD_NORMAL")
-        #endif
+        #expect(StudyBuild.isActive,
+                "`STUDY_BUILD` is unconditional since 2026-09-14; a non-study build must fail here")
+        #expect(StudyBuild.marker == "PRIMAE_BUILD_STUDY",
+                "the identity marker must be the study one")
     }
 
-    @Test("B2 — studyMode defaults ON in a study build, OFF otherwise")
+    @Test("B2 — studyMode defaults ON")
     func studyModeDefault() {
-        #if STUDY_BUILD
-        #expect(StudyBuild.studyModeDefault)
-        #else
-        #expect(!StudyBuild.studyModeDefault)
-        #endif
+        #expect(StudyBuild.studyModeDefault,
+                "a study build must start in study mode")
     }
 
     @Test("Unset key resolves to the build default")
@@ -57,13 +59,21 @@ import Foundation
         #endif
     }
 
-    @Test("A stored value wins over the build default, in both directions")
+    @Test("Normal build: a stored value wins over the default; study build: a stored OFF is IGNORED")
     func storedValueWins() {
-        // The toggle survives for device prep, so it must beat the
-        // default once a proctor has actually set it.
         let defaults = scratchDefaults("stored")
         defaults.set(false, forKey: Self.key)
+        #if STUDY_BUILD
+        // Ruling Q1 (2026-09-04): the study binary cannot be configured
+        // into a non-study state. A stored OFF — left by an earlier
+        // normal build on the same device, or by a tap — must not win.
+        #expect(StudyBuild.resolveStudyMode(in: defaults, key: Self.key),
+                "a study build must stay in study mode with OFF stored")
+        #else
+        // The toggle survives for device prep on a normal build, so it
+        // must beat the default once a proctor has actually set it.
         #expect(!StudyBuild.resolveStudyMode(in: defaults, key: Self.key))
+        #endif
         defaults.set(true, forKey: Self.key)
         #expect(StudyBuild.resolveStudyMode(in: defaults, key: Self.key))
     }

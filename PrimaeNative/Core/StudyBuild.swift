@@ -3,18 +3,23 @@
 //
 // The one place that knows whether this binary is a study build.
 //
-// `STUDY_BUILD` is NOT set by the Xcode project: a project-level
-// `SWIFT_ACTIVE_COMPILATION_CONDITIONS` reaches the app target but
-// NOT this SwiftPM package target (measured, spike ed055db —
-// app=ON / package=OFF). Study builds therefore come from the
-// xcodebuild command-line override in `scripts/build_study.sh`,
-// which does reach every target.
+// `STUDY_BUILD` is unconditional in `Package.swift` (2026-09-14) — every
+// build of this package IS a study build, full stop; there is no
+// non-study configuration of this SwiftPM target anymore. This was NOT
+// always true: a project-level `SWIFT_ACTIVE_COMPILATION_CONDITIONS`
+// used to reach the app target but never this package target (measured,
+// spike ed055db — app=ON / package=OFF), so the flag could only arrive
+// via an xcodebuild command-line override (`scripts/build_study.sh`),
+// and pressing ⌘R in Xcode would compile the app half in and leave the
+// package half out — a binary that looked like a study build and was
+// not. That specific trap is gone with the mechanism that caused it,
+// which is also why the casual (non-study) app configuration no longer
+// exists as a scheme: see CLAUDE.md "STUDY_BUILD made unconditional."
 //
-// That leaves one trap: selecting the Primae-Study scheme in Xcode
-// and pressing ⌘R would compile the app half out and leave the
-// package half fully intact — a binary that looks like a study build
-// and is not. The build-identity symbols at the bottom of this file
-// close it, and they carry the binary's identity as well.
+// The build-identity symbols below are unrelated to any of that history
+// and remain load-bearing on their own terms: they prove which of the
+// two app-target configurations (Debug/Release-Study) produced a given
+// binary, independent of how STUDY_BUILD itself reached the package.
 //
 // Exactly one of `primae_build_identity_study` /
 // `primae_build_identity_normal` is compiled, and EVERY app build
@@ -68,8 +73,9 @@ public enum StudyBuild {
     /// ON in a study build (B2): in a binary where the non-study
     /// surfaces do not exist there is no reason for it to be off, and
     /// a proctor who forgets the toggle would otherwise run an
-    /// unconstrained session that looks fine. The toggle survives for
-    /// device prep, not for switching the study off.
+    /// unconstrained session that looks fine. Since 2026-09-04 (ruling
+    /// Q1) a study build does not merely DEFAULT to study mode — it
+    /// cannot leave it: see `resolveStudyMode`.
     public static var studyModeDefault: Bool { isActive }
 
     /// UserDefaults key holding the device's stored `studyMode`. One
@@ -77,8 +83,18 @@ public enum StudyBuild {
     /// cannot drift apart on the string.
     public static let studyModeDefaultsKey = "de.flamingistan.primae.studyMode"
 
-    /// Resolves the effective `studyMode` for a device: a stored value
-    /// wins, otherwise the build default applies.
+    /// Resolves the effective `studyMode` for a device.
+    ///
+    /// STUDY BUILD: always `true`, whatever is stored (supervisor ruling
+    /// Q1, 2026-09-04). The point of compiling the non-study surfaces out
+    /// is that the study binary cannot be configured into a non-study
+    /// state — the binary either is the instrument or it is not. A
+    /// stored OFF (from an earlier normal build on the same device, or a
+    /// proctor's tap) is ignored, and the toggle that wrote it is
+    /// compiled out of the research dashboard.
+    ///
+    /// NORMAL BUILD: a stored value wins, otherwise the build default
+    /// (OFF) applies — device prep for a casual install is unchanged.
     ///
     /// Split out of `TracingDependencies`' default argument so it can
     /// be tested against a scratch `UserDefaults` — building a real
@@ -89,8 +105,12 @@ public enum StudyBuild {
         in defaults: UserDefaults = .standard,
         key: String = StudyBuild.studyModeDefaultsKey
     ) -> Bool {
+        #if STUDY_BUILD
+        return true
+        #else
         guard defaults.object(forKey: key) != nil else { return studyModeDefault }
         return defaults.bool(forKey: key)
+        #endif
     }
 }
 

@@ -1,10 +1,20 @@
+// COMPILED OUT OF THE STUDY BUILD.
+// Child-reachable, not the tracing task, not proctor-facing, not a
+// research surface — decided by the recorded classification criteria.
+// Its enqueue site was already `!studyMode`-gated
+// (PhaseTransitionCoordinator.recordSessionCompletion, "the overlay
+// gate is load-bearing"); this closes the gap between "never
+// enqueued" and "never compiled in", matching StrokeCalibrationOverlay's
+// precedent. The CI identity scan asserts this via SURFACES
+// (ios-build.yml).
+#if !STUDY_BUILD
 import SwiftUI
 
 struct CompletionCelebrationOverlay: View {
     let starsEarned: Int
     /// Max achievable stars under the current thesis condition (1 for
-    /// guidedOnly/control, 4 for threePhase) — showing 4 stars to a
-    /// guidedOnly child would always reveal 3 empty placeholders.
+    /// guidedOnly/control, 3 for threePhase) — showing 3 stars to a
+    /// guidedOnly child would always reveal 2 empty placeholders.
     let maxStars: Int
     let onWeiter: () -> Void
 
@@ -53,3 +63,4 @@ struct CompletionCelebrationOverlay: View {
         }
     }
 }
+#endif

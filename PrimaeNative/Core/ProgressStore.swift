@@ -66,6 +66,15 @@ struct LetterProgress: Codable, Equatable {
     /// Rolling log of retrieval-practice outcomes (`true` = correct).
     /// Capped at 10 entries (latest).
     var retrievalAttempts: [Bool]?
+    /// Last 10 freeWrite `WritingAssessment.formAccuracy` readings for
+    /// this letter (2026-09-04 — see the fix note on `recordCompletion`).
+    /// This is the ONLY historical signal that genuinely means
+    /// "how well has this child geometrically formed this letter" —
+    /// `recognitionAccuracy` is the recognizer's CONFIDENCE, a different
+    /// instrument that happens to share the word "accuracy" in its name.
+    /// nil for installs whose progress predates this field, and for
+    /// letters that never completed a freeWrite phase.
+    var formAccuracyHistory: [Double]?
 }
 
 extension LetterProgress {
@@ -82,11 +91,21 @@ extension LetterProgress {
 @MainActor
 protocol ProgressStoring {
     func progress(for letter: String) -> LetterProgress
+    /// `formAccuracy` is the freeWrite phase's `WritingAssessment
+    /// .formAccuracy` for THIS completion (nil when no freeWrite phase
+    /// ran), appended to `LetterProgress.formAccuracyHistory`. Kept
+    /// separate from `recognitionResult` — a different instrument
+    /// (geometric form vs. the CoreML recognizer's confidence) — after a
+    /// 2026-09-04 fix: `historicalFormScores` (the calibrator's
+    /// practised-letter boost input) was silently fed
+    /// `recognitionAccuracy` — confidence history — because no genuine
+    /// form-accuracy history existed to feed it. See `formAccuracyHistory`.
     func recordCompletion(for letter: String,
                           accuracy: Double,
                           phaseScores: [String: Double]?,
                           speed: Double?,
-                          recognitionResult: RecognitionResult?)
+                          recognitionResult: RecognitionResult?,
+                          formAccuracy: Double?)
     func recordPaperTransferScore(for letter: String, score: Double)
     func recordVariantUsed(for letter: String, variantID: String?)
     /// Record a freeform-mode recognition result. Does not increment the
@@ -118,18 +137,28 @@ extension ProgressStoring {
 
     func recordCompletion(for letter: String, accuracy: Double) {
         recordCompletion(for: letter, accuracy: accuracy,
-                         phaseScores: nil, speed: nil, recognitionResult: nil)
+                         phaseScores: nil, speed: nil, recognitionResult: nil, formAccuracy: nil)
     }
     func recordCompletion(for letter: String, accuracy: Double, phaseScores: [String: Double]?) {
         recordCompletion(for: letter, accuracy: accuracy,
-                         phaseScores: phaseScores, speed: nil, recognitionResult: nil)
+                         phaseScores: phaseScores, speed: nil, recognitionResult: nil, formAccuracy: nil)
     }
     func recordCompletion(for letter: String,
                           accuracy: Double,
                           phaseScores: [String: Double]?,
                           speed: Double?) {
         recordCompletion(for: letter, accuracy: accuracy,
-                         phaseScores: phaseScores, speed: speed, recognitionResult: nil)
+                         phaseScores: phaseScores, speed: speed, recognitionResult: nil, formAccuracy: nil)
+    }
+    /// Pre-2026-09-04 shape, kept so a caller that predates the
+    /// `formAccuracy` fix still compiles and forwards with it absent.
+    func recordCompletion(for letter: String,
+                          accuracy: Double,
+                          phaseScores: [String: Double]?,
+                          speed: Double?,
+                          recognitionResult: RecognitionResult?) {
+        recordCompletion(for: letter, accuracy: accuracy, phaseScores: phaseScores,
+                         speed: speed, recognitionResult: recognitionResult, formAccuracy: nil)
     }
     func flush() async {}
 }
@@ -217,7 +246,8 @@ public final class JSONProgressStore: ProgressStoring {
                           accuracy: Double,
                           phaseScores: [String: Double]?,
                           speed: Double?,
-                          recognitionResult: RecognitionResult?) {
+                          recognitionResult: RecognitionResult?,
+                          formAccuracy: Double? = nil) {
         let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         p.completionCount += 1
@@ -237,6 +267,14 @@ public final class JSONProgressStore: ProgressStoring {
         }
         if let rr = recognitionResult {
             Self.appendRecognition(rr, into: &p)
+        }
+        if let fa = formAccuracy {
+            var history = p.formAccuracyHistory ?? []
+            history.append(min(1.0, max(0.0, fa)))
+            if history.count > Self.rollingChannelCap {
+                history.removeFirst(history.count - Self.rollingChannelCap)
+            }
+            p.formAccuracyHistory = history
         }
         store.letterProgress[key] = p
         store.completionDates.append(Date())
@@ -349,9 +387,22 @@ public final class JSONProgressStore: ProgressStoring {
     // MARK: Persistence
 
     private static func load(from url: URL) -> Store {
-        guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(Store.self, from: data)
-        else { return Store() }
+        // No file yet is the ordinary first-launch case and stays quiet.
+        guard let data = try? Data(contentsOf: url) else { return Store() }
+        let decoded: Store
+        do {
+            decoded = try JSONDecoder().decode(Store.self, from: data)
+        } catch {
+            // A file that EXISTS but does not decode used to be
+            // indistinguishable from a fresh install (2026-09-04): the
+            // store came up empty with no log line and the next save
+            // atomically replaced the undecodable file. Say so loudly
+            // and move the file aside so nothing is destroyed.
+            storePersistenceLogger.error(
+                "ProgressStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
+            StoreFileQuarantine.quarantine(url)
+            return Store()
+        }
         // Refuse files from a future schema — silently dropping
         // unknown fields would clobber them on next save.
         if let v = decoded.schemaVersion, v > currentSchemaVersion {
@@ -384,12 +435,16 @@ public final class JSONProgressStore: ProgressStoring {
             do {
                 try data.write(to: url, options: .atomic)
             } catch {
-                // Volume full / file corrupt: in-memory state is
-                // still good for the session but log so a parent
-                // investigating "the streak reset itself" has a
-                // breadcrumb.
+                // A `try?`-and-log-only response here used to let the
+                // rest of the app carry on as if this write had
+                // succeeded — in-memory state stayed correct for the
+                // running session while nothing durable reached disk.
+                // Loud now (2026-09-14): reported to
+                // `PersistenceFailureCenter`, which the live VM turns
+                // into a hard session stop under studyMode.
                 storePersistenceLogger.warning(
                     "ProgressStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                PersistenceFailureCenter.shared.reportFailure(store: "ProgressStore", error: error)
             }
         }
     }

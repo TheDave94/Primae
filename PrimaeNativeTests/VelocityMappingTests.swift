@@ -4,24 +4,24 @@ import CoreGraphics
 
 struct VelocityMappingTests {
 
-    @Test func zeroVelocity_returnsMaxSpeed() {
+    @Test func zeroVelocity_returnsMinRate() {
         #expect(TouchDispatcher.mapVelocityToSpeed(0) == 0.5)
     }
 
-    @Test func lowBoundary_returnsMaxSpeed() {
+    @Test func lowBoundary_returnsMinRate() {
         #expect(TouchDispatcher.mapVelocityToSpeed(50) == 0.5)
     }
 
-    @Test func highBoundary_returnsMinSpeed() {
+    @Test func highBoundary_returnsMaxRate() {
         #expect(TouchDispatcher.mapVelocityToSpeed(800) == 2.0)
     }
 
-    @Test func aboveHigh_clampsToMinSpeed() {
+    @Test func aboveHigh_clampsToMaxRate() {
         #expect(TouchDispatcher.mapVelocityToSpeed(5000) == 2.0)
         #expect(TouchDispatcher.mapVelocityToSpeed(.greatestFiniteMagnitude) == 2.0)
     }
 
-    @Test func belowLow_returnsMaxSpeed() {
+    @Test func belowLow_returnsMinRate() {
         #expect(TouchDispatcher.mapVelocityToSpeed(30)  == 0.5)
         #expect(TouchDispatcher.mapVelocityToSpeed(49)  == 0.5)
     }
@@ -58,10 +58,13 @@ struct VelocityMappingTests {
         #expect(TouchDispatcher.mapVelocityToSpeed(-100) == 0.5)
     }
 
-    @Test func returnType_isFloat() {
-        let result = TouchDispatcher.mapVelocityToSpeed(500)
-        #expect(type(of: result) == Float.self)
-    }
+    // REMOVED 2026-09-17 — `returnType_isFloat` asserted
+    // `type(of: result) == Float.self` on a function DECLARED to return
+    // `Float`. It could not fail at runtime for any input: if the return
+    // type changed, this file would fail to COMPILE rather than fail the
+    // assertion. The compiler already enforces it, so the test added a
+    // count and no evidence — which this suite's review identified as
+    // worse than no test, because it is counted as coverage.
 }
 
 private struct SeededRNGLocal: RandomNumberGenerator {

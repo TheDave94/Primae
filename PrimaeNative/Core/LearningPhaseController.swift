@@ -7,7 +7,8 @@
 import CoreGraphics
 import Foundation
 
-/// Coordinates the four-phase learning flow for one letter.
+/// Coordinates the three-phase learning flow (observe → guided → freeWrite)
+/// for one letter.
 ///
 /// Usage:
 /// ```swift
@@ -83,13 +84,38 @@ struct LearningPhaseController: Equatable {
     var activePhases: [LearningPhase] {
         switch condition {
         case .threePhase:
-            return LearningPhase.allCases
+            // `.direct` is NOT in the session (2026-09-18). "The whole
+            // tapping the points part should go" — the child tapped
+            // numbered stroke-start dots to learn directionality, and it
+            // is the one phase that is neither watching nor writing. The
+            // ENUM CASE STAYS: it is `Codable` and reachable from stored
+            // rows, and `rawValue` ordering is relied on elsewhere. What
+            // changes is that no session runs it.
+            return LearningPhase.allCases.filter { $0 != .direct }
         case .guidedOnly, .control:
             return [.guided]
         }
     }
 
-    /// Overall session score — average across all completed phases.
+    /// Overall session score — unweighted average across all completed
+    /// phases' `score` values.
+    ///
+    /// NOT a clean accuracy signal under `.threePhase` (found
+    /// 2026-09-04 — see `PhaseSessionRecord.score` and DECISIONS.md
+    /// D12): `observe` always scores exactly `1.0` (a completion marker,
+    /// not a measurement), so with the CURRENT three phases active this
+    /// average has a mathematical FLOOR of **1/3** — a child who traces
+    /// nothing correctly in `guided`/`freeWrite` (both 0) still yields
+    /// `overallScore` = 1/3. **The floor was 0.5 while `direct` was in the
+    /// flow** (two unconditional terms of four; the phase left the session
+    /// on 2026-09-18 — see D5), so any analysis or comment still quoting
+    /// 0.5 is stale. This value feeds
+    /// `LetterProgress.bestAccuracy` and
+    /// `ParentDashboardStoring.recordSession`'s `accuracy` — both
+    /// systematically inflated for that condition, not merely an
+    /// average of incomparable quantities. `.guidedOnly`/`.control`
+    /// (single active phase) don't have this floor, since there's
+    /// nothing else in the average to dilute it.
     var overallScore: CGFloat {
         guard !phaseScores.isEmpty else { return 0 }
         return phaseScores.values.reduce(0, +) / CGFloat(phaseScores.count)
@@ -138,21 +164,20 @@ struct LearningPhaseController: Equatable {
         let clamped = max(0, min(1, score))
         phaseScores[currentPhase] = clamped
 
-        // Determine next phase under current condition
-        let nextPhase: LearningPhase?
-        switch condition {
-        case .threePhase:
-            nextPhase = currentPhase.next
-        case .guidedOnly, .control:
-            // Only one phase — always complete after guided.
-            nextPhase = nil
-        }
-
-        guard let next = nextPhase else {
+        // Walk the ACTIVE list, not `rawValue + 1`. Those agreed while
+        // every phase was active; they stopped agreeing the moment a phase
+        // was excluded, and stepping by raw value would land the session on
+        // a phase it is not supposed to run. Reading the list means the
+        // condition's own definition of the sequence is the only one.
+        let phases = activePhases
+        guard let idx = phases.firstIndex(of: currentPhase),
+              idx + 1 < phases.count else {
+            // Last active phase — the letter is done. Covers
+            // `.guidedOnly`/`.control` (a single phase) as well.
             isLetterSessionComplete = true
             return false
         }
-        currentPhase = next
+        currentPhase = phases[idx + 1]
         return true
     }
 

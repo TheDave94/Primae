@@ -50,10 +50,20 @@ import QuartzCore
 
 @Suite struct HapticEventEquatabilityTests {
 
-    @Test func allCases_selfEqual() {
-        let cases: [HapticEvent] = [.strokeBegan, .checkpointHit, .strokeCompleted, .letterCompleted, .offPath]
-        for c in cases { #expect(c == c) }
-    }
+    // DELETED 2026-09-20 (audit): `allCases_pairwiseDistinct` hand-listed
+    // the five events and asserted they were pairwise unequal. `HapticEvent`
+    // is a payload-free enum with synthesised `Equatable`
+    // (`HapticEngine.swift:20-31`), so distinctness is a language guarantee:
+    // no edit to production could make that loop fail. It was "fixed" once
+    // before, from `c == c` to this form, and still asserted nothing.
+    //
+    // It is deleted rather than rewritten because the property actually
+    // worth pinning — that each event gets a DISTINCT haptic treatment —
+    // lives in `UIKitHapticEngine.fire`'s use of
+    // UIImpactFeedbackGenerator/UINotificationFeedbackGenerator, which
+    // vends nothing a unit test can observe. (The switch there is already
+    // exhaustive, so a NEW case cannot silently ship without a decision.)
+    // Recorded rather than papered over, per this repo's standard.
 
     @Test func differentCases_notEqual() {
         #expect(HapticEvent.strokeBegan != .strokeCompleted)
@@ -137,10 +147,12 @@ private final class TrackingMockAudio: AudioControlling {
         #expect(haptics.prepareCallCount == 1)
     }
 
-    @Test func letterCompleted_firesLetterCompleted() {
+    @Test func letterCompleted_firesLetterCompleted() throws {
         let haptics = NullHapticEngine()
         let vm = makeVM(studyMode: false, haptics: haptics)
-        guard !vm.currentLetterName.isEmpty else { return }
+        // A fixture without a letter must FAIL this positive control, not
+        // skip it (audit 2026-09-04).
+        try #require(!vm.currentLetterName.isEmpty, "the stub repository supplied no letter")
         haptics.reset()
 
         let progress = traceWholeLetter(vm)
@@ -173,10 +185,25 @@ private final class TrackingMockAudio: AudioControlling {
         let vm = makeVM(studyMode: true, haptics: haptics)
         #expect(haptics.prepareCallCount == 0,
                 "studyMode must not even prime the injected engine")
+        // studyMode pins the three-phase flow whatever the injected
+        // `.guidedOnly` says (2026-09-04), so a fresh study VM sits in
+        // the touch-disabled observe phase. Same recipe as the passing
+        // study suites (StudyCleanConfigTests): canvas FIRST — its didSet
+        // re-lays out the grid and reloads the checkpoints — then guided,
+        // then trace (CI runs 1637/1638).
+        vm.canvasSize = CGSize(width: 400, height: 400)
+        vm.phaseController.resume(at: .guided)
 
         let progress = traceWholeLetter(vm)
-        #expect(Double(progress) > 0.0,
-                "the trace must really advance the tracker, or this proves nothing")
+        // The load-bearing check. Under studyMode the three-phase flow is
+        // pinned, so completing the guided trace ADVANCES to freeWrite —
+        // and the phase transition resets `progress` to 0 (CI run 1641:
+        // phase=.freeWrite, progress 0). Outside studyMode `.guidedOnly`
+        // has no next phase and progress stays at 1, which is what the
+        // three positive twins read. Here the proof that the trace really
+        // advanced the tracker is the phase change itself.
+        #expect(vm.phaseController.currentPhase == .freeWrite,
+                "the trace must complete the guided phase, or this proves nothing — progress=\(progress) precondition=\(vm.studyPreconditionFailure ?? "nil") phase=\(vm.phaseController.currentPhase) letter=\(vm.currentLetterName) cells=\(vm.gridCells.count) strokes=\(vm.strokeTracker.definition?.strokes.count ?? -1)")
         #expect(haptics.firedEvents.isEmpty,
                 "no haptics in a study session — got \(haptics.firedEvents)")
     }

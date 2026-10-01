@@ -4,7 +4,15 @@
 // Scores a freehand drawn path against a reference letter definition.
 // Returns a WritingAssessment with four Schreibmotorik dimensions
 // (Marquardt & Söhl 2016): Form, Tempo, Druck, Rhythmus.
-// Form scoring uses discrete Fréchet distance (Eiter & Mannila 1994).
+// Form scoring (2026-09-04) is order-invariant via STROKE
+// CORRESPONDENCE — matching each traced stroke to its best-fitting
+// reference stroke, then measuring discrete Fréchet distance (Eiter &
+// Mannila 1994) WITHIN each matched pair — see `StrokeProcessMeasures`
+// for the full design and why whole-trace Hausdorff and whole-path
+// Fréchet were both superseded by it. `formAccuracyShape` (freeform/
+// Werkstatt, blank canvas, no fixed reference frame) is unaffected —
+// its unit-box-normalised whole-trace Hausdorff is unchanged and still
+// the right tool for that different problem.
 
 import CoreGraphics
 import Foundation
@@ -13,7 +21,9 @@ import Foundation
 
 /// Four-dimension writing assessment per Schreibmotorik Institut (Marquardt & Söhl, 2016).
 struct WritingAssessment: Codable, Equatable {
-    /// Shape accuracy via discrete Fréchet distance (0–1).
+    /// Shape accuracy (0–1) from the stroke-correspondence spatial
+    /// deviation (direction-minimised discrete Fréchet per matched pair,
+    /// 2026-09-04); the Hausdorff form it replaced is retired.
     let formAccuracy: CGFloat
     /// Speed consistency: 1 – normalised variance of inter-point intervals (0–1).
     let tempoConsistency: CGFloat
@@ -36,8 +46,14 @@ struct FreeWriteScorer {
 
     /// Scores a traced path against reference strokes, returning a
     /// four-dimension assessment with each dimension in 0–1.
+    /// `strokeStartIndices` feeds Form's stroke correspondence
+    /// (`StrokeProcessMeasures`) — defaults to `[]` (the whole trace as
+    /// one stroke), the right behaviour for a genuinely single-stroke
+    /// trace and a safe simplification for a caller that doesn't track
+    /// stroke boundaries at all.
     static func score(
         tracedPoints: [CGPoint],
+        strokeStartIndices: [Int] = [],
         reference: LetterStrokes,
         timestamps: [CFTimeInterval] = [],
         forces: [CGFloat] = [],
@@ -45,26 +61,14 @@ struct FreeWriteScorer {
         sessionEnd: CFTimeInterval = 0
     ) -> WritingAssessment {
         WritingAssessment(
-            formAccuracy:     formAccuracy(tracedPoints: tracedPoints, reference: reference),
+            formAccuracy:     formAccuracy(tracedPoints: tracedPoints,
+                                           strokeStartIndices: strokeStartIndices,
+                                           reference: reference),
             tempoConsistency: tempoConsistency(timestamps: timestamps),
             pressureControl:  pressureControl(forces: forces),
             rhythmScore:      rhythmScore(timestamps: timestamps,
                                           sessionStart: sessionStart,
                                           sessionEnd: sessionEnd)
-        )
-    }
-
-    /// Raw Fréchet distance (exposed for debug overlay and testing).
-    static func rawDistance(
-        tracedPoints: [CGPoint],
-        reference: LetterStrokes
-    ) -> CGFloat {
-        let refPoints = referencePolyline(from: reference)
-        guard refPoints.count >= 2, tracedPoints.count >= 2 else { return .greatestFiniteMagnitude }
-        let targetCount = max(refPoints.count, 20)
-        return discreteFrechetDistance(
-            resample(tracedPoints, targetCount: targetCount),
-            resample(refPoints, targetCount: targetCount)
         )
     }
 
@@ -109,20 +113,35 @@ struct FreeWriteScorer {
 
     /// Resample each reference stroke's checkpoint polyline to a dense
     /// sequence of unit-space points without crossing pen-lift gaps.
-    private static func densifyReferenceStrokes(_ reference: LetterStrokes) -> [CGPoint] {
-        var result: [CGPoint] = []
-        for stroke in reference.strokes {
+    /// Flattened across strokes — callers that need per-stroke
+    /// boundaries (stroke-to-stroke matching) use
+    /// `densifyReferenceStrokesPerStroke` instead, which this wraps.
+    static func densifyReferenceStrokes(_ reference: LetterStrokes) -> [CGPoint] {
+        densifyReferenceStrokesPerStroke(reference).flatMap { $0 }
+    }
+
+    /// Same densification as `densifyReferenceStrokes`, kept as one
+    /// dense point array PER reference stroke rather than flattened —
+    /// what stroke-to-stroke matching (order/direction process measures)
+    /// needs and shape/spatial-deviation scoring doesn't.
+    static func densifyReferenceStrokesPerStroke(_ reference: LetterStrokes) -> [[CGPoint]] {
+        reference.strokes.map { stroke in
             let pts = stroke.checkpoints.map { CGPoint(x: $0.x, y: $0.y) }
-            guard pts.count >= 2 else {
-                result.append(contentsOf: pts)
-                continue
-            }
-            // ~24 samples per stroke gives smooth coverage on long
-            // sloped legs without ballooning the Hausdorff cost.
-            let dense = resample(pts, targetCount: max(24, pts.count))
-            result.append(contentsOf: dense)
+            guard pts.count >= 2 else { return pts }
+            // 64 samples per stroke (found by CI, 2026-09-03, against
+            // the whole-trace Hausdorff design this file used before
+            // 2026-09-04's stroke-correspondence redesign — the
+            // one-sided Hausdorff distance FROM a dense trace TO a
+            // sparse reference is bounded below by roughly half the
+            // REFERENCE's own point spacing, however dense the trace
+            // gets). Still the right density for `formAccuracyShape`
+            // (unchanged) and for the reference side of each
+            // `StrokeProcessMeasures` pairwise Fréchet comparison, where
+            // the same "match the reference's own sampling" reasoning
+            // applies to the traced-stroke side via its own per-pair
+            // resample (see `StrokeProcessScorer.analyze`).
+            return resample(pts, targetCount: max(64, pts.count))
         }
-        return result
     }
 
     /// Map a path so its axis-aligned bounding box fills the unit
@@ -146,8 +165,10 @@ struct FreeWriteScorer {
 
     /// Asymmetric Hausdorff distance: the maximum, over points in `a`,
     /// of each point's distance to the nearest point in `b`. O(|a|·|b|).
-    private static func oneSidedHausdorff(_ a: [CGPoint],
-                                          _ b: [CGPoint]) -> CGFloat {
+    /// Not `private` — `StrokeProcessMeasures` reuses this for
+    /// stroke-to-stroke matching rather than re-implementing it.
+    static func oneSidedHausdorff(_ a: [CGPoint],
+                                  _ b: [CGPoint]) -> CGFloat {
         var maxMin: CGFloat = 0
         for p in a {
             var minD: CGFloat = .greatestFiniteMagnitude
@@ -162,32 +183,27 @@ struct FreeWriteScorer {
 
     // MARK: - Dimension: Form accuracy
 
-    /// Primary thesis Form measure (the recorded `WritingAssessment.formAccuracy`).
+    /// The recorded `WritingAssessment.formAccuracy` — clamped, scaled
+    /// companion to `PhaseSessionRecord.spatialDeviation`. Both read the
+    /// SAME `StrokeProcessMeasures.spatialDeviation` (2026-09-04: stroke
+    /// correspondence, order-invariant by construction — see that
+    /// type's header). "Form" is a product measure — does the shape
+    /// match — and should not cost a child anything for tracing a
+    /// spatially correct letter in an unusual stroke order; that is a
+    /// process property, recorded separately (`matchedReferenceOrder`,
+    /// `reversedStrokeCount`, `strokeCount`).
     ///
-    /// Cross-pen-lift note (investigated 2026-06): the reference is built
-    /// by `referencePolyline`, which concatenates all strokes into one
-    /// polyline and resamples by arc length — bridging each lift gap with
-    /// a phantom diagonal. This was found **Fréchet-SAFE**: discrete
-    /// Fréchet couples the trace's gap-bridge to the reference's
-    /// gap-bridge at matching arc-length fractions, so the phantom
-    /// diagonal cannot inflate the score beyond the real per-stroke error
-    /// (empirically ≤1.4% on real letters, 0 in most cases, always toward
-    /// HIGHER scores). The genuine cross-lift "tank" the
-    /// `formAccuracyShape` docstring describes was a Hausdorff concern on
-    /// the freeform/Werkstatt path, which is already per-stroke-densified.
-    /// No per-stroke fix to this primary measure is warranted. Replica
-    /// validation covered real A/T/H/I letters + synthetic long-gap,
-    /// length-mismatch, and gross-displacement regimes. See
-    /// docs/ROADMAP.md → Pilot study → Known issues (Fréchet cross-lift-safe).
-    private static func formAccuracy(tracedPoints: [CGPoint], reference: LetterStrokes) -> CGFloat {
-        let refPoints = referencePolyline(from: reference)
-        guard refPoints.count >= 2, tracedPoints.count >= 2 else { return 0 }
-
-        let targetCount = max(refPoints.count, 20)
-        let resampledTrace = resample(tracedPoints, targetCount: targetCount)
-        let resampledRef   = resample(refPoints, targetCount: targetCount)
-
-        let distance = discreteFrechetDistance(resampledTrace, resampledRef)
+    /// Same clamp convention as the historical Fréchet-based version
+    /// (`checkpointRadius * 3.0`) for continuity in the UI's displayed
+    /// range.
+    private static func formAccuracy(tracedPoints: [CGPoint],
+                                     strokeStartIndices: [Int],
+                                     reference: LetterStrokes) -> CGFloat {
+        guard let measures = StrokeProcessScorer.analyze(
+            points: tracedPoints, strokeStartIndices: strokeStartIndices, reference: reference
+        ) else { return 0 }
+        let distance = measures.spatialDeviation
+        guard distance.isFinite, distance < .greatestFiniteMagnitude else { return 0 }
         let maxAcceptable = reference.checkpointRadius * 3.0
         guard maxAcceptable > 0 else { return 0 }
 
@@ -246,7 +262,9 @@ struct FreeWriteScorer {
         var activeTime: CFTimeInterval = 0
         for i in 1..<timestamps.count {
             let dt = timestamps[i] - timestamps[i - 1]
-            if dt < 0.5 { activeTime += dt }
+            // Same bounds as tempoConsistency: a non-monotonic or duplicated
+            // timestamp must not SUBTRACT active time (audit 2026-09-04).
+            if dt > 0, dt < 0.5 { activeTime += dt }
         }
 
         return CGFloat(max(0, min(1, activeTime / totalDuration)))
@@ -255,7 +273,10 @@ struct FreeWriteScorer {
     // MARK: - Discrete Fréchet Distance
 
     /// O(nm) DP discrete Fréchet distance (Eiter & Mannila 1994).
-    /// Flat array + iterative for cache and stack-safety.
+    /// Flat array + iterative for cache and stack-safety. Not `private`
+    /// — `StrokeProcessMeasures` reuses this as the WITHIN-PAIR distance
+    /// for its stroke correspondence (2026-09-04) rather than
+    /// re-implementing it.
     static func discreteFrechetDistance(
         _ p: [CGPoint], _ q: [CGPoint]
     ) -> CGFloat {
@@ -291,26 +312,19 @@ struct FreeWriteScorer {
 
     // MARK: - Helpers
 
-    /// Converts a LetterStrokes definition into a single polyline of
-    /// normalised points. Concatenates across pen-lifts; this is
-    /// Fréchet-safe for the primary measure — see the cross-pen-lift note
-    /// on `formAccuracy`.
-    private static func referencePolyline(from strokes: LetterStrokes) -> [CGPoint] {
-        strokes.strokes.flatMap { stroke in
-            stroke.checkpoints.map { CGPoint(x: $0.x, y: $0.y) }
-        }
-    }
-
-    /// Euclidean distance between two points.
-    private static func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
+    /// Euclidean distance between two points. Not `private` —
+    /// `StrokeProcessMeasures` reuses this rather than re-implementing it.
+    static func dist(_ a: CGPoint, _ b: CGPoint) -> CGFloat {
         hypot(a.x - b.x, a.y - b.y)
     }
 
     /// Resamples a polyline to approximately `targetCount` equidistant
     /// points so trace density (100s of samples) matches reference
-    /// density (5–16 checkpoints) before Fréchet comparison.
+    /// density (40–200 authored, 64 after densify) before Fréchet comparison.
     static func resample(_ points: [CGPoint], targetCount: Int) -> [CGPoint] {
-        guard points.count >= 2, targetCount >= 2 else { return points }
+        guard !points.isEmpty else { return points }
+        guard targetCount >= 2 else { return [points[0]] }
+        guard points.count >= 2 else { return Array(repeating: points[0], count: targetCount) }
 
         // Compute cumulative arc lengths.
         var cumLengths = [CGFloat](repeating: 0, count: points.count)
@@ -319,7 +333,9 @@ struct FreeWriteScorer {
         }
 
         let totalLength = cumLengths.last ?? 0
-        guard totalLength > 0 else { return [points[0]] }
+        // A zero-length polyline still honours `targetCount` (all one point),
+        // so callers get the density they asked for (2026-09-05).
+        guard totalLength > 0 else { return Array(repeating: points[0], count: targetCount) }
 
         var result = [CGPoint]()
         result.reserveCapacity(targetCount)

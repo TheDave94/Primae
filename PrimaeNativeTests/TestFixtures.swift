@@ -50,8 +50,14 @@ final class StubResourceProvider: LetterResourceProviding {
         let data = try! JSONSerialization.data(withJSONObject: strokes, options: .prettyPrinted)
         try? data.write(to: letterDir.appendingPathComponent("strokes.json"))
 
-        // Dummy audio file (zero bytes — StubAudio ignores it)
+        // Dummy audio files (zero bytes — StubAudio ignores them). The
+        // phoneme take is REQUIRED since 2026-09-04: a phoneme-arm study
+        // VM refuses to trace a study letter without one
+        // (`studyPreconditionFailure`), and the fixture letter A is a
+        // study letter. Tests that mean to exercise the refusal build a
+        // phoneme-less asset themselves.
         try? Data().write(to: letterDir.appendingPathComponent("A.mp3"))
+        try? Data().write(to: letterDir.appendingPathComponent("A_phoneme1.mp3"))
 
         return dir
     }()
@@ -79,7 +85,7 @@ final class StubProgressStore: ProgressStoring {
     func progress(for letter: String) -> LetterProgress { LetterProgress() }
     func recordCompletion(for letter: String, accuracy: Double,
                           phaseScores: [String: Double]?, speed: Double?,
-                          recognitionResult: RecognitionResult?) {}
+                          recognitionResult: RecognitionResult?, formAccuracy: Double?) {}
     // These four are plain protocol requirements with no extension
     // default, so omitting one is a BUILD error rather than a runtime
     // trap. Opt in to no-op behaviour explicitly, per channel.
@@ -111,7 +117,7 @@ final class StubDashboardStore: ParentDashboardStoring {
                        wallClockSeconds: TimeInterval?,
                        date: Date, condition: ThesisCondition,
                        inputDevice: String?) {}
-    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?) {}
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?) {}
     func reset() {}
 }
 
@@ -126,6 +132,15 @@ final class StubRawTraceStore: RawTraceStoring {
     func append(_ trace: RawTrace) { traces.append(trace) }
     func reset() { traces.removeAll(); resetCount += 1 }
     func flush() async { flushCount += 1 }
+}
+
+// MARK: - In-memory participant archive (records seals for assertions)
+final class StubParticipantArchive: ParticipantArchiving {
+    private(set) var archivedParticipants: [ArchivedParticipant] = []
+    func archive(_ record: ArchivedParticipant) {
+        archivedParticipants.removeAll { $0.participantId == record.participantId }
+        archivedParticipants.append(record)
+    }
 }
 
 // MARK: - No-op onboarding store
@@ -188,6 +203,7 @@ extension TracingDependencies {
             streakStore:          streakStore,
             dashboardStore:       StubDashboardStore(),
             rawTraceStore:        StubRawTraceStore(),
+            participantArchive:   StubParticipantArchive(),
             onboardingStore:      StubOnboardingStore(),
             notificationScheduler: LocalNotificationScheduler(center: StubNotificationCenter()),
             thesisCondition:      .guidedOnly,
@@ -206,6 +222,34 @@ extension TracingDependencies {
             // so at the call site with `.with(studyMode:)`, in whichever
             // direction they are asserting.
             studyMode:            false,
+            participantEnrolled:  true,   // the precondition reads THIS, not the device
+            // Pin the arm-cycle comparison switch OFF, for the same reason
+            // as studyMode above and one sharper: `StudyComparisonSwitches
+            // Tests.resetRestoresDefaults` WRITES `cycleAllConditions = true`
+            // (no `defer`) before clearing it, and suites run in PARALLEL —
+            // so a fixture that read the global would hand whichever VM was
+            // constructed inside that window a cycling session. Tests that
+            // mean to exercise the cycle say so at the call site
+            // (`deps.cycleAllConditions = true`).
+            cycleAllConditions:   false,
+            // Pin both trigger-boundary switches for the same reason, and
+            // a sharper one: their DEFAULT ARGUMENTS read a UserDefaults
+            // key, so an unpinned fixture would evaluate those reads at
+            // every `TracingDependencies(stub…)` construction in the
+            // parallel run — i.e. every VM-building test would sample
+            // whatever the trigger-boundary suite had written at that
+            // instant. Pinning makes the read never happen. Tests that
+            // mean to exercise these say so at the call site
+            // (`deps.soundGateRadiusFactor = …`).
+            soundGateRadiusFactor: StudyComparisonSettings.soundGateRadiusFactorDefault,
+            soundGateVelocityFloor: StudyComparisonSettings.soundGateVelocityFloorDefault,
+            // Pin the once-per-condition demonstration switch, same reason
+            // as `cycleAllConditions` above: a suite that writes the
+            // global key would otherwise hand whichever VM was
+            // constructed inside that window a session with a suppressed
+            // demonstration. Tests that mean to exercise it say so at the
+            // call site (`deps.oncePerCondition = true`).
+            oncePerCondition:     false,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Real AVAudioPlayer.play() in PromptPlayer adds enough
@@ -236,6 +280,9 @@ extension TracingDependencies {
     func with(rawTraceStore: RawTraceStoring) -> TracingDependencies {
         var copy = self; copy.rawTraceStore = rawTraceStore; return copy
     }
+    func with(participantArchive: ParticipantArchiving) -> TracingDependencies {
+        var copy = self; copy.participantArchive = participantArchive; return copy
+    }
     func with(onboardingStore: OnboardingStoring) -> TracingDependencies {
         var copy = self; copy.onboardingStore = onboardingStore; return copy
     }
@@ -250,5 +297,11 @@ extension TracingDependencies {
     }
     func with(trainedSubset: TrainedLetterSubset) -> TracingDependencies {
         var copy = self; copy.trainedSubset = trainedSubset; return copy
+    }
+    func with(oncePerCondition: Bool) -> TracingDependencies {
+        var copy = self; copy.oncePerCondition = oncePerCondition; return copy
+    }
+    func with(cycleAllConditions: Bool) -> TracingDependencies {
+        var copy = self; copy.cycleAllConditions = cycleAllConditions; return copy
     }
 }

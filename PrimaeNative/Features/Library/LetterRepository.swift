@@ -74,7 +74,25 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
 
     func allResourceURLs() -> [URL] {
         let fm = FileManager.default
-        return searchBundles.flatMap { b -> [URL] in
+        // DE-DUPLICATE BY RESOLVED PATH. `searchBundles` deliberately
+        // lists the module bundle AND the app bundle, and the app bundle
+        // CONTAINS the module bundle — so enumerating both roots hands
+        // back the same files twice, and more than twice once a test
+        // bundle is injected alongside them.
+        //
+        // Measured on device 2026-09-16 (iPad 00008103-000E60311AE8801E,
+        // Debug-Study), BEFORE this: the view-model held 295 letter
+        // assets where the built app contains 87 `strokes.json` files —
+        // a 3.4x over-collection that cost 16.8 s in the repository load
+        // and a 230.7 MB resident footprint, paid on every launch of a
+        // session the protocol specifies as ten to twenty minutes.
+        //
+        // Deduplicating here rather than downstream is the point: this is
+        // where the repetition is created, so every consumer benefits and
+        // none has to defend itself. Distinct files at distinct paths
+        // (Regular/ and Light/ subtrees) are unaffected.
+        var seen = Set<String>()
+        let all = searchBundles.flatMap { b -> [URL] in
             guard let root = b.resourceURL else { return [] }
             guard let enumerator = fm.enumerator(
                 at: root,
@@ -84,6 +102,9 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
             return enumerator.compactMap { $0 as? URL }.filter {
                 (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
             }
+        }
+        return all.filter { url in
+            seen.insert(url.resolvingSymlinksInPath().path).inserted
         }
     }
 
@@ -135,13 +156,27 @@ final class LetterRepository {
     private let cache: LetterCacheStoring
     private let userDefaults: UserDefaults
 
+    /// `weight` is a SEAM, added 2026-09-17 so a test can exercise the
+    /// Light→Regular polyline fallback without writing the global
+    /// `de.flamingistan.primae.fontWeight` default. It is not a convenience:
+    /// tests run in PARALLEL under Swift Testing, so a test that sets that
+    /// key makes every concurrently-running test load the wrong weight. The
+    /// first version of `LetterWeightFallbackTests` did exactly that and
+    /// broke `StrokeGeometryGoldenTests` — the golden read Light geometry
+    /// while the fallback suite had the key flipped. `nil` means the stored
+    /// preference, which is the production path.
     init(resources: LetterResourceProviding = BundleLetterResourceProvider(),
          cache: LetterCacheStoring = JSONLetterCache(),
-         userDefaults: UserDefaults = .standard) {
+         userDefaults: UserDefaults = .standard,
+         weight: FontWeight? = nil) {
         self.resources    = resources
         self.cache        = cache
         self.userDefaults = userDefaults
+        self.weight       = weight
     }
+
+    /// Injected weight, or nil to read the stored preference.
+    private let weight: FontWeight?
 
     /// Loads letters from bundle with cache fallback. Never empty —
     /// falls back to a hardcoded sample letter.
@@ -153,6 +188,29 @@ final class LetterRepository {
             logError(error)
             return [fallbackSampleLetter()]
         }
+    }
+
+    /// Bundle-only load for study sessions: NO cache fallback and NO
+    /// hardcoded sample letter. `loadLetters()` "never returns empty" —
+    /// on a bundle-scan failure it serves whatever the on-disk cache
+    /// holds (a previous build's geometry) or a synthetic "A" — which is
+    /// the right contract for the casual app and the wrong one for a
+    /// study device: the frozen-stimulus claim (D1) rests on the bundle,
+    /// and a session on substituted geometry would stamp ordinary rows.
+    /// The study seam refuses instead (`studyPreconditionFailure`),
+    /// like the missing phonemes and carrier (audit 2026-09-06).
+    func loadBundledLettersOnly() -> Result<[LetterAsset], LetterRepositoryError> {
+        Self.verifyBakeMetadataOnce(resources: resources)
+        let stroked = loadBundledStrokeLettersWithValidation()
+        if !stroked.letters.isEmpty {
+            logValidationIssues(stroked.letters, issues: stroked.issues)
+            return .success(stroked.letters)
+        }
+        let allIssues = stroked.issues.map { "\($0.letter): \($0.message)" }
+        if !allIssues.isEmpty {
+            return .failure(.partialLoad(loaded: 0, issues: allIssues))
+        }
+        return .failure(.noAssetsFound)
     }
 
     /// Typed-error variant for callers that want to surface failures.
@@ -253,12 +311,28 @@ private extension LetterRepository {
     typealias ValidationResult = (letters: [LetterAsset], issues: [ValidationIssue])
 
     func loadBundledStrokeLettersWithValidation() -> ValidationResult {
-        let activeWeight = currentFontWeight()
+        let activeWeight = weight ?? currentFontWeight()
         let fallbackWeight: FontWeight = .regular
         let otherWeightFolders = Set(FontWeight.allCases
             .filter { $0 != activeWeight }
             .map { $0.folder })
-        let allJSONURLs = resources.allResourceURLs().filter {
+        // ENUMERATE THE BUNDLE ONCE FOR THE WHOLE LOAD, not once per
+        // letter. This value used to be re-derived inside
+        // `findAudioAssets(for:)`, which the letter loop below calls once
+        // per letter — so the cost was
+        // `letters × files × bundles × 2` FILESYSTEM operations, because
+        // `allResourceURLs()` does a `resourceValues(forKeys:)` stat AND a
+        // `resolvingSymlinksInPath()` per file, across BOTH search
+        // bundles. With 157 files in the shipped resource tree and ~59
+        // letters that is on the order of 37,000 filesystem calls per
+        // launch, for a value that cannot change during one.
+        //
+        // Measured symptom, reported from the device 2026-09-18: "the app
+        // takes really long to load". The work is pure and
+        // bundle-determined, so hoisting it is a pure win — the same URLs
+        // reach every consumer, computed once.
+        let allResources = resources.allResourceURLs()
+        let allJSONURLs = allResources.filter {
             $0.pathExtension.lowercased() == "json"
         }
         // Accept URLs that are either under the active weight's subtree
@@ -324,7 +398,7 @@ private extension LetterRepository {
 
             let imageBase = isLowercaseFolder ? "\(base)_l" : base
 
-            let allAudio = findAudioAssets(for: base)
+            let allAudio = findAudioAssets(for: base, in: allResources)
             if allAudio.isEmpty {
                 // A valid strokes.json is enough to trace; letters
                 // without recordings stay silent on proximity events.
@@ -377,9 +451,15 @@ private extension LetterRepository {
         return (name, phoneme)
     }
 
-    func findAudioAssets(for base: String) -> [String] {
+    /// - Parameter allResources: the bundle's file list, passed IN rather
+    ///   than re-derived here. This function is called once per letter from
+    ///   `loadBundledStrokeLettersWithValidation`, and it used to call
+    ///   `resources.allResourceURLs()` itself — which enumerates both
+    ///   bundles doing a stat and a symlink resolution per file. That made
+    ///   the whole load quadratic in files × letters; see the note on
+    ///   `allResources` there for the measurement and the symptom.
+    func findAudioAssets(for base: String, in allResources: [URL]) -> [String] {
         let supported    = Set(["mp3", "wav", "m4a", "aac", "flac", "ogg"])
-        let allResources = resources.allResourceURLs()
         let bundleRoots: [String] = resources.searchBundles.compactMap {
             guard let p = $0.resourceURL?.path else { return nil }
             return p.hasSuffix("/") ? p : p + "/"
@@ -416,7 +496,8 @@ private extension LetterRepository {
     }
 
     func preferredAudioFiles(for base: String, available: [String]) -> [String] {
-        let marker = "/\(base.uppercased())/"
+        // "ß".uppercased() is "SS" — the fold canonicalKey exists to avoid.
+        let marker = "/\(base == "ß" ? "ß" : base.uppercased())/"
         let subfolderPaths = available.filter {
             $0.range(of: marker, options: .caseInsensitive) != nil
         }.sorted()

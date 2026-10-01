@@ -4,7 +4,7 @@ See `docs/BAKE_INVARIANTS.md` for permanent bake invariants — apply to every l
 
 _Single forward-looking work log. Last updated 2026-08-19 against `main` (commit `cb7291d`), after a full read-only reconciliation against code and git history. Only items still requiring work appear here — every shipped item has been removed. Shipped items live in commit history._
 
-_**Correction (2026-09-03):** three commits landed after the 2026-08-19 pass without a ROADMAP update — `1d9ff92` (D11.5 below, now closed), `6acfeb0` (land.sh verified-landing), `a296e2e` (PrimaeBundle resource routing). Also corrected: H5 below claimed the 5 study-letter phoneme recordings were "RECORDED" — measured false. `ls PrimaeNative/Resources/Letters/{A,I,M,F,L}/` shows no `<base>_phoneme<n>.mp3` files, only pre-existing letter-name audio, and no commit ever added any. Reverted to outstanding._
+_**Correction (2026-09-03), itself now superseded (2026-09-14):** the 2026-09-03 pass reverted H5 to outstanding after measuring no phoneme files on disk. That measurement was correct **at the time**; it no longer describes the current state — the 5 pilot study-letter recordings landed `92d399e` (2026-09-14) and H5 is closed (see §2 below). Left here so the correction history isn't silently erased, not as current fact._
 
 ---
 
@@ -14,7 +14,6 @@ _**Correction (2026-09-03):** three commits landed after the 2026-08-19 pass wit
 
 | Item | Owner action | Why it matters | Effort |
 |---|---|---|---|
-| **P6** phoneme audio recordings | Record 90 phoneme recordings (human voice, 3 takes × 30 letters) per `docs/SOUND_PRODUCTION_SPEC.md`, using the IPA target table in Appendix C of `docs/APP_DOCUMENTATION.md`; drop into `Resources/Letters/<base>/` as `<base>_phoneme<n>.mp3` | Phonemic awareness ↔ reading acquisition (Adams 1990); the "Lautwert wiedergeben" toggle is already shipped — without recordings it falls back silently | **XL** (recording-time-bound) |
 | **U5** Pencil 2 squeeze validation | iPad with Apple Pencil 2 — confirm squeeze + double-tap fire `replayAudio()` and don't double-fire with finger taps | Code is shipped; just needs verifying the gesture lands as intended on real hardware | **0–1 days on device** |
 | **U10** VoiceOver walkthrough | iPad with VoiceOver enabled — walk every screen, watch for skipped elements / misordered focus / Switch Control routing / Dynamic Type clipping | Required before submitting the thesis externally; the partial in-code audit shipped, but the device walkthrough is the load-bearing part | **2–3 hours on device** |
 
@@ -24,7 +23,11 @@ _**Correction (2026-09-03):** three commits landed after the 2026-08-19 pass wit
 |---|---|---|
 | **D8** canvas redraw profile | iPad + Instruments time-profile of a high-velocity guided session | No measured evidence of a problem; pre-optimising could break a currently-correct redraw path |
 
-Everything in the **post-thesis** section (F1–F10) waits until the thesis ships.
+Everything in the **post-thesis** section (F1–F13) waits until the thesis ships.
+
+**P7** (thesis KUG compliance/formatting pass) — CORRECTED same day: mostly already done (see §1 below), not blocked on anything.
+
+**P6** (phoneme audio recordings) dropped from this table 2026-09-14: the pilot only ever needed the 5 study letters (A, F, I, L, M), and those shipped as H5 (§2 below, `92d399e`) — nothing here still blocks the study. The remaining ~25 letters × 3 takes are casual-app scope, and the casual app is out of scope for as long as it stays paused (CLAUDE.md, "The casual path is paused"); re-filed as F13, §5 POST-THESIS.
 
 ---
 
@@ -49,26 +52,59 @@ Detail sections follow with effort, file list, citations, failure modes per item
 
 ## 1. THESIS-CRITICAL
 
-### P6 — Phoneme audio recordings *(infrastructure on main; audio assets pending)*
-**Effort:** XL (recording + voice direction work) · **Priority:** P1
+### P6 — Phoneme audio recordings — CLOSED for the pilot, 2026-09-14 (H5, `92d399e`)
 
-Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing handwriting practice with the *sound* the letter makes (`/a/` as in *Affe*) instead of just its name (`/aː/`) is curriculum-aligned for German Volksschule.
+The pilot's 5-letter study set (A, F, I, L, M — locked, `docs/SOUND_PRODUCTION_SPEC.md:6`) each has a `<base>_phoneme1.wav`, landed and gated permanently in CI — full detail at H5, §2 below. That was the only part of the original P6 ask that could block the study, and nothing here does anymore. The full-alphabet remainder (takes 2/3 for these 5 letters, all three takes for the other 25) is casual-app scope and moved to **F13, §5 POST-THESIS** — re-scoped there, not dropped, since the casual path is paused rather than deleted.
 
-**What's already in code (on `main`).**
-- `LetterAsset.phonemeAudioFiles: [String]` — populated by `LetterRepository.partitionPhonemeAudio` from the bundle scan.
-- `enablePhonemeMode: Bool` UserDefaults toggle, threaded through `TracingDependencies` and the VM.
-- All 7 audio call sites (replay, variants, autoplay, begin-touch reload, direct-phase first-tap, load() prime) routed through `activeAudioFiles(for:)` helper. Toggle-on with no phoneme recordings → silent fallback to letter-name set.
-- SettingsView "Lautwert" section with the toggle + Adams 1990 caption.
+---
 
-**What's still needed.**
-1. **Audio recordings** following the convention `<base>_phoneme<n>.<ext>` per Appendix C in `docs/APP_DOCUMENTATION.md`. Three takes per letter (different voices for child preference). 30 letters × 3 takes = 90 recordings.
-2. Per-letter IPA target table is in Appendix C; the recorded-phoneme production procedure (no-schwa Anlaut articulation, D6 stop-consonant handling, recording-session checklist) is in `docs/SOUND_PRODUCTION_SPEC.md`. Clean-up (trim silence, normalise to -16 LUFS, export at 44.1 kHz mono mp3) is the per-file labour.
-3. **Bundle wiring.** Drop the files into `PrimaeNative/Resources/Letters/<base>/`. Repository scan picks them up automatically; no Swift code changes required.
-4. **Verification checklist** (in the appendix): toggle on → tap → phoneme plays; two-finger swipe cycles through takes; toggle off → name resumes.
+### P7 — Thesis KUG compliance / formatting pass *(mostly already done; two small placeholders remain)*
+**Effort:** S · **Priority:** P3
 
-**Citations.**
-- Adams, M. J. (1990). *Beginning to Read: Thinking and Learning about Print*. MIT Press.
-- Krech, E.-M. et al. (2009). *Deutsches Aussprachewörterbuch*. de Gruyter.
+**CORRECTED 2026-09-06 (same day as first written).** The entry as originally
+written here said this waits on Ch.1/6/7 being drafted, on the strength of
+`docs/REVIEW_2026-09-01.md`'s (`master-thesis`) §F.4 finding that those
+chapters were template placeholders. That was wrong: re-read directly against
+disk, `content/01-introduction.typ` (17 lines), `06-evaluation.typ` (68
+lines) and `07-conclusion.typ` (19 lines) are substantive drafted prose, and
+`thesis.typ`'s English abstract, Kurzfassung, acronym-list note and keywords
+are likewise real, not template text — all drafted **the same day** as the
+review that flagged them (`docs/THESIS_STATUS.md` §0 and
+`docs/THESIS_FRAMING.md` §3 both say "Drafted 2026-09-01"; the review's own
+top banner says "corrections applied the same day," which the first pass at
+this entry missed). The mistake was citing §F.4's diagnostic list (the
+pre-correction state) as current fact without checking that banner.
+
+**What's actually still open, re-verified against disk 2026-09-06:**
+1. `thesis.typ:14` — `#let thesis-title = [Primae]`, still a literal
+   placeholder. `THESIS_FRAMING.md:220-227` (thesis repo) names a working
+   title and says explicitly "to replace." Trivial edit, but not before a
+   title is chosen — thesis writing, not formatting.
+2. `thesis.typ:28` — `#let thesis-date = [Month Year]`, still literal.
+   Fill in at submission time; there's nothing to decide, just nothing to
+   fill in yet.
+3. Spelling/wording consistency (§F.3 of the review — British vs. American
+   mixed, one proper-noun inconsistency, Ch.5 jargon headings):
+   `docs/THESIS_STATUS.md` reports British spelling normalised, but this was
+   NOT independently re-verified repo-wide this session — treat as
+   reported-fixed, not confirmed-fixed, until someone greps for it.
+
+**Verified fixed, no longer open (checked directly, not taken from the
+review):** cross-references (§F.1 — `thesis.typ:90` has the
+`heading.where(level:1)` supplement fix; `02-background.typ` uses
+`@ch-evaluation`/`@ch-methodology` labels, not hardcoded numbers);
+bibliography rendering (§F.2 — per `THESIS_STATUS.md` §0); List of
+Figures/Listings (§F.4 — no longer necessarily empty: `content/03-
+architecture.typ`, `04-implementation.typ`, `05-methodology.typ` now contain
+5 `#figure(...)` calls between them); keywords (`thesis.typ:35` now reads
+"letter learning, sonification, phoneme, handwriting, iPad, pilot study,
+Druckschrift" — describes the thesis, not the old iOS-generic list).
+`typst compile thesis.typ` exits 0, 75 pages, only the two known font
+warnings (re-run 2026-09-06).
+
+Nothing here is Primae's to action — it's thesis-repo prose/formatting, and
+what remains (title choice, date, one unverified spelling pass) is a final
+proofread pass near submission, not blocked engineering work.
 
 ---
 
@@ -81,13 +117,13 @@ _Consolidated from the former `PILOT_READINESS.md` (2026-06-20). The decision ra
 | # | Item | Type | Reuse / notes |
 |---|------|------|---------------|
 | H1 | `PilotAudioCondition: { phoneme, spatial, silent }` enum + assignment. _(2026-07-06: the third arm was redesigned from `arbitrarySound` to `spatial` — spatial 2D sonification, pen Y→pitch / X→pan on a shared carrier tone; the assignment machinery is unchanged.)_ Pedagogical flow held constant (D1), so this is the audio dimension only. **SHIPPED (`279d553`, 2026-06-20)** — orthogonal to `ThesisCondition` (UUID byte 15, decorrelated from byte 0), with override, enrollment, and exporter stamping; `PilotAudioConditionAssignmentTests`. | Build | Slotted into existing UUID-modulo assignment + override + enrollment + per-arm exporter, as planned. |
-| H2 | Arm-aware audio selection — `activeAudioFiles(for:)` branches on the pilot arm. **SHIPPED (`b212e82`, 2026-06-20; arm redesigned 2026-07-06)** — `.silent → []`, `.spatial → [SpatialSonification.carrierToneFile]` (one shared, letter-independent carrier; deliberately no name-audio fallback), `.phoneme → phoneme/name per toggle` (H2.1 tightened this; see known issues); `AudioArmRoutingTests`. | Build | Single chokepoint as planned. Both sound arms share the `setAdaptivePlayback` rate+pan coupling; the spatial arm ADDITIONALLY drives pitch from pen Y (`setSpatialPitch`, per-tick, spatial-only) — the arms are matched on rate+pan and differ in pitch-drive + sound identity (reframed matching discipline; DECISIONS.md update pending David's sign-off). |
+| H2 | Arm-aware audio selection — `activeAudioFiles(for:)` branches on the pilot arm. **SHIPPED (`b212e82`, 2026-06-20; arm redesigned 2026-07-06)** — `.silent → []`, `.spatial → [SpatialSonification.carrierToneFile]` (one shared, letter-independent carrier; deliberately no name-audio fallback), `.phoneme → phoneme/name per toggle` (H2.1 tightened this; see known issues); `AudioArmRoutingTests`. | Build | Single chokepoint as planned. Both sound arms share the `setAdaptivePlayback` rate+pan coupling; the spatial arm ADDITIONALLY drives pitch from pen Y (`setSpatialPitch`, per-tick, spatial-only) — the arms are matched on rate+pan and differ in pitch-drive + sound identity (reframed matching discipline; DECISIONS.md study-design header and D2 row brought current 2026-09-04). |
 | H3 | Silent-arm codepath. **SHIPPED (with H2, `b212e82`)** — `.silent` returns `[]` and every read site short-circuits on an empty list, so no file loads and no coupling fires. `AudioEngine.swift` untouched (stable/fragile). | Build | Delivered via the H2 chokepoint, as planned. |
-| H4 | ~~Arbitrary-sound asset set~~ **SUPERSEDED (2026-07-06):** the third arm is now spatial 2D sonification; its only asset — the seamless 440 Hz triangle carrier `Resources/Sonification/spatial_carrier.wav` — is bundled. No per-letter abstract sounds are needed; the Groß-Vogt abstract-sound design ask is off the critical path. (DECISIONS.md D2-supersession entry pending David's sign-off.) | — | `SOUND_PRODUCTION_SPEC.md` §abstract-sounds is now stale against code — flagged, not yet edited (thesis-substance adjacency). |
-| H5 | P6 phoneme recordings — **narrowed by the 5-letter study set (2026-07-06): 0/5 needed** (A I M F L → /a/ /ɪ/ /m/ /f/ /l/; 15 if the 3-takes convention is kept), down from 0/90. All five are vowels/continuants — loopable, so the D6 stop-consonant problem is MOOT for the study set. **NOT YET RECORDED (corrected 2026-09-03 — measured against disk: no `<base>_phoneme<n>.mp3` files exist under `Resources/Letters/{A,I,M,F,L}/`, only pre-existing letter-name audio; no commit has ever added any).** Human voice, per `docs/SOUND_PRODUCTION_SPEC.md` — ElevenLabs is NOT used for phonemes (it returns letter names/words, not isolated phones). David records these himself. | Assets | Was XL at 90; now S. Intake path is ready: drop `<base>_phoneme<n>.mp3` into `Resources/Letters/<BASE>/` (all five folders exist), `partitionPhonemeAudio` routes them automatically. |
+| H4 | ~~Arbitrary-sound asset set~~ **SUPERSEDED (2026-07-06):** the third arm is now spatial 2D sonification; its only asset — the seamless 440 Hz triangle carrier `Resources/Sonification/spatial_carrier.wav` — is bundled. No per-letter abstract sounds are needed; the Groß-Vogt abstract-sound design ask is off the critical path. (DECISIONS.md D2-supersession entry brought current 2026-09-04.) | — | `SOUND_PRODUCTION_SPEC.md` carries a 2026-09-04 status banner (ruling C3-5) scoping §5/abstract-sounds to the full-scale study's fourth arm, not the pilot — no longer stale against code. |
+| H5 | P6 phoneme recordings — **SHIPPED (`92d399e`, 2026-09-14).** All five files landed as WAV — `<base>_phoneme1.wav` under `Resources/Letters/{A,F,I,L,M}/` — with zero code changes (`findAudioAssets`'s supported-extension set already included `wav`; `partitionPhonemeAudio`'s `_phoneme` substring match has no extension check). Verified at runtime, not just read: CI on the real bundle (`BundleLetterResourceProvider`) flipped `studyLetterPhonemesResolve` from a `withKnownIssue` to a real pass; the wrapper is removed (`ResourceResolutionTests.swift`), turning the H5 check into a permanent gate. | Assets | Closed. |
 | H6 | Post-test reachability for the two untrained study letters — the within-child trained-vs-untrained contrast the design depends on. Re-scoped 2026-09-03 to what the pilot's stated outcome (Fréchet deviation + time) actually needs: the production measure `freeWrite` already scores. The original 3-modality (recognition/production/letter-sound) battery was NOT built — out of scope for the pilot; `PostTestController`/distractor-picker/researcher-start-screen never existed and don't need to now. **SHIPPED (`598fcbf`, 2026-09-03)** — `TracingViewModel.startPostTest(letter:)` loads either untrained letter and jumps the phase controller straight to `freeWrite` (observe/guided skipped entirely — reaching either would BE training the letter), via a one-shot override consumed in `load(letter:)`. No new export tagging needed: `trainedSubset` was already stamped on every row. `ResearchDashboardView` gets a studyMode-only trigger. `StudyLetterSetTests` covers reachability, refusal of a trained letter, refusal outside studyMode, and that the override doesn't leak into the next normal load. | Build | Reused `loadLetter` (never gated by `visibleLetterNames` — only the UI pickers were) and the existing `LearningPhaseController.resume(at:)`, as planned. |
 
-> H5 overlaps §1 P6 above — same recordings, two views: §1 is the thesis-critical work item, this row is its pilot-arm dependency.
+> H5 is the pilot-arm dependency of the same recordings §1 P6 (now closed) and F13 (§5) describe — this row is the one that actually gated the study; F13 is the leftover full-alphabet work, post-thesis.
 
 ### Known issues / residuals
 
@@ -104,7 +140,7 @@ _Pilot-blocking and tracked-not-built issues consolidated from PILOT_READINESS (
 **Known issue — phoneme arm depends on `enablePhonemeMode` (pilot-blocking, H2.1).**
 - H2 routes `activeAudioFiles(for:)` on the audio arm, but the `.phoneme` branch deliberately preserves the legacy parent toggle: `enablePhonemeMode ? phonemes : name audio`. This keeps casual/non-enrolled users byte-identical. **The cost:** a phoneme-arm study device with `enablePhonemeMode` OFF plays the letter **name** audio (`/aː/`) instead of the **phoneme** (`/a/`) — a silent confound that corrupts the IV with **no error surfaced**. The `.silent` and `.spatial` arms are unaffected (they ignore the toggle).
 - **RESOLVED — H2.1 shipped (`724d664`, 2026-06-20):** when `studyMode` is on, the `.phoneme` arm forces `phonemeAudioFiles` regardless of the toggle, resolved at **letter-load** in `activeAudioFiles(for:)` (`TracingViewModel.swift:843`), never on the per-tick `updateAdaptivePlayback` path — the matching-discipline coupling stays file-list-agnostic. `studyMode` OFF preserves the exact pre-pilot toggle behaviour (casual users byte-identical). Tests cover both toggle states under `studyMode`.
-- **Remaining residual (LOGGED, not silent — closed by H5, not by code):** a letter with no phoneme recording (the H5/P6 gap) still degrades to name audio on a phoneme-arm study device; `pilotAudioLogger.warning` names the letter at letter-load frequency, and the ResearchDashboard phoneme-coverage census (`7efccb0`) surfaces the gap before a session. The true fix is recording the phonemes (H5).
+- **Residual CLOSED (2026-09-14, H5 shipped):** the degrade-to-name-audio fallback this residual described is now dormant for the pilot's five study letters — all five have a phoneme recording, verified above. `pilotAudioLogger.warning` and the ResearchDashboard phoneme-coverage census remain in place as a general-case guard (any future letter without a recording still degrades and surfaces), but no study letter is in that state.
 
 **Known issue — new-participant reset→relaunch window (low-risk, tracked not built).**
 - The "Neuer Teilnehmer" reset (ResearchDashboard) regenerates participant identity (new UUID → re-randomised arms) but the running VM holds `thesisCondition`/`audioCondition` as `let` captured at init, so the new arms only take effect on app relaunch — enforced by a "Neustart erforderlich" alert.
@@ -159,21 +195,19 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 ## 4. TECHNICAL DEBT
 
 ### D11 — Measurement-layer correctness residuals
-**Effort:** S each · **Priority:** P1 (pilot-blocking for the two data-integrity items)
+**Effort:** S each · **Priority:** P1 for the two data-integrity items — both now CLOSED (#1, #2)
 
 Found by the 2026-08-19 reconciliation; none of these was previously tracked.
 
-1. **Pre-enrolment filter guards only the raw rows.** `ParentDashboardExporter.swift:147`
-   filters `recordedAt < enrolledAt` inside the per-row loop. Every aggregate below it
-   (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`, `letterByArm`,
-   `letterByAudioArm`, from `:199`) reads `snapshot.phaseSessionRecords` unfiltered, so
-   pre-enrolment activity lands in the arm aggregates — the exact attribution the filter
-   exists to prevent. `csvFiltersPreEnrolmentRows` passes because it asserts on a raw-row
-   substring only. **Pilot-blocking: it corrupts between-arm comparisons.**
-2. **Scheduler proxy assumes array order is chronological.** `ParentDashboardStore.swift:376`
-   and `ParentDashboardExporter.swift:207` both compute `records[i+1].score - records[i].score`
-   without sorting; the exporter's local is named `chrono` and is not. `PhaseSessionRecord`
-   already carries `recordedAt`. Correct by construction today, enforced by nothing.
+1. ~~**Pre-enrolment filter guards only the raw rows.**~~ **CLOSED (`881116b`, 2026-09-03,
+   found already merged to `main` — this entry was just never marked).** `ParentDashboardExporter
+   .swift` now filters ONCE into `enrolledRecords` and every aggregate (`averageFreeWriteScore_<arm>`,
+   `schedulerEffectivenessProxy_<arm>`, `letterByArm`, `letterByAudioArm`) reads that, never
+   `snapshot.phaseSessionRecords` directly — see the `D11#1` comment at the filter site.
+2. ~~**Scheduler proxy assumes array order is chronological.**~~ **CLOSED (this pass, 2026-09-04).**
+   Both `ParentDashboardStore.schedulerEffectivenessProxy` and `ParentDashboardExporter`'s per-arm
+   proxy now `.sorted { ($0.recordedAt ?? .distantPast) < ($1.recordedAt ?? .distantPast) }` before
+   pairing consecutive records — see the `D11#2` comments at both sites.
 3. **Export failure policy is implemented but undecided.** All three call sites are fail-loud
    and the destructive new-participant path is correctly gated behind a successful export.
    Missing is the DECISIONS entry recording that as policy — see DEFER 23. Doc-only.
@@ -188,14 +222,39 @@ Found by the 2026-08-19 reconciliation; none of these was previously tracked.
 
 ---
 
-### D12 — Execute the D5 `direct`-phase cut
-**Effort:** M · **Priority:** P2
+### Direct-phase cut *(was headed "D12") — EXECUTED 2026-09-18; the 2026-09-16 "SUPERSEDED" verdict was itself superseded*
+**Effort:** — · **Priority:** closed
 
-`docs/DECISIONS.md` locks D5 (cut `direct`, move to three-phase `observe → guided → freeWrite`)
-on a six-paper evidence read, but the cut was never executed and appeared in no work log:
-`LearningPhase.swift:17` still declares `case direct = 1` and the exporter deliberately iterates
-it. Blast radius and the Codable `rawValue` backward-compat constraint are recorded in DECISIONS.
-Not pilot-blocking (flow is held constant across arms either way).
+This entry used to be headed "D12", which collided with a *different* `D12` in
+`docs/DECISIONS.md` (the score composite's floor — an unrelated decision). The two files run
+independent D-series, so the same number meant two different things depending which doc you were
+in. Retitled 2026-09-16 to give the number back; the item itself is unchanged below.
+
+**CORRECTED 2026-10-01.** The historical paragraph below was written 2026-09-16
+and was true for two days. David re-ruled on 2026-09-18 — "the whole
+tapping the points part should go" — and the cut is LIVE:
+`LearningPhaseController.activePhases` filters `.direct` out of
+`.threePhase` (`e77a96ff`), a session runs observe → guided → freeWrite,
+and the export writes three rows per letter (one per scored phase).
+`LearningPhase.direct` the CASE stays — it is `Codable`, stored rows
+reference it, and `rawValue` ordering is relied on. `docs/DECISIONS.md`
+D5 records the executed cut (the 2026-09-16 reversal is kept there as
+history); the remaining lag is thesis prose — Ch.3 and Ch.6 still
+describe four phases, and that move is David's.
+
+*Historical, accurate 2026-09-16 → 2026-09-18, kept for the record:*
+Closed, not deferred. `docs/DECISIONS.md` D5 locked the cut of the `direct` phase
+(→ `observe → guided → freeWrite`) on a six-paper evidence read, but the cut was never executed —
+`LearningPhase.swift:17` still declares `direct = 1` and the exporter deliberately iterates it.
+David's ruling of 2026-09-16 keeps the four-phase flow and marks D5 **superseded** rather than
+executing it: the app has shipped the Direct phase since `559a1df` (2026-04), Ch.3 and Ch.6 are
+already written around the four-phase flow, and the pilot instrument is verified working on it.
+Read D5 for the full reasoning and its blast-radius estimate. If the Direct phase turns out to
+matter to the outcome, that is a finding for the main study, not a pilot blocker.
+
+> Note for the next reader: the D8/D9/D10/D11 numbers also collide between this file and
+> `docs/DECISIONS.md` (this file's D8 is the canvas redraw profile; DECISIONS' D8 is the primary
+> outcome). Only the D12 collision is resolved here. Flagged, not fixed.
 
 ---
 
@@ -252,6 +311,51 @@ on-device act (like the pilot artefact build in CLAUDE.md) or dropping.
 
 These are worthwhile additions once the thesis ships. None of them is a thesis-blocker.
 
+**Prerequisite for all of F1–F12, recorded 2026-09-13, UPDATED 2026-09-14:** the
+casual `Debug`/`Release` path is paused, not deleted (`CLAUDE.md`, "The casual
+path is paused") — CI no longer builds, tests, or compares it against study.
+As of 2026-09-14 this went one step further: `STUDY_BUILD` is unconditional in
+`Package.swift` (`CLAUDE.md`, "STUDY_BUILD made unconditional"), so the casual
+configuration cannot even LINK anymore, not just "isn't exercised." Every item
+below assumes a working casual build; restoring active casual CI is the first
+act of resuming any of them, not a side effect of picking one up. Concrete
+pieces of that restoration, already scoped so nobody re-derives them from
+scratch:
+1. Remove (or make conditional) the `.define("STUDY_BUILD")` swiftSettings
+   entries in `Package.swift` (`PrimaeNative` and `PrimaeNativeTests` targets)
+   — this is the actual gate now; without this step nothing else here matters.
+2. Re-add a CI job/step that builds `Debug`/`Release` again (removed:
+   "CONTROL B", "Build the normal build for comparison"; the identity-scan
+   step's normal-side checks were rewritten to study-only, not just skipped —
+   restoring the comparison means writing that half back, not un-skipping it).
+   `CONTROL A` ("Debug-Study without the flag must FAIL to link") is also gone
+   and would need re-adding IF the flag goes back to being conditional rather
+   than unconditional — re-derive it from `CLAUDE.md`'s description of what it
+   asserted, don't assume the old removed step can just be pasted back
+   unchanged, since the mechanism it was guarding no longer exists in the
+   same shape.
+3. Flip the main `xcode_test` job's `-configuration Debug-Study` back to
+   `-configuration Debug` (or whichever configuration makes sense at that
+   point). The 2026-09-13 caution here — "12 of 72 test files construct
+   non-study scenarios... may not even compile" — was checked directly on
+   2026-09-14 and did NOT hold up: a full sweep found zero test-file
+   references to any symbol `STUDY_BUILD` compiles out of the package, and
+   no test constructs an unpinned `TracingDependencies()` that would
+   inherit the compile-time default. That specific worry can be retired;
+   re-verify quickly rather than re-deriving from scratch, since whatever
+   code exists by the restoration date may have drifted from what was
+   measured here.
+4. Restore a second scheme if casual needs to coexist with study again.
+   There is exactly one scheme now, `Primae` (2026-09-14) — the old
+   `Primae` scheme, which pointed at casual Debug/Release, was DELETED
+   (not renamed) once its Debug/Release link target stopped existing;
+   `Primae-Study` was renamed to `Primae` to take its place. Restoring
+   casual therefore needs a scheme recreated from scratch pointed at
+   Debug/Release (e.g. `Primae-Casual` or similar — don't reuse the name
+   `Primae` for it, that name now means "the one scheme," and re-splitting
+   it back into two without a clearly different name is exactly the "which
+   one do I pick" trap this collapse existed to close), not un-deleted.
+
 ### F1 — App Store readiness pass
 **Effort:** L · **Priority:** P1 (post-thesis)
 
@@ -287,6 +391,8 @@ The `SchriftArt` enum has five cases; only Druckschrift (Primae) and Schreibschr
 
 A single complication that shows the current streak. Tapping opens the Schule world. WatchKit extension + WCSession to read `streak.json` from the App Group. Depends on F1.
 
+**Consequence of the 2026-09-07 study-build bundle-ID split (`CLAUDE.md`, "Study builds"): the App Group this item needs is scoped to the CASUAL app's bundle identifier (`com.flamingistan.primae`) only.** Study now ships under its own, separate `com.flamingistan.primae.study`, with no shared container between the two — verified, not assumed (see `CLAUDE.md`). Whoever builds this companion should create the App Group under the casual bundle ID and expect it to reach only the casual app's `streak.json`; it will not, and should not, see anything a study build wrote. That's correct, not a gap to close — a study instrument is deliberately isolated from the casual app's data.
+
 ### F8 — Mac Catalyst
 **Effort:** M · **Priority:** P3
 
@@ -302,8 +408,36 @@ Architecture is German-only by design (curriculum-specific). For German-speaking
 
 For motor-impaired children, expose the direct-phase dot tap as a Switch Control target and render a parallel "Switch Control hint" overlay that highlights the next-expected dot in high contrast.
 
-### F11 — iOS 27 SDK move
-**Effort:** S–M · **Priority:** P1 (post-pilot; hard deadline if the App Store mandates the iOS 27 SDK, projected ~April 2027 — unconfirmed as of 2026-07-07)
+### F11 — iOS 27 SDK move ✅ **DONE 2026-10-01**
+**Effort:** S–M · **Priority:** was P1 (post-pilot; hard deadline if the App Store mandates the iOS 27 SDK)
+
+**LANDED 2026-10-01.** `bin/toolchain.pin` is the single place the pin lives:
+**Xcode major 27**, CI runner label `xcode-27`, deployment target 27.0.
+Applied: `Package.swift` tools-version `6.3` → **`6.4`** (required — `.iOS(.v27)`
+does not exist in 6.3; the compiler rejects the manifest), `.iOS(.v26)` →
+`.v27`, all 12 `IPHONEOS_DEPLOYMENT_TARGET` `26.0` → `27.0`, CI
+`runs-on: macos-26` → `xcode-27`.
+
+**Both gates cleared, measured:**
+- **CI availability** — `xcode-27` is the correct label (see the corrected note
+  below; the earlier `macos-27` search was the wrong identifier).
+- **Xcode 27 stability** — the `-O` gate, which was the real one. A
+  `Release-Study` `-O` build SUCCEEDED on Xcode 27.2, and `PrimaeNativeTests`
+  is green (1045 tests, 0 failed, 0 skipped) under the pinned config. This is
+  the gate that mattered because swiftlang/swift#88173 is an `-O`-only inliner
+  crash in exactly this project's configuration.
+
+**⚠️ CONSEQUENCE: iOS 26 devices can no longer install this build.** The study
+iPad runs iOS 27.2 (measured 2026-10-01), so the pilot is unaffected, but a
+school iPad on iOS 26.x could not install it. Taken on explicit instruction
+rather than derived — reverting is a separate decision, not a cleanup.
+
+**Still true:** the pin is by MAJOR version, so it cannot distinguish 27.0
+from 27.2, and this machine has both. Record the EXACT build with the
+artefact (`build_study.sh` prints it on every run). Pin = what we accept; build
+stamp = what actually ran.
+
+**Historical — the gates as they stood when this was open:**
 
 Per the 2026-07-07 readiness audit the app already satisfies both mandatory iOS 27 migrations (never used `UIDesignRequiresCompatibility`; pure SwiftUI App lifecycle), uses none of the reported deprecations (`UIScreen.main`, SceneKit), and no AVAudioSession / AVSpeechSynthesizer deprecations surfaced — `AudioEngine.swift` is unthreatened. The move is therefore a toolchain bump, gated on:
 - **Xcode 27 stability** — early betas crash the compiler; there is a known inliner crash with exactly our configuration, `-default-isolation MainActor` + `-O` (swiftlang/swift#88173). **Verify a Release build, not just Debug CI, before adopting.**
@@ -315,7 +449,31 @@ Per the 2026-07-07 readiness audit the app already satisfies both mandatory iOS 
   `Release-Study` `-O` compile on Xcode 27 beta. That is one clean compile, not a cleared gate —
   swiftlang/swift#88173 is an inliner crash, so absence on one build is weak evidence.
 
-### F12 — Xcode MCP bridge *(declined 2026-08-15; revisit post-pilot)*
+### F12 — Xcode MCP bridge ✅ **ADOPTED 2026-10-01** *(was: declined 2026-08-15)*
+**Effort:** S to adopt · **Priority:** P3 (post-pilot only)
+
+**ADOPTED 2026-10-01** (commit `599436fb`, `.mcp.json` at repo root as the
+conditions below require) — this entry said "declined" for weeks after that
+commit landed, which is exactly the doc-currency failure this project keeps
+measuring. Corrected here.
+
+It is **already load-bearing**: the CLI is how the F11 pin was verified from a
+Claude Code seat at all. Bare `xcodebuild` package resolution fails from this
+seat (`permissionDenied`); `xcodebuildmcp` resolves, builds, and runs the full
+suite successfully. See CLAUDE.md's superseded-block note.
+
+How the conditions below are met:
+- **Pinned to a named workspace/scheme, checked in** — `.mcp.json` is tracked at
+  the repo root, not `~/.claude.json`. In practice every invocation passes
+  `--project-path` / `--scheme` explicitly on the command line rather than
+  relying on session defaults.
+- **Reports which surface it built** — the CLI prints the derived-data path,
+  selected tests, and result bundle on every run.
+- **`xcodebuild` remains the documented fallback** — unchanged in CLAUDE.md and
+  the workflows' own history.
+
+Note the CLI is a *different* tool from the `xcrun mcpbridge` server in
+`.mcp.json`; both are the "Xcode MCP bridge" this entry meant.
 **Effort:** S to adopt · **Priority:** P3 (post-pilot only)
 
 An Xcode MCP bridge would let a session drive builds / tests / simulators directly instead of shelling out to `xcodebuild`. **Declined for now**, and the reason is structural rather than a matter of taste: this project exposes **two build surfaces** — the SPM package (`Package.swift` → `PrimaeNative`, where `PrimaeNativeTests` actually lives) and `Primae/Primae.xcodeproj` (three schemes) — and a bridge binds to one workspace at a time. A bridge pointed at the wrong surface reports green for a target nobody meant to validate, and that failure is silent: a green is a green. Not an acceptable risk while the study configuration is frozen and heading into device validation, where a false green propagates straight into the pilot.
@@ -327,16 +485,38 @@ Conditions for revisiting, after the pilot has run:
 
 **If adopted, it must be declared in a tracked `.mcp.json` at the repo root — never in `~/.claude.json`.** A user-level registration is invisible to the repo, unreviewable in a diff, and would not travel with a fresh clone: two sessions on the same commit could then be validating different targets with no record of the difference.
 
+### F13 — Phoneme recordings, full alphabet *(moved from §1 P6, 2026-09-14 — pilot subset already shipped, see H5 §2)*
+**Effort:** XL (recording + voice direction work) · **Priority:** P1 (post-thesis, i.e. once casual resumes — see this section's prerequisite note above)
+
+Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing handwriting practice with the *sound* the letter makes (`/a/` as in *Affe*) instead of just its name (`/aː/`) is curriculum-aligned for German Volksschule. This is why the item carries a thesis-strength P1 even though it's post-thesis-timed: it's not polish, it's the casual app's version of a feature the pilot already validates on its 5-letter subset.
+
+**Already in code (on `main`), pilot-proven:**
+- `LetterAsset.phonemeAudioFiles: [String]` — populated by `LetterRepository.partitionPhonemeAudio` from the bundle scan.
+- `enablePhonemeMode: Bool` UserDefaults toggle, threaded through `TracingDependencies` and the VM.
+- All 7 audio call sites routed through `activeAudioFiles(for:)`. Toggle-on with no phoneme recordings → silent fallback to letter-name set — so an incomplete recording set degrades safely rather than breaking.
+- SettingsView "Lautwert" section with the toggle + Adams 1990 caption.
+
+**What's still needed, once casual CI resumes:**
+1. **Audio recordings**, convention `<base>_phoneme<n>.<ext>` per Appendix C in `docs/APP_DOCUMENTATION.md`, three takes per letter, 30 letters. Only `_phoneme1` exists so far, and only for the 5 pilot letters (`ls PrimaeNative/Resources/Letters/{A,F,I,L,M}/ | grep phoneme`, 2026-09-14) — takes 2/3 for those 5, and all three takes for the other 25, are open.
+2. Per-letter IPA target table is in Appendix C; the recording procedure (no-schwa Anlaut articulation, D6 stop-consonant handling, checklist) is in `docs/SOUND_PRODUCTION_SPEC.md`. Clean-up (trim silence, normalise to -16 LUFS, export at 44.1 kHz mono) is the per-file labour.
+3. **Bundle wiring.** Drop the files into `PrimaeNative/Resources/Letters/<base>/`. Repository scan picks them up automatically; no Swift code changes required — reconfirmed by the pilot subset landing with zero code changes.
+4. **Verification checklist** (in the appendix): toggle on → tap → phoneme plays; two-finger swipe cycles through takes; toggle off → name resumes.
+
+**Citations.**
+- Adams, M. J. (1990). *Beginning to Read: Thinking and Learning about Print*. MIT Press.
+- Krech, E.-M. et al. (2009). *Deutsches Aussprachewörterbuch*. de Gruyter.
+
 ---
 
 ## Recommended ordering for the next sprint
 
 The at-a-glance table at the top of this file is the authoritative version. Repeated here as a flow:
 
-1. **P6 phoneme recordings** — studio recording (human voice) per `docs/SOUND_PRODUCTION_SPEC.md` + drop-into-bundle; no device needed.
-2. **U5 + U10 device validation** — single iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
+1. **U5 + U10 device validation** — single iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
 
-**D8 canvas redraw profile** is post-thesis polish — schedule once there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F11** are post-thesis full features.
+P6's pilot-blocking piece shipped 2026-09-14 (H5) and is off this list; its full-alphabet remainder moved to F13, §5, post-thesis.
+
+**D8 canvas redraw profile** is post-thesis polish — schedule once there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F13** are post-thesis full features.
 
 ---
 

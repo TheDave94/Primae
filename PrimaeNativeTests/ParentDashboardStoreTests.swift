@@ -174,6 +174,34 @@ private func makeStore() -> JSONParentDashboardStore {
         #expect(abs(series[0].minutes - 1.0) < 1e-9, "oldest first: index 0 is the older day")
         #expect(abs(series[1].minutes - 2.0) < 1e-9)
     }
+
+    // D11#2 regression: the proxy pairs *consecutive* records per letter
+    // to compute a score delta. Before the fix, "consecutive" meant
+    // array (insertion) order, not `recordedAt` order — feeding the same
+    // records in a different insertion order silently repaired/garbled
+    // the pairing. The proxy must now be insertion-order independent.
+    @Test func schedulerEffectivenessProxy_isInsertionOrderIndependent() {
+        let letterARecords = [
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true,
+                                score: 0.2, schedulerPriority: 0.1,
+                                recordedAt: date(2025, 3, 1)),
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true,
+                                score: 0.5, schedulerPriority: 0.5,
+                                recordedAt: date(2025, 3, 2)),
+            PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true,
+                                score: 0.9, schedulerPriority: 0.9,
+                                recordedAt: date(2025, 3, 3)),
+        ]
+        var chronological = DashboardSnapshot()
+        chronological.phaseSessionRecords = letterARecords
+        var reverseInserted = DashboardSnapshot()
+        reverseInserted.phaseSessionRecords = letterARecords.reversed()
+
+        let proxyChrono   = chronological.schedulerEffectivenessProxy
+        let proxyReversed = reverseInserted.schedulerEffectivenessProxy
+        #expect(abs(proxyChrono - proxyReversed) < 1e-9,
+                "proxy must be keyed on recordedAt, not insertion order")
+    }
 }
 
 @Suite struct JSONParentDashboardStoreTests {
@@ -258,3 +286,35 @@ private func makeStore() -> JSONParentDashboardStore {
         #expect(reloaded.snapshot.sessionDurations.count == 4)
     }
 }
+
+// MARK: - averageWritingDimensions denominators (audit 2026-09-04)
+
+@Suite @MainActor struct WritingDimensionAverageTests {
+    private func record(_ json: String) throws -> PhaseSessionRecord {
+        try JSONDecoder().decode(PhaseSessionRecord.self, from: Data(json.utf8))
+    }
+
+    /// The decoder sets the four dimensions independently, so a row can
+    /// carry `formAccuracy` without `tempoConsistency`. That row used to
+    /// add 0 to tempo's numerator and 1 to the shared denominator.
+    @Test("each dimension averages over its own present values")
+    func perDimensionDenominators() throws {
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords = [
+            try record("""
+            {"letter":"A","phase":"freeWrite","completed":true,"score":0.5,"schedulerPriority":0,
+             "condition":"threePhase","formAccuracy":0.6,"tempoConsistency":0.8,"pressureControl":0.4,"rhythmScore":0.2}
+            """),
+            try record("""
+            {"letter":"A","phase":"freeWrite","completed":true,"score":0.5,"schedulerPriority":0,
+             "condition":"threePhase","formAccuracy":0.4}
+            """),
+        ]
+        let dims = try #require(snap.averageWritingDimensions)
+        #expect(abs(dims.form - 0.5) < 1e-9)
+        #expect(abs(dims.tempo - 0.8) < 1e-9, "tempo has ONE value; got \(dims.tempo)")
+        #expect(abs(dims.pressure - 0.4) < 1e-9)
+        #expect(abs(dims.rhythm - 0.2) < 1e-9)
+    }
+}
+

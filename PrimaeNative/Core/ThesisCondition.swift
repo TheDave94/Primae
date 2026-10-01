@@ -13,7 +13,7 @@ import Foundation
 /// predates the `direct` phase; rawValues are preserved for backward-
 /// compatible decode of historical dashboard JSON.
 enum ThesisCondition: String, Codable, CaseIterable, Sendable {
-    /// Full four-phase flow: observe → direct → guided → freeWrite.
+    /// Full three-phase flow: observe → guided → freeWrite.
     /// Case stays named `threePhase` to keep the Codable rawValue stable.
     case threePhase
 
@@ -24,9 +24,16 @@ enum ThesisCondition: String, Codable, CaseIterable, Sendable {
     case control
 
     /// German display label for the parent dashboard and thesis reports.
+    ///
+    /// `.threePhase` read **"Vier Phasen"** until 2026-09-18. That was
+    /// defensible while four phases ran — D12 documented the name as
+    /// historical rather than a count — but `direct` left the flow that day
+    /// (D5), so it became a plain mislabel in the proctor's arm picker and
+    /// the research dashboard. The CASE NAME is unchanged: it is a
+    /// `Codable` raw value and renaming it would break stored rows.
     var displayName: String {
         switch self {
-        case .threePhase: return "Vier Phasen"
+        case .threePhase: return "Drei Phasen"
         case .guidedOnly: return "Nur Nachspuren"
         case .control:    return "Kontrollgruppe"
         }
@@ -201,5 +208,48 @@ enum ParticipantStore {
         // Restart the spaced-retrieval cadence for the new participant.
         UserDefaults.standard.removeObject(forKey: retrievalCounterKey)
         return new
+    }
+
+    /// Restores an EXISTING participant's identity on this device for a
+    /// later session — the delayed retention test (thesis Ch.6) some
+    /// weeks after training (2026-09-04). Until this existed the only
+    /// identity operation was `startNewParticipant`, so a delayed session
+    /// minted a new UUID and its rows could not be linked to the child's
+    /// training rows except by a hand-kept log.
+    ///
+    /// The UUID comes from the first session's export header
+    /// (`# participantId=…`). Both arm axes and the trained subset
+    /// re-derive from it deterministically; the three researcher
+    /// overrides are CLEARED, because an override the first session used
+    /// is recorded on that session's rows, not on the device, and the
+    /// proctor must re-apply it from the export before the session.
+    /// Enrolment is stamped anew at this instant (rows of the delayed
+    /// session are later than it; the training rows live in the earlier
+    /// export). Takes effect on the next launch, like every identity
+    /// change. Returns nil, and changes nothing, for a malformed id.
+    @discardableResult
+    static func restoreParticipant(uuidString: String) -> UUID? {
+        guard let restored = UUID(uuidString: uuidString.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return nil
+        }
+        // Restoring the id this device ALREADY carries (same child, same
+        // iPad) keeps the original enrolment instant: the export filters
+        // rows before `enrolledAt`, and re-stamping now would silently
+        // drop that child's existing rows (audit 2026-09-04). A different
+        // id re-stamps, so another child's rows stay out of the export.
+        // Same id, stamp or no stamp: an unstamped device with this id has
+        // rows that an export currently includes (no filter); stamping now
+        // would drop them (review 2026-09-05).
+        let sameParticipant = UserDefaults.standard.string(forKey: key) == restored.uuidString
+        UserDefaults.standard.set(restored.uuidString, forKey: key)
+        UserDefaults.standard.removeObject(forKey: conditionOverrideKey)
+        UserDefaults.standard.removeObject(forKey: audioConditionOverrideKey)
+        UserDefaults.standard.removeObject(forKey: trainedSubsetOverrideKey)
+        UserDefaults.standard.set(true, forKey: enrolledKey)
+        if !sameParticipant {
+            UserDefaults.standard.set(Date(), forKey: enrolledAtKey)
+        }
+        UserDefaults.standard.removeObject(forKey: retrievalCounterKey)
+        return restored
     }
 }

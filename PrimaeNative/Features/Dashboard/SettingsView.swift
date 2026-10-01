@@ -8,6 +8,23 @@ struct SettingsView: View {
     @State private var conditionOverride: ThesisCondition? = ParticipantStore.conditionOverride
     @State private var audioConditionOverride: PilotAudioCondition? = ParticipantStore.audioConditionOverride
     @State private var trainedSubsetOverride: TrainedLetterSubset? = ParticipantStore.trainedSubsetOverride
+    // Comparison switches for the questions a supervisor left open on
+    // 2026-09-17 (see `StudyComparisonSettings`). Held as `@State` and
+    // written through, matching the pickers above rather than reading
+    // UserDefaults from the body. Every default is the current
+    // behaviour, so an untouched device is unchanged.
+    @State private var comparisonObservePasses: Int = StudyComparisonSettings.observePasses
+    @State private var comparisonSpokenFeedback: Bool = StudyComparisonSettings.spokenFeedbackInStudy
+    @State private var comparisonAllFiveLetters: Bool = StudyComparisonSettings.allFiveLetters
+    @State private var comparisonLetterRepeatCount: Int = StudyComparisonSettings.letterRepeatCount
+    @State private var comparisonCycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions
+    @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
+    @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
+    @State private var comparisonPanning: Bool = StudyComparisonSettings.panningEnabled
+    @State private var comparisonAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration
+    @State private var comparisonTriggerRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor
+    @State private var comparisonTriggerVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor
+    @State private var comparisonOncePerCondition: Bool = StudyComparisonSettings.oncePerCondition
     @State private var speechRate: Float = {
         let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
         return stored > 0 ? stored : 0.42
@@ -19,10 +36,36 @@ struct SettingsView: View {
     /// `.preferredColorScheme`. Persisted under `primaeAppearance`.
     @AppStorage("primaeAppearance") private var appearance: String = "system"
 
-    private static let defaultsKey = "de.flamingistan.primae.selectedSchriftArt"
+    /// Internal, not private, so `NewParticipantResetTests` can read the key
+    /// from its owner rather than re-declaring the literal (2026-09-17). It
+    /// was a duplicated string there, which meant renaming the key here
+    /// would leave that test green — the suite's own comment one line down
+    /// already states the rule this violated.
+    static let defaultsKey = "de.flamingistan.primae.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.primae.letterOrdering"
     fileprivate static let speechRateKey = "de.flamingistan.primae.speechRate"
     fileprivate static let shortOnboardingKey = "de.flamingistan.primae.useShortOnboarding"
+
+    /// Ruling Q1's reasoning applies to enrolment as much as to studyMode:
+    /// a study binary must not be switchable into an un-randomised state
+    /// (class two, 2026-09-05); enrolment happens through "Neuer
+    /// Teilnehmer" in the research area. Kept out of the Form's builder
+    /// so the `#if` does not break its type inference (CI run 1652).
+    @ViewBuilder
+    private var enrolmentControl: some View {
+        #if STUDY_BUILD
+        Label("Studienteilnahme: durch die Studien-Version festgelegt", systemImage: "lock.fill")
+            .foregroundStyle(Color.inkSoft)
+        #else
+        Toggle("Studienteilnahme (A/B-Arm)", isOn: Binding(
+            get: { thesisEnrolled },
+            set: {
+                thesisEnrolled = $0
+                ParticipantStore.isEnrolled = $0
+            }
+        ))
+        #endif
+    }
 
     var body: some View {
         // `@Bindable` is Observation's purpose-built projection for an
@@ -44,10 +87,23 @@ struct SettingsView: View {
                     orderingRow(strategy)
                 }
             }
+            // Hidden on the study build (2026-09-17). The toggle is INERT
+            // here: `vm.enableFreeformMode` is written by this row and read
+            // by nothing else — `grep` finds only this line and the
+            // assignment in `TracingViewModel`'s init. Its feature lives in
+            // `WerkstattWorldView` / `FreeformWritingView`, both
+            // `#if !STUDY_BUILD`, so on a study device it cannot exist and
+            // the switch cannot do anything. This is the same rule the
+            // calibration toggle below already follows: "a control that can
+            // no longer do anything shouldn't still invite a tap". Found
+            // because the device had it stored as `false` — someone tapped
+            // it and nothing happened.
+            #if !STUDY_BUILD
             Section("Freies Schreiben") {
                 Toggle("Freies Schreiben erlauben", isOn: $vm.enableFreeformMode)
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
+            #endif
             Section("Schreibrichtung") {
                 // Backward chaining for direct phase only: taps the
                 // last stroke first (Spooner 2014). Off by default.
@@ -117,13 +173,7 @@ struct SettingsView: View {
                 Toggle("Schreiben auf Papier", isOn: $vm.enablePaperTransfer)
                 .accessibilityHint("Nach dem freien Schreiben wird das Kind gebeten, den Buchstaben auf Papier zu schreiben")
 
-                Toggle("Studienteilnahme (A/B-Arm)", isOn: Binding(
-                    get: { thesisEnrolled },
-                    set: {
-                        thesisEnrolled = $0
-                        ParticipantStore.isEnrolled = $0
-                    }
-                ))
+                enrolmentControl
                 .accessibilityHint("Nur für Forschung aktivieren. Weist das Gerät stabil einer Studienbedingung zu; andernfalls erhält jedes Kind die volle Vier-Phasen-Lernabfolge. Änderung wird beim nächsten App-Start wirksam.")
                 Text("Änderung wird beim nächsten App-Start wirksam.")
                     .font(.caption)
@@ -138,6 +188,7 @@ struct SettingsView: View {
                             set: {
                                 conditionOverride = $0
                                 ParticipantStore.conditionOverride = $0
+                                vm.markAssignmentOverrideChanged()
                             })) {
                         Text("Automatisch").tag(ThesisCondition?.none)
                         ForEach(ThesisCondition.allCases, id: \.self) { arm in
@@ -155,6 +206,7 @@ struct SettingsView: View {
                             set: {
                                 audioConditionOverride = $0
                                 ParticipantStore.audioConditionOverride = $0
+                                vm.markAssignmentOverrideChanged()
                             })) {
                         Text("Automatisch").tag(PilotAudioCondition?.none)
                         ForEach(PilotAudioCondition.allCases, id: \.self) { arm in
@@ -172,6 +224,7 @@ struct SettingsView: View {
                             set: {
                                 trainedSubsetOverride = $0
                                 ParticipantStore.trainedSubsetOverride = $0
+                                vm.markAssignmentOverrideChanged()
                             })) {
                         Text("Automatisch").tag(TrainedLetterSubset?.none)
                         ForEach(TrainedLetterSubset.allSubsets, id: \.self) { subset in
@@ -180,7 +233,187 @@ struct SettingsView: View {
                     }
                     .accessibilityHint("Nur für Studienleitung. Legt fest, welche 3 der 5 Studienbuchstaben dieses Kind übt, anstatt die automatische Zuweisung zu verwenden — für ausgewogenes Counterbalancing. Änderung wird beim nächsten App-Start wirksam.")
                 }
+
+                // COMPARISON MODE (2026-09-17). Each row is one question a
+                // supervisor left open rather than a decision, and each
+                // switch puts BOTH options within reach so they can be
+                // compared on the device. Defaults are the current
+                // behaviour in every case; nothing here changes anything
+                // until it is touched.
+                //
+                // A session run with any of these off-default is a
+                // COMPARISON run, not pilot data: rows record the session
+                // as normal but the configuration they were produced
+                // under is not the pre-specified one. The footer says so.
+                Section("Vergleichsmodus (Studienleitung)") {
+                    Picker("Vorzeigen", selection: Binding(
+                        get: { comparisonObservePasses },
+                        set: {
+                            comparisonObservePasses = $0
+                            StudyComparisonSettings.observePasses = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("Einmal").tag(1)
+                        Text("Zweimal").tag(2)
+                    }
+                    .accessibilityHint("Wie oft die Anschauen-Animation läuft, bevor die Phase weitergeht. Einmal ist die Vorgabe; zweimal stellt das frühere Verhalten wieder her. Der Durchlauf ist in beiden Fällen langsamer als früher.")
+
+                    Toggle("Sprachausgabe im Studienmodus", isOn: Binding(
+                        get: { comparisonSpokenFeedback },
+                        set: {
+                            comparisonSpokenFeedback = $0
+                            StudyComparisonSettings.spokenFeedbackInStudy = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: die Studie entfernt jede Sprachausgabe. Ein stellt die Sprech-Rückmeldung der normalen App wieder her, damit beide Optionen verglichen werden können.")
+
+                    Toggle("Alle fünf Buchstaben üben", isOn: Binding(
+                        get: { comparisonAllFiveLetters },
+                        set: {
+                            comparisonAllFiveLetters = $0
+                            StudyComparisonSettings.allFiveLetters = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: das Kind übt 3 der 5 Buchstaben, die anderen 2 bleiben für den Nachtest ungeübt. Ein lässt jedes Kind alle 5 üben — damit entfällt der Vergleich geübt/ungeübt. Die Daten eines solchen Durchlaufs sind ein Vergleichslauf: die Spalte „trainedSubset“ jeder Zeile steht dann auf „AFILM“ und die Spalte für ungeübt bleibt leer, statt eine 3er-Teilmenge zu behaupten. Ein Post-Test ist nicht möglich, weil es keinen ungeübten Buchstaben gibt.")
+
+                    Picker("Wiederholungen je Buchstabe", selection: Binding(
+                        get: { comparisonLetterRepeatCount },
+                        set: {
+                            comparisonLetterRepeatCount = $0
+                            StudyComparisonSettings.letterRepeatCount = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("1").tag(1)
+                        Text("2").tag(2)
+                        Text("3").tag(3)
+                    }
+                    .accessibilityHint("Wie oft der komplette Ablauf eines Buchstabens läuft, bevor die Studienleitung weiterschaltet. Nach jeder Wiederholung wird derselbe Buchstabe erneut vorgemacht und nachgefahren; jede Wiederholung wird als eigener Datensatz geschrieben. 1 ist die Vorgabe.")
+
+                    Toggle("Alle Konditionen durchlaufen", isOn: Binding(
+                        get: { comparisonCycleAllConditions },
+                        set: {
+                            comparisonCycleAllConditions = $0
+                            StudyComparisonSettings.cycleAllConditions = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: jedes Kind läuft in dem einen Arm, der ihm zugewiesen wurde. Ein lässt die Sitzung alle drei Audio-Bedingungen durchlaufen, eine je Buchstabe, in der Reihenfolge Phonem, Raumklang, Ohne Ton und wieder von vorn. Den ersten Buchstaben behält das Kind in dem Arm, der ihm zugewiesen wurde. Die Bedingung wechselt nur zwischen zwei Buchstaben, nie mitten in einem — der laufende Versuch bleibt unangetastet, und ein erneutes Laden desselben Buchstabens verbraucht keine Bedingung. Für den stillen Arm gilt dabei dieselbe Absicherung wie bei der Zuweisung: es entsteht kein Tonsignal. Ein Vergleichslauf, keine Pilotbedingung.")
+
+                    Toggle("Startpunkte anzeigen (Anschauen/Nachspuren)", isOn: Binding(
+                        get: { comparisonGuidedDotsVisible },
+                        set: {
+                            comparisonGuidedDotsVisible = $0
+                            StudyComparisonSettings.guidedDotsVisible = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Ein ist die Vorgabe: Anschauen und Nachspuren zeichnen an jedem Strichanfang einen Punkt. Aus zeichnet sie gar nicht mehr. Antippen war dort noch nie möglich — antippbare, nummerierte Punkte gibt es nur in der Richtung-lernen-Phase, und die sind von diesem Schalter nicht betroffen. Der Endpunkt-Ring am Buchstabenende bleibt in beiden Stellungen sichtbar.")
+
+                    Toggle("Panning (Stereo-Ortung)", isOn: Binding(
+                        get: { comparisonPanning },
+                        set: {
+                            comparisonPanning = $0
+                            StudyComparisonSettings.panningEnabled = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Ein ist die Vorgabe. Aus hält die Stereo-Ortung auf der Mitte, sodass die Sitzung auch über einen Lautsprecher funktioniert — die Anforderung \"Kopfhörer angeschlossen\" entfällt damit. Die Tonhöhen-Achse des Raumklang-Arms bleibt unverändert.")
+
+                    Toggle("Achsen-Vorführung (Raumklang, Glissando)", isOn: Binding(
+                        get: { comparisonAxisDemonstration },
+                        set: {
+                            comparisonAxisDemonstration = $0
+                            StudyComparisonSettings.spatialAxisDemonstration = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe und das Verhalten seit dem 17.09.: Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung. Ein stellt die Vorführung wieder her, die im Text der Arbeit steht: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten und die Ortung der Waagerechten. Die Begutachtung am Gerät hatte sie als Glissando beanstandet. Damit ist Aus eine Abweichung von der schriftlichen Spezifikation — die Entscheidung darüber liegt bei David, nicht im Code.")
+
+                    Toggle("Vorführung nur einmal je Kondition", isOn: Binding(
+                        get: { comparisonOncePerCondition },
+                        set: {
+                            comparisonOncePerCondition = $0
+                            StudyComparisonSettings.oncePerCondition = $0
+                            vm.markAssignmentOverrideChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe: vor jedem Buchstaben läuft die Vorführung des Arms erneut — jede Spur beginnt mit derselben Darbietung. Ein lässt sie nur beim ersten Buchstaben einer Audio-Bedingung laufen; alle weiteren Buchstaben derselben Bedingung beginnen ohne Vorführung. Bei fester Kondition hört das Kind sie also genau einmal, vor dem ersten Buchstaben. Bei „Alle Konditionen durchlaufen“ bekommt jede Bedingung ihre eigene Vorführung, sodass bei fünf Buchstaben drei Vorführungen laufen und der vierte und fünfte leer ausgehen. Die Arme bleiben dabei untereinander gleich lang — alle verlieren die späteren Vorführungen gleichermaßen —, aber die Sitzung ist nicht mehr die, die der Trockenlauf beschreibt, und für den Raumklang-Arm wird die Tonhöhen-/Ortungszuordnung dadurch nur einmal gelegt statt vor jedem Buchstaben. Ein Vergleichslauf, keine Pilotbedingung. Der Zähler gilt je Kind: bei „Neuer Teilnehmer“ beginnt er von vorn.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonPresentationSpacing },
+                        set: {
+                            comparisonPresentationSpacing = $0
+                            StudyComparisonSettings.presentationSpacingSeconds = $0
+                            vm.markAssignmentOverrideChanged()
+                        }), in: 0...10, step: 0.5) {
+                        Text("Abstand zwischen Buchstaben: \(comparisonPresentationSpacing, specifier: "%.1f") s")
+                    }
+                    .accessibilityHint("Pause zwischen dem Ende eines Buchstabens und dem Beginn des nächsten. 0 ist die Vorgabe.")
+
+                    // TRIGGER BOUNDARIES (2026-09-17). The supervisor's note
+                    // was a noun phrase, so these two rows do double duty:
+                    // at their defaults they READ OUT the boundaries the
+                    // session is actually running (which no screen showed
+                    // before), and moving them makes the comparison
+                    // possible. The two are ANDed — sound needs BOTH the
+                    // finger near the letter and the finger moving — which
+                    // is why they are two rows and not one.
+                    Picker("Ton-Trigger: Nähe zum Buchstaben", selection: Binding(
+                        get: { comparisonTriggerRadiusFactor },
+                        set: {
+                            comparisonTriggerRadiusFactor = $0
+                            StudyComparisonSettings.soundGateRadiusFactor = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("1× (nur auf dem Strich)").tag(1.0)
+                        Text("2×").tag(2.0)
+                        Text("3× (Vorgabe)").tag(3.0)
+                        Text("4×").tag(4.0)
+                        Text("6× (ganze Zelle)").tag(6.0)
+                    }
+                    .accessibilityHint("Wie weit der Finger vom nächsten Prüfpunkt entfernt sein darf, damit der Ton des Arms überhaupt erlaubt ist — als Vielfaches des Trefferradius. 3× ist die Vorgabe und war der fest eingebaute Wert. Gemessen am 17.09.: Der Trefferradius eines Studienbuchstabens ist 0,1, der größte Abstand zweier Prüfpunkte ist 0,028 — entlang des Strichs liegt der Finger also bei jeder Einstellung mindestens 3,6-fach nah genug, und dieser Wert wirkt nur, wenn das Kind den Strich verlässt. Aus derselben Messung folgt, dass die zweite Zeile die ist, die im Alltag greift.")
+
+                    Picker("Ton-Trigger: Bewegung", selection: Binding(
+                        get: { comparisonTriggerVelocityFloor },
+                        set: {
+                            comparisonTriggerVelocityFloor = $0
+                            StudyComparisonSettings.soundGateVelocityFloor = $0
+                            vm.markAssignmentOverrideChanged()
+                        })) {
+                        Text("Ohne Bewegungsschwelle").tag(0.0)
+                        Text("22 pt/s (Vorgabe)").tag(22.0)
+                        Text("44 pt/s").tag(44.0)
+                        Text("66 pt/s").tag(66.0)
+                    }
+                    .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. 22 pt/s ist die Vorgabe und war der fest eingebaute Wert; darunter bleibt der Ton still, auch wenn der Finger auf dem Buchstaben liegt. Ohne Bewegungsschwelle folgt der Ton allein der Nähe. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und Bewegung.")
+
+                    Button("Vergleichsmodus zurücksetzen", role: .destructive) {
+                        StudyComparisonSettings.resetToDefaults()
+                        comparisonObservePasses = StudyComparisonSettings.observePasses
+                        comparisonSpokenFeedback = StudyComparisonSettings.spokenFeedbackInStudy
+                        comparisonAllFiveLetters = StudyComparisonSettings.allFiveLetters
+                        comparisonLetterRepeatCount = StudyComparisonSettings.letterRepeatCount
+                        comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
+                        comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
+                        comparisonPanning = StudyComparisonSettings.panningEnabled
+                        comparisonAxisDemonstration = StudyComparisonSettings.spatialAxisDemonstration
+                        comparisonOncePerCondition = StudyComparisonSettings.oncePerCondition
+                        comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
+                        comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
+                        comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor
+                        vm.markAssignmentOverrideChanged()
+                    }
+
+                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung. Wird ein Schalter während einer laufenden Sitzung umgestellt, sperrt die App die Sitzung bis zum Neustart — die Meldung nennt dabei den Studienarm, obwohl nur eine Sitzungseinstellung geändert wurde; gemeint ist immer „bitte App neu starten“.")
+                }
             }
+            // Hidden on STUDY_BUILD (2026-09-04): the overlay this
+            // toggle targets is itself `#if !STUDY_BUILD`-gated out of
+            // the study binary (Q2), which made this toggle silently
+            // inert there — but `vm.isCalibrating` flipping true still
+            // degraded the child-facing tracing canvas (checkpoints,
+            // ghost lines, hit-testing all suppress on `isCalibrating`),
+            // with no calibration UI ever appearing to undo it. Fixed at
+            // the source (`TracingViewModel.isCalibrating` is now
+            // compile-time false on STUDY_BUILD too) — hiding the
+            // toggle here besides is just honesty: a control that can no
+            // longer do anything shouldn't still invite a tap.
+            #if !STUDY_BUILD
             Section("Werkzeuge") {
                 Toggle("Striche kalibrieren", isOn: Binding(
                     get: { vm.showDebug && vm.showCalibration },
@@ -194,6 +427,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
             }
+            #endif
             Section("Hilfe") {
                 // A/B onboarding length. Default off (7-step). The
                 // first-run variant is locked into OnboardingStore on
@@ -232,9 +466,12 @@ struct SettingsView: View {
     @ViewBuilder
     private func orderingRow(_ strategy: LetterOrderingStrategy) -> some View {
         Button {
-            selectedOrdering = strategy
-            UserDefaults.standard.set(strategy.rawValue, forKey: Self.orderingDefaultsKey)
+            // Read back what the VM accepted: studyMode snaps the value,
+            // and the tick / stored value must not disagree with the
+            // stimulus (audit 2026-09-04).
             vm.letterOrdering = strategy
+            selectedOrdering = vm.letterOrdering
+            UserDefaults.standard.set(vm.letterOrdering.rawValue, forKey: Self.orderingDefaultsKey)
         } label: {
             HStack {
                 Text(strategy.displayName)
@@ -251,9 +488,9 @@ struct SettingsView: View {
     @ViewBuilder
     private func schriftArtRow(_ art: SchriftArt) -> some View {
         Button {
-            selectedSchriftArt = art
-            UserDefaults.standard.set(art.rawValue, forKey: Self.defaultsKey)
             vm.schriftArt = art
+            selectedSchriftArt = vm.schriftArt
+            UserDefaults.standard.set(vm.schriftArt.rawValue, forKey: Self.defaultsKey)
         } label: {
             HStack {
                 Text(art.displayName)

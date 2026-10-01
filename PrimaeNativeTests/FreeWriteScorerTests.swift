@@ -33,24 +33,30 @@ struct FreeWriteScorerTests {
 
     // MARK: - Scoring
 
+    // (2026-09-03, superseded 2026-09-04 by stroke correspondence — see
+    // StrokeProcessMeasures) formAccuracy switched from whole-path
+    // Fréchet to whole-trace Hausdorff, whose one-sided components are
+    // independently density-sensitive. The old 5-point fixture matched
+    // Fréchet's own internal resampling but is sparser than real touch
+    // sampling (60-120 Hz); CI caught it. Densified to match what a real
+    // touch trace actually looks like, not to dodge the finding — kept
+    // densified under the current design too, for the same reason.
     @Test("Perfect trace scores above 0.9")
     func perfectTrace() {
-        let traced: [CGPoint] = [
-            CGPoint(x: 0.5, y: 0.2), CGPoint(x: 0.5, y: 0.35),
-            CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.65),
-            CGPoint(x: 0.5, y: 0.8),
-        ]
+        let traced = (0...60).map { CGPoint(x: 0.5, y: 0.2 + 0.6 * Double($0) / 60) }
         let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
         #expect(assessment.formAccuracy > 0.9)
     }
 
     @Test("Near-perfect trace scores above 0.8")
     func nearPerfectTrace() {
-        let traced: [CGPoint] = [
-            CGPoint(x: 0.51, y: 0.2), CGPoint(x: 0.49, y: 0.35),
-            CGPoint(x: 0.52, y: 0.5), CGPoint(x: 0.48, y: 0.65),
-            CGPoint(x: 0.51, y: 0.8),
-        ]
+        let traced = (0...60).map { i -> CGPoint in
+            let t = Double(i) / 60
+            // Small alternating jitter around x = 0.5, same shape the
+            // original 5-point fixture used, just densified.
+            let jitter = (i % 2 == 0) ? 0.01 : -0.01
+            return CGPoint(x: 0.5 + jitter, y: 0.2 + 0.6 * t)
+        }
         let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
         #expect(assessment.formAccuracy > 0.8)
     }
@@ -66,26 +72,43 @@ struct FreeWriteScorerTests {
         #expect(assessment.formAccuracy < 0.3)
     }
 
-    @Test("Reversed trace penalises direction")
-    func reversedTrace() {
-        let traced: [CGPoint] = [
-            CGPoint(x: 0.5, y: 0.8), CGPoint(x: 0.5, y: 0.65),
-            CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.5, y: 0.35),
-            CGPoint(x: 0.5, y: 0.2),
-        ]
-        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: verticalLineStrokes)
-        #expect(assessment.formAccuracy < 0.5)
+    // (2026-09-03) formAccuracy is now order-invariant (Hausdorff, not
+    // Fréchet) — this used to assert the OPPOSITE of what's below: that a
+    // reversed trace scored below 0.5. That was the exact defect the
+    // primary-outcome change fixes: a spatially perfect letter written in
+    // an unusual stroke order should not cost Form accuracy, because
+    // direction/sequence is a process property, not a product one.
+    @Test("Reversed trace does NOT penalise formAccuracy — order-invariant by design")
+    func reversedTraceDoesNotPenaliseFormAccuracy() {
+        let forward = (0...60).map { CGPoint(x: 0.5, y: 0.2 + 0.6 * Double($0) / 60) }
+        let reversed = forward.reversed().map { $0 }
+        let s1 = FreeWriteScorer.score(tracedPoints: forward, reference: verticalLineStrokes).formAccuracy
+        let s2 = FreeWriteScorer.score(tracedPoints: reversed, reference: verticalLineStrokes).formAccuracy
+        #expect(abs(s1 - s2) < 1e-6,
+                "formAccuracy must be order-invariant; forward=\(s1) reversed=\(s2)")
+        #expect(s2 > 0.9, "a reversed but spatially perfect trace must still score high")
     }
+
+    // (2026-09-04) The reversal-penalises-distance property this test
+    // used to check (via the now-removed whole-path `rawDistance`) no
+    // longer exists BY DESIGN: reversal is handled in the stroke
+    // pairing (orientation is chosen to minimise cost), not left to
+    // inflate a distance. The process signal it used to approximate is
+    // `StrokeProcessMeasures.reversedStrokeCount` now — see
+    // `StrokeProcessMeasuresTests.singleStrokeReversed`.
 
     @Test("Multi-stroke L-shape scores well")
     func multiStroke() {
-        let traced: [CGPoint] = [
-            CGPoint(x: 0.4, y: 0.2), CGPoint(x: 0.4, y: 0.4),
-            CGPoint(x: 0.4, y: 0.6), CGPoint(x: 0.4, y: 0.8),
-            CGPoint(x: 0.5, y: 0.8), CGPoint(x: 0.6, y: 0.8),
-            CGPoint(x: 0.7, y: 0.8), CGPoint(x: 0.8, y: 0.8),
-        ]
-        let assessment = FreeWriteScorer.score(tracedPoints: traced, reference: lStrokes)
+        // Densified for the same reason perfectTrace was — see the note
+        // above reversedTraceDoesNotPenaliseFormAccuracy. strokeStartIndices
+        // marks the L's pen-lift so stroke correspondence can match each
+        // leg to its own reference stroke rather than treating the whole
+        // L as one continuous stroke.
+        let vertical = (0...30).map { CGPoint(x: 0.4, y: 0.2 + 0.6 * Double($0) / 30) }
+        let horizontal = (0...30).map { CGPoint(x: 0.4 + 0.4 * Double($0) / 30, y: 0.8) }
+        let traced = vertical + horizontal
+        let assessment = FreeWriteScorer.score(
+            tracedPoints: traced, strokeStartIndices: [vertical.count], reference: lStrokes)
         #expect(assessment.formAccuracy > 0.7)
     }
 
@@ -178,6 +201,15 @@ struct FreeWriteScorerTests {
         #expect(FreeWriteScorer.formAccuracyShape(tracedPoints: traced, reference: emptyRef) == 0)
     }
 
+    // (2026-09-04) The former "Spatial deviation (order-invariant
+    // PRIMARY outcome)" section tested `rawSpatialDeviation`, which is
+    // retired — the primary outcome is now
+    // `StrokeProcessMeasures.spatialDeviation` via stroke
+    // correspondence. Equivalent coverage (identical/off-path/order-
+    // free/multi-stroke/empty-input) now lives in
+    // `StrokeProcessMeasuresTests.swift`, on the type that actually
+    // computes it.
+
     // MARK: - Fréchet distance
 
     @Test("Identical curves have zero Fréchet distance")
@@ -246,4 +278,18 @@ struct FreeWriteScorerTests {
         #expect(abs(d - 5.0) < 1e-10,
                 "Single-point discrete Fréchet should equal Euclidean (3-4-5), got \(d)")
     }
+
+    // MARK: - resample corner cases (2026-09-05)
+
+    @Test("resample honours targetCount for a single point, for targetCount 1, and for a zero-length polyline")
+    func resampleCornerCases() {
+        let one = [CGPoint(x: 0.3, y: 0.3)]
+        #expect(FreeWriteScorer.resample(one, targetCount: 8).count == 8, "a single point is replicated to the requested density")
+        let line = (0..<20).map { CGPoint(x: CGFloat($0) / 19, y: 0.5) }
+        #expect(FreeWriteScorer.resample(line, targetCount: 1).count == 1)
+        let still = Array(repeating: CGPoint(x: 0.2, y: 0.2), count: 5)
+        let r = FreeWriteScorer.resample(still, targetCount: 6)
+        #expect(r.count == 6 && r.allSatisfy { $0 == CGPoint(x: 0.2, y: 0.2) })
+    }
+
 }

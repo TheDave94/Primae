@@ -210,14 +210,31 @@ StrokeSpec = dict  # {"kind": "line", "anchors": [...]} | {"path": [...]}
 
 LETTERS: dict[str, list[StrokeSpec]] = {
     "A": [
-        {"kind": "line", "anchors": ["BL", "T"],
+        # TOP-DOWN (2026-09-17). These anchors were ["BL", "T"] and
+        # ["BR", "T"], i.e. both diagonals authored UP from the baseline
+        # to the apex — which made A the only letter in the corpus drawn
+        # against the writing direction, and the only one of the five
+        # study letters whose strokes ran upward (45 of the 48 remaining
+        # letters start top-down; A's own Schulschrift variant starts at
+        # the apex). A supervisor reviewing the study build read it as
+        # "Strichreihenfolge falsch". Reversed here so that a future
+        # regeneration cannot put it back.
+        #
+        # NOTE: this spec does not currently produce the shipped file. A
+        # is a STATIC ARTIFACT — the bake skips it ("hand-tuned via iPad
+        # calibrator"), and `PrimaeNative/Resources/Letters/Regular/A/
+        # strokes.json` is the source of truth. The two are kept in
+        # agreement deliberately; changing only one would leave the next
+        # person to lift the guard with a different letter than the one
+        # that ships.
+        {"kind": "line", "anchors": ["T", "BL"],
          "arms": ["straight_line"]},
-        {"kind": "line", "anchors": ["BR", "T"],
+        {"kind": "line", "anchors": ["T", "BR"],
          "arms": ["straight_line"]},
         {"kind": "line", "anchors": ["ML", "MR"],
          "arms": [{"strategy": "straight_line",
-                    "t_junction_start": 0,  # crossbar left meets stroke 0 (BL→T)
-                    "t_junction_end": 1}]},  # crossbar right meets stroke 1 (BR→T)
+                    "t_junction_start": 0,  # crossbar left meets stroke 0 (T→BL)
+                    "t_junction_end": 1}]},  # crossbar right meets stroke 1 (T→BR)
     ],
     "E": [
         # All three horizontal bars terminate at dt=5 from the right
@@ -4532,7 +4549,12 @@ def main() -> int:
 
     overall_fail = 0
     for weight in weights:
-        if args.font and weight == args.weight:
+        if args.font and args.weight == "both":
+            # One font cannot serve two weights; silently ignoring --font
+            # baked both from the bundled fonts (audit 2026-09-04).
+            print("--font requires a single --weight (regular|light), not both")
+            return 2
+        if args.font:
             font_path = Path(args.font)
         else:
             font_path = FONTS[weight]
@@ -4577,8 +4599,19 @@ def main() -> int:
             try:
                 write_meta(weight_base, font_path)
             except Exception as e:
+                # _meta.json carries fontSha256 — the only font-swap
+                # detector downstream. A bake without it is not a
+                # successful bake (audit 2026-09-04).
                 print(f"  _meta.json: FAIL — {e}")
+                fail += 1
         print(f"  Done {weight} — {ok} ok, {fail} failed.")
+        if ok == 0 and fail == 0:
+            # Every requested letter was skipped (static-artifact guard):
+            # nothing was written, and exit 0 read as a successful bake
+            # (audit 2026-09-05).
+            print(f"  {weight}: NOTHING BAKED — every letter is a static artifact; "
+                  f"use the sweep tooling or lift the guard deliberately.")
+            overall_fail += 1
         overall_fail += fail
     return 0 if overall_fail == 0 else 1
 

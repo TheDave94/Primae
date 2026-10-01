@@ -1,6 +1,6 @@
 # Primae
 
-> An iPad app that teaches **Austrian Volksschule 1. Klasse** children to write the alphabet by hand — through a research-backed four-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional *Schreibmotorik* motor-skill assessment.
+> An iPad app that teaches **Austrian Volksschule 1. Klasse** children to write the alphabet by hand — through a research-backed three-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional *Schreibmotorik* motor-skill assessment.
 
 [![iOS Build & Test](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml)
 ![Platform](https://img.shields.io/badge/platform-iPadOS%2026%2B-blue)
@@ -21,7 +21,7 @@ The visual identity — paper not glass, blue ghost / green child ink / amber gu
 ## Features
 
 ### For the child
-- **Four-phase pipeline per letter** — *observe* → *direct* → *guided* → *freeWrite*
+- **Three-phase pipeline per letter** — *observe* → *guided* → *freeWrite*
 - **Three child-facing worlds** — Schule (guided tracing), Werkstatt (freeform writing), Fortschritte (stars + streak)
 - **Verbal-only feedback** — German TTS speaks every prompt; no percentages or technical scores ever shown
 - **Real-time time-stretched audio** — letter pronunciation matches tracing speed (`AVAudioUnitTimePitch`)
@@ -51,11 +51,10 @@ The visual identity — paper not glass, blue ghost / green child ink / amber gu
 | Phase | German | What the child does | How it's scored |
 |------|------|------------------|----------------|
 | **Observe** | *Anschauen* | Watches an animated guide dot trace each stroke | Pass / fail (auto-advance after 2 cycles) |
-| **Direct** | *Richtung lernen* | Taps numbered start dots in correct order | Pass / fail (per-stroke directionality) |
 | **Guided** | *Nachspuren* | Traces over the letter with checkpoint rails | Checkpoint progress 0–1 |
 | **FreeWrite** | *Selbst schreiben* | Writes from memory on a blank glyph | Schreibmotorik 4-dimension assessment |
 
-The four phases implement **Gradual Release of Responsibility** (Pearson & Gallagher, 1983; Fisher & Frey, 2013), with **fading feedback** scheduled by Schmidt & Lee's (2005) *guidance hypothesis*. Form accuracy is computed via **discrete Fréchet distance** (Eiter & Mannila, 1994) against the canonical glyph centerline. The full set of citations and per-method implementation pointers lives in [`docs/APP_DOCUMENTATION.md`](docs/APP_DOCUMENTATION.md).
+The three phases implement **Gradual Release of Responsibility** (Pearson & Gallagher, 1983; Fisher & Frey, 2013), with **fading feedback** scheduled by Schmidt & Lee's (2005) *guidance hypothesis*. Form accuracy is computed via **discrete Fréchet distance** (Eiter & Mannila, 1994) against the canonical glyph centerline. The full set of citations and per-method implementation pointers lives in [`docs/APP_DOCUMENTATION.md`](docs/APP_DOCUMENTATION.md).
 
 ## Tech stack
 

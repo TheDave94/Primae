@@ -1,5 +1,17 @@
 # Primae — Manual Test Checklist
 
+> **Not for the pilot.** This checklist tests the casual, four-world
+> app (onboarding, Werkstatt, Fortschritte, the full parent dashboard)
+> — the path CLAUDE.md's "The casual path is paused" section stopped
+> building, testing, or reasoning about on 2026-09-13 while the pilot
+> runs. It predates the study compile-out (`STUDY_BUILD`), the
+> bundle-ID split, the pre-task demonstrations (D9), and the phoneme
+> recordings (H5) — none of that exists in this document, and several
+> items here (tap-anywhere skips observe, the coloured recognition
+> badge, the Übersicht tab) are FALSE on the pilot artefact. For the
+> study device dry-run, use `docs/STUDY_DEVICE_DRYRUN.md` instead. Kept
+> here, unmaintained, for the casual app's post-thesis restoration.
+
 A manual end-to-end checklist for verifying the iPad app works as
 expected after a fresh build.
 
@@ -82,7 +94,7 @@ line numbers — line numbers drift, names don't.
 
 ---
 
-## 4 · Schule world — four-phase tracing
+## 4 · Schule world — three-phase tracing (observe → guided → freeWrite)
 
 > The big paper-canvas takes most of the screen. Top-left has a
 > letter pill (current letter + chevron-down), bottom row has
@@ -98,10 +110,16 @@ line numbers — line numbers drift, names don't.
 - [ ] Phase enters with the **brand-blue pill** in the lower portion of the canvas showing only **👁️ 👆** (no text — children can't read).
 - [ ] **Voiceover** speaks "Pass jetzt gut auf!" (recorded ElevenLabs MP3 if `Resources/Prompts/phase_observe.mp3` is bundled, otherwise system TTS fallback).
   - If broken: `SpeechSynthesizer.swift:ChildSpeechLibrary.phaseEntry(.observe)` or `PromptPlayer.swift`.
-- [ ] **Animated guide dot** (amber) traces along the letter's strokes inside the canvas. Loops.
+- [ ] **Animated guide dot** (amber) traces along the letter's strokes inside the canvas. Plays ONE pass, more slowly than it used to; it no longer loops.
 - [ ] **Tapping anywhere** on the canvas advances to the next phase.
 
-### 4.2 · Direct phase (Richtung lernen)
+### 4.2 · Direct phase (Richtung lernen) — CUT; this section can no longer run
+
+> Cut 2026-09-18 (DECISIONS.md D5): no condition runs `.direct` — a
+> session is observe → guided → freeWrite in casual AND study modes
+> (`LearningPhaseController.activePhases` filters it out
+> unconditionally). Items kept below for the record; if you ever SEE
+> this phase, that is a regression, not a step to check off.
 
 - [ ] **Numbered start-dots** appear over each stroke's start point (1, 2, 3, …). The next-expected dot pulses gently.
 - [ ] **Voiceover** speaks "Tipp die Punkte der Reihe nach an."
@@ -259,7 +277,7 @@ line numbers — line numbers drift, names don't.
 - [ ] After **two poor trials**, the radius widens.
 - [ ] **Loading the recommended next letter** (via Weiter on the celebration overlay) prefers letters with low recent accuracy / long since last seen.
 - [ ] **Studienteilnahme = on** + Studienarm = `guidedOnly` skips observe / direct / freeWrite — the child only sees guided.
-- [ ] **Studienteilnahme = on** + Studienarm = `control` runs all four phases at fixed difficulty (no adaptation).
+- [ ] **Studienteilnahme = on** + Studienarm = `control` runs the three-phase flow (observe → guided → freeWrite) at fixed difficulty (no adaptation).
 
 ---
 
@@ -273,7 +291,7 @@ line numbers — line numbers drift, names don't.
 
 ## 12 · Edge cases
 
-- [ ] **Picking a letter without audio** (any letter outside the demo set `A F I K L M O`) still runs all four phases, but prompts that would normally play a recording fall back to TTS. (All 59 letters now ship real baked `strokes.json` — the empty-strokes auto-skip branch is no longer reachable in normal use; if you do encounter it, that's a regression.)
+- [ ] **Picking a letter without audio** (any letter outside the demo set `A F I K L M O`) still runs the full flow (observe → guided → freeWrite), but prompts that would normally play a recording fall back to TTS. (All 59 letters now ship real baked `strokes.json` — the empty-strokes auto-skip branch is no longer reachable in normal use; if you do encounter it, that's a regression.)
 - [ ] **No internet connection** — every screen still works; no spinners stuck. (The CoreML recognizer is on-device.)
 - [ ] **VoiceOver accessibility** (Settings → Accessibility → VoiceOver) reads the world rail buttons + every Settings toggle correctly. Letter glyphs read as "Aktueller Buchstabe A".
 - [ ] **Dynamic Type** (Settings → Accessibility → Larger Text) — Settings + dashboards scale up; canvas chrome stays at fixed sizes (intentional — the canvas is laid out on a fixed grid).

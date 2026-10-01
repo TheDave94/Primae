@@ -140,7 +140,10 @@ class TestG4VacuousPass(unittest.TestCase):
         ref_b = [(0.7 + 0.005 * i, 0.0) for i in range(21)]  # far from ref_a's end
         result = ai.gate_g4_per_junction(cand_a, cand_b, ref_a, ref_b,
                                             self._bbox(), threshold_deg=2.0)
-        self.assertTrue(result["pass"])
+        # A junction that exists in one round and not the other is the
+        # largest possible junction regression — it FAILS (audit
+        # 2026-09-04); it used to pass vacuously.
+        self.assertFalse(result["pass"])
         self.assertEqual(result["reason"],
                           "junction_detection_mismatch_between_rounds")
 
@@ -157,7 +160,9 @@ class TestG4DriftPass(unittest.TestCase):
         b = [(0.5 + 0.025 * i, 0.5) for i in range(21)]
         result = ai.gate_g4_per_junction(a, b, a, b, self._bbox(),
                                             threshold_deg=2.0)
-        self.assertNotIn("reason", result if not result.get("reason") else {})
+        # A clean identical pair must be a REAL measurement, never a vacuous
+        # pass (the old ternary could not fail — audit 2026-09-04).
+        self.assertIsNone(result.get("reason"), result)
         self.assertIsNotNone(result["kink_drift_deg"])
         self.assertAlmostEqual(result["kink_drift_deg"], 0.0, places=2)
         self.assertTrue(result["pass"])

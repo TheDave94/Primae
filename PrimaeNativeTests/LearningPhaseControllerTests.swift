@@ -26,59 +26,75 @@ struct LearningPhaseControllerTests {
         #expect(sut.currentPhase == .guided)
     }
 
-    // MARK: - Phase advancement (four-phase)
+    // MARK: - Phase advancement (three-phase)
 
-    @Test("Advance from observe to direct")
-    func advanceFromObserveToDirect() {
+    // The session is observe → guided → freeWrite as of 2026-09-18. The
+    // `direct` phase ("Richtung lernen" — tapping the numbered
+    // stroke-start dots) is out of it. The ENUM CASE stays: it is
+    // `Codable` and reachable from stored rows.
+
+    @Test("Advance from observe to guided")
+    func advanceFromObserveToGuided() {
         var sut = LearningPhaseController()
         let advanced = sut.advance(score: 1.0)
         #expect(advanced)
-        #expect(sut.currentPhase == .direct)
+        #expect(sut.currentPhase == .guided)
         #expect(sut.starsEarned == 1)
         #expect(!sut.isLetterSessionComplete)
     }
 
-    @Test("Advance from direct to guided")
-    func advanceFromDirectToGuided() {
+    /// Replaces `advanceFromDirectToGuided`. That test named a transition
+    /// which no longer exists, so keeping it would have meant asserting a
+    /// destination the controller cannot reach. Deleting it outright would
+    /// have dropped the coverage with it — what the old test actually
+    /// guarded is "which phase follows observe, and does the session get
+    /// there by advancing". That property is still real, so it is guarded
+    /// here, against the successor that replaced `direct`: the walk is
+    /// exactly observe → guided → freeWrite and `direct` is never entered.
+    @Test("A three-phase session walks observe → guided → freeWrite, never direct")
+    func sessionNeverEntersTheDirectPhase() {
         var sut = LearningPhaseController()
-        sut.advance(score: 1.0)
-        let advanced = sut.advance(score: 1.0)
-        #expect(advanced)
-        #expect(sut.currentPhase == .guided)
-        #expect(sut.starsEarned == 2)
+        var visited: [LearningPhase] = [sut.currentPhase]
+        while sut.advance(score: 1.0) {
+            visited.append(sut.currentPhase)
+        }
+        #expect(visited.map(\.rawName) == ["observe", "guided", "freeWrite"],
+                "the session walked \(visited.map(\.rawName)) — observe → guided → freeWrite is the three-phase sequence")
+        #expect(!visited.contains(.direct),
+                "the session entered .direct — the tapping-the-points phase is not part of a session")
     }
 
     @Test("Advance from guided to freeWrite")
     func advanceFromGuidedToFreeWrite() {
         var sut = LearningPhaseController()
-        sut.advance(score: 1.0)
-        sut.advance(score: 1.0)
-        let advanced = sut.advance(score: 0.85)
+        sut.advance(score: 1.0)   // observe
+        let advanced = sut.advance(score: 0.85)   // guided
         #expect(advanced)
         #expect(sut.currentPhase == .freeWrite)
-        #expect(sut.starsEarned == 3)
+        #expect(sut.starsEarned == 2)
     }
 
     @Test("Advance from freeWrite completes session")
     func advanceFromFreeWriteCompletes() {
         var sut = LearningPhaseController()
-        sut.advance(score: 1.0)
-        sut.advance(score: 1.0)
-        sut.advance(score: 0.85)
-        let advanced = sut.advance(score: 0.72)
+        sut.advance(score: 1.0)    // observe
+        sut.advance(score: 0.85)   // guided
+        let advanced = sut.advance(score: 0.72)   // freeWrite
         #expect(!advanced)
         #expect(sut.isLetterSessionComplete)
-        #expect(sut.starsEarned == 4)
+        #expect(sut.starsEarned == 3,
+                "three phases run, so three is the ceiling a session can earn")
     }
 
     @Test("Full session overall score averages all phases")
     func fullSessionOverallScore() {
         var sut = LearningPhaseController()
-        sut.advance(score: 1.0)
-        sut.advance(score: 0.8)
-        sut.advance(score: 0.6)
-        sut.advance(score: 0.4)
-        #expect(abs(sut.overallScore - 0.7) < 0.001)
+        sut.advance(score: 1.0)   // observe
+        sut.advance(score: 0.8)   // guided
+        sut.advance(score: 0.6)   // freeWrite
+        #expect(sut.phaseScores.count == 3,
+                "a three-phase session banks three scores, got \(sut.phaseScores.count)")
+        #expect(abs(sut.overallScore - 0.8) < 0.001)
     }
 
     // MARK: - Guided-only
@@ -142,10 +158,17 @@ struct LearningPhaseControllerTests {
 
     // MARK: - Phase properties
 
+    // `.direct` is deliberately absent from both parameter lists. The walk
+    // below advances until it reaches the named phase, and a session can no
+    // longer reach `.direct` — so a `.direct` row would run the loop to
+    // `isLetterSessionComplete`, stop on `.freeWrite`, and assert
+    // `.freeWrite`'s property while naming `.direct`. It passed for the
+    // wrong reason. The reachability precondition below is what makes the
+    // remaining rows mean what they say.
+
     @Test("Touch enabled per phase",
           arguments: [
             (LearningPhase.observe, false),
-            (LearningPhase.direct, true),
             (LearningPhase.guided, true),
             (LearningPhase.freeWrite, true),
           ])
@@ -154,13 +177,14 @@ struct LearningPhaseControllerTests {
         while sut.currentPhase != phase && !sut.isLetterSessionComplete {
             sut.advance(score: 1.0)
         }
+        #expect(sut.currentPhase == phase,
+                "the walk never reached \(phase.rawName) — this row asserts nothing")
         #expect(sut.isTouchEnabled == expected)
     }
 
     @Test("Checkpoint gating per phase",
           arguments: [
             (LearningPhase.observe, false),
-            (LearningPhase.direct, false),
             (LearningPhase.guided, true),
             (LearningPhase.freeWrite, false),
           ])
@@ -169,15 +193,26 @@ struct LearningPhaseControllerTests {
         while sut.currentPhase != phase && !sut.isLetterSessionComplete {
             sut.advance(score: 1.0)
         }
+        #expect(sut.currentPhase == phase,
+                "the walk never reached \(phase.rawName) — this row asserts nothing")
         #expect(sut.useCheckpointGating == expected)
     }
 
     // MARK: - Active phases
 
-    @Test("Three-phase has all phases active")
+    /// Spelled out, NOT read from `allCases` or from
+    /// `allCases.filter { $0 != .direct }` — an expectation written as the
+    /// implementation's own expression can never fail, which is the same
+    /// defect class as a test that cannot pass.
+    @Test("Three-phase runs observe, guided and freeWrite — and not direct")
     func threePhasePhasesActive() {
         let sut = LearningPhaseController(condition: .threePhase)
-        #expect(sut.activePhases == LearningPhase.allCases)
+        #expect(sut.activePhases == [.observe, .guided, .freeWrite],
+                "three-phase active phases are \(sut.activePhases.map(\.rawName))")
+        #expect(!sut.activePhases.contains(.direct),
+                ".direct is not part of a session as of 2026-09-18")
+        #expect(sut.maxStars == 3,
+                "the celebration overlay renders maxStars — a 4 here would show a star no child can earn")
     }
 
     @Test("Guided-only has single phase active")

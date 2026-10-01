@@ -65,7 +65,7 @@ The app ships with built-in A/B test infrastructure
 the study via `Forschung → Studienteilnahme`, a stable UUID is
 deterministically mapped to one of three conditions:
 
-* `.threePhase` — full four-phase flow (observe → direct → guided → freeWrite)
+* `.threePhase` — full three-phase flow (observe → guided → freeWrite)
 * `.guidedOnly` — guided phase only (skips scaffolding + free writing)
 * `.control` — guided phase with **fixed** difficulty (no adaptive radius)
 
@@ -109,7 +109,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 |------|------:|------|
 | `Models.swift` | 65 | `LetterAsset`, `LetterStrokes`, `StrokeDefinition`, `Checkpoint`. |
 | `AppWorld.swift` | 49 | Three-world enum (`schule`, `werkstatt`, `fortschritte`). |
-| `LearningPhase.swift` | 81 | Four-phase enum: `observe`, `direct`, `guided`, `freeWrite`. German display names. |
+| `LearningPhase.swift` | 81 | Four cases, three run: `observe`, `direct` (kept for Codable, never active), `guided`, `freeWrite`. German display names. |
 | `LearningPhaseController.swift` | 175 | Pure-value-type FSM. Star thresholds per phase; ThesisCondition-aware `activePhases`. |
 | `LetterOrderingStrategy.swift` | 33 | `motorSimilarity`, `wordBuilding`, `alphabetical` — explicit ordering tables. |
 | `SchriftArt.swift` | 63 | Five script enum cases. Currently bundled: Druckschrift (Primae) + Schreibschrift (Playwrite AT). |
@@ -357,8 +357,11 @@ ProgressStore.recordRecognitionSample
 - Numbered start dots indicating where each stroke begins.
 - A "Schau mal genau hin." prompt is spoken via TTS on phase entry.
 - The child taps anywhere on the overlay to advance — or the phase
-  auto-advances after the second full animation cycle so a child who
-  can't read isn't stuck.
+  auto-advances after the animation's single pass so a child who
+  can't read isn't stuck. The pass plays at 0.4x, so one pass is about
+  25% LONGER than the two it replaced (~6-14 s for the five study
+  letters, not ~5-11 s). The pass count is a researcher comparison
+  switch (`observePasses`, default 1).
 
 **What the code does**
 - `LearningPhaseController.currentPhase = .observe` (initial state).
@@ -374,7 +377,7 @@ ProgressStore.recordRecognitionSample
   animation.onCycleComplete = { [weak self] in
       guard let self else { return }
       self.observeCycleCount += 1
-      if self.observeCycleCount >= 2,
+      if self.observeCycleCount >= self.observePasses,
          self.phaseController.currentPhase == .observe {
           self.completeObservePhase()
       }
@@ -388,10 +391,19 @@ ProgressStore.recordRecognitionSample
 
 **Trigger to next phase**
 - `completeObservePhase()` → `advanceLearningPhase()` → phase becomes
-  `.direct`. The verbal prompt for `.direct` ("Tippe die Punkte der
-  Reihe nach.") is spoken immediately.
+  `.guided` (since the 2026-09-18 `direct` cut, DECISIONS.md D5 — see
+  the banner in §3.2). The verbal prompt for `.guided` ("Jetzt fährst
+  du die Linien nach.") is spoken on phase entry.
 
-### 3.2 Phase: Direct (Richtung lernen)
+### 3.2 Phase: Direct (Richtung lernen) — CUT 2026-09-18 (D5); no session runs it
+
+> **This phase no longer runs.** David's 2026-09-18 ruling cut `direct`
+> from the session (DECISIONS.md D5): a session is
+> `observe → guided → freeWrite`, and the export writes no `direct` row
+> (three rows per letter, one per scored phase). The section below is
+> kept because the CODE is kept (`tapDirectDot`,
+> `DirectPhaseDotsOverlay`, the `.direct` branches) — it describes
+> dead-but-present paths, not the live pipeline.
 
 **What the child sees and does**
 - The same letter glyph is shown.
@@ -479,7 +491,10 @@ ProgressStore.recordRecognitionSample
 - The child writes the letter from memory.
 - A "Jetzt schreibst du den Buchstaben ganz alleine." prompt is spoken
   on entry.
-- No haptics, no real-time audio (`feedbackIntensity == 0.0`).
+- No haptics (`feedbackIntensity == 0.0`). Real-time audio is a
+  separate gate (§7.3/§7.4): in a STUDY session freeWrite is silent
+  (the outcome's sound-off post-test, DECISIONS.md header); in the
+  casual app the phoneme keeps sounding as the glyph's auditory anchor.
 - On lift-off, the child lifts the pen and the phase ends.
 
 **What the code does**
@@ -546,10 +561,11 @@ demonstration and independent application.
   "Start", guided = "We do", freeWrite = "You do."
 
 **How the implementation differs.** The classic GRR has three phases;
-this app inserts a fourth (`direct`) between observe and guided to
-explicitly teach stroke directionality (see §4.4). All four phases
-participate in gradual release: scaffolding visible (observe + direct)
-→ scaffolding interactive (guided) → scaffolding withdrawn (freeWrite).
+this app runs three as well — observe → guided → freeWrite (a fourth,
+`direct`, sat between observe and guided until the 2026-09-18 cut,
+D5). All three phases participate in gradual release: scaffolding
+visible (observe) → scaffolding interactive (guided) → scaffolding
+withdrawn (freeWrite).
 
 ### 4.2 Guidance Hypothesis — Fading Feedback
 
@@ -577,19 +593,21 @@ learning: A behavioral emphasis* (4th ed.). Human Kinetics.
   }
   ```
 
-* The gate is read at three call sites in `updateTouch`:
-  - line 891: `if !wasComplete && isNowComplete, feedbackIntensity > 0 { haptics.fire(...) }`
-  - line 918: `if (...stroke or checkpoint changed...), feedbackIntensity > 0 { haptics.fire(...) }`
-  - line 937: `let shouldBeActive = ... && feedbackIntensity > 0.3`
-
-  → audio cuts off entirely below 0.3 (so freeWrite is silent), haptics
-  cut off entirely below `> 0`.
+* The gate is read at the haptic call sites in `TouchDispatcher`
+  (`.strokeBegan`, checkpoint/stroke-completion ticks, `.letterCompleted`):
+  `guard feedbackIntensity > 0 else { return }`.
+* Real-time audio is NOT gated by `feedbackIntensity` (removed
+  2026-09-06, ruling AE-2b — see §7.3/§7.4): the letter sound is the
+  glyph's phonemic anchor, not Schmidt & Lee guidance feedback, so it
+  no longer fades with the haptics. `updateAdaptivePlayback` instead
+  short-circuits on the silent arm and, in a STUDY session only, on the
+  `.freeWrite` phase (the pilot's sound-off post-test).
 
 **How the implementation differs.** The paper describes a continuous
-fade; this implementation uses four discrete phase-pinned levels so
-the gating thresholds are auditable and can be tested. The 0.3
-threshold for audio is chosen so the `.guided` phase (0.6) keeps audio
-on while `.freeWrite` (0.0) silences it.
+fade; this implementation uses four discrete phase-pinned haptic
+intensity levels so the gating thresholds are auditable and can be
+tested. Audio no longer shares that fade (see above) — it fades with
+proximity/velocity (§7.3) instead.
 
 ### 4.3 Knowledge of Performance (KP) Visual Overlay
 
@@ -1417,7 +1435,7 @@ page.
 | `letter` | Per-letter slicing (alphabet effect, frequency analysis). |
 | `phase` | Which phase (observe / direct / guided / freeWrite) the session belonged to; needed for any GRR efficacy claim. |
 | `completed` | Selection criterion for "successful sessions". |
-| `score` | Phase-level accuracy / form score (0–1). |
+| `score` | **NOT one instrument across phase rows** (found 2026-09-04, DECISIONS.md D12): `observe`/`direct` are always exactly `1.0` (completion markers, not measurements); `guided` is checkpoint-proximity coverage; `freeWrite` is `WritingAssessment.overallScore`, a weighted 4-dimension composite. Comparing `score` across phase types compares different quantities under one name — analyse per phase, never pooled. `PhaseSessionRecord.score`'s own doc comment carries the full breakdown. |
 | `schedulerPriority` | Spaced-repetition scheduler's prediction at the time the letter was recommended; used as the IV in the scheduler-effectiveness Pearson r (per-arm proxy below — cross-arm proxy is invalid because `.control` uses `-completionCount` priorities, not Ebbinghaus). |
 | `condition` | Thesis A/B arm — required for between-arm comparisons. |
 | `recordedAt` | ISO-8601 wall-clock timestamp (D-3). Required for time-of-day and dated learning-curve analyses. Empty on legacy pre-D-3 rows. |
@@ -1481,10 +1499,23 @@ between children; the pilot's ~40 children × 3 trained letters sits far
 inside that bound.
 
 Additional sections in the export:
-* Per-letter aggregates (`letter,sessionCount,averageAccuracy,trend,
+* Per-letter aggregates (`letter,sessionCount,trend,
   recognitionSamples,recognitionAvg,speedTrend,freeformCompletionCount`)
   — `speedTrend` is a semicolon-joined trajectory; `freeformCompletionCount`
   surfaces blank-canvas usage that was previously collected but never exported.
+  **`averageAccuracy` REMOVED 2026-09-16 (supervisor ruling).** It mixed
+  thesis arms (`LetterAccuracyStat.accuracySamples` carries no condition
+  tag) and mixed phase types (fed by `LearningPhaseController
+  .overallScore`, the unweighted mean of every active phase's score,
+  which under the three-phase flow has a mathematical floor of 1/3
+  regardless of how poorly a child traced — see D12 in
+  `docs/DECISIONS.md`), and it was none of the outcomes Ch.6 of the
+  thesis defines (primary: `spatialDeviation`; secondaries:
+  `strokeCount`, `strokeOrder`, `reversedStrokeCount` — all computed
+  independently by stroke correspondence, D8). A column that could only
+  mislead an exploratory read of the export did not belong in the file
+  the thesis's export appendix documents. Guarded by
+  `ParentDashboardExporterTests.csvDoesNotContainRemovedAverageAccuracyColumn`.
 * Per-day session durations (`date,recordedAt,durationSeconds,
   wallClockSeconds,condition,inputDevice,letter`) — `recordedAt` is the
   full ISO-8601 timestamp (D-9); `letter` names the practised letter (or
@@ -1570,21 +1601,33 @@ blocks, init/deinit structure are particularly load-bearing).
 let shouldPlayForStroke = strokeTracker.isNearStroke
 let shouldBeActive = shouldPlayForStroke
                      && smoothedVelocity >= playbackActivationVelocityThreshold
-                     && feedbackIntensity > 0.3
 playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 ```
 
 `isNearStroke` is true when the touch is within `checkpointRadius * 3`
-of the next checkpoint. The 22 pt/s velocity threshold prevents audio
-on stationary touches.
+of the next checkpoint. There is no `feedbackIntensity` gate on the
+sound (the letter sound is the glyph's phonemic anchor, not guidance
+feedback; an earlier `> 0.3` gate was removed and this section lagged
+until 2026-09-06). Movement-contingency (ruling AE-2b, 2026-09-06): an
+active request is immediate; an idle request is debounced by
+`idleDebounceSeconds` (0.12 s) and a repeated idle request keeps the
+running timer rather than restarting it; and every active sample arms
+a stall timeout of the same length, so a pen that STOPS — which sends
+no further samples — falls silent after 0.12 s and resumes at the next
+movement, at the pitch and pan of wherever it now is. Both sound arms
+follow this identically; the silent arm never reaches it.
 
 ### 7.4 Phase-dependent audio gating
 
-`feedbackIntensity > 0.3` is the audio gate:
-* `.observe`: 1.0 → audio on (but touch is disabled anyway).
-* `.direct`: 1.0 → letter-name audio on first correct dot tap.
-* `.guided`: 0.6 → real-time proximity audio.
-* `.freeWrite`: 0.0 → audio silent (post-hoc TTS only).
+There is no `feedbackIntensity` audio gate (removed 2026-09-06, ruling
+AE-2b — §4.2, §7.3). Per phase:
+* `.observe`: the demonstration only (§3.1); no live touch, so no
+  proximity coupling to gate.
+* `.direct`: letter-name audio on first correct dot tap.
+* `.guided`: real-time proximity audio, §7.3's `isNearStroke` +
+  velocity gate.
+* `.freeWrite`: silent in a STUDY session (the sound-off post-test);
+  in the casual app the coupling still runs, the same as `.guided`.
 
 ---
 
@@ -2336,13 +2379,14 @@ Then a blank line, followed by five data sections.
 
 ## Section 1 — Per-letter aggregates
 
-One row per letter the child has practised.
+One row per letter the child has practised. `averageAccuracy` was
+removed from this row 2026-09-16 (supervisor ruling) — see the note
+above §"Additional sections in the export" for why.
 
 | Column | Type | Source | Range | Purpose |
 |---|---|---|---|---|
 | `letter` | string | `LetterAccuracyStat.letter` | A–Z, Ä, Ö, Ü, ß (uppercase) | Slicing key. |
 | `sessionCount` | int | `accuracySamples.count` | ≥ 0 | How often practised. |
-| `averageAccuracy` | float | `LetterAccuracyStat.averageAccuracy` | 0–1 | Mean session score. |
 | `trend` | float | `LetterAccuracyStat.trend` | signed slope | Linear-regression slope over trailing 10 samples. |
 | `recognitionSamples` | int | `LetterProgress.recognitionAccuracy.count` | 0–10 | CoreML readings retained. |
 | `recognitionAvg` | float | mean of `recognitionAccuracy` | 0–1 | Mean **calibrated** confidence. |
@@ -2373,7 +2417,7 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 | `letter` | `PhaseSessionRecord.letter` | Per-letter slicing. |
 | `phase` | `PhaseSessionRecord.phase` | `observe` / `direct` / `guided` / `freeWrite`. |
 | `completed` | `PhaseSessionRecord.completed` | Selection criterion. |
-| `score` | `PhaseSessionRecord.score` | Phase-level accuracy / form score (0–1). |
+| `score` | `PhaseSessionRecord.score` | **NOT one instrument across phase rows** — see §6.4's `score` row for the full breakdown (observe/direct constant 1.0, guided coverage, freeWrite composite). Never pool across phase types. |
 | `schedulerPriority` | `PhaseSessionRecord.schedulerPriority` | Scheduler priority at letter selection. |
 | `condition` | `PhaseSessionRecord.condition` | A/B arm. |
 | `recordedAt` | `PhaseSessionRecord.recordedAt` | D-3: dated learning curves. |

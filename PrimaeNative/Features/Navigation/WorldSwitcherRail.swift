@@ -118,12 +118,12 @@ struct WorldSwitcherRail: View {
         n > 99 ? "99+" : "\(n)"
     }
 
-    /// Sum of quality-gated star counts across letters — keeps the
-    /// badge in agreement with the celebration overlay and gallery.
+    /// Sum of quality-gated star counts across letters. Delegates to
+    /// `LetterStars.total`, the same call `SchuleWorldView`'s badge makes —
+    /// the two were separate copies of this expression, each with a comment
+    /// claiming agreement, and nothing enforced it (audit 2026-09-20).
     private var starTotal: Int {
-        vm.allProgress.values.reduce(0) { acc, prog in
-            acc + LetterStars.stars(for: prog.phaseScores)
-        }
+        LetterStars.total(for: vm.allProgress)
     }
 
     // MARK: - Gear long-press

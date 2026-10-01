@@ -1,0 +1,60 @@
+# Xcode toolchain pin — Primae
+#
+# ROADMAP F11 (the iOS 27 SDK move). ONE place, read by everything.
+#
+#   major: 27
+#     The estate decision (homelab-architecture #624, 2026-08-18,
+#     slug xcode-27-toolchain-decision-2026-08-18) pins Xcode 27 by MAJOR
+#     version across every Apple project, with the pin living in each repo
+#     and the workstation authoritative, CI following. This file is Primae's
+#     half of that decision.
+#
+#     MAJOR-only is deliberate and it has a cost worth stating: it cannot
+#     distinguish 27.0 from 27.2. Both are installed on this workstation
+#     (/Applications/Xcode.app = 27.0 release 27A266a,
+#      /Applications/Xcode-beta.app = 27.2 beta 27B5019j). A MAJOR pin says
+#     both are acceptable; it does NOT say which one built any given artefact.
+#     For that, the EXACT build is still recorded with the artefact —
+#     `scripts/build_study.sh` prints `xcodebuild -version` on every run, and
+#     CLAUDE.md's standing rule requires capturing it. Pin = what we accept;
+#     build stamp = what actually ran. Both, not either.
+#
+#   runner_label: xcode-27
+#     What `.github/workflows/ios-build.yml` uses for `runs-on:`. This is the
+#     CI half of the pin, and it is a LABEL, not a path.
+#
+#     History worth not re-deriving: the image ran on macOS 26 until
+#     2026-09-10, when GitHub moved it to macOS 27. Before that the
+#     `macos-26` + `sudo xcode-select /Applications/Xcode_26.4.app` pair was
+#     a second, independent way to name the toolchain — which is exactly why
+#     they could disagree. There is now ONE name for it, here.
+#
+#     F11 recorded a related lesson: a gate that searches for the WRONG
+#     identifier returns "absent" indistinguishably from "does not exist" —
+#     the 2026-07-07 audit looked for a `macos-27` label, found none, and
+#     recorded a CI-availability blocker that had been false since
+#     2026-07-16. The image is `xcode-27`.
+#
+#   deployment_target: 27.0
+#     Package.swift `.iOS(.v27)` and all 12 IPHONEOS_DEPLOYMENT_TARGET
+#     entries in Primae.xcodeproj. This is a DEVICE-SUPPORT decision, not a
+#     toolchain one, and it drops support for every iOS 26 device. The study
+#     iPad runs iOS 27.2 (measured 2026-10-01), so the pilot is unaffected.
+#
+#     Corollary to respect: `.iOS(.v27)` requires
+#     `// swift-tools-version: 6.4`. At 6.3 the manifest is rejected outright
+#     ("'v27' is unavailable ... introduced in PackageDescription 6.4"), so
+#     the tools version is part of this pin, not an incidental detail.
+#
+# WHY THIS IS NOT THE WHOLE STORY. `xcode-27` is currently a PUBLIC PREVIEW
+# image. ROADMAP F11's other gate — swiftlang/swift#88173, an inliner crash
+# with exactly our configuration (-O plus -default-isolation MainActor) — was
+# cleared for the pilot configuration on 2026-10-01: a Release-Study -O build
+# on Xcode 27.2 SUCCEEDED. One clean -O build is meaningful here precisely
+# because that bug is an -O-only inliner crash, but it is one compiler run, not
+# a cleared gate. If a future -O build fails with a compiler crash, this pin is
+# the first thing to revisit.
+
+major: 27
+runner_label: xcode-27
+deployment_target: 27.0
