@@ -89,7 +89,7 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: allFiveLettersKey) }
     }
 
-    /// How many times each letter's full four-phase flow runs before the
+    /// How many times each letter's full three-phase flow runs before the
     /// proctor advances. The supervisor's "Buchstabe dreimal?".
     /// Default 1, which is what the app does today.
     static let letterRepeatCountKey = prefix + "letterRepeatCount"

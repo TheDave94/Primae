@@ -13,7 +13,7 @@ import Foundation
 /// predates the `direct` phase; rawValues are preserved for backward-
 /// compatible decode of historical dashboard JSON.
 enum ThesisCondition: String, Codable, CaseIterable, Sendable {
-    /// Full four-phase flow: observe → direct → guided → freeWrite.
+    /// Full three-phase flow: observe → guided → freeWrite.
     /// Case stays named `threePhase` to keep the Codable rawValue stable.
     case threePhase
 

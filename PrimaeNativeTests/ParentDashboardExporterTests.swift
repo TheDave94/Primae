@@ -30,7 +30,7 @@ struct ParentDashboardExporterTests {
 
     // `averageAccuracy` was removed 2026-09-16 (supervisor ruling): it
     // mixed thesis arms and phase types, and carried a mathematical
-    // floor of 0.5 under the (kept) four-phase flow — see D12 and the
+    // floor of 1/3 under the three-phase flow — see D12 and the
     // removal note in ParentDashboardExporter.swift and
     // docs/APP_DOCUMENTATION.md's export-schema appendix. This guards
     // against the column silently coming back.

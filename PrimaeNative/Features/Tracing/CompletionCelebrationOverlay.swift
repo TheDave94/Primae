@@ -13,8 +13,8 @@ import SwiftUI
 struct CompletionCelebrationOverlay: View {
     let starsEarned: Int
     /// Max achievable stars under the current thesis condition (1 for
-    /// guidedOnly/control, 4 for threePhase) — showing 4 stars to a
-    /// guidedOnly child would always reveal 3 empty placeholders.
+    /// guidedOnly/control, 3 for threePhase) — showing 3 stars to a
+    /// guidedOnly child would always reveal 2 empty placeholders.
     let maxStars: Int
     let onWeiter: () -> Void
 

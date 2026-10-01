@@ -104,8 +104,8 @@ struct ParentDashboardExporter {
         //   retrievalAccuracy — rolling mean of retrievalAttempts (cap 10).
         // `averageAccuracy` REMOVED 2026-09-16 (supervisor ruling): it
         // mixed arms (`accuracySamples` carries no condition tag) AND
-        // mixed phases (fed by `overallScore`, which under the kept
-        // four-phase flow has a mathematical floor of 0.5 — D12), while
+        // mixed phases (fed by `overallScore`, which under the
+        // three-phase flow has a mathematical floor of 1/3 — D12), while
         // being none of the outcomes Ch.6 defines. It could only mislead
         // an exploratory read of the export. See docs/APP_DOCUMENTATION.md
         // export-schema appendix for the removal note.

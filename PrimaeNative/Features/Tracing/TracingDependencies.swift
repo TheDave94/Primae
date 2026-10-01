@@ -163,7 +163,7 @@ struct TracingDependencies {
         participantArchive: ParticipantArchiving = JSONParticipantArchiveStore(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
-        // Default to the full four-phase flow unless the install opted
+        // Default to the full three-phase flow unless the install opted
         // into the thesis A/B study; gate lives on ThesisCondition for
         // testability.
         thesisCondition: ThesisCondition = .defaultForInstall,

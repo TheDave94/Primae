@@ -7,7 +7,8 @@
 import CoreGraphics
 import Foundation
 
-/// Coordinates the four-phase learning flow for one letter.
+/// Coordinates the three-phase learning flow (observe → guided → freeWrite)
+/// for one letter.
 ///
 /// Usage:
 /// ```swift

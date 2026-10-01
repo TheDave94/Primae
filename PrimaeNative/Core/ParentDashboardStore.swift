@@ -27,11 +27,11 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// .overallScore` (which feeds `LetterProgress.bestAccuracy` and
     /// `ParentDashboardStoring.recordSession`'s own `accuracy`) is the
     /// unweighted MEAN of every active phase's `score` — under
-    /// `.threePhase` (all 4 phases active), two of the four terms
-    /// (observe, direct) are unconditionally `1.0`, so `overallScore`
-    /// has a mathematical FLOOR of 0.5 regardless of how poorly the
+    /// `.threePhase` (all 3 phases active), one of the three terms
+    /// (observe) is unconditionally `1.0`, so `overallScore`
+    /// has a mathematical FLOOR of 1/3 regardless of how poorly the
     /// child actually traced (guided=0, freeWrite=0 still yields
-    /// `overallScore` = 0.5). That value is not merely mismatched
+    /// `overallScore` = 1/3). That value is not merely mismatched
     /// across phases — under `.threePhase` it is systematically
     /// inflated by a fixed, uninformative floor. See DECISIONS.md D12.
     let score: Double

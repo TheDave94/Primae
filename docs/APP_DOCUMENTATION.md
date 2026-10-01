@@ -65,7 +65,7 @@ The app ships with built-in A/B test infrastructure
 the study via `Forschung → Studienteilnahme`, a stable UUID is
 deterministically mapped to one of three conditions:
 
-* `.threePhase` — full four-phase flow (observe → direct → guided → freeWrite)
+* `.threePhase` — full three-phase flow (observe → guided → freeWrite)
 * `.guidedOnly` — guided phase only (skips scaffolding + free writing)
 * `.control` — guided phase with **fixed** difficulty (no adaptive radius)
 
@@ -109,7 +109,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 |------|------:|------|
 | `Models.swift` | 65 | `LetterAsset`, `LetterStrokes`, `StrokeDefinition`, `Checkpoint`. |
 | `AppWorld.swift` | 49 | Three-world enum (`schule`, `werkstatt`, `fortschritte`). |
-| `LearningPhase.swift` | 81 | Four-phase enum: `observe`, `direct`, `guided`, `freeWrite`. German display names. |
+| `LearningPhase.swift` | 81 | Four cases, three run: `observe`, `direct` (kept for Codable, never active), `guided`, `freeWrite`. German display names. |
 | `LearningPhaseController.swift` | 175 | Pure-value-type FSM. Star thresholds per phase; ThesisCondition-aware `activePhases`. |
 | `LetterOrderingStrategy.swift` | 33 | `motorSimilarity`, `wordBuilding`, `alphabetical` — explicit ordering tables. |
 | `SchriftArt.swift` | 63 | Five script enum cases. Currently bundled: Druckschrift (Primae) + Schreibschrift (Playwrite AT). |
@@ -552,10 +552,11 @@ demonstration and independent application.
   "Start", guided = "We do", freeWrite = "You do."
 
 **How the implementation differs.** The classic GRR has three phases;
-this app inserts a fourth (`direct`) between observe and guided to
-explicitly teach stroke directionality (see §4.4). All four phases
-participate in gradual release: scaffolding visible (observe + direct)
-→ scaffolding interactive (guided) → scaffolding withdrawn (freeWrite).
+this app runs three as well — observe → guided → freeWrite (a fourth,
+`direct`, sat between observe and guided until the 2026-09-18 cut,
+D5). All three phases participate in gradual release: scaffolding
+visible (observe) → scaffolding interactive (guided) → scaffolding
+withdrawn (freeWrite).
 
 ### 4.2 Guidance Hypothesis — Fading Feedback
 
@@ -1497,7 +1498,7 @@ Additional sections in the export:
   thesis arms (`LetterAccuracyStat.accuracySamples` carries no condition
   tag) and mixed phase types (fed by `LearningPhaseController
   .overallScore`, the unweighted mean of every active phase's score,
-  which under the kept four-phase flow has a mathematical floor of 0.5
+  which under the three-phase flow has a mathematical floor of 1/3
   regardless of how poorly a child traced — see D12 in
   `docs/DECISIONS.md`), and it was none of the outcomes Ch.6 of the
   thesis defines (primary: `spatialDeviation`; secondaries:

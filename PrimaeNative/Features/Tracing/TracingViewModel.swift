@@ -953,7 +953,7 @@ public final class TracingViewModel {
     /// the practice pool, which must not move under a child. `nil` on
     /// the dependency means the device's own setting, unchanged.
     private let allFiveLetters: Bool
-    /// How many times each letter's full four-phase flow runs before the
+    /// How many times each letter's full three-phase flow runs before the
     /// proctor advances. 1 unless the comparison switch says otherwise —
     /// the supervisor's "Buchstabe dreimal?".
     private let letterRepeatCount = StudyComparisonSettings.letterRepeatCount

@@ -185,7 +185,7 @@ private final class TrackingMockAudio: AudioControlling {
         let vm = makeVM(studyMode: true, haptics: haptics)
         #expect(haptics.prepareCallCount == 0,
                 "studyMode must not even prime the injected engine")
-        // studyMode pins the four-phase flow whatever the injected
+        // studyMode pins the three-phase flow whatever the injected
         // `.guidedOnly` says (2026-09-04), so a fresh study VM sits in
         // the touch-disabled observe phase. Same recipe as the passing
         // study suites (StudyCleanConfigTests): canvas FIRST — its didSet
@@ -195,7 +195,7 @@ private final class TrackingMockAudio: AudioControlling {
         vm.phaseController.resume(at: .guided)
 
         let progress = traceWholeLetter(vm)
-        // The load-bearing check. Under studyMode the four-phase flow is
+        // The load-bearing check. Under studyMode the three-phase flow is
         // pinned, so completing the guided trace ADVANCES to freeWrite —
         // and the phase transition resets `progress` to 0 (CI run 1641:
         // phase=.freeWrite, progress 0). Outside studyMode `.guidedOnly`

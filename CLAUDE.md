@@ -72,7 +72,7 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 - `TracingViewModel.swift` — main VM, coordinates phases, strokes, audio, animation
 - `TracingCanvasView.swift` — Canvas rendering (ghost lines, start dots, ink, KP overlay)
 - `MainAppView.swift` — root host with WorldSwitcherRail + worlds
-- `SchuleWorldView.swift` — World 1: guided four-phase tracing
+- `SchuleWorldView.swift` — World 1: guided three-phase tracing
 - `WerkstattWorldView.swift` — World 2: freeform writing
 - `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
 - `StrokeTracker.swift` — checkpoint proximity detection

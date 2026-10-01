@@ -1,7 +1,7 @@
 // WritingMode.swift
 // PrimaeNative
 //
-// Top-level switch between the guided four-phase tracing flow and the
+// Top-level switch between the guided three-phase tracing flow and the
 // freeform writing canvas. Stored on TracingViewModel and toggled from
 // the letter picker area.
 

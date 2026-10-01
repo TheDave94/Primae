@@ -14,8 +14,9 @@
 
 import Foundation
 
-/// Represents one of the four phases in the letter-learning sequence.
-/// The phase determines canvas scaffolding and how input is scored.
+/// Represents one of the four cases in the letter-learning sequence —
+/// three phases run per session (`direct` is kept for Codable, never
+/// active). The phase determines canvas scaffolding and how input is scored.
 enum LearningPhase: Int, Codable, CaseIterable, Comparable, Equatable, Sendable {
     /// Watch the animated letter formation. Touch disabled; tap replays.
     case observe   = 0
