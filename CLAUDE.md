@@ -178,6 +178,52 @@ So two standing claims in `docs/STUDY_DEVICE_DRYRUN.md` are false and should
 not be repeated: "the suite runs on a simulator" (`:66`) and "it does not
 switch arms" (`:59`).
 
+**The device UI tests are RUNNABLE AGAIN as of 2026-10-02 — all 7 pass on the
+physical iPad — and the cause recorded for their failure was WRONG.** Later
+sessions recorded the blocker as an Apple Developer portal login failure
+(`Unable to log in with account … error code -1001`) plus `No profiles for
+'de.flamingistan.primae.uitests.xctrunner'`. Re-probed, the portal was never
+the problem. There were **three** separate causes, each masking the next:
+
+1. **`PrimaeUITests` had no `DEVELOPMENT_TEAM`** in either Study configuration,
+   so it inherited the project default `XMX37BH48B` — a team this machine has
+   no account for: `No Account for Team "XMX37BH48B" (in target
+   'PrimaeUITests')`. Commit `b1ab17a` gave the **unit** test target the app's
+   `J7JH8FJK2W` for this exact reason and the UI-test target was never given
+   the same treatment; the fix was applied to one test target and not its
+   sibling. Fixed 2026-10-02 by `51f29ac5` (PR #24) — two lines.
+2. **A stale `PrimaeUITests-Runner` signed with the LEGACY team was still
+   installed on the iPad**, so once the build signed correctly, iOS refused
+   the *upgrade*:
+   `Upgrade's application-identifier entitlement string
+   (J7JH8FJK2W.de.flamingistan.primae.uitests.xctrunner) does not match
+   installed application's … (XMX37BH48B…)`. Fix:
+   `xcrun devicectl device uninstall app --device <UDID>
+   de.flamingistan.primae.uitests.xctrunner`. Nothing in the repo records that
+   this runner persists on the device across sessions.
+3. **The on-device "enable automation" consent** timed out on first run
+   (`Timed out while enabling automation mode`) until a human tapped the
+   system dialog once. After that it is granted and runs unattended.
+
+Measured, 2026-10-02, `Debug-Study` on `00008103-000E60311AE8801E`: **7/7
+passed** — `testChevronAdvancesLetter`, `testChevronLandsOnUsableLetter`,
+`testPhonemeArmRequestsAudioDuringObserve`,
+`testSpatialArmRequestsAudioDuringObserve`,
+`testRailDoubleTapEnrolsNextChildWithoutParentArea`,
+`testSecondEnrolmentUsableWithoutRelaunch`,
+`testEnrolmentProbeCompletionSecondEnrolmentExport`. So the physical device is
+available as an instrument again, and it is the stronger one.
+
+**TWO OPERATIONAL NOTES for anyone running them.** (a) A device UI-test run
+installs its `Debug-Study` build over the pilot artefact — same bundle ID
+`com.flamingistan.primae.study` — so it leaves `#if DEBUG` surfaces on the
+iPad; **reinstall the `Release-Study` artefact afterwards** (verified this
+session: uninstall + install, then `nm` on the fresh build and a container
+sweep). (b) `xcodebuild test` overruns a 600s tool timeout on the full UI
+target (~12 min for 7 tests); run it per-test or in two halves, or the tool
+kills the run mid-suite and reports `** BUILD INTERRUPTED **` rather than a
+failure.
+
 **What it caught: the phase indicator's DENOMINATOR, stale since the
 2026-09-18 cut.** Two tests pinned `"0 von 4 abgeschlossen"` / `"1 von 4
 abgeschlossen"`; the app renders **"von 3"** because a session runs three
