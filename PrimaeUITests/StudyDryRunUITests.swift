@@ -186,25 +186,30 @@ final class StudyDryRunUITests: XCTestCase {
         )
     }
 
-    /// Drives the "Neuer Teilnehmer" flow to completion: tap -> dismiss
-    /// the pre-wipe export share sheet -> confirm the destructive dialog
-    /// -> dismiss the relaunch alert. See ResearchDashboardView.swift's
-    /// own ordering comment: export strictly precedes the wipe.
+    /// Drives the "Neuer Teilnehmer" flow to completion: tap -> confirm
+    /// the destructive dialog -> dismiss the ready alert.
+    ///
+    /// Two steps that used to be here are gone as of 2026-10-01, both
+    /// deliberately: the pre-wipe export SHARE SHEET (the outgoing child
+    /// is sealed to `ParticipantArchive/`, which is what
+    /// `allParticipantExportSources` reads for the end-of-session
+    /// combined export, so 30-40 share sheets bought no data safety),
+    /// and the "Neustart erforderlich" relaunch prompt
+    /// (`reapplyParticipantIdentity()` re-derives the arms in place).
+    /// What this test now pins is that the flow reaches a usable state
+    /// for the NEXT child without either of them.
     private func enrolNewParticipant(_ app: XCUIApplication) {
         let newParticipant = element(label: "Neuer Teilnehmer", in: app)
         XCTAssertTrue(newParticipant.waitForExistence(timeout: 5), "Neuer Teilnehmer button must exist")
         newParticipant.tap()
 
-        XCTAssertTrue(waitForShareSheet(app, timeout: 5), "the pre-wipe export share sheet should appear")
-        dismissShareSheet(app)
-
-        let confirm = element(label: "Löschen & neu starten", in: app)
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the destructive confirm dialog should appear after the share sheet closes")
+        let confirm = element(label: "Neues Kind starten", in: app)
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the destructive confirm dialog should appear")
         confirm.tap()
 
-        let relaunchOK = app.alerts["Neustart erforderlich"].buttons["OK"]
-        XCTAssertTrue(relaunchOK.waitForExistence(timeout: 5), "the relaunch alert should appear")
-        relaunchOK.tap()
+        let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
+        XCTAssertTrue(readyOK.waitForExistence(timeout: 5), "the ready alert should appear")
+        readyOK.tap()
     }
 
     /// A short drag anywhere in the canvas area. `beginTouch`/`endTouch`

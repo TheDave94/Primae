@@ -15,10 +15,10 @@ struct ResearchDashboardView: View {
     /// Live headphone-route check for the spatial arm (read-only session
     /// query — never touches AudioEngine). Refreshed on route changes.
     @State private var headphonesConnected = ResearchDashboardView.headphoneRouteActive()
-    /// New-participant flow: export-then-wipe. The share URL drives the
-    /// export sheet; on its dismiss the destructive wipe confirm appears.
-    @State private var newParticipantShareURL: URL?
-    @State private var showNewParticipantConfirm = false
+    /// Only the delayed-retention-test RESTORE still needs a relaunch —
+    /// it re-derives identity from a typed UUID. The "next child" flow
+    /// re-derives in place and is owned by `NextParticipantControl`,
+    /// which also carries its own confirm + ready alert.
     @State private var showRelaunchAlert = false
     /// Proctor-facing studyMode as STORED, which is not necessarily what
     /// this session is running. See `studyDeviceSection`.
@@ -28,7 +28,6 @@ struct ResearchDashboardView: View {
     /// error for a malformed one.
     @State private var restoreIDText = ""
     @State private var restoreError: String?
-    @State private var showExportError = false
     /// Proctor-facing refusal reason from a cold-probe button
     /// (`startColdProbe`/`startPostTest` return non-nil on refusal).
     /// Surfaced via `.alert` so a silent VM refusal is never
@@ -234,23 +233,10 @@ struct ResearchDashboardView: View {
             Divider().padding(.vertical, 2)
             Text("Neuen Teilnehmer beginnen")
                 .font(.body(FontSize.md, weight: .semibold))
-            Text("Exportiert zuerst die aktuellen Daten (JSON-Archiv), dann werden alle Teilnehmer-Daten gelöscht und ein neuer Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung angelegt. Geräte-Einstellungen bleiben erhalten.")
+            Text("Legt einen neuen Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung an. Die Daten des aktuellen Kindes bleiben im Archiv und damit im Sammel-Export enthalten; ein Neustart ist nicht nötig. Für eine Strecke von Kindern am Stück: hier starten und den Sammel-Export ganz am Ende einmal ziehen.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
-            Button {
-                do {
-                    newParticipantShareURL = try ParentDashboardExporter.exportFileURL(
-                        from: vm.dashboardSnapshot,
-                        format: .json,
-                        progress: vm.allProgress,
-                        // The pre-wipe archive MUST carry the traces too —
-                        // otherwise the saved records' rawTraceIDs dangle
-                        // after rawTraceStore.reset() wipes the traces.
-                        rawTraces: vm.rawTraces)
-                } catch {
-                    showExportError = true
-                }
-            } label: {
+            NextParticipantControl {
                 Label("Neuer Teilnehmer", systemImage: "person.crop.circle.badge.plus")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
@@ -308,39 +294,19 @@ struct ResearchDashboardView: View {
                 Text("Entfernt jede auf diesem Gerät gespeicherte Stroke-Kalibrierung für die aktive Schriftart. Das gebündelte Set übernimmt anschließend. Für Studien-Geräte vor dem Piloten empfohlen.")
             }
         }
-        // Export the outgoing participant's data first; the wipe confirm
-        // only appears AFTER this sheet dismisses — export strictly
-        // precedes any destructive action.
-        .sheet(isPresented: Binding(
-            get: { newParticipantShareURL != nil },
-            set: { if !$0 { newParticipantShareURL = nil } }
-        ), onDismiss: {
-            showNewParticipantConfirm = true
-        }) {
-            if let url = newParticipantShareURL {
-                ActivitySheet(items: [url])
-            }
-        }
-        .confirmationDialog("Teilnehmer-Daten löschen?",
-                            isPresented: $showNewParticipantConfirm,
-                            titleVisibility: .visible) {
-            Button("Löschen & neu starten", role: .destructive) {
-                vm.resetForNewParticipant()
-                showRelaunchAlert = true
-            }
-            Button("Abbrechen", role: .cancel) {}
-        } message: {
-            Text("Daten exportiert? Diese Aktion löscht unwiderruflich alle Teilnehmer-Daten (Fortschritt, Sessions, Sterne, Kalibrierungen) und legt einen neuen Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung an. Geräte-Einstellungen bleiben erhalten.")
-        }
+        // "Neuer Teilnehmer" lives in `NextParticipantControl`: it seals,
+        // wipes and re-derives in place, so there is no export sheet to
+        // block on and no relaunch to ask for (2026-10-01). The relaunch
+        // alert below now belongs to RESTORE alone.
         .alert("Neustart erforderlich", isPresented: $showRelaunchAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Neuer Teilnehmer angelegt. Bitte die App jetzt vollständig schließen und neu starten, damit die neue Studienarm-Zuordnung aktiv wird.")
-        }
-        .alert("Export fehlgeschlagen", isPresented: $showExportError) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Die Export-Datei konnte nicht erstellt werden. Es wurde nichts gelöscht.")
+            // Reached ONLY from "Teilnehmer wiederherstellen" now. That
+            // path calls `markParticipantRestored()`, which blocks tracing
+            // until a relaunch — unlike the "next child" path, which
+            // re-derives in place. Wording corrected to match the only
+            // caller; it still said "Neuer Teilnehmer angelegt".
+            Text("Teilnehmer wiederhergestellt. Bitte die App jetzt vollständig schließen und neu starten, damit die wiederhergestellte Studienarm-Zuordnung aktiv wird.")
         }
         .alert("Test kann nicht starten", isPresented: Binding(
             get: { probeError != nil },

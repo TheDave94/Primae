@@ -181,6 +181,81 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         attach(app, name: "B-03-second-participant-dashboard")
     }
 
+    /// The rail's double-tap reveal (2026-10-01) — the proctor path for
+    /// running 30-40 children back to back WITHOUT entering the parent
+    /// area at all, which is the whole point of the gesture.
+    ///
+    /// Asserts the three things that make it usable: the gesture reveals
+    /// the button in the same bar as the gear, the button runs the same
+    /// seal-and-rederive flow the dashboard runs, and it then gets OUT of
+    /// the way so it is not left on the child-facing screen.
+    ///
+    /// Taps the rail's OWN centre, derived from the element's reported
+    /// frame rather than a guessed normalised offset. An earlier version
+    /// hardcoded dx 0.008 / dy 0.45 on the assumption the rail is a 64pt
+    /// vertical bar down the LEFT edge — and the accessibility snapshot
+    /// disproved it: in this orientation the rail is
+    /// `{{0,0},{820,64}}`, a full-width bar across the TOP, so that
+    /// coordinate landed on the canvas and the probe could not have found
+    /// the button even if the gesture worked. Deriving the point from the
+    /// element makes the test correct in either orientation.
+    @MainActor
+    func testRailDoubleTapEnrolsNextChildWithoutParentArea() {
+        let app = XCUIApplication()
+        app.launch()   // the ONLY launch in this test
+
+        let rail = element(label: "Navigationsleiste", in: app)
+        XCTAssertTrue(rail.waitForExistence(timeout: 10), "the rail must be on screen")
+        rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+
+        let next = element(label: "Nächstes Kind", in: app)
+        if !next.waitForExistence(timeout: 5) {
+            // Dump the screen so a failure says WHAT is there, not just
+            // that the button is missing.
+            attach(app, name: "D-FAIL-after-rail-double-tap")
+            print("RAILDIAG-FRAME \(rail.frame)")
+        }
+        XCTAssertTrue(next.exists,
+                      "a double-tap on the rail must reveal the 'Nächstes Kind' button in the same bar as the gear")
+        attach(app, name: "D-01-rail-next-child-revealed")
+
+        next.tap()
+
+        let confirm = element(label: "Neues Kind starten", in: app)
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5),
+                      "the destructive confirm should appear — the rail button runs the same flow as the dashboard")
+        confirm.tap()
+
+        let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
+        XCTAssertTrue(readyOK.waitForExistence(timeout: 5),
+                      "the ready alert should appear, not a relaunch prompt")
+        readyOK.tap()
+
+        // Waits for the element to LEAVE the tree rather than sampling
+        // `exists` once: a plain `.exists` check races the accessibility
+        // snapshot and would report a still-present button for a
+        // control that has already been hidden. `accessibilityHidden`
+        // is what must remove it — otherwise an invisible button stays
+        // reachable by VoiceOver and by this very lookup.
+        // Asserts HIT-TESTING, not absence from the element tree.
+        //
+        // The control stays mounted (unmounting it ate its own "ready"
+        // alert), so after use it is hidden with `opacity(0)` +
+        // `allowsHitTesting(false)` + `accessibilityHidden(true)`. The
+        // property that actually protects the child is that the button
+        // cannot be TAPPED, and that is exactly what `isHittable`
+        // reports. Asserting tree-absence instead would be asserting an
+        // implementation detail of the accessibility bridge, and the
+        // button legitimately remains in the snapshot.
+        let notHittable = NSPredicate(format: "isHittable == false")
+        expectation(for: notHittable, evaluatedWith: next)
+        waitForExpectations(timeout: 5) { error in
+            XCTAssertNil(error,
+                         "the revealed button must stop being hittable after use, so it is never a live control on the child-facing screen")
+        }
+        attach(app, name: "D-02-after-rail-next-child")
+    }
+
     // MARK: - Check C (report 2) — the audio arms
 
     /// Report 2: does each sound arm actually get its own audio?
@@ -351,18 +426,19 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         XCTAssertTrue(newParticipant.waitForExistence(timeout: 6), "Neuer Teilnehmer button must exist")
         newParticipant.tap()
 
-        XCTAssertTrue(waitForShareSheet(app, timeout: 8), "the pre-wipe export share sheet should appear")
-        dismissShareSheet(app)
-
-        let confirm = element(label: "Löschen & neu starten", in: app)
+        // No pre-wipe share sheet, and no relaunch prompt — both removed
+        // 2026-10-01; the outgoing child is sealed to ParticipantArchive/
+        // and the arms re-derive in place. See NextParticipantControl.
+        let confirm = element(label: "Neues Kind starten", in: app)
         XCTAssertTrue(confirm.waitForExistence(timeout: 6),
-                      "the destructive confirm dialog should appear after the share sheet closes")
+                      "the destructive confirm dialog should appear")
         confirm.tap()
 
-        let relaunchOK = app.alerts["Neustart erforderlich"].buttons["OK"]
-        XCTAssertTrue(relaunchOK.waitForExistence(timeout: 6), "the relaunch alert should appear")
-        // Dismissed, NOT acted on — no relaunch happens in this test, by design.
-        relaunchOK.tap()
+        let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
+        XCTAssertTrue(readyOK.waitForExistence(timeout: 6), "the ready alert should appear")
+        // Dismissed, NOT acted on — the point of the change is that no
+        // relaunch follows, so this test never terminates the app.
+        readyOK.tap()
     }
 
     /// The current letter, read off the pill's own label. Rendered in both
