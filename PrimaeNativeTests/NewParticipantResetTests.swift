@@ -370,6 +370,74 @@ import Foundation
         }
     }
 
+    /// THE COLD-START PATH — the one the suite never had.
+    ///
+    /// A study iPad is launched with no participant, so `sessionBlockReason`
+    /// is non-nil and `SchuleWorldView` renders "Studie kann nicht
+    /// starten". The proctor then enrols child #1 — and the gate MUST
+    /// clear, or the device is unusable and the proctor is stuck on the
+    /// screen that told them what to do. Found on the physical iPad
+    /// 2026-10-02: enrolling succeeded (the UUID and `thesisEnrolled`
+    /// were written) and the screen stayed, because the VM's
+    /// `participantEnrolled` was a `let` captured at init, so
+    /// `studyPreconditionFailure` kept reading the launch-time value.
+    ///
+    /// Every other test in this file builds its VM from `.stub`, which
+    /// pins `participantEnrolled: true` — so this transition had no
+    /// fixture and no coverage anywhere in the suite, and
+    /// `reappliesIdentityWithoutRelaunch` passed throughout because it
+    /// never started un-enrolled.
+    @Test("enrolling from a cold, un-enrolled device clears the start-gate")
+    func enrollingFromColdDeviceClearsTheStartGate() {
+        withRestoredState {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+
+            // The device as it is the moment a proctor first opens it.
+            let vm = TracingViewModel(.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: archive)
+                .with(participantEnrolled: false)
+                .with(studyMode: true))
+
+            #expect(vm.sessionBlockReason != nil,
+                    "an un-enrolled study device must refuse to start — this is the gate itself")
+            #expect(vm.sessionBlockReason?.contains("Kein Teilnehmer eingeschrieben") == true,
+                    "and it must say WHY, in the proctor's language")
+
+            vm.resetForNewParticipant()
+
+            #expect(vm.participantEnrolled,
+                    "the VM must learn it is enrolled; a value frozen at init can never clear the gate")
+            #expect(vm.sessionBlockReason == nil,
+                    "after enrolling child #1 the study must be startable — the proctor did exactly what the screen said")
+        }
+    }
+
+    /// The same transition, seen from the store rather than the VM: the
+    /// claim under test is that the DEVICE is enrolled afterwards, not
+    /// merely that a cached flag was flipped.
+    @Test("enrolling from a cold device actually persists the enrolment")
+    func enrollingFromColdDevicePersistsEnrolment() {
+        withRestoredState {
+            ParticipantStore.isEnrolled = false
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let vm = TracingViewModel(.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: JSONParticipantArchiveStore(directoryURL: archiveDir))
+                .with(participantEnrolled: false)
+                .with(studyMode: true))
+
+            let newID = vm.resetForNewParticipant()
+
+            #expect(ParticipantStore.isEnrolled,
+                    "the enrolment must reach ParticipantStore, or the next launch blocks again")
+            #expect(ParticipantStore.participantId == newID)
+        }
+    }
+
     /// Async counterpart of `withRestoredState` for tests that need to
     /// `await` a store flush mid-body.
     private func withRestoredStateAsync(_ body: () async -> Void) async {

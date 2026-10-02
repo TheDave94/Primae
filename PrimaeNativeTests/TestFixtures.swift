@@ -295,6 +295,17 @@ extension TracingDependencies {
     func with(studyMode: Bool) -> TracingDependencies {
         var copy = self; copy.studyMode = studyMode; return copy
     }
+    /// A device with NO participant enrolled — the state a study iPad is
+    /// in between the moment it is first launched and the moment the
+    /// proctor enrols child #1. `stub` pins `participantEnrolled: true`,
+    /// so before this existed the entire cold-start path had no fixture
+    /// and no test: every VM-building test started already enrolled, and
+    /// a defect that made enrolling at runtime unable to clear the
+    /// start-gate was invisible to the whole suite. Found on the physical
+    /// iPad 2026-10-02, not by a test.
+    func with(participantEnrolled: Bool) -> TracingDependencies {
+        var copy = self; copy.participantEnrolled = participantEnrolled; return copy
+    }
     func with(trainedSubset: TrainedLetterSubset) -> TracingDependencies {
         var copy = self; copy.trainedSubset = trainedSubset; return copy
     }

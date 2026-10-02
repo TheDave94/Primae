@@ -231,6 +231,21 @@ final class StudyAdvanceProbeUITests: XCTestCase {
                       "the ready alert should appear, not a relaunch prompt")
         readyOK.tap()
 
+        // THE GATE MUST BE GONE. "Studie kann nicht starten" is what a
+        // study iPad shows when `sessionBlockReason` is non-nil, and on a
+        // COLD start that is true at launch — the proctor is told to enrol
+        // child #1, does exactly that, and must land on a runnable screen.
+        // It did not, for a long time: `participantEnrolled` was a `let`
+        // captured at init, so enrolling updated `ParticipantStore` but
+        // not the view model, and the gate survived a perfectly successful
+        // enrolment (found on the physical iPad, 2026-10-02). The unit
+        // test pins the transition; this pins the SCREEN, which is the
+        // thing the proctor actually sees.
+        let startGate = app.staticTexts["Studie kann nicht starten"]
+        let gone = NSPredicate(format: "exists == false")
+        expectation(for: gone, evaluatedWith: startGate)
+        waitForExpectations(timeout: 10)
+
         // Waits for the element to LEAVE the tree rather than sampling
         // `exists` once: a plain `.exists` check races the accessibility
         // snapshot and would report a still-present button for a

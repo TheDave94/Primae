@@ -655,7 +655,23 @@ public final class TracingViewModel {
     /// Readable from the app target (PrimaeApp pins the light appearance
     /// on it); settable only inside the package.
     /// See `TracingDependencies.participantEnrolled`.
-    let participantEnrolled: Bool
+    ///
+    /// NOT a `let`, and that is load-bearing — MEASURED 2026-10-02 on the
+    /// physical iPad, after a cold-start enrolment left the proctor stuck
+    /// on "Studie kann nicht starten" having done exactly what the screen
+    /// said. This was frozen at init while the arms beside it were made
+    /// re-derivable in place (2026-09-14), so enrolling a participant at
+    /// RUNTIME updated `ParticipantStore` — the UUID and `thesisEnrolled`
+    /// really were written — but not this copy. `studyPreconditionFailure`
+    /// kept reading the launch-time value, `sessionBlockReason` stayed
+    /// non-nil, and `SchuleWorldView` kept rendering the gate.
+    ///
+    /// The VALUE was always right and the DATA always persisted; only the
+    /// observation was missing, which is why no unit test caught it: every
+    /// VM-building fixture starts enrolled (`.stub` pins it true), so the
+    /// cold-start transition had no coverage. Pinned now by
+    /// `NewParticipantResetTests.enrollingFromColdDeviceClearsTheStartGate`.
+    public private(set) var participantEnrolled: Bool
 
     public internal(set) var studyMode: Bool = false {
         didSet {
@@ -3300,6 +3316,12 @@ public final class TracingViewModel {
         rawTraceStore.reset()           // cold raw freeWrite traces
         clearAllCalibrations()          // on-device stroke overrides (active SchriftArt)
         let newID = ParticipantStore.startNewParticipant()  // new UUID + arms + enrolment
+        // …and TELL this view model, or `studyPreconditionFailure` keeps
+        // reading the value captured at init and the start-gate never
+        // clears (2026-10-02, measured on the iPad). Read from the store
+        // rather than hardcoded `true` so the flag can only ever claim
+        // what the device actually persisted.
+        participantEnrolled = ParticipantStore.isEnrolled
         refreshProgressMirror()         // clear the SwiftUI progress mirror
         // Re-derive this device's live arm assignment for the incoming
         // child IN PLACE (2026-09-14) — see `reapplyParticipantIdentity`.
