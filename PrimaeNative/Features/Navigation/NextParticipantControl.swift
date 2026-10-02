@@ -42,6 +42,35 @@
 
 import SwiftUI
 
+/// The proctor-facing copy of the "next child" flow, as plain values.
+///
+/// WHY IT IS NOT INLINE IN THE VIEW. A `View`'s body is unreachable from
+/// a unit test — SwiftUI vends no accessibility elements in this
+/// configuration, so `NextParticipantControlTests` could not see a
+/// single character of the dialog (the same limit
+/// `ChildFacingCountsTests` records for the star/verdict views). But
+/// these strings carry CLAIMS, not decoration: the dialog is the only
+/// place a proctor is told what survives a wipe and what does not, and
+/// one of those claims was WRONG until 2026-10-01 — it said
+/// calibrations were preserved while `resetForNewParticipant()` calls
+/// `clearAllCalibrations()`. Extracting the values is what makes that
+/// class of claim assertable at all.
+enum NextParticipantCopy {
+    static let confirmTitle = "Neuen Teilnehmer beginnen?"
+    static let startButton = "Neues Kind starten"
+    static let cancelButton = "Abbrechen"
+
+    /// Says what SURVIVES, not just what is destroyed: the destructive
+    /// step is one a proctor does 30-40 times, and the honest reason to
+    /// confirm is "this ends the current child's session", not "this may
+    /// lose data".
+    static let confirmMessage = "Die Daten des aktuellen Kindes werden unverändert archiviert und sind im Sammel-Export am Ende weiterhin enthalten. Anschließend werden Fortschritt, Sterne, Sessions und gespeicherte Schrift-Kalibrierungen gelöscht und ein neuer Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung angelegt. Geräte-Einstellungen bleiben erhalten. Ein Neustart ist nicht nötig — das Gerät kann direkt dem nächsten Kind gegeben werden."
+
+    static let readyTitle = "Neues Kind bereit"
+    static let readyOKButton = "OK"
+    static let readyMessage = "Studienarm-Zuordnung ist neu abgeleitet und die App ist sofort startklar."
+}
+
 /// A button that runs the "seal the outgoing child, wipe, enrol the next"
 /// flow behind a confirmation, then confirms the new child is ready
 /// WITHOUT asking for a relaunch.
@@ -78,11 +107,11 @@ struct NextParticipantControl<Label: View>: View {
             label
         }
         .confirmationDialog(
-            "Neuen Teilnehmer beginnen?",
+            NextParticipantCopy.confirmTitle,
             isPresented: $showConfirm,
             titleVisibility: .visible
         ) {
-            Button("Neues Kind starten", role: .destructive) {
+            Button(NextParticipantCopy.startButton, role: .destructive) {
                 vm.resetForNewParticipant()
                 showReady = true
                 // Fired AFTER showReady, and safe only because the rail
@@ -91,18 +120,14 @@ struct NextParticipantControl<Label: View>: View {
                 // that removed the very alert `showReady` had just set.
                 onReset()
             }
-            Button("Abbrechen", role: .cancel) {}
+            Button(NextParticipantCopy.cancelButton, role: .cancel) {}
         } message: {
-            // Says what SURVIVES, not just what is destroyed: the
-            // destructive step is one a proctor does 30-40 times, and
-            // the honest reason to confirm is "this ends the current
-            // child's session", not "this may lose data".
-            Text("Die Daten des aktuellen Kindes werden unverändert archiviert und sind im Sammel-Export am Ende weiterhin enthalten. Anschließend werden Fortschritt, Sterne, Sessions und gespeicherte Schrift-Kalibrierungen gelöscht und ein neuer Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung angelegt. Geräte-Einstellungen bleiben erhalten. Ein Neustart ist nicht nötig — das Gerät kann direkt dem nächsten Kind gegeben werden.")
+            Text(NextParticipantCopy.confirmMessage)
         }
-        .alert("Neues Kind bereit", isPresented: $showReady) {
-            Button("OK", role: .cancel) {}
+        .alert(NextParticipantCopy.readyTitle, isPresented: $showReady) {
+            Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
         } message: {
-            Text("Studienarm-Zuordnung ist neu abgeleitet und die App ist sofort startklar.")
+            Text(NextParticipantCopy.readyMessage)
         }
     }
 }

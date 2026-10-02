@@ -1,9 +1,24 @@
 // WorldSwitcherRail.swift
 // PrimaeNative
 //
-// 64pt vertical rail. Three world icons; gear at the bottom opens
-// `ParentAreaView` after a 2-second long press so a 5-year-old can't
-// reach it by accident.
+// 64pt vertical rail on the LEFT (`MainAppView.mainShell` is an HStack
+// whose leading child is this view). In a casual build it carries three
+// world icons; in a STUDY BUILD `worldButtons` is compiled out, so the
+// bar is empty everywhere but the gear — which is why the double-tap
+// below needs an explicit `contentShape` to be hittable at all. The
+// gear sits at the bottom and opens `ParentAreaView` after a 2-second
+// long press so a 5-year-old can't reach it by accident.
+//
+// MEASURED 2026-10-02, because this comment was about to be "corrected"
+// on the strength of an accessibility snapshot and would have been
+// corrected wrongly. The snapshot reports the rail's frame as
+// `{{0,0},{820,64}}` — WIDTH and HEIGHT transposed, reading as a
+// full-width bar across the top. It is not. On the physical iPad
+// (2732x2048 px screenshot, 2x scale) a vertical edge at x = 128 px
+// (= 64 pt) runs the full height of the screen, while a horizontal edge
+// at y = 128 px measures exactly 0 contrast at every sampled width. The
+// layout is a left vertical bar; the reported rect is the artifact. Do
+// not "fix" this comment from that frame.
 //
 // A DOUBLE-TAP anywhere on the rail reveals a "Nächstes Kind" button
 // just above the gear (2026-10-01) — the same bar, one gesture, no

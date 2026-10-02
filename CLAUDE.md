@@ -68,10 +68,17 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 - **Stroke data**: JSON files in `Resources/Letters/{letter}/strokes.json` with normalized coordinates
 - **Audio**: Proximity-triggered playback via AudioEngine + StrokeTracker
 
+## Proctor batch enrolment (one gesture, no relaunch, ONE export)
+
+Enrolling the next child is a **double-tap on the rail bar** → "Nächstes Kind" → confirm. No Settings, no force-quit, no per-child share sheet. The outgoing child is sealed to `ParticipantArchive/` by `resetForNewParticipant()`, and the arms re-derive **in place** (`reapplyParticipantIdentity()`), so the device is ready for the next child immediately — pinned by `NewParticipantResetTests.reappliesIdentityWithoutRelaunch`. **The export is taken ONCE after the last child**: `allParticipantExportSources` is `archived + [current]`, so `ParentDashboardExporter.combinedExportFileURL` already writes every child into one `primae_progress_ALL_<date>_<time>_all<N>` file. Do **not** reintroduce a per-child export or a relaunch prompt — both were removed as defects in PR #22 (see `docs/ROADMAP.md`, "Proctor batch enrolment").
+
+Note the rail is a **64pt vertical bar on the LEFT**, not a top bar: `mainShell` is an `HStack` whose leading child is the rail. An accessibility snapshot once reported its frame as `{{0,0},{820,64}}` — width and height **transposed** — and a "fix the stale rail comment" reading of that frame would have been wrong. Measured on the physical iPad (2732×2048 px screenshot, 2× scale): a vertical edge at x=128 px = 64 pt runs the height of the screen, while a horizontal edge at y=128 px is exactly 0 contrast at every sampled width.
+
 ## Key Files
 - `TracingViewModel.swift` — main VM, coordinates phases, strokes, audio, animation
 - `TracingCanvasView.swift` — Canvas rendering (ghost lines, start dots, ink, KP overlay)
 - `MainAppView.swift` — root host with WorldSwitcherRail + worlds
+- `NextParticipantControl.swift` — the proctor's "next child" action: confirm dialog + "Neues Kind bereit" alert, shared by the Research Dashboard button and the rail's double-tap. **Never unmount it to hide it** — the rail hides it by opacity/hit-testing, because unmounting also destroys the alert it presents.
 - `SchuleWorldView.swift` — World 1: guided three-phase tracing
 - `WerkstattWorldView.swift` — World 2: freeform writing
 - `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
