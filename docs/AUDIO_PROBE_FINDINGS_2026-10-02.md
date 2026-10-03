@@ -192,11 +192,50 @@ completeness check.
 
 ## Still open
 
-- `guided` and `freeWrite` phases are measured but NOT yet asserted per
-  phase; the test asserts `observe` and the overall peak.
-- Nothing is pushed; CI is unrun.
-- The `Release-Study` artefact on the iPad is stale (a device test run
-  replaces it with a Debug-Study build — see CLAUDE.md).
+### MEASURED 2026-10-03: `guided` carried NO signal in any sample
+
+Pulled off the physical iPad (`00008103-000E60311AE8801E`) after
+`testPhonemeArmRequestsAudioDuringObserve` and
+`testSpatialArmRequestsAudioDuringObserve` both passed, from
+`Application Support/PrimaeNative/audio-signal-probe.log`:
+
+| phase   | samples | max peak | samples carrying signal |
+|---------|---------|----------|-------------------------|
+| observe | 6       | 0.3150   | 2                       |
+| guided  | 34      | 0.0000   | **0**                   |
+
+The two lines that carried anything were both `observe`
+(`nonSilent=17/18 peak=0.3150`, `nonSilent=5/20 peak=0.2890`). **Every one
+of the 34 `guided` samples was `peak=0.0`.**
+
+So this is no longer "measured but not asserted per phase" — the
+per-phase measurement now exists and it is asymmetric. `observe` is
+audible in the arm conditions; `guided` is silent in every sample taken.
+
+**What is NOT established here, and must not be read as established:**
+
+- Whether `guided` *should* be audible. That is a design question
+  (C1/C2 silenced per-letter rewards), not a measurement, and this
+  document does not answer it.
+- Whether the probe is even ARMED during `guided`, as opposed to the
+  phase genuinely being silent. The 34 zero-peaked samples are
+  consistent with both. The observe samples prove the probe and the
+  engine work on this device, so the instrument is sound — but
+  "armed" is not the same as "attached to the guided phase's callbacks".
+- `freeWrite` produced **no samples at all** in this run, so it
+  remains unmeasured rather than measured-silent.
+
+**The next step is to disambiguate arming from silence**, not to write an
+assertion: confirm the guided phase's tick callbacks reach the probe. An
+assertion written before that would encode a guess as a specification.
+
+### Also still open
+
+- `freeWrite` is unmeasured, not silent (see above).
+- The `Release-Study` artefact on the iPad is no longer stale: it was
+  rebuilt, verified with `nm` (`_primae_build_identity_study`), and
+  reinstalled on 2026-10-03 after a device test run replaced it with a
+  Debug-Study build. See CLAUDE.md for why that restore is mandatory.
 
 ## The end-of-set celebration is UNVERIFIED, and why (2026-10-02)
 

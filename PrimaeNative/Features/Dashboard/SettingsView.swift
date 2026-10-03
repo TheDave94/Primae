@@ -214,6 +214,12 @@ struct SettingsView: View {
                         }
                     }
                     .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einem bestimmten Audio-Arm zu (Phonem, Raumklang oder Ohne Ton), anstatt die automatische Zuweisung zu verwenden. Änderung wird beim nächsten App-Start wirksam.")
+                    // A STABLE identifier, because the UI test reached this
+                    // control by its German title and stopped finding it on
+                    // device (2026-10-03). How SwiftUI composes a Picker's
+                    // accessibility label is a rendering detail that has
+                    // already moved once; the identifier is the contract.
+                    .accessibilityIdentifier("audio-arm-override-picker")
 
                     // Third axis: which 3 of the 5 study letters this
                     // participant trains. Same override pattern; the

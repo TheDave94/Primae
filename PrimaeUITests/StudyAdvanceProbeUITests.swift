@@ -337,6 +337,9 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         app.launchArguments += ["-audioSignalProbe"]
         app.launch()
 
+        // BEFORE the parent area: the overrides only render once a
+        // participant exists (see enrolViaRail).
+        enrolViaRail(app)
         openParentArea(app)
         openSettings(app)
         selectAudioArm(armDisplayName, in: app)
@@ -384,9 +387,30 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         // screen shows Schriftart, Buchstabenreihenfolge, Freies
         // Schreiben, Erinnerungstest, Lautwert — the arm pickers are not
         // in view and must be scrolled to.
-        let picker = scrollTo(prefix: "Audio-Arm überschreiben", in: app)
+        let picker = scrollToIdentifier("audio-arm-override-picker", in: app)
         XCTAssertTrue(picker.exists,
-                      "the audio-arm override picker must be reachable by scrolling Einstellungen")
+                      "the audio-arm override picker must be reachable by scrolling Einstellungen - found by its accessibility identifier, not its German title, so rewording the title cannot silently break this")
+    }
+
+    /// Swipe up until an element with `identifier` exists. Returns the
+    /// element either way so the caller can assert.
+    ///
+    /// This exists because the label-based twin of this helper went stale
+    /// on device: the control was found by its German title, and how
+    /// SwiftUI composes a Picker's accessibility label is a rendering
+    /// detail that moved once already. The identifier does not move.
+    @discardableResult
+    private func scrollToIdentifier(_ identifier: String,
+                                    in app: XCUIApplication,
+                                    swipes: Int = 8) -> XCUIElement {
+        let target = app.descendants(matching: .any)
+            .matching(identifier: identifier).firstMatch
+        for _ in 0..<swipes {
+            if target.exists { return target }
+            app.swipeUp()
+            Thread.sleep(forTimeInterval: 0.4)
+        }
+        return target
     }
 
     /// Swipe up until an element whose label starts with `prefix` exists.
@@ -411,7 +435,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     /// on the title alone never hits. That is how the first attempt
     /// failed on device.
     private func selectAudioArm(_ displayName: String, in app: XCUIApplication) {
-        let picker = scrollTo(prefix: "Audio-Arm überschreiben", in: app)
+        let picker = scrollToIdentifier("audio-arm-override-picker", in: app)
         XCTAssertTrue(picker.exists, "audio-arm picker must exist")
         picker.tap()
         attach(app, name: "C0-picker-open")
@@ -443,6 +467,40 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         gear.press(forDuration: 2.3)
         XCTAssertTrue(waitFor(label: "Datenexport", in: app, timeout: 6),
                       "the parent-area sidebar should be visible after the gear long-press")
+    }
+
+    /// Put a participant on the device so the researcher overrides render.
+    ///
+    /// MEASURED 2026-10-03 on the iPad: `SettingsView` gates both override
+    /// Pickers on `if thesisEnrolled`, and `thesisEnrolled` is
+    /// `ParticipantStore.isEnrolled`. On a cold device that is false, so the
+    /// Einstellungen screen carries NO audio-arm row whatsoever - the
+    /// accessibility dump held 248 elements and not one of them was the
+    /// picker, under any label or identifier. The arm checks below were
+    /// reaching for a control this screen does not show until someone is
+    /// enrolled.
+    ///
+    /// This uses the rail double-tap, which is the batch-enrolment gesture
+    /// a proctor actually uses (PR #22), not the older parent-area button.
+    private func enrolViaRail(_ app: XCUIApplication) {
+        let rail = element(label: "Navigationsleiste", in: app)
+        XCTAssertTrue(rail.waitForExistence(timeout: 10), "the rail must be on screen")
+        rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+
+        let next = element(label: "Nächstes Kind", in: app)
+        XCTAssertTrue(next.waitForExistence(timeout: 5),
+                      "the rail double-tap must reveal 'Nächstes Kind'")
+        next.tap()
+
+        let confirm = element(label: "Neues Kind starten", in: app)
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5),
+                      "enrolling must ask for confirmation")
+        confirm.tap()
+
+        // The start-gate must actually clear, or the override Pickers stay
+        // hidden and this helper has silently done nothing.
+        XCTAssertTrue(waitFor(label: "Beobachtungsphase", in: app, timeout: 15),
+                      "a freshly enrolled participant must reach the observe phase, or the study overrides remain unrendered")
     }
 
     private func enrolNewParticipant(_ app: XCUIApplication) {
