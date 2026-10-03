@@ -806,6 +806,8 @@ public final class TracingViewModel {
     /// grid preset promotion.
     let detector = InputModeDetector()
     let audio: AudioControlling
+    /// Test-only probe sink; see `init`. Never used for playback.
+    private let audioSignalProbeSink: AudioControlling
     let haptics: HapticEngineProviding
     /// Persistent letter-progress store. External readers consume the
     /// read-only `allProgress` / `progress(for:)` forwarders below.
@@ -1106,6 +1108,15 @@ public final class TracingViewModel {
         let armIsSilent             = deps.audioCondition == .silent
         let effectiveAudio: AudioControlling = armIsSilent ? SilentAudio() : deps.audio
         self.audio                  = effectiveAudio
+        // The REAL engine, kept reachable for the test-only audio probe.
+        // MEASURED 2026-10-02 on the device: in the silent arm `audio`
+        // is a `SilentAudio`, whose measurement members are no-ops, so
+        // every measurement routed through `audio` vanished without a
+        // word - and the silent arm is exactly the arm whose output most
+        // needs asserting. `deps.audio` is the real engine in every arm,
+        // so routing the probe through it works uniformly and changes no
+        // playback behaviour: it only reads.
+        self.audioSignalProbeSink = deps.audio
         self.progressStore          = deps.progressStore
         // Study sessions: the ONLY audio is the arm's designated sound.
         // Silencing at the injection seam kills every other feedback
@@ -1160,8 +1171,14 @@ public final class TracingViewModel {
         // "Voiceover??" (2026-09-17): `StudyComparisonSettings
         // .spokenFeedbackInStudy` restores the casual app's spoken
         // feedback inside a study session so the two can be compared.
-        // Default OFF, i.e. the thesis behaviour ("no spoken prompts",
-        // 03-architecture.typ:73) — an untouched device is unchanged.
+        //
+        // DEFAULT IS NOW ON (2026-10-02, David's decision after a proctor
+        // run on the physical iPad): at OFF the phase prompts never
+        // reached a child, which is exactly the complaint. The thesis
+        // line this used to match ("no spoken prompts",
+        // 03-architecture.typ:73) no longer describes the artefact and
+        // must move with it. Setting the switch back to OFF restores the
+        // thesis behaviour for a comparison run.
         //
         // The SILENT-ARM half stays unconditional and is evaluated first:
         // that is the arm's authority (C3-2), not a display preference,
@@ -1170,7 +1187,8 @@ public final class TracingViewModel {
         // Read ONCE into a local, so the substitution below and the
         // session's configuration stamp further down cannot disagree
         // about which value this session ran under.
-        let spokenFeedbackInStudy = StudyComparisonSettings.spokenFeedbackInStudy
+        let spokenFeedbackInStudy = deps.spokenFeedbackInStudy
+            ?? StudyComparisonSettings.spokenFeedbackInStudy
         let silenceSpeech = armIsSilent || (deps.studyMode && !spokenFeedbackInStudy)
         // Built once, stored twice: `audible*` is the pair this session
         // uses in every non-silent arm, and the live properties start
@@ -1958,6 +1976,14 @@ public final class TracingViewModel {
         letterPasses = 1
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }
+        // The child's set is FINISHED and the proctor has been told so
+        // (2026-10-02). Without this the wrap-around `(idx + 1) % count`
+        // silently sends the child back to the first letter, so a proctor
+        // who looks away for ten seconds comes back to a child who has
+        // been silently given a second pass — a second set of rows under
+        // the same participantId. A study session ends when its set ends;
+        // the only thing that starts another is "Nächstes Kind".
+        guard !awaitingNextParticipant else { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? -1
         let nextName = visible[(currentIdx + 1) % visible.count]
         guard let idx = letters.firstIndex(where: { $0.name == nextName }) else { return }
@@ -2162,7 +2188,40 @@ public final class TracingViewModel {
               !rawStrokes.strokes.isEmpty else { return }
         armObserveAutoAdvance()
         animation.start(strokes: rawStrokes)
+        startObservePhaseAudio()
+        // Test-only: report measured output level DURING the phase, not
+        // only at the boundary it eventually reaches. A no-op unless the
+        // probe was launch-armed.
+        audioSignalProbeSink.startAudioSignalTicker(intervalSeconds: 2.0) {
+            [weak self] in self?.phaseController.currentPhase.rawName ?? "unknown"
+        }
     }
+
+    /// The arm's sound under the WHOLE demonstration, not a 2 s sample
+    /// (2026-10-02, proctor's device run: "I want it to play when the
+    /// letter is being shown how to draw it the whole time").
+    ///
+    /// Before this, a study child's sound reached them through the trace
+    /// coupling alone while drawing — so the observe phase, the one moment
+    /// the letter is actually being SHOWN, was the one phase with nothing
+    /// to hear. The engine loops the loaded file, so one autoplay covers
+    /// the animation's full duration and stops when the phase advances
+    /// (`resetForPhaseTransition` -> `audio.stop()`, which already fades
+    /// out over `fadeOutSeconds`).
+    ///
+    /// Plays through a fade-IN so the demonstration does not open with a
+    /// click. Silent arm: `activeAudioFiles` returns [], so this is a no-op
+    /// — the arm stays silent without a second check here.
+    private func startObservePhaseAudio() {
+        guard letters.indices.contains(letterIndex) else { return }
+        guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
+        audio.loadAudioFile(named: first, autoplay: false)
+        audio.play(fadeInSeconds: observeAudioFadeInSeconds)
+    }
+
+    /// Short enough to be inaudible as a delay, long enough to remove the
+    /// click. Matches the fade-out's order of magnitude.
+    private let observeAudioFadeInSeconds: TimeInterval = 0.12
 
     /// Auto-advance the observe phase after the second cycle so
     /// non-reading children aren't stuck waiting on "Tippen". Installed
@@ -2533,7 +2592,16 @@ public final class TracingViewModel {
             return "Keine Buchstaben aus dem Bundle geladen (\(studyLetterSourceFailure)). Die Sitzung wird nicht gestartet — ein Ersatz aus dem Cache oder ein eingebauter Beispielbuchstabe wäre nicht der eingefrorene Stimulus."
         }
         if !participantEnrolled {
-            return "Kein Teilnehmer eingeschrieben. Im Forschungsbereich „Neuer Teilnehmer“ wählen, damit Arm und Buchstaben zugewiesen werden — sonst laufen alle Kinder unter denselben Voreinstellungen."
+            // Names the RAIL first, because that is the proctor's actual
+            // route (2026-10-02). This text used to name only the research
+            // area, which sent the proctor through the gear, the parent
+            // area and the Research tab to enrol child #1 — the very
+            // seven-step detour the rail gesture (PR #22) exists to
+            // remove. The screen that tells a proctor what to do is the
+            // one thing they read, so it has to name the cheapest correct
+            // action. Both routes are still offered: the dashboard button
+            // runs the same control.
+            return "Kein Teilnehmer eingeschrieben. In der Seitenleiste doppelt tippen und „Nächstes Kind“ wählen (auch im Forschungsbereich möglich), damit Arm und Buchstaben zugewiesen werden — sonst laufen alle Kinder unter denselben Voreinstellungen."
         }
         // Spatial arm: its stimulus and its demonstration are one bundled
         // carrier file; the engine merely logs when it is missing, so the
@@ -2660,6 +2728,12 @@ public final class TracingViewModel {
     }
 
     func resetForPhaseTransition() {
+        // Test-only: close the measurement window for the phase that is
+        // ENDING, so an XCUI test on the device can read whether sound
+        // actually came out during it. A no-op unless the probe was
+        // launch-armed. Placed FIRST so the window covers the whole phase
+        // and not just its tail.
+        audio.emitAudioSignalSummary(label: phaseController.currentPhase.rawName)
         strokeTracker.reset()
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])
@@ -2667,7 +2741,17 @@ public final class TracingViewModel {
         // Snapshot the just-finished trace so the canvas keeps showing
         // it for ~5 s while the next phase comes up — child sees their
         // own ink survive the transition rather than blink away.
-        if !activePath.isEmpty {
+        //
+        // …but NOT into `freeWrite` (2026-10-02, proctor's device run).
+        // That phase is the UNASSISTED trial: the outline is gone on
+        // purpose, and the ink of the assisted attempt left on screen is
+        // an aid the child can trace over. Beyond looking wrong, it
+        // contaminates the one phase whose whole point is that nothing
+        // is left to copy. The comfort of watching one's own ink survive
+        // is kept where it is earned — observe -> guided, where the
+        // outline is still present anyway.
+        let carriesIntoUnassistedTrial = phaseController.currentPhase == .freeWrite
+        if !activePath.isEmpty, !carriesIntoUnassistedTrial {
             lingeringInk = activePath
             lingeringInkClearTask?.cancel()
             lingeringInkClearTask = Task { [weak self] in
@@ -2675,6 +2759,11 @@ public final class TracingViewModel {
                 guard !Task.isCancelled, let self else { return }
                 self.lingeringInk = []
             }
+        } else if carriesIntoUnassistedTrial {
+            // Any snapshot still fading from an EARLIER transition would
+            // outlive its 5 s and reach the unassisted trial anyway.
+            lingeringInkClearTask?.cancel()
+            lingeringInk = []
         }
         activePath.removeAll(keepingCapacity: true)
         lastRecognitionResult = nil
@@ -2819,6 +2908,16 @@ public final class TracingViewModel {
     /// without the integration overhead of a full session-complete
     /// path. nil when a foreground window is currently open.
     var debugLetterLoadTime: CFTimeInterval? { letterLoadTime }
+
+    /// TEST-ONLY: the latest measured `AUDIO-SIGNAL` line, or nil before
+    /// the first measurement window closes.
+    ///
+    /// Read by the XCUI test off the accessibility tree. It has to ride
+    /// that channel because there is no shared writable location between
+    /// the app and the test runner (see `AudioSignalProbe
+    /// .latestSummaryLine`). nil in any launch that is not probe-armed,
+    /// so it is inert in the pilot artefact.
+    var debugAudioSignalSummary: String? { audioSignalProbeSink.latestAudioSignalSummary }
     var debugLetterActiveTimeAccumulated: TimeInterval { letterActiveTimeAccumulated }
 
     // MARK: - Private helpers
@@ -2845,6 +2944,47 @@ public final class TracingViewModel {
     /// proctor's first probe load then wrote a `completed:false` row for
     /// a letter nobody touched — all before the pretest.
     private(set) var launchParked = false
+
+    /// The child's trained set is finished: the last letter's session is
+    /// recorded, the closing celebration has played, and the device waits
+    /// for "Nächstes Kind" (2026-10-02).
+    ///
+    /// Set only when the letter just finished is the LAST of the visible
+    /// trained set, so a mid-set letter never trips it. Reset by
+    /// `resetForNewParticipant`, which is the single place a new child's
+    /// session begins — including the in-place path, since that is what
+    /// the batch flow uses between children.
+    private(set) var awaitingNextParticipant = false
+
+    /// Called by the final-phase pipeline once the LAST letter of the
+    /// child's set is recorded. Separate from the setter because the
+    /// coordinator is a different type and this is a state TRANSITION,
+    /// not a field it should reach for.
+    func finishSetAwaitingNextParticipant() {
+        awaitingNextParticipant = true
+    }
+
+    /// True when the letter on screen is the last of the child's trained
+    /// set, in the fixed study order. Read from `visibleLetterNames`, the
+    /// same pool `nextLetter()` walks, so "last" cannot disagree with
+    /// "next".
+    /// Whether finishing this letter finishes the child's SET — the
+    /// condition for the one end-of-set celebration.
+    ///
+    /// REQUIRES MORE THAN ONE LETTER IN THE POOL (2026-10-02,
+    /// MEASURED). A one-letter pool made every trial "the last one", so
+    /// the celebration fired per letter — which is precisely the
+    /// per-letter reward the C2 ruling suppresses, and it would tell a
+    /// proctor running 30-40 children that every child "finished" after
+    /// a single letter. The guard costs nothing: a session whose pool is
+    /// genuinely one letter long has no meaningful "end of set" to
+    /// announce, and the trial still completes and records normally.
+    var isLastLetterOfSet: Bool {
+        let visible = visibleLetterNames
+        guard visible.count > 1,
+              let idx = visible.firstIndex(of: currentLetterName) else { return false }
+        return idx == visible.count - 1
+    }
 
     /// Start the parked launch letter for real (full `load`, which arms
     /// everything the observe phase needs). No-op unless parked.
@@ -2972,6 +3112,16 @@ public final class TracingViewModel {
                 animation.startAfterDelay(0.3 + presentationSpacing,
                                               strokes: observeStrokes)
                 armPreTaskDemonstration(for: letter)
+                // Test-only: start measuring HERE as well as in
+                // `startGuideAnimation`. MEASURED on the device: the FIRST
+                // letter's observe phase runs through this branch and never
+                // through `startGuideAnimation` (that is only reached when
+                // ADVANCING into observe), so a ticker started there alone
+                // produced an empty log for exactly the session a proctor
+                // would run first.
+                audioSignalProbeSink.startAudioSignalTicker(intervalSeconds: 2.0) {
+                    [weak self] in self?.phaseController.currentPhase.rawName ?? "unknown"
+                }
             }
         }
         // If we land directly in guided or freeWrite (e.g. after skipping phases or
@@ -3310,6 +3460,9 @@ public final class TracingViewModel {
         phaseController.reset()
         progress = 0
         directTappedDots.removeAll()
+        // A new child's session begins; the previous one's "finished,
+        // hand the device over" hold is over.
+        awaitingNextParticipant = false
         dashboardStore.reset()          // PhaseSessionRecords, letterStats, durations
         progressStore.resetAll()        // all LetterProgress
         streakStore.reset()             // streak + stars
@@ -3372,6 +3525,20 @@ public final class TracingViewModel {
         demonstratedAudioConditions.removeAll()
         trainedSubset   = .defaultForInstall
         loadFirstTrainedLetter()
+        // …and UN-PARK it, because enrolling IS the proctor saying the
+        // session starts now (2026-10-02). The park exists for the APP
+        // LAUNCH: before it, an unattended launch ran a full observe
+        // phase — demonstration into whatever the headphones pointed at,
+        // auto-advancing, and a `completed:false` row for a letter nobody
+        // touched, all before the pretest. That risk is about the app
+        // coming up on its own, and it is untouched by this: nothing
+        // happens until a proctor has enrolled a child. What this removes
+        // is the extra tap between children in a batch of 30-40, which is
+        // the workflow the rail gesture (PR #22) exists to serve.
+        //
+        // A no-op unless the launch letter is actually parked, so it
+        // cannot double-start a letter, and inert outside studyMode.
+        startParkedLetter()
         participantIdentityChanged = false
     }
 

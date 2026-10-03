@@ -275,6 +275,20 @@ struct OncePerConditionTests {
     /// assertion does not depend on which arm the fresh UUID drew: with
     /// the ledger surviving, `.phoneme` is still in it and the final call
     /// arms nothing.
+    ///
+    /// WHY THIS PINS A PHONEME DELTA, not a count (corrected twice on
+    /// 2026-10-03). An absolute `== 2` measured the fresh UUID's ARM DRAW
+    /// rather than the ledger. `reapplyParticipantIdentity` clears the ledger
+    /// and then calls `loadFirstTrainedLetter`, which arms the INCOMING
+    /// child's own first demonstration for whichever arm their UUID drew:
+    /// draw `.spatial` and the carrier adds one (count 3); draw `.phoneme`
+    /// and that IS the phoneme demonstration, so the final call is correctly
+    /// denied and nothing is added (count 2). Both are correct production
+    /// behaviour, so neither an absolute nor a merely relative count can be
+    /// right — both readings were measured here, one per run. What the
+    /// defect actually breaks is narrower, and is what is pinned here: with
+    /// the ledger surviving, the incoming child gets NO phoneme demonstration
+    /// at all, which is the data-validity loss this test exists to catch.
     @Test("a newly enrolled participant gets the demonstration again")
     func newParticipantStartsWithAnEmptyLedger() async {
         await withRestoredParticipantStateAsync {
@@ -290,13 +304,27 @@ struct OncePerConditionTests {
             #expect(audio.demonstrationCount == 1,
                     "positive control: the guard is live before the reset — got \(audio.demonstrationFiles)")
 
+            // Count only PHONEME demonstrations. The defect guarded here is
+            // specifically the outgoing child's spent `.phoneme` denying the
+            // INCOMING child theirs, so the delta is measured on that arm
+            // alone. The incoming child's drawn arm may add a spatial carrier
+            // of its own; that is correct behaviour and not the subject.
+            let phonemeBefore = audio.demonstrationFiles
+                .filter { $0.hasSuffix("_phoneme1.mp3") }.count
+
             _ = vm.resetForNewParticipant()
+            // Settle first: the reset arms the incoming child's own
+            // demonstration asynchronously, so reading the baseline before
+            // it lands would make this racy rather than strict.
+            await settle()
             vm.applyArm(.phoneme)
             vm.armPreTaskDemonstration(for: asset("I"), duration: 0.05)
             await settle()
 
-            #expect(audio.demonstrationCount == 2,
-                    "the incoming child inherited the outgoing child's used-up conditions — with ON that child's whole session runs with no demonstration: \(audio.demonstrationFiles)")
+            let phonemeAfter = audio.demonstrationFiles
+                .filter { $0.hasSuffix("_phoneme1.mp3") }.count
+            #expect(phonemeAfter > phonemeBefore,
+                    "the incoming child inherited the outgoing child's used-up conditions — with ON that child's whole session runs with no phoneme demonstration at all: \(audio.demonstrationFiles)")
         }
     }
 
@@ -361,6 +389,15 @@ struct OncePerConditionTests {
         deps.studyMode = true
         deps.audioCondition = arm
         deps.oncePerCondition = once
+        // The SEAM, not the global. MEASURED failure in CI: this suite
+        // read `StudyComparisonSettings.spokenFeedbackInStudy` because the
+        // helper never pinned it, so a value another suite wrote to
+        // `UserDefaults` — which PERSISTS in the simulator container
+        // across whole test runs — changed what this one measured. The
+        // demonstration-after-reset test went red on a run that never
+        // touched this file. Same trap CLAUDE.md documents, reached
+        // again through a setting this helper simply forgot to pin.
+        deps.spokenFeedbackInStudy = StudyComparisonSettings.spokenFeedbackInStudyDefault
         return TracingViewModel(deps.with(audio: audio))
     }
 

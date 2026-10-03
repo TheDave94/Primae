@@ -325,8 +325,43 @@ import UIKit
     /// run leaks into the next session on that device.
     @Test("resetToDefaults restores every switch")
     func resetRestoresDefaults() {
+        // This test legitimately writes the GLOBAL store — it is about the
+        // store — but it must not LEAK. MEASURED: `resetToDefaults()`
+        // removes the keys rather than writing values, so the global was
+        // left unset and every other suite running in parallel then read
+        // the CURRENT default (spokenFeedbackInStudy is `true` since
+        // 2026-10-02). That flipped `silenceSpeech` in a concurrently
+        // building VM and broke `OncePerConditionTests`
+        // ("a newly enrolled participant gets the demonstration again") —
+        // a failure in someone else's test, caused here.
+        //
+        // Swift Testing runs suites in PARALLEL, so a `defer` restore is
+        // the minimum, not a nicety: without it this suite silently edits
+        // its neighbours.
+        let snapshot = UserDefaults.standard.dictionaryRepresentation()
+        defer {
+            // Remove first, then re-apply: `set(snapshot)` alone MERGES,
+            // so any key this test ADDED (which is exactly what
+            // `resetToDefaults` cannot un-write) would survive into the
+            // next suite.
+            for key in UserDefaults.standard.dictionaryRepresentation().keys {
+                if snapshot[key] == nil {
+                    UserDefaults.standard.removeObject(forKey: key)
+                }
+            }
+            for (key, value) in snapshot {
+                UserDefaults.standard.set(value, forKey: key)
+            }
+        }
+
         StudyComparisonSettings.observePasses = 2
-        StudyComparisonSettings.spokenFeedbackInStudy = true
+        // Away from the default, same as below's assertions expect.
+        // MEASURED: this wrote `true` and asserted `false` after the
+        // reset, which stopped holding when the default flipped to `true`
+        // (spoken feedback ON in study, 2026-10-02). Deriving both sides
+        // keeps the test true through any future default change.
+        StudyComparisonSettings.spokenFeedbackInStudy =
+            !StudyComparisonSettings.spokenFeedbackInStudyDefault
         StudyComparisonSettings.allFiveLetters = true
         StudyComparisonSettings.letterRepeatCount = 3
         StudyComparisonSettings.cycleAllConditions = true
@@ -346,7 +381,8 @@ import UIKit
         StudyComparisonSettings.resetToDefaults()
 
         #expect(StudyComparisonSettings.observePasses == 1)
-        #expect(StudyComparisonSettings.spokenFeedbackInStudy == false)
+        #expect(StudyComparisonSettings.spokenFeedbackInStudy
+                == StudyComparisonSettings.spokenFeedbackInStudyDefault)
         #expect(StudyComparisonSettings.allFiveLetters == false)
         #expect(StudyComparisonSettings.letterRepeatCount == 1)
         #expect(StudyComparisonSettings.cycleAllConditions == false)

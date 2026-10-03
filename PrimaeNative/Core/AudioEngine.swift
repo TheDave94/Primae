@@ -32,6 +32,15 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     )
 
     private(set) var isPlaying = false
+
+    /// TEST-ONLY output tap. Armed ONLY when the process was launched with
+    /// `-audioSignalProbe` (see `AudioSignalProbe`), so it is inert in the
+    /// pilot artefact a child holds. It exists because every other audio
+    /// assertion in the suite checks that `play()` was CALLED, which is a
+    /// statement about intent rather than about the speaker: a failed
+    /// engine start, an unresolved file or a muted route all pass those and
+    /// leave the child in silence. This measures the samples.
+    private let signalProbe = AudioSignalProbe()
     /// Non-nil when init failed to bring the audio stack up — VM toasts this
     /// at startup so a parent notices something is wrong instead of seeing
     /// the child poke a silent device. Stays nil after a healthy init.
@@ -194,6 +203,54 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
 
     nonisolated deinit { AudioEngine.removeObservers(for: self) }
 
+    /// Test-only: hand the measured output level for the window just ended
+    /// to the log, where an XCUI test on a real device can read it. A
+    /// no-op unless the probe was launch-armed, so the pilot artefact
+    /// never logs this.
+    func emitAudioSignalSummary(label: String) {
+        guard AudioSignalProbe.isArmedByLaunchArgument else { return }
+        signalProbe.emitSummary(label: label)
+        signalProbe.reset()
+    }
+
+    /// Timer backing `startAudioSignalTicker`. Main-actor because the
+    /// engine is, and because `emitSummary` is.
+    private var signalTicker: Timer?
+
+    /// TEST-ONLY: see `AudioControlling.startAudioSignalTicker` for why
+    /// this exists. A no-op unless launch-armed, so the pilot artefact
+    /// never runs a timer.
+    func startAudioSignalTicker(intervalSeconds: TimeInterval,
+                               label: @escaping @MainActor () -> String) {
+        guard AudioSignalProbe.isArmedByLaunchArgument else { return }
+        stopAudioSignalTicker()
+        // The label closure is read on EVERY tick, so a window is labelled
+        // with the phase that was actually running when it closed.
+        let tickerLabel = label
+        let timer = Timer(timeInterval: intervalSeconds, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.emitAudioSignalSummary(label: tickerLabel())
+
+            }
+        }
+        // `.common` so the ticker keeps running while the child is
+        // dragging: RunLoop.commonModes is what keeps a repeating timer
+        // alive during scroll tracking, and this measures audio during
+        // exactly that kind of interaction.
+        RunLoop.main.add(timer, forMode: .common)
+        signalTicker = timer
+    }
+
+    /// The latest measured `AUDIO-SIGNAL` line, for the XCUI test to read
+    /// off the accessibility tree. See `AudioSignalProbe
+    /// .latestSummaryLine` for why that is the channel.
+    var latestAudioSignalSummary: String? { signalProbe.latestSummaryLine }
+
+    func stopAudioSignalTicker() {
+        signalTicker?.invalidate()
+        signalTicker = nil
+    }
+
     // MARK: - AudioControlling
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
@@ -249,13 +306,23 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     func play() {
+        play(fadeInSeconds: 0)
+    }
+
+    /// Fade-IN counterpart to the existing `stop()` ramp (2026-10-02).
+    /// Added rather than changing `play()`: the per-touch hot path calls
+    /// `play()` on every stroke, and a ramp there would cost a Task per
+    /// touch. Only the long demonstration playback asks for a fade, so the
+    /// short path is untouched — this file is on the DO-NOT-MODIFY list and
+    /// the addition is deliberately additive.
+    func play(fadeInSeconds: TimeInterval) {
         guard currentFile != nil else { return }
         // Cancel any in-flight fade-out and restore full volume so a quick
         // re-tap while the previous stop is fading doesn't play at a half
         // volume snapshot mid-ramp.
         fadeOutTask?.cancel()
         fadeOutTask = nil
-        player.volume = loudnessGain
+        player.volume = fadeInSeconds > 0 ? 0 : loudnessGain
         shouldResumePlayback           = true
         interruptionResumeGateRequired = false
         interruptionShouldResume       = true
@@ -292,6 +359,25 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         }
         if !engine.isRunning { startIfNeeded() }
         attemptResumePlayback()
+        // Ramp to full volume only when asked. Reuses the SAME task slot
+        // as the fade-out so a stop() arriving mid-fade-in cancels the
+        // ramp instead of the two fighting over `player.volume` — the
+        // reason the fade-out owns a cancellable slot at all.
+        guard fadeInSeconds > 0 else { return }
+        let duration = fadeInSeconds
+        let target = loudnessGain
+        fadeOutTask = Task { [weak self] in
+            guard let self else { return }
+            let steps = max(4, Int(duration * 60))
+            let interval = duration / Double(steps)
+            for i in 1...steps {
+                if Task.isCancelled { return }
+                self.player.volume = target * Float(i) / Float(steps)
+                try? await Task.sleep(for: .seconds(interval))
+            }
+            if Task.isCancelled { return }
+            self.player.volume = target
+        }
     }
 
     func stop() {
@@ -437,6 +523,12 @@ private extension AudioEngine {
 
     func startIfNeeded() {
         guard !engine.isRunning else { return }
+        // Arm the output tap BEFORE the engine runs: `installTap` after a
+        // start is the documented crash, and a tap armed once here stays
+        // armed across stop/start cycles for the life of the process.
+        if AudioSignalProbe.isArmedByLaunchArgument {
+            signalProbe.arm(on: engine)
+        }
         let session  = AVAudioSession.sharedInstance()
         let category = session.category
         let canStart = category == .playback || category == .playAndRecord || category == .multiRoute

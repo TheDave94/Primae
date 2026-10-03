@@ -108,12 +108,25 @@ enum ChildSpeechLibrary {
     /// Phase entry prompts. Imperative + short so the utterance
     /// finishes before the child plausibly touches the canvas
     /// (AudioEngine's per-touch session reconfiguration cuts TTS short).
+    ///
+    /// REWORDED 2026-10-02 at the proctor's direction, from a device run
+    /// through the three-letter sequence: "Pass jetzt gut auf!" -> "Schau
+    /// genau hin.", "Fahr die Linie nach." -> "Jetzt du.", "Und jetzt ohne
+    /// Hilfe." -> "Und jetzt ganz allein." The old guided line described
+    /// the ACTION ("trace the line") where the new one hands the TURN to
+    /// the child, which is what the phase is for; the freeWrite line now
+    /// says the same thing in the words the child has heard all session.
+    ///
+    /// `.direct` is unreachable in a study build (the phase is cut, D5)
+    /// but is retained for the casual path. Note these are SILENT under
+    /// the `.silent` audio arm — `applyArmAuthority` swaps in
+    /// `NullSpeechSynthesizer`, which is the arm's whole condition.
     static func phaseEntry(_ phase: LearningPhase) -> String {
         switch phase {
-        case .observe:    return "Pass jetzt gut auf!"
+        case .observe:    return "Schau genau hin."
         case .direct:     return "Tipp die Punkte der Reihe nach an."
-        case .guided:     return "Fahr die Linie nach."
-        case .freeWrite:  return "Und jetzt ohne Hilfe."
+        case .guided:     return "Jetzt du."
+        case .freeWrite:  return "Und jetzt ganz allein."
         }
     }
 

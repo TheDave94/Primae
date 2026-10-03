@@ -28,4 +28,15 @@ final class SilentAudio: AudioControlling {
     func suspendForLifecycle() {}
     func resumeAfterLifecycle() {}
     func cancelPendingLifecycleWork() {}
+
+    // The four measurement hooks are protocol REQUIREMENTS now (see
+    // `AudioControlling`'s MARK), so they must be spelled out. The
+    // no-op defaults in the extension would satisfy them anyway, but
+    // saying so HERE is the point: the silent arm reports nothing, by
+    // construction, and that silence is the finding rather than an
+    // accident of dispatch.
+    func emitAudioSignalSummary(label: String) {}
+    func startAudioSignalTicker(intervalSeconds: TimeInterval,
+                                label: @escaping @MainActor () -> String) {}
+    func stopAudioSignalTicker() {}
 }

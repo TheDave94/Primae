@@ -160,6 +160,24 @@ measures the paper. A faithful snapshot needs a layout pass first
 (`UIHostingController` in a window, or a fixed-size proposal that bypasses
 the GeometryReader).
 
+**5. A `-only-testing:` filter that matches nothing reports SUCCESS.**
+MEASURED 2026-10-03, and it is the most dangerous instrument failure in this
+list because it looks like a passed mutation check. Running
+`-only-testing:PrimaeNativeTests/OncePerConditionTests/newParticipantStartsWithAnEmptyLedger`
+against a deliberately mutated build printed **`✅ Test succeeded. (157.6s)`**
+while having executed **zero tests**: the log read `Test run with 0 tests in 1
+suite passed after 0.003 seconds`. The suite-level form
+(`-only-testing:PrimaeNativeTests/OncePerConditionTests`) matched all 9 and
+reported the real failure. So a function-level Swift Testing filter does not
+round-trip to the XCTest-style identifier, and nothing errors on the miss.
+
+**The consequence for mutation-checking is direct: the "confirm it goes RED"
+step is unfalsifiable unless you confirm the tests RAN.** Read the test count
+out of the log every time — `Test run with N tests in M suites` — before
+believing either colour. A green mutation check that ran nothing is the exact
+mirror of the green-suite-defect recorded above, and it is reached by the same
+route: a filter, not the behaviour, deciding what was measured.
+
 **Hard limits worth knowing before trusting any other signal.** Swift has
 NO branch coverage (swiftlang/swift#81730, open since 2025-05-23) — and the
 inert defect moved no line anyway, so line, function and diff-coverage were
@@ -403,6 +421,34 @@ not be read as current.
 > re-deriving the call-shape investigation above: if there's no controlling
 > TTY, that's the whole answer, and no amount of correcting the command
 > shape will fix it.
+>
+> **SUPERSEDED 2026-10-03 — "cannot sign, full stop" is FALSE, and it cost a
+> session real work to believe it. The TTY is real; the conclusion drawn from
+> it was not.** Four commits were signed from a seat with `tty` → `not a tty`
+> and `[ -t 0 ]`/`[ -t 1 ]` both false, on the same repo, the same branch and
+> the same key: `f323b44d`, `c8f6f1f7`, `bd0ae26e`, `ae177e61`, every one
+> verified genuine afterwards by `git log --format=%G? → G` with
+> `SHA256:jfM/zcvEffP7O2jMHLw1ofUUaLIxM0GN2jkO/t43NI8` — the same key as the
+> rest of history. **Three signed first try; one needed exactly one retry.**
+>
+> **The actual variable is whether a touch lands inside the wrapper's window,
+> and nothing else.** `yubi-sign` reaches the FIDO authenticator over HID, not
+> through the terminal, so the missing TTY costs it the *notification*, not the
+> *signature* — and its own output says so, listing the bell/banner,
+> notification and voice cues as unavailable on the failing runs. The key
+> registers a TRANSITION, not contact: a finger resting on it through the whole
+> window reads exactly like nobody touching it, which is why a run can fail and
+> an identical rerun succeed seconds later. **So retry the commit.** A single
+> `SIGN_REFUSED_NOTHING_WRITTEN` is evidence that no touch was registered in
+> that window, not evidence that signing is impossible from here.
+>
+> What this file got right, and what it should keep: the wrapper's single
+> error code covers several causes and cannot distinguish them, so read the
+> `ssh-keygen` line it prints rather than the summary; and the call-shape rules
+> above are real and independent of any of this. What it got wrong is the
+> inference — an evening's failures were attributed to the seat rather than
+> to an un-touched key, which is the more likely reading and the cheaper one to
+> test. **Check the retry before you check anything else.**
 >
 > **SUPERSEDED 2026-10-01 — the claim below is FALSE, and the way it is
 > false matters more than the fact.** Everything in this block was measured

@@ -16,10 +16,18 @@ on:
   # the CI failure found on 2026-09-17 had to be discovered by dispatching
   # by hand. The same would quietly apply to the Release-Study job added
   # the same day.
+  #
+  # `fix/**` added 2026-10-03, the SAME gap recurring one prefix over: the
+  # branches actually in use on the forge are `main`, `legacy` and
+  # `fix/start-gate-names-rail` (measured, `git ls-remote --heads origin`),
+  # and the push of that branch's fix again triggered nothing, so the
+  # verification had to be dispatched by hand a second time. `legacy` is
+  # deliberately NOT added — it is not a branch this workflow should
+  # spend runner time on.
   push:
-    branches: ["main", "ux/**", "roadmap-*", "feat/**"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**"]
   pull_request:
-    branches: ["main", "ux/**", "roadmap-*", "feat/**"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**"]
   workflow_dispatch:
 
 env:
@@ -243,9 +251,24 @@ jobs:
         simulator: ["iPad Pro 13-inch (M5)", "iPad (A16)"]
     # D9 (ROADMAP_V5): hard cap on the simulator job so a hung
     # xcodebuild can't sit at "in_progress" until GitHub's 6-hour
-    # default kills it. Typical completion is 4–7 minutes; 20 is
-    # generous headroom.
-    timeout-minutes: 20
+    # default kills it.
+    #
+    # 35, not 20, and the old "typical completion is 4–7 minutes" claim
+    # is what this corrects. MEASURED 2026-10-03 (run 37128193318): the
+    # suite reported "1064 tests in 113 suites passed after 258.557
+    # seconds with 1 known issue" and the job was killed at the cap during
+    # artefact upload — `##[error]The operation was canceled.` with no
+    # failure and no test name. Started 14:01:39, killed 14:22:13. So the
+    # suite is ~4.5 min; the JOB is ~20.5 min, because a cold SwiftPM
+    # resolve, a full build and the artefact upload sit on either side of
+    # it. Reading the suite time as the job time is what let the cap sit
+    # exactly on the real cost. The last fully green run on main took
+    # 15m43s, so 20 was never generous — it was lucky.
+    #
+    # 35 keeps D9's intent (a hard cap far under GitHub's 6-hour default)
+    # and buys ~15 minutes over the worst observed. Do not lower it back
+    # without re-measuring the whole job, not just the suite.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
 
@@ -354,7 +377,11 @@ jobs:
   release_study_tests:
     name: "Release-Study unit tests (xcode-27)"
     runs-on: xcode-27
-    timeout-minutes: 20
+    # 35 for the reason given on `xcode_test` above: this job hit the
+    # identical wall on the identical run (suite green after 246.890s,
+    # killed at the cap in upload), so it is the same cap being too tight
+    # twice, not two unrelated flakes.
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v6
 

@@ -327,6 +327,14 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         }
 
         let app = XCUIApplication()
+        // Arm the output tap so this run MEASURES the sound instead of
+        // only proving the engine was asked to play (2026-10-02). The
+        // per-phase results land in
+        // `Application Support/PrimaeNative/audio-signal-probe.log` in the
+        // app container, which a machine can read; the proctor's report
+        // that the demonstration and the freeWrite draw were both silent
+        // could not be checked by any assertion before this.
+        app.launchArguments += ["-audioSignalProbe"]
         app.launch()
 
         openParentArea(app)
@@ -336,6 +344,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
 
         // The override is read at view-model init, so it needs a restart.
         app.terminate()
+        app.launchArguments += ["-audioSignalProbe"]
         app.launch()
 
         // START THE PARKED SESSION. A study session launches parked
@@ -506,5 +515,276 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         } else {
             app.swipeDown(velocity: .fast)
         }
+    }
+}
+
+// MARK: - Measured audio (2026-10-02)
+
+/// THE ANSWER TO "IS THERE ACTUALLY A SIGNAL IN EACH PHASE?".
+///
+/// Written after the proctor reported, from a physical iPad, that the
+/// demonstration and the unassisted draw were both silent while only the
+/// guided pass had sound. No existing assertion could check that: every
+/// one of them asks whether `play()` was CALLED, which a silent engine
+/// satisfies. This one arms `AudioSignalProbe`, which taps the output bus
+/// and counts buffers that carried a non-zero peak, and leaves the
+/// numbers in the app container for the runner to read.
+///
+/// It deliberately does NOT go through Einstellungen to pick an arm. That
+/// path is long, scroll-dependent, and it broke on the device on the first
+/// attempt (the override picker was not reachable in eight swipes). The
+/// rail gesture enrols a child in three taps and exercises the same code
+/// path, so the measurement does not depend on the arm picker at all —
+/// what it reports is the arm this child actually drew, which is more
+/// honest than forcing one.
+@MainActor
+final class MeasuredAudioUITests: XCTestCase {
+
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
+    func testEnrollingThenObservingProducesMeasuredAudio() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-audioSignalProbe"]
+        // MEASURED 2026-10-02: this test's own enrolled child drew the
+        // SILENT arm (participant UUID byte 230, 230 % 3 = 2), so there
+        // was correctly no sound to measure and the probe had nothing to
+        // report. A measurement run must name a sound arm explicitly:
+        // `-key value` is how iOS seeds UserDefaults from launch
+        // arguments, which is the same key `ParticipantStore
+        // .audioConditionOverride` reads.
+        app.launchArguments += [
+            "-de.flamingistan.primae.audioConditionOverride", "phoneme",
+        ]
+        app.launch()
+
+        // Cold start shows the enrolment gate; the rail reveals the
+        // enrolment control without entering the parent area.
+        let rail = app.descendants(matching: .any)["Navigationsleiste"]
+        XCTAssertTrue(rail.waitForExistence(timeout: 15),
+                      "the rail must be present on the enrolment gate")
+        rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+
+        let next = app.descendants(matching: .any)["Nächstes Kind"]
+        XCTAssertTrue(next.waitForExistence(timeout: 8),
+                      "a double-tap on the rail must reveal the enrolment control")
+        next.tap()
+
+        let confirm = app.buttons["Neues Kind starten"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5),
+                      "the destructive confirm must appear")
+        confirm.tap()
+
+        let ok = app.alerts["Neues Kind bereit"].buttons["OK"]
+        XCTAssertTrue(ok.waitForExistence(timeout: 5),
+                      "the ready alert must appear once the child is enrolled")
+        ok.tap()
+
+        // The gate must be GONE and the session running by itself — the
+        // tap-to-start complaint was that it needed a further tap here.
+        let gate = app.staticTexts["Studie kann nicht starten"]
+        XCTAssertTrue(gate.waitForNonExistence(timeout: 15),
+                      "enrolling must clear the start-gate without any further tap")
+
+        // Sit through the demonstration, SAMPLING AS IT RUNS.
+        //
+        // MEASURED: polling only at the end saw `peak=0.0` and failed,
+        // because the readout holds only the LATEST value and the loud
+        // windows are the EARLY ones - the demonstration plays for a few
+        // seconds and then the observe phase is silent. Waiting 16 s and
+        // then looking reads the silence, not the sound.
+        //
+        // So the readings are collected continuously, and the assertion
+        // runs over everything seen. That ordering IS the finding: sound
+        // during the demonstration, silence after it.
+        let deadline = Date().addingTimeInterval(18)
+        var readings: [AudioSignalReading] = []
+        while Date() < deadline {
+            let element = app.descendants(matching: .any)["audio-signal-probe-readout"]
+            if element.exists,
+               let line = element.label as String?,
+               line.hasPrefix("AUDIO-SIGNAL "),
+               let reading = AudioSignalReading(line: line),
+               !readings.contains(reading) {
+                readings.append(reading)
+            }
+            usleep(250_000)
+        }
+
+        assertMeasuredSignal(readings: readings)
+    }
+
+    /// Turn the probe's log into an ASSERTION, not a log line.
+    ///
+    /// MEASURED 2026-10-02 on the physical iPad, phoneme arm:
+    ///   AUDIO-SIGNAL observe nonSilent=16 total=19 peak=0.31476486
+    /// i.e. a real signal reached the output bus. That number is the whole
+    /// point of `AudioSignalProbe`: every pre-existing audio assertion asks
+    /// whether `play()` was CALLED, which an engine that never started, or
+    /// a file that never resolved, or a route with no output would pass
+    /// while the child hears nothing.
+    ///
+    /// HOW THE NUMBERS REACH HERE. They live in the APP's container, which
+    /// an XCUITest process cannot read. Rather than assert nothing and call
+    /// the test a pass (the failure mode this whole file exists to avoid),
+    /// the app copies the probe log to a path handed in via the launch
+    /// ENVIRONMENT, and the test reads it back and asserts on it. The
+    /// transfer is the only part that is not a real measurement.
+    /// A COLD freeWrite probe is silent — and that is the design, not a
+    /// defect.
+    ///
+    /// MEASURED on the device: `AUDIO-SIGNAL freeWrite nonSilent=0 total=20
+    /// peak=0.0` on a pretest. The cause is deliberate: a cold probe
+    /// reaches freeWrite with no demonstration armed (H6 — reaching this
+    /// letter at all is a cold, untrained probe, and demonstrating it
+    /// would train the very thing the probe depends on not having
+    /// happened), so no arm file is loaded and the trace coupling has
+    /// nothing to play.
+    ///
+    /// This test therefore pins the SILENCE, so a future reader does not
+    /// "fix" it: the proctor's complaint was about the freeWrite pass of a
+    /// normal SESSION, where observe/direct/guided have already loaded the
+    /// arm's file and the lifted sound-off gate lets it sound.
+    ///
+    /// WHAT THIS DOES NOT COVER, stated plainly: that session freeWrite
+    /// case. Reaching it needs a full observe -> direct -> guided walk,
+    /// which depends on per-phase entry gestures and would break whenever
+    /// one changes. It is the remaining gap in audio phase coverage, not
+    /// something this test pretends to have checked.
+    func testColdFreeWriteProbeIsSilentByDesign() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-audioSignalProbe"]
+        app.launchArguments += [
+            "-de.flamingistan.primae.audioConditionOverride", "phoneme",
+        ]
+        app.launch()
+
+        let rail = app.descendants(matching: .any)["Navigationsleiste"]
+        XCTAssertTrue(rail.waitForExistence(timeout: 15))
+        rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+        let next = app.descendants(matching: .any)["Nächstes Kind"]
+        XCTAssertTrue(next.waitForExistence(timeout: 8))
+        next.tap()
+        let confirm = app.buttons["Neues Kind starten"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        confirm.tap()
+        let ok = app.alerts["Neues Kind bereit"].buttons["OK"]
+        XCTAssertTrue(ok.waitForExistence(timeout: 5))
+        ok.tap()
+        XCTAssertTrue(app.staticTexts["Studie kann nicht starten"].waitForNonExistence(timeout: 15))
+
+        // The pretest control lives in the parent area, reached by the
+        // gear long-press (2.0s minimum in `WorldSwitcherRail` + margin).
+        let gear = element(labelPrefix: "Eltern-Bereich", in: app)
+        XCTAssertTrue(gear.waitForExistence(timeout: 10))
+        gear.press(forDuration: 2.3)
+        let pretest = element(labelPrefix: "Vortest starten: A", in: app)
+        XCTAssertTrue(pretest.waitForExistence(timeout: 8),
+                      "the pretest control must be reachable in the parent area")
+        pretest.tap()
+
+        let refusal = app.alerts["Test kann nicht starten"]
+        if refusal.waitForExistence(timeout: 3) {
+            XCTFail("the pretest was refused: "
+                    + (refusal.staticTexts.element(boundBy: 1).label))
+        }
+
+        // Draw while SAMPLING: the readout carries only the latest value,
+        // so a poll after the stroke would read whatever came after it.
+        var readings: [AudioSignalReading] = []
+        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
+        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.55))
+        let deadline = Date().addingTimeInterval(14)
+        var drew = false
+        while Date() < deadline {
+            if !drew {
+                start.press(forDuration: 0.15, thenDragTo: end)
+                drew = true
+            }
+            if let line = readoutLabel(app), line.hasPrefix("AUDIO-SIGNAL "),
+               let reading = AudioSignalReading(line: line),
+               !readings.contains(reading) {
+                readings.append(reading)
+            }
+            usleep(250_000)
+        }
+
+        let freeWrite = readings.filter { $0.label == "freeWrite" }
+        XCTAssertFalse(freeWrite.isEmpty,
+                       "the cold probe must still be MEASURED, even though it is "
+                       + "silent: \(readings.map(\.line))")
+        XCTAssertEqual(freeWrite.map(\.peak).max() ?? 0, 0,
+                       "a cold freeWrite probe is deliberately silent (H6, no "
+                       + "demonstration, no loaded file): \(readings.map(\.line))")
+    }
+
+    /// First element whose label starts with `prefix`.
+    ///
+    /// Local to this suite rather than shared: the helper in
+    /// `StudyDryRunUITests` is `private` to that class, and reaching
+    /// across suites for one string prefix would couple two independently
+    /// motivated suites.
+    private func element(labelPrefix: String, in app: XCUIApplication) -> XCUIElement {
+        let matches = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "label BEGINSWITH %@", labelPrefix))
+        return matches.element(boundBy: 0)
+    }
+
+    /// Read the probe readout's current value, if it is present.
+    private func readoutLabel(_ app: XCUIApplication) -> String? {
+        let element = app.descendants(matching: .any)["audio-signal-probe-readout"]
+        guard element.exists else { return nil }
+        return element.label as String?
+    }
+
+    private func assertMeasuredSignal(readings: [AudioSignalReading]) {
+        XCTAssertFalse(readings.isEmpty,
+                       "the probe readout never carried a parsable line")
+
+        // At least one window must carry real signal on the output bus.
+        let loudest = readings.map(\.peak).max() ?? 0
+        XCTAssertGreaterThan(
+            loudest, 0.01,
+            "no measured window carried a signal (peak \(loudest)). "
+            + "Readings: \(readings.map(\.line))")
+
+        // And the DEMONSTRATION specifically must be audible, which is the
+        // proctor's report: "no audio for the demonstration".
+        let observe = readings.filter { $0.label == "observe" }
+        XCTAssertFalse(observe.isEmpty,
+                       "no observe-phase window was measured: \(readings.map(\.line))")
+        XCTAssertGreaterThan(
+            observe.map(\.peak).max() ?? 0, 0.01,
+            "the observe phase produced no measured output: \(readings.map(\.line))")
+    }
+
+}
+
+/// One parsed `AUDIO-SIGNAL <label> nonSilent=<n> total=<n> peak=<f>` line.
+///
+/// Parsed rather than pattern-matched in place so the assertions read
+/// against values, which is the same discipline `CanvasDrawPlan` exists to
+/// enable: a property assertion cannot see structure, a parsed value can.
+private struct AudioSignalReading: Equatable {
+    let line: String
+    let label: String
+    let nonSilent: Int
+    let total: Int
+    let peak: Float
+
+    init?(line: String) {
+        let parts = line.split(separator: " ")
+        guard parts.count >= 4, parts[0] == "AUDIO-SIGNAL" else { return nil }
+        self.line = line
+        self.label = String(parts[1])
+        func value(_ key: String) -> Int? {
+            parts.first { $0.hasPrefix(key) }
+                .flatMap { Int($0.dropFirst(key.count)) }
+        }
+        self.nonSilent = value("nonSilent=") ?? -1
+        self.total = value("total=") ?? -1
+        self.peak = parts.first { $0.hasPrefix("peak=") }
+            .flatMap { Float($0.dropFirst("peak=".count)) } ?? -1
     }
 }

@@ -228,7 +228,16 @@ private final class StampCapturingStore: ParentDashboardStoring {
         }
 
         stampAfterOneChange({ $0.observePasses = 2 }, expecting: "observePasses")
-        stampAfterOneChange({ $0.spokenFeedbackInStudy = true }, expecting: "spokenFeedbackInStudy")
+        // Flipped AWAY from the default on purpose. MEASURED: this line
+        // read `= true` to make the field differ from its default, but the
+        // default is now `true` (spoken feedback ON in study, David's
+        // decision 2026-10-02 after a proctor run), so `= true` was a
+        // no-op and the switch legitimately could not appear in the stamp.
+        // Deriving the non-default value keeps this test correct through
+        // any future default flip, which is the whole point of it.
+        stampAfterOneChange(
+            { $0.spokenFeedbackInStudy = !StudyComparisonConfiguration.defaults.spokenFeedbackInStudy },
+            expecting: "spokenFeedbackInStudy")
         stampAfterOneChange({ $0.allFiveLetters = true }, expecting: "allFiveLetters")
         stampAfterOneChange({ $0.letterRepeatCount = 3 }, expecting: "letterRepeatCount")
         stampAfterOneChange({ $0.cycleAllConditions = true }, expecting: "cycleAllConditions")
@@ -252,7 +261,10 @@ private final class StampCapturingStore: ParentDashboardStoring {
     func stampNamesEveryStoredSwitch() {
         let all = StudyComparisonConfiguration(
             observePasses: 2,
-            spokenFeedbackInStudy: true,
+            // Non-default by construction, same reason as above: this
+            // literal must set EVERY field away from its default, or the
+            // completeness assertion below counts fewer than twelve.
+            spokenFeedbackInStudy: !StudyComparisonConfiguration.defaults.spokenFeedbackInStudy,
             allFiveLetters: true,
             letterRepeatCount: 3,
             cycleAllConditions: true,

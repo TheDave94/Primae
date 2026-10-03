@@ -50,16 +50,26 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: observePassesKey) }
     }
 
-    /// Whether the study session speaks. The thesis removes spoken output
-    /// in study mode outright ("no spoken prompts", 03-architecture.typ:73)
-    /// and the code nulls the synthesiser to match
-    /// (`TracingViewModel.swift:866-867`). The supervisor's "Voiceover??"
-    /// asks whether that is right for this population; ON restores the
-    /// casual app's spoken feedback so the two can be compared.
+    /// Whether the study session speaks.
     ///
-    /// Default OFF, i.e. the thesis behaviour.
+    /// HISTORY, because the default moved and the reason matters. The
+    /// thesis removed spoken output in study mode outright ("no spoken
+    /// prompts", 03-architecture.typ:73) and this defaulted OFF to match;
+    /// the supervisor's "Voiceover??" questioned whether that is right for
+    /// 5-6 year-olds, who cannot read the screen the prompts describe.
+    ///
+    /// DEFAULT IS NOW ON (2026-10-02, David's decision after a proctor run
+    /// on the physical iPad: the phase prompts were unreachable in the
+    /// pilot artefact, so "Schau genau hin" / "Jetzt du" / "Und jetzt ganz
+    /// allein" never reached a child). The switch still exists so the
+    /// silent condition can be restored for a comparison run.
+    ///
+    /// CONSEQUENCE, RECORDED RATHER THAN LEFT IMPLICIT: 03-architecture
+    /// .typ:73 no longer describes the shipped artefact, and it must move
+    /// with it. Nothing else about the arms changes — this is spoken
+    /// feedback only, not the audio manipulation.
     static let spokenFeedbackKey = prefix + "spokenFeedbackInStudy"
-    static let spokenFeedbackInStudyDefault: Bool = false
+    static let spokenFeedbackInStudyDefault: Bool = true
     static var spokenFeedbackInStudy: Bool {
         get { boolValue(spokenFeedbackKey, default: spokenFeedbackInStudyDefault) }
         set { UserDefaults.standard.set(newValue, forKey: spokenFeedbackKey) }

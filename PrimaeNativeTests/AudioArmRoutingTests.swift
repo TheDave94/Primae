@@ -269,22 +269,55 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(SpatialSonification.pitchCents(forNormalizedY:  1.5) == -1200)
     }
 
-    // MARK: - Sound-off production (study mode, freeWrite / post-test)
-
-    @Test("study mode, freeWrite: sound arms drive no coupling and never reach play()",
+    // MARK: - FreeWrite production (study mode)
+    //
+    // WAS: "sound arms drive no coupling and never reach play()". That
+    // pinned a deliberate sound-off gate added 2026-09-04 for the locked
+    // 'sound-off post-test' design, and the gate was LIFTED on the
+    // proctor's explicit instruction (2026-10-02, commit 13208e6c): a
+    // device run showed the arm's sound reaching the child only through
+    // the trace coupling, so observe - the one phase where the letter is
+    // actually SHOWN - had nothing to hear. The thesis statements that
+    // described sound-off freeWrite now disagree with the artefact by
+    // David's decision, recorded at the gate rather than left implicit.
+    //
+    // This test was the stale half of that change and failed once the gate
+    // was gone. It is rewritten to pin what is now true - freeWrite DOES
+    // couple and DOES play for a sound arm - rather than deleted, because
+    // the silent arm's behaviour below is the load-bearing half and it
+    // must keep a control beside it.
+    @Test("study mode, freeWrite: a sound arm couples and plays (sound-off gate lifted)",
           arguments: [PilotAudioCondition.phoneme, .spatial])
-    func studyFreeWrite_isSoundOff(arm: PilotAudioCondition) async {
+    func studyFreeWrite_couplesAndPlays(arm: PilotAudioCondition) async {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, phonemeToggle: true, studyMode: true, audio: audio)
         vm.phaseController.resume(at: .freeWrite)
         driveTouch(vm)
-        // Drain the playback debounce so a deferred `.active` — the path
-        // the guided positive control below proves is live for the same
-        // drive — has had its chance to fire before asserting.
+        // Drain the playback debounce so a deferred `.active` has had its
+        // chance to fire before asserting.
+        await vm.awaitPlaybackDebounce()
+        #expect(audio.setAdaptiveCount > 0,
+                "a sound arm must drive the trace coupling during freeWrite production")
+        #expect(audio.playCount > 0,
+                "a sound arm's sound must start during freeWrite production")
+    }
+
+    /// The control that matters: the SILENT arm stays silent through the
+    /// same drive, in the same phase, where the sound arms now play. This
+    /// is what makes the two tests above meaningful - it is the only thing
+    /// that distinguishes "the arm plays its sound" from "everything
+    /// plays all the time".
+    @Test("study mode, freeWrite: the SILENT arm stays silent through the same drive")
+    func studyFreeWrite_silentArmStaysSilent() async {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .silent, phonemeToggle: true, studyMode: true, audio: audio)
+        vm.phaseController.resume(at: .freeWrite)
+        driveTouch(vm)
         await vm.awaitPlaybackDebounce()
         #expect(audio.setAdaptiveCount == 0)
         #expect(audio.spatialPitches.isEmpty)
-        #expect(audio.playCount == 0, "the arm's sound must never start during study free production")
+        #expect(audio.playCount == 0,
+                "the silent arm's condition IS the absence of sound")
         #expect(audio.isPlaying == false)
     }
 

@@ -484,8 +484,24 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
         deps.studyMode = true
         deps.participantEnrolled = false
         let vm = TracingViewModel(deps)
-        #expect(vm.studyPreconditionFailure?.contains("Neuer Teilnehmer") == true,
-                "the arms are un-randomised defaults until enrolment: \(String(describing: vm.studyPreconditionFailure))")
+        // Asserts the INTENT, not one wording. MEASURED: this used to
+        // require the literal "Neuer Teilnehmer", which stopped holding on
+        // 2026-10-02 when the gate copy was deliberately rewritten to name
+        // the RAIL first (the proctor's actual route) and the action it
+        // offers, "Nächstes Kind" — sending them via the old string would
+        // have walked them back through the gear, the parent area and the
+        // Research tab, the exact detour the rail gesture removes.
+        //
+        // What must stay true is that an unenrolled device refuses AND
+        // tells the proctor what to do about it. Pinning an exact phrase
+        // would only re-break on the next copy improvement.
+        let failure = vm.studyPreconditionFailure
+        #expect(failure != nil,
+                "an unenrolled study device must refuse to start a session")
+        #expect(failure?.contains("Kein Teilnehmer eingeschrieben") == true,
+                "the refusal must say a participant is missing: \(String(describing: failure))")
+        #expect(failure?.contains("Nächstes Kind") == true,
+                "the refusal must name the enrolment action the proctor can take: \(String(describing: failure))")
         deps.participantEnrolled = true
         #expect(TracingViewModel(deps).studyPreconditionFailure == nil)
     }

@@ -548,10 +548,25 @@ struct ChildSpeechLibraryTests {
     func phaseEntryGerman() {
         // Pin the per-phase prompts so any rewording lands in code review
         // with full context — children must hear distinct cues.
-        #expect(ChildSpeechLibrary.phaseEntry(.observe).contains("Pass"))
-        #expect(ChildSpeechLibrary.phaseEntry(.direct).contains("Punkte"))
-        #expect(ChildSpeechLibrary.phaseEntry(.guided).contains("Linie"))
-        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite).contains("ohne Hilfe"))
+        //
+        // REWORDED 2026-10-02 at the proctor's direction (see
+        // `ChildSpeechLibrary.phaseEntry`). These pins previously
+        // asserted the OLD wording ("Pass", "Linie", "ohne Hilfe") and
+        // failed the moment the copy changed — the third time in this
+        // session that a test hard-coded a literal a deliberate change
+        // had replaced. The pins stay (they are what puts a reword in
+        // front of a reviewer); what they assert is the CURRENT copy.
+        #expect(ChildSpeechLibrary.phaseEntry(.observe) == "Schau genau hin.")
+        #expect(ChildSpeechLibrary.phaseEntry(.direct) == "Tipp die Punkte der Reihe nach an.")
+        #expect(ChildSpeechLibrary.phaseEntry(.guided) == "Jetzt du.")
+        #expect(ChildSpeechLibrary.phaseEntry(.freeWrite) == "Und jetzt ganz allein.")
+
+        // The reason the four above exist: a child must be able to TELL
+        // the phases apart by ear. Two phases sharing a line is silent
+        // corruption that the four equality checks above cannot see.
+        let all = LearningPhase.allCases.map { ChildSpeechLibrary.phaseEntry($0) }
+        #expect(Set(all).count == all.count,
+                "every phase must get a distinct cue, or a child cannot tell them apart: \(all)")
     }
 
     @Test("Praise tier maps to encouraging German phrases")

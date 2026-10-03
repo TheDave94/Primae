@@ -64,6 +64,20 @@ struct TracingDependencies {
     /// (thesis-truth-condition; see `TracingViewModel.resolvedStrokes`).
     /// Off by default.
     var studyMode: Bool
+    /// Whether a study session speaks. Device config, captured once at
+    /// construction like `cycleAllConditions`.
+    ///
+    /// A SEAM, added 2026-10-02 so tests can pin it instead of writing
+    /// `UserDefaults`. `StudyComparisonSettings.spokenFeedbackInStudy` is
+    /// read by three test suites, and Swift Testing runs suites in
+    /// PARALLEL — a test that flips the global and restores it in a
+    /// `defer` corrupts whichever other suite reads it inside that
+    /// window, and the failure surfaces in someone else's test. Same trap
+    /// `LetterRepository.init(weight:)` was given a seam for.
+    ///
+    /// `nil` means "read the device setting", so production behaviour is
+    /// unchanged and an untouched device keeps its own preference.
+    var spokenFeedbackInStudy: Bool?
     /// Whether a participant is enrolled on this device. Injected (the
     /// stub pins true) so the study precondition below is deterministic
     /// in tests; production reads `ParticipantStore.isEnrolled`.
@@ -210,6 +224,7 @@ struct TracingDependencies {
         // ON in a study build (B2), OFF otherwise, and a stored value
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
+        spokenFeedbackInStudy: Bool? = nil,
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
         // Device config, like studyMode — read once here, never live.
         cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
@@ -259,6 +274,7 @@ struct TracingDependencies {
         self.enableFreeformMode = enableFreeformMode
         self.enablePhonemeMode = enablePhonemeMode
         self.studyMode = studyMode
+        self.spokenFeedbackInStudy = spokenFeedbackInStudy
         self.participantEnrolled = participantEnrolled
         self.cycleAllConditions = cycleAllConditions
         self.soundGateRadiusFactor = soundGateRadiusFactor

@@ -391,6 +391,27 @@ final class PhaseTransitionCoordinator {
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration,
                             fallbackText: ChildSpeechLibrary.celebration)
+        } else if vm.isLastLetterOfSet {
+            // THE END OF THE CHILD'S SET — the one study celebration
+            // (2026-10-02, proctor's device run).
+            //
+            // Per-LATTER silence stays: the C1/C2 ruling suppressed
+            // celebrations because a per-letter reward gives every child
+            // the same number of them, so it cannot distinguish a good
+            // session from a bad one and only adds noise between trials.
+            // That argument does not touch the END of the set — there is
+            // exactly one, it is not a reward for performance, and a
+            // proctor running 30-40 children in a row needs an unambiguous
+            // "this child is finished, hand the device over" signal.
+            //
+            // The sound and the spoken phrase go through `prompts`, so the
+            // `.silent` arm stays silent — that arm's condition is no
+            // audio, and this does not quietly carve out an exception.
+            // A silent-arm child gets the animation only.
+            vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
+            vm.prompts.playSuccessChime()
+            vm.prompts.play(.celebration, fallbackText: ChildSpeechLibrary.celebration)
+            vm.finishSetAwaitingNextParticipant()
         }
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()

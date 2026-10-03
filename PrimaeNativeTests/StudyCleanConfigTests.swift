@@ -78,15 +78,60 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
 
     // MARK: - C1: silencing at the injection seam
 
-    @Test("studyMode swaps speech/prompts/haptics for null implementations")
-    func studyMode_injectsNullFeedback() {
+    /// Haptics stay nulled in study mode unconditionally — that is not
+    /// switchable and never was.
+    @Test("studyMode swaps haptics for a null implementation")
+    func studyMode_injectsNullHaptics() {
         let vm = TracingViewModel(studyDeps())
-        #expect(vm.speech is NullSpeechSynthesizer,
-                "studyMode must silence TTS at the injection seam")
-        #expect(vm.prompts is NullPromptPlayer,
-                "studyMode must silence prompt MP3s/chimes at the injection seam")
         #expect(vm.haptics is NullHapticEngine,
                 "studyMode must silence haptics at the injection seam")
+    }
+
+    /// Speech and prompts are governed by ONE rule with two inputs:
+    /// the silent arm always silences them, and study mode silences them
+    /// only while `spokenFeedbackInStudy` is off.
+    ///
+    /// This test USED to assert only "studyMode → null", which was true
+    /// while the switch defaulted OFF. MEASURED: the default is now ON
+    /// (David's decision, 2026-10-02 — at OFF the phase prompts never
+    /// reached a child), so the old assertion failed while the CODE was
+    /// behaving exactly as designed. Asserting both positions of the
+    /// switch keeps the test true either way, which is what a rule test
+    /// should do.
+    @Test("studyMode speech/prompts follow spokenFeedbackInStudy, in both positions")
+    func studyMode_speechFollowsTheSwitch() {
+        // Switch ON: the child's phase prompts must reach them. Pinned
+        // through the dependency seam, never by writing UserDefaults —
+        // see `TracingDependencies.spokenFeedbackInStudy`.
+        var onDeps = studyDeps()
+        onDeps.spokenFeedbackInStudy = true
+        let audible = TracingViewModel(onDeps)
+        #expect(!(audible.speech is NullSpeechSynthesizer),
+                "with spoken feedback ON the study session must not null TTS - that silence is the proctor's complaint")
+        #expect(!(audible.prompts is NullPromptPlayer),
+                "with spoken feedback ON the study session must not null prompts")
+
+        // Switch OFF: the thesis behaviour, for a comparison run.
+        var offDeps = studyDeps()
+        offDeps.spokenFeedbackInStudy = false
+        let silenced = TracingViewModel(offDeps)
+        #expect(silenced.speech is NullSpeechSynthesizer,
+                "with spoken feedback OFF, studyMode must silence TTS at the injection seam")
+        #expect(silenced.prompts is NullPromptPlayer,
+                "with spoken feedback OFF, studyMode must silence prompt MP3s/chimes")
+    }
+
+    /// The silent arm's authority is NOT a preference and no switch may
+    /// put sound into it (C3-2) — this holds even with spoken feedback ON.
+    @Test("the silent arm stays silent even with spoken feedback ON")
+    func silentArm_ignoresTheSpokenFeedbackSwitch() {
+        var deps = studyDeps()
+        deps.spokenFeedbackInStudy = true
+        deps.audioCondition = .silent
+        let vm = TracingViewModel(deps)
+        #expect(vm.speech is NullSpeechSynthesizer,
+                "the silent arm's condition IS the absence of sound")
+        #expect(vm.prompts is NullPromptPlayer)
     }
 
     @Test("studyMode session drives zero calls into the injected feedback spies")
@@ -164,6 +209,20 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         vm.phaseTransitions.completePostFreeWriteRecognition(score: 0.9, result: goodResult)
         #expect(vm.overlayQueue.currentOverlay == nil,
                 "study sessions must end trials with no overlay feedback")
+    }
+
+    /// The one celebration a study session DOES show, and the guard on it.
+    ///
+    /// A one-letter practice pool must not celebrate at all: every letter
+    /// would be "the last one", turning the single end-of-set signal
+    /// into the per-letter reward the C2 ruling suppresses.
+    @Test("a one-letter pool never reports the end of a set")
+    func oneLetterPool_isNeverEndOfSet() {
+        let vm = TracingViewModel(studyDeps())
+        #expect(vm.visibleLetterNames.count == 1,
+                "this test is only meaningful with a single-letter pool; got \(vm.visibleLetterNames)")
+        #expect(!vm.isLastLetterOfSet,
+                "a one-letter pool must not report the end of a set - every trial would celebrate, the per-letter reward C2 forbids")
     }
 
     // MARK: - C4: pinned device settings

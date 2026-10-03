@@ -18,6 +18,32 @@ public struct MainAppView: View {
 
     public init() {}
 
+    /// Test-only: publishes the audio probe's latest measurement into the
+    /// accessibility tree so the XCUI test can ASSERT on it.
+    ///
+    /// Invisible when the probe is not armed (`nil` label, empty value), so
+    /// the child-facing screen is unchanged in the pilot artefact. Kept at
+    /// the root rather than inside a world view so it exists on every screen
+    /// the test might be on when it reads the value.
+    @ViewBuilder
+    private var audioSignalProbeReadout: some View {
+        #if DEBUG
+        if let line = vm.debugAudioSignalSummary {
+            Text(line)
+                .accessibilityIdentifier("audio-signal-probe-readout")
+                .accessibilityLabel(line)
+                // MEASURED: `.hidden()` removes the view from the
+                // accessibility tree as well as from the screen, so the
+                // test could not find it. Zero opacity keeps the element
+                // (and its a11y node) present; hit-testing is off so it
+                // cannot intercept a child's touch.
+                .opacity(0)
+                .allowsHitTesting(false)
+                .accessibilityHidden(false)
+        }
+        #endif
+    }
+
     /// Two-way binding around `activeWorldRaw`. Falls back to
     /// `.schule` for unrecognised values from future builds.
     private var activeWorldBinding: Binding<AppWorld> {
@@ -40,15 +66,22 @@ public struct MainAppView: View {
         // rather than short-circuited, so `OnboardingView` is never
         // referenced and the notification-permission request at its trigger
         // goes with it.
-        #if STUDY_BUILD
-        mainShell
-        #else
-        if !vm.isOnboardingComplete {
-            OnboardingView()
-        } else {
+        ZStack {
+            #if STUDY_BUILD
             mainShell
+            #else
+            if !vm.isOnboardingComplete {
+                OnboardingView()
+            } else {
+                mainShell
+            }
+            #endif
+            // Test-only readout, at the ROOT and above everything.
+            // MEASURED: layered inside `mainShell` it never reached the
+            // accessibility tree; at the root it does. DEBUG-only, so the
+            // pilot artefact does not compile it at all.
+            audioSignalProbeReadout
         }
-        #endif
     }
 
     /// The rail + world shell. Extracted so the onboarding branch above can
@@ -63,6 +96,7 @@ public struct MainAppView: View {
             )
             worldContent
         }
+
         // Paper canvas behind the shell; each world overlays its
         // own tinted band via `WorldPalette.background(for:)`.
         .background(Color.paperDeep.ignoresSafeArea())

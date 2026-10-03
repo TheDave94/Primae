@@ -344,19 +344,23 @@ final class TouchDispatcher {
             vm.playback.request(.idle, immediate: true)
             return
         }
-        // Sound-off production (locked pilot design: "sound-off
-        // post-test", DECISIONS.md header; thesis Ch.2 §2.5 / Ch.6). In
-        // study mode the freeWrite phase — the study's outcome, and the
-        // H6 post-test route, which enters freeWrite directly — must never
-        // hear the arm's audio. `feedbackIntensity` (0.0 in freeWrite)
-        // fades haptics + ticks only; this coupling was NOT gated, so a
-        // sound arm kept playing during free production (thesis-side
-        // audit, 2026-09-04). Study-mode only: outside the study the
-        // phoneme stays the glyph's auditory anchor in every phase.
-        if vm.studyMode, vm.phaseController.currentPhase == .freeWrite {
-            vm.playback.request(.idle, immediate: true)
-            return
-        }
+        // Sound-off production was the locked pilot design ("sound-off
+        // post-test", DECISIONS.md header; thesis Ch.2 §2.5 / Ch.6) and
+        // the coupling was gated here accordingly on 2026-09-04.
+        //
+        // LIFTED 2026-10-02 on the proctor's explicit instruction, after
+        // a device run: "no audio for the free write mode". The child now
+        // hears their arm's sound in the unassisted draw too, so the
+        // letter is not traced in silence while the guided pass carried
+        // the sound — which is what made the two passes feel like
+        // different activities rather than two attempts at one letter.
+        //
+        // The silent arm is untouched and still returns above: this arm's
+        // condition is the absence of sound, so it cannot be brought in by
+        // a change to the two sound arms. The thesis statements that
+        // described sound-off freeWrite production (Ch.2 §2.5, Ch.6, and
+        // the DECISIONS.md header) now need to move with this; that is
+        // David's call and is recorded here rather than left implicit.
         let speed       = Self.mapVelocityToSpeed(smoothedVelocity)
         let azimuthBias = vm.pencilPressure != nil ? cos(vm.pencilAzimuth) * 0.2 : 0
         // Pan follows absolute x across the whole canvas (not the
