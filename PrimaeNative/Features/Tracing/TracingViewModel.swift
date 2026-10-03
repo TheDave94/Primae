@@ -2189,9 +2189,35 @@ public final class TracingViewModel {
         armObserveAutoAdvance()
         animation.start(strokes: rawStrokes)
         startObservePhaseAudio()
-        // Test-only: report measured output level DURING the phase, not
-        // only at the boundary it eventually reaches. A no-op unless the
-        // probe was launch-armed.
+        startAudioSignalTicker()
+    }
+
+    /// Test-only: report measured output level DURING the phase, not only
+    /// at the boundary it eventually reaches. A no-op unless the probe was
+    /// launch-armed, so the pilot artefact never runs the timer.
+    ///
+    /// WHY THIS IS ONE HELPER CALLED FROM EVERY LANDING SITE, and not an
+    /// inline call sprinkled at the sites that remembered. It has been
+    /// wrong twice, in opposite directions, and both times the symptom was
+    /// the instrument reporting nothing:
+    ///
+    ///   - It hung off `startGuideAnimation` alone, which is reached only
+    ///     when ADVANCING into observe. A session's FIRST letter goes
+    ///     through `load(letter:)`'s own observe branch and produced an
+    ///     empty log for exactly the session a proctor runs first.
+    ///   - Then it was added to the observe branch of `load(letter:)`
+    ///     only. MEASURED 2026-10-03: a session that lands DIRECTLY in
+    ///     `freeWrite` — the H6 post-test pretest, which deliberately
+    ///     skips every earlier phase — reached its landing branch at
+    ///     `:3129` and started nothing, so the probe logged **zero
+    ///     freeWrite samples**. The phase was not silent; it was
+    ///     unmeasured, and the two are indistinguishable from the log.
+    ///
+    /// The landing branches are mutually exclusive, and the ticker is
+    /// idempotent (`AudioEngine.startAudioSignalTicker` stops any existing
+    /// timer first), so calling it from each is safe and a future phase
+    /// added to the ladder cannot silently go dark.
+    private func startAudioSignalTicker() {
         audioSignalProbeSink.startAudioSignalTicker(intervalSeconds: 2.0) {
             [weak self] in self?.phaseController.currentPhase.rawName ?? "unknown"
         }
@@ -3112,16 +3138,7 @@ public final class TracingViewModel {
                 animation.startAfterDelay(0.3 + presentationSpacing,
                                               strokes: observeStrokes)
                 armPreTaskDemonstration(for: letter)
-                // Test-only: start measuring HERE as well as in
-                // `startGuideAnimation`. MEASURED on the device: the FIRST
-                // letter's observe phase runs through this branch and never
-                // through `startGuideAnimation` (that is only reached when
-                // ADVANCING into observe), so a ticker started there alone
-                // produced an empty log for exactly the session a proctor
-                // would run first.
-                audioSignalProbeSink.startAudioSignalTicker(intervalSeconds: 2.0) {
-                    [weak self] in self?.phaseController.currentPhase.rawName ?? "unknown"
-                }
+                startAudioSignalTicker()
             }
         }
         // If we land directly in guided or freeWrite (e.g. after skipping phases or
@@ -3134,6 +3151,12 @@ public final class TracingViewModel {
             // depends on not having happened.
             preTaskDemoTask?.cancel()
             preTaskDemoTask = nil
+            // MEASURED 2026-10-03: without this the probe produced ZERO
+            // samples here, because this branch never reaches either
+            // observe landing site. A phase with no samples cannot be
+            // distinguished from a phase that is genuinely silent — see
+            // `startAudioSignalTicker`.
+            startAudioSignalTicker()
         } else if phaseController.currentPhase == .guided {
             freeWriteRecorder.startGuidedSpeedTracking()
             // No guide animation here either — see the note in the
@@ -3141,6 +3164,7 @@ public final class TracingViewModel {
             // the stroke start dots, not a moving dot.
             stopGuideAnimation()
             armPreTaskDemonstration(for: letter)
+            startAudioSignalTicker()
         }
         if let firstAudio = activeAudioFiles(for: letter).first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)

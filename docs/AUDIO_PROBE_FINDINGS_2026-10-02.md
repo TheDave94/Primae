@@ -190,84 +190,143 @@ non-default from `defaults` rather than typing `true`/`false` makes such
 a test survive the next flip — which is the entire purpose of a
 completeness check.
 
-## Still open
+## RESOLVED 2026-10-03: both "still open" questions, answered from source
 
-### MEASURED 2026-10-03: `guided` carried NO signal in any sample
+The two items left open by the 2026-10-03 measurement are now settled.
+Neither needed a new device run: both were decidable by reading the
+audio paths, and one of them turned out to be an instrument defect
+rather than a finding about the app.
 
-Pulled off the physical iPad (`00008103-000E60311AE8801E`) after
-`testPhonemeArmRequestsAudioDuringObserve` and
-`testSpatialArmRequestsAudioDuringObserve` both passed, from
-`Application Support/PrimaeNative/audio-signal-probe.log`:
+### `guided` was never silent — it is silent until the child MOVES
 
-| phase   | samples | max peak | samples carrying signal |
-|---------|---------|----------|-------------------------|
-| observe | 6       | 0.3150   | 2                       |
-| guided  | 34      | 0.0000   | **0**                   |
+MEASURED that run: 6 `observe` samples (max peak 0.3150, 2 carrying
+signal) against 34 `guided` samples, every one `peak=0.0`.
 
-The two lines that carried anything were both `observe`
-(`nonSilent=17/18 peak=0.3150`, `nonSilent=5/20 peak=0.2890`). **Every one
-of the 34 `guided` samples was `peak=0.0`.**
+`guided`'s only sound source is the **trace coupling**:
+`TouchDispatcher.updateAdaptivePlayback` maps stroke velocity and canvas
+position onto playback rate and pan, and that is the sole thing that
+drives the engine while a child traces. It is called from `updateTouch`,
+i.e. from MOVEMENT. The phase-entry paths sound nothing — every
+`speech.speak` in `PhaseTransitionCoordinator` sits inside an
+`if !vm.studyMode` arm, and study mode nulls the prompt player.
 
-So this is no longer "measured but not asserted per phase" — the
-per-phase measurement now exists and it is asymmetric. `observe` is
-audible in the arm conditions; `guided` is silent in every sample taken.
+So `guided` is **stroke-conditional, not silent**. A session sitting in
+guided with nobody drawing must measure `peak=0.0`, and the run that
+produced those 34 samples drew nothing: it tapped the observe area to
+unpark the session, slept, and read.
 
-**What is NOT established here, and must not be read as established:**
+There is already a unit-level positive control for the other half of
+this claim: `AudioArmRoutingTests.studyGuided_stillCouples` drives a
+guided pass and asserts `playCount > 0` for both sound arms. Guided
+sounds; the measurement simply never triggered it.
 
-- Whether `guided` *should* be audible. That is a design question
-  (C1/C2 silenced per-letter rewards), not a measurement, and this
-  document does not answer it.
-- Whether the probe is even ARMED during `guided`, as opposed to the
-  phase genuinely being silent. The 34 zero-peaked samples are
-  consistent with both. The observe samples prove the probe and the
-  engine work on this device, so the instrument is sound — but
-  "armed" is not the same as "attached to the guided phase's callbacks".
-- `freeWrite` produced **no samples at all** in this run, so it
-  remains unmeasured rather than measured-silent.
+**What is still NOT established**, unchanged by this: whether `guided`
+*should* be audible to a child who is tracing. That is a design
+question under C1/C2, not a measurement.
 
-**The next step is to disambiguate arming from silence**, not to write an
-assertion: confirm the guided phase's tick callbacks reach the probe. An
-assertion written before that would encode a guess as a specification.
+### `freeWrite`'s missing samples were an INSTRUMENT defect — now fixed
 
-### Also still open
+`freeWrite` produced **zero** samples, and the previous note recorded it
+as "unmeasured rather than measured-silent". That was right, and the
+cause was the instrument's own wiring.
 
-- `freeWrite` is unmeasured, not silent (see above).
+`startAudioSignalTicker` was called from exactly two sites, both
+observe-side: `startGuideAnimation` and the observe branch of
+`load(letter:)`. The H6 cold pretest opens a letter **directly** in
+freeWrite, skipping observe and direct, so it reached the freeWrite
+landing branch at `load(letter:)` and started nothing. No ticker means
+no samples at every phase boundary afterwards too.
+
+Fixed by collapsing both inline copies into one
+`TracingViewModel.startAudioSignalTicker()` helper called from all four
+landing paths. It had been wired to the wrong sites twice already, in
+opposite directions (§5 above), and both times the symptom was the
+instrument reporting nothing — so the sites are now enumerated by one
+call rather than by whoever remembered.
+
+Pinned by `AudioSignalTickerCoverageTests` (8 tests), which is
+**mutation-verified**: deleting the freeWrite call turns two of them
+RED on both the count and the phase label, with the other six
+correctly unaffected.
+
+Three things that file had to get wrong first, each recorded in its
+comments because each looked like the obvious approach:
+
+- **`resume(at: .guided)` cannot deliver a load into guided.** `load(letter:)`
+  calls `phaseController.reset()` first, so any resume is overwritten
+  before the landing branch is read.
+- **A study fixture cannot reach the guided landing at all.**
+  `TracingViewModel:1149` reads `deps.studyMode ? .threePhase :
+  deps.thesisCondition`, so study mode pins the script and discards a
+  `guidedOnly` override.
+- **`LearningPhase.allCases` is the wrong basis for a coverage
+  invariant.** It contains `direct`, which is retained for Codable and
+  never active — a session runs observe → guided → freeWrite. A first
+  version of the invariant demanded coverage for every `allCases` member
+  and so demanded the impossible.
+
+What replaced it is the property that can actually break, phrased over
+session **entry shapes**: a session that begins without a ticker is
+dark for its whole length, not merely its first phase. And a companion
+test pins why three sites suffice — the ticker's label closure is
+re-read on every tick, so a ticker started in observe already measures
+every later phase.
+
+### The vacuous-filter trap, reproduced on demand
+
+A function-level `-only-testing:` filter run during this work selected
+**0 tests** and printed `✔ Test run with 0 tests in 1 suite passed`.
+Same shape as the entry recorded in CLAUDE.md. It is the reason every
+count in this document was read out of the log rather than inferred
+from a green tick.
+
+### Still open
+
+- Whether `guided` should be audible **to a child who is tracing** —
+  a design question under C1/C2, not a measurement, and not answered
+  here.
+- A session-`freeWrite` measurement on a real device (the case
+  `testColdFreeWriteProbeIsSilentByDesign` explicitly does not cover).
+  The pretest path is now measurable; the guided→freeWrite walk of a
+  normal session still is not, because it depends on per-phase entry
+  gestures that would break whenever one changes.
 - The `Release-Study` artefact on the iPad is no longer stale: it was
   rebuilt, verified with `nm` (`_primae_build_identity_study`), and
   reinstalled on 2026-10-03 after a device test run replaced it with a
   Debug-Study build. See CLAUDE.md for why that restore is mandatory.
 
-## The end-of-set celebration is UNVERIFIED, and why (2026-10-02)
+## The end-of-set celebration is now TESTED (PR #28, 2026-10-03)
+
+The 2026-10-02 note below is kept because the reasoning was sound and
+the conclusion was wrong in an instructive way — the missing seam was
+already there.
 
 David's proctor reported "no end congratulations animation". The branch
 (`PhaseTransitionCoordinator.recordSessionCompletion`, the
 `else if vm.isLastLetterOfSet` arm) exists and the guard is correct, but
-**no test in the suite can reach it**, and that is measured, not assumed.
+**no test in the suite could reach it**.
 
-`isLastLetterOfSet` needs `visibleLetterNames.count > 1`. MEASURED on the
-`studyDeps()` fixture:
+`isLastLetterOfSet` needs `visibleLetterNames.count > 1`, and the
+`studyDeps()` fixture's repository returned exactly ONE letter:
 
     DIAG pool=["A"] letters=["A"] studyMode=true failure=none
 
-The fixture's repository returns exactly ONE letter, so
-`deps.allFiveLetters = true` (a real seam) does not widen the pool —
-`letters` is already `[A]` before the subset filter runs. The only
-existing reader of `isLastLetterOfSet` is therefore the *negative* test
-("a one-letter pool never reports the end of a set"), and the
-celebration branch could be dead code with the whole suite green.
+So `deps.allFiveLetters = true` did not widen the pool — `letters` is
+already `[A]` before the subset filter runs.
 
-Two tests were written for this (last letter celebrates + hands the
-device back; a letter short of the end does neither) and both fail on
-the fixture, not on the production code. They are NOT committed — a red
-suite is worse than an honest gap.
+**The note's proposed fix — an optional `letterRepository` on
+`TracingDependencies` — was not needed.** `deps.repo` plus
+`LetterRepository.init(resources: LetterResourceProviding)` already
+provided exactly that seam; the fixture simply had to use it. What was
+actually missing was test-side scaffolding: a `LetterSubsetProvider`
+narrowing the real bundle to A/F/I, a `NullLetterCache`, a
+`StubRecognizer` (freeWrite completion is DEFERRED to the async CoreML
+recognizer, so a synchronous test can never reach the celebration on its
+own), and a `SpyPromptPlayer` recording keys and celebrations.
 
-**What closing it needs.** `TracingViewModel.repo` is a concrete
-`LetterRepository` built inside `init` (`:792`) with no injection seam,
-so there is no way to hand a test a multi-letter pool. The fix is one
-optional field on `TracingDependencies` (`letterRepository: LetterRepository?`,
-nil = today's behaviour) plus a `LetterResourceProviding` stub over the
-app bundle serving A/F/I/L/M. `LetterRepository.init` already takes that
-protocol (`:168`), so only the deps seam is new.
+Three tests now pin it — last letter celebrates and hands the device
+back; a letter short of the end does neither; a multi-letter pool
+reports the end only on its last letter — all mutation-checked.
 
-Until then the end-of-set celebration is **device-verified only**, and it
-has not been seen on the iPad.
+**The celebration code was CORRECT.** The proctor's report was never a
+code defect; it was untested code that looked untested because it was.
