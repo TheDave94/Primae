@@ -22,7 +22,15 @@ fileprivate final class SpySpeech: SpeechSynthesizing {
 @MainActor
 fileprivate final class SpyPromptPlayer: PromptPlaying {
     private(set) var plays = 0
-    func play(_ key: PromptPlayer.PromptKey, fallbackText: String) { plays += 1 }
+    /// WHICH prompts, not just how many. A bare count cannot distinguish
+    /// the end-of-set celebration from the phase-entry narration that
+    /// legitimately plays several times per session.
+    private(set) var keys: [PromptPlayer.PromptKey] = []
+    func play(_ key: PromptPlayer.PromptKey, fallbackText: String) {
+        plays += 1
+        keys.append(key)
+    }
+    var celebrations: Int { keys.filter { $0 == .celebration }.count }
     func stop() {}
     func playSuccessChime() { plays += 1 }
     func playTapChime() { plays += 1 }
@@ -223,6 +231,167 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
                 "this test is only meaningful with a single-letter pool; got \(vm.visibleLetterNames)")
         #expect(!vm.isLastLetterOfSet,
                 "a one-letter pool must not report the end of a set - every trial would celebrate, the per-letter reward C2 forbids")
+    }
+
+    // MARK: - The celebration guard, REACHABLE (closed 2026-10-03)
+
+    /// A `LetterResourceProviding` that narrows the real bundle to a named
+    /// set of letters. Everything below stays the shipped geometry and
+    /// the shipped audio - only the POOL is reduced, which is what the
+    /// celebration guard is about.
+    ///
+    /// This is the seam the end-of-set notes said was missing. It is not:
+    /// `TracingDependencies.repo` takes a `LetterRepository`, and
+    /// `LetterRepository.init(resources:)` already takes a
+    /// `LetterResourceProviding`. So the fixture that made every
+    /// celebration test unreachable - one that returned exactly one
+    /// letter - was a fixture problem, not an architectural wall.
+    fileprivate struct LetterSubsetProvider: LetterResourceProviding {
+        private let base: BundleLetterResourceProvider
+        private let letters: Set<String>
+
+        init(letters: Set<String>) {
+            self.base = BundleLetterResourceProvider()
+            self.letters = letters
+        }
+
+        var bundle: Bundle { base.bundle }
+        var searchBundles: [Bundle] { base.searchBundles }
+
+        func allResourceURLs() -> [URL] {
+            base.allResourceURLs().filter { url in
+                letters.contains { letter in
+                    url.path.contains("/" + letter + "/")
+                }
+            }
+        }
+
+        func resourceURL(for relativePath: String) -> URL? {
+            base.resourceURL(for: relativePath)
+        }
+    }
+
+    /// The CoreML recognizer, stubbed. It is not incidental: `advance()`
+    /// DEFERS freeWrite completion to the recognizer's async return, so a
+    /// synchronous test can never reach `recordSessionCompletion` and the
+    /// celebration can never be observed. Stubbing it is what makes the
+    /// end of a set testable at all.
+    fileprivate struct StubRecognizer: LetterRecognizerProtocol {
+        func recognize(points: [CGPoint], strokeStartIndices: [Int],
+                       canvasSize: CGSize, expectedLetter: String?,
+                       historicalFormScores: [CGFloat]) async -> RecognitionResult? { nil }
+        func isModelAvailable() async -> Bool { true }
+    }
+
+    private func settle() async {
+        try? await Task.sleep(for: .milliseconds(150))
+    }
+
+    /// A study session over a MULTI-letter pool, which is the only shape
+    /// in which an end of a set exists at all.
+    private func multiLetterDeps(spyPrompts: SpyPromptPlayer? = nil) -> TracingDependencies {
+        var deps = studyDeps(spyPrompts: spyPrompts)
+        deps.letterRecognizer = StubRecognizer()
+        deps.repo = LetterRepository(
+            resources: LetterSubsetProvider(letters: ["A", "F", "I"]),
+            // No cache and no UserDefaults: this fixture must read the
+            // pool off the bundle it was handed, not off whatever a
+            // parallel suite persisted.
+            cache: NullLetterCache(),
+            userDefaults: UserDefaults(suiteName: "celebration-fixture") ?? .standard
+        )
+        return deps
+    }
+
+    /// The positive half of the pair the one-letter test could not have:
+    /// with a real pool, the guard DOES become true on the final letter.
+    /// Without this the celebration branch had exactly one reader in the
+    /// whole suite and it was the negative one, so the branch could be
+    /// dead code with 1064 tests green.
+    @Test("a multi-letter pool reports the end of a set only on its last letter")
+    func multiLetterPool_isEndOfSetOnlyOnLastLetter() {
+        let vm = TracingViewModel(multiLetterDeps())
+        let pool = vm.visibleLetterNames
+        #expect(pool.count > 1,
+                "this test is meaningless with a single-letter pool; got \(pool)")
+
+        guard let first = pool.first, let last = pool.last else { return }
+
+        vm.loadLetter(name: first)
+        #expect(!vm.isLastLetterOfSet,
+                "\(first) is not the last of \(pool), so the end-of-set guard must stay closed - otherwise every trial celebrates, which is the per-letter reward C2 forbids")
+
+        vm.loadLetter(name: last)
+        #expect(vm.isLastLetterOfSet,
+                "\(last) IS the last of \(pool), so the end-of-set celebration is unreachable if this is false - that is the proctor-reported 'no end congratulations' defect, and this test is what finally reaches it")
+    }
+
+    /// The PROCTOR'S ACTUAL COMPLAINT, asserted end to end. The guard
+    /// test above only proves the branch is reachable; this drives the
+    /// session to completion and proves the celebration the proctor said
+    /// they never saw really fires, hands the device back, and fires
+    /// once.
+    ///
+    /// Three advances are the whole three-phase session: observe ->
+    /// guided, guided -> freeWrite, freeWrite -> completion, and the last
+    /// one is what calls `recordSessionCompletion()`.
+    @Test("the end of the child's set is the one study celebration")
+    func endOfSet_celebratesOnceAndHandsTheDeviceBack() async {
+        let prompts = SpyPromptPlayer()
+        let vm = TracingViewModel(multiLetterDeps(spyPrompts: prompts))
+        guard let last = vm.visibleLetterNames.last else { return }
+        vm.loadLetter(name: last)
+
+        #expect(!vm.awaitingNextParticipant,
+                "the set cannot be over before the last letter is finished")
+
+        // observe -> guided -> freeWrite, then freeWrite DEFERRED to the
+        // recognizer, which is why this test awaits at all.
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        await settle()
+
+        #expect(vm.awaitingNextParticipant,
+                "finishing the child's LAST letter must hand the device back to the proctor - this is the 'no end congratulations' report, and without it a proctor running 30-40 children has no signal that a child is finished")
+
+        if case .celebration = vm.overlayQueue.currentOverlay {
+            // the one study celebration
+        } else {
+            Issue.record("the end of the set must show the celebration overlay; got \(String(describing: vm.overlayQueue.currentOverlay)) - the per-letter celebrations stay suppressed, this one does not")
+        }
+
+        #expect(prompts.celebrations == 1,
+                "the end-of-set celebration is the one study moment carrying a spoken phrase; got \(prompts.celebrations) of them alongside \(prompts.keys)")
+
+        // ...and it is a ONCE-per-set signal, not a per-letter reward.
+        vm.advanceLearningPhase()
+        await settle()
+        #expect(prompts.celebrations == 1,
+                "a completed letter session must not be advanced again - the celebration is ONE per set, and it just fired \(prompts.celebrations) times")
+    }
+
+    /// The mid-set control: the SAME session shape on a letter that is
+    /// not last must NOT celebrate. Without this the positive test above
+    /// would also pass if the branch fired on every trial - which is the
+    /// exact defect the one-letter-pool test exists to prevent, and the
+    /// reason the two must be read together.
+    @Test("a letter short of the end celebrates nothing")
+    func midLetter_celebratesNothing() async {
+        let prompts = SpyPromptPlayer()
+        let vm = TracingViewModel(multiLetterDeps(spyPrompts: prompts))
+        guard let first = vm.visibleLetterNames.first else { return }
+        vm.loadLetter(name: first)
+
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        await settle()
+
+        #expect(!vm.awaitingNextParticipant,
+                "finishing a letter that is NOT the last must not hand the device back - the proctor would be told a child finished mid-set")
+        #expect(prompts.celebrations == 0,
+                "per-letter celebrations stay suppressed by the C1/C2 ruling: a per-letter reward gives every child the same number of them, so it cannot distinguish a good session from a bad one. Got \(prompts.celebrations) celebration prompts among \(prompts.keys)")
     }
 
     // MARK: - C4: pinned device settings
