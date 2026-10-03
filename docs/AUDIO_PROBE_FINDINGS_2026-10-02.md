@@ -280,6 +280,42 @@ Same shape as the entry recorded in CLAUDE.md. It is the reason every
 count in this document was read out of the log rather than inferred
 from a green tick.
 
+### MEASURED 2026-10-03, after the fix: all three phases, on the physical iPad
+
+`MeasuredAudioUITests.testColdFreeWriteProbeIsSilentByDesign` on
+`00008103-000E60311AE8801E`: **1 test passed, 0 failed** (105 s). That
+count matters — the same filter shape has already selected 0 tests and
+printed a green tick, so a pass is only evidence once the number is read.
+
+That test asserts freeWrite readings are NON-EMPTY. Before the fix no
+ticker ran on the freeWrite landing, so that assertion was
+unsatisfiable and the test could not pass. It passes now, which makes
+it the end-to-end proof that the fix reaches the device.
+
+Probe log pulled from the app container afterwards:
+
+| phase     | samples | windows carrying signal | max peak  |
+|-----------|---------|-------------------------|-----------|
+| observe   | 10      | 6                       | 0.3150    |
+| guided    | 52      | **4**                   | **0.2727** |
+| freeWrite | **6**   | 0                       | 0.0       |
+
+Two results worth stating plainly:
+
+- **freeWrite went from ZERO samples to six, all `peak=0.0`.** It is now
+  *measured and silent* rather than unmeasured — which is the H6 design
+  the test pins, and precisely the distinction the probe exists to draw.
+- **guided carried real signal in this run** (peaks 0.2536–0.2727),
+  because this test drags a stroke. The 34 zero-peaked windows in the
+  earlier run were the same phase with nobody drawing. Stroke-conditional
+  is now measured on the device, not merely read off the source.
+
+A caution for whoever reads the raw log next: peaks are written with a
+DOT (`peak=0.31496766`), but a locale-formatted `printf` in the shell
+will render them with a comma and a naive `awk` parse will silently
+reduce every peak to 0 — which reads as "total silence" and is wrong.
+Count `nonSilent=` (an integer) or grep the peak field directly.
+
 ### Still open
 
 - Whether `guided` should be audible **to a child who is tracing** —
