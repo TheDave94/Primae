@@ -467,8 +467,10 @@ ProgressStore.recordRecognitionSample
 - `TracingViewModel.updateTouch` (line 818) feeds normalized touch
   points into `strokeTracker.update(normalizedPoint:)`.
 - Audio is gated by `feedbackIntensity > 0.3` (line 937) and
-  `smoothedVelocity >= playbackActivationVelocityThreshold` (default
-  22 pt/s).
+  `smoothedVelocity >= playbackActivationVelocityThreshold`. That floor's
+  default is 0 pt/s since 2026-10-04 (it was 22 pt/s — see "The velocity
+  floor's default is 0 pt/s" below), so a child tracing slowly in this
+  phase IS audible; the floor stays switchable in the parent area.
 - The freeWriteRecorder also tracks `checkpointsPerSecond` during this
   phase via `freeWriteRecorder.updateSpeed(completedCheckpoints:)`.
 

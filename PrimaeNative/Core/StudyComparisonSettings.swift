@@ -239,8 +239,11 @@ enum StudyComparisonSettings {
     /// literals in four different files (the checkpoint hit radius,
     /// `StrokeTracker.swift:99`; this sound gate, `:100`; the 1.5 pt
     /// minimum move and the 0.22 EWMA, `TouchDispatcher.swift:31,36`; the
-    /// 0.1/0.03/0.12 s playback debounces and the 22 pt/s floor,
-    /// `TouchDispatcher.swift:33` + `PlaybackController.swift:75-77`).
+    /// 0.1/0.03/0.12 s playback debounces and the velocity floor,
+    /// `TouchDispatcher.swift:33` + `PlaybackController.swift:75-77` — the
+    /// floor was a bare 22 pt/s literal here and became
+    /// `soundGateVelocityFloorDefault` when its default dropped to 0 pt/s
+    /// on 2026-10-04, see that property below).
     /// None was named, none was visible, none was switchable.
     ///
     /// This one and the velocity floor below are the two that are ANDed to
