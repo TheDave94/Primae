@@ -345,7 +345,13 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     /// Three advances are the whole three-phase session: observe ->
     /// guided, guided -> freeWrite, freeWrite -> completion, and the last
     /// one is what calls `recordSessionCompletion()`.
-    @Test("the end of the child's set is the one study celebration, spoken alike in every arm",
+    ///
+    /// What it asserts is what a STUDY build DELIVERS, per arm: the spoken
+    /// phrase in every arm, the chime in the sound arms only, the hand-over
+    /// hold — and nothing drawn. The overlay queue holding `.celebration`
+    /// is NOT evidence that anything is shown: a study build renders it as
+    /// `EmptyView()` (see `noCelebrationViewInAStudyBuild`).
+    @Test("the end of the child's set: spoken in every arm, chimed in the sound arms, nothing drawn",
           arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
     func endOfSet_celebratesOnceAndHandsTheDeviceBack(arm: PilotAudioCondition) async {
         let prompts = SpyPromptPlayer()
@@ -368,11 +374,11 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         #expect(vm.awaitingNextParticipant,
                 "finishing the child's LAST letter must hand the device back to the proctor - this is the 'no end congratulations' report, and without it a proctor running 30-40 children has no signal that a child is finished")
 
-        if case .celebration = vm.overlayQueue.currentOverlay {
-            // the one study celebration
-        } else {
-            Issue.record("the end of the set must show the celebration overlay; got \(String(describing: vm.overlayQueue.currentOverlay)) - the per-letter celebrations stay suppressed, this one does not")
-        }
+        // Nothing drawn: this suite compiles under STUDY_BUILD, where
+        // `SchuleWorldView` renders the queued `.celebration` as
+        // `EmptyView()`. Pinned in `noCelebrationViewInAStudyBuild`; the
+        // queue state is not asserted here because it is not what the
+        // child sees.
 
         // The spoken "Super gemacht!" is spoken content, so EVERY arm hears
         // it (P3, David 2026-10-04: spoken content identical across arms).
@@ -389,6 +395,24 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         #expect(prompts.celebrations == 1,
                 "\(arm): a completed letter session must not be advanced again - the celebration is ONE per set, and it just fired \(prompts.celebrations) times")
         #expect(prompts.chimes == expectedChimes)
+    }
+
+    /// "Nothing drawn", pinned where it is decided: at compile time. The
+    /// only view for `.celebration` is `CompletionCelebrationOverlay`,
+    /// which is `#if !STUDY_BUILD` (its file and its use in
+    /// `SchuleWorldView.queuedModalOverlay`, which renders `EmptyView()`
+    /// otherwise), and the CI identity scan asserts the symbol is absent
+    /// from the study binary. A SwiftUI branch cannot be observed from a
+    /// unit test — this test fails if the suite ever runs in a build where
+    /// the celebration view exists, so the end-of-set test above cannot
+    /// be read as covering a build that draws something.
+    @Test("a study build has no end-of-set celebration view to draw")
+    func noCelebrationViewInAStudyBuild() {
+        #if STUDY_BUILD
+        #expect(Bool(true))
+        #else
+        Issue.record("this suite ran outside STUDY_BUILD: the celebration overlay is compiled in here, so 'nothing drawn' does not hold")
+        #endif
     }
 
     /// The mid-set control: the SAME session shape on a letter that is

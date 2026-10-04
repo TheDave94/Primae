@@ -404,11 +404,23 @@ final class PhaseTransitionCoordinator {
             // proctor running 30-40 children in a row needs an unambiguous
             // "this child is finished, hand the device over" signal.
             //
-            // Both go through `prompts`, which in a study session is the
-            // study voiceover (P3, 2026-10-04): the chime is a sound effect,
-            // so the phoneme and spatial arms hear it and the silent arm
-            // does not; the spoken "Super gemacht!" is spoken content, so
-            // EVERY arm hears it alike. Every arm gets the overlay animation.
+            // What a STUDY build delivers: the spoken "Super gemacht!" in
+            // EVERY arm (spoken content is identical across arms, P3) and
+            // the chime in the phoneme and spatial arms only (a sound
+            // effect; `StudyVoiceoverPromptPlayer` drops it for the silent
+            // arm). NOTHING IS DRAWN: the `.celebration` enqueued below is
+            // rendered as `EmptyView()` under STUDY_BUILD
+            // (`SchuleWorldView.queuedModalOverlay`), and
+            // `CompletionCelebrationOverlay` is compiled out — the CI
+            // identity scan asserts its absence from the study binary.
+            // The queue entry itself is harmless: nothing gates on
+            // `currentOverlay` being set, and the next child's first
+            // letter load clears it (`resetForNewParticipant` →
+            // `reapplyParticipantIdentity` → `loadFirstTrainedLetter` →
+            // `load(letter:)` → `overlayQueue.reset()`). The hand-over
+            // signal the proctor can rely on is the speech, the chime in
+            // the sound arms, and the chevron no longer advancing
+            // (`finishSetAwaitingNextParticipant`).
             vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration, fallbackText: ChildSpeechLibrary.celebration)
