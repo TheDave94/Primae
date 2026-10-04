@@ -51,12 +51,17 @@ import CoreGraphics
 private final class CountingAudio: AudioControlling {
     var initializationError: String? { nil }
     private(set) var playCount = 0
+    /// Whether the engine is running RIGHT NOW. `playCount > 0` cannot
+    /// answer this — it cannot distinguish "never played" from "played,
+    /// then stopped", which is the whole question the stall-timeout test
+    /// asks.
+    private(set) var isPlaying = false
     func loadAudioFile(named fileName: String, autoplay: Bool) {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func play()    { playCount += 1 }
-    func stop()    {}
+    func play()    { playCount += 1; isPlaying = true }
+    func stop()    { isPlaying = false }
     func restart() {}
-    func suspendForLifecycle()        {}
+    func suspendForLifecycle()        { isPlaying = false }
     func resumeAfterLifecycle()       {}
     func cancelPendingLifecycleWork() {}
 }
@@ -199,11 +204,16 @@ struct TriggerBoundaryTests {
                 "with a 1× gate the same finger position must be silent — the factor is not reaching the sound path")
     }
 
-    /// The velocity floor, end to end, in both directions. At the default
-    /// 22 pt/s this is the gate that BINDS: along the stroke the radius
-    /// gate is satisfied with a 10.8× margin (largest checkpoint gap in any
-    /// study letter is 0.0278 against the 0.3 default gate), so a child
-    /// tracing correctly hears the letter or not according to THIS number.
+    /// The velocity floor, end to end, in both directions — and the
+    /// DEFAULT MOVED (2026-10-04, proctor: "guided should be audible
+    /// too"). At 22 pt/s this was the gate that BINDS: along the stroke
+    /// the radius gate is satisfied with a 10.8× margin (largest
+    /// checkpoint gap in any study letter is 0.0278 against the 0.3
+    /// default gate), so a child tracing correctly heard the letter or
+    /// not according to THIS number alone — and a 5-6 year-old tracing
+    /// deliberately is slow. The default is 0.0 now, so the same slow
+    /// finger is audible and the floor is the re-introduction knob a
+    /// comparison run moves deliberately.
     @Test("the velocity floor decides whether a slow deliberate trace is audible")
     func velocityFloorIsAudible() {
         /// One trace at a stated speed, sampled five times `dt` apart. `dt`
@@ -227,17 +237,17 @@ struct TriggerBoundaryTests {
             return audio.playCount > 0
         }
 
-        // Slow: 1 pt per 1 s sample = 1 pt/s, below the 22 pt/s default.
+        // Slow: 1 pt per 1 s sample = 1 pt/s, below the OLD 22 pt/s default.
         #expect(plays(floor: 22, pointsPerSecond: 1, dt: 1) == false,
-                "a 1 pt/s finger is below the 22 pt/s floor and must stay silent — this is the current behaviour")
+                "a 1 pt/s finger is below a 22 pt/s floor and must stay silent — the floor is not reaching the sound path")
         #expect(plays(floor: 0, pointsPerSecond: 1, dt: 1),
-                "with the floor at 0 the same 1 pt/s finger must be audible — the floor is not reaching the sound path")
+                "with the floor at 0 the same 1 pt/s finger must be audible — this is the DEFAULT since 2026-10-04, the state that makes a slow tracing child audible")
         // Fast: 10 pt per 1 ms sample = 10000 pt/s, the speed
         // `EndToEndTracingSessionTests.simulateFastTouch` drives.
         #expect(plays(floor: 20000, pointsPerSecond: 10000, dt: 0.001) == false,
                 "a 10000 pt/s trace must be silent under a 20000 pt/s floor — raising the floor has no effect")
-        #expect(plays(floor: 22, pointsPerSecond: 10000, dt: 0.001),
-                "the same 10000 pt/s trace must be audible at the default floor")
+        #expect(plays(floor: 0, pointsPerSecond: 10000, dt: 0.001),
+                "the same 10000 pt/s trace must be audible at the 0 pt/s default floor")
     }
 
     // MARK: - Session properties, not live values
@@ -271,18 +281,26 @@ struct TriggerBoundaryTests {
                 "a cell carries the global's 3.0 rather than the injected 1.0 — the boundary is read live somewhere")
     }
 
-    /// The defaults must be the values the app ran before the switches
-    /// existed, or adding them to an enrolled study device would change
-    /// what that device does. Asserted on the named constants — which
-    /// `StrokeTracker`, `TouchDispatcher` and `SequenceGridController` all
-    /// take their own defaults from — rather than on a `UserDefaults` read,
-    /// so this cannot be disturbed by a parallel suite writing the key.
-    @Test("the default boundary values are the ones the app shipped with")
+    /// The radius default must be the value the app ran before the
+    /// switches existed, or adding them to an enrolled study device would
+    /// change what that device does. Asserted on the named constants —
+    /// which `StrokeTracker`, `TouchDispatcher` and
+    /// `SequenceGridController` all take their own defaults from — rather
+    /// than on a `UserDefaults` read, so this cannot be disturbed by a
+    /// parallel suite writing the key.
+    ///
+    /// The velocity default is the ONE that is deliberately not "the
+    /// shipped value": 22 → 0 on 2026-10-04, on the proctor's instruction
+    /// that guided must be audible to a child who is tracing. It is
+    /// asserted explicitly below because a silent change to THIS number
+    /// is exactly the kind of protocol change that would otherwise reach
+    /// an enrolled device unnoticed.
+    @Test("the default boundary values are the intended ones")
     func defaultsAreTheShippedValues() {
         #expect(StudyComparisonSettings.soundGateRadiusFactorDefault == 3.0,
                 "the default sound-gate reach is not the 3.0 the tracker was hardcoded to")
-        #expect(StudyComparisonSettings.soundGateVelocityFloorDefault == 22,
-                "the default velocity floor is not the 22 pt/s the dispatcher was hardcoded to")
+        #expect(StudyComparisonSettings.soundGateVelocityFloorDefault == 0,
+                "the default velocity floor is not 0 pt/s — a moving finger on the letter is audible at any speed since 2026-10-04, and restoring 22 here would re-silence the slow tracers this change exists for")
 
         let tracker = StrokeTracker()
         #expect(tracker.soundGateRadiusFactor == 3.0,
@@ -291,5 +309,121 @@ struct TriggerBoundaryTests {
         let grid = SequenceGridController(sequence: .singleLetter("A"), preset: .finger)
         #expect(grid.cells.allSatisfy { $0.tracker.soundGateRadiusFactor == 3.0 },
                 "a fresh grid does not start every cell at the shipped 3.0")
+    }
+
+    // MARK: - The guided pass is audible to a child who is tracing
+
+    /// THE DEFECT, in the shape the proctor reported it (2026-10-04,
+    /// "guided should be audible too"). A guided session's ONLY sound is
+    /// the trace coupling, so if the coupling is gated the whole phase is
+    /// silent. It was gated on speed at 22 pt/s — and the radius gate is
+    /// saturated along the stroke, so a child tracing CORRECTLY and
+    /// DELIBERATELY, which is what a 5-6 year-old does, heard nothing at
+    /// all for the phase whose entire purpose is guided tracing.
+    ///
+    /// This drives a study VM in the real `beginTouch`/`updateTouch` path
+    /// in `.guided`, at a deliberately slow speed, and asserts the arm's
+    /// sound was REQUESTED. Both sound arms, because the arms must stay
+    /// matched (§2.6) — a fix that made only one audible would be a
+    /// confound, not a fix.
+    @Test("a slow deliberate guided trace is audible in both sound arms",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func slowGuidedTrace_isAudible(arm: PilotAudioCondition) async {
+        let audio = CountingAudio()
+        let vm = guidedStudyVM(arm: arm, audio: audio)
+        driveSlowTraceOnTheLetter(vm)
+        await vm.awaitPlaybackDebounce()
+        #expect(audio.playCount > 0,
+                "\(arm): a child tracing deliberately slowly must still hear the letter in the guided phase — this is the 'guided should be audible too' defect")
+    }
+
+    /// The control that gives the test above its meaning: the SILENT arm
+    /// stays silent through the identical drive. Without it, "the guided
+    /// phase has sound" could be satisfied by a change that simply plays
+    /// always — which would destroy the arm contrast the study rests on.
+    @Test("the silent arm stays silent through the same slow guided trace")
+    func silentArm_staysSilentOnASlowGuidedTrace() async {
+        let audio = CountingAudio()
+        let vm = guidedStudyVM(arm: .silent, audio: audio)
+        driveSlowTraceOnTheLetter(vm)
+        await vm.awaitPlaybackDebounce()
+        #expect(audio.playCount == 0,
+                "the silent arm's condition IS the absence of sound — audibility in guided must not reach it")
+    }
+
+    /// THE OTHER HALF, and the one that says the change did not simply
+    /// switch the sound on. Movement-contingency is preserved NOT by the
+    /// velocity floor (now 0) but by the stall timeout: a pen that STOPS
+    /// sends no samples, so it must fall quiet. If a held finger kept the
+    /// loop running, the arm's sound would become an ambient drone over
+    /// the whole guided phase and the coupling would no longer encode
+    /// the manipulation at all.
+    ///
+    /// The instant sleeper makes the debounce fire as soon as awaited, so
+    /// this asserts the timeout rather than wall-clock luck.
+    @Test("a guided finger that stops going quiet still stops the sound")
+    func stoppedFinger_stillFallsSilent() async {
+        let audio = CountingAudio()
+        let vm = guidedStudyVM(arm: .phoneme, audio: audio)
+        driveSlowTraceOnTheLetter(vm)
+        // Assert the arming BEFORE draining it. `awaitPlaybackDebounce`
+        // awaits the very task this test is about, so awaiting it first
+        // (as a first version of this test did) CONSUMES the timer and
+        // makes the assertion vacuously false — the same "the instrument
+        // measured nothing" shape as the freeWrite probe defect.
+        #expect(audio.playCount > 0,
+                "precondition: the moving finger must be audible before the stall question means anything")
+        #expect(vm.playback.pendingTransition != nil,
+                "an active sample must arm the stall timeout — without it a held finger drones on for the whole guided phase")
+        await vm.playback.pendingTransition?.value
+        #expect(audio.isPlaying == false,
+                "a pen that stops sends no samples and must fall silent — the velocity floor is no longer what guarantees this")
+    }
+
+    /// A study-shaped VM sitting in `.guided`, wired to the counting
+    /// engine, with an instantly-resolving sleeper so debounces settle
+    /// on the next runloop tick instead of on wall-clock time.
+    private func guidedStudyVM(arm: PilotAudioCondition,
+                               audio: AudioControlling) -> TracingViewModel {
+        var deps = TracingDependencies.stub.with(audio: audio)
+        deps.audioCondition = arm
+        deps.studyMode = true
+        deps.makePlaybackController = { a, cb in
+            PlaybackController(audio: a, sleep: { _ in }, onIsPlayingChanged: cb)
+        }
+        let vm = TracingViewModel(deps)
+        vm.canvasSize = canvas
+        vm.phaseController.resume(at: .guided)
+        return vm
+    }
+
+    /// A DELIBERATELY SLOW trace that stays ON the letter — the gesture
+    /// this change is about. Points step 1 pt per 1 s sample (1 pt/s,
+    /// against the old 22 pt/s floor) along a horizontal line through the
+    /// letter's first checkpoint row, so `isNearStroke` is satisfied and
+    /// the only variable is speed.
+    ///
+    /// Laid out from the letter definition rather than from a literal
+    /// coordinate: a hand-picked y that happens to fall near a checkpoint
+    /// would make this test pass or fail for a reason that has nothing
+    /// to do with the velocity gate.
+    private func driveSlowTraceOnTheLetter(_ vm: TracingViewModel) {
+        guard let definition = vm.strokeTracker.definition,
+              definition.strokes.isEmpty == false,
+              definition.strokes[0].checkpoints.isEmpty == false else { return }
+        let frame = vm.grid.activeCell.frame
+        let first = definition.strokes[0].checkpoints[0]
+        let y = frame.minY + first.y * frame.height
+        var t: CFTimeInterval = 1000.0
+        var p = CGPoint(x: frame.minX + first.x * frame.width, y: y)
+        vm.beginTouch(at: p, t: t)
+        // A short run so the finger never leaves the 3x gate around the
+        // checkpoint it started on, while still producing several
+        // samples — enough for the smoothed velocity to settle.
+        for _ in 0..<5 {
+            t += 1.0
+            p.x += 1
+            vm.updateTouch(at: p, t: t, canvasSize: canvas)
+        }
     }
 }

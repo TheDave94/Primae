@@ -376,7 +376,7 @@ import UIKit
         // other nine, where the assertions are all "equals the default"
         // and a concurrent reset can only reinforce them.
         StudyComparisonSettings.soundGateRadiusFactor = 6.0
-        StudyComparisonSettings.soundGateVelocityFloor = 0
+        StudyComparisonSettings.soundGateVelocityFloor = 22
 
         StudyComparisonSettings.resetToDefaults()
 

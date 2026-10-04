@@ -33,12 +33,19 @@ final class TouchDispatcher {
     /// one half of the ANDed boundary that decides WHEN the arm's sound
     /// starts (`vm.strokeTracker.isNearStroke` is the other).
     ///
+    /// DEFAULT 0.0 since 2026-10-04: a moving finger on the letter is
+    /// audible however slowly it moves. It was 22.0 and was the gate that
+    /// bound — see `StudyComparisonSettings.soundGateVelocityFloor` for
+    /// the measurement and for why a stopped pen still goes quiet without
+    /// it (the stall timeout, not this number).
+    ///
     /// The value here is the production default — taken from the one named
     /// constant so it cannot drift from the switch's own default;
     /// `TracingViewModel` overwrites it once at construction from
     /// `StudyComparisonSettings.soundGateVelocityFloor`, the supervisor's
-    /// "Trigger boundaries" (2026-09-17), so a comparison run can move it
-    /// and an untouched device keeps this value.
+    /// "Trigger boundaries" (2026-09-17), so a comparison run can
+    /// re-introduce a movement requirement and an untouched device keeps
+    /// this value.
     var playbackActivationVelocityThreshold: CGFloat =
         CGFloat(StudyComparisonSettings.soundGateVelocityFloorDefault)
     /// Sub-pixel hysteresis so digitiser noise on a held finger doesn't
@@ -392,6 +399,19 @@ final class TouchDispatcher {
         // No feedbackIntensity gate here: the letter sound is the
         // phonemic anchor for the glyph, not Schmidt & Lee guidance
         // feedback. Haptics + ticks that DO fade are gated separately.
+        //
+        // The proximity gate is the WHOLE activation test (2026-10-04,
+        // proctor: "guided should be audible too"). The velocity floor
+        // defaulting to 22 pt/s made this ANDed pair bind on speed, not
+        // on place, and a 5-6 year-old tracing deliberately is slow — so
+        // the phase whose entire purpose is guided tracing was the one
+        // that could leave a correctly-tracing child in silence. With
+        // the floor at its new 0.0 default the second term is vacuous
+        // and this reads as what it means: on the letter → audible.
+        //
+        // Movement-contingency is preserved by `armStallIdle`, not by the
+        // floor: a stopped pen sends no samples and falls quiet after one
+        // idle debounce. See `playbackActivationVelocityThreshold`.
         let shouldPlayForStroke = vm.strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke
                                   && smoothedVelocity >= playbackActivationVelocityThreshold

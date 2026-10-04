@@ -300,19 +300,33 @@ enum StudyComparisonSettings {
 
     /// The smoothed touch velocity (pt/s) below which the letter's sound
     /// is held at `.idle` even with the finger on the letter — the second
-    /// half of the same ANDed boundary, and the half that BINDS. Because
-    /// the radius gate above is saturated along the stroke, this is the
-    /// gate that decides whether a child tracing correctly hears the
-    /// letter at all (`TouchDispatcher.swift:381-384`).
+    /// half of the same ANDed boundary.
     ///
-    /// Default 22.0, the hardcoded value since the dispatcher was written.
-    /// 0.0 is a legitimate comparison — sound follows proximity alone,
-    /// with no motion requirement — and is included as a setting because
-    /// it is the "both options" the note implies when read as "should the
-    /// trigger require movement at all?".
+    /// DEFAULT IS NOW 0.0 (2026-10-04, proctor's instruction: "guided
+    /// should be audible too"). It was 22.0 — the hardcoded value since
+    /// the dispatcher was written — and it was the gate that BINDS: the
+    /// radius gate above is saturated along the stroke (largest
+    /// checkpoint gap in a study letter is 0.028 against a 0.3 gate), so
+    /// this number alone decided whether a child tracing CORRECTLY heard
+    /// the letter. A 5-6 year-old tracing deliberately is slow; 22 pt/s
+    /// silenced exactly the children the phase is for.
+    ///
+    /// Movement-contingency is NOT lost by dropping it: a stationary
+    /// pen sends no samples, and every active sample arms the stall
+    /// timeout in `PlaybackController.armStallIdle`, so a held finger
+    /// still goes quiet after one idle debounce and resumes on the next
+    /// movement. The floor was a second, cruder movement test layered on
+    /// top of that one — its removal changes WHEN a moving finger is
+    /// heard, not WHETHER a stopped one is.
+    ///
+    /// The switch is KEPT as the re-introduction knob (22/44/66 pt/s in
+    /// the parent area), because a comparison run that wants to ask
+    /// "does requiring movement change anything?" still needs it. Removing
+    /// the floor from the code instead would have orphaned the switch —
+    /// the exact defect CLAUDE.md records for `cycleAllConditions`.
     static let soundGateVelocityFloorKey = prefix + "soundGateVelocityFloor"
     /// The default above, named for the same reason as its sibling.
-    static let soundGateVelocityFloorDefault: Double = 22.0
+    static let soundGateVelocityFloorDefault: Double = 0.0
     static var soundGateVelocityFloor: Double {
         get { max(0, doubleValue(soundGateVelocityFloorKey,
                                  default: soundGateVelocityFloorDefault)) }

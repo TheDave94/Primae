@@ -224,6 +224,30 @@ sounds; the measurement simply never triggered it.
 *should* be audible to a child who is tracing. That is a design
 question under C1/C2, not a measurement.
 
+> **ANSWERED 2026-10-04 — YES, and it was NOT.** David: *"I told you
+> before that the guided should be audible too."* Measuring that this
+> phase CAN sound was not the same as the child HEARING it, and the
+> measurement above had hidden the difference: the probe run that
+> produced 34 silent `guided` windows did draw — it dragged one stroke —
+> and still only 4 windows carried signal. The gate is
+> `smoothedVelocity >= playbackActivationVelocityThreshold`, and the
+> radius gate is saturated along the stroke (largest checkpoint gap in a
+> study letter is 0.028 against a 0.3 gate), so the 22 pt/s floor
+> decided ALONE whether a correctly-tracing child heard anything. A
+> 5-6 year-old tracing deliberately is slow. **The phase whose entire
+> purpose is guided tracing could leave the child in silence.**
+>
+> Fixed by dropping the floor's DEFAULT to 0 pt/s, keeping the term and
+> the switch: `soundGateVelocityFloor` remains in the parent area as the
+> re-introduction knob (22/44/66 pt/s) for a comparison run that wants to
+> ask whether requiring movement changes anything. Movement-contingency
+> is unaffected — `PlaybackController.armStallIdle` is what makes a
+> STOPPED pen go quiet, and it already did.
+>
+> Pinned by three tests in `TriggerBoundaryTests`, mutation-verified:
+> restoring the 22 pt/s default turns them RED on both sound arms and
+> leaves the silent-arm control GREEN.
+
 ### `freeWrite`'s missing samples were an INSTRUMENT defect — now fixed
 
 `freeWrite` produced **zero** samples, and the previous note recorded it
@@ -318,9 +342,10 @@ Count `nonSilent=` (an integer) or grep the peak field directly.
 
 ### Still open
 
-- Whether `guided` should be audible **to a child who is tracing** —
-  a design question under C1/C2, not a measurement, and not answered
-  here.
+- ~~Whether `guided` should be audible **to a child who is tracing**~~ —
+  **RESOLVED 2026-10-04: yes, and the 22 pt/s velocity floor was
+  silencing it.** See the note in the section above; the default is now
+  0 pt/s and the switch is the re-introduction knob.
 - A session-`freeWrite` measurement on a real device (the case
   `testColdFreeWriteProbeIsSilentByDesign` explicitly does not cover).
   The pretest path is now measurable; the guided→freeWrite walk of a

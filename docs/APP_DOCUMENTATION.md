@@ -1595,18 +1595,15 @@ blocks, init/deinit structure are particularly load-bearing).
 * On `endTouch`: `audio.stop()` and the playback state machine forces
   idle.
 
-### 7.3 Proximity-based playback (guided phase)
-
-```swift
+### 7.3 Proximity-based playback (guided phase)```swift
 let shouldPlayForStroke = strokeTracker.isNearStroke
 let shouldBeActive = shouldPlayForStroke
                      && smoothedVelocity >= playbackActivationVelocityThreshold
 playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
 ```
 
-`isNearStroke` is true when the touch is within `checkpointRadius * 3`
-of the next checkpoint. There is no `feedbackIntensity` gate on the
-sound (the letter sound is the glyph's phonemic anchor, not guidance
+`isNearStroke` is true when the touch is within `checkpointRadius * 3` of the next checkpoint. There is no `feedbackIntensity` gate on
+the sound (the letter sound is the glyph's phonemic anchor, not guidance
 feedback; an earlier `> 0.3` gate was removed and this section lagged
 until 2026-09-06). Movement-contingency (ruling AE-2b, 2026-09-06): an
 active request is immediate; an idle request is debounced by
@@ -1617,6 +1614,16 @@ no further samples — falls silent after 0.12 s and resumes at the next
 movement, at the pitch and pan of wherever it now is. Both sound arms
 follow this identically; the silent arm never reaches it.
 
+**The velocity floor's default is 0 pt/s (2026-10-04).** It was 22 pt/s,
+and because the radius gate is saturated along the stroke it was the term
+that BIND — a 5-6 year-old tracing deliberately in the guided phase heard
+nothing at all, which is the phase the trace coupling exists for. The
+proctor's ruling ("guided should be audible too") removed the default, not
+the term: `soundGateVelocityFloor` stays in the parent area (22/44/66 pt/s)
+as the re-introduction knob for a comparison run. Movement-contingency is
+unaffected, because the stall timeout above — not the floor — is what makes
+a stopped pen go quiet.
+
 ### 7.4 Phase-dependent audio gating
 
 There is no `feedbackIntensity` audio gate (removed 2026-09-06, ruling
@@ -1626,8 +1633,11 @@ AE-2b — §4.2, §7.3). Per phase:
 * `.direct`: letter-name audio on first correct dot tap.
 * `.guided`: real-time proximity audio, §7.3's `isNearStroke` +
   velocity gate.
-* `.freeWrite`: silent in a STUDY session (the sound-off post-test);
-  in the casual app the coupling still runs, the same as `.guided`.
+* `.freeWrite`: the coupling runs in every session. The sound-off
+  post-test gate that once silenced it in a STUDY session was LIFTED
+  2026-10-02 on the proctor's instruction, and the guided floor followed
+  on 2026-10-04 — so a letter is no longer traced in silence in either
+  production phase.
 
 ---
 

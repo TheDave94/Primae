@@ -96,12 +96,26 @@ private func slowDrag(vm: TracingViewModel,
         await messages.completionTask?.value
     }
 
-    @Test func slowVelocity_doesNotTriggerPlay() async {
+    /// REVERSED 2026-10-04, deliberately. This pinned the 22 pt/s velocity
+    /// floor by name: "a slow drag must not play". It was correct when
+    /// written and it is the exact behaviour the proctor's ruling removed
+    /// — a child tracing deliberately slowly in the guided phase heard
+    /// nothing, in the one phase the trace coupling exists for. The floor's
+    /// default is 0 pt/s now (`soundGateVelocityFloor`), so a slow drag
+    /// ON THE LETTER plays, and what keeps the sound movement-contingent
+    /// is the stall timeout instead.
+    ///
+    /// Renamed rather than deleted, because the contrast with the fast-drag
+    /// test below is the point: slow and fast now BOTH play, and they
+    /// differ only in rate. The negative case that survived the change is
+    /// the one below it — off the letter is still silent.
+    @Test func slowVelocity_onTheLetter_doesPlay() async {
         let playBefore = audio.playCount
         slowDrag(vm: vm)
+        #expect(audio.playCount > playBefore,
+                "a slow drag along the letter must be audible — the 22 pt/s floor was silencing exactly the slow, deliberate tracers this phase is for")
         await drainAsyncWork()
-        #expect(audio.playCount == playBefore)
-        #expect(!vm.isPlaying)
+        #expect(!vm.isPlaying, "…and a pen that stops still falls silent (stall timeout), which is what replaced the floor")
     }
     @Test func fastVelocity_triggersPlayAfterDebounce() async {
         let playBefore = audio.playCount

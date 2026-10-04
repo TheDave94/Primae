@@ -381,12 +381,12 @@ struct SettingsView: View {
                             StudyComparisonSettings.soundGateVelocityFloor = $0
                             vm.markAssignmentOverrideChanged()
                         })) {
-                        Text("Ohne Bewegungsschwelle").tag(0.0)
-                        Text("22 pt/s (Vorgabe)").tag(22.0)
+                        Text("Ohne Bewegungsschwelle (Vorgabe)").tag(0.0)
+                        Text("22 pt/s").tag(22.0)
                         Text("44 pt/s").tag(44.0)
                         Text("66 pt/s").tag(66.0)
                     }
-                    .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. 22 pt/s ist die Vorgabe und war der fest eingebaute Wert; darunter bleibt der Ton still, auch wenn der Finger auf dem Buchstaben liegt. Ohne Bewegungsschwelle folgt der Ton allein der Nähe. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und Bewegung.")
+                    .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. Ohne Schwelle (Vorgabe seit dem 04.10.) folgt der Ton allein der Nähe — ein langsam nachfahrendes Kind hört den Buchstaben. Mit einer Schwelle bleibt der Ton unterhalb dieses Werts still, auch wenn der Finger auf dem Buchstaben liegt; 22 pt/s war der fest eingebaute Wert. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und — nur wenn eingestellt — Bewegung.")
 
                     Button("Vergleichsmodus zurücksetzen", role: .destructive) {
                         StudyComparisonSettings.resetToDefaults()

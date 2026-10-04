@@ -246,7 +246,17 @@ private final class StampCapturingStore: ParentDashboardStoring {
         stampAfterOneChange({ $0.guidedDotsVisible = false }, expecting: "guidedDotsVisible")
         stampAfterOneChange({ $0.spatialAxisDemonstration = true }, expecting: "spatialAxisDemonstration")
         stampAfterOneChange({ $0.soundGateRadiusFactor = 1.0 }, expecting: "soundGateRadiusFactor")
-        stampAfterOneChange({ $0.soundGateVelocityFloor = 0.0 }, expecting: "soundGateVelocityFloor")
+        // Flipped AWAY from the default on purpose, and this one MOVED:
+        // 0.0 was the non-default when this line was written, then became
+        // the default on 2026-10-04 when the velocity floor stopped
+        // silencing a slow tracing child. Left at 0.0 it is now a no-op
+        // and the switch legitimately cannot appear in the stamp — the
+        // same trap the `spokenFeedbackInStudy` line above already
+        // documents. Deriving the non-default keeps it correct through
+        // the next flip.
+        stampAfterOneChange(
+            { $0.soundGateVelocityFloor = $0.soundGateVelocityFloor == 0 ? 22 : 0 },
+            expecting: "soundGateVelocityFloor")
         stampAfterOneChange({ $0.oncePerCondition = true }, expecting: "oncePerCondition")
     }
 
@@ -273,7 +283,10 @@ private final class StampCapturingStore: ParentDashboardStoring {
             guidedDotsVisible: false,
             spatialAxisDemonstration: true,
             soundGateRadiusFactor: 6.0,
-            soundGateVelocityFloor: 0.0,
+            // Non-default by construction since 2026-10-04 — 0.0 is now
+            // the default, so the literal this used to carry names the
+            // default instead of a departure from it.
+            soundGateVelocityFloor: 22.0,
             oncePerCondition: true)
 
         let storedFields = Mirror(reflecting: all).children.compactMap(\.label)
