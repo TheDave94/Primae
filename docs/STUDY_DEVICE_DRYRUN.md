@@ -289,12 +289,16 @@ For **each of the three trained letters** (the ones named on the
 
 ### 4d · FreeWrite (Selbst schreiben)
 - Blank canvas, no ghost. Write the letter from memory.
-- **You may still see the last stroke of the Guided phase for a
-  moment.** The canvas keeps that finished trace visible for up to
-  5 seconds after the phase changes ("lingering ink" — so the child
-  sees their own ink survive the transition instead of it blinking
-  away), and it clears immediately as soon as you touch the canvas
-  again. That's expected — don't flag it as leftover ghost content.
+- **The canvas is EMPTY of the Guided trace.** Since #27 (2026-10-03)
+  no ink carries into FreeWrite: entering it clears the Guided stroke
+  and any snapshot still fading from an earlier transition at once
+  (`TracingViewModel.resetForPhaseTransition`:
+  `let carriesIntoUnassistedTrial = phaseController.currentPhase == .freeWrite`
+  and, on that branch, `lingeringInk = []`). The 5 s "lingering ink"
+  still happens between Observe and Guided, where the outline is on
+  screen anyway. **If you can see the Guided stroke on the FreeWrite
+  canvas, that is a defect — flag it:** it is a trace the child could
+  copy in the one unassisted trial.
 - **The arms are NOT identical here, and that is the design (P2).**
   Phonem and Raumklang couple to the pen exactly as in Guided — if
   you hear NOTHING under either sound arm while writing, that is now
@@ -302,7 +306,8 @@ For **each of the three trained letters** (the ones named on the
   arm's sound there, that is a defect, flag it. (This bullet used to
   read "silent in all three arms": the freeWrite sound-off gate was
   lifted 2026-10-02.)
-- **After you lift: nothing, under study mode.** In the casual app a
+- **After you lift: nothing, under study mode** — except after the
+  LAST trained letter of the set; see "End of the set" below. In the casual app a
   dark KP overlay would compare your trace to the reference, followed
   by a star-count celebration screen ("Geschafft!" + stars) — but
   under study mode BOTH are gated off (`celebrateFreeWrite` and
@@ -326,6 +331,25 @@ For **each of the three trained letters** (the ones named on the
 After the third trained letter's FreeWrite, training is done. **There
 is no separate "post-test" step for the three trained letters** — that
 FreeWrite pass you just did already is their post-test measure.
+
+**End of the set — what you hear and see (protocol revision 4).** When
+the LAST trained letter's FreeWrite is recorded
+(`PhaseTransitionCoordinator`, `} else if vm.isLastLetterOfSet {`):
+- **All three arms say "Super gemacht!"** — spoken content is identical
+  in every arm (`vm.prompts.play(.celebration, …)`; `.celebration` is in
+  `StudyVoiceoverPromptPlayer.studySpokenKeys`).
+- **Phonem and Raumklang also play a short chime; Ohne Ton does not**
+  (`vm.prompts.playSuccessChime()`, forwarded only
+  `if soundEffectsAllowed`, which is off for the silent arm).
+- **Nothing appears on screen, in any arm.** The celebration overlay is
+  queued, but a study build draws nothing for it: `SchuleWorldView`
+  renders `case .celebration` as `EmptyView()` under `STUDY_BUILD`
+  (`CompletionCelebrationOverlay` is compiled out).
+- **The chevron stops advancing** — the set is over
+  (`nextLetter()`: `guard !awaitingNextParticipant else { return }`).
+  That is the hand-over signal: enrol the next child with the rail
+  double-tap ("Nächstes Kind"). If the chevron still moves to another
+  letter after the last one, that is a defect.
 
 ---
 

@@ -488,8 +488,12 @@ ProgressStore.recordRecognitionSample
 ### 3.4 Phase: FreeWrite (Selbst schreiben)
 
 **What the child sees and does**
-- The letter glyph remains visible but no ghost lines and no
-  checkpoints are shown.
+- No ghost lines and no checkpoints are shown. In a STUDY session the
+  letter glyph is hidden too — the child writes from memory
+  (`TracingViewModel.showsReferenceGlyph`:
+  `!(studyMode && learningPhase == .freeWrite)`, read by
+  `TracingCanvasView` before drawing the glyph). Outside the study the
+  glyph stays visible.
 - The child writes the letter from memory.
 - "Und jetzt ganz allein." is spoken on entry
   (`ChildSpeechLibrary.phaseEntry(.freeWrite)`, `SpeechSynthesizer.swift`).
