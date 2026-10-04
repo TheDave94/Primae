@@ -31,8 +31,9 @@ fileprivate final class SpyPromptPlayer: PromptPlaying {
         keys.append(key)
     }
     var celebrations: Int { keys.filter { $0 == .celebration }.count }
+    private(set) var chimes = 0
     func stop() {}
-    func playSuccessChime() { plays += 1 }
+    func playSuccessChime() { plays += 1; chimes += 1 }
     func playTapChime() { plays += 1 }
     func playWrongTapChime() { plays += 1 }
     func playStrokeTick() { plays += 1 }
@@ -130,16 +131,22 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     }
 
     /// The silent arm's authority is NOT a preference and no switch may
-    /// put sound into it (C3-2) — this holds even with spoken feedback ON.
-    @Test("the silent arm stays silent even with spoken feedback ON")
+    /// put SONIFICATION into it (C3-2) — this holds with spoken feedback
+    /// ON. What changed on 2026-10-04 (P3) is the voiceover: speech is not
+    /// sonification, so the silent arm now hears the same spoken content
+    /// as the other two arms.
+    @Test("the silent arm gets the study voiceover, and no sonification, with spoken feedback ON")
     func silentArm_ignoresTheSpokenFeedbackSwitch() {
         var deps = studyDeps()
         deps.spokenFeedbackInStudy = true
         deps.audioCondition = .silent
         let vm = TracingViewModel(deps)
-        #expect(vm.speech is NullSpeechSynthesizer,
-                "the silent arm's condition IS the absence of sound")
-        #expect(vm.prompts is NullPromptPlayer)
+        #expect(vm.audio is SilentAudio,
+                "the silent arm's condition IS that writing makes no sound")
+        #expect(vm.prompts is StudyVoiceoverPromptPlayer,
+                "the silent arm must hear the same voiceover as the sound arms")
+        #expect(!(vm.speech is NullSpeechSynthesizer),
+                "the voiceover's speech must reach the silent arm")
     }
 
     @Test("studyMode session drives zero calls into the injected feedback spies")
@@ -291,6 +298,9 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     /// in which an end of a set exists at all.
     private func multiLetterDeps(spyPrompts: SpyPromptPlayer? = nil) -> TracingDependencies {
         var deps = studyDeps(spyPrompts: spyPrompts)
+        // Pinned at the study default (ON) through the seam, so a parallel
+        // suite's write to the global key cannot swap the voiceover out.
+        deps.spokenFeedbackInStudy = true
         deps.letterRecognizer = StubRecognizer()
         deps.repo = LetterRepository(
             resources: LetterSubsetProvider(letters: ["A", "F", "I"]),
@@ -335,10 +345,13 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     /// Three advances are the whole three-phase session: observe ->
     /// guided, guided -> freeWrite, freeWrite -> completion, and the last
     /// one is what calls `recordSessionCompletion()`.
-    @Test("the end of the child's set is the one study celebration")
-    func endOfSet_celebratesOnceAndHandsTheDeviceBack() async {
+    @Test("the end of the child's set is the one study celebration, spoken alike in every arm",
+          arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
+    func endOfSet_celebratesOnceAndHandsTheDeviceBack(arm: PilotAudioCondition) async {
         let prompts = SpyPromptPlayer()
-        let vm = TracingViewModel(multiLetterDeps(spyPrompts: prompts))
+        var deps = multiLetterDeps(spyPrompts: prompts)
+        deps.audioCondition = arm
+        let vm = TracingViewModel(deps)
         guard let last = vm.visibleLetterNames.last else { return }
         vm.loadLetter(name: last)
 
@@ -361,14 +374,21 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
             Issue.record("the end of the set must show the celebration overlay; got \(String(describing: vm.overlayQueue.currentOverlay)) - the per-letter celebrations stay suppressed, this one does not")
         }
 
+        // The spoken "Super gemacht!" is spoken content, so EVERY arm hears
+        // it (P3, David 2026-10-04: spoken content identical across arms).
+        // The chime is sound, so only the sound arms hear it.
+        let expectedChimes = arm == .silent ? 0 : 1
         #expect(prompts.celebrations == 1,
-                "the end-of-set celebration is the one study moment carrying a spoken phrase; got \(prompts.celebrations) of them alongside \(prompts.keys)")
+                "\(arm): the end-of-set celebration is the one study moment carrying this spoken phrase; got \(prompts.celebrations) of them alongside \(prompts.keys)")
+        #expect(prompts.chimes == expectedChimes,
+                "\(arm): the end-of-set chime is sound — sound arms only; got \(prompts.chimes)")
 
         // ...and it is a ONCE-per-set signal, not a per-letter reward.
         vm.advanceLearningPhase()
         await settle()
         #expect(prompts.celebrations == 1,
-                "a completed letter session must not be advanced again - the celebration is ONE per set, and it just fired \(prompts.celebrations) times")
+                "\(arm): a completed letter session must not be advanced again - the celebration is ONE per set, and it just fired \(prompts.celebrations) times")
+        #expect(prompts.chimes == expectedChimes)
     }
 
     /// The mid-set control: the SAME session shape on a letter that is

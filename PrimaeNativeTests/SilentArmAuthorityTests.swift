@@ -50,12 +50,17 @@ fileprivate final class SpySpeech: SpeechSynthesizing {
 @MainActor
 fileprivate final class SpyPromptPlayer: PromptPlaying {
     private(set) var plays = 0
-    func play(_ key: PromptPlayer.PromptKey, fallbackText: String) { plays += 1 }
+    /// Spoken prompt keys and non-speech effects, separately — the study
+    /// voiceover (P3, 2026-10-04) lets the first reach the silent arm and
+    /// never the second.
+    private(set) var keys: [PromptPlayer.PromptKey] = []
+    private(set) var effects = 0
+    func play(_ key: PromptPlayer.PromptKey, fallbackText: String) { plays += 1; keys.append(key) }
     func stop() {}
-    func playSuccessChime() { plays += 1 }
-    func playTapChime() { plays += 1 }
-    func playWrongTapChime() { plays += 1 }
-    func playStrokeTick() { plays += 1 }
+    func playSuccessChime() { plays += 1; effects += 1 }
+    func playTapChime() { plays += 1; effects += 1 }
+    func playWrongTapChime() { plays += 1; effects += 1 }
+    func playStrokeTick() { plays += 1; effects += 1 }
 }
 
 @MainActor
@@ -92,6 +97,9 @@ fileprivate final class CapturingStore: ParentDashboardStoring {
         deps.audio = audio
         deps.speech = speech
         deps.makePromptPlayer = { _ in prompts }
+        // Pinned through the seam at the study default (ON), never read
+        // from the device: a parallel suite writes the global key.
+        deps.spokenFeedbackInStudy = true
         if let store { deps.dashboardStore = store }
         let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
@@ -126,6 +134,11 @@ fileprivate final class CapturingStore: ParentDashboardStoring {
         try? await Task.sleep(for: .milliseconds(30))
     }
 
+    /// The silent arm's writing makes no sound in any mode. What it HEARS
+    /// differs by mode since 2026-10-04 (P3): in a study session it gets
+    /// the same spoken content every arm gets, and no chime and no tick;
+    /// outside the study the casual path is unchanged and it hears nothing
+    /// at all.
     @Test("silent arm makes no sound anywhere — study mode ON and OFF",
           arguments: [true, false])
     func silentArm_noAudioPathFires(studyMode: Bool) async {
@@ -133,8 +146,19 @@ fileprivate final class CapturingStore: ParentDashboardStoring {
         await driveEverything(h)
         #expect(h.audio.anyAudioActivity == nil,
                 "silent arm (studyMode=\(studyMode)) reached the engine: \(h.audio.anyAudioActivity ?? "")")
-        #expect(h.speech.spoken.isEmpty, "silent arm must hear no TTS (studyMode=\(studyMode)): \(h.speech.spoken)")
-        #expect(h.prompts.plays == 0, "silent arm must hear no prompt/chime/tick (studyMode=\(studyMode))")
+        // This drive never leaves the canvas, so no direct line is spoken in
+        // ANY arm; what the arms hear alike is pinned in
+        // `ProtocolMatrixTests.spokenContentIsIdenticalAcrossArms`.
+        #expect(h.speech.spoken.isEmpty, "this drive speaks no direct line (studyMode=\(studyMode)): \(h.speech.spoken)")
+        #expect(h.prompts.effects == 0, "silent arm must hear no chime/tick (studyMode=\(studyMode))")
+        if studyMode {
+            #expect(!h.prompts.keys.isEmpty,
+                    "the study voiceover must reach the silent arm too — speech is not sonification")
+            #expect(h.prompts.keys.allSatisfy { StudyVoiceoverPromptPlayer.studySpokenKeys.contains($0) },
+                    "the silent arm heard a phrase outside the study's spoken set: \(h.prompts.keys)")
+        } else {
+            #expect(h.prompts.plays == 0, "outside the study the silent arm hears no prompt at all")
+        }
         #expect(h.vm.audio is SilentAudio, "the engine itself must be the no-op conformer, not merely unused")
     }
 

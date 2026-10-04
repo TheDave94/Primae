@@ -26,6 +26,10 @@ struct TracingDependencies {
     /// wipes the live stores above for the next child. See
     /// `ParticipantArchiveStore.swift`.
     var participantArchive: ParticipantArchiving
+    /// Every enrolment on this device, logged at the moment of enrolment
+    /// and kept apart from participant data (2026-10-04). See
+    /// `EnrolmentLog.swift`.
+    var enrolmentLog: EnrolmentLogging
     var onboardingStore: OnboardingStoring
     var notificationScheduler: LocalNotificationScheduler
     var thesisCondition: ThesisCondition
@@ -78,6 +82,17 @@ struct TracingDependencies {
     /// `nil` means "read the device setting", so production behaviour is
     /// unchanged and an untouched device keeps its own preference.
     var spokenFeedbackInStudy: Bool?
+    /// Seconds the whole-observe sound (P4) waits after the observe
+    /// instruction begins speaking, so the voice never plays over the
+    /// phoneme/carrier (flag 3, 2026-10-04). Default 2.0 — sized to
+    /// OVERSHOOT "Schau genau hin." as the TTS fallback renders it at
+    /// rate 0.42 (~1.7 s; the prompt MP3s are not bundled, so TTS is
+    /// the path every build takes today, and a future bundled MP3 of
+    /// the same sentence is no longer). A seam, not a switch: this is
+    /// not a supervisor question, it has no `StudyComparisonSettings`
+    /// key, and it never enters the comparison stamp — tests inject a
+    /// small value so they don't wait the production gap out.
+    var observeCueToSoundGapSeconds: TimeInterval
     /// Whether a participant is enrolled on this device. Injected (the
     /// stub pins true) so the study precondition below is deterministic
     /// in tests; production reads `ParticipantStore.isEnrolled`.
@@ -175,6 +190,7 @@ struct TracingDependencies {
         dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(),
         rawTraceStore: RawTraceStoring = JSONRawTraceStore(),
         participantArchive: ParticipantArchiving = JSONParticipantArchiveStore(),
+        enrolmentLog: EnrolmentLogging = JSONEnrolmentLog(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         // Default to the full three-phase flow unless the install opted
@@ -225,6 +241,7 @@ struct TracingDependencies {
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
         spokenFeedbackInStudy: Bool? = nil,
+        observeCueToSoundGapSeconds: TimeInterval = 2.0,
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
         // Device config, like studyMode — read once here, never live.
         cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
@@ -262,6 +279,7 @@ struct TracingDependencies {
         self.dashboardStore = dashboardStore
         self.rawTraceStore = rawTraceStore
         self.participantArchive = participantArchive
+        self.enrolmentLog = enrolmentLog
         self.onboardingStore = onboardingStore
         self.notificationScheduler = notificationScheduler
         self.thesisCondition = thesisCondition
@@ -275,6 +293,7 @@ struct TracingDependencies {
         self.enablePhonemeMode = enablePhonemeMode
         self.studyMode = studyMode
         self.spokenFeedbackInStudy = spokenFeedbackInStudy
+        self.observeCueToSoundGapSeconds = observeCueToSoundGapSeconds
         self.participantEnrolled = participantEnrolled
         self.cycleAllConditions = cycleAllConditions
         self.soundGateRadiusFactor = soundGateRadiusFactor

@@ -404,10 +404,11 @@ final class PhaseTransitionCoordinator {
             // proctor running 30-40 children in a row needs an unambiguous
             // "this child is finished, hand the device over" signal.
             //
-            // The sound and the spoken phrase go through `prompts`, so the
-            // `.silent` arm stays silent — that arm's condition is no
-            // audio, and this does not quietly carve out an exception.
-            // A silent-arm child gets the animation only.
+            // Both go through `prompts`, which in a study session is the
+            // study voiceover (P3, 2026-10-04): the chime is a sound effect,
+            // so the phoneme and spatial arms hear it and the silent arm
+            // does not; the spoken "Super gemacht!" is spoken content, so
+            // EVERY arm hears it alike. Every arm gets the overlay animation.
             vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration, fallbackText: ChildSpeechLibrary.celebration)

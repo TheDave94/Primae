@@ -3,8 +3,12 @@
 //
 // The three COLD free-writing probes of the pilot (2026-09-04): a letter
 // opened directly in the freeWrite phase — no observe, no direct, no
-// guided, no demonstration, audio gated off — so that production is
-// measured without training. Each probe stamps its kind on the phase
+// guided, no demonstration — so that production is measured without
+// training. The writing itself couples to the arm's sound exactly as in
+// every other writing pass (P2, 2026-10-04): the sound arms sound while
+// the child writes, the silent arm never does, and the spoken content is
+// identical in every arm — a probe phase has no phase-entry cue.
+// Each probe stamps its kind on the phase
 // row (`PhaseSessionRecord.probe`), which is what lets the analysis tell
 // a pretest from a post-test from a delayed test on the same letter.
 // Until this existed only the untrained-pair post-test route was built

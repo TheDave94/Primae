@@ -37,6 +37,60 @@ final class NullPromptPlayer: PromptPlaying {
     func playStrokeTick() {}
 }
 
+/// The study session's voiceover (P3, David 2026-10-04): the SPOKEN
+/// content is IDENTICAL in all three arms.
+///
+/// Speech used to be switched off together with the silent arm's sound
+/// (ruling C3-2's null pair), so with spoken feedback on, the phoneme and
+/// spatial arms heard the phase prompts and the silent arm heard none — a
+/// second difference between arms that the design does not contain.
+/// Speech is not sonification: the silent arm's condition is that WRITING
+/// makes no sound, and that stays unconditional (`SilentAudio`,
+/// `TouchDispatcher`'s silent-arm return).
+///
+/// What passes, by construction rather than by call-site discipline:
+///   - `play(key:)` for the phrases in `studySpokenKeys` — the phase-entry
+///     prompts and the end-of-set phrase — in every arm alike. The
+///     score-dependent praise tiers, paper-transfer and retrieval phrases
+///     are not in the set, so no arm hears them in a study session (the
+///     praise tiers were unreachable there before this, too).
+///   - The non-speech effects (stroke tick, success chime, tap chimes) are
+///     sound, so they follow the arm: forwarded while
+///     `soundEffectsAllowed` (the phoneme and spatial arms), dropped for
+///     the silent arm. `applyArmAuthority` updates it when the arm changes
+///     mid-session.
+///
+/// Speech that goes through `vm.speech` directly ("Probier's nochmal")
+/// is not filtered here; it reaches every arm through the same real
+/// synthesiser, because a study voiceover session no longer nulls it for
+/// the silent arm.
+@MainActor
+final class StudyVoiceoverPromptPlayer: PromptPlaying {
+    /// The phrases a study child can hear, identical in every arm.
+    static let studySpokenKeys: Set<PromptPlayer.PromptKey> = [
+        .phaseObserve, .phaseDirect, .phaseGuided, .phaseFreeWrite,
+        .celebration,
+    ]
+
+    private let inner: any PromptPlaying
+    var soundEffectsAllowed: Bool
+
+    init(inner: any PromptPlaying, soundEffectsAllowed: Bool) {
+        self.inner = inner
+        self.soundEffectsAllowed = soundEffectsAllowed
+    }
+
+    func play(_ key: PromptPlayer.PromptKey, fallbackText: String) {
+        guard Self.studySpokenKeys.contains(key) else { return }
+        inner.play(key, fallbackText: fallbackText)
+    }
+    func stop() { inner.stop() }
+    func playSuccessChime()  { if soundEffectsAllowed { inner.playSuccessChime() } }
+    func playTapChime()      { if soundEffectsAllowed { inner.playTapChime() } }
+    func playWrongTapChime() { if soundEffectsAllowed { inner.playWrongTapChime() } }
+    func playStrokeTick()    { if soundEffectsAllowed { inner.playStrokeTick() } }
+}
+
 @MainActor
 final class PromptPlayer: PromptPlaying {
 

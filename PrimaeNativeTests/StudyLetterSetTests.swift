@@ -15,9 +15,13 @@ import CoreGraphics
     private func makeAsset(_ name: String,
                            base: String,
                            letterCase: LetterAsset.LetterCase) -> LetterAsset {
+        // A phoneme take on every asset: the stub arm is phoneme, and since
+        // P2 (2026-10-04) a probe in a sound arm is refused without its
+        // recording (`probeArmAudioMissingReason`).
         LetterAsset(id: name, name: name, baseLetter: base, letterCase: letterCase,
                     audioFiles: [],
-                    strokes: LetterStrokes(letter: name, checkpointRadius: 0.1, strokes: []))
+                    strokes: LetterStrokes(letter: name, checkpointRadius: 0.1, strokes: []),
+                    phonemeAudioFiles: ["\(name)_phoneme1.mp3"])
     }
 
     /// A mixed pool: the 5 study letters in both cases, plus K and O

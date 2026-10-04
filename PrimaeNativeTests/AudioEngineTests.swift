@@ -60,21 +60,31 @@ final class AudioEngineTests: XCTestCase {
         // resumeAfterLifecycle() calls startIfNeeded() which starts the engine if not yet running.
         engine?.resumeAfterLifecycle()
 
-        // HARDENING (2026-09-21) — A FAILING ASSERTION MUST NOT WEDGE THE HOST.
+        // HARDENING (2026-09-21; corrected 2026-10-04 against the device logs).
         //
-        // Measured: this class's interruption-recovery test completes in ~2 s
-        // when it passes, but force its assertion to fail and the whole test
-        // host hangs — xcodebuild never returned and had to be killed (rc=137
-        // at a 90 s bound). `continueAfterFailure = false` unwinds the test
-        // body at the failure with a `pendingSafeEnginePause()` still
-        // scheduled and a resume still in flight, and nothing drained that
-        // state, so teardown never completed.
+        // Measured 2026-09-21: this class's interruption-recovery test
+        // completes in ~2 s when it passes, but force its assertion to fail
+        // with `continueAfterFailure = false` and the whole test host hangs —
+        // xcodebuild never returned and had to be killed (rc=137 at a 90 s
+        // bound).
         //
-        // This block runs however the body exited, including on an abort, and
-        // positively quiesces the engine before releasing it. It is
-        // deliberately belt-and-braces on top of `tearDown()`: tearDown is
-        // what runs on the normal path, this is what has to run when the
-        // normal path did not.
+        // The teardown block below was added to quiesce the engine however
+        // the body exited. IT DOES NOT PREVENT THE WEDGE BY ITSELF — measured
+        // on the physical iPad, Debug-Study, 2026-10-01:
+        //   - hardening-verify-7: with this block in place, the forced
+        //     failure was recorded (`AudioEngineTests.swift:450: … FORCED
+        //     FAILURE`) and the run then hung until the 240 s watchdog
+        //     killed it; no "Test Case … failed" line was ever printed.
+        //   - hardening-verify-8: the same forced failure with
+        //     `continueAfterFailure = true` set at the start of the test was
+        //     recorded and the test FINISHED — "Executed 1 test, with 1
+        //     failure … in 2.386 s". That run's later hang was the UI-test
+        //     runner install (a stale runner signed by team XMX37BH48B on the
+        //     iPad, "rejecting upgrade"), not this test.
+        // Hence `continueAfterFailure = true` at the start of every async
+        // interruption test below. This block stays as belt-and-braces; it is
+        // not a demonstrated guarantee, and one clean re-run of the forced
+        // failure (stale runner removed, unit tests only) would settle it.
         addTeardownBlock { @MainActor [weak self] in
             guard let self else { return }
             // Cancel the pending pause/resume work, then stop playback — so
@@ -170,6 +180,7 @@ final class AudioEngineTests: XCTestCase {
     #if DEBUG
 
     @MainActor func testInterruptionBegan_stopsPlayback() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         await postInterruption(type: .began)
         XCTAssertFalse(engine.isPlaying, "isPlaying must be false after interruption began")
@@ -194,6 +205,7 @@ final class AudioEngineTests: XCTestCase {
     /// entered. Loading the carrier puts it on the path the child's own touch
     /// takes.
     @MainActor func testPlayAfterBeganWithoutEnded_clearsInterrupted() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
         XCTAssertTrue(engine.isPlaying, "precondition: playback started")
@@ -208,6 +220,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     @MainActor func testInterruptionBegan_isIdempotent() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         await postInterruption(type: .began)
         let interruptedAfterFirst = engine.debugInterrupted
@@ -220,6 +233,7 @@ final class AudioEngineTests: XCTestCase {
     // MARK: - Interruption: .ended
 
     @MainActor func testInterruptionEnded_shouldResumeFalse_remainsPaused() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         await postInterruption(type: .began)
         await postInterruption(type: .ended, shouldResume: false)
@@ -230,6 +244,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     @MainActor func testInterruptionEnded_shouldResumeTrue_setsFlag() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         await postInterruption(type: .began)
         await postInterruption(type: .ended, shouldResume: true)
@@ -240,6 +255,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     @MainActor func testInterruptionEnded_withoutPrecedingBegan_isHarmless() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         await postInterruption(type: .ended, shouldResume: true)
         XCTAssertFalse(engine.isPlaying)
@@ -247,6 +263,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     @MainActor func testInterruptionEnded_missingOptionKey_defaultsToNoResume() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         // Post .ended with no option key — edge case from older OS versions
         let userInfo: [AnyHashable: Any] = [
@@ -442,6 +459,7 @@ final class AudioEngineTests: XCTestCase {
     // reasoning and symmetry with the tested function, not blind.
 
     @MainActor func testAttemptResumePlayback_afterInterruptionPausesEngine_actuallyResumes() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
         XCTAssertTrue(engine.isPlaying, "precondition: playback started")
@@ -522,6 +540,7 @@ final class AudioEngineTests: XCTestCase {
     #if DEBUG
 
     @MainActor func testInterruptionDuringBackground_stateIsConsistent() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.suspendForLifecycle()
         await postInterruption(type: .began)
@@ -534,6 +553,7 @@ final class AudioEngineTests: XCTestCase {
     }
 
     @MainActor func testRouteChangeDuringInterruption_doesNotCorruptState() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         await postInterruption(type: .began)
         await postRouteChange(reason: .oldDeviceUnavailable)

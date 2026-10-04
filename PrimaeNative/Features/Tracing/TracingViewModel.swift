@@ -851,6 +851,9 @@ public final class TracingViewModel {
     /// wipes the stores above for the next child. See
     /// `ParticipantArchiveStore.swift`.
     let participantArchive: ParticipantArchiving
+    /// Every enrolment on this device, written AT enrolment and never as a
+    /// participant (2026-10-04) — see `EnrolmentLog.swift`.
+    let enrolmentLog: EnrolmentLogging
     /// Was `let` until 2026-09-14: a researcher override (pedagogical arm,
     /// audio arm, trained subset) is read ONCE at init in a non-study
     /// build, so a non-study session still needs the relaunch
@@ -889,6 +892,13 @@ public final class TracingViewModel {
     /// still writing to `setAdaptivePlayback`/`setSpatialPitch` once the
     /// child's own trace starts driving them.
     private var preTaskDemoTask: Task<Void, Never>?
+    /// In-flight delayed start of the whole-observe sound (P4) — the
+    /// start that waits out the observe instruction so the voice never
+    /// plays over the arm's sound (`armWholeObserveSoundAfterCue`).
+    /// Cancelled on every fresh letter load and on an arm change, and
+    /// self-guarding on the phase, so a start that outlives its observe
+    /// phase never fires into the next one.
+    private var observeSoundTask: Task<Void, Never>?
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
     private let letterRecognizer: LetterRecognizerProtocol
@@ -913,6 +923,11 @@ public final class TracingViewModel {
     /// ratcheting the session silent for good.
     private let audibleSpeech: SpeechSynthesizing
     private let audiblePrompts: any PromptPlaying
+    /// The study voiceover (P3, 2026-10-04) when this session runs one —
+    /// study mode with spoken feedback on — else nil. Held separately so
+    /// `applyArmAuthority` can switch its sound EFFECTS with the arm while
+    /// its spoken content stays the same in every arm.
+    private let studyVoiceover: StudyVoiceoverPromptPlayer?
     /// FreeWrite buffers + session timing + scoring.
     let freeWriteRecorder = FreeWritePhaseRecorder()
 
@@ -1104,7 +1119,9 @@ public final class TracingViewModel {
         // engine is a no-op object, so no audio path — coupling,
         // demonstration, replay, load, playback controller — can make a
         // sound whatever study mode or any pedagogical parameter says.
-        // Speech and prompts are nulled for it below on the same footing.
+        // Speech and prompts are nulled for it below on the same footing —
+        // EXCEPT in a study session's voiceover (P3, 2026-10-04), whose
+        // spoken content every arm hears alike; see `studyVoiceover` below.
         let armIsSilent             = deps.audioCondition == .silent
         let effectiveAudio: AudioControlling = armIsSilent ? SilentAudio() : deps.audio
         self.audio                  = effectiveAudio
@@ -1130,8 +1147,10 @@ public final class TracingViewModel {
         self.dashboardStore         = deps.dashboardStore
         self.rawTraceStore          = deps.rawTraceStore
         self.participantArchive     = deps.participantArchive
+        self.enrolmentLog           = deps.enrolmentLog
         self.onboardingStore        = deps.onboardingStore
         self.notificationScheduler  = deps.notificationScheduler
+        self.observeCueToSoundGap   = deps.observeCueToSoundGapSeconds
         // Study pin (2026-09-04): the pedagogical flow is held constant
         // across arms (DECISIONS.md D1) and the pilot's outcome is the
         // freeWrite phase, which `.guidedOnly` / `.control` omit
@@ -1189,16 +1208,45 @@ public final class TracingViewModel {
         // about which value this session ran under.
         let spokenFeedbackInStudy = deps.spokenFeedbackInStudy
             ?? StudyComparisonSettings.spokenFeedbackInStudy
-        let silenceSpeech = armIsSilent || (deps.studyMode && !spokenFeedbackInStudy)
+        //
+        // STUDY VOICEOVER (P3, David 2026-10-04): the spoken content is
+        // IDENTICAL in ALL THREE ARMS. In study mode with spoken feedback
+        // on, the silent arm no longer loses its speech: speech is not
+        // sonification, and an arm that never hears "Jetzt du." is a
+        // second manipulation the design does not contain. The prompts go
+        // through `StudyVoiceoverPromptPlayer`, which passes the study's
+        // spoken phrases in every arm alike and forwards the non-speech
+        // effects (tick, chimes) for the sound arms only. The silent arm's
+        // SONIFICATION stays off unconditionally — `effectiveAudio` above
+        // and `TouchDispatcher`'s silent-arm return, neither touched here.
+        //
+        // Outside study mode the casual path is unchanged: the silent arm
+        // nulls speech and prompts (C3-2). Study mode with the switch OFF
+        // is unchanged too: the null pair for every arm.
+        let studyVoiceoverOn = deps.studyMode && spokenFeedbackInStudy
+        let silenceSpeech = studyVoiceoverOn
+            ? false
+            : (armIsSilent || deps.studyMode)
+        let studyVoiceover: StudyVoiceoverPromptPlayer? = studyVoiceoverOn
+            ? StudyVoiceoverPromptPlayer(inner: deps.makePromptPlayer(deps.speech),
+                                         soundEffectsAllowed: !armIsSilent)
+            : nil
+        self.studyVoiceover = studyVoiceover
         // Built once, stored twice: `audible*` is the pair this session
         // uses in every non-silent arm, and the live properties start
         // there too (which IS the null pair when the arm assigned at
-        // launch is silent or study mode silences speech). A later arm
-        // step re-points the live pair and restores from here — see
-        // `applyArmAuthority`.
+        // launch is silent outside the study voiceover, or study mode
+        // silences speech). A later arm step re-points the live pair and
+        // restores from here — see `applyArmAuthority`.
         let audibleSpeech: SpeechSynthesizing = silenceSpeech ? NullSpeechSynthesizer() : deps.speech
-        let audiblePrompts: any PromptPlaying = silenceSpeech ? NullPromptPlayer()
-                                                                 : deps.makePromptPlayer(deps.speech)
+        let audiblePrompts: any PromptPlaying
+        if let studyVoiceover {
+            audiblePrompts = studyVoiceover
+        } else if silenceSpeech {
+            audiblePrompts = NullPromptPlayer()
+        } else {
+            audiblePrompts = deps.makePromptPlayer(deps.speech)
+        }
         self.audibleSpeech          = audibleSpeech
         self.audiblePrompts         = audiblePrompts
         self.speech                 = audibleSpeech
@@ -1460,13 +1508,18 @@ public final class TracingViewModel {
     func replayAudio() {
         // Study sessions: no on-demand replay. The arm's sound reaches
         // the child ONLY through the trace coupling (thesis Ch.4) and
-        // the one scripted pre-task demonstration (D9). This entry is
+        // the observe demonstration — the whole-observe sound (P4), or
+        // the 2 s window under the axis-sweep switch. This entry is
         // wired to the Apple Pencil squeeze / double-tap, a VoiceOver
         // custom action, and the retrieval prompt — none of which the
         // design describes, all of which would add sound-arm-only
-        // exposure the silent arm cannot match, and which bypass the
-        // freeWrite sound-off gate outright (`loadAudioFile(autoplay:
-        // true)` loops the file regardless of phase). Gated 2026-09-04.
+        // exposure the silent arm cannot match (its file list is
+        // empty), in whatever phase they fire in (`loadAudioFile(
+        // autoplay: true)` loops the file regardless of phase — a
+        // second, child-triggered playback layered over the writing
+        // passes' own coupling). Gated 2026-09-04; the freeWrite
+        // sound-off gate it also cited was lifted 2026-10-02 (#27) and
+        // is no longer a reason.
         guard !studyMode else { return }
         // Reloads and autoplays the active cell's letter audio.
         // Silence is acceptable for letters without audio assets.
@@ -1574,6 +1627,11 @@ public final class TracingViewModel {
     /// is not pinned.
     func applyArm(_ next: PilotAudioCondition) {
         guard next != audioCondition else { return }
+        // A pending whole-observe start was claimed under the outgoing
+        // arm. The task's own arm guard would stand it down anyway;
+        // cancelling here keeps the arm change's whole audio effect in
+        // one place, beside `applyArmAuthority`'s own cancellations.
+        cancelPendingWholeObserveSound()
         audioCondition = next
         applyArmAuthority()
     }
@@ -1593,14 +1651,29 @@ public final class TracingViewModel {
     /// the null one. Stepping back OUT restores the pair the session
     /// began with, so this is a state, not a one-way ratchet.
     ///
+    /// In a study session running the voiceover (P3, 2026-10-04) the pair
+    /// is NOT nulled: the silent arm hears the same spoken content as every
+    /// arm, and only the voiceover's sound effects (tick, chimes) switch
+    /// off with the arm.
+    ///
     /// The remaining guarantee is the one construction gives and this
     /// cannot: `vm.audio` stays the same object, so the ENGINE is a real
     /// one holding no file rather than the `SilentAudio` no-op. Same
     /// quiet, different mechanism.
     private func applyArmAuthority() {
+        // Study voiceover (P3): the spoken content stays the same in
+        // every arm, so the speech/prompt pair is NOT nulled for the silent
+        // arm here — only its sound effects stop, below, and its engine.
+        studyVoiceover?.soundEffectsAllowed = audioCondition != .silent
         guard audioCondition == .silent else {
             speech  = audibleSpeech
             prompts = audiblePrompts
+            return
+        }
+        if studyVoiceover != nil {
+            cancelPreTaskDemonstration()
+            audio.stop()
+            playback.request(.idle, immediate: true)
             return
         }
         cancelPreTaskDemonstration()
@@ -1894,12 +1967,17 @@ public final class TracingViewModel {
     /// ...), but the research-dashboard probe buttons are a SEPARATE
     /// screen that never consulted any of it — reachable via the
     /// parent-area gear regardless of canvas state. This adds only the
-    /// bundle-scan-failure check specifically (not the full umbrella):
-    /// a probe is a sound-off production (see the guard above) and does
-    /// not need the phoneme/spatial checks `sessionBlockReason` also
-    /// folds in — pulling in the whole thing would silently change which
+    /// bundle-scan-failure check specifically (not the full umbrella) —
+    /// pulling in the whole thing would silently change which
     /// conditions block a probe, which is a bigger behavior change than
-    /// this pass is for. Without this narrower check, `kind.permits`
+    /// this pass is for. (Written 2026-09-15, when a probe was a
+    /// sound-off production that needed no audio checks of its own.
+    /// Since P2, 2026-10-04, a probe's writing couples to the arm's sound
+    /// like every other writing pass, so the arm's recording IS
+    /// load-bearing here: the one audio check that matters for a probe —
+    /// this letter's file for the current arm — is now made below
+    /// (`probeArmAudioMissingReason`), without taking the rest of the
+    /// umbrella.) Without the bundle-scan check, `kind.permits`
     /// checks the letter's NAME against a static set, not whether it
     /// actually exists in `letters`; if the bundle scan found zero
     /// letters, `permits` can still return true, this function still
@@ -1915,8 +1993,9 @@ public final class TracingViewModel {
     @discardableResult
     func startColdProbe(letter: String, kind: StudyProbe) -> String? {
         // After a reset/restore the arms in memory are stale until relaunch
-        // (review 2026-09-05). Only that block applies here: a probe is a
-        // sound-off production and needs no phoneme recordings.
+        // (review 2026-09-05). Only that block applies here: a probe writes
+        // under whatever arm is current, coupling to its sound like every
+        // other writing pass (P2) — whose recording is checked below.
         guard !(studyMode && participantIdentityChanged) else {
             return "Teilnehmer gewechselt — App neu starten"
         }
@@ -1944,12 +2023,44 @@ public final class TracingViewModel {
                            studyLetters: studyBaseLetters) else {
             return "Buchstabe für diesen Test nicht zulässig"
         }
-        guard letters.contains(where: { $0.name == letter }) else {
+        guard let asset = letters.first(where: { $0.name == letter }) else {
             return "Buchstabe „\(letter)“ nicht im Bundle geladen"
+        }
+        // P2 (2026-10-04): the probe's writing must SOUND in the sound
+        // arms. A probe whose arm recording is missing would otherwise
+        // run, record an outcome row, and look valid — produced in
+        // silence, in an arm whose condition is sound. Refused instead,
+        // by the same rule the session precondition applies to training
+        // letters (C1-6: a fault, not a quiet skip).
+        if let reason = probeArmAudioMissingReason(for: asset) {
+            return reason
         }
         pendingProbeOverride = kind
         loadLetter(name: letter)
         return nil
+    }
+
+    /// Why a cold probe of `letter` cannot run in the CURRENT arm because
+    /// that arm's sound for it is missing — or nil when it can (P2,
+    /// 2026-10-04). Mirrors `studyPreconditionFailure`'s audio half for
+    /// training letters, applied to the one letter the probe opens:
+    /// phoneme needs this letter's phoneme take (the file
+    /// `activeAudioFiles` would play — empty when missing, since study mode
+    /// fails closed rather than falling back to name audio); spatial needs
+    /// the shared carrier in the bundle; silent needs nothing.
+    func probeArmAudioMissingReason(for letter: LetterAsset) -> String? {
+        switch audioCondition {
+        case .silent:
+            return nil
+        case .spatial:
+            return SpatialSonification.carrierToneURL() == nil
+                ? "Test kann nicht starten: Raumklang-Arm ohne Trägerton (\(SpatialSonification.carrierToneFile)). Das Kind würde ohne den Ton seines Arms schreiben."
+                : nil
+        case .phoneme:
+            return activeAudioFiles(for: letter).isEmpty
+                ? "Test kann nicht starten: keine Phonem-Aufnahme für „\(letter.name)“. Das Kind würde ohne den Ton seines Arms schreiben."
+                : nil
+        }
     }
 
     /// Whether the filled reference glyph is drawn on the canvas. Study
@@ -2053,9 +2164,11 @@ public final class TracingViewModel {
     func nextAudioVariant() {
         // Study sessions: the two-finger canvas swipe that cycles takes
         // would (a) autoplay the arm's sound in any phase, freeWrite and
-        // post-test included, bypassing the sound-off gate, and (b) let
-        // the child pick which take plays, unrecorded. Every study load
-        // resets `audioIndex` to 0, so the realised file is a
+        // post-test included — a child-triggered preview outside the
+        // protocol, layered over the writing passes' own coupling (the
+        // sound-off gate this used to cite was lifted 2026-10-02, #27),
+        // and (b) let the child pick which take plays, unrecorded. Every
+        // study load resets `audioIndex` to 0, so the realised file is a
         // deterministic function of (letter, arm, bundle). Gated
         // 2026-09-04, same reasoning as `replayAudio`.
         guard !studyMode else { return }
@@ -2151,6 +2264,7 @@ public final class TracingViewModel {
         // session, because that is when the proctor closes the app.
         await rawTraceStore.flush()
         await onboardingStore.flush()
+        await enrolmentLog.flush()
     }
 
     public func appDidBecomeActive() {
@@ -2238,12 +2352,122 @@ public final class TracingViewModel {
     /// Plays through a fade-IN so the demonstration does not open with a
     /// click. Silent arm: `activeAudioFiles` returns [], so this is a no-op
     /// — the arm stays silent without a second check here.
+    ///
+    /// WIRED 2026-10-04. Until then its only caller was
+    /// `startGuideAnimation`, reached only when `advance()` lands on
+    /// observe — which it never does, observe being the first active
+    /// phase — so production never called it. The study path now starts
+    /// it from `load(letter:)`, after the file reload AND the observe
+    /// cue gap (`claimWholeObserveSound`, `armWholeObserveSoundAfterCue`).
+    ///
+    /// STEADY, per D9's ruled spatial demonstration: neutral rate, centre
+    /// pan and, for the spatial carrier, zero pitch, set once before play.
+    /// Without this the sound would play at whatever rate/pan/pitch the
+    /// PREVIOUS letter's tracing left the engine in. Nothing here, and
+    /// nothing during observe (touch is disabled in observe,
+    /// `LearningPhaseController.isTouchEnabled`), couples pitch or pan to
+    /// the animated dot — that would be the glissando ruled out on
+    /// 2026-09-18.
     private func startObservePhaseAudio() {
         guard letters.indices.contains(letterIndex) else { return }
         guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
+        audio.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
+        if audioCondition == .spatial {
+            audio.setSpatialPitch(cents: 0)
+        }
         audio.loadAudioFile(named: first, autoplay: false)
         audio.play(fadeInSeconds: observeAudioFadeInSeconds)
     }
+
+    /// Whether this study observe phase gets the sound arm's sound for the
+    /// whole animation (P4, David 2026-10-04) — and, if so, records that
+    /// the condition's demonstration was delivered, exactly as
+    /// `armPreTaskDemonstration` does when it arms one.
+    ///
+    /// No for: casual sessions; the silent arm (its condition is the
+    /// absence of sound; it keeps the unchanged animation); the spatial arm
+    /// with the researcher-only axis-sweep switch ON (that switch asks for
+    /// the OLD scripted sweep, which `armPreTaskDemonstration` still
+    /// delivers); and a condition already demonstrated under the
+    /// "Einmal pro Kondition" comparison switch, which keeps its meaning.
+    ///
+    /// A phoneme letter with no phoneme file is a fault, not a quiet skip
+    /// (C1-6), and does not consume the condition's demonstration.
+    private func claimWholeObserveSound(for letter: LetterAsset) -> Bool {
+        guard studyMode, audioCondition != .silent else { return false }
+        if audioCondition == .spatial && axisDemonstrationEnabled { return false }
+        if demonstrationsOncePerCondition,
+           demonstratedAudioConditions.contains(audioCondition) {
+            return false
+        }
+        guard activeAudioFiles(for: letter).first != nil else {
+            pilotAudioLogger.fault("Whole-observe sound SKIPPED: no audio file for \(letter.name, privacy: .public) in the \(self.audioCondition.rawValue, privacy: .public) arm — the session should have been refused.")
+            return false
+        }
+        // A pending demonstration from an earlier load must not stop this
+        // sound at its 2 s mark.
+        cancelPreTaskDemonstration()
+        demonstratedAudioConditions.insert(audioCondition)
+        return true
+    }
+
+    /// Cancel a pending delayed whole-observe start. Called on every
+    /// fresh letter load (a new load re-derives everything the start
+    /// would assume — its phase, its letter, its arm) and on an arm
+    /// change, the same discipline `cancelPreTaskDemonstration` keeps
+    /// for the 2 s demonstration this start replaced.
+    private func cancelPendingWholeObserveSound() {
+        observeSoundTask?.cancel()
+        observeSoundTask = nil
+    }
+
+    /// Start the whole-observe sound only once the observe instruction
+    /// has finished speaking (flag 3, 2026-10-04). Until now the sound
+    /// and "Schau genau hin." fired in the same tick inside
+    /// `load(letter:)` — sound first, voice over it — so instruction and
+    /// phoneme/carrier arrived as one mush. The child now hears the
+    /// instruction, THEN the arm's sound.
+    ///
+    /// Mechanism: a cancellable `Task` sleeps `observeCueToSoundGap`
+    /// (2.0 s in production, injectable through `TracingDependencies`
+    /// so tests don't wait it out) and then calls
+    /// `startObservePhaseAudio()`. The gap is a fixed overshoot of the
+    /// spoken cue, not a completion callback: the prompt MP3s are not
+    /// bundled, so the cue renders through the TTS fallback, whose
+    /// `SpeechSynthesizing` seam has no didFinish — and a future
+    /// bundled MP3 renders the same sentence in about the same time.
+    /// If observe has already been left when the task fires (the
+    /// auto-advance, a proctor arrow, `resume(at:)`), or the arm
+    /// changed under the pending start, the sound does not start: it
+    /// would bleed the observe demonstration into the next phase or
+    /// deliver it under an arm that never claimed it.
+    ///
+    /// When the observe sound is NOT claimed this method is never
+    /// reached: the silent arm, the axis-sweep researcher switch, and a
+    /// condition whose once-per-condition demonstration is already
+    /// spent all take `claimWholeObserveSound == false` instead — the
+    /// cue then plays alone at phase entry exactly as before (still
+    /// once per observe phase, in every arm), and the axis-sweep case
+    /// takes `armPreTaskDemonstration`'s own 2 s window.
+    private func armWholeObserveSoundAfterCue() {
+        let claimedArm = audioCondition
+        observeSoundTask?.cancel()
+        observeSoundTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            try? await Task.sleep(for: .seconds(self.observeCueToSoundGap))
+            guard !Task.isCancelled,
+                  self.phaseController.currentPhase == .observe,
+                  self.audioCondition == claimedArm
+            else { return }
+            self.startObservePhaseAudio()
+        }
+    }
+
+    /// How long the whole-observe sound waits for the observe
+    /// instruction ("Schau genau hin.") to finish before starting —
+    /// see `armWholeObserveSoundAfterCue`. Copied from
+    /// `TracingDependencies.observeCueToSoundGapSeconds` at init.
+    private let observeCueToSoundGap: TimeInterval
 
     /// Short enough to be inaudible as a delay, long enough to remove the
     /// click. Matches the fade-out's order of magnitude.
@@ -2864,6 +3088,10 @@ public final class TracingViewModel {
             progress: allProgress, rawTraces: rawTraces, enrolledAt: ParticipantStore.enrolledAt)
         return archived + [current]
     }
+    /// Every enrolment on this device, oldest first — exported as its own
+    /// block, never as participants (`ParentDashboardExporter
+    /// .enrolmentBlock`).
+    var enrolmentRecords: [EnrolmentRecord] { enrolmentLog.enrolments }
     var currentStreak: Int { streakStore.currentStreak }
     var longestStreak: Int { streakStore.longestStreak }
     /// Achievement events the child has unlocked. Surfaced in the
@@ -3022,6 +3250,9 @@ public final class TracingViewModel {
 
     private func load(letter: LetterAsset, playPhaseCue: Bool = true, parked: Bool = false) {
         launchParked = parked
+        // Set in the observe branch below, acted on after the file reload
+        // further down (P4 — see `claimWholeObserveSound`).
+        var startWholeObserveSound = false
         // Study mode: the OUTGOING letter's trial must not vanish — a
         // finished-but-unscored freeWrite is scored and recorded, a
         // letter left mid-phase gets a `completed: false` row. Runs
@@ -3069,6 +3300,12 @@ public final class TracingViewModel {
         directTappedDots.removeAll()
         directPulsingTask?.cancel()
         directPulsingTask = nil
+        // A pending whole-observe start belongs to the letter being
+        // replaced — without this, a fast proctor arrow could fire the
+        // outgoing letter's observe sound into the incoming letter's
+        // observe phase, a condition that already spent its claim
+        // included.
+        cancelPendingWholeObserveSound()
         directPulsingDot = false
         directArrowStrokeIndex = nil
         showGhost                      = false
@@ -3137,7 +3374,19 @@ public final class TracingViewModel {
                 armObserveAutoAdvance()
                 animation.startAfterDelay(0.3 + presentationSpacing,
                                               strokes: observeStrokes)
-                armPreTaskDemonstration(for: letter)
+                // P4 (David, 2026-10-04): in a study session the sound
+                // arms hear their sound for the WHOLE observe animation.
+                // That replaces the 2 s pre-task demonstration here — the
+                // demonstration's own `audio.stop()` at 2 s would cut the
+                // whole-animation sound short. The sound itself starts
+                // BELOW, after this load's file reload, which stops
+                // playback (`AudioEngine.loadAudioFile` → `player.stop()`):
+                // started here, it would be silenced within the same call,
+                // which is exactly what happened to the spatial carrier.
+                startWholeObserveSound = claimWholeObserveSound(for: letter)
+                if !startWholeObserveSound {
+                    armPreTaskDemonstration(for: letter)
+                }
                 startAudioSignalTicker()
             }
         }
@@ -3173,6 +3422,18 @@ public final class TracingViewModel {
             // no observe-phase auto-play (it would loop silently behind onboarding
             // and start immediately on letter switch without any user action).
         }
+        // The one exception to "no observe-phase auto-play": the study
+        // sound arms' whole-observe sound (P4), claimed in the observe
+        // branch above. Armed here, AFTER the reload just above, so the
+        // reload cannot stop what it starts — and STARTED only once the
+        // observe instruction below has finished speaking (flag 3,
+        // 2026-10-04): both used to fire in this same tick, the sound
+        // first and the voice over it. See `armWholeObserveSoundAfterCue`.
+        // It ends with the phase: `resetForPhaseTransition` stops the
+        // engine.
+        if startWholeObserveSound {
+            armWholeObserveSoundAfterCue()
+        }
         // Speak the initial phase prompt once a fresh letter loads.
         // Phase *transitions* are spoken from `advanceLearningPhase`;
         // this site covers the very first phase a child sees per
@@ -3191,7 +3452,23 @@ public final class TracingViewModel {
         // confusing audio for content the screen doesn't show.
         // Once onboarding completes, every subsequent letter load
         // is post-onboarding and the cue is welcome.
-        if isOnboardingComplete && playPhaseCue {
+        //
+        // STUDY BUILDS HAVE NO ONBOARDING (2026-10-04). `OnboardingView`
+        // is compiled out, so nothing ever set `isOnboardingComplete` and
+        // "Schau genau hin." reached no child in any arm. The study-safe
+        // trigger: study mode, landing in observe, and NOT parked — the
+        // parked launch load runs before a child is enrolled, and
+        // `startParkedLetter` re-runs this load un-parked when one is.
+        // One load is one observe phase, so this speaks once per observe
+        // phase, in every arm (the study voiceover, P3). The whole-observe
+        // sound WAITS THIS CUE OUT before starting
+        // (`armWholeObserveSoundAfterCue`, flag 3): the child hears the
+        // instruction, then the arm's sound — not both at once.
+        // Deliberately observe only: a cold probe lands in freeWrite and
+        // stays without a cue, as before.
+        let studyObserveCue = studyMode && !parked
+            && phaseController.currentPhase == .observe
+        if (isOnboardingComplete || studyObserveCue) && playPhaseCue {
             prompts.play(
                 ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),
                 fallbackText: ChildSpeechLibrary.phaseEntry(phaseController.currentPhase)
@@ -3506,6 +3783,20 @@ public final class TracingViewModel {
         // which a kindergarten queue with one proctor and one iPad
         // cannot absorb between children.
         reapplyParticipantIdentity()
+        // Log the enrolment ITSELF, apart from any participant data
+        // (2026-10-04). The guard above deliberately does not seal a child
+        // who did nothing, so without this a child who stops before
+        // finishing a letter leaves no trace at all. The arm and subset
+        // are read from the assignment for the NEW identifier — the same
+        // values `reapplyParticipantIdentity` just applied in a study
+        // session — so the record is right outside one too. It never
+        // becomes a participant: see `EnrolmentLog.swift`.
+        enrolmentLog.append(EnrolmentRecord(
+            participantId: newID,
+            enrolledAt: ParticipantStore.enrolledAt,
+            audioCondition: .defaultForInstall,
+            trainedSubset: TrainedLetterSubset.defaultForInstall.rawValue,
+            protocolRevision: StudyProtocol.revision))
         return newID
     }
 

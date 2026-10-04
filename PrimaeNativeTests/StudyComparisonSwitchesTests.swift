@@ -275,8 +275,16 @@ import UIKit
         #expect(adoptsInjectedSpeech(studyMode: true, spokenOn: true, arm: .phoneme),
                 "the switch did not restore speech — it is inert")
 
-        #expect(adoptsInjectedSpeech(studyMode: true, spokenOn: true, arm: .silent) == false,
-                "the silent arm adopted the injected speech — C3-2 says no audio path may fire for that arm, and no comparison switch may override it")
+        // The silent arm in a STUDY session gets the same voiceover as the
+        // sound arms (P3, David 2026-10-04: spoken content identical in
+        // every arm) — speech is not sonification. Its writing stays silent — that is
+        // `SilentAudio` and `TouchDispatcher`, pinned in
+        // `ProtocolMatrixTests` — and outside the study it still hears
+        // nothing (C3-2, unchanged on the casual path).
+        #expect(adoptsInjectedSpeech(studyMode: true, spokenOn: true, arm: .silent),
+                "the study voiceover did not reach the silent arm — spoken content must be identical in every arm")
+        #expect(adoptsInjectedSpeech(studyMode: false, spokenOn: true, arm: .silent) == false,
+                "outside the study the silent arm adopted the injected speech — C3-2 holds on the casual path")
     }
 
     // MARK: - The switches are session properties, not live values

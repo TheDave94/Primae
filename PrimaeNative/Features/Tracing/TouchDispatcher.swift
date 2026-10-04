@@ -163,6 +163,11 @@ final class TouchDispatcher {
                 vm.strokeTracker.resetCurrentStroke()
                 vm.activePath.removeAll(keepingCapacity: true)
                 vm.toast("Probier's nochmal")
+                // Spoken in every arm (P3, 2026-10-04): a study voiceover
+                // session no longer nulls the silent arm's speech, so the
+                // spoken content is identical across arms. Outside the
+                // study, or with spoken feedback off, `vm.speech` is the
+                // null synthesiser where it always was.
                 vm.speech.speak("Probier's nochmal")
             }
         }

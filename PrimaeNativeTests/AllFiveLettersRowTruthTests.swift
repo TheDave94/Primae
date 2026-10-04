@@ -121,10 +121,13 @@ private final class RowCapturingStore: ParentDashboardStoring {
     /// `ColdProbeRefusalReasonTests.makeVM`.
     private func withAllFiveLettersLoaded(_ vm: TracingViewModel) {
         vm.letters = TrainedLetterSubset.studyLetters.map { name in
+            // With a phoneme take: the stub arm is phoneme, and since P2
+            // (2026-10-04) a sound-arm probe is refused without it.
             LetterAsset(id: name, name: name, baseLetter: name, letterCase: .upper,
                         audioFiles: [],
                         strokes: LetterStrokes(letter: name, checkpointRadius: 0.1,
-                                               strokes: []))
+                                               strokes: []),
+                        phonemeAudioFiles: ["\(name)_phoneme1.mp3"])
         }
     }
 

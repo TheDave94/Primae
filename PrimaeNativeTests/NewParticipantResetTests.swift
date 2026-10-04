@@ -438,6 +438,48 @@ import Foundation
         }
     }
 
+    /// T4 (2026-10-04): EVERY enrolment is logged — including a child who
+    /// stops before finishing a letter, whom the phantom guard above
+    /// deliberately does not seal — and the log never turns them into a
+    /// participant. Mutation checks: delete the `enrolmentLog.append(…)` in
+    /// `resetForNewParticipant` (the log assertions go RED); make the
+    /// archive guard `if true` (the phantom assertions go RED, proving this
+    /// test still guards #21).
+    @Test("every enrolment is logged, even a child who does nothing, and none becomes a phantom participant")
+    func enrolmentIsLoggedApartFromTheArchive() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let log = StubEnrolmentLog()
+            var deps = TracingDependencies.stub
+                .with(dashboardStore: dashboard)
+                .with(participantArchive: archive)
+                .with(studyMode: true)
+            deps.enrolmentLog = log
+            let vm = TracingViewModel(deps)
+
+            let first = vm.resetForNewParticipant()
+            let dropout = vm.resetForNewParticipant()   // `first` recorded nothing
+            await archive.flush()
+
+            #expect(log.enrolments.map(\.participantId) == [first, dropout],
+                    "an enrolment was not logged: \(log.enrolments.map(\.participantId))")
+            let latest = log.enrolments.last
+            #expect(latest != nil)
+            #expect(latest?.audioCondition == vm.audioCondition,
+                    "the logged arm is not the arm the session applied")
+            #expect(latest?.trainedSubset == vm.trainedSubset.rawValue)
+            #expect(latest?.protocolRevision == StudyProtocol.revision)
+            #expect(latest?.enrolledAt == ParticipantStore.enrolledAt)
+
+            #expect(archive.archivedParticipants.isEmpty,
+                    "a child who recorded nothing was sealed — the phantom participant is back")
+            #expect(vm.allParticipantExportSources.count == 1,
+                    "enrolments must never become participants: \(vm.allParticipantExportSources.count) sources")
+        }
+    }
+
     /// Async counterpart of `withRestoredState` for tests that need to
     /// `await` a store flush mid-body.
     private func withRestoredStateAsync(_ body: () async -> Void) async {

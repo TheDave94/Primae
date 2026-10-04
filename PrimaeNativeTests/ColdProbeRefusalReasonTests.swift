@@ -31,25 +31,83 @@ private struct EmptyResourceProvider: LetterResourceProviding {
 
 @Suite(.serialized) @MainActor struct ColdProbeRefusalReasonTests {
 
+    /// Every fixture letter carries a phoneme take: the stub arm is
+    /// phoneme, and since P2 (2026-10-04) a probe in a sound arm is refused
+    /// without its recording — see the `armAudioMissing` tests below.
     private func makeAsset(_ name: String,
                            base: String,
-                           letterCase: LetterAsset.LetterCase) -> LetterAsset {
+                           letterCase: LetterAsset.LetterCase,
+                           phonemeFiles: [String]? = nil) -> LetterAsset {
         LetterAsset(id: name, name: name, baseLetter: base, letterCase: letterCase,
                     audioFiles: [],
-                    strokes: LetterStrokes(letter: name, checkpointRadius: 0.1, strokes: []))
+                    strokes: LetterStrokes(letter: name, checkpointRadius: 0.1, strokes: []),
+                    phonemeAudioFiles: phonemeFiles ?? ["\(name)_phoneme1.mp3"])
     }
 
     /// Stub subset is AFI ("A" trained, "L" untrained) — mirrors
     /// StudyLetterSetTests.makeVM.
-    private func makeVM(studyMode: Bool) -> TracingViewModel {
+    private func makeVM(studyMode: Bool, arm: PilotAudioCondition = .phoneme) -> TracingViewModel {
         var deps = TracingDependencies.stub
         deps.studyMode = studyMode
         deps.thesisCondition = .threePhase
+        deps.audioCondition = arm
         let vm = TracingViewModel(deps)
         vm.letters = TrainedLetterSubset.studyLetters.map {
             makeAsset($0, base: $0, letterCase: .upper)
         }
         return vm
+    }
+
+    /// Replace A with a copy that has NO phoneme take.
+    private func dropPhonemeTake(ofA vm: TracingViewModel) {
+        vm.letters = vm.letters.map {
+            $0.name == "A" ? makeAsset("A", base: "A", letterCase: .upper, phonemeFiles: []) : $0
+        }
+    }
+
+    // MARK: - P2: a probe must sound in a sound arm (2026-10-04)
+    //
+    // Mutation check: delete the `probeArmAudioMissingReason` call in
+    // `startColdProbe` → `phonemeProbeWithoutRecordingIsRefused` goes RED
+    // (the probe starts and lands in freeWrite). The other two are the
+    // controls that keep the refusal from over-reaching.
+
+    @Test("P2: a phoneme-arm probe of a letter with no phoneme take is refused, every kind")
+    func phonemeProbeWithoutRecordingIsRefused() {
+        for kind in [StudyProbe.pretest, .delayed] {
+            let vm = makeVM(studyMode: true, arm: .phoneme)
+            dropPhonemeTake(ofA: vm)
+            let reason = vm.startColdProbe(letter: "A", kind: kind)
+            #expect(reason?.contains("Phonem-Aufnahme") == true,
+                    "\(kind): a probe that would be written in silence in a sound arm was not refused: \(String(describing: reason))")
+            #expect(vm.currentProbe == nil, "\(kind): the refused probe still started")
+        }
+    }
+
+    @Test("P2 control: the same letter is probed in the silent arm, which needs no recording")
+    func silentArmProbeNeedsNoRecording() {
+        let vm = makeVM(studyMode: true, arm: .silent)
+        dropPhonemeTake(ofA: vm)
+        #expect(vm.startColdProbe(letter: "A", kind: .pretest) == nil)
+        #expect(vm.currentProbe == .pretest)
+    }
+
+    @Test("P2 control: a phoneme-arm probe WITH its recording starts")
+    func phonemeProbeWithRecordingStarts() {
+        let vm = makeVM(studyMode: true, arm: .phoneme)
+        #expect(vm.probeArmAudioMissingReason(for: vm.letters.first { $0.name == "A" }!) == nil)
+        #expect(vm.startColdProbe(letter: "A", kind: .pretest) == nil)
+        #expect(vm.currentProbe == .pretest)
+    }
+
+    @Test("P2: the spatial arm's probe needs the bundled carrier, and this bundle has it")
+    func spatialProbeChecksTheCarrier() {
+        // The missing-carrier branch cannot be driven: `carrierToneURL()`
+        // reads the bundle and has no seam. This pins the present half
+        // — with the carrier bundled, a spatial probe is not refused.
+        let vm = makeVM(studyMode: true, arm: .spatial)
+        #expect(SpatialSonification.carrierToneURL() != nil, "precondition: the carrier is bundled")
+        #expect(vm.startColdProbe(letter: "A", kind: .pretest) == nil)
     }
 
     @Test("a permitted probe returns nil and lands in freeWrite")

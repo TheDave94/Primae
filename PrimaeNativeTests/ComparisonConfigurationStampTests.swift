@@ -400,9 +400,13 @@ private final class StampCapturingStore: ParentDashboardStoring {
         let idx = try #require(names.firstIndex(of: "comparisonConfiguration"),
                                "the export has no comparisonConfiguration column — a comparison run's rows are still indistinguishable from pilot rows. Header: \(header)")
 
-        // Appended LAST, so no existing column moved or was renamed.
-        #expect(idx == names.count - 1,
-                "comparisonConfiguration sits at index \(idx) of \(names.count) — it must be the LAST column so every legacy parser's column order is untouched")
+        // Appended at the end, so no existing column moved or was renamed.
+        // `protocolRevision` was appended after it (2026-10-04), so the
+        // stamp is now second-to-last — still behind every legacy column.
+        #expect(idx == names.count - 2,
+                "comparisonConfiguration sits at index \(idx) of \(names.count) — it must sit immediately before protocolRevision, behind every legacy column")
+        #expect(names.last == "protocolRevision",
+                "the last column must be protocolRevision. Header: \(header)")
 
         let rows = lines.filter { $0.hasPrefix("A,freeWrite") || $0.hasPrefix("F,freeWrite") || $0.hasPrefix("I,freeWrite") }
         #expect(rows.count == 3, "expected a row per letter, got \(rows.count)")

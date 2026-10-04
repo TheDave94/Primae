@@ -107,9 +107,9 @@
 <li><strong>Palm rejection</strong> — untestable without a real hand resting on the glass.</li>
 <li><strong>Physical audio output</strong> — whether sound actually plays through headphones is a hardware fact XCUITest cannot observe; Sections 4b/4c (below) and the audio arm checks stay manual.</li>
 <li><strong>The three-finger proctor gesture</strong> — not simulated by this suite.</li>
-<li><strong>All three audio arms, end to end</strong> — the automated suite exercises ONE cold-probe pass structurally; it does not switch arms or listen for sound in any of them. Section 6's per-arm re-runs are still entirely David's.</li>
+<li><strong>All three audio arms, end to end</strong> — CORRECTED 2026-10-01: this bullet used to claim the automated suite "does not switch arms". Measured 2026-09-21, <code>PrimaeUITests</code> runs ON THE PHYSICAL iPAD (bare <code>xcodebuild test -only-testing:PrimaeUITests -destination "platform=iOS,id=&lt;UDID&gt;"</code>), and both per-arm audio probes passed there — <code>testPhonemeArmRequestsAudioDuringObserve</code> and <code>testSpatialArmRequestsAudioDuringObserve</code> — each driving its arm via the audio override. What no XCUITest can do, on any destination, is LISTEN: the probes prove the arm requested the right asset, not that sound left the speaker. Section 6's per-arm listening pass is still David's. And a device UI-test run REPLACES the pilot artefact with a Debug-Study build (same bundle ID — <code>nm</code> cannot tell them apart), so reinstall Release-Study before any participant session.</li>
 </ul>
-<p>Where a step below is now also covered by the automated suite, it says so inline — that does not mean skip it on a real device dry-run, since the suite runs on a simulator and proves the LOGIC, not the physical experience; it means a failure there is no longer a surprise waiting for the next manual pass to catch.</p>
+<p>Where a step below is now also covered by the automated suite, it says so inline — that does not mean skip it on a real device dry-run, since CI runs the suite on a simulator only (Layer 3 scopes to PrimaeNativeTests; <code>PrimaeUITests</code> never runs there) and no automated run anywhere proves the PHYSICAL experience; it means a failure there is no longer a surprise waiting for the next manual pass to catch. The UI suite can additionally be driven on the physical iPad from a device-capable seat — see the audio-arms bullet above for what that does and does not establish.</p>
 <hr>
 <h2>0 · Before you start (once, not per run)</h2>
 <ul>
@@ -145,7 +145,7 @@
 <p>For <strong>each of the five letters</strong>, one at a time:</p>
 <ol>
 <li>Tap <strong>"Vortest starten: <code>&lt;letter&gt;</code>."</strong> The parent area closes immediately and drops you straight onto the canvas.</li>
-<li>The canvas shows a blank glyph — no ghost line, no demonstration, no sound in any arm (pretest is sound-off and unscaffolded by design, the same for all three arms). Write the letter once from memory.</li>
+<li>The canvas shows a blank glyph — no ghost line, no demonstration. While you write, the sound arms couple exactly as in every other writing pass (Phonem plays the letter's sound under the pen, Raumklang the carrier — the outcome passes sound too, that is the design, P2) and <strong>Ohne Ton stays silent</strong>. No spoken instruction here: a probe phase has no phase-entry cue. Write the letter once from memory.</li>
 <li>After you lift and pause briefly, the trial scores and the canvas goes idle (no celebration, no badge — a cold probe gets no reward-class feedback).</li>
 <li>Long-press the gear again, back to Forschungs-Daten, tap the next letter's pretest button. Repeat until all five are done.</li>
 </ol>
@@ -160,18 +160,20 @@
 <p>For <strong>each of the three trained letters</strong> (the ones named on the "Aktiver Teilnehmer" card), in order:</p>
 <h3>4a · Observe (Anschauen)</h3>
 <ul>
-<li>The guide-dot animation runs for <strong>two full cycles</strong> (roughly 5–11 seconds depending on the letter — I, being short, is at the fast end; M is slower). <strong>Do not expect a tap to skip this</strong> — under study mode a tap does nothing here except start the parked launch letter the very first time. It auto-advances on its own after both cycles. If it seems stuck past ~15 seconds, that's a defect, not patience being tested.</li>
-<li><strong>What plays, per arm, in the first ~2 seconds of this window:</strong></li>
-<li class="sub"><strong>Phonem:</strong> the letter's own recorded sound, once (may loop briefly to fill the 2 s window on four of the five letters — that's expected, not a bug).</li>
-<li class="sub"><strong>Raumklang:</strong> a synthetic tone that sweeps — pitch high-to-low- to-high while a point moves top-to-bottom-to-top on the canvas, then the same tone panning left-right-left as a point moves center-right-center-left-center. You should clearly hear pitch and pan moving independently, not just together.</li>
-<li class="sub"><strong>Ohne Ton:</strong> nothing added — just the guide-dot animation, silent, same length as the other two arms.</li>
-<li>The demonstration is cancelled instantly if you touch the canvas early — that's correct, not a glitch.</li>
+<li>The guide-dot animation runs for <strong>one pass</strong> (roughly 6–14 seconds depending on the letter — I, being short, is at the fast end; M is slower). It plays at 0.4x, which is why a single pass is longer than half of the two it replaced: the window grew about 25%, from ~5–11 s to ~6–14 s. <strong>Do not expect a tap to skip this</strong> — under study mode a tap does nothing here except start the parked launch letter the very first time. It auto-advances on its own after the pass. If it seems stuck past ~20 seconds, that's a defect, not patience being tested. (The tripwire was ~15 s and had four seconds of headroom; the window change left it about one, so it moved.)</li>
+<li><strong>What you hear, per arm (protocol revision 4, 2026-10-04):</strong></li>
+<li class="sub"><strong>Phonem:</strong> the spoken prompt <strong>"Schau genau hin."</strong>, then — about <strong>2 s</strong> after the letter appears — the letter's own recorded sound, <strong>looping for the rest of the animation</strong> and stopping when the phase moves on.</li>
+<li class="sub"><strong>Raumklang:</strong> the same spoken prompt, then about 2 s later a synthetic tone, <strong>STEADY for the rest of the animation</strong>: neutral rate, centre pan, zero pitch — no sweep. (It used to sweep pitch and pan across the canvas; that was removed on 2026-09-17, "Glissando weg". <strong>Expect a plain held tone and nothing else.</strong> What the arm does with pitch and pan happens during the child's own tracing, not here.)</li>
+<li class="sub"><strong>Ohne Ton:</strong> the spoken prompt <strong>only</strong> — the same words as the other two arms — then the guide-dot animation in silence, same length as the other two arms.</li>
+<li><strong>Check, every run: the prompt must FINISH before the arm's sound starts</strong>, at the speech rate set on this iPad (Einstellungen → Sprechgeschwindigkeit). The sound waits a fixed 2.0 s; it does not listen for the end of the speech. <strong>If the voice and the sound overlap, that is a defect — flag it</strong>, with the speech-rate setting you were on.</li>
+<li>The screen does not react to touch during this phase — that's correct, not a glitch.</li>
 </ul>
-<h3>4b · Direct (Richtung lernen)</h3>
+<h3>4b · (removed 2026-09-18) — the tapping-points phase</h3>
 <ul>
-<li>Numbered dots appear over each stroke's start point. Tap them <strong>in order</strong>. The next expected one pulses. A correct tap advances a brief directional arrow along the stroke — that part is real. <strong>The tap-sound and the haptics are not</strong>: under study mode the app substitutes silent no-op objects for both the prompt player and the haptic engine (<code>TracingViewModel.init</code>), so a correct tap is silent and a wrong dot gives no haptic either — only the visual pulse on the wrong dot and the arrow on a correct one are present, in every arm. Don't expect to hear or feel anything here; that's correct, not a defect.</li>
-<li>No arm-specific sound here in any arm — this phase is unaffected by the audio condition.</li>
-<li>All dots tapped in order → auto-advances.</li>
+<li><strong>This phase no longer runs.</strong> It was "Direct (Richtung lernen)": numbered dots over each stroke's start point, tapped in order. David's ruling — "the whole tapping the points part should go" — took it out of the session, so a letter's flow is now <strong>observe → guided → freeWrite</strong>.</li>
+<li><strong>You should never see numbered dots during a session.</strong> If you do, that is a regression worth reporting, not a step to work through.</li>
+<li>The section is kept, rather than deleted, so a proctor working from an older printout can find out what happened to the step they expected.</li>
+<li>Implementation note: the <code>LearningPhase.direct</code> case still exists (it is <code>Codable</code> and stored rows reference it); it is simply not in <code>LearningPhaseController.activePhases</code>, so no session runs it.</li>
 </ul>
 <h3>4c · Guided (Nachspuren)</h3>
 <ul>
@@ -180,13 +182,13 @@
 <li class="sub"><strong>Phonem / Raumklang:</strong> sound is active only while you're near the expected checkpoint and moving above a small speed threshold; it speeds up / slows down and (Raumklang only) changes pitch with your vertical position and pans with your horizontal position. If you stop moving, it holds briefly then goes idle within about a tenth of a second; moving again brings it back.</li>
 <li class="sub"><strong>Ohne Ton:</strong> silent throughout, by design.</li>
 <li><strong>No haptics anywhere in this phase, in any arm.</strong> Under study mode the haptic engine is a silent no-op (same substitution as 4b), so neither the per-checkpoint ticks nor the stroke-completion buzz that the casual app has actually fires — don't expect to feel anything.</li>
-<li>If your finger or the Pencil leaves the canvas bounds mid-stroke, the app shows a text toast reading "Probier's nochmal" and resets the current stroke so you retrace it from its start point — no sound accompanies the toast (speech is also silenced under study mode). That's the expected recovery path, not a defect.</li>
+<li>If your finger or the Pencil leaves the canvas bounds mid-stroke, the app shows a text toast reading "Probier's nochmal" and resets the current stroke so you retrace it from its start point, and the app SAYS "Probier's nochmal" — in all three arms alike, Ohne Ton included (revision 4: spoken content is identical in every arm). That's the expected recovery path, not a defect. If one arm says it and another doesn't, that is a defect.</li>
 </ul>
 <h3>4d · FreeWrite (Selbst schreiben)</h3>
 <ul>
 <li>Blank canvas, no ghost. Write the letter from memory.</li>
 <li><strong>You may still see the last stroke of the Guided phase for a moment.</strong> The canvas keeps that finished trace visible for up to 5 seconds after the phase changes ("lingering ink" — so the child sees their own ink survive the transition instead of it blinking away), and it clears immediately as soon as you touch the canvas again. That's expected — don't flag it as leftover ghost content.</li>
-<li><strong>Silent in all three arms, including Phonem and Raumklang</strong> — the audio coupling is deliberately gated off here (sound-off production is part of the design, not a missing feature). If you hear the arm's sound during this phase, that IS a defect — flag it.</li>
+<li><strong>The arms are NOT identical here, and that is the design (P2).</strong> Phonem and Raumklang couple to the pen exactly as in Guided — if you hear NOTHING under either sound arm while writing, that is now the defect, flag it. <strong>Ohne Ton stays silent</strong> — if you hear the arm's sound there, that is a defect, flag it. (This bullet used to read "silent in all three arms": the freeWrite sound-off gate was lifted 2026-10-02.)</li>
 <li><strong>After you lift: nothing, under study mode.</strong> In the casual app a dark KP overlay would compare your trace to the reference, followed by a star-count celebration screen ("Geschafft!" + stars) — but under study mode BOTH are gated off (<code>celebrateFreeWrite</code> and <code>recordSessionCompletion</code> in <code>PhaseTransitionCoordinator</code> each gate on <code>!vm.studyMode</code>), and the views themselves (<code>CompletionCelebrationOverlay</code>, the freeWrite KP overlay) are compiled out of the study binary entirely. After the ~2 s quiet window following your last touch, the canvas simply goes idle — no overlay, no stars, no chime, in any arm. What you will <strong>not</strong> see in any arm, casual or study: the coloured recognition badge or the guided-score feedback card — both are reward-class feedback suppressed under study mode regardless of what else changes.</li>
 <li><strong>There is no "Weiter" button under study mode</strong> — it belongs to the celebration screen, which doesn't exist here. To move to the next trained letter, press the <strong>right-arrow (chevron) nav button</strong> in the bottom bar (<code>nextLetter()</code>); the left-arrow (<code>previousLetter()</code>) goes back. Then repeat 4a–4d. The demonstration in 4a plays again on every letter entry — that's intended (every trace is preceded by the same exposure), not a repeat-content bug.</li>
 </ul>

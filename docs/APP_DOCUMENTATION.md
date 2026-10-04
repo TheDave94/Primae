@@ -491,11 +491,13 @@ ProgressStore.recordRecognitionSample
 - The letter glyph remains visible but no ghost lines and no
   checkpoints are shown.
 - The child writes the letter from memory.
-- A "Jetzt schreibst du den Buchstaben ganz alleine." prompt is spoken
-  on entry.
+- "Und jetzt ganz allein." is spoken on entry
+  (`ChildSpeechLibrary.phaseEntry(.freeWrite)`, `SpeechSynthesizer.swift`).
 - No haptics (`feedbackIntensity == 0.0`). Real-time audio is a
-  separate gate (§7.3/§7.4): in a STUDY session freeWrite is silent
-  (the outcome's sound-off post-test, DECISIONS.md header); in the
+  separate gate (§7.3/§7.4): in a STUDY session the sound arms couple
+  in freeWrite exactly as in guided — every writing part sounds,
+  the outcome passes included (the sound-off post-test gate was
+  lifted 2026-10-02), and the silent arm alone stays silent; in the
   casual app the phoneme keeps sounding as the glyph's auditory anchor.
 - On lift-off, the child lifts the pen and the phase ends.
 
@@ -602,8 +604,9 @@ learning: A behavioral emphasis* (4th ed.). Human Kinetics.
   2026-09-06, ruling AE-2b — see §7.3/§7.4): the letter sound is the
   glyph's phonemic anchor, not Schmidt & Lee guidance feedback, so it
   no longer fades with the haptics. `updateAdaptivePlayback` instead
-  short-circuits on the silent arm and, in a STUDY session only, on the
-  `.freeWrite` phase (the pilot's sound-off post-test).
+  short-circuits on the silent arm only — in a STUDY session the
+  `.freeWrite` coupling runs exactly like guided (the pilot's
+  sound-off post-test gate was lifted 2026-10-02; see §7.4).
 
 **How the implementation differs.** The paper describes a continuous
 fade; this implementation uses four discrete phase-pinned haptic
@@ -2447,6 +2450,15 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 | `phaseDurationSeconds` | `PhaseSessionRecord.phaseDurationSeconds` | **Time outcome.** freeWrite rows only: measured-phase time = first sample → last sample, end-inclusive (§6.4.1). Excludes the trailing 2.0 s quiet-window auto-advance (`freeWriteQuietSeconds`) by construction; that constant is identical across arms. Blank otherwise. |
 | `frechetDistance` | `PhaseSessionRecord.frechetDistance` | **Primary accuracy outcome.** Raw discrete-Fréchet distance, normalised 0–1 letter-box units, 6 dp, lower = better, unclamped. freeWrite rows only; blank otherwise and for legacy rows. Full definition in §4.12.1. |
 | `checkpointCoverage` | `PhaseSessionRecord.checkpointCoverage` | **Secondary accuracy outcome.** Reached ÷ total reference checkpoints for the freeWrite pass (0–1, 4 dp). Saturates at ceiling — §4.12.2. freeWrite rows only; blank otherwise and for legacy rows. |
+| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | **The LAST column** (2026-10-04), after `comparisonConfiguration`. Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
+
+> **This table is incomplete.** It does not yet list the columns between
+> `checkpointCoverage` and `protocolRevision` (`spatialDeviation`,
+> `strokeCount`, `strokeOrder`, `reversedStrokeCount`, `studyMode`,
+> `probe`, `comparisonConfiguration`), and the `frechetDistance` row above
+> is retired: it now exports as `frechetDistance_RETIRED_alwaysEmpty`. The
+> authoritative order is the header array in
+> `ParentDashboardExporter.swift`.
 
 > Blank ≠ 0 in this section. A `0` in `frechetDistance` means a perfect
 > overlay and a `0` in `checkpointCoverage` means no checkpoint was

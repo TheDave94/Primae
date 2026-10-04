@@ -174,10 +174,13 @@ participant trains).
 For **each of the five letters**, one at a time:
 1. Tap **"Vortest starten: `<letter>`."** The parent area closes
    immediately and drops you straight onto the canvas.
-2. The canvas shows a blank glyph — no ghost line, no demonstration,
-   no sound in any arm (pretest is sound-off and unscaffolded by
-   design, the same for all three arms). Write the letter once from
-   memory.
+2. The canvas shows a blank glyph — no ghost line, no demonstration.
+   While you write, the sound arms couple exactly as in every other
+   writing pass (Phonem plays the letter's sound under the pen,
+   Raumklang the carrier — the outcome passes sound too, that is the
+   design, P2) and **Ohne Ton stays silent**. No spoken instruction
+   here: a probe phase has no phase-entry cue. Write the letter once
+   from memory.
 3. After you lift and pause briefly, the trial scores and the canvas
    goes idle (no celebration, no badge — a cold probe gets no
    reward-class feedback).
@@ -224,23 +227,29 @@ For **each of the three trained letters** (the ones named on the
   stuck past ~20 seconds, that's a defect, not patience being tested.
   (The tripwire was ~15 s and had four seconds of headroom; the window
   change left it about one, so it moved.)
-- **What plays, per arm, in the first ~2 seconds of this window:**
-  - **Phonem:** the letter's own recorded sound, once (may loop
-    briefly to fill the 2 s window on four of the five letters —
-    that's expected, not a bug).
-  - **Raumklang:** a synthetic tone, STEADY. It holds the neutral rate at
-    centre pan and zero pitch for the 2 s window — no sweep. It used to
-    sweep the pitch and pan across the canvas; that was removed on
-    2026-09-17 ("Glissando weg"), because on the device it read as the
-    arm playing a high-low-high slide at the child before anything had
-    been touched. **Expect a plain held tone and nothing else.** What the
-    arm does with pitch and pan happens during the child's own tracing,
-    not here — the demonstration no longer teaches the mapping, only
-    occupies the same window as the phoneme arm's.
-  - **Ohne Ton:** nothing added — just the guide-dot animation,
-    silent, same length as the other two arms.
-- The demonstration is cancelled instantly if you touch the canvas
-  early — that's correct, not a glitch.
+- **What you hear, per arm (protocol revision 4, 2026-10-04):**
+  - **Phonem:** the spoken prompt **"Schau genau hin."**, then — about
+    **2 s** after the letter appears — the letter's own recorded sound,
+    **looping for the rest of the animation** and stopping when the
+    phase moves on.
+  - **Raumklang:** the same spoken prompt, then about 2 s later a
+    synthetic tone, **STEADY for the rest of the animation**: neutral
+    rate, centre pan, zero pitch — no sweep. (It used to sweep pitch and
+    pan across the canvas; that was removed on 2026-09-17, "Glissando
+    weg". **Expect a plain held tone and nothing else.** What the arm
+    does with pitch and pan happens during the child's own tracing, not
+    here.)
+  - **Ohne Ton:** the spoken prompt **only** — the same words as the
+    other two arms — then the guide-dot animation in silence, same
+    length as the other two arms.
+- **Check, every run: the prompt must FINISH before the arm's sound
+  starts**, at the speech rate set on this iPad (Einstellungen →
+  Sprechgeschwindigkeit). The sound waits a fixed 2.0 s; it does not
+  listen for the end of the speech. **If the voice and the sound
+  overlap, that is a defect — flag it**, with the speech-rate setting
+  you were on.
+- The screen does not react to touch during this phase — that's
+  correct, not a glitch.
 
 ### 4b · (removed 2026-09-18) — the tapping-points phase
 - **This phase no longer runs.** It was "Direct (Richtung lernen)":
@@ -272,9 +281,11 @@ For **each of the three trained letters** (the ones named on the
   the casual app has actually fires — don't expect to feel anything.
 - If your finger or the Pencil leaves the canvas bounds mid-stroke,
   the app shows a text toast reading "Probier's nochmal" and resets
-  the current stroke so you retrace it from its start point — no
-  sound accompanies the toast (speech is also silenced under study
-  mode). That's the expected recovery path, not a defect.
+  the current stroke so you retrace it from its start point, and the
+  app SAYS "Probier's nochmal" — in all three arms alike, Ohne Ton
+  included (revision 4: spoken content is identical in every arm).
+  That's the expected recovery path, not a defect. If one arm says it
+  and another doesn't, that is a defect.
 
 ### 4d · FreeWrite (Selbst schreiben)
 - Blank canvas, no ghost. Write the letter from memory.
@@ -284,10 +295,13 @@ For **each of the three trained letters** (the ones named on the
   sees their own ink survive the transition instead of it blinking
   away), and it clears immediately as soon as you touch the canvas
   again. That's expected — don't flag it as leftover ghost content.
-- **Silent in all three arms, including Phonem and Raumklang** — the
-  audio coupling is deliberately gated off here (sound-off production
-  is part of the design, not a missing feature). If you hear the
-  arm's sound during this phase, that IS a defect — flag it.
+- **The arms are NOT identical here, and that is the design (P2).**
+  Phonem and Raumklang couple to the pen exactly as in Guided — if
+  you hear NOTHING under either sound arm while writing, that is now
+  the defect, flag it. **Ohne Ton stays silent** — if you hear the
+  arm's sound there, that is a defect, flag it. (This bullet used to
+  read "silent in all three arms": the freeWrite sound-off gate was
+  lifted 2026-10-02.)
 - **After you lift: nothing, under study mode.** In the casual app a
   dark KP overlay would compare your trace to the reference, followed
   by a star-count celebration screen ("Geschafft!" + stars) — but

@@ -143,6 +143,14 @@ final class StubParticipantArchive: ParticipantArchiving {
     }
 }
 
+final class StubEnrolmentLog: EnrolmentLogging {
+    private(set) var enrolments: [EnrolmentRecord] = []
+    func append(_ record: EnrolmentRecord) {
+        enrolments.removeAll { $0.participantId == record.participantId }
+        enrolments.append(record)
+    }
+}
+
 // MARK: - No-op onboarding store
 final class StubOnboardingStore: OnboardingStoring {
     var hasCompletedOnboarding: Bool { false }
@@ -204,6 +212,9 @@ extension TracingDependencies {
             dashboardStore:       StubDashboardStore(),
             rawTraceStore:        StubRawTraceStore(),
             participantArchive:   StubParticipantArchive(),
+            // In memory: a test that enrols a child must never append to
+            // the simulator's real `Enrolments/` directory.
+            enrolmentLog:         StubEnrolmentLog(),
             onboardingStore:      StubOnboardingStore(),
             notificationScheduler: LocalNotificationScheduler(center: StubNotificationCenter()),
             thesisCondition:      .guidedOnly,

@@ -225,7 +225,13 @@ struct ParentDashboardExporter {
         // legacy order. The value rides on the record and is never
         // recomputed here — see `PhaseSessionRecord
         // .comparisonConfiguration`.
-        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration"].joined(separator: sep))
+        // `protocolRevision` appended LAST (2026-10-04): which
+        // child-facing protocol revision wrote the row
+        // (`StudyProtocol.revision`), read off the RECORD like the stamp
+        // above. Empty for rows written before the field existed
+        // (revisions 1–3). See `StudyProtocol` for why the stamp alone
+        // could not carry this.
+        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration","protocolRevision"].joined(separator: sep))
         // D11#1: filtered ONCE, here, and every aggregate below —
         // including the arm-split ones — reads `enrolledRecords`, never
         // `snapshot.phaseSessionRecords` directly. The raw-row loop and
@@ -315,7 +321,10 @@ struct ParentDashboardExporter {
                 // in the file with the configuration of the device the
                 // export ran on, which for a session run yesterday is
                 // simply wrong. Empty for a pilot row.
-                rec.comparisonConfiguration ?? ""
+                rec.comparisonConfiguration ?? "",
+                // Protocol revision, read off the RECORD (2026-10-04).
+                // Empty for a row written before the field existed.
+                rec.protocolRevision.map(String.init) ?? ""
             ]
             lines.append(row.map { delimitedField($0, separator: sep) }.joined(separator: sep))
         }
@@ -457,6 +466,7 @@ struct ParentDashboardExporter {
     /// concatenation is new.
     static func combinedDelimitedData(
         participants: [ParticipantExportSource],
+        enrolments: [EnrolmentRecord] = [],
         separator sep: String
     ) -> Data {
         let blocks = participants.map { p in
@@ -464,7 +474,42 @@ struct ParentDashboardExporter {
                                        progress: p.progress, enrolledAt: p.enrolledAt, separator: sep),
                    encoding: .utf8) ?? ""
         }
-        return blocks.joined(separator: Self.participantBlockSeparator).data(using: .utf8) ?? Data()
+        var out = blocks.joined(separator: Self.participantBlockSeparator)
+        if !enrolments.isEmpty {
+            out += Self.enrolmentBlockSeparator + enrolmentBlock(enrolments, separator: sep)
+        }
+        return out.data(using: .utf8) ?? Data()
+    }
+
+    /// Separator before the enrolment block — `#`-prefixed like the
+    /// participant separator, and named differently so a consumer that
+    /// splits on "next participant" never mistakes it for one.
+    private static let enrolmentBlockSeparator =
+        "\n\n# ==================== enrolments (not participants) ====================\n\n"
+
+    /// Every enrolment on the device, one row each, with its own header
+    /// (2026-10-04). The LEAST INVASIVE export path for it: appended after
+    /// the last participant block, so every participant block stays
+    /// byte-identical; it never enters `participants`, so `all<N>` in the
+    /// filename and every aggregate are unchanged — a child who enrolled
+    /// and did nothing is visible HERE, as an enrolment with no
+    /// participant block, and is not counted as a participant. That is
+    /// the phantom-participant fix (#21) kept intact. The combined JSON
+    /// does not carry it: its top level is an array of participants, and
+    /// adding a sibling would change that shape for every consumer.
+    static func enrolmentBlock(_ enrolments: [EnrolmentRecord], separator sep: String) -> String {
+        let iso = ISO8601DateFormatter()
+        var lines = [["enrolment_participantId", "enrolledAt", "audioCondition",
+                      "trainedSubset", "protocolRevision"].joined(separator: sep)]
+        for e in enrolments {
+            let row = [e.participantId.uuidString,
+                       e.enrolledAt.map { iso.string(from: $0) } ?? "",
+                       e.audioCondition.rawValue,
+                       e.trainedSubset,
+                       String(e.protocolRevision)]
+            lines.append(row.map { delimitedField($0, separator: sep) }.joined(separator: sep))
+        }
+        return lines.joined(separator: "\n")
     }
 
     // MARK: JSON
@@ -656,18 +701,21 @@ struct ParentDashboardExporter {
     /// `TracingViewModel.allParticipantExportSources`.
     static func combinedExportFileURL(
         participants: [ParticipantExportSource],
+        enrolments: [EnrolmentRecord] = [],
         format: DashboardExportFormat,
         tempDirectory: URL = FileManager.default.temporaryDirectory
     ) throws(ExportError) -> URL {
         let data: Data
         let filename: String
+        // `participants.count`, never the enrolments: N is the children
+        // with data (see `enrolmentBlock`).
         let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(participants.count)"
         switch format {
         case .csv:
-            data     = combinedDelimitedData(participants: participants, separator: ",")
+            data     = combinedDelimitedData(participants: participants, enrolments: enrolments, separator: ",")
             filename = "primae_progress_ALL_\(tag).csv"
         case .tsv:
-            data     = combinedDelimitedData(participants: participants, separator: "\t")
+            data     = combinedDelimitedData(participants: participants, enrolments: enrolments, separator: "\t")
             filename = "primae_progress_ALL_\(tag).tsv"
         case .json:
             data     = try combinedJSONData(participants: participants)

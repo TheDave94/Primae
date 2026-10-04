@@ -180,6 +180,7 @@ private struct ExportCenterView: View {
         do {
             shareURL = try ParentDashboardExporter.combinedExportFileURL(
                 participants: vm.allParticipantExportSources,
+                enrolments: vm.enrolmentRecords,
                 format: format
             )
         } catch {

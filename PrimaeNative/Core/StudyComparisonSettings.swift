@@ -68,6 +68,13 @@ enum StudyComparisonSettings {
     /// .typ:73 no longer describes the shipped artefact, and it must move
     /// with it. Nothing else about the arms changes — this is spoken
     /// feedback only, not the audio manipulation.
+    ///
+    /// 2026-10-04 (P3): at ON a study session now runs the INSTRUCTION
+    /// voiceover in all three arms, the silent arm included
+    /// (`StudyVoiceoverPromptPlayer`). And "Schau genau hin" did NOT in fact
+    /// reach a child at ON either — its only call was gated on onboarding,
+    /// which a study build compiles out — until the study-safe trigger in
+    /// `load(letter:)`.
     static let spokenFeedbackKey = prefix + "spokenFeedbackInStudy"
     static let spokenFeedbackInStudyDefault: Bool = true
     static var spokenFeedbackInStudy: Bool {

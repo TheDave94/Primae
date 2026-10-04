@@ -201,6 +201,16 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// the defaults, because every switch's default IS the behaviour the
     /// app had before that switch existed.
     var comparisonConfiguration: String?
+    /// Which child-facing protocol revision wrote this row —
+    /// `StudyProtocol.revision` (2026-10-04). See `StudyProtocol` for why
+    /// `comparisonConfiguration` alone could not say this: two of its
+    /// defaults moved mid-pilot, so rows from before and after a move
+    /// stamp the same, and #27's free-writing sound is not a switch at all.
+    ///
+    /// Captured when the RECORD is constructed (the init default), never
+    /// at export time. Nil for every record written before the field
+    /// existed — those are revisions 1–3, separable only by `recordedAt`.
+    var protocolRevision: Int?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
@@ -220,7 +230,8 @@ struct PhaseSessionRecord: Codable, Equatable {
          reversedStrokeCount: Int? = nil,
          studyMode: Bool? = nil,
          probe: String? = nil,
-         comparisonConfiguration: String? = nil) {
+         comparisonConfiguration: String? = nil,
+         protocolRevision: Int? = StudyProtocol.revision) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
@@ -250,6 +261,7 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.studyMode               = studyMode
         self.probe                   = probe
         self.comparisonConfiguration = comparisonConfiguration
+        self.protocolRevision        = protocolRevision
     }
 
     init(from decoder: Decoder) throws {
@@ -307,6 +319,10 @@ struct PhaseSessionRecord: Codable, Equatable {
         // record written before it, which is also the correct value —
         // those sessions ran the switches' defaults.
         comparisonConfiguration  = try? c.decode(String.self, forKey: .comparisonConfiguration)
+        // Added 2026-10-04 with `StudyProtocol`; nil for every record
+        // written before it (revisions 1–3). Never defaulted to the
+        // current revision on decode — that would re-stamp old rows.
+        protocolRevision         = try? c.decode(Int.self, forKey: .protocolRevision)
     }
 }
 
