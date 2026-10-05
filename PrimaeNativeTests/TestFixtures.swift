@@ -254,6 +254,9 @@ extension TracingDependencies {
             // (`deps.soundGateRadiusFactor = …`).
             soundGateRadiusFactor: StudyComparisonSettings.soundGateRadiusFactorDefault,
             soundGateVelocityFloor: StudyComparisonSettings.soundGateVelocityFloorDefault,
+            // Same reason (2026-10-05): the observe start adds this, and
+            // `StudyComparisonSwitchesTests` writes the global to 4–5 s.
+            presentationSpacingSeconds: StudyComparisonSettings.presentationSpacingSecondsDefault,
             // Pin the once-per-condition demonstration switch, same reason
             // as `cycleAllConditions` above: a suite that writes the
             // global key would otherwise hand whichever VM was

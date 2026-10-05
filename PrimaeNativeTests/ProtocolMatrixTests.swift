@@ -14,7 +14,14 @@
 //   P4  the sound arms hear their sound, steady, for the WHOLE observe
 //       animation — from the end of the spoken observe instruction: the
 //       cue plays first and the sound waits it out (flag 3, 2026-10-04),
-//       where both used to fire on the load's tick.
+//       where both used to fire on the load's tick. OPTION B (supervisor
+//       ruling 2026-10-05): the ANIMATION waits too, and starts WITH the
+//       sound, in every arm. Before, the animation started at 0.3 s and the
+//       sound at 2.0 s, and observe ends after one pass — so every animation
+//       ran ~1.7 s with no sound, and a short letter (I on the study iPad)
+//       heard only its last ~1 s (device run R01, 2026-10-05). Every earlier
+//       P4 test injected a 0.05 s gap, which is why none of them saw it;
+//       `shortLetterObserveIsWholeAtTheProductionGap` runs the real 2.0 s.
 //
 // What is observable here is the DECISION to make sound — the calls the
 // view model makes into `AudioControlling` / `PromptPlaying` /
@@ -45,6 +52,24 @@
 //     branch, before it.
 //   - observeSoundIsNotCutAtTwoSeconds: in `load(letter:)`'s observe
 //     branch, call `armPreTaskDemonstration(for: letter)` unconditionally.
+//   - shortLetterObserveIsWholeAtTheProductionGap (Option B, one flip per
+//     assertion, all in `TracingViewModel`):
+//       · "presentation waits for the cue" — in `load(letter:)`'s observe
+//         branch, drop the `if studyMode {` and always run
+//         `animation.startAfterDelay(0.3 + presentationSpacing, …)` (the
+//         pre-B start): RED, the animation starts at ~0.3 s, before the gap.
+//       · "animation and sound start together" / "sound for the whole
+//         pass" — in `armObservePresentationAfterCue`, delete
+//         `self.startObservePhaseAudio()` and restore the pre-B
+//         `armWholeObserveSoundAfterCue` start: RED, the animation runs
+//         without the sound.
+//       · "stops at observe end" — in `resetForPhaseTransition`, delete
+//         `audio.stop()`: RED, the sound outlives observe.
+//       · "the silent arm gets the same animation start, no sound" — in
+//         `TracingViewModel.init`, `effectiveAudio = deps.audio` (RED, the
+//         engine is reached); or make the presentation sound-arm only
+//         (`if armStudyObservePresentation && startWholeObserveSound`): RED,
+//         the silent arm's animation never starts and observe never ends.
 //   - observeSoundIsSteady: delete the `setSpatialPitch(cents: 0)` /
 //     `setAdaptivePlayback(speed: 1.0, horizontalBias: 0)` lines in
 //     `startObservePhaseAudio`.
@@ -126,6 +151,54 @@ fileprivate final class SpyPrompts: PromptPlaying {
     func playStrokeTick()    { effects.append("tick") }
 }
 
+// MARK: - A short letter for the observe timing (Option B, 2026-10-05)
+
+/// The stub fixture's A (one long stroke) plus a letter I with the REAL
+/// Regular I stroke — one straight stroke, 40 checkpoints from (0.710,
+/// 0.040) to (0.310, 0.960), radius 0.1 (`Resources/Letters/Regular/I/
+/// strokes.json`) — the shortest observe pass of the study letters. With
+/// phoneme takes, so a phoneme-arm study load is not refused. Written to
+/// its own temporary directory, so the shared fixture is untouched.
+fileprivate final class LetterIResourceProvider: LetterResourceProviding {
+    private let base = StubResourceProvider()
+    var bundle: Bundle { base.bundle }
+    var searchBundles: [Bundle] { base.searchBundles }
+
+    private static let dir: URL = {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProtocolMatrixLetterI", isDirectory: true)
+        let letterDir = dir.appendingPathComponent("Letters/Regular/I", isDirectory: true)
+        try? FileManager.default.createDirectory(at: letterDir, withIntermediateDirectories: true)
+        let n = 40
+        let checkpoints: [[String: Double]] = (0..<n).map { i in
+            let t = Double(i) / Double(n - 1)
+            return ["x": 0.710 + (0.310 - 0.710) * t, "y": 0.040 + (0.960 - 0.040) * t]
+        }
+        let strokes: [String: Any] = [
+            "letter": "I", "checkpointRadius": 0.1,
+            "strokes": [["id": 1, "checkpoints": checkpoints]],
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: strokes, options: .prettyPrinted)
+        try? data.write(to: letterDir.appendingPathComponent("strokes.json"))
+        try? Data().write(to: letterDir.appendingPathComponent("I.mp3"))
+        try? Data().write(to: letterDir.appendingPathComponent("I_phoneme1.mp3"))
+        return dir
+    }()
+
+    func allResourceURLs() -> [URL] {
+        let own = FileManager.default.enumerator(at: Self.dir, includingPropertiesForKeys: [.isRegularFileKey],
+                                                 options: [.skipsHiddenFiles])?
+            .compactMap { $0 as? URL }
+            .filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true } ?? []
+        return base.allResourceURLs() + own
+    }
+
+    func resourceURL(for relativePath: String) -> URL? {
+        let url = Self.dir.appendingPathComponent(relativePath)
+        return FileManager.default.fileExists(atPath: url.path) ? url : base.resourceURL(for: relativePath)
+    }
+}
+
 // MARK: - The writing passes
 
 /// Every pass in which a study child WRITES. The outcome passes are the
@@ -146,11 +219,17 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     /// subset excludes A — the fixture's only letter — so A is untrained
     /// and the post-test probe may open it. `trainsA` keeps the fixture's
     /// "AFI", whose launch load of A is PARKED, as on a real study launch.
+    /// The production observe gap (`TracingDependencies` default) — what
+    /// the device runs, and what the 0.05 s test gap hid (R01, 2026-10-05).
+    private var productionGap: TimeInterval { TracingDependencies.stub.observeCueToPresentationSeconds }
+
     private func makeVM(arm: PilotAudioCondition,
                         trainsA: Bool = false,
                         audio: RecordingAudio? = nil,
                         speech: SpySpeech? = nil,
-                        prompts: SpyPrompts? = nil) -> TracingViewModel {
+                        prompts: SpyPrompts? = nil,
+                        gap: TimeInterval = 0.05,
+                        withLetterI: Bool = false) -> TracingViewModel {
         // Constructed here, not in the default arguments: a
         // default-value expression is type-checked nonisolated in this
         // target, and these doubles' inits are @MainActor-isolated —
@@ -169,10 +248,18 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         }
         deps.spokenFeedbackInStudy = true
         // The production gap is 2.0 s (the observe instruction plays out
-        // before the arm's observe sound starts, flag 3); these tests
-        // inject a small one so they assert the sequencing without
-        // waiting it out.
-        deps.observeCueToSoundGapSeconds = 0.05
+        // before the observe presentation — animation and sound — starts,
+        // flag 3 / Option B); most tests inject a small one so they assert
+        // the sequencing without waiting it out. The short-letter test
+        // passes `productionGap`, because the small gap is exactly what hid
+        // the R01 defect.
+        deps.observeCueToPresentationSeconds = gap
+        if withLetterI {
+            deps.repo = LetterRepository(resources: LetterIResourceProvider(), cache: NullLetterCache())
+            deps.trainedSubset = TrainedLetterSubset.allSubsets.first {
+                !$0.letters.contains("A") && !$0.letters.contains("I")
+            }!
+        }
         deps.audio = audio
         deps.speech = speech
         deps.makePromptPlayer = { _ in prompts }
@@ -248,18 +335,30 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
 
     // MARK: - P4: the whole observe animation
 
-    @Test("P4: the observe sound starts after the cue gap and the letter load's reload, and is playing",
+    @Test("P4: the observe presentation — animation and sound — starts after the cue gap and the load's reload, and is playing",
           arguments: [PilotAudioCondition.phoneme, .spatial])
     func observeSoundStartsAfterTheReload(arm: PilotAudioCondition) async {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, audio: audio)
         vm.loadLetter(name: "A")
         #expect(vm.learningPhase == .observe, "precondition: a fresh load lands in observe")
-        // Flag 3: the sound must not start on the load's tick — the
-        // observe instruction speaks first and the sound waits it out.
+        // Flag 3 / Option B: neither the sound nor the animation starts on
+        // the load's tick — the observe instruction speaks first.
         #expect(audio.playCount == 0,
                 "\(arm): the observe sound started with the cue instead of after it. Events: \(audio.events)")
-        try? await Task.sleep(for: .milliseconds(200))
+        #expect(vm.animation.armedStrokes == nil,
+                "\(arm): the observe animation started with the cue instead of after it")
+        // Polled, not a fixed sleep: under the full suite the main actor is
+        // contended and a 200 ms window was not always enough for the
+        // (0.05 s) start to run. `armedStrokes` is set synchronously by
+        // `AnimationGuideController.start`, in the same turn as the play.
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(300)
+        while !audio.isPlaying && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(vm.animation.armedStrokes != nil,
+                "\(arm): the observe animation did not start after the cue gap")
         #expect(audio.isPlaying,
                 "\(arm): observe is silent after the load — started before the reload, it was stopped by it. Events: \(audio.events)")
         guard case .play(let fade)? = audio.events.last else {
@@ -269,17 +368,100 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(fade > 0, "the observe sound must fade in, not click on")
     }
 
-    @Test("P4: the observe sound is not cut at the old 2 s demonstration window",
+    @Test("P4: the observe sound is not cut — not at the old 2 s demonstration window, not before observe ends",
           arguments: [PilotAudioCondition.phoneme, .spatial])
     func observeSoundIsNotCutAtTwoSeconds(arm: PilotAudioCondition) async {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, audio: audio)
         vm.loadLetter(name: "A")
+        // Past the old 2 s window, then on until observe ends by itself
+        // (one animation pass, `armObserveAutoAdvance`). The deadline is
+        // generous on purpose: the pass is a 60 Hz frame loop on the main
+        // actor, which the parallel full suite slows many times over.
         try? await Task.sleep(for: .seconds(PreTaskDemonstration.duration + 0.3))
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(300)
+        while vm.learningPhase == .observe && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(vm.learningPhase != .observe, "\(arm): observe never ended — the animation never completed its pass")
         // A stop that ENDS observe (the phase advancing) is recorded with
         // the next phase current; only a stop inside observe cuts it short.
         #expect(audio.stopsDuringObserve == 0,
                 "\(arm): something stopped the sound while observe was still running. Events: \(audio.events)")
+    }
+
+    /// Option B (supervisor ruling 2026-10-05), at the PRODUCTION gap, for
+    /// the shortest study letter. Polls every 20 ms on the main actor, so
+    /// it can never see the two halves of one synchronous start apart —
+    /// "together" is exactly that.
+    @Test("P4 (Option B): a short letter at the production gap — cue first, then animation and sound together for the whole pass, stopped when observe ends; the silent arm gets the same start and no sound",
+          arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
+    func shortLetterObserveIsWholeAtTheProductionGap(arm: PilotAudioCondition) async {
+        let audio = RecordingAudio()
+        let prompts = SpyPrompts()
+        let gap = productionGap
+        #expect(gap == 2.0, "precondition: the production gap is the 2.0 s the device runs")
+        let vm = makeVM(arm: arm, audio: audio, prompts: prompts, gap: gap, withLetterI: true)
+        let cuesBefore = prompts.keys.count
+        vm.loadLetter(name: "I")
+        #expect(vm.currentLetterName == "I" && vm.learningPhase == .observe,
+                "precondition: letter I loaded into observe (\(vm.currentLetterName), \(vm.learningPhase))")
+        // Cue first: spoken on the load, with nothing presented yet.
+        #expect(prompts.keys.count == cuesBefore + 1 && prompts.keys.last == .phaseObserve,
+                "\(arm): the observe instruction was not spoken on the load: \(prompts.keys)")
+        #expect(vm.animation.armedStrokes == nil && audio.playCount == 0,
+                "\(arm): the presentation started with the cue, not after it")
+
+        let clock = ContinuousClock()
+        let loaded = clock.now
+        var animationStart: Duration?
+        var animationWithoutSound = 0
+        var soundWithoutAnimation = 0
+        // "Animating" = armed by `AnimationGuideController.start`, which is
+        // set synchronously in the same turn as the observe play and
+        // cleared by `stop()` when observe completes. (`guidePoint` is set
+        // inside the controller's own task and lags it under load.) The
+        // deadline is generous: under the parallel full suite the main
+        // actor runs the 60 Hz pass many times slower than on a device.
+        while vm.learningPhase == .observe && clock.now - loaded < .seconds(300) {
+            let animating = vm.animation.armedStrokes != nil
+            if animating && animationStart == nil { animationStart = clock.now - loaded }
+            if arm != .silent {
+                if animating && !audio.isPlaying { animationWithoutSound += 1 }
+                // Only BEFORE the animation has started: after its pass the
+                // controller clears the dot and pauses 0.5 s before the
+                // cycle completes and observe ends
+                // (`AnimationGuideController.start`, end of cycle), and the
+                // sound rightly plays on until observe ends.
+                if audio.isPlaying && animationStart == nil { soundWithoutAnimation += 1 }
+            }
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+
+        #expect(vm.learningPhase != .observe, "\(arm): observe never ended")
+        guard let start = animationStart else {
+            Issue.record("\(arm): the observe animation never started")
+            return
+        }
+        // The presentation waits for the cue: never before the gap. There is
+        // deliberately NO upper bound: measured 2026-10-05, a run with
+        // StudyLaunchTests alongside held the shared main actor for ~37 s
+        // and every start in that run read ~39 s — a Task's wake-up is
+        // scheduling, not the app. The deadlines above only matter on failure.
+        #expect(start >= .seconds(gap - 0.05),
+                "\(arm): the animation started at \(start), before the \(gap) s cue gap")
+        if arm == .silent {
+            #expect(!audio.anyActivity, "silent arm: the engine was reached — \(audio.events)")
+        } else {
+            #expect(animationWithoutSound == 0,
+                    "\(arm): the animation ran without the arm's sound in \(animationWithoutSound) polls — the sound did not cover the whole pass. Events: \(audio.events)")
+            #expect(soundWithoutAnimation == 0,
+                    "\(arm): the sound started before the animation, in \(soundWithoutAnimation) polls")
+            #expect(audio.playCount == 1, "\(arm): exactly one observe start expected, got \(audio.events)")
+            #expect(audio.stopsDuringObserve == 0, "\(arm): the sound was stopped inside observe: \(audio.events)")
+            #expect(!audio.isPlaying, "\(arm): observe ended but the sound kept playing: \(audio.events)")
+        }
     }
 
     @Test("P4: the observe sound is steady — neutral rate and pan, and zero pitch for the carrier",
@@ -320,6 +502,10 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         vm.loadLetter(name: "A")
         #expect(prompts.keys == [.phaseObserve],
                 "\(arm): the observe instruction did not reach the child: \(prompts.keys)")
+        // Option B: the instruction comes FIRST, in every arm — when it is
+        // spoken, the observe animation has not started yet.
+        #expect(vm.animation.armedStrokes == nil,
+                "\(arm): the observe animation started with the instruction, not after it")
         #expect(vm.prompts is StudyVoiceoverPromptPlayer,
                 "\(arm): the study session is not running the study voiceover")
     }

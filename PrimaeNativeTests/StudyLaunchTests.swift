@@ -127,6 +127,9 @@ struct StudyLaunchTests {
         var deps = TracingDependencies.stub
         deps.studyMode = true
         deps.audioCondition = .phoneme      // the stub letter carries A_phoneme1.mp3
+        // P4 Option B (2026-10-05): a study observe animation starts after
+        // the observe instruction, not on the load — a short test gap.
+        deps.observeCueToPresentationSeconds = 0.05
         let audio = SpyAudio()
         deps.audio = audio
         let vm = TracingViewModel(deps)
@@ -144,6 +147,12 @@ struct StudyLaunchTests {
         vm.canvasSize = CGSize(width: 1200, height: 800)
         vm.startParkedLetter()
         #expect(!vm.launchParked)
+        // Option B: armed after the cue gap, not in the start's own turn.
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(300)
+        while vm.animation.armedStrokes == nil && clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(vm.animation.armedStrokes != nil, "the start arms the observe animation")
         #expect(vm.animation.armedStrokes == vm.rawGlyphStrokes, "armed against the laid-out canvas")
         #expect(vm.debugLetterLoadTime != nil)
@@ -152,14 +161,21 @@ struct StudyLaunchTests {
     }
 
     @Test("navigating away un-parks: a real load never stays parked")
-    func navigationUnparks() {
+    func navigationUnparks() async throws {
         var deps = TracingDependencies.stub
         deps.studyMode = true
         deps.audioCondition = .silent
+        // P4 Option B: the animation starts after the observe instruction.
+        deps.observeCueToPresentationSeconds = 0.05
         let vm = TracingViewModel(deps)
         #expect(vm.launchParked)
         vm.nextLetter()
         #expect(!vm.launchParked)
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(300)
+        while vm.animation.armedStrokes == nil && clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+        }
         #expect(vm.animation.armedStrokes != nil)
     }
 

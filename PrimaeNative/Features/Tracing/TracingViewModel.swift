@@ -892,13 +892,19 @@ public final class TracingViewModel {
     /// still writing to `setAdaptivePlayback`/`setSpatialPitch` once the
     /// child's own trace starts driving them.
     private var preTaskDemoTask: Task<Void, Never>?
-    /// In-flight delayed start of the whole-observe sound (P4) — the
-    /// start that waits out the observe instruction so the voice never
-    /// plays over the arm's sound (`armWholeObserveSoundAfterCue`).
-    /// Cancelled on every fresh letter load and on an arm change, and
-    /// self-guarding on the phase, so a start that outlives its observe
-    /// phase never fires into the next one.
-    private var observeSoundTask: Task<Void, Never>?
+    /// In-flight delayed start of a study observe PRESENTATION — the guide
+    /// animation and, in a sound arm, the whole-observe sound (P4), which
+    /// start together once the observe instruction has been spoken
+    /// (`armObservePresentationAfterCue`, Option B 2026-10-05). Cancelled
+    /// on every fresh letter load, and self-guarding on the phase, so a
+    /// start that outlives its observe phase never fires into the next one.
+    private var observePresentationTask: Task<Void, Never>?
+    /// The arm that claimed the pending presentation's sound, or nil when
+    /// it carries none (the silent arm, a once-per-condition repeat, the
+    /// axis-sweep switch). An arm change clears it (`applyArm`): the
+    /// presentation still starts — observe must still end — but without
+    /// a sound claimed under the outgoing arm.
+    private var pendingObserveSoundArm: PilotAudioCondition?
     private let letterScheduler: LetterScheduler
     private let calibrationStore: CalibrationStore
     private let letterRecognizer: LetterRecognizerProtocol
@@ -1011,7 +1017,9 @@ public final class TracingViewModel {
     private let dotsVisible = StudyComparisonSettings.guidedDotsVisible
     /// Internal, not private: `TouchDispatcher` reads it on the touch path.
     let panningEnabled = StudyComparisonSettings.panningEnabled
-    private let presentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
+    /// Captured from `TracingDependencies.presentationSpacingSeconds`
+    /// (which reads `StudyComparisonSettings` by default) at init.
+    private let presentationSpacing: TimeInterval
     /// Whether this session steps through all three audio arms, one per
     /// letter, instead of running the single arm assigned from the
     /// identifier — the supervisor's "alle Konditionen oder nur eine
@@ -1156,7 +1164,8 @@ public final class TracingViewModel {
         self.enrolmentLog           = deps.enrolmentLog
         self.onboardingStore        = deps.onboardingStore
         self.notificationScheduler  = deps.notificationScheduler
-        self.observeCueToSoundGap   = deps.observeCueToSoundGapSeconds
+        self.observeCueToPresentation = deps.observeCueToPresentationSeconds
+        self.presentationSpacing = deps.presentationSpacingSeconds
         // Study pin (2026-09-04): the pedagogical flow is held constant
         // across arms (DECISIONS.md D1) and the pilot's outcome is the
         // freeWrite phase, which `.guidedOnly` / `.control` omit
@@ -1634,11 +1643,12 @@ public final class TracingViewModel {
     /// is not pinned.
     func applyArm(_ next: PilotAudioCondition) {
         guard next != audioCondition else { return }
-        // A pending whole-observe start was claimed under the outgoing
-        // arm. The task's own arm guard would stand it down anyway;
-        // cancelling here keeps the arm change's whole audio effect in
-        // one place, beside `applyArmAuthority`'s own cancellations.
-        cancelPendingWholeObserveSound()
+        // A pending observe sound was claimed under the outgoing arm:
+        // drop the SOUND, keep the presentation. Cancelling the whole
+        // pending start (as before Option B) would now also cancel the
+        // observe animation, and observe ends only when that animation
+        // completes its pass — the phase would never end.
+        pendingObserveSoundArm = nil
         audioCondition = next
         applyArmAuthority()
     }
@@ -2365,7 +2375,7 @@ public final class TracingViewModel {
     /// observe — which it never does, observe being the first active
     /// phase — so production never called it. The study path now starts
     /// it from `load(letter:)`, after the file reload AND the observe
-    /// cue gap (`claimWholeObserveSound`, `armWholeObserveSoundAfterCue`).
+    /// cue gap (`claimWholeObserveSound`, `armObservePresentationAfterCue`).
     ///
     /// STEADY, per D9's ruled spatial demonstration: neutral rate, centre
     /// pan and, for the spatial carrier, zero pitch, set once before play.
@@ -2418,63 +2428,74 @@ public final class TracingViewModel {
         return true
     }
 
-    /// Cancel a pending delayed whole-observe start. Called on every
-    /// fresh letter load (a new load re-derives everything the start
-    /// would assume — its phase, its letter, its arm) and on an arm
-    /// change, the same discipline `cancelPreTaskDemonstration` keeps
-    /// for the 2 s demonstration this start replaced.
-    private func cancelPendingWholeObserveSound() {
-        observeSoundTask?.cancel()
-        observeSoundTask = nil
+    /// Cancel a pending study observe presentation. Called on every fresh
+    /// letter load (a new load re-derives everything the start would
+    /// assume — its phase, its letter, its arm).
+    private func cancelPendingObservePresentation() {
+        observePresentationTask?.cancel()
+        observePresentationTask = nil
+        pendingObserveSoundArm = nil
     }
 
-    /// Start the whole-observe sound only once the observe instruction
-    /// has finished speaking (flag 3, 2026-10-04). Until now the sound
-    /// and "Schau genau hin." fired in the same tick inside
-    /// `load(letter:)` — sound first, voice over it — so instruction and
-    /// phoneme/carrier arrived as one mush. The child now hears the
-    /// instruction, THEN the arm's sound.
+    /// P4, Option B (supervisor ruling 2026-10-05): in a study session the
+    /// observe instruction ("Schau genau hin.") is spoken FIRST, and only
+    /// then do the guide animation and — in a sound arm — the arm's
+    /// whole-observe sound start, TOGETHER, in the same main-actor turn.
     ///
-    /// Mechanism: a cancellable `Task` sleeps `observeCueToSoundGap`
-    /// (2.0 s in production, injectable through `TracingDependencies`
-    /// so tests don't wait it out) and then calls
-    /// `startObservePhaseAudio()`. The gap is a fixed overshoot of the
-    /// spoken cue, not a completion callback: the prompt MP3s are not
-    /// bundled, so the cue renders through the TTS fallback, whose
-    /// `SpeechSynthesizing` seam has no didFinish — and a future
-    /// bundled MP3 renders the same sentence in about the same time.
-    /// If observe has already been left when the task fires (the
-    /// auto-advance, a proctor arrow, `resume(at:)`), or the arm
-    /// changed under the pending start, the sound does not start: it
-    /// would bleed the observe demonstration into the next phase or
-    /// deliver it under an arm that never claimed it.
+    /// Why the animation waits too. Before this, the animation started at
+    /// 0.3 s while the sound waited 2.0 s for the cue (flag 3,
+    /// 2026-10-04) and was skipped if observe had already ended. Observe
+    /// ends after ONE animation pass (`armObserveAutoAdvance`), and a pass
+    /// is short for some letters — on the study iPad (1270×874) I takes
+    /// 2.24 s, L 2.63 s, F 2.95 s (hold + motion) — so every animation ran
+    /// ~1.7 s with no sound, and I heard only its last ~1 s (device run R01,
+    /// 2026-10-05: the observe window read silent; the sound landed in the
+    /// window the probe's phase-boundary line labels with the NEXT phase,
+    /// because `resetForPhaseTransition` runs after the advance). No gap can
+    /// give both "instruction first" and "sound for the whole animation"
+    /// while the animation runs DURING the instruction; starting both
+    /// after it does, for every letter. Observe grows by the gap minus the
+    /// old 0.3 s; the pass itself is unchanged.
     ///
-    /// When the observe sound is NOT claimed this method is never
-    /// reached: the silent arm, the axis-sweep researcher switch, and a
-    /// condition whose once-per-condition demonstration is already
-    /// spent all take `claimWholeObserveSound == false` instead — the
-    /// cue then plays alone at phase entry exactly as before (still
-    /// once per observe phase, in every arm), and the axis-sweep case
-    /// takes `armPreTaskDemonstration`'s own 2 s window.
-    private func armWholeObserveSoundAfterCue() {
-        let claimedArm = audioCondition
-        observeSoundTask?.cancel()
-        observeSoundTask = Task { [weak self] in
+    /// Every arm gets the same delay, so their timing stays matched; the
+    /// silent arm (and any arm whose sound is not claimed) starts the
+    /// animation alone. Nothing here can skip the sound for TIMING: the
+    /// animation cannot have finished before it started, so observe is
+    /// still running when the sound starts with it. The phase guard only
+    /// stands down for a phase the PROCTOR left (an arrow, `resume(at:)`)
+    /// — then there is no observe left to present. The sound ends with the
+    /// phase: `resetForPhaseTransition` stops the engine.
+    ///
+    /// The gap is a fixed overshoot of the spoken cue, not a completion
+    /// callback: the prompt MP3s are not bundled, so the cue renders
+    /// through the TTS fallback, whose `SpeechSynthesizing` seam has no
+    /// didFinish. The strokes are read when the task FIRES, so a canvas
+    /// laid out during the wait is honoured (the resize path re-arms only
+    /// an animation that has already started).
+    private func armObservePresentationAfterCue(letter: LetterAsset, soundArm: PilotAudioCondition?) {
+        observePresentationTask?.cancel()
+        pendingObserveSoundArm = soundArm
+        let delay = observeCueToPresentation + presentationSpacing
+        observePresentationTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            try? await Task.sleep(for: .seconds(self.observeCueToSoundGap))
+            try? await Task.sleep(for: .seconds(delay))
             guard !Task.isCancelled,
-                  self.phaseController.currentPhase == .observe,
-                  self.audioCondition == claimedArm
-            else { return }
-            self.startObservePhaseAudio()
+                  self.phaseController.currentPhase == .observe else { return }
+            let strokes = self.rawGlyphStrokes ?? letter.strokes
+            guard !strokes.strokes.isEmpty else { return }
+            self.animation.start(strokes: strokes)
+            if let arm = self.pendingObserveSoundArm, arm == self.audioCondition {
+                self.startObservePhaseAudio()
+            }
+            self.pendingObserveSoundArm = nil
         }
     }
 
-    /// How long the whole-observe sound waits for the observe
-    /// instruction ("Schau genau hin.") to finish before starting —
-    /// see `armWholeObserveSoundAfterCue`. Copied from
-    /// `TracingDependencies.observeCueToSoundGapSeconds` at init.
-    private let observeCueToSoundGap: TimeInterval
+    /// How long a study observe phase waits after the observe instruction
+    /// starts before its presentation (animation + sound) starts — see
+    /// `armObservePresentationAfterCue`. Copied from
+    /// `TracingDependencies.observeCueToPresentationSeconds` at init.
+    private let observeCueToPresentation: TimeInterval
 
     /// Short enough to be inaudible as a delay, long enough to remove the
     /// click. Matches the fade-out's order of magnitude.
@@ -3258,8 +3279,10 @@ public final class TracingViewModel {
     private func load(letter: LetterAsset, playPhaseCue: Bool = true, parked: Bool = false) {
         launchParked = parked
         // Set in the observe branch below, acted on after the file reload
-        // further down (P4 — see `claimWholeObserveSound`).
+        // further down (P4 — see `claimWholeObserveSound` and
+        // `armObservePresentationAfterCue`).
         var startWholeObserveSound = false
+        var armStudyObservePresentation = false
         // Study mode: the OUTGOING letter's trial must not vanish — a
         // finished-but-unscored freeWrite is scored and recorded, a
         // letter left mid-phase gets a `completed: false` row. Runs
@@ -3312,7 +3335,7 @@ public final class TracingViewModel {
         // outgoing letter's observe sound into the incoming letter's
         // observe phase, a condition that already spent its claim
         // included.
-        cancelPendingWholeObserveSound()
+        cancelPendingObservePresentation()
         directPulsingDot = false
         directArrowStrokeIndex = nil
         showGhost                      = false
@@ -3379,8 +3402,16 @@ public final class TracingViewModel {
                 letterLoadTime = nil
             } else {
                 armObserveAutoAdvance()
-                animation.startAfterDelay(0.3 + presentationSpacing,
+                if studyMode {
+                    // P4, Option B (2026-10-05): the animation waits for
+                    // the observe instruction and starts WITH the arm's
+                    // sound — armed below, after the file reload. Every
+                    // arm, so their timing stays matched.
+                    armStudyObservePresentation = true
+                } else {
+                    animation.startAfterDelay(0.3 + presentationSpacing,
                                               strokes: observeStrokes)
+                }
                 // P4 (David, 2026-10-04): in a study session the sound
                 // arms hear their sound for the WHOLE observe animation.
                 // That replaces the 2 s pre-task demonstration here — the
@@ -3432,14 +3463,14 @@ public final class TracingViewModel {
         // The one exception to "no observe-phase auto-play": the study
         // sound arms' whole-observe sound (P4), claimed in the observe
         // branch above. Armed here, AFTER the reload just above, so the
-        // reload cannot stop what it starts — and STARTED only once the
-        // observe instruction below has finished speaking (flag 3,
-        // 2026-10-04): both used to fire in this same tick, the sound
-        // first and the voice over it. See `armWholeObserveSoundAfterCue`.
-        // It ends with the phase: `resetForPhaseTransition` stops the
-        // engine.
-        if startWholeObserveSound {
-            armWholeObserveSoundAfterCue()
+        // reload cannot stop what it starts — and STARTED, together with
+        // the observe animation, only once the observe instruction below
+        // has been spoken (flag 3, 2026-10-04; Option B, 2026-10-05). See
+        // `armObservePresentationAfterCue`. It ends with the phase:
+        // `resetForPhaseTransition` stops the engine.
+        if armStudyObservePresentation {
+            armObservePresentationAfterCue(letter: letter,
+                                           soundArm: startWholeObserveSound ? audioCondition : nil)
         }
         // Speak the initial phase prompt once a fresh letter loads.
         // Phase *transitions* are spoken from `advanceLearningPhase`;
@@ -3469,7 +3500,7 @@ public final class TracingViewModel {
         // One load is one observe phase, so this speaks once per observe
         // phase, in every arm (the study voiceover, P3). The whole-observe
         // sound WAITS THIS CUE OUT before starting
-        // (`armWholeObserveSoundAfterCue`, flag 3): the child hears the
+        // (`armObservePresentationAfterCue`, flag 3, Option B): the child hears the
         // instruction, then the arm's sound — not both at once.
         // Deliberately observe only: a cold probe lands in freeWrite and
         // stays without a cue, as before.

@@ -82,17 +82,21 @@ struct TracingDependencies {
     /// `nil` means "read the device setting", so production behaviour is
     /// unchanged and an untouched device keeps its own preference.
     var spokenFeedbackInStudy: Bool?
-    /// Seconds the whole-observe sound (P4) waits after the observe
-    /// instruction begins speaking, so the voice never plays over the
-    /// phoneme/carrier (flag 3, 2026-10-04). Default 2.0 — sized to
-    /// OVERSHOOT "Schau genau hin." as the TTS fallback renders it at
-    /// rate 0.42 (~1.7 s; the prompt MP3s are not bundled, so TTS is
-    /// the path every build takes today, and a future bundled MP3 of
-    /// the same sentence is no longer). A seam, not a switch: this is
-    /// not a supervisor question, it has no `StudyComparisonSettings`
-    /// key, and it never enters the comparison stamp — tests inject a
-    /// small value so they don't wait the production gap out.
-    var observeCueToSoundGapSeconds: TimeInterval
+    /// Seconds a study observe phase waits after the observe instruction
+    /// begins speaking before its PRESENTATION starts: the guide animation
+    /// and, in the sound arms, the arm's whole-observe sound, together
+    /// (P4, Option B, supervisor ruling 2026-10-05). Before that ruling
+    /// this gated the sound alone while the animation started at 0.3 s,
+    /// so every animation ran ~1.7 s with no sound, and a short one (I on
+    /// the study iPad) heard only its last ~1 s (device run R01).
+    /// Default 2.0 — sized to OVERSHOOT "Schau genau hin." as the TTS
+    /// fallback renders it at rate 0.42 (~1.7 s; the prompt MP3s are not
+    /// bundled, so TTS is the path every build takes today, and a future
+    /// bundled MP3 of the same sentence is no longer). A seam, not a
+    /// switch: this is not a supervisor question, it has no
+    /// `StudyComparisonSettings` key, and it never enters the comparison
+    /// stamp — tests inject a small value so they don't wait it out.
+    var observeCueToPresentationSeconds: TimeInterval
     /// Whether a participant is enrolled on this device. Injected (the
     /// stub pins true) so the study precondition below is deterministic
     /// in tests; production reads `ParticipantStore.isEnrolled`.
@@ -133,6 +137,13 @@ struct TracingDependencies {
     /// `StudyComparisonSettings.soundGateVelocityFloor`, read and
     /// captured at the same point as the factor above.
     var soundGateVelocityFloor: Double
+    /// Seconds of pause before a letter's observe presentation —
+    /// `StudyComparisonSettings.presentationSpacingSeconds` (default 0),
+    /// captured at construction like the switches above. A seam since
+    /// 2026-10-05: Option B adds it to the study observe start, and a VM
+    /// built while `StudyComparisonSwitchesTests` had the global set to
+    /// 4–5 s started its observe that much later under test.
+    var presentationSpacingSeconds: TimeInterval
     /// Whether the pre-task sound demonstration is delivered once per
     /// audio CONDITION per session instead of once per letter —
     /// `StudyComparisonSettings.oncePerCondition`, the supervisor's
@@ -241,7 +252,7 @@ struct TracingDependencies {
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
         spokenFeedbackInStudy: Bool? = nil,
-        observeCueToSoundGapSeconds: TimeInterval = 2.0,
+        observeCueToPresentationSeconds: TimeInterval = 2.0,
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
         // Device config, like studyMode — read once here, never live.
         cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
@@ -249,6 +260,7 @@ struct TracingDependencies {
         // config like `cycleAllConditions`, read once here and never live.
         soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor,
         soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor,
+        presentationSpacingSeconds: TimeInterval = StudyComparisonSettings.presentationSpacingSeconds,
         // Same capture-at-construction rule as `cycleAllConditions` above.
         oncePerCondition: Bool = StudyComparisonSettings.oncePerCondition,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
@@ -293,11 +305,12 @@ struct TracingDependencies {
         self.enablePhonemeMode = enablePhonemeMode
         self.studyMode = studyMode
         self.spokenFeedbackInStudy = spokenFeedbackInStudy
-        self.observeCueToSoundGapSeconds = observeCueToSoundGapSeconds
+        self.observeCueToPresentationSeconds = observeCueToPresentationSeconds
         self.participantEnrolled = participantEnrolled
         self.cycleAllConditions = cycleAllConditions
         self.soundGateRadiusFactor = soundGateRadiusFactor
         self.soundGateVelocityFloor = soundGateVelocityFloor
+        self.presentationSpacingSeconds = presentationSpacingSeconds
         self.oncePerCondition = oncePerCondition
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
