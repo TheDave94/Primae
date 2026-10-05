@@ -73,7 +73,17 @@ under "What the code does" were measured at HEAD c7eb93ee (file:line).
     end-of-set chime was added in #27.
   - **No cue on a cold-probe landing** (it lands in free-writing, not observe), in any arm.
 
-  *Open for this entry.* Whether to pin the rate (hide the picker or stamp it) and whether to pin one named voice.
+  *Open for this entry — RULED (supervisor ruling, 2026-10-05):* a study build fixes the rate at
+  `SpeechRate.standard` (0.42) and hides the "Sprache" picker (`SettingsView.swift`, `#if !STUDY_BUILD`) — not
+  merely the default, the only value a study session can speak at, regardless of anything stored on the device
+  from earlier testing. The voice is NOT pinned by identifier: it is displayed, read-only, in the research
+  dashboard (`ResearchDashboardView`, behind the parental gate — `SpeechVoiceInfo.dashboardText`), for the proctor
+  to record at session start, and it is not exported. Unchanged from the open question: the voice still depends
+  on what is installed on the one study iPad (`AVSpeechSpeechSynthesizer.init`'s enhanced-then-first-German-then-
+  de-DE fallback, `SpeechSynthesizer.swift:57-63`) — a hard identifier pin was considered and rejected because it
+  fails or falls back on a device without that voice, which the display approach does not risk. **[DAVID]** *Whether
+  this ruling is the final word for the thesis write-up, or whether a named-voice pin is still wanted once the
+  study iPad's resolved voice is known.*
 
 ---
 
@@ -97,3 +107,54 @@ had said "Sound-off post-test".)*
   (`TracingViewModel.claimWholeObserveSound`). The steady-carrier ruling of 2026-09-18 still holds: neutral rate, centre
   pan and zero pitch, with nothing coupled to the animated dot. D9's "2.0 s window" text needs David's revision.
 - **D8.** The outcome passes are produced with the arm's sound present in the sound arms (D14).
+
+---
+
+## (d) D9 revision — the whole-observe sound replaces the 2.0 s demonstration window (drafted 2026-10-05)
+
+> Facts measured at `bf4a5cbe` (main, protocol revision 4), file:line. **[DAVID]** marks every sentence whose
+> wording or rationale must be David's; nothing marked so is a proposal of substance, only a placeholder.
+> Not applied to `docs/DECISIONS.md`.
+
+**Proposed addition at the end of D9, after "Correction 2026-09-18":**
+
+**Revision 2026-10-04 (protocol revision 4, PR #34) — in a study session the sound arms hear their sound for the
+WHOLE observe animation; that replaces the 2.0 s demonstration window. The steady-carrier ruling of 2026-09-18
+stands.**
+
+- **[DAVID]** *Why the window was replaced — David's own words, one or two sentences.*
+- **What replaced it.** On a study load that lands in observe, `claimWholeObserveSound(for:)`
+  (`TracingViewModel.swift:2396`) decides whether the arm gets the whole-observe sound; when it does,
+  `armPreTaskDemonstration` is NOT called for that load (`TracingViewModel.swift:3386-3389`). The sound starts once,
+  after the observe instruction: `armWholeObserveSoundAfterCue` (`TracingViewModel.swift:2452`) waits
+  `observeCueToSoundGapSeconds`, 2.0 s in production (`TracingDependencies.swift:244`), then calls
+  `startObservePhaseAudio` (`TracingViewModel.swift:2371`). It does not start if observe has already been left or the
+  arm changed in the meantime (`TracingViewModel.swift:2458-2461`).
+- **Steady, as ruled 2026-09-18.** `startObservePhaseAudio` sets neutral rate and centre pan
+  (`TracingViewModel.swift:2374`) and, for the spatial carrier, zero pitch (`:2376`) before playing; nothing couples
+  pitch or pan to the animated dot, and touch is disabled in observe (comment at `TracingViewModel.swift:2363-2370`).
+  The 2026-09-18 ruling — a steady carrier, no sweep — is therefore unchanged; only the length moved, from a fixed
+  2.0 s window to the observe animation.
+- **Length is no longer matched by construction.** The old window was capped for both arms by
+  `PreTaskDemonstration.duration` = 2.0 s (`PreTaskDemonstration.swift:68`). The whole-observe sound lasts as long as
+  the observe animation does after the 2.0 s gap, in both sound arms alike. **[DAVID]** *Whether "same length" in the
+  2026-09-18 correction now reads "same window — the observe animation" — David's formulation.*
+- **Where the 2.0 s window still runs.** `claimWholeObserveSound` returns false — and the load falls back to
+  `armPreTaskDemonstration` — for: the spatial arm with the researcher-only axis-sweep switch on
+  (`TracingViewModel.swift:2398`, `StudyComparisonSettings.spatialAxisDemonstration`, `StudyComparisonSettings.swift:233`,
+  off by default); and a condition already demonstrated under the "Einmal pro Kondition" switch
+  (`TracingViewModel.swift:2399-2402`, key `de.flamingistan.primae.comparison.oncePerCondition`,
+  `StudyComparisonSettings.swift:404`, off by default). The silent arm gets no sound in either path
+  (`TracingViewModel.swift:2397`).
+- **Order of what the child hears.** "Schau genau hin." first (`TracingViewModel.swift:3469-3476`, every arm), then the
+  arm's sound after the 2.0 s gap. **[DAVID]** *Whether the D9 rationale ("both arms taught, neither singled out")
+  needs a sentence about the cue preceding the sound.*
+- **[DAVID]** *Which sentences of D9's original body ("Both are capped by the same 2.0 s window", lines 119-121 of
+  DECISIONS.md) are marked superseded, and how.*
+
+## (e) D8 — one-line note (drafted 2026-10-05)
+
+> **Note 2026-10-04 (D14):** D8's measure is unchanged, but in the phoneme and spatial arms the outcome passes it
+> scores are now produced with the arm's sound present — the silent-arm return is the only arm check before the
+> coupling (`TouchDispatcher.swift:355`), and a probe whose arm recording is missing is refused
+> (`TracingViewModel.probeArmAudioMissingReason`). **[DAVID]** *Whether this note belongs in D8 or only in D14.*

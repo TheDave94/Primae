@@ -689,28 +689,38 @@ final class MeasuredAudioUITests: XCTestCase {
     /// the app copies the probe log to a path handed in via the launch
     /// ENVIRONMENT, and the test reads it back and asserts on it. The
     /// transfer is the only part that is not a real measurement.
-    /// A COLD freeWrite probe is silent — and that is the design, not a
-    /// defect.
     ///
-    /// MEASURED on the device: `AUDIO-SIGNAL freeWrite nonSilent=0 total=20
-    /// peak=0.0` on a pretest. The cause is deliberate: a cold probe
-    /// reaches freeWrite with no demonstration armed (H6 — reaching this
-    /// letter at all is a cold, untrained probe, and demonstrating it
-    /// would train the very thing the probe depends on not having
-    /// happened), so no arm file is loaded and the trace coupling has
-    /// nothing to play.
+    /// RE-SCOPED 2026-10-05 (supervisor ruling, brief 4): this test now
+    /// pins only that a cold PRETEST probe is reached, is not refused, and
+    /// is MEASURED — its `AUDIO-SIGNAL` lines reach the test, tagged with
+    /// the phase a cold probe lands in (`freeWrite`; the probe KIND is not
+    /// in the line). It makes NO claim about sound or silence.
     ///
-    /// This test therefore pins the SILENCE, so a future reader does not
-    /// "fix" it: the proctor's complaint was about the freeWrite pass of a
-    /// normal SESSION, where observe/direct/guided have already loaded the
-    /// arm's file and the lifted sound-off gate lets it sound.
+    /// Why no sound claim. It used to assert silence (`peak == 0`, measured
+    /// on the device before protocol revision 4: `AUDIO-SIGNAL freeWrite
+    /// nonSilent=0 total=20 peak=0.0`). Since r4 (P2, 2026-10-04) a probe's
+    /// writing couples to the arm's sound like every other writing pass, so
+    /// that claim is false in the phoneme arm launched here. Nor can the
+    /// r4 claim (`nonSilent > 0`) be made: the drag below runs across the
+    /// middle of the screen, and sound is gated on
+    /// `StrokeTracker.isNearStroke` — distance to the NEXT checkpoint of the
+    /// current stroke, `checkpointRadius × 3` — whose first checkpoint for
+    /// A is the apex (`Regular/A/strokes.json`, stroke 0 starts at
+    /// (0.583, 0.031), radius 0.1). The drag never comes within 0.3 of it,
+    /// so it is not a stroke on the letter path in the sense the gate
+    /// measures, in any arm. (Read from the code, not measured.)
     ///
-    /// WHAT THIS DOES NOT COVER, stated plainly: that session freeWrite
-    /// case. Reaching it needs a full observe -> direct -> guided walk,
-    /// which depends on per-phase entry gestures and would break whenever
-    /// one changes. It is the remaining gap in audio phase coverage, not
-    /// something this test pretends to have checked.
-    func testColdFreeWriteProbeIsSilentByDesign() {
+    /// r4 sound in the probe passes is covered at unit level by
+    /// `ProtocolMatrixTests.soundArmsSoundInEveryWritingPass` (pretest /
+    /// post-test / delayed) and is planned on the device in
+    /// `.build/audio-measurement-plan.md`.
+    ///
+    /// WHAT THIS DOES NOT COVER, stated plainly: any sound claim, and the
+    /// freeWrite pass of a normal SESSION (the proctor's original
+    /// complaint). Reaching the latter needs a full observe -> direct ->
+    /// guided walk, which depends on per-phase entry gestures and would
+    /// break whenever one changes.
+    func testColdPretestProbeIsMeasuredAndTagged() {
         let app = XCUIApplication()
         app.launchArguments += ["-audioSignalProbe"]
         app.launchArguments += [
@@ -768,13 +778,12 @@ final class MeasuredAudioUITests: XCTestCase {
             usleep(250_000)
         }
 
+        // The probe tag: a cold probe lands in freeWrite, and its windows
+        // must arrive here labelled so. No assertion on peak / nonSilent.
         let freeWrite = readings.filter { $0.label == "freeWrite" }
         XCTAssertFalse(freeWrite.isEmpty,
-                       "the cold probe must still be MEASURED, even though it is "
-                       + "silent: \(readings.map(\.line))")
-        XCTAssertEqual(freeWrite.map(\.peak).max() ?? 0, 0,
-                       "a cold freeWrite probe is deliberately silent (H6, no "
-                       + "demonstration, no loaded file): \(readings.map(\.line))")
+                       "the cold pretest probe must be MEASURED and tagged "
+                       + "freeWrite: \(readings.map(\.line))")
     }
 
     /// First element whose label starts with `prefix`.

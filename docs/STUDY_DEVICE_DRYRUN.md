@@ -26,10 +26,15 @@ arms between runs.
 
 ## What's automated now, and what's still yours (2026-09-15)
 
-`PrimaeUITests/StudyDryRunUITests.swift` — a real XCUITest target,
-CI-verified (drives the actual app through the accessibility tree,
-same surface VoiceOver uses; not a mock or a stub) — now covers five
-of the things below every time CI runs, on the simulator: **enrolment**
+`PrimaeUITests/StudyDryRunUITests.swift` — a real XCUITest target
+(drives the actual app through the accessibility tree, same surface
+VoiceOver uses; not a mock or a stub) — covers five of the things below
+**when someone runs it**. **It does not run in CI** (corrected
+2026-10-05; this said "CI-verified … every time CI runs"): both test
+steps in `.github/workflows/ios-build.yml` pass
+`-only-testing:PrimaeNativeTests`, so `PrimaeUITests` only COMPILES
+there. It runs when it is run by hand — on the physical iPad, where all
+7 passed on 2026-10-02 (see the device notes below). It covers: **enrolment**
 ("Neuer Teilnehmer" through to the relaunch alert), **the
 Vortest/Post-Test/Nachtest flow** (tapping a probe button and landing
 correctly on the canvas, or getting a clear refusal alert instead of
@@ -39,8 +44,8 @@ first participant** (the archive-and-replace flow, checked via the
 participant count), and **the export containing both** (triggering a
 real export and confirming the share sheet appears with the right
 count behind it). These are exactly the things that have broken
-silently on this project before — worth running on every CI push
-rather than only when a human remembers to re-check by hand.
+silently on this project before — and since CI does not run them, they
+are checked only when a human runs the suite.
 
 **Still genuinely yours, on the physical device, every run** — this
 suite deliberately does not and cannot cover these, not an oversight:

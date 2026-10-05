@@ -48,9 +48,16 @@
 //   - observeSoundIsSteady: delete the `setSpatialPitch(cents: 0)` /
 //     `setAdaptivePlayback(speed: 1.0, horizontalBias: 0)` lines in
 //     `startObservePhaseAudio`.
-//   - observeCueReachesEveryArm: restore
-//     `silenceSpeech = armIsSilent || (deps.studyMode && !spokenFeedbackInStudy)`
-//     (silent arm RED), or drop `|| studyObserveCue` (every arm RED).
+//   - observeCueReachesEveryArm: after P3 the cue reaches the child through
+//     `StudyVoiceoverPromptPlayer`, which `TracingViewModel.init` builds from
+//     `studyVoiceoverOn` — NOT from `silenceSpeech`. So restoring the old
+//     `silenceSpeech` expression does not touch the cue and leaves this test
+//     GREEN (it is the flip for `spokenContentIsIdenticalAcrossArms` below).
+//     Flips that do reach it: in `init`, make it
+//     `studyVoiceoverOn = deps.studyMode && spokenFeedbackInStudy && !armIsSilent`
+//     (silent arm RED — it falls back to `NullPromptPlayer`); or drop
+//     `|| studyObserveCue` in `load(letter:)` (every arm RED — the stub's
+//     onboarding store reports incomplete, as a study build's always does).
 //   - spokenContentIsIdenticalAcrossArms: wrap
 //     `vm.speech.speak("Probier's nochmal")` in `if !vm.studyMode` (RED: no
 //     arm says it), or restore the `silenceSpeech` expression above (RED:

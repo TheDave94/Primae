@@ -26,10 +26,86 @@ protocol SpeechSynthesizing {
     func stop()
     /// Parent-tunable rate; `nil` restores the default.
     func setRate(_ rate: Float?)
+    /// The voice this synthesiser speaks with, resolved once at init;
+    /// `nil` when it speaks with none (null/spy implementations, or a
+    /// device with no German voice). Read-only, for the research
+    /// dashboard — see `SpeechVoiceInfo`.
+    var resolvedVoice: SpeechVoiceInfo? { get }
 }
 
 extension SpeechSynthesizing {
     func setRate(_ rate: Float?) {}
+    var resolvedVoice: SpeechVoiceInfo? { nil }
+}
+
+// MARK: - Rate
+
+/// The TTS rate a session speaks at, and the one place that decides it.
+///
+/// STUDY BUILD: always `standard` (0.42). The rate is part of every
+/// spoken prompt the child hears, identical in all three arms (P3), so it
+/// is a property of the instrument, not a parent preference — and a value
+/// left stored on the device from earlier testing (the old "Langsam"
+/// 0.36) must not reach a study session. The "Sprache" picker that wrote
+/// it is compiled out of `SettingsView` in study builds; this ignores
+/// whatever it stored before. Ruled by the supervisor 2026-10-05.
+///
+/// Casual build: the stored picker value, or `standard` when none.
+enum SpeechRate {
+    static let standard: Float = 0.42
+    static let defaultsKey = "de.flamingistan.primae.speechRate"
+
+    /// `defaults` is a seam so a test can store a value without touching
+    /// `UserDefaults.standard` (suites run in parallel).
+    static func effective(storedIn defaults: UserDefaults = .standard) -> Float {
+        #if STUDY_BUILD
+        return standard
+        #else
+        let stored = defaults.float(forKey: defaultsKey)
+        return stored > 0 ? stored : standard
+        #endif
+    }
+}
+
+// MARK: - Resolved voice
+
+/// The German voice a synthesiser resolved, as the proctor reads it off
+/// the research dashboard and records it at session start. Which voice
+/// `AVSpeechSpeechSynthesizer.init` picks depends on what is installed on
+/// the device, so it is a property of the one study iPad: displayed, not
+/// pinned (a hard identifier pin fails or falls back on a device without
+/// that voice) and not exported.
+struct SpeechVoiceInfo: Equatable {
+    let identifier: String
+    let name: String
+    let quality: String
+
+    init(identifier: String, name: String, quality: String) {
+        self.identifier = identifier
+        self.name = name
+        self.quality = quality
+    }
+
+    init(_ voice: AVSpeechSynthesisVoice) {
+        self.init(identifier: voice.identifier,
+                  name: voice.name,
+                  quality: Self.qualityName(voice.quality))
+    }
+
+    static func qualityName(_ quality: AVSpeechSynthesisVoiceQuality) -> String {
+        switch quality {
+        case .default:  return "Standard"
+        case .enhanced: return "Erweitert"
+        case .premium:  return "Premium"
+        @unknown default: return "unbekannt (\(quality.rawValue))"
+        }
+    }
+
+    /// The exact text the research dashboard shows for `voice`.
+    static func dashboardText(_ voice: SpeechVoiceInfo?) -> String {
+        guard let voice else { return "Keine deutsche Stimme aufgelöst" }
+        return "\(voice.name) · \(voice.quality) · \(voice.identifier)"
+    }
 }
 
 // MARK: - Production implementation
@@ -45,11 +121,13 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     /// Default 0.5 reads too fast for a 5-year-old; 0.42 is comfortably
     /// slow without sounding artificially dragged.
-    var rate: Float = 0.42
+    var rate: Float = SpeechRate.standard
 
     func setRate(_ rate: Float?) {
-        self.rate = rate ?? 0.42
+        self.rate = rate ?? SpeechRate.standard
     }
+
+    var resolvedVoice: SpeechVoiceInfo? { germanVoice.map(SpeechVoiceInfo.init) }
     /// Slight upward shift to match the warm child-friendly tone the
     /// recorded letter audio uses.
     var pitchMultiplier: Float = 1.05
@@ -69,6 +147,12 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     func speak(_ text: String) {
         guard !text.isEmpty else { return }
+        synthesizer.speak(makeUtterance(text))
+    }
+
+    /// Internal so a test can read the voice and rate an utterance
+    /// actually carries, rather than the properties that feed it.
+    func makeUtterance(_ text: String) -> AVSpeechUtterance {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = germanVoice
         utterance.rate = rate
@@ -76,7 +160,7 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         // 0.9 keeps the spoken feedback slightly under the AudioEngine's
         // letter sound so the child hears both layered.
         utterance.volume = 0.9
-        synthesizer.speak(utterance)
+        return utterance
     }
 
     func stop() {

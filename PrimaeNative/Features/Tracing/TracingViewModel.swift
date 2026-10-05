@@ -928,6 +928,12 @@ public final class TracingViewModel {
     /// `applyArmAuthority` can switch its sound EFFECTS with the arm while
     /// its spoken content stays the same in every arm.
     private let studyVoiceover: StudyVoiceoverPromptPlayer?
+    /// The German voice the INJECTED synthesiser resolved, captured at
+    /// init from `deps.speech` — not from `speech`, which is the null
+    /// synthesiser whenever this session silences speech, and would
+    /// otherwise make the readout depend on the arm. Shown read-only in
+    /// the research dashboard so the proctor can record it (2026-10-05).
+    let speechVoice: SpeechVoiceInfo?
     /// FreeWrite buffers + session timing + scoring.
     let freeWriteRecorder = FreeWritePhaseRecorder()
 
@@ -1247,6 +1253,7 @@ public final class TracingViewModel {
         } else {
             audiblePrompts = deps.makePromptPlayer(deps.speech)
         }
+        self.speechVoice            = deps.speech.resolvedVoice
         self.audibleSpeech          = audibleSpeech
         self.audiblePrompts         = audiblePrompts
         self.speech                 = audibleSpeech

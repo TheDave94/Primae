@@ -230,6 +230,26 @@ struct ResearchDashboardView: View {
                         in: RoundedRectangle(cornerRadius: 8))
             #endif
 
+            // Read-only: which German voice this iPad's synthesiser
+            // resolved, and the rate it speaks at. The voice depends on
+            // what is installed on the device, so the proctor records it at
+            // session start; it is not pinned and not exported (2026-10-05).
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Sprachausgabe (für das Protokoll notieren)")
+                    .font(.body(FontSize.md, weight: .semibold))
+                Text(SpeechVoiceInfo.dashboardText(vm.speechVoice))
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                Text("Sprechtempo: \(String(format: "%.2f", SpeechRate.effective()))")
+                    .font(.caption)
+                    .foregroundStyle(Color.inkSoft)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color(.secondarySystemBackground),
+                        in: RoundedRectangle(cornerRadius: 8))
+
             Divider().padding(.vertical, 2)
             Text("Neuen Teilnehmer beginnen")
                 .font(.body(FontSize.md, weight: .semibold))

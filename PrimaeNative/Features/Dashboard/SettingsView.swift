@@ -25,10 +25,9 @@ struct SettingsView: View {
     @State private var comparisonTriggerRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor
     @State private var comparisonTriggerVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor
     @State private var comparisonOncePerCondition: Bool = StudyComparisonSettings.oncePerCondition
-    @State private var speechRate: Float = {
-        let stored = UserDefaults.standard.float(forKey: "de.flamingistan.primae.speechRate")
-        return stored > 0 ? stored : 0.42
-    }()
+    // `SpeechRate.effective()` decides, not a read of the stored key: in a
+    // study build it ignores the stored value (fixed at 0.42).
+    @State private var speechRate: Float = SpeechRate.effective()
     @State private var useShortOnboarding: Bool = UserDefaults.standard.bool(
         forKey: "de.flamingistan.primae.useShortOnboarding"
     )
@@ -43,7 +42,7 @@ struct SettingsView: View {
     /// already states the rule this violated.
     static let defaultsKey = "de.flamingistan.primae.selectedSchriftArt"
     private static let orderingDefaultsKey = "de.flamingistan.primae.letterOrdering"
-    fileprivate static let speechRateKey = "de.flamingistan.primae.speechRate"
+    fileprivate static let speechRateKey = SpeechRate.defaultsKey
     fileprivate static let shortOnboardingKey = "de.flamingistan.primae.useShortOnboarding"
 
     /// Ruling Q1's reasoning applies to enrolment as much as to studyMode:
@@ -133,6 +132,12 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
             }
+            // Hidden on the study build (supervisor ruling, 2026-10-05):
+            // the TTS rate is part of every spoken prompt, identical in all
+            // arms, so it is fixed at `SpeechRate.standard` and is not a
+            // proctor setting. `SpeechRate.effective()` also ignores any
+            // rate this picker stored before the ruling.
+            #if !STUDY_BUILD
             Section("Sprache") {
                 // Three-position TTS rate. Persisted; applied to
                 // `vm.speech` on every appear and on change.
@@ -149,6 +154,7 @@ struct SettingsView: View {
                 }
                 .accessibilityHint("Wie schnell die App spricht. Für jüngere Kinder \"Langsam\" wählen.")
             }
+            #endif
             Section("Anzeige") {
                 Toggle("Geisterbuchstabe anzeigen", isOn: $vm.showGhost)
                 .accessibilityHint("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens")
@@ -463,8 +469,7 @@ struct SettingsView: View {
             conditionOverride = ParticipantStore.conditionOverride
             audioConditionOverride = ParticipantStore.audioConditionOverride
             trainedSubsetOverride = ParticipantStore.trainedSubsetOverride
-            let storedRate = UserDefaults.standard.float(forKey: Self.speechRateKey)
-            speechRate = storedRate > 0 ? storedRate : 0.42
+            speechRate = SpeechRate.effective()
             vm.speech.setRate(speechRate)
         }
     }
