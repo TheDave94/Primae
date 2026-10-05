@@ -303,7 +303,9 @@ Implications:
   `9d8e0df3` (main), file:line.
   - Rationale: not recorded (David, 2026-10-05); decision stands as
     ruled.
-  - **What replaced it.** On a study load that lands in observe,
+  - **What replaced it.** *(Superseded 2026-10-05 by Option B, PR #39 —
+    see "Revision 2026-10-05" below; kept as the r4 record.)* On a study
+    load that lands in observe,
     `claimWholeObserveSound(for:)` (`TracingViewModel.swift:2403`,
     called at `:3393`) decides whether the arm gets the whole-observe
     sound; when it does, `armPreTaskDemonstration` is NOT called for
@@ -320,7 +322,8 @@ Implications:
     zero pitch (`:2382-2384`) before playing. Nothing in it couples
     pitch or pan to the animated dot, and touch is disabled in observe
     (comment at `TracingViewModel.swift:2374-2375`).
-  - **Length.** The old window was capped for both arms by
+  - **Length.** *(Superseded 2026-10-05 by Option B, PR #39 — below.)*
+    The old window was capped for both arms by
     `PreTaskDemonstration.duration` = 2.0 s
     (`PreTaskDemonstration.swift:68`). The whole-observe sound runs
     from the end of the 2.0 s cue gap to the end of the observe phase,
@@ -340,7 +343,8 @@ Implications:
     also returns false, and logs a fault, when the arm has no audio
     file for the letter (`TracingViewModel.swift:2410-2413`). The
     silent arm gets no sound in either path (`TracingViewModel.swift:2404`).
-  - **Order of what the child hears.** "Schau genau hin." first
+  - **Order of what the child hears.** *(Still true; with Option B the
+    animation, too, starts after the cue — below.)* "Schau genau hin." first
     (`TracingViewModel.swift:3476-3482`, every arm; the phrase is at
     `SpeechSynthesizer.swift:210`), then the arm's sound after the
     2.0 s gap.
@@ -350,6 +354,66 @@ Implications:
     supersedes** (among them "Both are capped by the same 2.0 s
     window"): Rationale: not recorded (David, 2026-10-05); decision
     stands as ruled.
+
+  **Revision 2026-10-05 (PR #39, P4 Option B; PR #40, probe label) —
+  in a study session the observe ANIMATION and the arm's sound start
+  together, 2.0 s after the observe instruction starts, in all three
+  arms.** Facts re-read at `0d1e3493` (main), file:line.
+  - **Why (supervisor ruling 2026-10-05, Option B).** Under r4 the
+    animation started 0.3 s after the load while the sound waited
+    2.0 s for the cue, and observe ends after ONE animation pass
+    (`armObserveAutoAdvance`, `TracingViewModel.swift:2511`,
+    `completeObservePhase` at `:2530`). So every animation ran its
+    first ~1.7 s with no sound, and a short letter heard only its end
+    (I, ~1 s, on the study iPad; device run R01, 2026-10-05). No gap
+    could make "instruction first" and "sound for the whole animation"
+    both true while the animation ran during the instruction.
+  - **The shipped mechanism.** In study mode the load arms one
+    presentation (`armStudyObservePresentation`,
+    `TracingViewModel.swift:3408`; armed at `:3470-3471`, after the
+    file reload). `armObservePresentationAfterCue`
+    (`TracingViewModel.swift:2475`) sleeps
+    `observeCueToPresentationSeconds` (renamed from
+    `observeCueToSoundGapSeconds`; 2.0 s, `TracingDependencies.swift:255`)
+    plus the researcher spacing (`:2478`; default 0,
+    `TracingDependencies.swift:146`), and then, in the same main-actor
+    turn, starts the animation (`:2486`) and, if a sound arm claimed it,
+    the steady whole-observe sound (`:2487-2488`). The silent arm, and
+    any arm whose sound is not claimed, gets the same delay and the
+    animation alone. The cue is spoken at the load, before either
+    (`TracingViewModel.swift:3505-3511`). The sound stops when observe
+    ends: `resetForPhaseTransition` (`:3008`) calls `audio.stop()`
+    (`:3091`). It is never skipped for timing: the only stand-down is a
+    phase the proctor already left (`:2482-2483`). An arm change drops
+    only the claimed sound (`TracingViewModel.swift:1651`), so observe
+    still ends.
+  - **Steady, unchanged.** `startObservePhaseAudio`
+    (`TracingViewModel.swift:2388`) still sets neutral rate, centre pan
+    and zero carrier pitch before playing (D9 correction 2026-09-18).
+  - **Where the 2.0 s demonstration window still runs.** As in the r4
+    revision above, the researcher-only axis-sweep and once-per-condition
+    paths fall back to `armPreTaskDemonstration`
+    (`TracingViewModel.swift:3422-3424`) at the load. They run only when
+    the whole-observe sound is not claimed, so nothing is doubled.
+  - **Timing on the study iPad** (canvas 1270×874; pass = 1.0 s hold +
+    motion at 0.36 units/s, then a 0.5 s pause before observe ends):
+    animation + sound start at 2.0 s for every letter; observe ends at
+    I 4.74 s, L 5.13 s, F 5.45 s, A 6.39 s, M 8.32 s (r4: 3.04 / 3.43 /
+    3.75 / 4.69 / 6.62 s). Observe is 1.7 s longer per letter; the pass
+    itself is unchanged.
+  - **Pinned by** `ProtocolMatrixTests.shortLetterObserveIsWholeAtTheProductionGap`
+    (production 2.0 s gap, letter I, all three arms;
+    `PrimaeNativeTests/ProtocolMatrixTests.swift:404`). The device
+    re-measure on `0d1e3493` passed all 12 runs (R01–R12): in both sound
+    arms observe read a silent cue window and then sound from window 2.
+  - **Probe label (PR #40).** The probe's closing window for a phase is
+    now emitted before the phase advances
+    (`PhaseTransitionCoordinator.swift:86-87`), so it carries the ENDING
+    phase's name. Before, observe's last window was labelled "guided".
+    Pinned by `ProtocolMatrixTests.probeClosingWindowNamesTheEndingPhase`
+    (`:496`).
+  - Rationale: not recorded (David, 2026-10-05); decision stands as
+    ruled.
 
 - **D10 — Stroke-correspondence matching-policy parameters: DEFERRED
   pending pilot data.** D8's exhaustive-search assignment forces

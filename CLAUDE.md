@@ -1488,7 +1488,7 @@ python3 scripts/generate_letter_audio.py …
 - Do NOT modify the strokes.json coordinate format
 - Do NOT modify `StrokeTracker.swift` unless the task explicitly targets it
 - Do NOT use `UIColor(dynamicProvider:)` for design tokens — under Swift 6 default isolation the closure inherits MainActor and traps when SwiftUI samples it from `com.apple.SwiftUI.AsyncRenderer`. Design tokens go through Asset-Catalog colorsets (see `Primae/Primae/Assets.xcassets/Colors/` + `scripts/gen_colorsets.py`), which iOS resolves per trait collection without invoking any Swift code.
-- Do NOT register an Xcode MCP bridge while the study configuration is frozen — see ROADMAP F12 for the reasoning and the conditions for revisiting it post-pilot.
+- The Xcode MCP bridge IS registered (`.mcp.json`, server `xcode` = `xcrun mcpbridge`, enabled in `.claude/settings.local.json`; ROADMAP F12 holds the original reasoning). MEASURED 2026-10-05: it cannot build Release-Study (`BuildProject` has no configuration input), and it cannot drive the physical iPad (`DeviceInteractionStartSession` offers simulators only; `DeviceInteractionInstallAndRun` and `RunProject` build and install the scheme's Debug-Study over the pilot artefact). Installs, launches, uninstalls and file pulls on the iPad go through BARE `xcrun devicectl …` calls (sandbox-excluded; no pipe, redirect or prefix). Do NOT install a Debug build over the pilot artefact without the clean-slate reinstall afterwards (uninstall, re-verify sha256 + `nm`, reinstall the verified Release-Study artefact).
 
 ## Conventions
 - All new views go in `Features/Tracing/` unless they're core infrastructure
