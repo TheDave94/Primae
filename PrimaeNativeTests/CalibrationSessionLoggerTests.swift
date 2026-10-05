@@ -267,7 +267,7 @@ private struct CapturedSession: Decodable {
         // probing the NFD path, so the result means the same thing whether
         // or not the volume folds the two spellings together. The two
         // saves are a second apart so their filenames cannot collide (see
-        // the known-issue test below for what happens when they do).
+        // the same-second test below for what happens when they would).
         let nfd = Self.decomposedA
         let nfc = Self.precomposedA
         let scratch = try beginScratch(letter: nfc)
@@ -301,18 +301,14 @@ private struct CapturedSession: Decodable {
         // side intact.
     }
 
-    // MARK: - Known gap (reported, not fixed — this suite documents it)
+    // MARK: - Two saves in one second (was a KNOWN GAP; fixed 2026-10-05)
 
-    @Test("KNOWN GAP: two saves in the same wall-clock second collide on one filename, and the first capture is lost")
-    func twoSavesInTheSameSecondCollide() throws {
-        // `timestampFilename()` has one-second resolution, and the second
-        // write is atomic — so the second save replaces the first with no
-        // error and no log line. In a module whose entire purpose is that
-        // a calibration capture is never silently lost, this is silent
-        // loss. Reported to the maintainers rather than fixed here; when
-        // it is fixed (a unique suffix, or fractional seconds), the
-        // expectation below passes and Swift Testing fails this test as a
-        // known issue that no longer reproduces — delete the marker then.
+    @Test("two saves in the same wall-clock second are two captures, in save order")
+    func twoSavesInTheSameSecondAreTwoCaptures() throws {
+        // `timestampFilename()` has one-second resolution and the write is
+        // atomic, so the second save used to replace the first with no
+        // error and no log line. `uniqueCaptureURL` now suffixes a taken
+        // name (`_2`, `_3`, …).
         let letter = "T\(UUID().uuidString.prefix(8))"
         let scratch = try beginScratch(letter: letter)
         defer { endScratch(scratch) }
@@ -320,6 +316,7 @@ private struct CapturedSession: Decodable {
         // Land both saves inside one second on purpose; a clock tick
         // between them would make the premise false, so retry if it does.
         var captured: [String] = []
+        var sameSecond = false
         for _ in 0..<5 {
             let before = Int(Date().timeIntervalSince1970)
             CalibrationSessionLogger.log(pre: prePair, post: postPair, letter: letter,
@@ -329,20 +326,18 @@ private struct CapturedSession: Decodable {
                                          letter: letter,
                                          schriftArt: .druckschrift, editCount: 2, tool: .skelett)
             captured = newFiles(scratch)
-            if Int(Date().timeIntervalSince1970) == before { break }
+            if Int(Date().timeIntervalSince1970) == before { sameSecond = true; break }
             for name in captured {
                 try? FileManager.default.removeItem(at: scratch.dir.appendingPathComponent(name))
             }
         }
-
-        withKnownIssue("timestampFilename() has one-second resolution, so two calibration saves in the same second write to the same path and the second atomically replaces the first — a capture lost with no error and no log line.") {
-            #expect(captured.count == 2,
-                    "two saves are two captures; one filename means the first edit's pair is gone. Got \(captured)")
-            if captured.count == 1, let only = captured.first,
-               let survivor = try? readCapture(at: scratch.dir.appendingPathComponent(only)) {
-                #expect(survivor.edit_count_in_session == 2,
-                        "the surviving file is the SECOND save's — the first was replaced, not merged")
-            }
+        #expect(sameSecond, "precondition: five attempts never landed both saves in one second")
+        #expect(captured.count == 2,
+                "two saves are two captures; one filename means the first edit's pair is gone. Got \(captured)")
+        // Name order is save order (`_` sorts after `.`).
+        let counts = captured.compactMap {
+            try? readCapture(at: scratch.dir.appendingPathComponent($0)).edit_count_in_session
         }
+        #expect(counts == [1, 2], "captures out of save order or unreadable: \(captured) → \(counts)")
     }
 }

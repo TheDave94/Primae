@@ -31,11 +31,19 @@ protocol SpeechSynthesizing {
     /// device with no German voice). Read-only, for the research
     /// dashboard — see `SpeechVoiceInfo`.
     var resolvedVoice: SpeechVoiceInfo? { get }
+    /// Called (main actor) when an utterance ENDS — finished, or cancelled
+    /// by `stop()` — with the utterance's text. One handler at a time;
+    /// `nil` removes it. Used by the study observe phase to start its
+    /// presentation after the spoken cue has actually ended (2026-10-05).
+    func setUtteranceEndHandler(_ handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?)
 }
 
 extension SpeechSynthesizing {
     func setRate(_ rate: Float?) {}
     var resolvedVoice: SpeechVoiceInfo? { nil }
+    /// Null default: stubs and spies never report an end, so a caller
+    /// waiting for one must have a fallback.
+    func setUtteranceEndHandler(_ handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?) {}
 }
 
 // MARK: - Rate
@@ -118,6 +126,13 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     private let synthesizer = AVSpeechSynthesizer()
     private let germanVoice: AVSpeechSynthesisVoice?
+    /// Relays `AVSpeechSynthesizerDelegate`'s finish/cancel to the handler.
+    private let endRelay = UtteranceEndRelay()
+
+    func setUtteranceEndHandler(_ handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?) {
+        endRelay.handler = handler
+        synthesizer.delegate = handler == nil ? nil : endRelay
+    }
 
     /// Default 0.5 reads too fast for a 5-year-old; 0.42 is comfortably
     /// slow without sounding artificially dragged.
@@ -167,6 +182,25 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
         if synthesizer.isSpeaking {
             synthesizer.stopSpeaking(at: .immediate)
         }
+    }
+}
+
+/// The synthesiser's delegate. AVFoundation calls it off the main actor's
+/// static knowledge, so the methods are nonisolated, copy the text out of the
+/// non-Sendable utterance, and hop to the main actor for the handler.
+final class UtteranceEndRelay: NSObject, AVSpeechSynthesizerDelegate {
+    var handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                       didFinish utterance: AVSpeechUtterance) {
+        let text = utterance.speechString
+        Task { @MainActor [weak self] in self?.handler?(text, false) }
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer,
+                                       didCancel utterance: AVSpeechUtterance) {
+        let text = utterance.speechString
+        Task { @MainActor [weak self] in self?.handler?(text, true) }
     }
 }
 

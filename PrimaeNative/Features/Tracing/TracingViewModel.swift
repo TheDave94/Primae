@@ -1164,7 +1164,8 @@ public final class TracingViewModel {
         self.enrolmentLog           = deps.enrolmentLog
         self.onboardingStore        = deps.onboardingStore
         self.notificationScheduler  = deps.notificationScheduler
-        self.observeCueToPresentation = deps.observeCueToPresentationSeconds
+        self.observeCueEndToPresentation = deps.observeCueEndToPresentationSeconds
+        self.observeCueFallback = deps.observeCueFallbackSeconds
         self.presentationSpacing = deps.presentationSpacingSeconds
         // Study pin (2026-09-04): the pedagogical flow is held constant
         // across arms (DECISIONS.md D1) and the pilot's outcome is the
@@ -1361,6 +1362,14 @@ public final class TracingViewModel {
         pb.reloadBeforePlay   = { [weak self] in self?.reloadActiveAudioFile() }
         td.vm = self
         ptc.vm = self
+        // The observe sound tracks the animated dot (2026-10-05), and the
+        // observe presentation waits for the spoken cue to END. The cue is
+        // spoken through the prompt player built from `deps.speech`, so
+        // that synthesiser's end-of-utterance report is the one to hear.
+        animation.onFrame = { [weak self] frame in self?.handleGuideFrame(frame) }
+        deps.speech.setUtteranceEndHandler { [weak self] text, cancelled in
+            self?.cueUtteranceEnded(text: text, cancelled: cancelled)
+        }
         // Same two-phase pattern: `self` is fully assigned now, so it's
         // safe to capture weakly. Subscribes to the FIRST disk-write
         // failure any study data store reports — see
@@ -2319,7 +2328,9 @@ public final class TracingViewModel {
               !rawStrokes.strokes.isEmpty else { return }
         armObserveAutoAdvance()
         animation.start(strokes: rawStrokes)
-        startObservePhaseAudio()
+        startObservePhaseAudio(startingAt: rawStrokes.strokes.first?.checkpoints.first.map {
+            CGPoint(x: $0.x, y: $0.y)
+        })
         startAudioSignalTicker()
     }
 
@@ -2377,23 +2388,75 @@ public final class TracingViewModel {
     /// it from `load(letter:)`, after the file reload AND the observe
     /// cue gap (`claimWholeObserveSound`, `armObservePresentationAfterCue`).
     ///
-    /// STEADY, per D9's ruled spatial demonstration: neutral rate, centre
-    /// pan and, for the spatial carrier, zero pitch, set once before play.
-    /// Without this the sound would play at whatever rate/pan/pitch the
-    /// PREVIOUS letter's tracing left the engine in. Nothing here, and
-    /// nothing during observe (touch is disabled in observe,
-    /// `LearningPhaseController.isTouchEnabled`), couples pitch or pan to
-    /// the animated dot — that would be the glissando ruled out on
-    /// 2026-09-18.
-    private func startObservePhaseAudio() {
+    /// TRACKED, not steady (David, 2026-10-05: "When the letter drawing is
+    /// shown the audio is not tracked like it is when I draw the letter
+    /// myself" — reversing D9's steady-carrier ruling of 2026-09-18). The
+    /// sound starts with the coupling parameters of the dot's FIRST point,
+    /// still (slowest rate), through `ArmCoupling` — the same mapping the
+    /// pen uses — and `handleGuideFrame` then tracks the dot frame by frame.
+    /// Starting from the dot also replaces whatever rate/pan/pitch the
+    /// PREVIOUS letter's tracing left the engine in.
+    private func startObservePhaseAudio(startingAt firstPoint: CGPoint?) {
         guard letters.indices.contains(letterIndex) else { return }
         guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
-        audio.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
-        if audioCondition == .spatial {
-            audio.setSpatialPitch(cents: 0)
-        }
+        let p = firstPoint.map(canvasNormalizedPoint(forCellPoint:)) ?? CGPoint(x: 0.5, y: 0.5)
+        ArmCoupling.apply(
+            ArmCoupling.parameters(canvasNormalized: p, velocity: 0,
+                                   panningEnabled: panningEnabled, arm: audioCondition),
+            to: audio)
         audio.loadAudioFile(named: first, autoplay: false)
         audio.play(fadeInSeconds: observeAudioFadeInSeconds)
+        observeSoundTracksDot = true
+    }
+
+    /// Whether the observe sound is playing and should follow the dot.
+    /// Set when `startObservePhaseAudio` starts it; cleared on every load
+    /// and phase transition.
+    private var observeSoundTracksDot = false
+
+    /// The dot's cell-normalised point → canvas-normalised (pan/pitch
+    /// space). In a study session the one cell IS the canvas, so this is
+    /// the identity there; the general form keeps pan honest elsewhere.
+    private func canvasNormalizedPoint(forCellPoint p: CGPoint) -> CGPoint {
+        let cell = grid.activeCell.frame
+        guard cell.width > 0, cell.height > 0,
+              canvasSize.width > 0, canvasSize.height > 0 else { return p }
+        return CGPoint(x: (cell.minX + p.x * cell.width) / canvasSize.width,
+                       y: (cell.minY + p.y * cell.height) / canvasSize.height)
+    }
+
+    /// The observe sound tracks the animated dot exactly as it tracks the
+    /// child's pen (2026-10-05), through the ONE shared mapping
+    /// (`ArmCoupling`): rate from the dot's velocity in pt/s, pan from x,
+    /// pitch from y in the spatial arm only. A still dot (the 1.0 s start
+    /// hold, a stroke's dwell, the pause after the pass) plays on at the
+    /// slowest rate (velocity 0 → 0.5) — no pause. A stroke-to-stroke jump
+    /// is a pen lift, not motion: it never enters the velocity.
+    func handleGuideFrame(_ frame: AnimationGuideController.Frame) {
+        guard observeSoundTracksDot, studyMode,
+              phaseController.currentPhase == .observe,
+              audioCondition != .silent else { return }
+        let point: CGPoint
+        let velocity: CGFloat
+        switch frame {
+        case .still(let p):
+            point = p
+            velocity = 0
+        case .move(let from, let to, let seconds):
+            let cell = grid.activeCell.frame
+            let w = cell.width > 0 ? cell.width : canvasSize.width
+            let h = cell.height > 0 ? cell.height : canvasSize.height
+            let distance = hypot((to.x - from.x) * w, (to.y - from.y) * h)
+            point = to
+            velocity = seconds > 0 ? distance / CGFloat(seconds) : 0
+        case .jump:
+            return
+        }
+        ArmCoupling.apply(
+            ArmCoupling.parameters(canvasNormalized: canvasNormalizedPoint(forCellPoint: point),
+                                   velocity: velocity,
+                                   panningEnabled: panningEnabled, arm: audioCondition),
+            to: audio)
     }
 
     /// Whether this study observe phase gets the sound arm's sound for the
@@ -2434,68 +2497,108 @@ public final class TracingViewModel {
     private func cancelPendingObservePresentation() {
         observePresentationTask?.cancel()
         observePresentationTask = nil
+        observeCueEndTask?.cancel()
+        observeCueEndTask = nil
         pendingObserveSoundArm = nil
+        pendingObservePresentation = nil
+        observeSoundTracksDot = false
     }
 
-    /// P4, Option B (supervisor ruling 2026-10-05): in a study session the
-    /// observe instruction ("Schau genau hin.") is spoken FIRST, and only
-    /// then do the guide animation and — in a sound arm — the arm's
-    /// whole-observe sound start, TOGETHER, in the same main-actor turn.
+    /// P4 (supervisor rulings 2026-10-05, Option B and the cue-gap fix): in
+    /// a study session the observe instruction ("Schau genau hin.") is
+    /// spoken FIRST; then the guide animation and — in a sound arm — the
+    /// arm's dot-tracked sound start TOGETHER, in the same main-actor turn.
     ///
-    /// Why the animation waits too. Before this, the animation started at
-    /// 0.3 s while the sound waited 2.0 s for the cue (flag 3,
-    /// 2026-10-04) and was skipped if observe had already ended. Observe
-    /// ends after ONE animation pass (`armObserveAutoAdvance`), and a pass
-    /// is short for some letters — on the study iPad (1270×874) I takes
-    /// 2.24 s, L 2.63 s, F 2.95 s (hold + motion) — so every animation ran
-    /// ~1.7 s with no sound, and I heard only its last ~1 s (device run R01,
-    /// 2026-10-05: the observe window read silent; the sound landed in the
-    /// window the probe's phase-boundary line labels with the NEXT phase,
-    /// because `resetForPhaseTransition` runs after the advance). No gap can
-    /// give both "instruction first" and "sound for the whole animation"
-    /// while the animation runs DURING the instruction; starting both
-    /// after it does, for every letter. Observe grows by the gap minus the
-    /// old 0.3 s; the pass itself is unchanged.
+    /// WHEN. `observeCueEndToPresentationSeconds` (1.0 s) after the cue
+    /// utterance ENDS, reported by the speech seam
+    /// (`cueUtteranceEnded`), or `observeCueFallbackSeconds` (3.0 s) after
+    /// the cue STARTED, whichever comes first; same in all three arms
+    /// (ruling 2026-10-05, protocol r5; replaces the fixed 2.0 s from the
+    /// cue's start of #39). Before Option B the animation
+    /// started at 0.3 s and only the sound waited, so every animation ran
+    /// ~1.7 s with no sound (device run R01).
     ///
-    /// Every arm gets the same delay, so their timing stays matched; the
-    /// silent arm (and any arm whose sound is not claimed) starts the
-    /// animation alone. Nothing here can skip the sound for TIMING: the
-    /// animation cannot have finished before it started, so observe is
-    /// still running when the sound starts with it. The phase guard only
-    /// stands down for a phase the PROCTOR left (an arrow, `resume(at:)`)
-    /// — then there is no observe left to present. The sound ends with the
-    /// phase: `resetForPhaseTransition` stops the engine.
-    ///
-    /// The gap is a fixed overshoot of the spoken cue, not a completion
-    /// callback: the prompt MP3s are not bundled, so the cue renders
-    /// through the TTS fallback, whose `SpeechSynthesizing` seam has no
-    /// didFinish. The strokes are read when the task FIRES, so a canvas
-    /// laid out during the wait is honoured (the resize path re-arms only
-    /// an animation that has already started).
+    /// Every arm gets the same timing; the silent arm (and any arm whose
+    /// sound is not claimed) starts the animation alone. Nothing skips the
+    /// sound for timing: the animation cannot have finished before it
+    /// started. The phase guard only stands down for a phase the PROCTOR
+    /// left. The sound ends with the phase: `resetForPhaseTransition` stops
+    /// the engine. The strokes are read when the start FIRES, so a canvas
+    /// laid out during the wait is honoured.
     private func armObservePresentationAfterCue(letter: LetterAsset, soundArm: PilotAudioCondition?) {
         observePresentationTask?.cancel()
+        observeCueEndTask?.cancel()
+        observeCueEndTask = nil
         pendingObserveSoundArm = soundArm
-        let delay = observeCueToPresentation + presentationSpacing
+        observePresentationGeneration &+= 1
+        let generation = observePresentationGeneration
+        pendingObservePresentation = (generation: generation, letter: letter)
+        let fallback = observeCueFallback + presentationSpacing
         observePresentationTask = Task { [weak self] in
             guard let self, !Task.isCancelled else { return }
-            try? await Task.sleep(for: .seconds(delay))
-            guard !Task.isCancelled,
-                  self.phaseController.currentPhase == .observe else { return }
-            let strokes = self.rawGlyphStrokes ?? letter.strokes
-            guard !strokes.strokes.isEmpty else { return }
-            self.animation.start(strokes: strokes)
-            if let arm = self.pendingObserveSoundArm, arm == self.audioCondition {
-                self.startObservePhaseAudio()
-            }
-            self.pendingObserveSoundArm = nil
+            try? await Task.sleep(for: .seconds(fallback))
+            guard !Task.isCancelled else { return }
+            self.startPendingObservePresentation(generation: generation)
         }
     }
 
-    /// How long a study observe phase waits after the observe instruction
-    /// starts before its presentation (animation + sound) starts — see
-    /// `armObservePresentationAfterCue`. Copied from
-    /// `TracingDependencies.observeCueToPresentationSeconds` at init.
-    private let observeCueToPresentation: TimeInterval
+    /// Start the pending presentation for `generation`, once: the first of
+    /// the cue-end path and the fallback wins; a stale generation (a newer
+    /// load) is ignored.
+    private func startPendingObservePresentation(generation: Int) {
+        guard let pending = pendingObservePresentation, pending.generation == generation else { return }
+        pendingObservePresentation = nil
+        observePresentationTask?.cancel()
+        observePresentationTask = nil
+        observeCueEndTask?.cancel()
+        observeCueEndTask = nil
+        guard phaseController.currentPhase == .observe else { return }
+        let strokes = rawGlyphStrokes ?? pending.letter.strokes
+        guard !strokes.strokes.isEmpty else { return }
+        animation.start(strokes: strokes)
+        if let arm = pendingObserveSoundArm, arm == audioCondition {
+            startObservePhaseAudio(startingAt: strokes.strokes.first?.checkpoints.first.map {
+                CGPoint(x: $0.x, y: $0.y)
+            })
+        }
+        pendingObserveSoundArm = nil
+    }
+
+    /// The speech seam's end-of-utterance report (`setUtteranceEndHandler`,
+    /// registered at init). Only the OBSERVE CUE counts, and only the cue
+    /// of the CURRENT load: `pendingObserveCues` counts cues queued by
+    /// loads and not yet ended, so an older load's cue ending after a new
+    /// load (the synthesiser queues FIFO) leaves the count above zero and
+    /// is ignored. Any other utterance is ignored by its text. A cancelled
+    /// cue is counted down but starts nothing — the fallback covers it.
+    private func cueUtteranceEnded(text: String, cancelled: Bool) {
+        guard text == ChildSpeechLibrary.phaseEntry(.observe) else { return }
+        pendingObserveCues = max(0, pendingObserveCues - 1)
+        guard pendingObserveCues == 0, !cancelled,
+              let pending = pendingObservePresentation else { return }
+        let generation = pending.generation
+        let delay = observeCueEndToPresentation + presentationSpacing
+        observeCueEndTask?.cancel()
+        observeCueEndTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled else { return }
+            self.startPendingObservePresentation(generation: generation)
+        }
+    }
+
+    /// The pending presentation (generation + letter), nil once started.
+    private var pendingObservePresentation: (generation: Int, letter: LetterAsset)?
+    private var observePresentationGeneration = 0
+    /// In-flight cue-end start (1.0 s after the cue ends).
+    private var observeCueEndTask: Task<Void, Never>?
+    /// Observe cues spoken by loads and not yet reported ended.
+    private var pendingObserveCues = 0
+
+    /// Seconds after the observe cue ENDS / after it STARTS (fallback) —
+    /// copied from `TracingDependencies` at init.
+    private let observeCueEndToPresentation: TimeInterval
+    private let observeCueFallback: TimeInterval
 
     /// Short enough to be inaudible as a delay, long enough to remove the
     /// click. Matches the fade-out's order of magnitude.
@@ -3010,6 +3113,9 @@ public final class TracingViewModel {
         // `PhaseTransitionCoordinator.advance` BEFORE the phase advances
         // (2026-10-05) — here, after the advance, it carried the NEXT
         // phase's name.
+        // The observe sound stops with its phase (below), so it no longer
+        // tracks the dot.
+        observeSoundTracksDot = false
         strokeTracker.reset()
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])
@@ -3504,6 +3610,12 @@ public final class TracingViewModel {
         // stays without a cue, as before.
         let studyObserveCue = studyMode && !parked
             && phaseController.currentPhase == .observe
+        if studyObserveCue && playPhaseCue {
+            // One more observe cue queued; its end starts the presentation
+            // (`cueUtteranceEnded`). Counted so an OLDER load's cue ending
+            // late is not mistaken for this one's.
+            pendingObserveCues += 1
+        }
         if (isOnboardingComplete || studyObserveCue) && playPhaseCue {
             prompts.play(
                 ChildSpeechLibrary.phaseEntryPromptKey(phaseController.currentPhase),

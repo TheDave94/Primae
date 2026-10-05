@@ -119,7 +119,7 @@ public enum CalibrationSessionLogger {
                             post_polyline: postRounded.map(toCodable),
                             edit_count_in_session: editCount,
                             tool: tool.rawValue)
-        let url = dir.appendingPathComponent("\(timestampFilename()).json")
+        let url = uniqueCaptureURL(in: dir, base: timestampFilename())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
@@ -182,5 +182,21 @@ public enum CalibrationSessionLogger {
     /// by hyphens for filesystem safety.
     private static func timestampFilename() -> String {
         timestampString().replacingOccurrences(of: ":", with: "-")
+    }
+
+    /// `<base>.json`, or `<base>_2.json`, `_3`, … when that name is taken.
+    /// `timestampFilename()` has one-second resolution, so two saves in the
+    /// same second used to land on one path and the second (atomic) write
+    /// silently replaced the first capture (2026-10-05). `_` sorts after
+    /// `.`, so a name-sorted listing keeps the saves in order.
+    private static func uniqueCaptureURL(in dir: URL, base: String) -> URL {
+        let fm = FileManager.default
+        var url = dir.appendingPathComponent("\(base).json")
+        var n = 2
+        while fm.fileExists(atPath: url.path) {
+            url = dir.appendingPathComponent("\(base)_\(n).json")
+            n += 1
+        }
+        return url
     }
 }

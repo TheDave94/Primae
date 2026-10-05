@@ -41,7 +41,7 @@ nonisolated enum StudyProtocol {
 
     /// The protocol revision this build records. Always the last entry
     /// of `history`.
-    static let revision: Int = 4
+    static let revision: Int = 5
 
     static let history: [Revision] = [
         Revision(revision: 1, mergedAtUTC: "2026-10-01 22:33", pullRequest: 21,
@@ -52,5 +52,10 @@ nonisolated enum StudyProtocol {
                  childFacingChange: "Guided and free-writing sound gated on the pen being on the path only: velocity floor 22 -> 0 pt/s."),
         Revision(revision: 4, mergedAtUTC: "2026-10-04 21:11", pullRequest: 34,
                  childFacingChange: "Spoken content identical in all three arms, the silent arm included: the phase prompts, \"Probier's nochmal\" and the end-of-set \"Super gemacht!\" (score-dependent praise stays unreachable); the end-of-set chime and the stroke tick stay sound-arm only. The observe prompt is spoken once per observe phase and finishes before the arm's observe sound starts — prompt first, then sound, where both used to fire together; the sound arms then hear their sound, steady, for the rest of the observe animation, replacing the 2 s demonstration in observe. A cold probe is refused when the current arm's recording for that letter is missing, so no outcome pass runs silent in a sound arm."),
+        // r5 also records #39 (2026-10-05), which changed what the child
+        // sees and hears in observe and missed its own bump: rows written
+        // between #39 and this revision carry 4 but heard the #39 observe.
+        Revision(revision: 5, mergedAtUTC: nil, pullRequest: nil,
+                 childFacingChange: "Observe (#39, missed bump): the animation and, in the sound arms, the sound start together after the instruction, sound for the whole pass. Observe sound now TRACKS the animated dot like the pen (rate from dot velocity, pan from x, spatial pitch from y; still dot = slowest rate), reversing D9's steady carrier. The presentation starts 1.0 s after the spoken cue ends (3.0 s fallback from the cue's start), all arms. Envelope in every writing phase of the sound arms: fade-out 0.4 s (was 0.12), stall 0.3 s (was 0.12), lift hold 0.8 s (was 0; a re-touch inside it keeps the sound)."),
     ]
 }

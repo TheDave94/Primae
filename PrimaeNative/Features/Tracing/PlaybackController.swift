@@ -73,7 +73,7 @@ final class PlaybackController {
 
     init(audio: AudioControlling,
          activeDebounceSeconds: TimeInterval = 0.03,
-         idleDebounceSeconds: TimeInterval = 0.12,
+         idleDebounceSeconds: TimeInterval = SoundEnvelope.stallSeconds,
          playIntentDebounceSeconds: CFTimeInterval = 0.1,
          sleep: @escaping Sleeper = realSleeper,
          onIsPlayingChanged: @escaping (Bool) -> Void = { _ in }) {
@@ -230,6 +230,25 @@ final class PlaybackController {
         pendingTarget = .idle
         pendingTransition = Task { [weak self] in
             try? await sleeper(.seconds(delay))
+            guard !Task.isCancelled, let self else { return }
+            self.pendingTransition = nil
+            self.pendingTarget = nil
+            self.apply(self.machine.transition(to: .idle))
+        }
+    }
+
+    /// A pen LIFT: keep sounding for `hold` seconds, then go idle (the
+    /// engine's stop fades out over `SoundEnvelope.fadeOutSeconds`). A
+    /// re-touch inside the hold sends an active sample, whose
+    /// `request(.active, immediate: true)` cancels this pending idle — so
+    /// the sound does not cut between strokes (2026-10-05). Replaces the
+    /// immediate idle a lift used to issue while the pen was sounding.
+    func requestIdleAfterHold(_ hold: TimeInterval) {
+        pendingTransition?.cancel()
+        let sleeper = sleep
+        pendingTarget = .idle
+        pendingTransition = Task { [weak self] in
+            try? await sleeper(.seconds(hold))
             guard !Task.isCancelled, let self else { return }
             self.pendingTransition = nil
             self.pendingTarget = nil

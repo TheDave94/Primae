@@ -21,7 +21,16 @@
 //       ran ~1.7 s with no sound, and a short letter (I on the study iPad)
 //       heard only its last ~1 s (device run R01, 2026-10-05). Every earlier
 //       P4 test injected a 0.05 s gap, which is why none of them saw it;
-//       `shortLetterObserveIsWholeAtTheProductionGap` runs the real 2.0 s.
+//       `shortLetterObserveIsWholeAtTheProductionGap` runs the real timing.
+//       2026-10-05 (David's own test, protocol r5): the presentation starts
+//       1.0 s after the cue ENDS (the synthesiser's end report; fallback
+//       3.0 s after it starts), and the observe sound no longer plays
+//       steady — it TRACKS the dot through the pen's own mapping
+//       (`ArmCoupling`): rate from the dot's speed, pan from x, pitch from
+//       y in the spatial arm only; a still dot plays at the slowest rate; a
+//       stroke-to-stroke jump is not velocity (D9's steady carrier reversed).
+//   ENVELOPE (r5): fade-out 0.4 s, stall 0.3 s, a lift holds the sound
+//       0.8 s and a re-touch inside the hold keeps it (`SoundEnvelope`).
 //
 // What is observable here is the DECISION to make sound — the calls the
 // view model makes into `AudioControlling` / `PromptPlaying` /
@@ -70,9 +79,26 @@
 //         engine is reached); or make the presentation sound-arm only
 //         (`if armStudyObservePresentation && startWholeObserveSound`): RED,
 //         the silent arm's animation never starts and observe never ends.
-//   - observeSoundIsSteady: delete the `setSpatialPitch(cents: 0)` /
-//     `setAdaptivePlayback(speed: 1.0, horizontalBias: 0)` lines in
-//     `startObservePhaseAudio`.
+//   - r5 tests (2026-10-05; each flip run against this suite, RED, test
+//     count read from the log — "61 tests in 4 suites"):
+//       · observeSoundTracksTheDot: `guard false,` at the top of
+//         `handleGuideFrame` (no tracking); `.still` velocity 0 → 100 (no
+//         slowest-rate hold); ArmCoupling `arm == .spatial` → `!= .silent`
+//         (phoneme gets pitch — the phoneme case goes RED).
+//       · observeDotJumpIsNotVelocity: AnimationGuideController emits
+//         `.move(from: prev, to: step, 1/60 s)` instead of `.jump`.
+//       · cueEndStartsThePresentation: `cueUtteranceEnded` matches no text.
+//       · fallbackStartsThePresentation: the fallback sleeps the cue-end
+//         delay instead of `observeCueFallback`.
+//       · staleAndOtherUtterancesAreIgnored: drop `pendingObserveCues == 0`.
+//       · liftHoldsTheSound: `endTouch` always takes the immediate-stop branch.
+//       · reTouchInsideTheHoldKeepsTheSound: the hold Task is not stored in
+//         `pendingTransition` (so a re-touch cannot cancel it).
+//       · envelopeValues / controllerSleepsTheEnvelope: stall default 0.12;
+//         `fadeOutSeconds` 0.12.
+//     NOT observable here: that `SoundEnvelope.makeAudioEngine()` applies
+//     the fade to the real engine (AudioEngine cannot run on the simulator),
+//     and that `UtteranceEndRelay` reports a real synthesiser's end.
 //   - observeCueReachesEveryArm: after P3 the cue reaches the child through
 //     `StudyVoiceoverPromptPlayer`, which `TracingViewModel.init` builds from
 //     `studyVoiceoverOn` — NOT from `silenceSpeech`. So restoring the old
@@ -141,6 +167,11 @@ fileprivate final class SpySpeech: SpeechSynthesizing {
     private(set) var spoken: [String] = []
     func speak(_ text: String) { spoken.append(text) }
     func stop() {}
+    /// The end-of-utterance handler the VM registers; `end` plays the
+    /// synthesiser's part (2026-10-05).
+    private var endHandler: (@MainActor (String, Bool) -> Void)?
+    func setUtteranceEndHandler(_ handler: (@MainActor (String, Bool) -> Void)?) { endHandler = handler }
+    func end(_ text: String, cancelled: Bool = false) { endHandler?(text, cancelled) }
 }
 
 @MainActor
@@ -186,6 +217,27 @@ fileprivate final class LetterIResourceProvider: LetterResourceProviding {
         try? data.write(to: letterDir.appendingPathComponent("strokes.json"))
         try? Data().write(to: letterDir.appendingPathComponent("I.mp3"))
         try? Data().write(to: letterDir.appendingPathComponent("I_phoneme1.mp3"))
+        // F, the real Regular strokes (three straight strokes, 40 checkpoints
+        // each; strokes.json endpoints): the dot JUMPS twice between strokes,
+        // which the observe sound must not read as velocity (2026-10-05).
+        let fDir = dir.appendingPathComponent("Letters/Regular/F", isDirectory: true)
+        try? FileManager.default.createDirectory(at: fDir, withIntermediateDirectories: true)
+        func line(_ a: (Double, Double), _ b: (Double, Double)) -> [[String: Double]] {
+            (0..<n).map { i in
+                let t = Double(i) / Double(n - 1)
+                return ["x": a.0 + (b.0 - a.0) * t, "y": a.1 + (b.1 - a.1) * t]
+            }
+        }
+        let fStrokes: [String: Any] = [
+            "letter": "F", "checkpointRadius": 0.1,
+            "strokes": [["id": 1, "checkpoints": line((0.190, 0.040), (0.078, 0.949))],
+                        ["id": 2, "checkpoints": line((0.190, 0.041), (0.940, 0.040))],
+                        ["id": 3, "checkpoints": line((0.150, 0.480), (0.780, 0.480))]],
+        ]
+        let fData = try! JSONSerialization.data(withJSONObject: fStrokes, options: .prettyPrinted)
+        try? fData.write(to: fDir.appendingPathComponent("strokes.json"))
+        try? Data().write(to: fDir.appendingPathComponent("F.mp3"))
+        try? Data().write(to: fDir.appendingPathComponent("F_phoneme1.mp3"))
         return dir
     }()
 
@@ -223,9 +275,11 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     /// subset excludes A — the fixture's only letter — so A is untrained
     /// and the post-test probe may open it. `trainsA` keeps the fixture's
     /// "AFI", whose launch load of A is PARKED, as on a real study launch.
-    /// The production observe gap (`TracingDependencies` default) — what
-    /// the device runs, and what the 0.05 s test gap hid (R01, 2026-10-05).
-    private var productionGap: TimeInterval { TracingDependencies.stub.observeCueToPresentationSeconds }
+    /// The production cue timing (`TracingDependencies` defaults) — what the
+    /// device runs: start 1.0 s after the cue ENDS, fallback 3.0 s after it
+    /// STARTS (2026-10-05).
+    private var productionCueEnd: TimeInterval { TracingDependencies.stub.observeCueEndToPresentationSeconds }
+    private var productionFallback: TimeInterval { TracingDependencies.stub.observeCueFallbackSeconds }
 
     private func makeVM(arm: PilotAudioCondition,
                         trainsA: Bool = false,
@@ -233,6 +287,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                         speech: SpySpeech? = nil,
                         prompts: SpyPrompts? = nil,
                         gap: TimeInterval = 0.05,
+                        cueEnd: TimeInterval = 0.05,
                         withLetterI: Bool = false) -> TracingViewModel {
         // Constructed here, not in the default arguments: a
         // default-value expression is type-checked nonisolated in this
@@ -251,13 +306,15 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
             deps.trainedSubset = TrainedLetterSubset.allSubsets.first { !$0.letters.contains("A") }!
         }
         deps.spokenFeedbackInStudy = true
-        // The production gap is 2.0 s (the observe instruction plays out
-        // before the observe presentation — animation and sound — starts,
-        // flag 3 / Option B); most tests inject a small one so they assert
-        // the sequencing without waiting it out. The short-letter test
-        // passes `productionGap`, because the small gap is exactly what hid
-        // the R01 defect.
-        deps.observeCueToPresentationSeconds = gap
+        // Production: the presentation starts 1.0 s after the observe cue
+        // ENDS, or 3.0 s after it starts if no end is reported. Most tests
+        // inject small values so they assert the sequencing without waiting
+        // it out; the short-letter test runs the production timing, because
+        // a small gap is exactly what hid the R01 defect.
+        // `gap` is the FALLBACK (no cue-end report arrives from the spy unless
+        // a test calls `speech.end`); `cueEnd` the delay after a reported end.
+        deps.observeCueFallbackSeconds = gap
+        deps.observeCueEndToPresentationSeconds = cueEnd
         if withLetterI {
             deps.repo = LetterRepository(resources: LetterIResourceProvider(), cache: NullLetterCache())
             deps.trainedSubset = TrainedLetterSubset.allSubsets.first {
@@ -395,18 +452,23 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                 "\(arm): something stopped the sound while observe was still running. Events: \(audio.events)")
     }
 
-    /// Option B (supervisor ruling 2026-10-05), at the PRODUCTION gap, for
-    /// the shortest study letter. Polls every 20 ms on the main actor, so
-    /// it can never see the two halves of one synchronous start apart —
-    /// "together" is exactly that.
-    @Test("P4 (Option B): a short letter at the production gap — cue first, then animation and sound together for the whole pass, stopped when observe ends; the silent arm gets the same start and no sound",
+    /// P4 at the PRODUCTION cue timing (2026-10-05: 1.0 s after the cue
+    /// ENDS, fallback 3.0 s after it starts) for the shortest study letter.
+    /// The spy synthesiser reports the cue's end right after the load, as a
+    /// real one would after speaking it. Polls every 20 ms on the main
+    /// actor, so it can never see the two halves of one synchronous start
+    /// apart — "together" is exactly that.
+    @Test("P4: a short letter at the production cue timing — cue first, then animation and sound together 1.0 s after the cue ends, sound for the whole pass, stopped when observe ends; the silent arm gets the same start and no sound",
           arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
     func shortLetterObserveIsWholeAtTheProductionGap(arm: PilotAudioCondition) async {
         let audio = RecordingAudio()
         let prompts = SpyPrompts()
-        let gap = productionGap
-        #expect(gap == 2.0, "precondition: the production gap is the 2.0 s the device runs")
-        let vm = makeVM(arm: arm, audio: audio, prompts: prompts, gap: gap, withLetterI: true)
+        let speech = SpySpeech()
+        let cueEnd = productionCueEnd
+        let fallback = productionFallback
+        #expect(cueEnd == 1.0 && fallback == 3.0, "precondition: production cue timing is 1.0 s after the end / 3.0 s fallback")
+        let vm = makeVM(arm: arm, audio: audio, speech: speech, prompts: prompts,
+                        gap: fallback, cueEnd: cueEnd, withLetterI: true)
         let cuesBefore = prompts.keys.count
         vm.loadLetter(name: "I")
         #expect(vm.currentLetterName == "I" && vm.learningPhase == .observe,
@@ -417,49 +479,52 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(vm.animation.armedStrokes == nil && audio.playCount == 0,
                 "\(arm): the presentation started with the cue, not after it")
 
+        // The synthesiser reports the cue's end. Done synchronously, right
+        // here: a poll loop on a contended main actor can wake only after
+        // the 3.0 s fallback has already fired (measured: a 51 s stall in
+        // the parallel suite), which would test the fallback, not the end.
         let clock = ContinuousClock()
         let loaded = clock.now
+        // Every load in this VM has spoken one cue; end them all, the last
+        // being this load's.
+        for _ in 0..<prompts.keys.filter({ $0 == .phaseObserve }).count {
+            speech.end(ChildSpeechLibrary.phaseEntry(.observe))
+        }
+        let cueEndedAt: Duration? = clock.now - loaded
         var animationStart: Duration?
         var animationWithoutSound = 0
         var soundWithoutAnimation = 0
-        // "Animating" = armed by `AnimationGuideController.start`, which is
-        // set synchronously in the same turn as the observe play and
-        // cleared by `stop()` when observe completes. (`guidePoint` is set
-        // inside the controller's own task and lags it under load.) The
-        // deadline is generous: under the parallel full suite the main
-        // actor runs the 60 Hz pass many times slower than on a device.
-        while vm.learningPhase == .observe && clock.now - loaded < .seconds(300) {
+        // "Animating" = armed by `AnimationGuideController.start`, set in the
+        // same turn as the observe play and cleared by `stop()` when observe
+        // completes. Generous deadline: a contended main actor runs the
+        // 60 Hz pass far slower than a device.
+        while vm.learningPhase == .observe && clock.now - loaded < .seconds(600) {
             let animating = vm.animation.armedStrokes != nil
             if animating && animationStart == nil { animationStart = clock.now - loaded }
             if arm != .silent {
                 if animating && !audio.isPlaying { animationWithoutSound += 1 }
-                // Only BEFORE the animation has started: after its pass the
-                // controller clears the dot and pauses 0.5 s before the
-                // cycle completes and observe ends
-                // (`AnimationGuideController.start`, end of cycle), and the
-                // sound rightly plays on until observe ends.
+                // Only before the animation started: after its pass the
+                // controller pauses 0.5 s before observe ends, and the sound
+                // rightly plays on until then.
                 if audio.isPlaying && animationStart == nil { soundWithoutAnimation += 1 }
             }
             try? await Task.sleep(for: .milliseconds(20))
         }
 
         #expect(vm.learningPhase != .observe, "\(arm): observe never ended")
-        guard let start = animationStart else {
-            Issue.record("\(arm): the observe animation never started")
+        guard let start = animationStart, let ended = cueEndedAt else {
+            Issue.record("\(arm): the observe animation never started (cue ended: \(String(describing: cueEndedAt)))")
             return
         }
-        // The presentation waits for the cue: never before the gap. There is
-        // deliberately NO upper bound: measured 2026-10-05, a run with
-        // StudyLaunchTests alongside held the shared main actor for ~37 s
-        // and every start in that run read ~39 s — a Task's wake-up is
-        // scheduling, not the app. The deadlines above only matter on failure.
-        #expect(start >= .seconds(gap - 0.05),
-                "\(arm): the animation started at \(start), before the \(gap) s cue gap")
+        // 1.0 s after the cue ENDED — never earlier. No upper bound (a
+        // contended main actor delays a Task's wake-up; that is scheduling).
+        #expect(start >= ended + .seconds(cueEnd - 0.05),
+                "\(arm): the animation started at \(start), less than \(cueEnd) s after the cue ended at \(ended)")
         if arm == .silent {
             #expect(!audio.anyActivity, "silent arm: the engine was reached — \(audio.events)")
         } else {
             #expect(animationWithoutSound == 0,
-                    "\(arm): the animation ran without the arm's sound in \(animationWithoutSound) polls — the sound did not cover the whole pass. Events: \(audio.events)")
+                    "\(arm): the animation ran without the arm's sound in \(animationWithoutSound) polls. Events: \(audio.events)")
             #expect(soundWithoutAnimation == 0,
                     "\(arm): the sound started before the animation, in \(soundWithoutAnimation) polls")
             #expect(audio.playCount == 1, "\(arm): exactly one observe start expected, got \(audio.events)")
@@ -468,21 +533,252 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         }
     }
 
-    @Test("P4: the observe sound is steady — neutral rate and pan, and zero pitch for the carrier",
+    // MARK: - P4: the observe sound TRACKS the dot (David, 2026-10-05; D9 steady carrier reversed)
+
+    /// Run one observe pass of `letter` and return the engine calls made
+    /// during it, from the presentation's start.
+    private func observePass(arm: PilotAudioCondition, letter: String, audio: RecordingAudio) async -> TracingViewModel {
+        let vm = makeVM(arm: arm, audio: audio, withLetterI: true)
+        vm.loadLetter(name: letter)
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(600)
+        while vm.learningPhase == .observe && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        return vm
+    }
+
+    /// The pen's speed for the dot's nominal motion: the guide moves at
+    /// `observeUnitsPerSecond` cell units/s; the test cell is the 400 pt canvas.
+    private var dotSpeed: Float {
+        TouchDispatcher.mapVelocityToSpeed(CGFloat(AnimationGuideController.observeUnitsPerSecond) * canvas.width)
+    }
+
+    @Test("P4: the observe sound tracks the dot — starts still at the slowest rate at the dot's first point, rate follows the dot's speed, pan follows x; pitch follows y in the spatial arm only",
           arguments: [PilotAudioCondition.phoneme, .spatial])
-    func observeSoundIsSteady(arm: PilotAudioCondition) async {
+    func observeSoundTracksTheDot(arm: PilotAudioCondition) async {
+        let audio = RecordingAudio()
+        let vm = await observePass(arm: arm, letter: "I", audio: audio)
+        #expect(vm.learningPhase != .observe, "precondition: observe ended")
+        let calls = audio.setAdaptiveCalls
+        #expect(calls.count > 20, "\(arm): the observe sound was not tracked frame by frame: \(calls.count) calls")
+        // Starts still at the dot's first point, slowest rate: the start
+        // call and the start hold's still frame agree on the point.
+        if calls.count > 1 {
+            #expect(calls[0].speed == 0.5 && calls[1].speed == 0.5 && abs(calls[0].bias - calls[1].bias) < 0.001,
+                    "\(arm): the observe sound did not start still at the dot's first point: \(calls.prefix(2))")
+        }
+        // While moving: the pen's mapping of the dot's speed.
+        let moving = calls.filter { $0.speed > 0.5 }
+        #expect(!moving.isEmpty && moving.allSatisfy { abs($0.speed - dotSpeed) < 0.02 },
+                "\(arm): the moving dot's rate is not the pen mapping of its speed (\(dotSpeed)): \(moving.map(\.speed).prefix(8))")
+        // Pan follows x: I's stroke runs right to left, so the pan only
+        // moves left, start to end. (`panningEnabled` is the comparison
+        // setting the VM captured; off, the pan is centred throughout.)
+        let biases = calls.map(\.bias)
+        if vm.panningEnabled {
+            #expect(zip(biases, biases.dropFirst()).allSatisfy { $1 <= $0 + 0.001 } && (biases.first ?? 0) > (biases.last ?? 0) + 0.01,
+                    "\(arm): pan did not follow the dot's x: \(biases.first ?? 0) … \(biases.last ?? 0)")
+        } else {
+            #expect(biases.allSatisfy { $0 == 0 }, "\(arm): panning is off but the pan moved")
+        }
+        if arm == .spatial {
+            // Pitch follows y: I runs top to bottom, so the pitch only falls.
+            let p = audio.spatialPitches
+            #expect(p.count > 20 && zip(p, p.dropFirst()).allSatisfy { $1 <= $0 + 0.001 } && (p.first ?? 0) > (p.last ?? 0) + 100,
+                    "spatial: the carrier pitch did not follow the dot's y: \(p.first ?? 0) … \(p.last ?? 0) over \(p.count)")
+        } else {
+            #expect(audio.spatialPitches.isEmpty, "phoneme: the observe sound got a pitch drive: \(audio.spatialPitches.prefix(4))")
+        }
+    }
+
+    @Test("P4: a stroke-to-stroke jump of the dot is not velocity — the rate never spikes on F's two jumps")
+    func observeDotJumpIsNotVelocity() async {
+        let audio = RecordingAudio()
+        let vm = await observePass(arm: .phoneme, letter: "F", audio: audio)
+        #expect(vm.learningPhase != .observe, "precondition: observe ended")
+        let speeds = audio.setAdaptiveCalls.map(\.speed)
+        #expect(speeds.contains { abs($0 - dotSpeed) < 0.02 }, "precondition: the dot was tracked while moving")
+        #expect((speeds.max() ?? 0) < dotSpeed + 0.02,
+                "a jump entered the velocity: max rate \(speeds.max() ?? 0) > the dot's \(dotSpeed)")
+        // The dwell after each jump is still: slowest rate again.
+        #expect(speeds.filter { $0 == 0.5 }.count >= 3, "the still dot did not play at the slowest rate")
+    }
+
+    // MARK: - P4: the presentation waits for the cue to END (2026-10-05)
+
+    /// Cues spoken so far in this VM (each load in observe speaks one).
+    private func cuesSpoken(_ prompts: SpyPrompts) -> Int { prompts.keys.filter { $0 == .phaseObserve }.count }
+
+    @Test("P4 timing: the cue's end starts the presentation 1.0 s (here: 0.2 s) later, long before the fallback",
+          arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
+    func cueEndStartsThePresentation(arm: PilotAudioCondition) async {
+        let prompts = SpyPrompts(); let speech = SpySpeech()
+        let vm = makeVM(arm: arm, speech: speech, prompts: prompts, gap: 3600, cueEnd: 0.2, withLetterI: true)
+        vm.loadLetter(name: "I")
+        let clock = ContinuousClock()
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(vm.animation.armedStrokes == nil, "\(arm): started before the cue ended")
+        for _ in 0..<cuesSpoken(prompts) { speech.end(ChildSpeechLibrary.phaseEntry(.observe)) }
+        let ended = clock.now
+        let deadline = ended + .seconds(600)
+        while vm.animation.armedStrokes == nil && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(vm.animation.armedStrokes != nil, "\(arm): the cue's end did not start the presentation (fallback is 3600 s)")
+        #expect(clock.now - ended >= .milliseconds(150), "\(arm): started too soon after the cue's end")
+    }
+
+    @Test("P4 timing: with no end report, the fallback starts the presentation",
+          arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
+    func fallbackStartsThePresentation(arm: PilotAudioCondition) async {
+        let prompts = SpyPrompts(); let speech = SpySpeech()
+        let vm = makeVM(arm: arm, speech: speech, prompts: prompts, gap: 0.3, cueEnd: 3600, withLetterI: true)
+        let clock = ContinuousClock()
+        let loaded = clock.now
+        vm.loadLetter(name: "I")
+        let deadline = loaded + .seconds(600)
+        while vm.animation.armedStrokes == nil && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(vm.animation.armedStrokes != nil, "\(arm): the fallback never started the presentation")
+        #expect(clock.now - loaded >= .milliseconds(250), "\(arm): started before the fallback")
+    }
+
+    @Test("P4 timing: an older load's cue ending, and any other utterance, start nothing; this load's cue end does")
+    func staleAndOtherUtterancesAreIgnored() async {
+        let prompts = SpyPrompts(); let speech = SpySpeech()
+        let vm = makeVM(arm: .phoneme, speech: speech, prompts: prompts, gap: 3600, cueEnd: 0.05, withLetterI: true)
+        vm.loadLetter(name: "F")
+        vm.loadLetter(name: "I")      // a newer load: F's cue is now stale
+        let spoken = cuesSpoken(prompts)
+        #expect(spoken >= 2, "precondition: both loads spoke a cue (\(spoken))")
+        speech.end("Jetzt du.")                                   // another utterance
+        for _ in 0..<(spoken - 1) { speech.end(ChildSpeechLibrary.phaseEntry(.observe)) }  // older cues
+        try? await Task.sleep(for: .milliseconds(500))
+        #expect(vm.animation.armedStrokes == nil, "a stale cue end or another utterance started the presentation")
+        speech.end(ChildSpeechLibrary.phaseEntry(.observe))       // this load's cue
+        let clock = ContinuousClock(); let deadline = clock.now + .seconds(600)
+        while vm.animation.armedStrokes == nil && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(vm.animation.armedStrokes != nil, "this load's cue end did not start the presentation")
+        #expect(vm.currentLetterName == "I")
+    }
+
+    // MARK: - The sound envelope (2026-10-05): fade 0.4 s, stall 0.3 s, lift hold 0.8 s
+    //
+    // No wall-clock polling: in the parallel suite the main actor was
+    // measured starved for ~160 s, so a poll can wake after its deadline
+    // with the timer it is waiting for still queued. These tests await the
+    // controller's own pending task, or drive it with an injected sleeper.
+
+    @Test("envelope: the values are one named block, and the playback controller's stall default is it")
+    func envelopeValues() {
+        #expect(SoundEnvelope.fadeOutSeconds == 0.4 && SoundEnvelope.stallSeconds == 0.3
+                && SoundEnvelope.liftHoldSeconds == 0.8)
+        #expect(PlaybackController(audio: RecordingAudio()).idleDebounceSeconds == SoundEnvelope.stallSeconds)
+    }
+
+    @Test("envelope: a lift keeps the sound through the hold, then stops it",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func liftHoldsTheSound(arm: PilotAudioCondition) async {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, audio: audio)
-        vm.loadLetter(name: "A")
-        // The start waits out the observe instruction (flag 3) — let the
-        // (test-shortened) gap elapse before reading the engine calls.
-        try? await Task.sleep(for: .milliseconds(200))
-        let last = audio.setAdaptiveCalls.last
-        #expect(last?.speed == 1.0 && last?.bias == 0,
-                "\(arm): observe played at a leftover rate/pan, \(String(describing: last))")
-        if arm == .spatial {
-            #expect(audio.spatialPitches.last == 0, "the carrier must sit at zero pitch in observe")
+        enter(.guided, vm)
+        write(vm)
+        #expect(audio.isPlaying, "precondition: the pen is sounding")
+        let stopsBefore = audio.events.filter { $0 == .stop }.count
+        let clock = ContinuousClock()
+        let lifted = clock.now
+        vm.endTouch()
+        #expect(audio.isPlaying && audio.events.filter { $0 == .stop }.count == stopsBefore,
+                "\(arm): the lift stopped the sound at once")
+        guard let hold = vm.playback.pendingTransition else {
+            Issue.record("\(arm): the lift armed no hold"); return
         }
+        await hold.value
+        #expect(audio.events.filter { $0 == .stop }.count > stopsBefore, "\(arm): the hold ended without a stop")
+        #expect(clock.now - lifted >= .milliseconds(790), "\(arm): stopped before the 0.8 s hold elapsed")
+    }
+
+    @Test("envelope: a pen held still keeps sounding through the 0.3 s stall, then goes quiet")
+    func stallIsThreeTenths() async {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .phoneme, audio: audio)
+        enter(.guided, vm)
+        let clock = ContinuousClock()
+        write(vm)
+        let stilled = clock.now
+        let stopsBefore = audio.events.filter { $0 == .stop }.count
+        guard let stall = vm.playback.pendingTransition else {
+            Issue.record("the moving pen armed no stall timeout"); return
+        }
+        await stall.value
+        #expect(audio.events.filter { $0 == .stop }.count > stopsBefore, "the still pen never went quiet")
+        #expect(clock.now - stilled >= .milliseconds(290), "the still pen went quiet before 0.3 s")
+    }
+
+    /// A thread-safe log for the injected sleeper (it runs off the main actor).
+    private final class SleepLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _calls: [Duration] = []
+        private var _holdsReturned = 0
+        func record(_ d: Duration) { lock.lock(); _calls.append(d); lock.unlock() }
+        func holdReturned() { lock.lock(); _holdsReturned += 1; lock.unlock() }
+        var calls: [Duration] { lock.lock(); defer { lock.unlock() }; return _calls }
+        var holdsReturned: Int { lock.lock(); defer { lock.unlock() }; return _holdsReturned }
+    }
+
+    @Test("envelope: a re-touch inside the lift hold cancels its stop — the sound does not cut between strokes")
+    func reTouchInsideTheHoldKeepsTheSound() async {
+        let audio = RecordingAudio()
+        let log = SleepLog()
+        let hold = Duration.seconds(SoundEnvelope.liftHoldSeconds)
+        // The hold's sleep returns at once (so an UNcancelled hold stops the
+        // sound immediately); every other sleep (the re-touch's stall) never
+        // ends, so nothing else can stop it.
+        let c = PlaybackController(audio: audio, playIntentDebounceSeconds: 0, sleep: { d in
+            log.record(d)
+            if d == hold { log.holdReturned(); return }
+            try await Task.sleep(for: .seconds(3600))
+        })
+        c.appIsForeground = true
+        c.resumeIntent = true
+        c.request(.active, immediate: true)                  // stroke 1 sounds
+        #expect(audio.playCount == 1, "precondition: the pen sounds")
+        c.requestIdleAfterHold(SoundEnvelope.liftHoldSeconds) // lift
+        c.request(.active, immediate: true)                  // re-touch inside the hold
+        let clock = ContinuousClock(); let deadline = clock.now + .seconds(600)
+        while log.holdsReturned == 0 && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        // The sleeper runs off the main actor; the rest of the hold's body
+        // (the cancellation check, the stop) is queued back onto it. One
+        // more main-actor sleep lets that queued job run first.
+        try? await Task.sleep(for: .milliseconds(200))
+        #expect(log.holdsReturned == 1, "precondition: the hold's timer ran")
+        #expect(!audio.events.contains(.stop), "the hold stopped the sound under the next stroke: \(audio.events)")
+        #expect(audio.isPlaying)
+    }
+
+    @Test("envelope: the controller times the stall and the hold with the envelope's values")
+    func controllerSleepsTheEnvelope() async {
+        let audio = RecordingAudio()
+        let log = SleepLog()
+        let c = PlaybackController(audio: audio, playIntentDebounceSeconds: 0, sleep: { d in log.record(d) })
+        c.appIsForeground = true
+        c.resumeIntent = true
+        c.request(.active, immediate: true)
+        await c.pendingTransition?.value                     // the stall
+        c.request(.active, immediate: true)
+        c.requestIdleAfterHold(SoundEnvelope.liftHoldSeconds)
+        await c.pendingTransition?.value                     // the hold
+        #expect(log.calls.contains(.seconds(SoundEnvelope.stallSeconds)),
+                "the stall did not sleep 0.3 s: \(log.calls)")
+        #expect(log.calls.contains(.seconds(SoundEnvelope.liftHoldSeconds)),
+                "the lift hold did not sleep 0.8 s: \(log.calls)")
+        #expect(audio.events.filter { $0 == .stop }.count == 2, "stall and hold each stop: \(audio.events)")
     }
 
     /// The device probe (`AudioSignalProbe`) closes a measurement window at

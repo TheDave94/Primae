@@ -199,11 +199,21 @@ import AVFoundation
     ///
     /// Coalescing WITHIN a stroke is still asserted, in
     /// `PlaybackControllerTests.playIntentWindow_coalescesWhileSounding_only`.
+    ///
+    /// Re-pinned 2026-10-05 (protocol r5, `SoundEnvelope.liftHoldSeconds`):
+    /// a lift no longer stops the sound — it holds it 0.8 s, and the next
+    /// tap inside the hold keeps it. So twenty rapid taps are now ONE
+    /// continuous sound: it starts on the first tap and is never cut
+    /// between taps. "Every tap sounds" still holds, by continuity rather
+    /// than by a fresh play per tap — the old `plays > 1` counted the
+    /// restart after each immediate stop, which is exactly the cut the
+    /// ruling removes.
     @Test func debounceTouchBurst_rapidTaps_everyTapSounds() {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
         let size = CGSize(width: 320, height: 480)
         let playsBefore = audio.playCount
+        let stopsBefore = audio.stopCount
         for i in 0..<20 {
             let t = CFTimeInterval(1.0) + Double(i) * 0.0002
             vm.beginTouch(at: CGPoint(x: CGFloat(10+i), y: CGFloat(10+i)), t: t)
@@ -211,8 +221,10 @@ import AVFoundation
             vm.endTouch()
         }
         let plays = audio.playCount - playsBefore
-        #expect(plays > 1,
-                "rapid taps must each sound, not collapse into one play; got \(plays) plays for 20 taps")
+        let stops = audio.stopCount - stopsBefore
+        #expect(plays >= 1, "rapid taps must sound; got \(plays) plays for 20 taps")
+        #expect(stops == 0,
+                "the sound was cut between rapid taps (\(stops) stops) — a lift inside the hold must not stop it")
     }
 
     @Test func debounceWindow_afterExpiry_playbackIsAllowed() async {

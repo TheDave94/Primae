@@ -82,21 +82,20 @@ struct TracingDependencies {
     /// `nil` means "read the device setting", so production behaviour is
     /// unchanged and an untouched device keeps its own preference.
     var spokenFeedbackInStudy: Bool?
-    /// Seconds a study observe phase waits after the observe instruction
-    /// begins speaking before its PRESENTATION starts: the guide animation
-    /// and, in the sound arms, the arm's whole-observe sound, together
-    /// (P4, Option B, supervisor ruling 2026-10-05). Before that ruling
-    /// this gated the sound alone while the animation started at 0.3 s,
-    /// so every animation ran ~1.7 s with no sound, and a short one (I on
-    /// the study iPad) heard only its last ~1 s (device run R01).
-    /// Default 2.0 — sized to OVERSHOOT "Schau genau hin." as the TTS
-    /// fallback renders it at rate 0.42 (~1.7 s; the prompt MP3s are not
-    /// bundled, so TTS is the path every build takes today, and a future
-    /// bundled MP3 of the same sentence is no longer). A seam, not a
-    /// switch: this is not a supervisor question, it has no
-    /// `StudyComparisonSettings` key, and it never enters the comparison
-    /// stamp — tests inject a small value so they don't wait it out.
-    var observeCueToPresentationSeconds: TimeInterval
+    /// A study observe phase speaks its instruction ("Schau genau hin.")
+    /// FIRST, then starts its PRESENTATION — the guide animation and, in a
+    /// sound arm, the arm's dot-tracked sound, together (P4). Since
+    /// 2026-10-05 (David: the gap was too short) the presentation starts
+    /// `observeCueEndToPresentationSeconds` after the cue utterance ENDS
+    /// (`SpeechSynthesizing.setUtteranceEndHandler`), or
+    /// `observeCueFallbackSeconds` after the cue STARTED, whichever comes
+    /// first — the fallback covers a synthesiser that reports no end. Same
+    /// in all three arms. Before: a fixed 2.0 s from the cue's start, i.e.
+    /// ~0.3 s after a ~1.7 s TTS cue. Seams, not switches: no
+    /// `StudyComparisonSettings` key, never in the comparison stamp — tests
+    /// inject small values so they don't wait them out.
+    var observeCueEndToPresentationSeconds: TimeInterval
+    var observeCueFallbackSeconds: TimeInterval
     /// Whether a participant is enrolled on this device. Injected (the
     /// stub pins true) so the study precondition below is deterministic
     /// in tests; production reads `ParticipantStore.isEnrolled`.
@@ -192,7 +191,9 @@ struct TracingDependencies {
     var makeLetterScheduler: () -> LetterScheduler
 
     init(
-        audio: AudioControlling = AudioEngine(),
+        // The envelope's 0.4 s fade is applied HERE, at construction —
+        // `AudioEngine.swift` is not edited (`SoundEnvelope`).
+        audio: AudioControlling = SoundEnvelope.makeAudioEngine(),
         progressStore: ProgressStoring = JSONProgressStore(),
         haptics: HapticEngineProviding = CoreHapticsEngine(),
         adaptationPolicy: (any AdaptationPolicy)? = nil,
@@ -252,7 +253,8 @@ struct TracingDependencies {
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
         spokenFeedbackInStudy: Bool? = nil,
-        observeCueToPresentationSeconds: TimeInterval = 2.0,
+        observeCueEndToPresentationSeconds: TimeInterval = 1.0,
+        observeCueFallbackSeconds: TimeInterval = 3.0,
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
         // Device config, like studyMode — read once here, never live.
         cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
@@ -305,7 +307,8 @@ struct TracingDependencies {
         self.enablePhonemeMode = enablePhonemeMode
         self.studyMode = studyMode
         self.spokenFeedbackInStudy = spokenFeedbackInStudy
-        self.observeCueToPresentationSeconds = observeCueToPresentationSeconds
+        self.observeCueEndToPresentationSeconds = observeCueEndToPresentationSeconds
+        self.observeCueFallbackSeconds = observeCueFallbackSeconds
         self.participantEnrolled = participantEnrolled
         self.cycleAllConditions = cycleAllConditions
         self.soundGateRadiusFactor = soundGateRadiusFactor

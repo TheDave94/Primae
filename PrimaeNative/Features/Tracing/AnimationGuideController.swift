@@ -20,6 +20,25 @@ final class AnimationGuideController {
     /// to auto-advance after N cycles for non-reading children.
     var onCycleComplete: (@MainActor () -> Void)? = nil
 
+    /// What the dot did on one frame, for a listener that couples sound to
+    /// it (the study observe phase, 2026-10-05: the sound tracks the dot
+    /// like it tracks the pen — `TracingViewModel.handleGuideFrame`).
+    /// Points are the same cell-normalised (0–1) points as `guidePoint`.
+    enum Frame: Equatable {
+        /// The dot is at `point` and not moving: the 1.0 s start hold, a
+        /// new stroke's dwell, the pause after the pass.
+        case still(CGPoint)
+        /// The dot moved from `from` to `to` over `seconds` (the guide's
+        /// own segment timing, so the velocity is the guide's speed).
+        case move(from: CGPoint, to: CGPoint, seconds: TimeInterval)
+        /// Stroke-to-stroke teleport: a pen lift, not motion — a listener
+        /// must not read it as velocity.
+        case jump(to: CGPoint)
+    }
+
+    /// Called on every frame (main actor, ~60 Hz while moving).
+    var onFrame: (@MainActor (Frame) -> Void)? = nil
+
     private var task: Task<Void, Never>?
     /// The strokes the running or pending animation was armed with —
     /// nil when idle. Read by `TracingViewModel.canvasSize.didSet` to
@@ -90,6 +109,7 @@ final class AnimationGuideController {
                 guard let self else { return }
                 if !heldFirst, firstHoldRequested, let firstStep = guide.steps.first {
                     self.guidePoint = firstStep.point
+                    self.onFrame?(.still(firstStep.point))
                     try? await sleeper(.seconds(1.0))
                     heldFirst = true
                     if Task.isCancelled { break }
@@ -102,22 +122,30 @@ final class AnimationGuideController {
                         let frames = max(1, Int((duration / frameInterval).rounded()))
                         let dx = step.point.x - prev.point.x
                         let dy = step.point.y - prev.point.y
+                        let frameSeconds = duration / Double(frames)
+                        var from = prev.point
                         for f in 1...frames {
                             if Task.isCancelled { break }
                             let t = CGFloat(f) / CGFloat(frames)
-                            self.guidePoint = CGPoint(x: prev.point.x + dx * t,
-                                                      y: prev.point.y + dy * t)
+                            let to = CGPoint(x: prev.point.x + dx * t,
+                                             y: prev.point.y + dy * t)
+                            self.guidePoint = to
+                            self.onFrame?(.move(from: from, to: to, seconds: frameSeconds))
+                            from = to
                             try? await sleeper(.seconds(frameInterval))
                         }
                     } else {
                         // First step of the cycle or a new stroke —
                         // teleport and dwell for the segment duration.
                         self.guidePoint = step.point
+                        if previousStep != nil { self.onFrame?(.jump(to: step.point)) }
+                        self.onFrame?(.still(step.point))
                         try? await sleeper(.seconds(duration))
                     }
                     previousStep = step
                 }
                 if !Task.isCancelled {
+                    if let last = previousStep?.point { self.onFrame?(.still(last)) }
                     self.guidePoint = nil
                     try? await sleeper(.seconds(0.5))
                     if !Task.isCancelled { self.onCycleComplete?() }

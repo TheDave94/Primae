@@ -116,7 +116,10 @@ Implications:
   matched in form.** **THE SPATIAL DEMONSTRATION'S FORM IS SUPERSEDED —
   RULED 2026-09-18; read "Correction 2026-09-18" at the end of this entry
   before acting on the arm description below. The spatial arm plays a
-  STEADY CARRIER, not the sweep described here.** Both sound arms
+  STEADY CARRIER, not the sweep described here.** **THE STEADY CARRIER
+  IS ITSELF REVERSED 2026-10-05 (protocol revision 5): the observe sound
+  now tracks the animated dot — read "Reversal 2026-10-05" at the end of
+  this entry.** Both sound arms
   (`.phoneme`, `.spatial`) get a
   brief, scripted demonstration immediately before the tracing task
   begins for each letter — not audio-coupled to the child's own trace.
@@ -414,6 +417,81 @@ Implications:
     (`:496`).
   - Rationale: not recorded (David, 2026-10-05); decision stands as
     ruled.
+
+  **Reversal 2026-10-05 (David's ruling; protocol revision 5) — THE
+  STEADY CARRIER IS REVERSED: in a study session the observe sound
+  TRACKS the animated dot in both sound arms, the way it tracks the
+  child's pen.** David, after his own test of the pilot build: *"When
+  the letter drawing is shown the audio is not tracked like it is when
+  I draw the letter myself."*
+  - **The 2026-09-18 reasons this reverses, as recorded above.** David:
+    the glissando *"was just distracting not helping"*, and *"the study
+    contrasts SILENCE vs LETTER-UNRELATED SOUND vs PHONEME."* The
+    correction's argument: the phoneme arm's demonstration is a pure
+    exposure, the sweep made the spatial arm's a mapping lesson, and *"a
+    steady carrier for the same two-second window is the matched
+    demonstration the contrast requires: each arm presents its own
+    sound, for the same length, and teaches nothing beyond it."* The
+    scripted full-range sweep stays out: what replaces the steady
+    carrier is the letter's own path, not the axis sweep, and
+    `PreTaskDemonstration.axisSweep` is unchanged behind its
+    researcher-only switch.
+  - **The shipped mechanism.** ONE mapping is used by the pen and the
+    dot: `ArmCoupling` (`ArmCoupling.swift`) — rate from velocity in
+    pt/s via `TouchDispatcher.mapVelocityToSpeed`, pan from x when
+    `panningEnabled`, pitch from y in the spatial arm only. The pen
+    calls it from `TouchDispatcher.updateAdaptivePlayback`
+    (`TouchDispatcher.swift:400-401`); the dot from
+    `TracingViewModel.handleGuideFrame` (`TracingViewModel.swift:2435`),
+    fed by `AnimationGuideController.onFrame`
+    (`TracingViewModel.swift:1369`). A still dot (the 1.0 s start hold,
+    each stroke's start dwell, the end of the pass) plays on at the
+    slowest rate (velocity 0 → 0.5), with no pause. A stroke-to-stroke
+    jump is excluded from the velocity (`.jump` frames are ignored).
+    `startObservePhaseAudio` (`TracingViewModel.swift:2399`) now sets
+    the dot's first point at velocity 0 before playing, instead of
+    neutral rate, centre pan and zero pitch.
+  - **Disclosed: in the spatial arm the observe pitch carries the
+    letter's vertical contour.** The carrier's pitch follows the dot's
+    y as it follows the pen's, so during observe the spatial arm hears
+    the shape of the letter it is about to write; the phoneme arm gets
+    rate and pan only, as while writing. Rationale: not recorded beyond
+    David's words above; decision stands as ruled.
+  - **Presentation start (same revision).** The observe animation and
+    the sound start together 1.0 s after the spoken observe instruction
+    ENDS, or 3.0 s after it starts if no end is reported, whichever is
+    first, in all three arms (`TracingDependencies.swift:256-257`). The
+    end comes from the speech seam's new end-of-utterance callback
+    (`SpeechSynthesizing.setUtteranceEndHandler`,
+    `SpeechSynthesizer.swift:38`, default no-op for stubs;
+    `UtteranceEndRelay`, `:191`). Only the FIRST observe cue's end after
+    the latest load counts; a callback for an earlier load's cue or for
+    any other utterance is ignored (`cueUtteranceEnded`,
+    `TracingViewModel.swift:2574`; `armObservePresentationAfterCue`,
+    `:2528`). This replaces the fixed 2.0 s from the cue's start
+    recorded in the 2026-10-05 revision above.
+  - **Sound envelope (same revision; all writing phases, both sound
+    arms).** Fade-out 0.4 s (was 0.12), set at the engine's construction
+    site (`SoundEnvelope.makeAudioEngine`, `TracingDependencies.swift:196`;
+    `AudioEngine.swift` not edited); a still pen keeps sounding 0.3 s
+    (was 0.12); a pen lift holds the sound 0.8 s (was an immediate
+    stop), and a re-touch inside the hold keeps it
+    (`PlaybackController.requestIdleAfterHold`, called at
+    `TouchDispatcher.swift:264`). The three values are one block,
+    `SoundEnvelope.swift`, deliberately not a `StudyComparisonSettings`
+    switch.
+  - **Protocol revision 5.** `StudyProtocol.revision` = 5
+    (`StudyProtocol.swift:44`), history row at `:58`. It also records
+    PR #39's observe timing change, which shipped without the bump this
+    rule requires; rows written between #39 reaching the device and r5
+    carry 4.
+  - **Pinned by** `ProtocolMatrixTests`: `observeSoundTracksTheDot`,
+    `observeDotJumpIsNotVelocity`,
+    `shortLetterObserveIsWholeAtTheProductionGap` (production 1.0 s /
+    3.0 s, letter I, all three arms), `cueEndStartsThePresentation`,
+    `fallbackStartsThePresentation`, `staleAndOtherUtterancesAreIgnored`,
+    `envelopeValues`, `liftHoldsTheSound`,
+    `reTouchInsideTheHoldKeepsTheSound`, `stallIsThreeTenths`.
 
 - **D10 — Stroke-correspondence matching-policy parameters: DEFERRED
   pending pilot data.** D8's exhaustive-search assignment forces

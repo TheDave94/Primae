@@ -75,11 +75,20 @@ private final class DemoRecordingAudio: AudioControlling {
     private(set) var stopCount = 0
     var isPlaying = false
 
+    /// Files actually STARTED by a play() after a non-autoplay load — the
+    /// study observe sound (`startObservePhaseAudio`) arrives this way.
+    private(set) var playedFiles: [String] = []
+    private var lastLoaded: String?
+
     func loadAudioFile(named: String, autoplay: Bool) {
         loads.append((named, autoplay))
+        lastLoaded = named
         isPlaying = autoplay
     }
-    func play()    { isPlaying = true }
+    func play() {
+        if let lastLoaded { playedFiles.append(lastLoaded) }
+        isPlaying = true
+    }
     func stop()    { stopCount += 1; isPlaying = false }
     func restart() {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
@@ -289,43 +298,64 @@ struct OncePerConditionTests {
     /// defect actually breaks is narrower, and is what is pinned here: with
     /// the ledger surviving, the incoming child gets NO phoneme demonstration
     /// at all, which is the data-validity loss this test exists to catch.
+    ///
+    /// Re-measured 2026-10-05: since protocol revision 4 (#34) the incoming
+    /// child's first study load CLAIMS the whole-observe sound for its drawn
+    /// arm (`claimWholeObserveSound`), which spends that arm in the ledger.
+    /// On a `.phoneme` draw the child's phoneme exposure is therefore the
+    /// observe sound — a non-autoplay load then `play()` — and the explicit
+    /// demonstration below is correctly denied. Counting autoplay loads
+    /// alone made this fail on every phoneme draw (about half the runs:
+    /// green in one full run, red in the next). Both routes are counted
+    /// now, and the observe fallback is shortened so that sound starts
+    /// inside `settle()`. With the defect (ledger kept), a phoneme draw's
+    /// claim is refused and the explicit call denied: no phoneme at all.
     @Test("a newly enrolled participant gets the demonstration again")
     func newParticipantStartsWithAnEmptyLedger() async {
-        await withRestoredParticipantStateAsync {
-            let audio = DemoRecordingAudio()
-            let vm = studyVM(audio: audio, once: true, arm: .phoneme)
+        // The incoming child's arm is drawn from a fresh UUID, so one run
+        // exercises one draw. Sixteen enrolments make every arm's path run
+        // (P(no phoneme draw) = (2/3)^16 ≈ 0.15%); the drawn arms are in
+        // the message.
+        var drawn: [PilotAudioCondition] = []
+        for enrolment in 0..<16 {
+            await withRestoredParticipantStateAsync {
+                let audio = DemoRecordingAudio()
+                let vm = studyVM(audio: audio, once: true, arm: .phoneme, observeFallback: 0.05)
 
-            vm.armPreTaskDemonstration(for: asset("A"), duration: 0.05)
-            await settle()
-            #expect(audio.demonstrationCount == 1,
-                    "positive control: the outgoing child's condition is demonstrated — got \(audio.demonstrationFiles)")
-            vm.armPreTaskDemonstration(for: asset("F"), duration: 0.05)
-            await settle()
-            #expect(audio.demonstrationCount == 1,
-                    "positive control: the guard is live before the reset — got \(audio.demonstrationFiles)")
+                vm.armPreTaskDemonstration(for: asset("A"), duration: 0.05)
+                await settle()
+                #expect(audio.demonstrationCount == 1,
+                        "positive control: the outgoing child's condition is demonstrated — got \(audio.demonstrationFiles)")
+                vm.armPreTaskDemonstration(for: asset("F"), duration: 0.05)
+                await settle()
+                #expect(audio.demonstrationCount == 1,
+                        "positive control: the guard is live before the reset — got \(audio.demonstrationFiles)")
 
-            // Count only PHONEME demonstrations. The defect guarded here is
-            // specifically the outgoing child's spent `.phoneme` denying the
-            // INCOMING child theirs, so the delta is measured on that arm
-            // alone. The incoming child's drawn arm may add a spatial carrier
-            // of its own; that is correct behaviour and not the subject.
-            let phonemeBefore = audio.demonstrationFiles
-                .filter { $0.hasSuffix("_phoneme1.mp3") }.count
+                // Count only PHONEME exposures. The defect guarded here is
+                // specifically the outgoing child's spent `.phoneme` denying the
+                // INCOMING child theirs, so the delta is measured on that arm
+                // alone. The incoming child's drawn arm may add a spatial carrier
+                // of its own; that is correct behaviour and not the subject.
+                let phonemeBefore = (audio.demonstrationFiles + audio.playedFiles)
+                    .filter { $0.hasSuffix("_phoneme1.mp3") }.count
 
-            _ = vm.resetForNewParticipant()
-            // Settle first: the reset arms the incoming child's own
-            // demonstration asynchronously, so reading the baseline before
-            // it lands would make this racy rather than strict.
-            await settle()
-            vm.applyArm(.phoneme)
-            vm.armPreTaskDemonstration(for: asset("I"), duration: 0.05)
-            await settle()
+                _ = vm.resetForNewParticipant()
+                // Settle first: the reset arms the incoming child's own
+                // demonstration asynchronously, so reading the baseline before
+                // it lands would make this racy rather than strict.
+                await settle()
+                drawn.append(vm.audioCondition)
+                vm.applyArm(.phoneme)
+                vm.armPreTaskDemonstration(for: asset("I"), duration: 0.05)
+                await settle()
 
-            let phonemeAfter = audio.demonstrationFiles
-                .filter { $0.hasSuffix("_phoneme1.mp3") }.count
-            #expect(phonemeAfter > phonemeBefore,
-                    "the incoming child inherited the outgoing child's used-up conditions — with ON that child's whole session runs with no phoneme demonstration at all: \(audio.demonstrationFiles)")
+                let phonemeAfter = (audio.demonstrationFiles + audio.playedFiles)
+                    .filter { $0.hasSuffix("_phoneme1.mp3") }.count
+                #expect(phonemeAfter > phonemeBefore,
+                        "enrolment \(enrolment), drawn \(drawn.last.map { "\($0)" } ?? "?"): the incoming child inherited the outgoing child's used-up conditions — with ON that child's whole session runs with no phoneme demonstration at all: demos \(audio.demonstrationFiles), played \(audio.playedFiles)")
+            }
         }
+        print("newParticipantStartsWithAnEmptyLedger drawn arms: \(drawn.map { "\($0)" }.joined(separator: ","))")
     }
 
     // MARK: - Storage (the only tests here that write a global)
@@ -384,8 +414,10 @@ struct OncePerConditionTests {
     /// and the demonstration switch on or off.
     private func studyVM(audio: DemoRecordingAudio,
                          once: Bool,
-                         arm: PilotAudioCondition = .phoneme) -> TracingViewModel {
+                         arm: PilotAudioCondition = .phoneme,
+                         observeFallback: TimeInterval? = nil) -> TracingViewModel {
         var deps = TracingDependencies.stub
+        if let observeFallback { deps.observeCueFallbackSeconds = observeFallback }
         deps.studyMode = true
         deps.audioCondition = arm
         deps.oncePerCondition = once

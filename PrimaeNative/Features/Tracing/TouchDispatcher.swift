@@ -256,10 +256,18 @@ final class TouchDispatcher {
         vm.pencilAzimuth               = 0
         vm.playback.resumeIntent       = false
         vm.playback.cancelPending()
-        let cmd = vm.playback.transition(to: .idle)
-        vm.playback.apply(cmd)
-        if cmd == .none { vm.audio.stop(); vm.isPlaying = false }
-        vm.playback.forceIdle()
+        if vm.playback.state == .active {
+            // The pen was sounding: keep it sounding through the lift hold
+            // (`SoundEnvelope.liftHoldSeconds`), so a child moving to the
+            // next stroke does not hear the sound cut (2026-10-05). A
+            // re-touch inside the hold cancels the stop.
+            vm.playback.requestIdleAfterHold(SoundEnvelope.liftHoldSeconds)
+        } else {
+            let cmd = vm.playback.transition(to: .idle)
+            vm.playback.apply(cmd)
+            if cmd == .none { vm.audio.stop(); vm.isPlaying = false }
+            vm.playback.forceIdle()
+        }
 
         // FreeWrite advance: lift-then-quiet is the implicit "done"
         // signal; re-touch within the window cancels.
@@ -373,33 +381,29 @@ final class TouchDispatcher {
         // described sound-off freeWrite production (Ch.2 §2.5, Ch.6, and
         // the DECISIONS.md header) now need to move with this; that is
         // David's call and is recorded here rather than left implicit.
-        let speed       = Self.mapVelocityToSpeed(smoothedVelocity)
         let azimuthBias = vm.pencilPressure != nil ? cos(vm.pencilAzimuth) * 0.2 : 0
-        // Pan follows absolute x across the whole canvas (not the
-        // active cell), so a right-hand cell sounds from the right.
+        // Rate from velocity; pan follows absolute x across the whole
+        // canvas (not the active cell), so a right-hand cell sounds from
+        // the right; spatial arm only: y drives the carrier pitch
+        // (220–880 Hz linear-in-cents, top = high). ONE mapping, shared
+        // with the observe animation's dot (`ArmCoupling`, 2026-10-05).
         //
-        // Suppressed by the comparison switch (2026-09-17) — the
+        // Pan is suppressed by the comparison switch (2026-09-17) — the
         // supervisor's "auch ohne Panning". Zeroing the bias leaves the
         // rate coupling AND the spatial arm's pitch drive untouched, so
         // each arm stays itself and only the pan axis goes. Applied at the
         // CALL SITE rather than inside `AudioEngine`, whose
         // `setAdaptivePlayback` is the shared three-parameter seam the arms
-        // are matched through — and which is on the DO-NOT list.
-        let rawBias = vm.panningEnabled
-            ? (canvasNormalized.x * 2.0 - 1.0) + azimuthBias
-            : 0
-        let hBias = Float(max(-1.0, min(1.0, rawBias)))
-        vm.audio.setAdaptivePlayback(speed: speed, horizontalBias: hBias)
-
-        // Spatial arm only: pen Y additionally drives the carrier pitch
-        // (220–880 Hz linear-in-cents, top = high — SpatialSonification).
-        // The phoneme arm never reaches this, so its pitch stays at the
-        // engine default 0 — the arms are matched on rate + pan and
-        // differ in pitch-drive + sound identity (reframed §2.6).
-        if vm.audioCondition == .spatial {
-            vm.audio.setSpatialPitch(
-                cents: SpatialSonification.pitchCents(forNormalizedY: canvasNormalized.y))
-        }
+        // are matched through — and which is on the DO-NOT list. The
+        // phoneme arm never gets a pitch drive: the arms are matched on
+        // rate + pan and differ in pitch-drive + sound identity (§2.6).
+        ArmCoupling.apply(
+            ArmCoupling.parameters(canvasNormalized: canvasNormalized,
+                                   velocity: smoothedVelocity,
+                                   azimuthBias: azimuthBias,
+                                   panningEnabled: vm.panningEnabled,
+                                   arm: vm.audioCondition),
+            to: vm.audio)
 
         // No feedbackIntensity gate here: the letter sound is the
         // phonemic anchor for the glyph, not Schmidt & Lee guidance
