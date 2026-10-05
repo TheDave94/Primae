@@ -77,6 +77,13 @@ final class PhaseTransitionCoordinator {
             return
         }
 
+        // Test-only: close the probe's measurement window for the phase
+        // that is ENDING, BEFORE the advance, so the window carries the
+        // ending phase's name. It used to run first thing in
+        // `resetForPhaseTransition`, i.e. AFTER this advance, and so
+        // labelled observe's last window "guided" (device run R01,
+        // 2026-10-05). A no-op unless the probe was launch-armed.
+        vm.audio.emitAudioSignalSummary(label: vm.phaseController.currentPhase.rawName)
         if vm.phaseController.advance(score: score) {
             vm.resetForPhaseTransition()
             if vm.phaseController.currentPhase == .observe {

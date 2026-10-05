@@ -3006,12 +3006,10 @@ public final class TracingViewModel {
     }
 
     func resetForPhaseTransition() {
-        // Test-only: close the measurement window for the phase that is
-        // ENDING, so an XCUI test on the device can read whether sound
-        // actually came out during it. A no-op unless the probe was
-        // launch-armed. Placed FIRST so the window covers the whole phase
-        // and not just its tail.
-        audio.emitAudioSignalSummary(label: phaseController.currentPhase.rawName)
+        // The probe's closing window for the ending phase is emitted by
+        // `PhaseTransitionCoordinator.advance` BEFORE the phase advances
+        // (2026-10-05) — here, after the advance, it carried the NEXT
+        // phase's name.
         strokeTracker.reset()
         guard letters.indices.contains(letterIndex) else { return }
         reloadStrokeCheckpoints(for: letters[letterIndex])

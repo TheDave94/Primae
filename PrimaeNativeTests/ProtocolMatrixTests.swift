@@ -124,6 +124,10 @@ fileprivate final class RecordingAudio: AudioControlling {
         if phaseAtCall() == .observe { stopsDuringObserve += 1 }
     }
     func restart() {}
+    /// Probe closing-window labels, in order — `emitAudioSignalSummary` is
+    /// a protocol requirement (`AudioControlling`), so the call reaches here.
+    private(set) var summaryLabels: [String] = []
+    func emitAudioSignalSummary(label: String) { summaryLabels.append(label) }
     func suspendForLifecycle() { isPlaying = false }
     func resumeAfterLifecycle() {}
     func cancelPendingLifecycleWork() {}
@@ -479,6 +483,26 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         if arm == .spatial {
             #expect(audio.spatialPitches.last == 0, "the carrier must sit at zero pitch in observe")
         }
+    }
+
+    /// The device probe (`AudioSignalProbe`) closes a measurement window at
+    /// every phase transition. That window must carry the name of the phase
+    /// that is ENDING: it used to be emitted after the advance and so named
+    /// the NEXT phase, which put observe's last window — with the observe
+    /// sound in it — under "guided" (device run R01, 2026-10-05).
+    /// Mutation: move the emit in `PhaseTransitionCoordinator.advance` back
+    /// below `vm.phaseController.advance(score:)` — RED, the label is "guided".
+    @Test("probe: the closing window at a phase transition carries the ENDING phase's name")
+    func probeClosingWindowNamesTheEndingPhase() {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .phoneme, audio: audio)
+        vm.loadLetter(name: "A")
+        #expect(vm.learningPhase == .observe, "precondition: a fresh load lands in observe")
+        let before = audio.summaryLabels.count
+        vm.completeObservePhase()
+        #expect(vm.learningPhase == .guided, "precondition: observe advanced to guided")
+        #expect(Array(audio.summaryLabels.dropFirst(before)) == ["observe"],
+                "the window closed at the observe→guided transition must be labelled observe: \(audio.summaryLabels)")
     }
 
     @Test("P1: the silent arm's observe phase makes no sound")
