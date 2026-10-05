@@ -231,7 +231,11 @@ struct ParentDashboardExporter {
         // above. Empty for rows written before the field existed
         // (revisions 1–3). See `StudyProtocol` for why the stamp alone
         // could not carry this.
-        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration","protocolRevision"].joined(separator: sep))
+        // `spatialDeviationRaw` appended LAST (2026-10-05, protocol r6):
+        // since r6 `spatialDeviation` is measured after fitting the drawn
+        // letter's bounding box onto the reference's; this is the same
+        // distance without the fit (what `spatialDeviation` was before r6).
+        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration","protocolRevision","spatialDeviationRaw"].joined(separator: sep))
         // D11#1: filtered ONCE, here, and every aggregate below —
         // including the arm-split ones — reads `enrolledRecords`, never
         // `snapshot.phaseSessionRecords` directly. The raw-row loop and
@@ -324,7 +328,11 @@ struct ParentDashboardExporter {
                 rec.comparisonConfiguration ?? "",
                 // Protocol revision, read off the RECORD (2026-10-04).
                 // Empty for a row written before the field existed.
-                rec.protocolRevision.map(String.init) ?? ""
+                rec.protocolRevision.map(String.init) ?? "",
+                // The unnormalised secondary distance (r6, 2026-10-05),
+                // same 6 dp as spatialDeviation. Empty before r6 and for
+                // non-freeWrite rows.
+                rec.spatialDeviationRaw.map { String(format: "%.6f", $0) } ?? ""
             ]
             lines.append(row.map { delimitedField($0, separator: sep) }.joined(separator: sep))
         }

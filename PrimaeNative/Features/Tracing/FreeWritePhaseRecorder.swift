@@ -49,6 +49,9 @@ final class FreeWritePhaseRecorder {
     /// Lower is better; nil when no assessment has produced a finite one
     /// this session.
     var lastSpatialDeviation: CGFloat? { lastStrokeProcess?.spatialDeviation }
+    /// The SECONDARY unnormalised distance (protocol r6): position and
+    /// size count. See `StrokeProcessMeasures.spatialDeviationRaw`.
+    var lastSpatialDeviationRaw: CGFloat? { lastStrokeProcess?.spatialDeviationRaw }
     /// Latest 4-dimension Schreibmotorik assessment. Set by `assess`.
     private(set) var lastAssessment: WritingAssessment? = nil
     /// Captured guided-phase score so the freeWrite chrome can show a

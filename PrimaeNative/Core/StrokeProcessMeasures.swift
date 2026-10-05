@@ -5,6 +5,16 @@
 // (stroke count, order, direction), from ONE computation (2026-09-04,
 // superseding the 2026-09-03 Hausdorff-over-the-whole-trace design).
 //
+// REDEFINED 2026-10-05 (protocol revision 6, DECISIONS D8): the PRIMARY
+// distance is now computed AFTER a translate + UNIFORM-scale fit of the
+// drawn strokes' bounding box onto the reference's (aspect kept; rotation
+// still NOT normalised), so a letter drawn anywhere on the canvas, at any
+// size, is compared with the ideal letter. David: "it must be tracked
+// wherever on the screen it is drawn and can it then be compared to an
+// ideal letter drawing of the same letter for scoring". The unnormalised
+// distance is kept as the secondary `spatialDeviationRaw`. The paragraph
+// below records the 2026-09-04 reasoning this replaces, unchanged.
+//
 // WHY NOT SHAPE NORMALISATION (Procrustes rejected): scale and rotation
 // are already controlled by this task's design — a fixed reference and
 // a defined canvas — so normalising them buys nothing, and rotation-
@@ -86,7 +96,11 @@ import Foundation
 /// order-invariant PRIMARY spatial-deviation outcome, plus the process
 /// secondaries recovered from the same stroke correspondence.
 struct StrokeProcessMeasures: Equatable {
-    /// PRIMARY, order-invariant accuracy outcome: the mean, over the
+    /// PRIMARY, order-invariant accuracy outcome — since protocol r6
+    /// (2026-10-05) measured AFTER the bounding-box fit
+    /// (`StrokeProcessScorer.fitToReference`), so the paragraph's "same
+    /// coordinate space" and "NOT normalised by letter size" below
+    /// describe `spatialDeviationRaw` now: the mean, over the
     /// matched stroke pairs, of each pair's own (direction-minimised)
     /// discrete Fréchet distance — in the same reference-normalised
     /// coordinate space `PhaseSessionRecord.spatialDeviation` has always
@@ -101,6 +115,13 @@ struct StrokeProcessMeasures: Equatable {
     /// pooled cross-letter analysis should normalise offline from
     /// `RawTrace.referenceStrokes` (2026-09-05).
     let spatialDeviation: CGFloat
+    /// SECONDARY (2026-10-05, protocol r6): the same stroke-correspondence
+    /// distance WITHOUT the bounding-box fit — the pre-r6 primary, in the
+    /// reference's own coordinate space, so position and size count. Its
+    /// own assignment is solved independently (it is exactly what
+    /// `spatialDeviation` was before r6); the process secondaries below
+    /// come from the normalised pairing.
+    let spatialDeviationRaw: CGFloat
     /// Number of strokes the child actually drew (pen-lift count + 1),
     /// one-sample taps included; `matchedReferenceOrder` has exactly this
     /// many entries, in trace order.
@@ -141,9 +162,9 @@ enum StrokeProcessScorer {
     /// the order-invariant primary distance plus count/order/direction.
     /// `points` must already be normalised into the reference's
     /// coordinate space — the same convention the rest of this scoring
-    /// path uses (NOT unit-box normalised: position and scale are
-    /// meaningful here, per the file header's rejection of shape
-    /// normalisation). `nil` when there's nothing comparable.
+    /// path uses. Since r6 the primary fits position and scale away
+    /// (`fitToReference`); they still count in `spatialDeviationRaw`.
+    /// `nil` when there's nothing comparable.
     static func analyze(
         points: [CGPoint],
         strokeStartIndices: [Int],
@@ -167,6 +188,78 @@ enum StrokeProcessScorer {
         let traceStrokes = eligibleTrace.map { allTraceStrokes[$0] }
         let refStrokes = eligibleRef.map { allRefStrokes[$0] }
 
+        // PRIMARY (r6): the drawn strokes fitted onto the reference's box.
+        let fit = fitToReference(drawn: traceStrokes, reference: refStrokes)
+        let fittedStrokes = traceStrokes.map { $0.map(fit) }
+        guard let primary = correspondence(trace: fittedStrokes, reference: refStrokes),
+              let raw = correspondence(trace: traceStrokes, reference: refStrokes) else { return nil }
+
+        // Expand back to the ORIGINAL positions on both sides.
+        var matchedAll: [Int?] = Array(repeating: nil, count: allTraceStrokes.count)
+        for (i, j) in primary.matched.enumerated() {
+            guard let j else { continue }
+            matchedAll[eligibleTrace[i]] = eligibleRef[j]
+        }
+
+        return StrokeProcessMeasures(
+            spatialDeviation: primary.deviation,
+            spatialDeviationRaw: raw.deviation,
+            strokeCount: allTraceStrokes.count,
+            matchedReferenceOrder: matchedAll,
+            reversedStrokeCount: primary.reversed
+        )
+    }
+
+    /// Below this extent (canvas-normalised units, the larger of width and
+    /// height) a drawing is a TAP OR SCRIBBLE, not a letter: it is moved
+    /// onto the reference but NOT scaled up, so a dot cannot be inflated
+    /// into a letter-sized shape that scores as letter-like. 2% of the
+    /// canvas (≈25 pt on the study iPad). Ruled 2026-10-05.
+    static let scribbleExtent: CGFloat = 0.02
+    /// An extent at or below this is zero (a straight vertical or
+    /// horizontal line, or a single point) — that axis cannot be fitted.
+    static let degenerateExtent: CGFloat = 1e-6
+
+    /// The translate + UNIFORM scale (aspect kept, no rotation) that fits
+    /// the drawn strokes' bounding box onto the reference strokes' box
+    /// (protocol r6, 2026-10-05): centres aligned, one scale factor
+    /// `s = min(ref.w / drawn.w, ref.h / drawn.h)` over the axes where
+    /// BOTH extents are non-degenerate.
+    ///   - one axis degenerate on either side (a drawn straight stroke, or
+    ///     a straight-line reference): fitted on the other axis alone;
+    ///   - no fittable axis (a point, or two lines at right angles): s = 1;
+    ///   - a scribble (`scribbleExtent`): s = 1 — moved, not inflated.
+    /// Never divides by a degenerate extent, so it cannot produce NaN.
+    static func fitToReference(drawn: [[CGPoint]], reference: [[CGPoint]]) -> (CGPoint) -> CGPoint {
+        guard let d = boundingBox(drawn), let r = boundingBox(reference) else { return { $0 } }
+        var ratios: [CGFloat] = []
+        if d.width > degenerateExtent && r.width > degenerateExtent { ratios.append(r.width / d.width) }
+        if d.height > degenerateExtent && r.height > degenerateExtent { ratios.append(r.height / d.height) }
+        let isScribble = max(d.width, d.height) < scribbleExtent
+        let scale = (isScribble ? nil : ratios.min()) ?? 1
+        let dc = CGPoint(x: d.midX, y: d.midY)
+        let rc = CGPoint(x: r.midX, y: r.midY)
+        return { p in CGPoint(x: rc.x + scale * (p.x - dc.x), y: rc.y + scale * (p.y - dc.y)) }
+    }
+
+    private static func boundingBox(_ strokes: [[CGPoint]]) -> CGRect? {
+        let pts = strokes.joined()
+        guard let first = pts.first else { return nil }
+        var minX = first.x, maxX = first.x, minY = first.y, maxY = first.y
+        for p in pts {
+            minX = min(minX, p.x); maxX = max(maxX, p.x)
+            minY = min(minY, p.y); maxY = max(maxY, p.y)
+        }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    /// The stroke-correspondence search itself: per (traced, reference)
+    /// pair the cheaper of forward/reversed discrete Fréchet distance,
+    /// the minimum-cost assignment, and the mean over the matched pairs.
+    /// `matched` is indexed like `trace` (eligible strokes only).
+    private static func correspondence(trace traceStrokes: [[CGPoint]],
+                                       reference refStrokes: [[CGPoint]])
+        -> (deviation: CGFloat, matched: [Int?], reversed: Int)? {
         let traceCount = traceStrokes.count
         let refCount = refStrokes.count
 
@@ -203,11 +296,8 @@ enum StrokeProcessScorer {
         var totalDeviation: CGFloat = 0
         var matchedCount = 0
         var reversedCount = 0
-        // Expand back to the ORIGINAL positions on both sides.
-        var matchedAll: [Int?] = Array(repeating: nil, count: allTraceStrokes.count)
         for i in 0..<traceCount {
             guard let j = matched[i] else { continue }
-            matchedAll[eligibleTrace[i]] = eligibleRef[j]
             totalDeviation += cost[i][j]
             matchedCount += 1
             if reversedWins[i][j] { reversedCount += 1 }
@@ -216,13 +306,7 @@ enum StrokeProcessScorer {
         // smaller side is always fully matched by construction — see
         // `bestAssignment`), guarded anyway rather than assumed.
         guard matchedCount > 0 else { return nil }
-
-        return StrokeProcessMeasures(
-            spatialDeviation: totalDeviation / CGFloat(matchedCount),
-            strokeCount: allTraceStrokes.count,
-            matchedReferenceOrder: matchedAll,
-            reversedStrokeCount: reversedCount
-        )
+        return (totalDeviation / CGFloat(matchedCount), matched, reversedCount)
     }
 
     /// Minimum-total-cost assignment between traced-stroke indices

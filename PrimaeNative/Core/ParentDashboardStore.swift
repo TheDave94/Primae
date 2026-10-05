@@ -112,7 +112,11 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// directly, rather than inferred from an inflated whole-path
     /// distance number.
     let frechetDistance: Double?
-    /// **PRIMARY accuracy outcome.** Order-invariant spatial deviation
+    /// **PRIMARY accuracy outcome.** Since protocol r6 (2026-10-05,
+    /// DECISIONS D8) measured AFTER fitting the drawn letter's bounding box
+    /// onto the reference's (translate + uniform scale); the position/scale
+    /// argument below is the 2026-09-04 design's and now describes
+    /// `spatialDeviationRaw`. Order-invariant spatial deviation
     /// via STROKE CORRESPONDENCE (2026-09-04, superseding the
     /// 2026-09-03 whole-trace-Hausdorff design): each traced stroke is
     /// matched to its best-fitting reference stroke, and this is the
@@ -128,6 +132,14 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// ceiling). Nil for non-freeWrite phases, legacy records, and
     /// traces too short to compare.
     let spatialDeviation: Double?
+    /// **SECONDARY accuracy outcome (protocol r6, 2026-10-05).** The
+    /// stroke-correspondence distance WITHOUT the bounding-box fit — what
+    /// `spatialDeviation` measured before r6, in the reference's own
+    /// coordinate space, so a letter drawn off-position or off-size scores
+    /// worse here than in the primary. Nil for non-freeWrite phases and
+    /// every record written before r6 (whose `spatialDeviation` IS this
+    /// unnormalised measure — read `protocolRevision` before pooling).
+    var spatialDeviationRaw: Double?
     /// **Secondary accuracy outcome.** Fraction of the reference's
     /// checkpoints reached during the measured freeWrite phase (0–1),
     /// from `StrokeTracker.overallProgress`. Retained alongside the
@@ -231,7 +243,8 @@ struct PhaseSessionRecord: Codable, Equatable {
          studyMode: Bool? = nil,
          probe: String? = nil,
          comparisonConfiguration: String? = nil,
-         protocolRevision: Int? = StudyProtocol.revision) {
+         protocolRevision: Int? = StudyProtocol.revision,
+         spatialDeviationRaw: Double? = nil) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
@@ -262,6 +275,7 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.probe                   = probe
         self.comparisonConfiguration = comparisonConfiguration
         self.protocolRevision        = protocolRevision
+        self.spatialDeviationRaw     = spatialDeviationRaw
     }
 
     init(from decoder: Decoder) throws {
@@ -323,6 +337,8 @@ struct PhaseSessionRecord: Codable, Equatable {
         // written before it (revisions 1–3). Never defaulted to the
         // current revision on decode — that would re-stamp old rows.
         protocolRevision         = try? c.decode(Int.self, forKey: .protocolRevision)
+        // Added 2026-10-05 (r6); nil for every earlier record.
+        spatialDeviationRaw      = try? c.decode(Double.self, forKey: .spatialDeviationRaw)
     }
 }
 
@@ -662,12 +678,22 @@ protocol ParentDashboardStoring {
                        studyMode: Bool?,
                        probe: String?)
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?)
+    /// r6 variant (2026-10-05): also carries the unnormalised secondary
+    /// distance. A requirement WITH a forwarding default (extension below,
+    /// which drops `spatialDeviationRaw`), so doubles that implement only
+    /// the variant above still conform; the JSON store overrides it.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?, spatialDeviationRaw: Double?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
 }
 
 extension ParentDashboardStoring {
+    /// Forwarding default for the r6 variant — see the requirement. Drops
+    /// `spatialDeviationRaw`; the JSON store overrides this.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?, spatialDeviationRaw: Double?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score, schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: probe, comparisonConfiguration: comparisonConfiguration)
+    }
     /// Backward-compatible overloads for call sites that don't supply an
     /// assessment / recognition / inputDevice. `audioCondition` defaults
     /// to `.phoneme`; the live VM path uses the full method and stamps the
@@ -863,6 +889,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     }
 
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil, spatialDeviation: Double? = nil, strokeCount: Int? = nil, strokeOrder: String? = nil, reversedStrokeCount: Int? = nil, studyMode: Bool? = nil, probe: String? = nil, comparisonConfiguration: String? = nil) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score, schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: probe, comparisonConfiguration: comparisonConfiguration, spatialDeviationRaw: nil)
+    }
+
+    /// r6 (2026-10-05): the one place a phase row is built. No default on
+    /// `spatialDeviationRaw`, so a call that omits it resolves to the
+    /// variant above rather than becoming ambiguous.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil, spatialDeviation: Double? = nil, strokeCount: Int? = nil, strokeOrder: String? = nil, reversedStrokeCount: Int? = nil, studyMode: Bool? = nil, probe: String? = nil, comparisonConfiguration: String? = nil, spatialDeviationRaw: Double?) {
         let record = PhaseSessionRecord(
             letter: LetterProgress.canonicalKey(letter),
             phase: phase,
@@ -885,7 +918,8 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             reversedStrokeCount: reversedStrokeCount,
             studyMode: studyMode,
             probe: probe,
-            comparisonConfiguration: comparisonConfiguration
+            comparisonConfiguration: comparisonConfiguration,
+            spatialDeviationRaw: spatialDeviationRaw
         )
         snapshot.phaseSessionRecords.append(record)
         if snapshot.phaseSessionRecords.count > Self.phaseSessionRecordsCap {

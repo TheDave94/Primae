@@ -141,11 +141,16 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
     @Test("spatialDeviation keeps ranking traces after formAccuracy has clamped to 0")
     func spatialDeviationDiscriminatesBelowTheFormAccuracyFloor() throws {
         let ref = lineReference(checkpointRadius: 0.05)
-        // Both traces sit far outside checkpointRadius * 3 (= 0.15), so
-        // the clamped formAccuracy reads 0 for each and loses the
-        // difference. The raw distance does not.
-        let bad   = (0...20).map { CGPoint(x: 0.1 + 0.04 * CGFloat($0), y: 0.85) }
-        let worse = (0...20).map { CGPoint(x: 0.1 + 0.04 * CGFloat($0), y: 0.99) }
+        // Since protocol r6 (2026-10-05) both measures are taken after the
+        // bounding-box fit, so an OFFSET is free; what is scored is shape.
+        // Two zigzags across the line, both far outside checkpointRadius
+        // * 3 (= 0.15) after the fit, so the clamped formAccuracy reads 0
+        // for each and loses the difference. The unclamped distance does not.
+        func zigzag(_ amplitude: CGFloat) -> [CGPoint] {
+            (0...20).map { CGPoint(x: 0.1 + 0.04 * CGFloat($0), y: 0.5 + ($0 % 2 == 0 ? amplitude : -amplitude)) }
+        }
+        let bad   = zigzag(0.2)
+        let worse = zigzag(0.35)
 
         let aBad = FreeWriteScorer.score(tracedPoints: bad, reference: ref)
         let aWorse = FreeWriteScorer.score(tracedPoints: worse, reference: ref)
@@ -157,7 +162,22 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         let dWorse = try #require(StrokeProcessScorer.analyze(
             points: worse, strokeStartIndices: [], reference: ref)).spatialDeviation
         #expect(dWorse > dBad,
-                "the raw distance is the only one of the two that still ranks these")
+                "the unclamped distance is the only one of the two that still ranks these")
+    }
+
+    @Test("r6: an offset copy of the line is free in the primary and in formAccuracy, and costs in the raw secondary")
+    func offsetIsFreeInThePrimaryAndCostsInTheRaw() throws {
+        let ref = lineReference(checkpointRadius: 0.05)
+        let near = (0...20).map { CGPoint(x: 0.1 + 0.04 * CGFloat($0), y: 0.85) }
+        let far  = (0...20).map { CGPoint(x: 0.1 + 0.04 * CGFloat($0), y: 0.99) }
+        let mNear = try #require(StrokeProcessScorer.analyze(points: near, strokeStartIndices: [], reference: ref))
+        let mFar  = try #require(StrokeProcessScorer.analyze(points: far, strokeStartIndices: [], reference: ref))
+        #expect(mNear.spatialDeviation < 0.01 && mFar.spatialDeviation < 0.01,
+                "a straight line drawn lower is the same shape: \(mNear.spatialDeviation), \(mFar.spatialDeviation)")
+        #expect(FreeWriteScorer.score(tracedPoints: far, reference: ref).formAccuracy > 0.9,
+                "the free-writing score reads the fitted distance (ruled 2026-10-05)")
+        #expect(mFar.spatialDeviationRaw > mNear.spatialDeviationRaw && mNear.spatialDeviationRaw > 0.3,
+                "the raw secondary still ranks by position: \(mNear.spatialDeviationRaw), \(mFar.spatialDeviationRaw)")
     }
 
     // MARK: - 2c. Both measures reach the record and the CSV
@@ -219,6 +239,46 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
         #expect(rec.strokeCount == 2)
         #expect(rec.strokeOrder == "0,1")
         #expect(rec.reversedStrokeCount == 1)
+    }
+
+    @Test("r6: the store records spatialDeviationRaw, persists it, and the CSV exports it last at 6 dp")
+    func spatialDeviationRawReachesStoreFileAndCSV() async throws {
+        let tmp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tmp) }
+        let store = JSONParentDashboardStore(fileURL: tmp)
+        store.recordPhaseSession(
+            letter: "M", phase: "freeWrite", completed: true, score: 0.72,
+            schedulerPriority: 0.4, condition: .threePhase, audioCondition: .phoneme,
+            assessment: nil, recognition: nil, inputDevice: "finger",
+            rawTraceID: nil, trainedSubset: "AIM", phaseDurationSeconds: 6.25,
+            frechetDistance: nil, checkpointCoverage: 1.0,
+            spatialDeviation: 0.012345, strokeCount: 2, strokeOrder: "0,1",
+            reversedStrokeCount: 0, studyMode: true, probe: nil,
+            comparisonConfiguration: nil, spatialDeviationRaw: 0.234567)
+        let rec = try #require(store.snapshot.phaseSessionRecords.last)
+        #expect(rec.spatialDeviation == 0.012345 && rec.spatialDeviationRaw == 0.234567)
+
+        // Persisted: a fresh store on the same file decodes it.
+        await store.flush()
+        let reread = JSONParentDashboardStore(fileURL: tmp)
+        #expect(reread.snapshot.phaseSessionRecords.last?.spatialDeviationRaw == 0.234567,
+                "spatialDeviationRaw did not survive the round trip to disk")
+
+        // Exported: the last column of the row, 6 dp; empty on a legacy row.
+        var snap = DashboardSnapshot()
+        snap.phaseSessionRecords.append(rec)
+        snap.phaseSessionRecords.append(PhaseSessionRecord(
+            letter: "F", phase: "freeWrite", completed: true, score: 0.5, schedulerPriority: 0))
+        let csv = String(data: ParentDashboardExporter.csvData(from: snap, progress: [:], enrolledAt: nil),
+                         encoding: .utf8)!
+        let lines = csv.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let header = try #require(lines.first { $0.hasPrefix("letter,phase,completed") })
+        #expect(header.hasSuffix(",protocolRevision,spatialDeviationRaw"), "Header: \(header)")
+        let mRow = try #require(lines.first { $0.hasPrefix("M,freeWrite") })
+        let fRow = try #require(lines.first { $0.hasPrefix("F,freeWrite") })
+        #expect(mRow.hasSuffix(",0.234567"), "M row: \(mRow)")
+        #expect(fRow.hasSuffix(","), "a row without the raw distance must leave the column empty: \(fRow)")
     }
 
     @Test("per-phase CSV gains strokeCount + strokeOrder + reversedStrokeCount columns")

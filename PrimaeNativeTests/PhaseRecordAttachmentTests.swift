@@ -53,6 +53,10 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
         let reversedStrokeCount: Int?
         let studyMode: Bool?
         let probe: String?
+        /// The unnormalised secondary distance (protocol r6, 2026-10-05),
+        /// set by the r6 requirement below. Not one of the ten: counted
+        /// and asserted separately so the r6 change cannot hide in a total.
+        var spatialDeviationRaw: Double? = nil
 
         /// How many of the ten declared fields are populated. 9 on
         /// freeWrite (frechetDistance is RETIRED as of 2026-09-04 — kept
@@ -127,6 +131,42 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
                           reversedStrokeCount: reversedStrokeCount,
                           studyMode: studyMode,
                           probe: probe))
+    }
+
+    /// The r6 requirement (2026-10-05) — the one the coordinator calls.
+    /// Records like the variant above, plus the raw distance.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool,
+                            score: Double, schedulerPriority: Double,
+                            condition: ThesisCondition,
+                            audioCondition: PilotAudioCondition,
+                            assessment: WritingAssessment?,
+                            recognition: RecognitionSample?,
+                            inputDevice: String?,
+                            rawTraceID: UUID?,
+                            trainedSubset: String?,
+                            phaseDurationSeconds: Double?,
+                            frechetDistance: Double?,
+                            checkpointCoverage: Double?,
+                            spatialDeviation: Double?,
+                            strokeCount: Int?,
+                            strokeOrder: String?,
+                            reversedStrokeCount: Int?,
+                            studyMode: Bool?,
+                            probe: String?,
+                            comparisonConfiguration: String?,
+                            spatialDeviationRaw: Double?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score,
+                           schedulerPriority: schedulerPriority, condition: condition,
+                           audioCondition: audioCondition, assessment: assessment,
+                           recognition: recognition, inputDevice: inputDevice,
+                           rawTraceID: rawTraceID, trainedSubset: trainedSubset,
+                           phaseDurationSeconds: phaseDurationSeconds,
+                           frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage,
+                           spatialDeviation: spatialDeviation, strokeCount: strokeCount,
+                           strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount,
+                           studyMode: studyMode, probe: probe,
+                           comparisonConfiguration: comparisonConfiguration)
+        calls[calls.count - 1].spatialDeviationRaw = spatialDeviationRaw
     }
 
     func reset() {}
@@ -267,6 +307,12 @@ private final class CapturingDashboardStore: ParentDashboardStoring {
         #expect(fw.strokeCount != nil, "strokeCount missing — a SECONDARY process outcome")
         #expect(fw.strokeOrder != nil, "strokeOrder missing — a SECONDARY process outcome")
         #expect(fw.reversedStrokeCount != nil, "reversedStrokeCount missing — a SECONDARY process outcome")
+
+        // r6 (2026-10-05): the unnormalised secondary rides on the row too.
+        #expect(fw.spatialDeviationRaw != nil, "spatialDeviationRaw missing — the r6 SECONDARY (unnormalised) distance")
+        for call in s.calls where call.phase != "freeWrite" {
+            #expect(call.spatialDeviationRaw == nil, "\(call.phase) row carries a raw distance")
+        }
 
         #expect(fw.measurementFieldCount == 9,
                 "freeWrite row carries \(fw.measurementFieldCount)/9 active fields: \(fw.populatedFields.sorted())")

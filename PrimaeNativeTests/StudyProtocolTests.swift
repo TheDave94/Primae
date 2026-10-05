@@ -86,15 +86,18 @@ import Foundation
         let lines = csv.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let header = try #require(lines.first { $0.hasPrefix("letter,phase,completed") })
         let names = header.components(separatedBy: ",")
-        #expect(names.last == "protocolRevision", "Header: \(header)")
-        #expect(names.dropLast().last == "comparisonConfiguration",
+        // r6 (2026-10-05) appended `spatialDeviationRaw` after it, newest-last.
+        #expect(names.last == "spatialDeviationRaw", "Header: \(header)")
+        #expect(names.dropLast().last == "protocolRevision", "Header: \(header)")
+        #expect(names.dropLast(2).last == "comparisonConfiguration",
                 "protocolRevision must be appended after the previous last column, not inserted")
+        let revisionColumn = try #require(names.firstIndex(of: "protocolRevision"))
 
         func lastField(_ prefix: String) throws -> String {
             let row = try #require(lines.first { $0.hasPrefix(prefix) })
             let fields = row.components(separatedBy: ",")
             #expect(fields.count == names.count, "row and header out of alignment:\n\(row)")
-            return fields.last ?? "<none>"
+            return fields.indices.contains(revisionColumn) ? fields[revisionColumn] : "<none>"
         }
         #expect(try lastField("A,freeWrite") == String(StudyProtocol.revision))
         #expect(try lastField("F,freeWrite") == "",

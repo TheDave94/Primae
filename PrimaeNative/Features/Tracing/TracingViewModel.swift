@@ -573,6 +573,8 @@ public final class TracingViewModel {
     /// study's PRIMARY accuracy outcome — see
     /// `PhaseSessionRecord.spatialDeviation` and `StrokeProcessMeasures`.
     var lastFreeWriteSpatialDeviation: CGFloat? { freeWriteRecorder.lastSpatialDeviation }
+    /// The unnormalised secondary (protocol r6) — `PhaseSessionRecord.spatialDeviationRaw`.
+    var lastFreeWriteSpatialDeviationRaw: CGFloat? { freeWriteRecorder.lastSpatialDeviationRaw }
     /// Stroke count/order/direction of the measured freeWrite trace, or
     /// nil if none was measured. The study's SECONDARY process outcomes
     /// (2026-09-03) — see `PhaseSessionRecord.strokeCount` and siblings.

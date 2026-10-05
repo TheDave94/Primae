@@ -401,12 +401,15 @@ private final class StampCapturingStore: ParentDashboardStoring {
                                "the export has no comparisonConfiguration column — a comparison run's rows are still indistinguishable from pilot rows. Header: \(header)")
 
         // Appended at the end, so no existing column moved or was renamed.
-        // `protocolRevision` was appended after it (2026-10-04), so the
-        // stamp is now second-to-last — still behind every legacy column.
-        #expect(idx == names.count - 2,
+        // `protocolRevision` was appended after it (2026-10-04), and
+        // `spatialDeviationRaw` after that (2026-10-05, r6), so the stamp is
+        // now third-to-last — still behind every legacy column.
+        #expect(idx == names.count - 3,
                 "comparisonConfiguration sits at index \(idx) of \(names.count) — it must sit immediately before protocolRevision, behind every legacy column")
-        #expect(names.last == "protocolRevision",
-                "the last column must be protocolRevision. Header: \(header)")
+        #expect(names.dropLast().last == "protocolRevision",
+                "protocolRevision must follow comparisonConfiguration. Header: \(header)")
+        #expect(names.last == "spatialDeviationRaw",
+                "the last column must be spatialDeviationRaw (r6). Header: \(header)")
 
         let rows = lines.filter { $0.hasPrefix("A,freeWrite") || $0.hasPrefix("F,freeWrite") || $0.hasPrefix("I,freeWrite") }
         #expect(rows.count == 3, "expected a row per letter, got \(rows.count)")

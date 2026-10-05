@@ -41,7 +41,7 @@ nonisolated enum StudyProtocol {
 
     /// The protocol revision this build records. Always the last entry
     /// of `history`.
-    static let revision: Int = 5
+    static let revision: Int = 6
 
     static let history: [Revision] = [
         Revision(revision: 1, mergedAtUTC: "2026-10-01 22:33", pullRequest: 21,
@@ -55,7 +55,9 @@ nonisolated enum StudyProtocol {
         // r5 also records #39 (2026-10-05), which changed what the child
         // sees and hears in observe and missed its own bump: rows written
         // between #39 and this revision carry 4 but heard the #39 observe.
-        Revision(revision: 5, mergedAtUTC: nil, pullRequest: nil,
+        Revision(revision: 5, mergedAtUTC: "2026-10-05 19:38", pullRequest: 42,
                  childFacingChange: "Observe (#39, missed bump): the animation and, in the sound arms, the sound start together after the instruction, sound for the whole pass. Observe sound now TRACKS the animated dot like the pen (rate from dot velocity, pan from x, spatial pitch from y; still dot = slowest rate), reversing D9's steady carrier. The presentation starts 1.0 s after the spoken cue ends (3.0 s fallback from the cue's start), all arms. Envelope in every writing phase of the sound arms: fade-out 0.4 s (was 0.12), stall 0.3 s (was 0.12), lift hold 0.8 s (was 0; a re-touch inside it keeps the sound)."),
+        Revision(revision: 6, mergedAtUTC: nil, pullRequest: nil,
+                 childFacingChange: "Free-writing (the session free-write and every cold probe) is ungated: in the sound arms the sound follows the pen anywhere on the canvas, no longer only near the reference letter's own position and size; guided keeps the on-letter gate. The free-writing score (and so the stars) and the primary outcome spatialDeviation are measured after fitting the drawn letter's bounding box onto the reference's (translate + uniform scale, aspect kept; a scribble under 2% of the canvas is moved, not scaled); the unnormalised distance is exported as spatialDeviationRaw."),
     ]
 }

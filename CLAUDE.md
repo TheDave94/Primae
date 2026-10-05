@@ -631,7 +631,13 @@ not be read as current.
 > **The shipping configuration is covered**, at the same count as
 > Debug-Study. The known issue is
 > `CalibrationSessionLoggerTests.twoSavesInTheSameSecondCollide`, which is
-> deliberately marked. `ENABLE_TESTABILITY=YES` on the command line is
+> deliberately marked. **(Annotated 2026-10-05: that known issue NO LONGER
+> EXISTS. The same-second filename collision was fixed in #42 (`009ebf42`) —
+> `CalibrationSessionLogger.uniqueCaptureURL` suffixes a taken name — and
+> the test is now the plain `twoSavesInTheSameSecondAreTwoCaptures`. The
+> suite has no known issues; David's standing rule is that known issues are
+> fixed, not accepted, so do not mark a new one with `withKnownIssue`.)**
+> `ENABLE_TESTABILITY=YES` on the command line is
 > still REQUIRED — what this validates is the `-O` build with DEBUG
 > surfaces compiled out, not the signed artefact bit-for-bit. **ROADMAP
 > F11's blast radius is now bounded**: `swiftlang/swift#88173` is an

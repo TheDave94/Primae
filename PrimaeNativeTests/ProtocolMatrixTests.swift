@@ -354,6 +354,66 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
     }
 
+    // MARK: - r6 (2026-10-05): free-writing is UNGATED, guided keeps the gate
+    //
+    // David: the letter's mask must go — "it must be tracked wherever on the
+    // screen it is drawn". Letter I (checkpointRadius 0.1, a narrow glyph
+    // in the middle of the canvas); the pen writes in the bottom-left
+    // corner, far from every checkpoint.
+
+    /// Put the session in `pass` on letter I.
+    private func enterOnI(_ pass: WritingPass, _ vm: TracingViewModel) {
+        switch pass {
+        case .guided:
+            vm.loadLetter(name: "I")
+            vm.phaseController.resume(at: .guided)
+        case .sessionFreeWrite:
+            vm.loadLetter(name: "I")
+            vm.phaseController.resume(at: .freeWrite)
+        case .pretest, .posttest, .delayed:
+            let kind: StudyProbe = pass == .pretest ? .pretest : pass == .posttest ? .posttest : .delayed
+            let refusal = vm.startColdProbe(letter: "I", kind: kind)
+            #expect(refusal == nil, "precondition: the \(pass) probe on I was refused: \(refusal ?? "")")
+        }
+    }
+
+    /// A stroke in the bottom-left corner, in bounds, moving.
+    private func writeFarFromTheLetter(_ vm: TracingViewModel) {
+        var t: CFTimeInterval = 3000
+        var p = CGPoint(x: 20, y: 370)
+        vm.beginTouch(at: p, t: t)
+        for _ in 0..<15 { t += 0.01; p.x += 4; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+    }
+
+    @Test("r6: in free-writing and every cold probe the sound arms sound ANYWHERE on the canvas",
+          arguments: [WritingPass.sessionFreeWrite, .pretest, .posttest, .delayed],
+                     [PilotAudioCondition.phoneme, .spatial])
+    func freeWritingSoundsAnywhere(pass: WritingPass, arm: PilotAudioCondition) {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio, withLetterI: true)
+        enterOnI(pass, vm)
+        #expect(vm.learningPhase == .freeWrite, "precondition: \(pass) runs in free-writing (\(vm.learningPhase))")
+        let playsBefore = audio.playCount
+        writeFarFromTheLetter(vm)
+        #expect(!vm.strokeTracker.isNearStroke, "precondition: the pen is off the letter")
+        #expect(audio.playCount > playsBefore && audio.isPlaying,
+                "\(arm), \(pass): the pen far from the letter was silent — the free-writing mask is back. Events: \(audio.events.suffix(6))")
+    }
+
+    @Test("r6: guided KEEPS the on-letter gate — the same off-letter stroke is silent",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func guidedStaysGated(arm: PilotAudioCondition) {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio, withLetterI: true)
+        enterOnI(.guided, vm)
+        #expect(vm.learningPhase == .guided, "precondition: guided (\(vm.learningPhase))")
+        let playsBefore = audio.playCount
+        writeFarFromTheLetter(vm)
+        #expect(!vm.strokeTracker.isNearStroke, "precondition: the pen is off the letter")
+        #expect(audio.playCount == playsBefore,
+                "\(arm): guided sounded off the letter: \(audio.events.suffix(6))")
+    }
+
     // MARK: - P1 / P2: sound while writing
 
     @Test("P1: the silent arm's writing makes no sound in any pass",

@@ -40,7 +40,12 @@ Implications:
 
 - **D8 — Primary accuracy outcome: order-invariant spatial deviation
   via STROKE CORRESPONDENCE, not shape normalisation and not discrete
-  Fréchet on a concatenated path.** SUPERSEDES an earlier same-day
+  Fréchet on a concatenated path.** **REDEFINED 2026-10-05 (protocol
+  revision 6): the distance is now measured AFTER a translate +
+  uniform-scale fit of the drawn letter's bounding box onto the
+  reference's — read "Redefinition 2026-10-05" at the end of this entry
+  before acting on the paragraphs below, which record the 2026-09-04
+  design.** SUPERSEDES an earlier same-day
   design (symmetric Hausdorff over the whole trace, `da83821`–`b9f9d16`)
   that was itself a correction of the original primary outcome (raw
   discrete Fréchet over the whole concatenated trace, which penalised a
@@ -111,6 +116,68 @@ Implications:
   (`TracingViewModel.probeArmAudioMissingReason`,
   `TracingViewModel.swift:2058`, checked at `:2042`).
   Rationale: not recorded (David, 2026-10-05); decision stands as ruled.
+
+  **Redefinition 2026-10-05 (David's ruling; protocol revision 6) — the
+  primary outcome is position- and size-free.** David, 2026-10-05,
+  after his own test of the pilot build ("the letter still has the
+  mask"): the letter's mask must go; *"it must be tracked wherever on
+  the screen it is drawn and can it then be compared to an ideal letter
+  drawing of the same letter for scoring."* No further rationale is
+  recorded.
+  - **What the measure is now.** Before the stroke-correspondence search,
+    the drawn points are mapped by ONE translate + UNIFORM scale that fits
+    the bounding box of the drawn strokes onto the bounding box of the
+    reference strokes: centres aligned, scale `s = min(ref.w / drawn.w,
+    ref.h / drawn.h)`, aspect kept, no rotation
+    (`StrokeProcessScorer.fitToReference`, `StrokeProcessMeasures.swift:233`,
+    applied at `:192`). The pairing, the within-pair discrete Fréchet
+    distance and the mean over matched pairs are unchanged
+    (`correspondence`, `:260`). Rotation is still not normalised: an
+    upside-down letter remains an error.
+  - **Degenerate input.** An axis whose extent is ≤ 1e-6 on either side
+    (a straight vertical or horizontal stroke, or such a reference) is
+    left out of the scale and the fit uses the other axis; with no
+    fittable axis the scale is 1 (translation only). A drawing whose
+    larger extent is below 2% of the canvas (`scribbleExtent`, `:218`;
+    ≈25 pt on the study iPad; ruled 2026-10-05) is moved but NOT scaled,
+    so a tap or scribble is not inflated to letter size. Empty input and
+    a trace with no stroke of ≥ 2 samples still return nil. No division
+    by a degenerate extent, so the fit cannot produce NaN.
+  - **LIMITATION, stated plainly.** The fit uses the bounding box of ALL
+    drawn strokes, as ruled. A stray mark far from the letter widens that
+    box, so the fit for the WHOLE attempt is distorted — every matched
+    stroke is scaled and moved by it, and the attempt scores worse than
+    the letter alone would — even though the stray stroke itself stays
+    unmatched and does not enter the average. Pinned by
+    `StrokeProcessMeasuresTests.extraTracedStrokeIsUnmatched`.
+  - **Secondary.** The unnormalised distance — exactly the pre-r6
+    primary — is kept as `spatialDeviationRaw`
+    (`StrokeProcessMeasures.spatialDeviationRaw`, solved by its own
+    assignment at `:206`; `PhaseSessionRecord.spatialDeviationRaw`,
+    `ParentDashboardStore.swift:142`; exported as the LAST CSV column,
+    `ParentDashboardExporter.swift:238`, value at `:335`). The process
+    secondaries (`strokeOrder`, `reversedStrokeCount`) come from the
+    fitted pairing.
+  - **Score and stars.** `formAccuracy` reads the same fitted distance
+    (`FreeWriteScorer.swift:205`), so the free-writing score and the stars
+    derived from it are position- and size-free too (ruled 2026-10-05:
+    the score uses the normalised value, same as the primary outcome).
+  - **What it supersedes above.** "scale and rotation are already
+    controlled by this task's design … so normalising them buys nothing"
+    — superseded for translation and scale; rotation unchanged. "position
+    and scale are meaningful here" (`StrokeProcessScorer.analyze` doc, before r6)
+    — now true of `spatialDeviationRaw` only.
+  - **Data.** `spatialDeviation` changes meaning at revision 6: rows with
+    `protocolRevision` < 6 (or empty) carry the unnormalised distance and
+    no `spatialDeviationRaw`. Read `protocolRevision` before pooling.
+  - **Pinned by** `StrokeProcessMeasuresTests` (`offsetLetterIsFitted`,
+    `scaledLetterIsFitted`, `stretchedLetterKeepsItsError`,
+    `upsideDownLetterIsAnError`, `letterIIsFitted`,
+    `zeroWidthReferenceFitsOnHeight`, `tinyScribbleIsNotInflated`,
+    `zeroLengthStrokeIsFinite`, `fitWithoutAFittableAxisTranslatesOnly`),
+    `MeasurementLayerTests.offsetIsFreeInThePrimaryAndCostsInTheRaw` and
+    `.spatialDeviationRawReachesStoreFileAndCSV`, and
+    `PhaseRecordAttachmentTests.freeWriteRowCarriesAllNineMeasurementFields`.
 
 - **D9 — Pre-task sound-arm demonstration: both arms taught, not
   matched in form.** **THE SPATIAL DEMONSTRATION'S FORM IS SUPERSEDED —
@@ -673,7 +740,9 @@ Implications:
 - **D14 — The sound arms sound while writing in EVERY writing part,
   including free-writing and the outcome passes; no sound-free pass
   exists, by design (David, 2026-10-04; implemented in #27,
-  `90874e13`, 2026-10-03).**
+  `90874e13`, 2026-10-03).** **REVISED 2026-10-05 (protocol revision 6):
+  in free-writing and the probes the sound is no longer gated on the
+  letter path — read "Revision 2026-10-05" at the end of this entry.**
   David: *"children would not understand if not all letter-writing
   parts produce the sound."*
 
@@ -712,6 +781,32 @@ Implications:
   for rows written before revision 4 (#34), so it does not separate
   pre-#27 rows from rows written between #27 and #34; that cut-over
   has to be recovered from `recordedAt` against the install log.
+
+  **Revision 2026-10-05 (David's ruling; protocol revision 6) — the
+  on-path gate is removed from free-writing and every cold probe; guided
+  keeps it.** David, 2026-10-05: the letter's mask must go; *"it must be
+  tracked wherever on the screen it is drawn and can it then be compared
+  to an ideal letter drawing of the same letter for scoring."* No further
+  rationale is recorded.
+  - **What the code does now.** `shouldPlayForStroke = ungated ||
+    vm.strokeTracker.isNearStroke`, with `ungated` true in the
+    `.freeWrite` phase (`TouchDispatcher.swift:434-435`). The session's
+    free-writing and every cold probe run in that phase, so in the sound
+    arms the sound follows the pen anywhere on the canvas; the
+    out-of-bounds edge still stops it, and the silent arm still returns
+    before the coupling. Guided keeps the proximity gate.
+  - **The on-path confound recorded above is removed in free-writing and
+    the probes.** The *Consequence for the thesis* paragraph's "because
+    sound requires the pen on the letter path it is also on-path feedback
+    that only the sound arms receive" no longer holds for the outcome
+    passes from revision 6: sound there carries no information about
+    whether the pen is on the reference letter. It still holds for
+    guided. The outcome passes remain produced WITH the arm's sound.
+  - **Data.** Rows with `protocolRevision` < 6 (or empty) were produced
+    with the on-path gate in the sound arms.
+  - **Pinned by** `ProtocolMatrixTests.freeWritingSoundsAnywhere`
+    (session free-writing and the three probes, both sound arms, a pen
+    far from letter I) and `.guidedStaysGated`.
 
 - **D15 — The spoken content is IDENTICAL in all three arms (David,
   2026-10-04; implemented in #34, `875104d5`, protocol revision 4).**

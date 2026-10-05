@@ -250,7 +250,8 @@ final class PhaseTransitionCoordinator {
             // the device says then. nil for a pilot session (all twelve
             // switches at their defaults), so this column is empty on
             // every pilot row.
-            comparisonConfiguration: vm.comparisonConfigurationStamp
+            comparisonConfiguration: vm.comparisonConfigurationStamp,
+            spatialDeviationRaw: m.spatialDeviationRaw
         )
     }
 
@@ -264,6 +265,7 @@ final class PhaseTransitionCoordinator {
         var duration: Double?
         var coverage: Double?
         var spatialDeviation: Double?
+        var spatialDeviationRaw: Double?
         var strokeProcess: StrokeProcessMeasures?
     }
 
@@ -299,6 +301,8 @@ final class PhaseTransitionCoordinator {
         // via stroke correspondence — see StrokeProcessMeasures and
         // PhaseSessionRecord.spatialDeviation.
         m.spatialDeviation = vm.lastFreeWriteSpatialDeviation.map { Double($0) }
+        // SECONDARY (r6): the same distance without the bounding-box fit.
+        m.spatialDeviationRaw = vm.lastFreeWriteSpatialDeviationRaw.map { Double($0) }
         // SECONDARY: checkpoint coverage of the freeWrite trace.
         // `resetForPhaseTransition` reset the tracker on entry to
         // freeWrite, so this reads the freeWrite pass alone and not the
@@ -498,7 +502,8 @@ final class PhaseTransitionCoordinator {
                 probe: vm.currentProbe?.rawValue,
                 // Same stamp, same rule as the incomplete-row site above:
                 // captured here, from the session, and never at export.
-                comparisonConfiguration: vm.comparisonConfigurationStamp
+                comparisonConfiguration: vm.comparisonConfigurationStamp,
+                spatialDeviationRaw: isFreeWrite ? m.spatialDeviationRaw : nil
             )
         }
         commitCompletion(letter: vm.currentLetterName,

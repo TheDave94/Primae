@@ -421,7 +421,18 @@ final class TouchDispatcher {
         // Movement-contingency is preserved by `armStallIdle`, not by the
         // floor: a stopped pen sends no samples and falls quiet after one
         // idle debounce. See `playbackActivationVelocityThreshold`.
-        let shouldPlayForStroke = vm.strokeTracker.isNearStroke
+        //
+        // FREE-WRITING IS UNGATED (2026-10-05, protocol r6; D14). The
+        // proximity gate measures distance to the reference letter's next
+        // checkpoint AT ITS OWN POSITION AND SIZE, so in free-writing it
+        // was a mask: a letter written anywhere else, or larger or smaller,
+        // fell silent. David: the letter's mask must go — "it must be
+        // tracked wherever on the screen it is drawn". In free-writing
+        // (the session's free-write and every cold probe) the sound arms'
+        // sound now follows the pen anywhere on the canvas (the
+        // out-of-bounds edge above still stops it). Guided keeps the gate.
+        let ungated             = vm.phaseController.currentPhase == .freeWrite
+        let shouldPlayForStroke = ungated || vm.strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke
                                   && smoothedVelocity >= playbackActivationVelocityThreshold
         vm.playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)

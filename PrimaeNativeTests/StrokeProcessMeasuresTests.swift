@@ -151,10 +151,18 @@ struct StrokeProcessMeasuresTests {
         #expect(m.strokeCount == 3, "the child drew 3 strokes even though the reference has 2")
         #expect(m.matchedReferenceOrder == [0, 1, nil],
                 "the stray third stroke has no reference counterpart and must be nil, not forced onto stroke 0 or 1")
-        // The unmatched stray stroke must not drag the primary distance
-        // down — only the two genuinely matched pairs contribute.
-        #expect(m.spatialDeviation < 0.01,
-                "an unmatched extra stroke must not inflate spatialDeviation, got \(m.spatialDeviation)")
+        // The unmatched stray stroke must not enter the AVERAGE — only the
+        // two genuinely matched pairs contribute. Pinned on the
+        // unnormalised distance since protocol r6 (2026-10-05): the
+        // primary is measured after fitting the bounding box of ALL drawn
+        // strokes onto the reference's, and the stray stroke widens that
+        // box, so it moves the primary through the fit (by design, as
+        // ruled: "the drawn strokes' bounding box") — never through the
+        // average.
+        #expect(m.spatialDeviationRaw < 0.01,
+                "an unmatched extra stroke must not inflate the matched-pair average, got \(m.spatialDeviationRaw)")
+        #expect(m.spatialDeviation > m.spatialDeviationRaw,
+                "r6: the stray stroke widens the drawn box, so the fitted legs no longer sit on the reference")
     }
 
     @Test("fewer traced strokes than the reference: the reference stroke with no match is simply absent from the pairing")
@@ -166,7 +174,9 @@ struct StrokeProcessMeasuresTests {
         #expect(m.strokeCount == 1, "the child drew only 1 stroke even though the reference has 2")
         #expect(m.matchedReferenceOrder == [0],
                 "the single traced stroke matches its best reference counterpart (the vertical leg)")
-        #expect(m.spatialDeviation < 0.01)
+        // On the unnormalised distance (r6): fitted, the lone leg is
+        // centred on the WHOLE L's box, so it no longer sits on the leg.
+        #expect(m.spatialDeviationRaw < 0.01)
     }
 
     // MARK: - Edge cases
@@ -211,5 +221,108 @@ struct StrokeProcessMeasuresTests {
         #expect(m.matchedReferenceOrder.count == 3, "one entry per traced stroke, taps included (2026-09-05)")
         #expect(m.matchedReferenceOrder == [0, nil, 1],
                 "the tap is the unmatched one, at ITS position: \(m.matchedReferenceOrder)")
+    }
+
+    // MARK: - r6 (2026-10-05): the bounding-box fit before the distance
+    //
+    // David: "it must be tracked wherever on the screen it is drawn and can
+    // it then be compared to an ideal letter drawing of the same letter for
+    // scoring". Translate + UNIFORM scale, aspect kept, no rotation; the
+    // unnormalised distance stays as `spatialDeviationRaw`.
+
+    private func analyzeL(_ strokes: [[CGPoint]]) throws -> StrokeProcessMeasures {
+        var starts: [Int] = []
+        var n = 0
+        for s in strokes.dropLast() { n += s.count; starts.append(n) }
+        return try #require(StrokeProcessScorer.analyze(
+            points: Array(strokes.joined()), strokeStartIndices: starts, reference: lStrokes))
+    }
+
+    @Test("r6: the reference L drawn elsewhere on the canvas scores as the L; the raw secondary pays for the offset")
+    func offsetLetterIsFitted() throws {
+        let m = try analyzeL([denseLine(from: CGPoint(x: 0.55, y: 0.05), to: CGPoint(x: 0.55, y: 0.65)),
+                              denseLine(from: CGPoint(x: 0.55, y: 0.65), to: CGPoint(x: 0.95, y: 0.65))])
+        #expect(m.spatialDeviation < 0.01, "offset L, primary: \(m.spatialDeviation)")
+        #expect(m.spatialDeviationRaw > 0.1, "offset L, raw: \(m.spatialDeviationRaw)")
+        #expect(m.matchedReferenceOrder == [0, 1] && m.reversedStrokeCount == 0)
+    }
+
+    @Test("r6: a half-size L in a corner scores as the L; the raw secondary pays for size and place")
+    func scaledLetterIsFitted() throws {
+        let m = try analyzeL([denseLine(from: CGPoint(x: 0.1, y: 0.1), to: CGPoint(x: 0.1, y: 0.4)),
+                              denseLine(from: CGPoint(x: 0.1, y: 0.4), to: CGPoint(x: 0.3, y: 0.4))])
+        #expect(m.spatialDeviation < 0.01, "half-size L, primary: \(m.spatialDeviation)")
+        #expect(m.spatialDeviationRaw > 0.1, "half-size L, raw: \(m.spatialDeviationRaw)")
+    }
+
+    @Test("r6: the scale is UNIFORM — a stretched L is not fitted back into shape")
+    func stretchedLetterKeepsItsError() throws {
+        // Horizontal leg 0.6 long against the reference's 0.4: a per-axis
+        // fit would erase that; the uniform fit (s = min ratio) cannot.
+        let m = try analyzeL([denseLine(from: CGPoint(x: 0.4, y: 0.2), to: CGPoint(x: 0.4, y: 0.8)),
+                              denseLine(from: CGPoint(x: 0.4, y: 0.8), to: CGPoint(x: 1.0, y: 0.8))])
+        #expect(m.spatialDeviation > 0.05, "a stretched L must still deviate: \(m.spatialDeviation)")
+    }
+
+    @Test("r6: rotation is NOT normalised — an upside-down L is an error")
+    func upsideDownLetterIsAnError() throws {
+        let m = try analyzeL([denseLine(from: CGPoint(x: 0.4, y: 0.2), to: CGPoint(x: 0.4, y: 0.8)),
+                              denseLine(from: CGPoint(x: 0.4, y: 0.2), to: CGPoint(x: 0.8, y: 0.2))])
+        #expect(m.spatialDeviation > 0.2, "upside-down L, primary: \(m.spatialDeviation)")
+    }
+
+    @Test("r6: letter I (the bundle's slanted single stroke) drawn small and off-place scores as the I")
+    func letterIIsFitted() throws {
+        let a = CGPoint(x: 0.71, y: 0.04), b = CGPoint(x: 0.31, y: 0.96)
+        let ref = LetterStrokes(letter: "I", checkpointRadius: 0.04, strokes: [
+            StrokeDefinition(id: 1, checkpoints: denseLine(from: a, to: b, count: 40).map { Checkpoint(x: $0.x, y: $0.y) })])
+        let small = denseLine(from: CGPoint(x: 0.05 + a.x * 0.3, y: 0.05 + a.y * 0.3),
+                              to: CGPoint(x: 0.05 + b.x * 0.3, y: 0.05 + b.y * 0.3))
+        let m = try #require(StrokeProcessScorer.analyze(points: small, strokeStartIndices: [], reference: ref))
+        #expect(m.spatialDeviation < 0.01, "small I, primary: \(m.spatialDeviation)")
+        #expect(m.spatialDeviationRaw > 0.2, "small I, raw: \(m.spatialDeviationRaw)")
+    }
+
+    @Test("r6 degenerate: a zero-width reference (vertical line) is fitted on its height alone, never NaN")
+    func zeroWidthReferenceFitsOnHeight() throws {
+        let drawn = denseLine(from: CGPoint(x: 0.1, y: 0.1), to: CGPoint(x: 0.1, y: 0.4))
+        let m = try #require(StrokeProcessScorer.analyze(points: drawn, strokeStartIndices: [], reference: verticalLineStrokes))
+        #expect(m.spatialDeviation.isFinite && m.spatialDeviationRaw.isFinite)
+        #expect(m.spatialDeviation < 0.01, "short vertical line, fitted on height: \(m.spatialDeviation)")
+        // A slightly slanted line against the zero-width reference: the
+        // drawn width cannot be fitted to 0, so the height decides.
+        let slanted = denseLine(from: CGPoint(x: 0.1, y: 0.1), to: CGPoint(x: 0.12, y: 0.4))
+        let s = try #require(StrokeProcessScorer.analyze(points: slanted, strokeStartIndices: [], reference: verticalLineStrokes))
+        #expect(s.spatialDeviation.isFinite && s.spatialDeviation < 0.05, "near-vertical: \(s.spatialDeviation)")
+    }
+
+    @Test("r6 degenerate: a tiny scribble (< 2% of the canvas) is moved, NOT scaled up into a letter")
+    func tinyScribbleIsNotInflated() throws {
+        // The reference L's own shape at 1% of the canvas: inflated, it
+        // would score as a perfect L.
+        let tiny = try analyzeL([denseLine(from: CGPoint(x: 0.1, y: 0.1), to: CGPoint(x: 0.1, y: 0.115)),
+                                 denseLine(from: CGPoint(x: 0.1, y: 0.115), to: CGPoint(x: 0.11, y: 0.115))])
+        #expect(tiny.spatialDeviation.isFinite)
+        #expect(tiny.spatialDeviation > 0.2, "a scribble was inflated to letter size: \(tiny.spatialDeviation)")
+        // Control: the same shape just above the threshold IS fitted.
+        let small = try analyzeL([denseLine(from: CGPoint(x: 0.1, y: 0.1), to: CGPoint(x: 0.1, y: 0.13)),
+                                  denseLine(from: CGPoint(x: 0.1, y: 0.13), to: CGPoint(x: 0.12, y: 0.13))])
+        #expect(small.spatialDeviation < 0.01, "a 3% L is a letter and is fitted: \(small.spatialDeviation)")
+    }
+
+    @Test("r6 degenerate: a zero-length stroke (two samples on one spot) is translated only, finite")
+    func zeroLengthStrokeIsFinite() throws {
+        let dot = [CGPoint(x: 0.3, y: 0.3), CGPoint(x: 0.3, y: 0.3)]
+        let m = try #require(StrokeProcessScorer.analyze(points: dot, strokeStartIndices: [], reference: lStrokes))
+        #expect(m.spatialDeviation.isFinite && m.spatialDeviationRaw.isFinite)
+    }
+
+    @Test("r6 degenerate: the fit has no fittable axis — identity scale, centres aligned")
+    func fitWithoutAFittableAxisTranslatesOnly() {
+        let fit = StrokeProcessScorer.fitToReference(
+            drawn: [[CGPoint(x: 0.2, y: 0.2), CGPoint(x: 0.2, y: 0.6)]],     // zero width
+            reference: [[CGPoint(x: 0.5, y: 0.5), CGPoint(x: 0.9, y: 0.5)]]) // zero height
+        let p = fit(CGPoint(x: 0.2, y: 0.6))
+        #expect(abs(p.x - 0.7) < 1e-9 && abs(p.y - 0.7) < 1e-9, "expected a pure translation, got \(p)")
     }
 }
