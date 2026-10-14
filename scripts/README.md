@@ -5,6 +5,18 @@ file here is run by hand from the repo root (no part of the iOS build
 depends on these). Run order when adding a new letter is documented at
 the bottom.
 
+## Python dependencies
+
+No requirements file is committed yet. The bake and the drift gates need
+`numpy`, `scipy`, `Pillow`, `fontTools` and `scikit-image` (>= 0.21);
+the ElevenLabs scripts need `requests`; `scripts/tests` needs `pytest`.
+The two workflows (`bake-gates.yml`, `ios-build.yml`) install overlapping,
+**unpinned** subsets. The gates rasterise through Pillow's bundled
+FreeType, so thresholds are calibrated in that pixel frame; candidate and
+reference are rasterised on the same machine, which makes version drift
+common-mode, but absolute values (e.g. G1 asymmetry) can move with the
+Pillow/FreeType version. Pin from a CI run's `pip freeze`, not from memory.
+
 ## Asset generators
 
 ### `generate_strokes_auto.py`
@@ -74,21 +86,21 @@ Use it whenever a geometric tunable has multiple plausible values
 (`docs/APP_DOCUMENTATION.md` §13.7).
 
 ### `verify_bake.sh`
-Codifies the two release-blocking properties of the bake pipeline
-(`docs/APP_DOCUMENTATION.md` §13.6):
-
-1. **Determinism** — 3 successive bakes produce byte-identical output.
-2. **Byte-identity** — a fresh bake matches HEAD's checked-in
-   `strokes.json` for every letter the `LETTERS` dict covers
-   (the b firewall is a special case).
+**Not applicable to the shipped corpus (audit 2026-10-13, G3-02).**
+It was written to codify two properties of the bake (determinism: three
+bakes byte-identical; byte-identity vs HEAD's `strokes.json`), but every
+Regular letter is a `SHIPPED_AS_STATIC_ARTIFACT` — the committed corpus
+comes from the iPad calibrator, not the bake — so there is nothing for it
+to bake. It now says so and exits **2** (distinct from 1 = a check ran
+and failed; deliberately non-zero so it can never be read as "bake
+verified"). The checks only run for a letter that is in `LETTERS` but
+not static; none exists today, and byte-identity vs HEAD would also need
+the bake's output format (trailing newline, `checkpointRadius`) to match
+the corpus's.
 
 ```bash
-./scripts/verify_bake.sh            # every letter in the LETTERS dict
-./scripts/verify_bake.sh M N V W b  # subset
+./scripts/verify_bake.sh            # -> "NOT APPLICABLE", exit 2
 ```
-
-Exits non-zero on drift. Cheap enough (~12 s for the full set) to
-run before any commit that touches `generate_strokes_auto.py`.
 
 ### `generate_letter_audio.py`
 ElevenLabs voice generator for the letter-**name** audio, example
@@ -165,7 +177,9 @@ python3 scripts/gen_appicon.py
 ```
 
 Output: `Primae/Primae/Assets.xcassets/AppIcon.appiconset/`
-(`AppIcon.png`, `AppIcon-dark.png`, `AppIcon-tinted.png`).
+(`AppIcon.png`, `AppIcon-dark.png`, `AppIcon-tinted.png`). It does **not**
+produce the study icon `AppIcon-Study` (audit 2026-10-13, G3-20): that
+icon set has no reproducible source in this repo.
 
 ### `render_checklist.py`
 Regenerate `docs/testing_checklist.html` from the canonical
@@ -178,7 +192,24 @@ the Markdown source.
 python3 scripts/render_checklist.py
 ```
 
-Output: `docs/testing_checklist.html`.
+Output: `docs/testing_checklist.html`. `scripts/tests/test_rendered_docs_in_sync.py`
+fails when the committed HTML (this one or `STUDY_DEVICE_DRYRUN.html`,
+from `render_dryrun.py`) no longer equals its renderer's output.
+
+## Archival tools (no code consumes their output)
+
+Audit 2026-10-13, G3-08/G3-20. `calibrate_g1_threshold.py`,
+`calibrate_g2_threshold.py`, `calibrate_g3_threshold.py`,
+`calibrate_g4_threshold.py` and `calibrate_g6_threshold.py` are the
+one-off derivations behind the gate constants in `audit_invariants.py`
+(documented in `research_data/phase2b_gates/*_calibration_run.md`). They
+compare each 2026-05-22 session's bake output with **HEAD**, and HEAD has
+changed since, so re-running them today does not reproduce the recorded
+thresholds; nothing asserts the constants equal a derivation. G2's
+calibrator targets a gate that is not enforced. Only
+`calibrate_g6_threshold.py` writes a file, and now only with `--output`.
+`render_stroke_order_grid.py`, `render_overlay.py` and `render_dryrun.py`
+are run by hand and referenced from no code.
 
 ## Git hooks
 

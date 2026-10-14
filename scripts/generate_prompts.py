@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate pre-recorded ElevenLabs MP3s for the 13 static prompt
+"""Generate pre-recorded ElevenLabs MP3s for the 14 static prompt
 phrases the child hears during normal practice.
 
 Why pre-recorded: the user flagged AVSpeechSynthesizer's quality as
@@ -20,6 +20,7 @@ Output layout:
         praise_4.mp3 ... praise_0.mp3
         paper_show.mp3 ... paper_assess.mp3
         retrieval_question.mp3
+        celebration.mp3
 
 Voice strategy: we generate every prompt across the same 10 German
 voices that `generate_letter_audio.py` uses (so a future researcher
@@ -39,8 +40,9 @@ paying for the full set.
 
 Re-runs skip files that already exist.
 
-Prereq:
-    export ELEVENLABS_API_KEY=your-key
+Prereq (enter the key without echo, so it never lands in shell history;
+see CLAUDE.md "Credentials"):
+    read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
     pip install requests
 """
 from __future__ import annotations
@@ -158,7 +160,8 @@ def main() -> int:
 
     if not API_KEY:
         sys.stderr.write(
-            "ELEVENLABS_API_KEY not set. Export it before running.\n"
+            "ELEVENLABS_API_KEY not set. Enter it with `read -s` (see the\n"
+            "module docstring) before running.\n"
         )
         return 1
 

@@ -1,0 +1,50 @@
+{
+  "_comment": "Auditable allow-list of INTENDED stroke direction / endpoint changes for G7 (scripts/audit_invariants.py). An entry admits exactly one (reference stroke, candidate stroke) pair, bound by stroke index and sha256 of each checkpoint list (g7_stroke_digest); any further edit to the stroke un-allows it. Add an entry only for a change that was decided on purpose, with the reason, and date it. Entries for other letters/weights never match.",
+  "version": 1,
+  "entries": [
+    {
+      "letter": "A",
+      "weight": "regular",
+      "stroke": 0,
+      "referenceCommit": "a6f59ae0662c3881938c57bb3d7e54a1fba40744",
+      "candidateCommit": "caff347239130e1eb1ae2346b91c9ae6bb41c905",
+      "referenceStrokeSha256": "b5ead4fee9bdffdaa07ad1c9abd289334b3080515af3a8b0fe464d453f906b66",
+      "candidateStrokeSha256": "6b2c78d3a46e7dca510dd5e23665afa9f6fcbb33314d6596354cba1da8c4f161",
+      "reason": "Deliberate top-down correction in caff3472: strokes 0 and 1 of A now start at the apex and run apex-down (previously foot-first). Verified by independent review 2026-10-13 against the current app: A runs apex-down, then the crossbar left-to-right. The commit message of caff3472 does not mention it.",
+      "date": "2026-10-01"
+    },
+    {
+      "letter": "A",
+      "weight": "regular",
+      "stroke": 1,
+      "referenceCommit": "a6f59ae0662c3881938c57bb3d7e54a1fba40744",
+      "candidateCommit": "caff347239130e1eb1ae2346b91c9ae6bb41c905",
+      "referenceStrokeSha256": "c7de57ead7057ae8a6f4db77694149f19b1b3e1df86c793685eabe89f5b7140e",
+      "candidateStrokeSha256": "5828cc114ce06f3d9bfd31644af041d8009d74a099481da899c59876166046a2",
+      "reason": "Deliberate top-down correction in caff3472: strokes 0 and 1 of A now start at the apex and run apex-down (previously foot-first). Verified by independent review 2026-10-13 against the current app: A runs apex-down, then the crossbar left-to-right. The commit message of caff3472 does not mention it.",
+      "date": "2026-10-01"
+    },
+    {
+      "letter": "A",
+      "weight": "light",
+      "stroke": 0,
+      "referenceCommit": "a6f59ae0662c3881938c57bb3d7e54a1fba40744",
+      "candidateCommit": "caff347239130e1eb1ae2346b91c9ae6bb41c905",
+      "referenceStrokeSha256": "e9ca17e1aab1176abad758a23f7c58594ba3ed0207e6a11d8da63f656542c57b",
+      "candidateStrokeSha256": "1245d00eaf8339ff4b0e5ac70194321a1c3acbfa00c0492669c241c01c443412",
+      "reason": "Deliberate top-down correction in caff3472: strokes 0 and 1 of A now start at the apex and run apex-down (previously foot-first). Verified by independent review 2026-10-13 against the current app: A runs apex-down, then the crossbar left-to-right. The commit message of caff3472 does not mention it.",
+      "date": "2026-10-01"
+    },
+    {
+      "letter": "A",
+      "weight": "light",
+      "stroke": 1,
+      "referenceCommit": "a6f59ae0662c3881938c57bb3d7e54a1fba40744",
+      "candidateCommit": "caff347239130e1eb1ae2346b91c9ae6bb41c905",
+      "referenceStrokeSha256": "bdfba65a85427a12f5457dde40a8b78ae2959d239fda02c19ff1c47006d1d4a9",
+      "candidateStrokeSha256": "256e4fe914c9eae21197f72544b8395a3a40ccb4ad6566005aa25c6993e8846e",
+      "reason": "Deliberate top-down correction in caff3472: strokes 0 and 1 of A now start at the apex and run apex-down (previously foot-first). Verified by independent review 2026-10-13 against the current app: A runs apex-down, then the crossbar left-to-right. The commit message of caff3472 does not mention it.",
+      "date": "2026-10-01"
+    }
+  ]
+}

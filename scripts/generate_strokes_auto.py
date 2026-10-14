@@ -100,6 +100,8 @@ import hashlib
 import heapq
 import json
 import math
+import os
+import tempfile
 from collections import deque
 from pathlib import Path
 
@@ -4499,6 +4501,54 @@ def save_overlay(letter: str, font_path: Path, out_path: Path) -> None:
 # CLI
 # -----------------------------------------------------------------------------
 
+def _is_inside(path: Path, root: Path) -> bool:
+    """True if `path` is `root` or lies below it - judged by ON-DISK
+    IDENTITY, not spelling (review 2026-10-13). A realpath string
+    comparison misses `primaenative/resources/letters` on a case-insensitive
+    volume (macOS APFS does not fold case in realpath). So: walk `path` up
+    to its deepest EXISTING ancestor-or-self and ask whether any existing
+    ancestor-or-self is the same inode as `root` (os.path.samefile). That
+    also covers a not-yet-existing child of the production tree and
+    symlinks. The string comparison on realpaths stays as a fallback for
+    paths whose ancestors cannot be stat'ed."""
+    candidate = Path(os.path.realpath(path))
+    root_real = Path(os.path.realpath(root))
+    if candidate == root_real or root_real in candidate.parents:
+        return True
+    probe = candidate
+    while True:
+        try:
+            if probe.exists() and os.path.samefile(probe, root):
+                return True
+        except OSError:
+            pass
+        if probe.parent == probe:
+            return False
+        probe = probe.parent
+
+
+def write_text_atomic(path: Path, text: str) -> None:
+    """Write `text` to `path` as UTF-8 via a temp file in the same
+    directory + `os.replace`, so a crash cannot leave a truncated file and
+    the encoding does not depend on the locale (audit 2026-10-13, G3-11:
+    `Path.write_text` uses the locale encoding, and the payload is
+    `ensure_ascii=False`, so keys such as "Ä" / "ß" could be mis-encoded
+    under a C locale)."""
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent),
+                                    prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(text.encode("utf-8"))
+        os.chmod(tmp_name, 0o644)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
 def write_meta(out_base: Path, font_path: Path) -> None:
     """Write `_meta.json` so consumers can detect a font swap and
     trigger a re-bake. `fontPath` is stored repo-relative so the file
@@ -4509,7 +4559,7 @@ def write_meta(out_base: Path, font_path: Path) -> None:
         font_path_str = str(font_path.resolve().relative_to(REPO_ROOT))
     except ValueError:
         font_path_str = str(font_path)
-    (out_base / "_meta.json").write_text(json.dumps({
+    write_text_atomic(out_base / "_meta.json", json.dumps({
         "fontPath": font_path_str,
         "fontSha256": font_hash,
         "generator": "generate_strokes_auto.py",
@@ -4530,7 +4580,8 @@ def main() -> int:
                              "<out>/<Weight>/<letter>/strokes.json. Default: regular.")
     parser.add_argument("--font", default=None,
                         help="Override font path. Implies a single bake "
-                             "into <out>/Regular/ unless --weight=light.")
+                             "into <out>/Regular/ unless --weight=light. "
+                             "Requires --out (never the production dir).")
     parser.add_argument("--out", default=None,
                         help="Output base dir. Default: PrimaeNative/Resources/Letters.")
     parser.add_argument("--no-overwrite", action="store_true",
@@ -4538,6 +4589,23 @@ def main() -> int:
     parser.add_argument("--debug", action="store_true",
                         help="Save /tmp/centerline_<L>.png overlays.")
     args = parser.parse_args()
+
+    if args.font and not args.out:
+        # `--font X` with the default `--weight regular` baked into the
+        # production Regular/ directory and rewrote its _meta.json with the
+        # override font's sha256 -- silently labelling the shipped corpus
+        # with a font it was not baked from (audit 2026-10-13, G3-11).
+        print("--font requires --out <scratch dir>: refusing to bake an "
+              "override font into the production Letters directory")
+        return 2
+    if args.font and _is_inside(Path(args.out), OUTPUT_BASE):
+        # Same hazard through the front door: --out naming the production
+        # tree (directly, via `..`, or via a symlink) would write the
+        # override font's sha256 into the shipped _meta.json.
+        print(f"--font with --out {args.out} refused: that resolves inside "
+              f"the production Letters directory ({OUTPUT_BASE}); bake an "
+              f"override font into a scratch directory outside it")
+        return 2
 
     if args.weight == "both":
         weights = ["regular", "light"]
@@ -4585,7 +4653,8 @@ def main() -> int:
                 fail += 1
                 continue
             out_dir.mkdir(parents=True, exist_ok=True)
-            out_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+            write_text_atomic(out_file,
+                              json.dumps(data, indent=2, ensure_ascii=False))
             n_pts = sum(len(s["checkpoints"]) for s in data["strokes"])
             print(f"  {letter}: ✓ {len(data['strokes'])} strokes, {n_pts} checkpoints")
             if args.debug:

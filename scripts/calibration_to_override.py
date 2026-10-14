@@ -24,7 +24,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import os
 import sys
+import tempfile
 import unicodedata
 from pathlib import Path
 
@@ -56,6 +59,49 @@ def target_dir(letter: str, weight_dir: str) -> Path:
     return LETTERS_BASE / weight_dir / f"{letter_nfc}{LOWERCASE_SUFFIX}"
 
 
+def write_text_atomic(path: Path, text: str) -> None:
+    """UTF-8 write via temp file + os.replace (a crash cannot leave a
+    truncated strokes.json; the locale cannot mis-encode "Ä"/"ß")."""
+    fd, tmp_name = tempfile.mkstemp(dir=str(path.parent),
+                                    prefix=f".{path.name}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(text.encode("utf-8"))
+        os.chmod(tmp_name, 0o644)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def validate_entry(entry: dict) -> None:
+    """Raise ValueError if `entry` must not be written. Runs for EVERY
+    entry before the first write (audit 2026-10-13, G3-18): a bad
+    checkpointRadius used to surface as a KeyError after earlier letters
+    were already replaced, and nothing checked the coordinates."""
+    letter = entry.get("letter")
+    radius = entry.get("checkpointRadius")
+    if not _is_number(radius) or not math.isfinite(radius) or radius <= 0:
+        raise ValueError(f"{letter!r}: checkpointRadius missing or not a "
+                         f"positive finite number ({radius!r}) — refusing to write")
+    for si, s in enumerate(entry.get("strokes") or []):
+        for ci, cp in enumerate(s.get("checkpoints", [])):
+            x = cp.get("x") if isinstance(cp, dict) else None
+            y = cp.get("y") if isinstance(cp, dict) else None
+            for axis, v in (("x", x), ("y", y)):
+                if not _is_number(v) or not math.isfinite(v) or not 0.0 <= v <= 1.0:
+                    raise ValueError(
+                        f"{letter!r}: stroke {si} checkpoint {ci} {axis}={v!r} "
+                        f"is not a finite number in [0, 1] — refusing to write")
+
+
 def import_aggregate_export(input_path: Path,
                              weight_dir: str | None = None
                              , allow_new: bool = False) -> dict:
@@ -67,7 +113,7 @@ def import_aggregate_export(input_path: Path,
 
     Returns a summary dict: {written: [letter,...], skipped: [...]}.
     """
-    data = json.loads(input_path.read_text())
+    data = json.loads(input_path.read_text(encoding="utf-8"))
     if weight_dir is None:
         schrift = data.get("schriftArt", "druckschrift")
         if schrift not in SCHRIFTART_TO_WEIGHT_DIR:
@@ -86,6 +132,7 @@ def import_aggregate_export(input_path: Path,
             # export from an unvisited letter (audit 2026-09-04).
             raise ValueError(f"{letter!r}: export has no usable strokes "
                              f"({[len(s.get('checkpoints', [])) for s in strokes]}) — refusing to write")
+        validate_entry(entry)
         f = target_dir(normalize_letter_name(letter), weight_dir) / "strokes.json"
         if not f.exists() and not allow_new:
             # A letter with no shipped file would be written WITHOUT the
@@ -99,7 +146,8 @@ def import_aggregate_export(input_path: Path,
         letter_nfc = normalize_letter_name(letter)
         d = target_dir(letter_nfc, weight_dir)
         f = d / "strokes.json"
-        old = json.loads(f.read_text()) if f.exists() else None
+        old = (json.loads(f.read_text(encoding="utf-8"))
+               if f.exists() else None)
         new_doc: dict = {
             "letter": letter_nfc,
             "checkpointRadius": entry["checkpointRadius"],
@@ -110,8 +158,8 @@ def import_aggregate_export(input_path: Path,
                 if k in old:
                     new_doc[k] = old[k]
         d.mkdir(parents=True, exist_ok=True)
-        f.write_text(json.dumps(new_doc, indent=2,
-                                  ensure_ascii=False) + "\n")
+        write_text_atomic(f, json.dumps(new_doc, indent=2,
+                                        ensure_ascii=False) + "\n")
         written.append(letter_nfc)
     return {"written": written, "weight_dir": weight_dir}
 

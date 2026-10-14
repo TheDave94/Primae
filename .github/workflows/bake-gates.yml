@@ -12,6 +12,12 @@ name: "Bake gates (G1/G3/G4/G6)"
 # Mirrors G4's step structure for the T-junction geometric class. Design
 # + rationale at research_data/phase2b_gates/g6_design.md +
 # phase2c_design.md G6 section.
+#
+# G7 (stroke start/end position drift = direction + start point) added
+# 2026-10-13 (audit G3-05): G1/G3/G4/G6 are all invariant to reversing a
+# stroke. Its threshold is PROVISIONAL (see audit_invariants.py). The job
+# and its name are left as they were on purpose -- renaming a job renames
+# the required status check.
 
 on:
   pull_request:
@@ -21,6 +27,24 @@ on:
       - "PrimaeNative/Resources/Letters/Light/**/strokes.json"
       - "scripts/audit_invariants.py"
       - "scripts/run_gates.py"
+      - "scripts/tests/**"
+      - "scripts/calibration_to_override.py"
+      - "scripts/calibrate_g6_threshold.py"
+      - "scripts/skeleton_audit.py"
+      - "scripts/g7_allowlist.json"
+      # Inputs of scripts/tests/test_scripts_hygiene.py and
+      # test_rendered_docs_in_sync.py: without these a change that breaks
+      # them would not trigger the job that runs them.
+      - "scripts/generate_letter_audio.py"
+      - "scripts/generate_prompts.py"
+      - "scripts/verify_bake.sh"
+      - "scripts/render_checklist.py"
+      - "scripts/render_dryrun.py"
+      - ".gitignore"
+      - "docs/TESTING_CHECKLIST.md"
+      - "docs/testing_checklist.html"
+      - "docs/STUDY_DEVICE_DRYRUN.md"
+      - "docs/STUDY_DEVICE_DRYRUN.html"
       # The gates rasterise through the bake module and read its font:
       # SIZE/PAD/optical bbox and the .otf bytes define the px frame
       # every threshold is calibrated in (audit 2026-09-04).
@@ -103,6 +127,60 @@ jobs:
             --reference-ref origin/main --json > g6.json \
             || true
 
+      - name: G7 — stroke direction / start point (ADVISORY until David confirms the 40 px thresholds)
+        # Advisory on purpose: G7_DEFAULT_THRESHOLD_PX / G7_PATH_THRESHOLD_PX
+        # are audit-lane PROPOSALS (thesis-adjacent; margin on the weakest
+        # stroke is ~1.25x, see audit_invariants.py). A red step here is a
+        # signal to look, not a merge block. The G7 UNIT TESTS below stay
+        # blocking. Intended direction changes go in scripts/g7_allowlist.json.
+        continue-on-error: true
+        run: |
+          python3 scripts/run_gates.py --gate g7 \
+            --reference-ref origin/main
+
+      - name: G7 — JSON output (artifact)
+        if: always()
+        run: |
+          python3 scripts/run_gates.py --gate g7 \
+            --reference-ref origin/main --json > g7.json \
+            || true
+
+      - name: Gate and script-safety unit tests
+        if: always()
+        # Not advisory: these pin what the 2026-10-13 audit closed
+        # (reversed stroke - open or a closed loop - must fail G7; the
+        # allow-list admits only the exact recorded change; a deleted letter
+        # folder must fail;
+        # G4 sees non-consecutive junctions; the writers validate and write
+        # atomically). fetch-depth 0 above lets the real-corpus checks
+        # (the caff3472 A allow-list entry vs git history) run instead of
+        # skipping. Written and
+        # mutation-checked without numpy/PIL available, so the first CI run
+        # is the first run against the real libraries.
+        run: |
+          pip install --quiet pytest
+          python3 -m pytest -q \
+            scripts/tests/test_gate_g4.py::TestG4NonConsecutiveJunction \
+            scripts/tests/test_gate_g7.py \
+            scripts/tests/test_run_gates.py \
+            scripts/tests/test_calibration_to_override.py \
+            scripts/tests/test_calibrate_g6_cli.py \
+            scripts/tests/test_bake_cli_safety.py \
+            scripts/tests/test_skeleton_audit.py \
+            scripts/tests/test_scripts_hygiene.py \
+            scripts/tests/test_rendered_docs_in_sync.py
+
+      - name: Bake smoke - dry-bake every LETTERS spec (advisory)
+        if: always()
+        continue-on-error: true
+        # All 37 LETTERS entries are static artifacts, so skeleton_audit's
+        # default run skips every one and the ~4,000 lines of bake
+        # primitives had no CI execution (audit G3-03). This lifts the
+        # guard for a dry bake (nothing is written). Advisory until one run
+        # has been read: it reports on code CI has never run, and the
+        # specs may have rotted.
+        run: python3 scripts/skeleton_audit.py --include-static
+
       - name: Light corpus — G1 + G3 (advisory; thresholds were calibrated on Regular)
         if: always()
         continue-on-error: true
@@ -112,6 +190,7 @@ jobs:
           # calibrated; a PR rewriting Light/ now at least triggers this.
           python3 scripts/run_gates.py --gate g1 --weight light --reference-ref origin/main
           python3 scripts/run_gates.py --gate g3 --weight light --reference-ref origin/main
+          python3 scripts/run_gates.py --gate g7 --weight light --reference-ref origin/main
 
       - name: Upload gate JSON results
         if: always()
@@ -123,4 +202,5 @@ jobs:
             g3.json
             g4.json
             g6.json
+            g7.json
           if-no-files-found: warn

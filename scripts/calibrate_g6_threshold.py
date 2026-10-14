@@ -23,8 +23,10 @@ letter in the corpus, this script:
   detects vs the G6.v1 diagnostic's count of 20 T-junctions
   across 15 letters. Divergence is surfaced (not failed).
 
-Writes a markdown findings doc at the path given by --output
-(default: research_data/phase2b_gates/g6_calibration_run.md).
+Writes a markdown findings doc ONLY at the path given by --output; a bare
+run prints the threshold and writes nothing. (The committed run,
+research_data/phase2b_gates/g6_calibration_run.md, is thesis evidence and
+used to be the default target.)
 """
 
 from __future__ import annotations
@@ -519,9 +521,13 @@ def render_markdown(measurements: list[dict],
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT,
-                        help=f"Output markdown path (default: "
-                              f"{DEFAULT_OUTPUT.relative_to(REPO_ROOT)})")
+    parser.add_argument("--output", type=Path, default=None,
+                        help="Write the markdown findings doc here. REQUIRED "
+                             "to write anything: a bare run only prints the "
+                             "threshold. The committed run lives at "
+                             f"{DEFAULT_OUTPUT.relative_to(REPO_ROOT)} and is "
+                             "thesis evidence -- overwrite it only on purpose "
+                             "(--output <that path>).")
     args = parser.parse_args(argv)
 
     if not CORPUS_DIR.is_dir():
@@ -544,11 +550,20 @@ def main(argv: list[str] | None = None) -> int:
               "— nothing written (G3/G4 convention).", file=sys.stderr)
         return 1
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(markdown)
     # stdout: threshold value (for CI consumption, mirrors G4 convention).
     # stderr: file-write confirmation.
     print(f"{threshold:.4f}")
+    if args.output is None:
+        # Audit 2026-10-13 (G3-10): the default used to be the committed
+        # g6_calibration_run.md, so a bare run silently replaced thesis
+        # evidence with today's date and numbers computed against current
+        # HEAD (which differ from the 2026-05-26 run).
+        print("Not writing a findings file (no --output). The committed run "
+              f"is {DEFAULT_OUTPUT.relative_to(REPO_ROOT)}; pass "
+              "--output <path> to write.", file=sys.stderr)
+        return 0
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(markdown, encoding="utf-8")
     print(f"Wrote {args.output} ({len(markdown)} bytes)", file=sys.stderr)
     return 0
 

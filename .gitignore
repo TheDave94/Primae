@@ -49,3 +49,8 @@ HANDOFF.md
 # Held DECISIONS.md draft entries, pending David's sign-off — scratch,
 # never landed to docs/DECISIONS.md without explicit sign-off per entry.
 DECISIONS_DRAFT.md
+
+# ElevenLabs generators (scripts/generate_letter_audio.py, generate_prompts.py)
+# write paid MP3s to ./audio_variants/ relative to the CWD. Untracked files
+# make the Xcode scheme provenance pre-action refuse the build (audit G3-12).
+audio_variants/

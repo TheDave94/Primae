@@ -1,19 +1,36 @@
 #!/usr/bin/env bash
-# verify_bake.sh — codify the two release-blocking properties of the
-# stroke bake (see docs/APP_DOCUMENTATION.md §13.6):
+# verify_bake.sh — determinism + byte-identity check for the stroke bake
+# (docs/APP_DOCUMENTATION.md §13.6).
 #
-#   1. Determinism: 3 successive bakes produce byte-identical output.
-#   2. Byte-identity: a fresh bake matches HEAD's checked-in
-#      PrimaeNative/Resources/Letters/Regular/<X>/strokes.json for every
-#      letter. The lowercase-b firewall (a803d9d) is just a special
-#      case of (2).
+# STATUS (audit 2026-10-13, G3-02): NOT APPLICABLE TO THE SHIPPED CORPUS.
+# Every one of the 59 Regular letters is in generate_strokes_auto.py's
+# SHIPPED_AS_STATIC_ARTIFACT (the corpus is produced by the iPad
+# calibrator + scripts/calibration_to_override.py, not by the bake), and
+# main() skips every static letter. So there is nothing for this script
+# to bake, and until now it reported "FAIL — bake errored" for that reason
+# on every run: a check that could never pass, which reads as a broken
+# build rather than as a retired one. It now says what is true and exits
+# with a DISTINCT code instead of pretending:
 #
-# Exits non-zero on any drift. Intended for: pre-commit, CI, or a quick
-# manual run after editing generate_strokes_auto.py.
+#   0  every requested letter was baked 3x, bakes identical, matches HEAD
+#   1  a check ran and FAILED (bake errored / non-deterministic / drift)
+#   2  not applicable: no requested letter is bakeable (all are static
+#      artifacts), or the letter tables could not be read
+#
+# Exit 2 is deliberately non-zero: a caller that wanted a green "the bake
+# is verified" must not get one from a script that verified nothing.
+#
+# The checks below the preflight are UNCHANGED and only reachable for a
+# letter that is in LETTERS but not static. They are unexercised against
+# the committed corpus, and byte-identity vs HEAD would additionally need
+# the bake's output format to match the corpus's (committed files end in a
+# newline and carry checkpointRadius 0.1; the bake writes neither) -- see
+# G3-02. Do not read a future "All checks passed." as covering the
+# shipped strokes.json files.
 #
 # Usage:
-#   ./scripts/verify_bake.sh                # all letters in LETTERS dict
-#   ./scripts/verify_bake.sh M N V W b      # subset
+#   ./scripts/verify_bake.sh                # all bakeable letters in LETTERS
+#   ./scripts/verify_bake.sh M N V W b      # subset (static ones are dropped)
 #
 # Only Regular is verified here; Light is tracked separately when its
 # tuning sweep lands.
@@ -23,7 +40,48 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 cd "$REPO_ROOT"
 
-LETTERS=("$@")
+REQUESTED=("$@")
+
+# Preflight: which requested letters can the bake produce at all? Read the
+# two tables with the standard library only (no numpy/PIL needed), so this
+# answers on any machine.
+BAKEABLE=$(python3 -I - ${REQUESTED[@]+"${REQUESTED[@]}"} <<'PY'
+import ast, sys
+tree = ast.parse(open("scripts/generate_strokes_auto.py", encoding="utf-8").read())
+letters = static = None
+for node in tree.body:
+    if isinstance(node, ast.AnnAssign):
+        target, value = node.target, node.value
+    elif isinstance(node, ast.Assign) and len(node.targets) == 1:
+        target, value = node.targets[0], node.value
+    else:
+        continue
+    if not isinstance(target, ast.Name):
+        continue
+    if target.id == "LETTERS" and isinstance(value, ast.Dict):
+        letters = [k.value for k in value.keys if isinstance(k, ast.Constant)]
+    elif target.id == "SHIPPED_AS_STATIC_ARTIFACT" and isinstance(value, ast.Call):
+        static = set(ast.literal_eval(value.args[0]))
+if letters is None or static is None:
+    sys.exit(3)
+requested = sys.argv[1:] or letters
+print("\n".join(l for l in requested if l not in static))
+PY
+) || {
+    echo "NOT APPLICABLE — could not read LETTERS / SHIPPED_AS_STATIC_ARTIFACT from scripts/generate_strokes_auto.py" >&2
+    exit 2
+}
+
+if [[ -z "$BAKEABLE" ]]; then
+    echo "NOT APPLICABLE — nothing to verify: every requested letter is in SHIPPED_AS_STATIC_ARTIFACT." >&2
+    echo "The committed strokes.json corpus comes from the iPad calibrator, not from the bake," >&2
+    echo "so this script verified NOTHING (exit 2, not a pass). See the header; audit G3-01/G3-02." >&2
+    exit 2
+fi
+LETTERS=()
+while IFS= read -r l; do LETTERS+=("$l"); done <<< "$BAKEABLE"
+
+# Only now (past the preflight) is a scratch directory needed.
 TMP=$(mktemp -d -t primae-verify-bake-XXXXXX)
 trap 'rm -rf "$TMP"' EXIT
 

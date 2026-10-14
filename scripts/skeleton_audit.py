@@ -19,6 +19,7 @@ non-zero exit will not by itself fail the build.
 Usage:
     python3 scripts/skeleton_audit.py
     python3 scripts/skeleton_audit.py --letters M N W
+    python3 scripts/skeleton_audit.py --include-static   # dry-bake the 37 specs
     python3 scripts/skeleton_audit.py --json /tmp/audit.json
 """
 from __future__ import annotations
@@ -39,10 +40,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BUNDLE = REPO_ROOT / "PrimaeNative/Resources/Letters"
 
 
-def check_anchor_spec(letter: str, font_path: Path) -> list[str] | None:
+def check_anchor_spec(letter: str, font_path: Path,
+                      include_static: bool = False) -> list[str] | None:
     """Attempt a dry bake to surface anchor-resolution or Dijkstra
     failures. The bake is deterministic, so a passing letter here is
     guaranteed to bake clean.
+
+    `include_static=True` lifts the static-artifact guard for the dry bake
+    (nothing is written), the way `render_sweep_grid.py` does. Without it
+    EVERY `LETTERS` entry is skipped -- all 37 are static -- so ~4,000
+    lines of bake primitives had zero CI execution (audit 2026-10-13,
+    G3-03). Opt-in, because it starts reporting on code that has not been
+    exercised in CI before.
 
     Returns ``None`` when the letter ships as a static artifact — the
     bake deliberately refuses those (``SHIPPED_AS_STATIC_ARTIFACT``), so
@@ -50,7 +59,7 @@ def check_anchor_spec(letter: str, font_path: Path) -> list[str] | None:
     that refusal was reported as an anchor error for every one of the 37
     entries, so the script exited 1 on every CI run (masked by a pipe)."""
     try:
-        bake_letter(letter, font_path)
+        bake_letter(letter, font_path, _suppress_static_guard=include_static)
     except KeyError as e:
         if "ships as a static artifact" in str(e):
             return None
@@ -116,6 +125,10 @@ def main() -> int:
                         help="Resources/Letters directory to schema-check.")
     parser.add_argument("--json", default=None,
                         help="Write the full audit as JSON to this path.")
+    parser.add_argument("--include-static", action="store_true",
+                        help="Dry-bake the static-artifact LETTERS entries "
+                             "too (guard lifted; nothing is written). "
+                             "Default skips all of them.")
     # Backward-compat: legacy CI passes `--anchor-drift-pct`. Accept and
     # ignore so the workflow doesn't break.
     parser.add_argument("--anchor-drift-pct", type=float, default=None,
@@ -132,7 +145,7 @@ def main() -> int:
         if L not in LETTERS:
             print(f"  {L}: skipped (no entry in LETTERS)")
             continue
-        errs = check_anchor_spec(L, font_path)
+        errs = check_anchor_spec(L, font_path, args.include_static)
         if errs is None:
             print(f"  {L}: skipped (static artifact — no bake authored)")
             continue

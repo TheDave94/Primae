@@ -137,6 +137,20 @@
 </div>
 <h1>Primae — Manual Test Checklist</h1>
 
+<blockquote>
+<p><strong>Not for the pilot.</strong> This checklist tests the casual, four-world</p>
+<p>app (onboarding, Werkstatt, Fortschritte, the full parent dashboard)</p>
+<p>— the path CLAUDE.md's "The casual path is paused" section stopped</p>
+<p>building, testing, or reasoning about on 2026-09-13 while the pilot</p>
+<p>runs. It predates the study compile-out (<code>STUDY_BUILD</code>), the</p>
+<p>bundle-ID split, the pre-task demonstrations (D9), and the phoneme</p>
+<p>recordings (H5) — none of that exists in this document, and several</p>
+<p>items here (tap-anywhere skips observe, the coloured recognition</p>
+<p>badge, the Übersicht tab) are FALSE on the pilot artefact. For the</p>
+<p>study device dry-run, use <code>docs/STUDY_DEVICE_DRYRUN.md</code> instead. Kept</p>
+<p>here, unmaintained, for the casual app's post-thesis restoration.</p>
+</blockquote>
+
 <p>A manual end-to-end checklist for verifying the iPad app works as</p>
 <p>expected after a fresh build.</p>
 
@@ -233,7 +247,7 @@
 
 <hr>
 
-<h2>4 · Schule world — four-phase tracing</h2>
+<h2>4 · Schule world — three-phase tracing (observe → guided → freeWrite)</h2>
 
 <blockquote>
 <p>The big paper-canvas takes most of the screen. Top-left has a</p>
@@ -254,11 +268,19 @@
 <li class="check"><input class="cb" type="checkbox" id="cb-23"><label for="cb-23">Phase enters with the <strong>brand-blue pill</strong> in the lower portion of the canvas showing only <strong>👁️ 👆</strong> (no text — children can't read).</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-24"><label for="cb-24"><strong>Voiceover</strong> speaks "Pass jetzt gut auf!" (recorded ElevenLabs MP3 if <code>Resources/Prompts/phase_observe.mp3</code> is bundled, otherwise system TTS fallback).</label></li>
 <li class="sub">If broken: <code>SpeechSynthesizer.swift:ChildSpeechLibrary.phaseEntry(.observe)</code> or <code>PromptPlayer.swift</code>.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-25"><label for="cb-25"><strong>Animated guide dot</strong> (amber) traces along the letter's strokes inside the canvas. Loops.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-25"><label for="cb-25"><strong>Animated guide dot</strong> (amber) traces along the letter's strokes inside the canvas. Plays ONE pass, more slowly than it used to; it no longer loops.</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-26"><label for="cb-26"><strong>Tapping anywhere</strong> on the canvas advances to the next phase.</label></li>
 </ul>
 
-<h3>4.2 · Direct phase (Richtung lernen)</h3>
+<h3>4.2 · Direct phase (Richtung lernen) — CUT; this section can no longer run</h3>
+
+<blockquote>
+<p>Cut 2026-09-18 (DECISIONS.md D5): no condition runs <code>.direct</code> — a</p>
+<p>session is observe → guided → freeWrite in casual AND study modes</p>
+<p>(<code>LearningPhaseController.activePhases</code> filters it out</p>
+<p>unconditionally). Items kept below for the record; if you ever SEE</p>
+<p>this phase, that is a regression, not a step to check off.</p>
+</blockquote>
 
 <ul>
 <li class="check"><input class="cb" type="checkbox" id="cb-27"><label for="cb-27"><strong>Numbered start-dots</strong> appear over each stroke's start point (1, 2, 3, …). The next-expected dot pulses gently.</label></li>
@@ -447,7 +469,7 @@
 <li class="check"><input class="cb" type="checkbox" id="cb-99"><label for="cb-99">After <strong>two poor trials</strong>, the radius widens.</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-100"><label for="cb-100"><strong>Loading the recommended next letter</strong> (via Weiter on the celebration overlay) prefers letters with low recent accuracy / long since last seen.</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-101"><label for="cb-101"><strong>Studienteilnahme = on</strong> + Studienarm = <code>guidedOnly</code> skips observe / direct / freeWrite — the child only sees guided.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-102"><label for="cb-102"><strong>Studienteilnahme = on</strong> + Studienarm = <code>control</code> runs all four phases at fixed difficulty (no adaptation).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-102"><label for="cb-102"><strong>Studienteilnahme = on</strong> + Studienarm = <code>control</code> runs the three-phase flow (observe → guided → freeWrite) at fixed difficulty (no adaptation).</label></li>
 </ul>
 
 <hr>
@@ -465,7 +487,7 @@
 <h2>12 · Edge cases</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-106"><label for="cb-106"><strong>Picking a letter without audio</strong> (any letter outside the demo set <code>A F I K L M O</code>) still runs all four phases, but prompts that would normally play a recording fall back to TTS. (All 59 letters now ship real baked <code>strokes.json</code> — the empty-strokes auto-skip branch is no longer reachable in normal use; if you do encounter it, that's a regression.)</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-106"><label for="cb-106"><strong>Picking a letter without audio</strong> (any letter outside the demo set <code>A F I K L M O</code>) still runs the full flow (observe → guided → freeWrite), but prompts that would normally play a recording fall back to TTS. (All 59 letters now ship real baked <code>strokes.json</code> — the empty-strokes auto-skip branch is no longer reachable in normal use; if you do encounter it, that's a regression.)</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-107"><label for="cb-107"><strong>No internet connection</strong> — every screen still works; no spinners stuck. (The CoreML recognizer is on-device.)</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-108"><label for="cb-108"><strong>VoiceOver accessibility</strong> (Settings → Accessibility → VoiceOver) reads the world rail buttons + every Settings toggle correctly. Letter glyphs read as "Aktueller Buchstabe A".</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-109"><label for="cb-109"><strong>Dynamic Type</strong> (Settings → Accessibility → Larger Text) — Settings + dashboards scale up; canvas chrome stays at fixed sizes (intentional — the canvas is laid out on a fixed grid).</label></li>
@@ -490,6 +512,80 @@
 <li class="check"><input class="cb" type="checkbox" id="cb-116"><label for="cb-116"><strong>Font</strong>: every numeric / heading text uses the bundled <strong>Primae</strong> family (rounded humanist), not SF system. Body copy uses <strong>PrimaeText</strong>. Schreibschrift (when selected) uses <strong>Playwrite AT</strong>.</label></li>
 <li class="sub">If a label looks like SF instead of Primae: <code>PrimaeFonts.registerAll()</code> may have failed — check the logger output for "PrimaeFonts: register failed" lines.</li>
 </ul>
+
+<hr>
+
+<h2>14 · Stroke calibrator — single-checkpoint dots ("+ Punkt")</h2>
+
+<blockquote>
+<p>DEBUG-only flow. Reach the calibrator via parent-area → Werkzeuge (or</p>
+<p>the dev menu — the path varies). Verify the new <code>+ Punkt</code> workflow</p>
+<p>for authoring single-checkpoint dot strokes (umlaut diaeresis,</p>
+<p>tittles).</p>
+</blockquote>
+
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-117"><label for="cb-117"><strong><code>+ Punkt</code> button visible</strong> in the calibrator's bottom action</label></li>
+</ul>
+<p>  row, next to <code>+ Strich</code>. Same green tint and visual weight. Icon</p>
+<p>  is a filled small-circle inside a circle.</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-118"><label for="cb-118"><strong>Tap <code>+ Punkt</code> with no letter loaded</strong>: silent no-op (button is</label></li>
+</ul>
+<p>  inert until a letter is active).</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-119"><label for="cb-119"><strong>Tap <code>+ Punkt</code> on a loaded letter</strong>: a new empty stroke</label></li>
+</ul>
+<p>  appears in the chip row; calibrator switches to ANKER mode; status</p>
+<p>  hint reads "Punkt setzen — Strich N: tippen, um Punkt zu platzieren".</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-120"><label for="cb-120"><strong>Tap once in canvas</strong>: a single-point dot stroke is created</label></li>
+</ul>
+<p>  at the tap location; status hint updates to "Punkt setzen —</p>
+<p>  Strich N: Punkt platziert, erneut tippen zum Verschieben".</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-121"><label for="cb-121">**Tap a different canvas location while still in <code>+ Punkt</code></label></li>
+</ul>
+<p>  mode**: the dot moves to the new location (the stroke remains a</p>
+<p>  single checkpoint; no new stroke added).</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-122"><label for="cb-122"><strong>Speichern</strong>: the dot persists. After save, reopening the</label></li>
+</ul>
+<p>  letter shows the dot at the same position.</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-123"><label for="cb-123"><strong><code>+ Punkt</code> without placement + Speichern</strong>: no-op. No empty</label></li>
+</ul>
+<p>  stroke gets persisted; the chip row drops back to the prior</p>
+<p>  stroke count after save.</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-124"><label for="cb-124"><strong><code>+ Punkt</code> + switch to SKELETT mode without placement</strong>:</label></li>
+</ul>
+<p>  the empty stroke is pruned (chip count returns to prior).</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-125"><label for="cb-125"><strong>Tap <code>+ Punkt</code> outside the bbox</strong> (above the cap-height</label></li>
+</ul>
+<p>  margin): silent ignore — no stroke created at out-of-bbox</p>
+<p>  coordinates.</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-126"><label for="cb-126"><strong>Round-trip test on Ä</strong>: tap <code>+ Punkt</code> → tap at (~0.34, 0.05)</label></li>
+</ul>
+<p>  → tap <code>+ Punkt</code> again → tap at (~0.66, 0.05) → Speichern. Reopen</p>
+<p>  Ä: two single-checkpoint dot strokes visible at the placed</p>
+<p>  positions (matches the Ü dot template).</p>
+<ul>
+<li class="check"><input class="cb" type="checkbox" id="cb-127"><label for="cb-127"><strong>Session log captures the dot add</strong>: open Files app → Primae</label></li>
+</ul>
+<p>  → <code>PrimaeNative/CalibrationSessions/Ä/&lt;timestamp&gt;.json</code> →</p>
+<p>  inspect: <code>post_polyline</code> should include the new single-point</p>
+<p>  stroke as a 1-element array. <code>tool</code> field reads <code>"ANKER"</code> (dot</p>
+<p>  placement is an ANKER-mode action). <code>edit_count_in_session</code></p>
+<p>  &gt; 0.</p>
+
+<p>If broken: <code>StrokeCalibrationOverlay.swift::addPunkt</code> /</p>
+<p><code>placePunkt</code>. AnkerTool's <code>.punkt</code> case is filtered out of the</p>
+<p>toolbar (only the <code>+ Punkt</code> button can activate it) — if it</p>
+<p>appears in the toolbar pill row, check the <code>inToolbar</code> filter at</p>
+<p>the ANKER <code>ForEach</code>.</p>
 
 <hr>
 

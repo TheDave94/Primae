@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Generate letter-phoneme + example-word + tracing-word audio for German
+"""LEGACY for the pilot: the study's phoneme (Anlaut) assets are
+`*_phoneme*.wav`, recorded by a human voice (docs/SOUND_PRODUCTION_SPEC.md);
+this script synthesises `A1.mp3`-style name/word audio and is NOT how the
+pilot's sounds are produced.
+
+Generate letter-phoneme + example-word + tracing-word audio for German
 using ten popular ElevenLabs voices. Builds the whole audio inventory
 the app needs so word-tracing can ship as a full feature, not just a demo.
 
@@ -33,8 +38,9 @@ Budget (Starter tier = 30 000 characters/month):
     × 9 voices = ~22 500 chars, still inside the Starter cap with
     headroom for a couple of re-runs per voice.
 
-Prereq:
-    export ELEVENLABS_API_KEY=your-key
+Prereq (enter the key without echo, so it never lands in shell history;
+see CLAUDE.md "Credentials"):
+    read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
     pip install requests
 
 Run:
@@ -50,7 +56,7 @@ Re-runs skip files that already exist, so tweaking one voice/letter
 doesn't re-pay for the rest.
 
 After listening, pick a favourite voice and copy its folder into place:
-    cp -r audio_variants/Rachel/A/* BuchstabenNative/Resources/Letters/A/
+    cp -r audio_variants/Rachel/A/* PrimaeNative/Resources/Letters/A/
 The file names already match what the app expects (A1.mp3 etc.).
 """
 from __future__ import annotations
@@ -452,7 +458,7 @@ def main() -> int:
         print("  3. Copy each letter folder into the bundle, preserving names:")
         print("       for L in A B C D E ... ; do")
         print("         cp audio_variants/Emilia/$L/*.mp3 \\")
-        print("            BuchstabenNative/Resources/Letters/$L/")
+        print("            PrimaeNative/Resources/Letters/$L/")
         print("       done")
         print("  4. Decide where tracing-word audio should live (new")
         print("     Resources/Words/ folder + a repo.loadWords() loader).")

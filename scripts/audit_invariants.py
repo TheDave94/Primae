@@ -815,9 +815,9 @@ def _detect_junctions(strokes_rel: list[list[tuple[float, float]]],
                        n_resample: int = G4_RESAMPLE_N,
                        min_cps: int = G4_ENDPOINT_SKIP + G4_TANGENT_WINDOW
                        ) -> list[dict]:
-    """Enumerate end-to-end junctions across consecutive stroke pairs
+    """Enumerate end-to-end junctions across ALL stroke pairs (i < j)
     on the bbox-converted px-space polylines (post arc-length resample
-    to `n_resample`). For each consecutive pair (i, i+1), check the
+    to `n_resample`). For each pair (i, j), check the
     four endpoint pairings; the minimum-distance pairing registers as
     the junction if its distance is below `epsilon_px`.
 
@@ -843,19 +843,26 @@ def _detect_junctions(strokes_rel: list[list[tuple[float, float]]],
                               for rx, ry in rs])
 
     junctions: list[dict] = []
-    for i in range(len(polylines_px) - 1):
-        a, b = polylines_px[i], polylines_px[i + 1]
+    for i, j in _stroke_pair_indices(len(polylines_px)):
+        a, b = polylines_px[i], polylines_px[j]
         det = _detect_junction_pair_px(a, b, epsilon_px, min_cps)
         if det is None:
             continue
         junctions.append({
-            "i": i, "j": i + 1,
+            "i": i, "j": j,
             "pairing": det["pairing"],
             "dist_px": det["dist_px"],
             "poly_a": a, "poly_b": b,
             "a_first": det["a_first"], "b_first": det["b_first"],
         })
     return junctions
+
+
+def _stroke_pair_indices(n_strokes: int) -> list[tuple[int, int]]:
+    """Every unordered stroke pair (i, j), i < j, in stable order. G4
+    covers all of them: an end-to-end junction does not require the two
+    strokes to be adjacent in stroke order."""
+    return [(i, j) for i in range(n_strokes) for j in range(i + 1, n_strokes)]
 
 
 def _detect_junction_pair_px(a_px, b_px, epsilon_px: float, min_cps: int):
@@ -990,15 +997,21 @@ def gate_g4(candidate_strokes_rel: list[list[tuple[float, float]]],
              threshold: float) -> dict:
     """Run G4 on a candidate-vs-reference letter pair. Mask-free
     (junction kink is a pure polyline property). Per-junction
-    iteration internal; iterates over consecutive stroke-pair
-    candidates and skips those that don't form a junction in EITHER
-    round (vs vacuous-passing each individually)."""
+    iteration internal; iterates over every stroke pair (i < j) and
+    skips those that don't form a junction in EITHER round (vs
+    vacuous-passing each individually)."""
     per_junction: list[dict] = []
     n_pairs = min(len(candidate_strokes_rel), len(reference_strokes_rel))
-    for i in range(n_pairs - 1):
+    # EVERY stroke pair (i < j), not just consecutive ones (audit
+    # 2026-10-13, G3-07): G6 hands end-band attachments to G4 as "G4
+    # territory", so an end-to-end junction between non-consecutive
+    # strokes was covered by neither gate. Measured on the committed
+    # corpus (endpoint distance <= 15 px): Regular B (strokes 0,2),
+    # E (0,3), G (0,2).
+    for i, j in _stroke_pair_indices(n_pairs):
         result = gate_g4_per_junction(
-            candidate_strokes_rel[i], candidate_strokes_rel[i + 1],
-            reference_strokes_rel[i], reference_strokes_rel[i + 1],
+            candidate_strokes_rel[i], candidate_strokes_rel[j],
+            reference_strokes_rel[i], reference_strokes_rel[j],
             bbox, threshold)
         # Skip "no_junction" cases entirely from per_junction output —
         # they're not junctions, not vacuous-pass diagnostics worth
@@ -1007,7 +1020,7 @@ def gate_g4(candidate_strokes_rel: list[list[tuple[float, float]]],
         if result.get("reason") == "no_junction":
             continue
         result["stroke_i"] = i
-        result["stroke_j"] = i + 1
+        result["stroke_j"] = j
         per_junction.append(result)
     overall_pass = all(j["pass"] for j in per_junction)
     real_drifts = [j["kink_drift_deg"] for j in per_junction
@@ -1032,7 +1045,7 @@ def gate_g4(candidate_strokes_rel: list[list[tuple[float, float]]],
         "letter_score": letter_score,
         "n_strokes_candidate": len(candidate_strokes_rel),
         "n_strokes_reference": len(reference_strokes_rel),
-        "n_pairs_checked": max(0, n_pairs - 1),
+        "n_pairs_checked": len(_stroke_pair_indices(n_pairs)),
         "letter_reason": letter_reason,
         "pass": overall_pass,
     }
@@ -1360,4 +1373,243 @@ def gate_g6(candidate_strokes_rel: list[list[tuple[float, float]]],
         "n_t_junctions_measured": n_t_junctions_measured,
         "letter_reason": letter_reason,
         "pass": overall_pass,
+    }
+
+
+# -----------------------------------------------------------------------------
+# G7 — stroke direction / start-point gate (endpoints + path fractions)
+#
+# Added by the 2026-10-13 audit (G3-05). G1/G3/G4/G6 are all invariant to
+# reversing a polyline: G3 is a perpendicular-deviation measure, G4/G6
+# pick the closest endpoint pairing and orient tangents outward, and G1 is
+# vacuous on uniform stems. Yet the stroke START decides the start dot,
+# the observe animation and the tracing order -- what the child follows.
+# Example: commit caff3472 reversed A strokes 0 and 1 (apex-first instead
+# of foot-first; a deliberate correction, recorded in g7_allowlist.json)
+# and every other gate stayed green.
+#
+# Two measurements per stroke, both in the bbox-px frame of G4/G6:
+#
+#  1. ENDPOINTS: first and last checkpoint vs the reference's. A reversed
+#     OPEN stroke moves both by its own length.
+#  2. PATH FRACTIONS: the points at 25 % and 75 % of the stroke's arc
+#     length vs the reference's. Added after independent review: for a
+#     closed LOOP (O, Ö, o, ö, q, a, g, ...) first ~ last, so reversal
+#     moves the endpoints by only |first - last| -- estimated at 21-41 px
+#     for O, ö, q, Ö, o, ä, g, a, i.e. UNDER the 40 px threshold. The 25 %
+#     point of a reversed stroke is the reference's 75 % point, so the path
+#     check sees it whatever the endpoints do. (The 50 % point is not used:
+#     it is unchanged by reversal.)
+#
+# A stroke passes iff all four distances are <= their threshold.
+#
+# THRESHOLDS ARE PROVISIONAL (audit-lane proposals, not calibrated values
+# of record -- David owns thresholds; CI runs G7 advisory until he confirms).
+# Evidence, all stdlib and reproducible from `git log` of
+# Regular/*/strokes.json plus the font's hhea/hmtx/OS/2 tables:
+#  * Render scale: the bake draws SIZE*(1-2*PAD) = 819 px for the font's
+#    hhea ascent - descent (2000 + 700 units) = 0.303 px/unit. Estimated
+#    glyph bbox = (advance - 2*lsb) wide by OS/2 capHeight 1600 (485 px) or
+#    xHeight 959 (291 px) tall: O/Ö ~349x485, o/ö ~243x291, q ~253x291.
+#  * Reversal displacement on those boxes, whole Regular corpus: endpoints
+#    as small as 21 px (O), but the 25/75 % points never less than ~50 px
+#    (f_l stroke 1, 153x291 estimated; G stroke 1 ~59; the loops O/Ö ~302,
+#    o/ö ~195, q ~128).
+#  * Polish drift across the real recalibration steps since the iPad
+#    calibrator import (cc2a8ff3 -> b17ab215 -> 4a3fd5b4 -> f3630289):
+#    endpoints <= 63 px, 25/75 % points <= 50 px, both measured at the
+#    819 px UPPER BOUND (true values are smaller: the real box is < 819 px
+#    on at least one axis), and 0 in the last step except the A reversal.
+#    The two earlier imports (2026-05-15..22) re-traced whole strokes
+#    (Q 0.577 of the box; 06658e0e -> e8bd3075 moved O/e/o 25/75 % points
+#    by ~670-700 px upper-bound with endpoints only ~80-105 px: the
+#    signature of a reversed loop, though a re-trace would look the same).
+# 40 px therefore sits above post-import polish (<= ~30 px on the estimated box)
+# and below the smallest reversal displacement (~50 px) by a margin of
+# ~1.25x on the weakest stroke -- THIN, which is why it is advisory. A
+# stroke shorter than the threshold can be reversed unseen (none in
+# Regular; Light E/F stroke 3 are 37-point duplicates, G3-19).
+# -----------------------------------------------------------------------------
+
+G7_DEFAULT_THRESHOLD_PX = 40.0
+# Path-fraction threshold, separately tunable from the endpoint one.
+G7_PATH_THRESHOLD_PX = 40.0
+G7_PATH_FRACTIONS = (0.25, 0.75)
+
+
+def _poly_px(poly_rel: list[tuple[float, float]],
+             bbox: tuple[int, int, int, int]) -> list[tuple[float, float]]:
+    x_min, y_min, x_max, y_max = bbox
+    bw = max(1, x_max - x_min)
+    bh = max(1, y_max - y_min)
+    return [(x_min + x * bw, y_min + y * bh) for x, y in poly_rel]
+
+
+def _endpoints_px(poly_rel: list[tuple[float, float]],
+                  bbox: tuple[int, int, int, int]):
+    """(first, last) checkpoint of `poly_rel` in bbox px, or None if the
+    polyline is empty. No resampling: the endpoints are exact."""
+    if not poly_rel:
+        return None
+    px = _poly_px([poly_rel[0], poly_rel[-1]], bbox)
+    return (px[0], px[1])
+
+
+def _point_at_fraction(poly_px: list[tuple[float, float]], fraction: float):
+    """Point at `fraction` (0..1) of the polyline's arc length, or None if
+    the polyline has fewer than 2 points or no length."""
+    import math
+    if len(poly_px) < 2:
+        return None
+    seg = [math.hypot(b[0] - a[0], b[1] - a[1])
+           for a, b in zip(poly_px, poly_px[1:])]
+    total = sum(seg)
+    if total < 1e-9:
+        return None
+    target = fraction * total
+    walked = 0.0
+    for (a, b), length in zip(zip(poly_px, poly_px[1:]), seg):
+        if walked + length >= target:
+            w = (target - walked) / length if length else 0.0
+            return (a[0] + w * (b[0] - a[0]), a[1] + w * (b[1] - a[1]))
+        walked += length
+    return poly_px[-1]
+
+
+def _path_distances(cand_px, ref_px, fractions=G7_PATH_FRACTIONS):
+    """(same, swapped): distances between the candidate's point at each
+    fraction f and the reference's point at f (same) / at 1 - f (swapped,
+    i.e. the reference traced backwards). None when the path check does
+    not apply (a polyline with < 2 points or no length)."""
+    import math
+    same, swapped = [], []
+    for f in fractions:
+        c = _point_at_fraction(cand_px, f)
+        r = _point_at_fraction(ref_px, f)
+        rr = _point_at_fraction(ref_px, 1.0 - f)
+        if c is None or r is None or rr is None:
+            return None
+        same.append(math.hypot(c[0] - r[0], c[1] - r[1]))
+        swapped.append(math.hypot(c[0] - rr[0], c[1] - rr[1]))
+    return same, swapped
+
+
+def gate_g7_per_stroke(candidate_poly_rel: list[tuple[float, float]],
+                       reference_poly_rel: list[tuple[float, float]],
+                       bbox: tuple[int, int, int, int],
+                       threshold_px: float,
+                       path_threshold_px: float | None = None) -> dict:
+    """Run G7 on one (candidate, reference) stroke pair.
+
+    Returns { start_shift_px, end_shift_px, path_shift_px, reversed, pass,
+    reason? }. `path_shift_px` is the larger of the 25 %/75 % arc-length
+    point distances (None when the stroke has no length to sample).
+    `reversed` is a diagnostic set on failure: the candidate matches the
+    reference traced BACKWARDS -- by its endpoints (open strokes) or by its
+    path points (loops, whose endpoints barely move).
+    """
+    import math
+    if path_threshold_px is None:
+        path_threshold_px = G7_PATH_THRESHOLD_PX
+    cand = _endpoints_px(candidate_poly_rel, bbox)
+    ref = _endpoints_px(reference_poly_rel, bbox)
+    if cand is None and ref is None:
+        return {"start_shift_px": None, "end_shift_px": None,
+                "path_shift_px": None,
+                "reversed": False, "pass": True, "reason": "empty_stroke"}
+    if cand is None or ref is None:
+        # One round has points, the other none: not a vacuous case.
+        return {"start_shift_px": None, "end_shift_px": None,
+                "path_shift_px": None,
+                "reversed": False, "pass": False,
+                "reason": ("empty_candidate_stroke" if cand is None
+                           else "empty_reference_stroke")}
+    start_shift = math.hypot(cand[0][0] - ref[0][0], cand[0][1] - ref[0][1])
+    end_shift = math.hypot(cand[1][0] - ref[1][0], cand[1][1] - ref[1][1])
+    swapped_start = math.hypot(cand[0][0] - ref[1][0], cand[0][1] - ref[1][1])
+    swapped_end = math.hypot(cand[1][0] - ref[0][0], cand[1][1] - ref[0][1])
+    ends_ok = start_shift <= threshold_px and end_shift <= threshold_px
+
+    dists = _path_distances(_poly_px(candidate_poly_rel, bbox),
+                            _poly_px(reference_poly_rel, bbox))
+    if dists is None:
+        path_shift = None
+        path_ok = True
+        path_matches_reversed = False
+    else:
+        same, swapped = dists
+        path_shift = max(same)
+        path_ok = path_shift <= path_threshold_px
+        path_matches_reversed = max(swapped) <= path_threshold_px
+    ok = ends_ok and path_ok
+    ends_match_reversed = (swapped_start <= threshold_px
+                           and swapped_end <= threshold_px)
+    # A distinct start/end pair must match the swapped pair; a loop
+    # (start ~ end) is recognised by its path points instead.
+    is_reversed = (not ok) and (
+        (not ends_ok and ends_match_reversed
+         and (path_shift is None or path_matches_reversed))
+        or (path_shift is not None and path_matches_reversed and not path_ok))
+    return {"start_shift_px": start_shift, "end_shift_px": end_shift,
+            "path_shift_px": path_shift,
+            "reversed": is_reversed, "pass": ok}
+
+
+def g7_stroke_digest(poly_rel: list[tuple[float, float]]) -> str:
+    """sha256 of a stroke's checkpoint list as compact JSON
+    ([[x, y], ...], values exactly as parsed from strokes.json). Binds an
+    allow-list entry to ONE specific (reference stroke, candidate stroke)
+    pair: any other edit changes the digest and un-allows the stroke."""
+    import hashlib
+    import json
+    blob = json.dumps([[x, y] for x, y in poly_rel], separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def gate_g7(candidate_strokes_rel: list[list[tuple[float, float]]],
+            reference_strokes_rel: list[list[tuple[float, float]]],
+            bbox: tuple[int, int, int, int],
+            threshold: float,
+            allowlist: list[dict] | None = None) -> dict:
+    """Run G7 on a candidate-vs-reference letter pair. Mask-free.
+
+    `allowlist` (entries for THIS letter and weight, see
+    scripts/g7_allowlist.json and run_gates.load_g7_allowlist) lists
+    INTENDED changes. A stroke that fails is reported as `allowed` (and
+    passes) only if an entry matches its index AND both the reference and
+    candidate stroke digests; the measured shifts are still reported.
+
+    Iterates the min(n_cand, n_ref) stroke range (extra strokes are
+    `run_gates.py`'s stroke_count_mismatch to report). Stroke ORDER is
+    covered too: swapping two strokes moves each one's endpoints onto the
+    other's.
+    """
+    per_stroke: list[dict] = []
+    n = min(len(candidate_strokes_rel), len(reference_strokes_rel))
+    for i in range(n):
+        r = gate_g7_per_stroke(candidate_strokes_rel[i],
+                               reference_strokes_rel[i], bbox, threshold)
+        r["stroke"] = i
+        if not r["pass"] and allowlist:
+            ref_digest = g7_stroke_digest(reference_strokes_rel[i])
+            cand_digest = g7_stroke_digest(candidate_strokes_rel[i])
+            for entry in allowlist:
+                if (entry["stroke"] == i
+                        and entry["referenceStrokeSha256"] == ref_digest
+                        and entry["candidateStrokeSha256"] == cand_digest):
+                    r["allowed"] = entry["reason"]
+                    r["allowed_date"] = entry["date"]
+                    r["pass"] = True
+                    break
+        per_stroke.append(r)
+    shifts = [max(r["start_shift_px"], r["end_shift_px"],
+                  r["path_shift_px"] or 0.0)
+              for r in per_stroke if r["start_shift_px"] is not None]
+    return {
+        "per_stroke": per_stroke,
+        "letter_score": max(shifts) if shifts else None,
+        "n_strokes_candidate": len(candidate_strokes_rel),
+        "n_strokes_reference": len(reference_strokes_rel),
+        "n_allowed": sum(1 for r in per_stroke if r.get("allowed")),
+        "pass": all(r["pass"] for r in per_stroke),
     }

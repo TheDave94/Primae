@@ -200,5 +200,60 @@ class TestG4LetterAggregation(unittest.TestCase):
         self.assertEqual(len(result["per_junction"]), 1)
 
 
+class TestG4NonConsecutiveJunction(unittest.TestCase):
+    """G3-07 (audit 2026-10-13): G4 paired only consecutive strokes (i,
+    i+1) and G6 hands end-band attachments to G4, so an end-to-end
+    junction between NON-consecutive strokes was covered by neither.
+    Measured on the committed corpus: Regular B (0,2), E (0,3), G (0,2)."""
+
+    BBOX = (0, 0, 100, 100)
+
+    @staticmethod
+    def _letter(third_stroke_goes_up: bool):
+        # s0 ends at (0.5, 0.5); s1 is far away; s2 starts at (0.5, 0.5).
+        s0 = [(0.025 * i, 0.5) for i in range(21)]
+        s1 = [(0.025 * i, 0.05) for i in range(21)]
+        if third_stroke_goes_up:
+            s2 = [(0.5, 0.5 - 0.02 * i) for i in range(21)]
+        else:
+            s2 = [(0.5 + 0.025 * i, 0.5) for i in range(21)]
+        return [s0, s1, s2]
+
+    def test_pair_indices_are_all_unordered_pairs(self):
+        self.assertEqual(ai._stroke_pair_indices(3), [(0, 1), (0, 2), (1, 2)])
+        self.assertEqual(ai._stroke_pair_indices(1), [])
+
+    def test_detect_junctions_finds_non_consecutive_pair(self):
+        junctions = ai._detect_junctions(self._letter(False), self.BBOX)
+        self.assertEqual([(j["i"], j["j"]) for j in junctions], [(0, 2)])
+
+    def test_identical_rounds_measure_the_non_consecutive_junction(self):
+        letter = self._letter(False)
+        result = ai.gate_g4(letter, letter, self.BBOX, threshold=2.0)
+        self.assertTrue(result["pass"])
+        self.assertEqual(len(result["per_junction"]), 1)
+        self.assertEqual((result["per_junction"][0]["stroke_i"],
+                          result["per_junction"][0]["stroke_j"]), (0, 2))
+        self.assertEqual(result["n_pairs_checked"], 3)
+
+    def test_kink_change_on_non_consecutive_junction_fails(self):
+        # Pen-continuation (kink 0) in the reference becomes a 90 degree
+        # corner in the candidate. Only the (0, 2) pair sees it.
+        result = ai.gate_g4(self._letter(True), self._letter(False),
+                            self.BBOX, threshold=2.0)
+        self.assertFalse(result["pass"])
+        junction = result["per_junction"][0]
+        self.assertEqual((junction["stroke_i"], junction["stroke_j"]), (0, 2))
+        self.assertGreater(junction["kink_drift_deg"], 80.0)
+
+    def test_non_consecutive_junction_lost_is_a_topology_change(self):
+        moved = self._letter(False)
+        moved[2] = [(0.5 + 0.025 * i, 0.9) for i in range(21)]  # detached
+        result = ai.gate_g4(moved, self._letter(False), self.BBOX,
+                            threshold=2.0)
+        self.assertFalse(result["pass"])
+        self.assertEqual(result["letter_reason"], "junction_topology_changed")
+
+
 if __name__ == "__main__":
     unittest.main()
