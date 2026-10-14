@@ -3,18 +3,15 @@
 <plist version="1.0">
 <dict>
     <!--
-        Two Files-app / Finder-USB exposure keys. Xcode 26 silently
-        drops INFOPLIST_KEY_UIFileSharingEnabled as an unrecognized
-        auto-generated build setting (verified via plutil on the
-        built Info.plist), so this hand-written fragment is merged
-        in by GENERATE_INFOPLIST_FILE=YES + INFOPLIST_FILE pointing
-        here. LSSupportsOpeningDocumentsInPlace lives here too so a
-        single file is the source of truth for file-sharing config.
+        No UIFileSharingEnabled / LSSupportsOpeningDocumentsInPlace
+        (R-063, audit 2026-10-13). They published Documents/ in the
+        Files app and Finder for the calibrator's capture folder; the
+        calibrator is compiled out of every build (STUDY_BUILD is
+        unconditional), so on the study iPad they only exposed the
+        container root. Re-adding either key needs
+        INFO_PLIST_EXPECTED in scripts/check_project_invariants.py
+        changed in the same commit.
     -->
-    <key>UIFileSharingEnabled</key>
-    <true/>
-    <key>LSSupportsOpeningDocumentsInPlace</key>
-    <true/>
     <!-- No cryptography beyond the OS-exempt kind (HTTPS/system) —
          skips the export-compliance prompt on every upload. -->
     <key>ITSAppUsesNonExemptEncryption</key>

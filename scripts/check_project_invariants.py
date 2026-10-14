@@ -119,9 +119,11 @@ findings: list[tuple[pathlib.Path, str]] = []
 
 # The decided shape of Primae/Info.plist: (key, value element). Any other key,
 # or a changed value, fails check_info_plist().
+# R-063 (audit 2026-10-13): UIFileSharingEnabled and
+# LSSupportsOpeningDocumentsInPlace are deliberately NOT here. They exposed
+# Documents/ in Files/Finder for the calibrator, which no build compiles;
+# a reappearance is reported as an unexpected key.
 INFO_PLIST_EXPECTED = [
-    ("UIFileSharingEnabled", "<true/>"),
-    ("LSSupportsOpeningDocumentsInPlace", "<true/>"),
     ("ITSAppUsesNonExemptEncryption", "<false/>"),
 ]
 
@@ -151,8 +153,8 @@ EXPECTED_DEFAULT_CONFIGURATION = "Release-Study"
 
 def check_info_plist() -> None:
     text = INFO_PLIST.read_text()
-    # The decided shape: exactly these three keys, this value each. Not
-    # "at least these" — a fourth key or a reordered/reformatted file is
+    # The decided shape: exactly the keys in INFO_PLIST_EXPECTED, this value
+    # each. Not "at least these" — an extra key or a reordered/reformatted file is
     # itself a sign Xcode's plist editor touched the file (see the module
     # docstring), so the count is checked too, not just presence.
     required = INFO_PLIST_EXPECTED
@@ -247,9 +249,12 @@ def check_pbxproj() -> None:
         findings.append((PBXPROJ,
             f"LastUpgradeCheck must be {EXPECTED_UPGRADE_MARKER_MAJOR}xx; found {upgrade}"))
 
-    # These two keys belong in Info.plist only; Xcode's INFOPLIST_KEY_*
-    # auto-generation is a second, competing encoding of the same facts
-    # and has produced a real drift incident more than once.
+    # Xcode's INFOPLIST_KEY_* auto-generation is a second, competing
+    # encoding of plist facts and has produced a real drift incident more
+    # than once. ITSAppUsesNonExemptEncryption lives in Info.plist only;
+    # LSSupportsOpeningDocumentsInPlace must not be set at all (R-063), and
+    # this is the one route by which it could return without touching
+    # Info.plist.
     for forbidden in ("INFOPLIST_KEY_ITSAppUsesNonExemptEncryption",
                       "INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace"):
         if forbidden in text:

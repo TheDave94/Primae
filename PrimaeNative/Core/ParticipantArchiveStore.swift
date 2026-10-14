@@ -185,7 +185,7 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
                 store: "ParticipantArchiveStore",
                 message: "seal of \(record.participantId.uuidString) failed (\(error.localizedDescription)) — NOT sealed; that child stays live, nothing was wiped")
             storePersistenceLogger.error(
-                "ParticipantArchiveStore seal failed for \(record.participantId.uuidString, privacy: .public) at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public) — NOT sealed; the live stores are kept.")
+                "ParticipantArchiveStore seal failed for \(record.participantId.uuidString, privacy: .private) at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private) — NOT sealed; the live stores are kept.")
             throw error
         }
         archivedParticipants.append(record)
@@ -273,7 +273,7 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
                 }
             } else {
                 storePersistenceLogger.error(
-                    "ParticipantArchiveStore: \(url.path, privacy: .public) exists but failed to decode — moved aside, excluded from the next export.")
+                    "ParticipantArchiveStore: \(url.path, privacy: .private) exists but failed to decode — moved aside, excluded from the next export.")
                 let dest = StoreFileQuarantine.quarantine(url)
                 center.reportNotice(store: "ParticipantArchiveStore",
                                     message: "\(url.lastPathComponent) was undecodable and \(dest.map { "moved aside to \($0.lastPathComponent)" } ?? "could NOT be moved aside") — that child is NOT in the export")

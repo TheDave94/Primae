@@ -32,9 +32,10 @@ FILES = [
 ]
 
 # A deliberate, uncommitted developer edit that trips the decided-shape
-# check (it removes one of the three required keys, the exact edit R-063
-# plans). Autofix will restore the file; the edit must survive somewhere.
-EDIT_FROM = "    <key>UIFileSharingEnabled</key>\n    <true/>\n"
+# check (it removes the one required key; R-063 removed the file-sharing
+# keys this fixture used to delete). Autofix will restore the file; the edit
+# must survive somewhere.
+EDIT_FROM = "    <key>ITSAppUsesNonExemptEncryption</key>\n    <false/>\n"
 EDIT_MARKER = "<!-- uncommitted developer edit, R-057 fixture -->\n"
 
 

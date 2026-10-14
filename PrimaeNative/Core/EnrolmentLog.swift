@@ -143,7 +143,7 @@ final class JSONEnrolmentLog: EnrolmentLogging {
                 try data.write(to: url, options: .atomic)
             } catch {
                 storePersistenceLogger.error(
-                    "EnrolmentLog disk write failed for \(record.participantId.uuidString, privacy: .public) at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    "EnrolmentLog disk write failed for \(record.participantId.uuidString, privacy: .private) at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 center.reportFailure(store: "EnrolmentLog", error: error)
             }
         }

@@ -1,3 +1,9 @@
+// COMPILED OUT OF THE STUDY BUILD (R-065), matching
+// LocalNotificationScheduler.swift itself: the types these tests exercise
+// do not exist under STUDY_BUILD, which is unconditional, so this file
+// runs in no current configuration (same as
+// StrokeCalibrationOverlayHelpersTests).
+#if !STUDY_BUILD
 // Covers the reminder-scheduling side-effect of appDidBecomeActive —
 // guards the daily notification refresh path in
 // TracingViewModel.appDidBecomeActive against regressions.
@@ -63,3 +69,4 @@ import UserNotifications
                 "No reminder should be scheduled before onboarding completes; got addCount=\(spy.addCount) vs before=\(before)")
     }
 }
+#endif

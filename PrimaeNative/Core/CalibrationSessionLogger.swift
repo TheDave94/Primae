@@ -157,11 +157,13 @@ public enum CalibrationSessionLogger {
     }
 
     private static func sessionDir(letter: String) -> URL? {
-        // Documents/ (not Application Support/) so the
-        // `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`
-        // Info.plist keys expose this folder to Files-app and Finder
-        // USB — David needs to extract the captures after each
-        // calibration session.
+        // Documents/ (not Application Support/) so the captures could be
+        // pulled via the Files app / Finder USB. That exposure came from
+        // the `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`
+        // Info.plist keys, which R-063 removed (the study build also
+        // compiles the calibrator out). Restoring capture extraction means
+        // re-adding those keys AND the matching row in
+        // scripts/check_project_invariants.py's INFO_PLIST_EXPECTED table.
         FileManager.default.urls(for: .documentDirectory,
                                   in: .userDomainMask).first?
             .appendingPathComponent("PrimaeNative/CalibrationSessions/\(letter)")

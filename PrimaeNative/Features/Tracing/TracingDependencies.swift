@@ -34,7 +34,12 @@ struct TracingDependencies {
     /// end-of-set hold survives a relaunch. See `SetCompletionLedger.swift`.
     var setCompletion: SetCompletionRecording
     var onboardingStore: OnboardingStoring
-    var notificationScheduler: LocalNotificationScheduler
+    #if !STUDY_BUILD
+    // Daily streak reminder; compiled out of a study build (R-065). Not an
+    // init parameter because a call argument cannot be conditionally
+    // compiled; a test replaces it after construction.
+    var notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler()
+    #endif
     var thesisCondition: ThesisCondition
     /// Pilot audio arm (phoneme / spatial-sonification / silent). Orthogonal
     /// to `thesisCondition`; assigned at the same point. H1 carries it
@@ -229,7 +234,6 @@ struct TracingDependencies {
         enrolmentLog: EnrolmentLogging = JSONEnrolmentLog(),
         setCompletion: SetCompletionRecording = UserDefaultsSetCompletionLedger(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
-        notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         // Default to the full three-phase flow unless the install opted
         // into the thesis A/B study; gate lives on ThesisCondition for
         // testability.
@@ -324,7 +328,6 @@ struct TracingDependencies {
         self.enrolmentLog = enrolmentLog
         self.setCompletion = setCompletion
         self.onboardingStore = onboardingStore
-        self.notificationScheduler = notificationScheduler
         self.thesisCondition = thesisCondition
         self.audioCondition = audioCondition
         self.trainedSubset = trainedSubset

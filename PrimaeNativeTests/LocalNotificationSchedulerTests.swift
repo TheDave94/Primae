@@ -1,3 +1,9 @@
+// COMPILED OUT OF THE STUDY BUILD (R-065), matching
+// LocalNotificationScheduler.swift itself: the types these tests exercise
+// do not exist under STUDY_BUILD, which is unconditional, so this file
+// runs in no current configuration (same as
+// StrokeCalibrationOverlayHelpersTests).
+#if !STUDY_BUILD
 import Testing
 import UserNotifications
 @testable import PrimaeNative
@@ -136,3 +142,4 @@ final class MockNotificationCenter: UserNotificationCenterProtocol {
         #expect(scheduler.permissionStatus == .authorized)
     }
 }
+#endif

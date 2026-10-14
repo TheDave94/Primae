@@ -1,3 +1,10 @@
+// COMPILED OUT OF THE STUDY BUILD (R-065, audit 2026-10-13). A daily
+// streak reminder ("Schaffst du 3? 🌟") aimed at a 5-year-old has no place
+// on a study iPad and would break condition equivalence between arms. It
+// was unreachable there only because nothing in a study build sets
+// isOnboardingComplete; the scheduler, its copy and the
+// UNUserNotificationCenter dependency now do not exist in the binary.
+#if !STUDY_BUILD
 import Foundation
 import UserNotifications
 
@@ -157,3 +164,4 @@ final class LocalNotificationScheduler {
         center.removePendingNotificationRequests(withIdentifiers: [identifier])
     }
 }
+#endif

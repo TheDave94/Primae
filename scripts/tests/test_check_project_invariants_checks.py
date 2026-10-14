@@ -120,10 +120,22 @@ class InfoPlistChecks(CheckerFixture):
 
     def test_missing_key_is_named(self) -> None:
         text = (self.root / INFO).read_text()
-        stripped = re.sub(r"\s*<key>UIFileSharingEnabled</key>\s*<true/>", "", text)
+        stripped = re.sub(r"\s*<key>ITSAppUsesNonExemptEncryption</key>\s*<false/>", "", text)
         self.assertNotEqual(text, stripped)
         (self.root / INFO).write_text(stripped)
-        self.assertFlags("UIFileSharingEnabled")
+        self.assertFlags("ITSAppUsesNonExemptEncryption")
+
+    def test_file_sharing_keys_are_absent_and_rejected(self) -> None:
+        # R-063: the study artefact must not publish its Documents folder in
+        # Files/Finder. The only consumer was the calibrator, compiled out.
+        text = (self.root / INFO).read_text()
+        for key in ("UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"):
+            with self.subTest(key=key):
+                self.assertNotIn(f"<key>{key}</key>", text,
+                                 f"{key} must not be in the decided Info.plist")
+                self.mutate(INFO, "</dict>", f"    <key>{key}</key>\n    <true/>\n</dict>")
+                self.assertFlags(key)
+                (self.root / INFO).write_text(text)
 
 
 if __name__ == "__main__":

@@ -33,9 +33,17 @@ struct PrimaeApp: App {
         // covers main-bundle fonts; the SPM resource bundle needs
         // `CTFontManagerRegisterFontsForURLs`. Idempotent.
         PrimaeFonts.registerAll()
+        // Delete research-export temp files a previous session left in
+        // tmp/ (R-062). Only here, never in a VM init: the test host runs
+        // TestApp, and a sweep there would race tests that write exports.
+        ExportFileRetention.sweepTemporaryExports()
+        #if !STUDY_BUILD
         // Pre-create the calibration session-log root so the app
         // appears in the Files app even before the first save lands.
+        // Not in a study build (R-063): the calibrator that writes there
+        // is compiled out, and Info.plist no longer shares Documents/.
         CalibrationSessionLogger.bootstrap()
+        #endif
     }
 
     var body: some Scene {

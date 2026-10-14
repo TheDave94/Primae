@@ -806,7 +806,26 @@ jobs:
                     LetterWheelPicker
                     FreeformWritingView
                     PracticeTrendChart
-                    variantToggle"
+                    variantToggle
+                    LocalNotificationScheduler
+                    DailyReminderPolicy"
+          # R-065: every SURFACES name is compiled out of BOTH study
+          # configurations, so no build in this job can show the name is
+          # still real, and a renamed declaration would pass "absent"
+          # forever (the DEBUG_ONLY list below gets that guard from
+          # Debug-Study; this list cannot). The anchor that is left is the
+          # source: each name must still be DECLARED under PrimaeNative/
+          # (inside its #if !STUDY_BUILD). Checked once, not per config.
+          if [ "$CFG" = Debug-Study ]; then
+            for sym in $SURFACES; do
+              if grep -rqEw --include='*.swift' "(struct|class|enum|protocol|func|var|let|case|actor) +$sym" PrimaeNative; then
+                echo "ok    $sym is still declared in PrimaeNative/ (absence check is not vacuous)"
+              else
+                echo "FAIL  $sym has no declaration in PrimaeNative/ - renamed? its absence check is vacuous"
+                rc=1
+              fi
+            done
+          fi
           if [ -n "$STUDY" ]; then
             for sym in $SURFACES; do
               in_study=$(sym_in_bundle "$STUDY" "$sym")

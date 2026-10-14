@@ -258,6 +258,8 @@ final class StubOnboardingStore: OnboardingStoring {
 }
 
 // MARK: - No-op notification center (avoids UNUserNotificationCenter.current() in CI)
+// The scheduler is compiled out of a study build (R-065).
+#if !STUDY_BUILD
 final class StubNotificationCenter: UserNotificationCenterProtocol {
     func requestAuthorization(options: UNAuthorizationOptions,
                                completionHandler: @escaping @Sendable (Bool, Error?) -> Void) {
@@ -268,6 +270,7 @@ final class StubNotificationCenter: UserNotificationCenterProtocol {
     func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
     func removeAllPendingNotificationRequests() {}
 }
+#endif
 
 // MARK: - Null letter cache (throws on load — forces fresh parse, prevents cross-test pollution)
 struct NullLetterCache: LetterCacheStoring {
@@ -318,7 +321,7 @@ extension TracingDependencies {
     static var stub: TracingDependencies {
         let progressStore = StubProgressStore()
         let streakStore   = StubStreakStore()
-        return TracingDependencies(
+        let deps = TracingDependencies(
             audio:                StubAudio(),
             progressStore:        progressStore,
             haptics:              StubHaptics(),
@@ -336,7 +339,6 @@ extension TracingDependencies {
             // park another test's VM.
             setCompletion:        StubSetCompletionLedger(),
             onboardingStore:      StubOnboardingStore(),
-            notificationScheduler: LocalNotificationScheduler(center: StubNotificationCenter()),
             thesisCondition:      .guidedOnly,
             // Pin the audio arm too so tests don't depend on global
             // ParticipantStore enrolment state (mirrors thesisCondition).
@@ -397,6 +399,13 @@ extension TracingDependencies {
             // past its 100 ms wall-clock playIntent debounce.
             makePromptPlayer:     { _ in NullPromptPlayer() }
         )
+        #if STUDY_BUILD
+        return deps
+        #else
+        var casual = deps
+        casual.notificationScheduler = LocalNotificationScheduler(center: StubNotificationCenter())
+        return casual
+        #endif
     }
 
     func with(audio: AudioControlling) -> TracingDependencies {

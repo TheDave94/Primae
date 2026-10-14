@@ -58,11 +58,11 @@ enum StoreFileQuarantine {
         do {
             try FileManager.default.moveItem(at: url, to: dest)
             storePersistenceLogger.error(
-                "Undecodable store file moved aside to \(dest.path, privacy: .public) — nothing was overwritten; copy it off the device and inspect it.")
+                "Undecodable store file moved aside to \(dest.path, privacy: .private) — nothing was overwritten; copy it off the device and inspect it.")
             return dest
         } catch {
             storePersistenceLogger.error(
-                "Undecodable store file at \(url.path, privacy: .public) could NOT be moved aside (\(error.localizedDescription, privacy: .public)); the next save WILL overwrite it.")
+                "Undecodable store file at \(url.path, privacy: .private) could NOT be moved aside (\((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public): \(error.localizedDescription, privacy: .private)); the next save WILL overwrite it.")
             return nil
         }
     }

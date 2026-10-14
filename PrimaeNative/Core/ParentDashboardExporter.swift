@@ -849,16 +849,55 @@ struct ParentDashboardExporter {
         return url
     }
 
+    /// The proctor's export action (R-062): the combined export in tmp/ for
+    /// the share sheet, which deletes it when it finishes, PLUS the same
+    /// bytes retained under `Exports/` for devicectl retrieval
+    /// (`ExportFileRetention`). A failed retained copy is logged, not
+    /// thrown: the export itself succeeded, the stores it was built from
+    /// are intact, and blocking the share sheet would lose the one copy
+    /// the proctor can take away now.
+    static func combinedExportForSharing(
+        participants: [ParticipantExportSource],
+        enrolments: [EnrolmentRecord] = [],
+        format: DashboardExportFormat,
+        locations: ExportFileRetention.Locations = .live
+    ) throws(ExportError) -> URL {
+        let url = try combinedExportFileURL(participants: participants, enrolments: enrolments,
+                                            format: format,
+                                            tempDirectory: locations.temporaryDirectory)
+        do {
+            try ExportFileRetention.retain(url, in: locations.retainDirectory)
+        } catch {
+            storePersistenceLogger.fault(
+                "Export retained copy failed (\((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public)); the shared file is the only copy of this export.")
+        }
+        return url
+    }
+
     // MARK: Private
 
-    private static func timeTag() -> String {
-        let c = Calendar.current.dateComponents([.hour, .minute, .second], from: Date())
+    /// The `HHmmss` part of an export name, in the device's time zone.
+    static func timeTag(_ date: Date = Date(), deviceCalendar: Calendar = .current) -> String {
+        let c = nameCalendar(deviceCalendar).dateComponents([.hour, .minute, .second], from: date)
         return String(format: "%02d%02d%02d", c.hour ?? 0, c.minute ?? 0, c.second ?? 0)
     }
 
-    private static func dateTag() -> String {
-        let c = Calendar.current.dateComponents([.year, .month, .day], from: Date())
+    /// The `yyyy-MM-dd` part of an export name: always a Gregorian date in
+    /// the device's time zone. Read through the device's own calendar, a
+    /// Japanese or Buddhist setting named the file `0008-…` or `2569-…`
+    /// (review of R-062). Under a Gregorian device calendar the result is
+    /// unchanged.
+    static func dateTag(_ date: Date = Date(), deviceCalendar: Calendar = .current) -> String {
+        let c = nameCalendar(deviceCalendar).dateComponents([.year, .month, .day], from: date)
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
+    /// Gregorian + POSIX, keeping only the device's time zone.
+    private static func nameCalendar(_ deviceCalendar: Calendar) -> Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = Locale(identifier: "en_US_POSIX")
+        calendar.timeZone = deviceCalendar.timeZone
+        return calendar
     }
 
     // MARK: Export-time-only corrections (2026-09-16)

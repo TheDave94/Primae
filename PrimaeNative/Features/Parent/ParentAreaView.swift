@@ -166,7 +166,7 @@ private struct ExportCenterView: View {
             set: { if !$0 { shareURL = nil } }
         )) {
             if let url = shareURL {
-                ActivitySheet(items: [url])
+                ActivitySheet(items: [url], temporaryExport: url)
             }
         }
         .alert("Export fehlgeschlagen", isPresented: $showError) {
@@ -178,7 +178,7 @@ private struct ExportCenterView: View {
 
     private func export(format: DashboardExportFormat) {
         do {
-            shareURL = try ParentDashboardExporter.combinedExportFileURL(
+            shareURL = try ParentDashboardExporter.combinedExportForSharing(
                 participants: vm.allParticipantExportSources,
                 enrolments: vm.enrolmentRecords,
                 format: format
@@ -189,12 +189,54 @@ private struct ExportCenterView: View {
     }
 }
 
-/// Share-sheet wrapper. Module-internal so both the export center and
-/// the ResearchDashboard new-participant flow share one implementation.
+/// Share-sheet wrapper for the research export (its only caller since the
+/// per-child export was removed in #22).
 struct ActivitySheet: UIViewControllerRepresentable {
     let items: [Any]
+    /// The tmp/ export being shared; deleted when the sheet reports the
+    /// activity completed (R-062).
+    var temporaryExport: URL? = nil
+    var locations: ExportFileRetention.Locations = .live
+
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let vc = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        Self.configure(vc, temporaryExport: temporaryExport, locations: locations)
+        return vc
     }
     func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+
+    /// Activities the export must not be offered to (R-062). The file holds
+    /// every child recorded on this iPad. Kept: AirDrop (shows the receiving
+    /// device and needs it to accept) and Save to Files (no ActivityType
+    /// constant exists for it, so it cannot be excluded by mistake here).
+    /// Excluded, besides the pointless targets (social posts, contacts,
+    /// reading list, Photos, print, Books, markup, SharePlay, collaboration,
+    /// home screen):
+    /// - Mail and Messages: one mis-tap on a contact sends all children's
+    ///   data through a third-party server to whoever that is; neither is a
+    ///   documented retrieval path (AirDrop, Files, devicectl are).
+    /// - Copy: Universal Clipboard puts the data on other devices signed in
+    ///   to the same Apple Account.
+    static let excludedActivityTypes: [UIActivity.ActivityType] = [
+        .mail, .message, .copyToPasteboard,
+        .postToFacebook, .postToTwitter, .postToWeibo, .postToTencentWeibo,
+        .postToFlickr, .postToVimeo,
+        .assignToContact, .addToReadingList, .saveToCameraRoll, .print,
+        .openInIBooks, .markupAsPDF, .sharePlay,
+        .collaborationInviteWithLink, .collaborationCopyLink, .addToHomeScreen,
+    ]
+
+    /// Applies the exclusions and the tmp/ cleanup. Separate from
+    /// `makeUIViewController` so a test can drive it without a SwiftUI
+    /// context.
+    static func configure(_ vc: UIActivityViewController, temporaryExport: URL?,
+                          locations: ExportFileRetention.Locations = .live) {
+        vc.excludedActivityTypes = excludedActivityTypes
+        vc.completionWithItemsHandler = { _, completed, _, _ in
+            if let temporaryExport {
+                ExportFileRetention.finishSharing(temporaryExport, completed: completed,
+                                                  locations: locations)
+            }
+        }
+    }
 }

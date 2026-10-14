@@ -882,7 +882,9 @@ public final class TracingViewModel {
     /// `reapplyParticipantIdentity`.
     private(set) var trainedSubset: TrainedLetterSubset
     private let onboardingStore: OnboardingStoring
+    #if !STUDY_BUILD
     private let notificationScheduler: LocalNotificationScheduler
+    #endif
     var adaptationPolicy: any AdaptationPolicy
     private var onboardingCoordinator: OnboardingCoordinator
     var phaseController: LearningPhaseController
@@ -1207,7 +1209,9 @@ public final class TracingViewModel {
         self.enrolmentLog           = deps.enrolmentLog
         self.setCompletion          = deps.setCompletion
         self.onboardingStore        = deps.onboardingStore
+        #if !STUDY_BUILD
         self.notificationScheduler  = deps.notificationScheduler
+        #endif
         self.observeCueEndToPresentation = deps.observeCueEndToPresentationSeconds
         self.observeCueFallback = deps.observeCueFallbackSeconds
         self.presentationSpacing = deps.presentationSpacingSeconds
@@ -2493,13 +2497,16 @@ public final class TracingViewModel {
         if playback.resumeIntent {
             playback.request(playback.state, immediate: true)
         }
-        // Refresh daily reminder with current streak
+        #if !STUDY_BUILD
+        // Refresh daily reminder with current streak. Not in a study build
+        // (R-065): no reminder may be scheduled on a study iPad.
         if isOnboardingComplete {
             notificationScheduler.scheduleDailyReminder(
                 currentStreak: streakStore.currentStreak,
                 onboardingComplete: true
             )
         }
+        #endif
     }
 
     func endTouch(fromPencil: Bool? = nil) {
@@ -3147,6 +3154,7 @@ public final class TracingViewModel {
             onboardingStore.markComplete(variant: onboardingVariant)
             isOnboardingComplete = true
             speakInitialPhaseCueAfterOnboarding()
+            #if !STUDY_BUILD
             // Request notification permission + schedule daily reminder.
             Task { [weak self] in
                 guard let self else { return }
@@ -3156,6 +3164,7 @@ public final class TracingViewModel {
                     onboardingComplete: true
                 )
             }
+            #endif
         } else {
             onboardingStore.saveProgress(step: onboardingCoordinator.currentStep)
         }

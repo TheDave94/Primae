@@ -440,6 +440,12 @@ struct SettingsView: View {
                     .foregroundStyle(Color.inkSoft)
             }
             #endif
+            // Onboarding-only controls (R-065, E1-07): `OnboardingView` is
+            // compiled out of a study build, so "Kurze Einführung" changed
+            // nothing and "Einführung wiederholen" only rewrote
+            // onboarding.json. Not a proctor tool: nothing it resets is
+            // shown in a study build.
+            #if !STUDY_BUILD
             Section("Hilfe") {
                 // A/B onboarding length. Default off (7-step). The
                 // first-run variant is locked into OnboardingStore on
@@ -459,6 +465,7 @@ struct SettingsView: View {
                 Button("Einführung wiederholen") { vm.restartOnboarding() }
                     .accessibilityHint("Startet die Einführung beim nächsten App-Start neu")
             }
+            #endif
         }
         .navigationTitle("Einstellungen")
         .navigationBarTitleDisplayMode(.inline)
