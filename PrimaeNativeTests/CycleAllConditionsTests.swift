@@ -11,13 +11,15 @@
 // and did NOTHING — `SettingsView` shipped it `.disabled(true)` with the
 // reason "Ein Wechsel der Audio-Bedingung mitten in der Sitzung verlangt,
 // dass die Arm-Autorität (C3-2 ...) nachträglich veränderbar wird". That
-// is a real hazard and not a formality: at launch the silent arm's
-// authority is established by CONSTRUCTION (a `SilentAudio` engine, a null
+// is a real hazard and not a formality: the silent arm's authority used to
+// be established by CONSTRUCTION alone (a `SilentAudio` engine, a null
 // speech/prompt pair — `TracingViewModel.init`), and construction happens
-// once. An arm reached later has to be made authoritative on the way in,
-// or the one arm whose entire manipulation is the absence of sound would
-// start making some. These tests drive the wiring and the authority, so
-// neither can pass by being inert.
+// once. Since protocol r7 the engine side is an arm gate
+// (`ArmGatedAudio`, flipped by `enter(_:)` on every arm change and every
+// new participant), so an arm reached later is made authoritative on the
+// way in — or the one arm whose entire manipulation is the absence of
+// sound would start making some. These tests drive the wiring and the
+// authority, so neither can pass by being inert.
 //
 // WHAT THEY CANNOT SEE. Everything here is asserted on view-model state
 // and on recorded collaborator calls. Whether sound actually leaves the

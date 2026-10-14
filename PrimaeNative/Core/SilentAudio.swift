@@ -14,6 +14,10 @@
 // says: the playback controller, the coupling, the demonstration, the
 // replay entries and every load all talk to an object that cannot make
 // sound.
+//
+// Since protocol r7 (2026-10-13) it is reached through `ArmGatedAudio`,
+// which forwards here whenever the CURRENT arm is silent — not only when
+// the launch arm was, which left later children on the no-op (audit D1).
 
 import Foundation
 

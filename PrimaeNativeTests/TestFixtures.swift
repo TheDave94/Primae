@@ -17,6 +17,89 @@ final class StubAudio: AudioControlling {
     func cancelPendingLifecycleWork() {}
 }
 
+/// A recording engine double that MODELS the parts of `AudioEngine` a
+/// carry-over defect lives in (2026-10-13). Promoted from
+/// `ProtocolMatrixTests` (where it was the file-private `RecordingAudio`;
+/// that suite still names it so through a typealias), not a new double.
+///
+/// What it models, each from the engine's own code:
+///   - `loadAudioFile` stops the player and plays only on autoplay
+///     (`AudioEngine.loadAudioFile` opens with `player.stop()`);
+///   - `stop()` stops AND drops the file (`finishStop` sets
+///     `currentFile = nil`);
+///   - `play()` without a loaded file is a no-op in the engine
+///     (`play(fadeInSeconds:)` guards `currentFile != nil`) — recorded in
+///     `plays` with a nil `file`, so a test can tell it from an audible
+///     play. (`isPlaying` keeps the meaning it had in ProtocolMatrixTests:
+///     the last call was a play or an autoplay load.)
+///   - rate, pan and pitch are engine STATE: set by `setAdaptivePlayback`
+///     / `setSpatialPitch`, start neutral (1.0 / 0 / 0 cents, the values
+///     `AudioEngine.init` sets), and are changed by nothing else — not by
+///     a load, not by a stop. `plays` snapshots them at every play.
+@MainActor
+final class EngineModelAudio: AudioControlling {
+    enum Event: Equatable { case load(String), play(fade: TimeInterval), stop }
+    /// The engine's state at one `play` call.
+    struct PlaySnapshot: Equatable {
+        let file: String?
+        let rate: Float
+        let pan: Float
+        let pitchCents: Float
+    }
+    var initializationError: String? { nil }
+    private(set) var events: [Event] = []
+    private(set) var setAdaptiveCalls: [(speed: Float, bias: Float)] = []
+    private(set) var spatialPitches: [Float] = []
+    /// Mirrors the engine: a load stops the player and plays only on
+    /// autoplay; `stop()` stops.
+    private(set) var isPlaying = false
+    /// Phase the view model was in at each `stop()`, read through
+    /// `phaseAtCall` — so a stop that ends observe early can be told from
+    /// the one that ends it with the phase.
+    var phaseAtCall: @MainActor () -> LearningPhase? = { nil }
+    private(set) var stopsDuringObserve = 0
+
+    // The modelled engine state.
+    private(set) var loadedFile: String?
+    private(set) var rate: Float = 1.0
+    private(set) var pan: Float = 0
+    private(set) var pitchCents: Float = 0
+    private(set) var plays: [PlaySnapshot] = []
+
+    func loadAudioFile(named: String, autoplay: Bool) {
+        events.append(.load(named)); isPlaying = autoplay
+        loadedFile = named
+        if autoplay { snapshotPlay() }
+    }
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
+        setAdaptiveCalls.append((speed, horizontalBias))
+        rate = speed; pan = horizontalBias
+    }
+    func setSpatialPitch(cents: Float) { spatialPitches.append(cents); pitchCents = cents }
+    func play() { events.append(.play(fade: 0)); isPlaying = true; snapshotPlay() }
+    func play(fadeInSeconds: TimeInterval) { events.append(.play(fade: fadeInSeconds)); isPlaying = true; snapshotPlay() }
+    func stop() {
+        events.append(.stop); isPlaying = false
+        loadedFile = nil
+        if phaseAtCall() == .observe { stopsDuringObserve += 1 }
+    }
+    func restart() {}
+    /// Probe closing-window labels, in order — `emitAudioSignalSummary` is
+    /// a protocol requirement (`AudioControlling`), so the call reaches here.
+    private(set) var summaryLabels: [String] = []
+    func emitAudioSignalSummary(label: String) { summaryLabels.append(label) }
+    func suspendForLifecycle() { isPlaying = false }
+    func resumeAfterLifecycle() {}
+    func cancelPendingLifecycleWork() {}
+
+    private func snapshotPlay() {
+        plays.append(PlaySnapshot(file: loadedFile, rate: rate, pan: pan, pitchCents: pitchCents))
+    }
+
+    var playCount: Int { events.filter { if case .play = $0 { return true } else { return false } }.count }
+    var anyActivity: Bool { !events.isEmpty || !setAdaptiveCalls.isEmpty || !spatialPitches.isEmpty }
+}
+
 final class StubHaptics: HapticEngineProviding {
     func prepare() {}
     func fire(_ event: HapticEvent) {}

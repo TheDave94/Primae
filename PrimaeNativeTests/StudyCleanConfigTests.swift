@@ -140,9 +140,17 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         var deps = studyDeps()
         deps.spokenFeedbackInStudy = true
         deps.audioCondition = .silent
+        let audio = EngineModelAudio()
+        deps.audio = audio
         let vm = TracingViewModel(deps)
-        #expect(vm.audio is SilentAudio,
-                "the silent arm's condition IS that writing makes no sound")
+        // Driven directly, the engine absorbs everything (the behaviour the
+        // old `vm.audio is SilentAudio` type check stood for; since protocol
+        // r7 `vm.audio` is the arm gate in every arm).
+        vm.audio.loadAudioFile(named: "probe.wav", autoplay: true)
+        vm.audio.play()
+        vm.audio.setSpatialPitch(cents: 600)
+        #expect(!audio.anyActivity,
+                "the silent arm's condition IS that writing makes no sound — reached: \(audio.events)")
         #expect(vm.prompts is StudyVoiceoverPromptPlayer,
                 "the silent arm must hear the same voiceover as the sound arms")
         #expect(!(vm.speech is NullSpeechSynthesizer),
@@ -294,6 +302,17 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         try? await Task.sleep(for: .milliseconds(150))
     }
 
+    /// Waits for the recognizer-deferred completion instead of a fixed
+    /// 150 ms: polls `done` every 50 ms for up to 5 s, then settles once
+    /// more. A fixed sleep is a race under a loaded simulator (measured:
+    /// one case of the r7 probe test missed its completion in a full run).
+    private func settle(until done: () -> Bool) async {
+        for _ in 0..<100 where !done() {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        await settle()
+    }
+
     /// A study session over a MULTI-letter pool, which is the only shape
     /// in which an end of a set exists at all.
     private func multiLetterDeps(spyPrompts: SpyPromptPlayer? = nil) -> TracingDependencies {
@@ -436,6 +455,223 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
                 "finishing a letter that is NOT the last must not hand the device back - the proctor would be told a child finished mid-set")
         #expect(prompts.celebrations == 0,
                 "per-letter celebrations stay suppressed by the C1/C2 ruling: a per-letter reward gives every child the same number of them, so it cannot distinguish a good session from a bad one. Got \(prompts.celebrations) celebration prompts among \(prompts.keys)")
+    }
+
+    // MARK: - Cold probes are not training letters (protocol r7)
+
+    /// Audits C1-tvm-a-01 / C2-tvm-b-01 / B2-01 / H2-01. The pretest and the
+    /// delayed test cover all five study letters, so one of them is ALWAYS
+    /// the trained set's last letter. Its cold probe must not end the set:
+    /// no "Super gemacht!", no chime (reward-class feedback inside the
+    /// outcome block, arm-dependent at that), and no hold on the chevron
+    /// that leads into training.
+    @Test("a cold probe of the set's last letter does not end the set",
+          arguments: [PilotAudioCondition.phoneme, .spatial, .silent],
+                     [StudyProbe.pretest, .delayed])
+    func coldProbeOfLastLetter_doesNotEndTheSet(arm: PilotAudioCondition, kind: StudyProbe) async {
+        let prompts = SpyPromptPlayer()
+        var deps = multiLetterDeps(spyPrompts: prompts)
+        deps.audioCondition = arm
+        let vm = TracingViewModel(deps)
+        let pool = vm.visibleLetterNames
+        guard pool.count > 1, let first = pool.first, let last = pool.last else {
+            Issue.record("needs a multi-letter pool; got \(pool)")
+            return
+        }
+        let refusal = vm.startColdProbe(letter: last, kind: kind)
+        #expect(refusal == nil, "\(arm) \(kind): the probe was refused: \(refusal ?? "")")
+        #expect(vm.currentProbe == kind && vm.learningPhase == .freeWrite,
+                "precondition: \(last) is open as a cold \(kind) probe")
+
+        vm.advanceLearningPhase()   // freeWrite -> recognizer -> completion
+        await settle { vm.isPhaseSessionComplete }
+        #expect(vm.isPhaseSessionComplete, "precondition: the probe's session completed")
+
+        #expect(!vm.awaitingNextParticipant,
+                "\(arm) \(kind): a probe of \(last) ended the set before training")
+        #expect(prompts.celebrations == 0,
+                "\(arm) \(kind): a cold probe got the end-of-set praise: \(prompts.keys)")
+        #expect(prompts.chimes == 0, "\(arm) \(kind): a cold probe got the chime")
+
+        vm.nextLetter()
+        #expect(vm.currentLetterName == first && vm.currentProbe == nil,
+                "\(arm) \(kind): the chevron must lead into training, at \(first); got \(vm.currentLetterName)")
+    }
+
+    /// B2-01 (b): the study auto-advance after a completed letter. A cold
+    /// probe stays put — the next thing is the proctor's next probe, not a
+    /// trained letter's demonstration — while a training letter still
+    /// advances (the positive control; StudyAutoAdvanceTests pins the order).
+    @Test("a completed cold probe does not auto-advance into a trained letter; a training letter does")
+    func completedProbe_doesNotAutoAdvance() async {
+        let store = RecordingDashboardStore()
+        let vm = TracingViewModel(multiLetterDeps().with(dashboardStore: store))
+        let pool = vm.visibleLetterNames
+        guard pool.count > 1, let first = pool.first else {
+            Issue.record("needs a multi-letter pool; got \(pool)")
+            return
+        }
+        #expect(vm.startColdProbe(letter: first, kind: .pretest) == nil)
+        vm.advanceLearningPhase()
+        await settle { vm.isPhaseSessionComplete }
+        #expect(vm.isPhaseSessionComplete, "precondition: the pretest completed")
+        let rowsAfterProbe = store.phaseCalls.count
+
+        vm.advanceAfterCompletedStudyLetter()
+        #expect(vm.currentLetterName == first && vm.currentProbe == .pretest,
+                "a completed pretest moved on to \(vm.currentLetterName) (probe \(String(describing: vm.currentProbe)))")
+        #expect(vm.learningPhase == .freeWrite && vm.isPhaseSessionComplete,
+                "the probe's canvas must stay idle on its finished free-write; phase \(vm.learningPhase)")
+        #expect(store.phaseCalls.count == rowsAfterProbe, "the auto-advance wrote rows: \(store.phaseCalls.count - rowsAfterProbe)")
+
+        // Positive control: the same letter as a TRAINING pass advances.
+        vm.loadLetter(name: first)
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        await settle { vm.isPhaseSessionComplete }
+        #expect(vm.isPhaseSessionComplete && vm.currentProbe == nil, "precondition: a training pass completed")
+        vm.advanceAfterCompletedStudyLetter()
+        #expect(vm.currentLetterName == pool[1], "a completed training letter must advance to \(pool[1]); got \(vm.currentLetterName)")
+    }
+
+    /// C1-tvm-a-02: after the set ends, the LEFT chevron and the random
+    /// letter must hold exactly like the right chevron does — otherwise a
+    /// tap reopens a trained letter and writes a second row set under the
+    /// same participant.
+    @Test("after the set ends, previousLetter and randomLetter hold like nextLetter")
+    func afterSetEnd_noNavigationReopensALetter() async {
+        let store = RecordingDashboardStore()
+        let vm = TracingViewModel(multiLetterDeps().with(dashboardStore: store))
+        guard let last = vm.visibleLetterNames.last else { return }
+        vm.loadLetter(name: last)
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        await settle { vm.isPhaseSessionComplete }
+        #expect(vm.awaitingNextParticipant, "precondition: the set ended")
+        let rows = store.phaseCalls.count
+
+        vm.previousLetter()
+        #expect(vm.currentLetterName == last && vm.learningPhase == .freeWrite && vm.isPhaseSessionComplete,
+                "the left chevron reopened \(vm.currentLetterName) in \(vm.learningPhase) after the set ended")
+        vm.randomLetter()
+        #expect(vm.currentLetterName == last && vm.learningPhase == .freeWrite && vm.isPhaseSessionComplete,
+                "randomLetter reopened \(vm.currentLetterName) in \(vm.learningPhase) after the set ended")
+        vm.nextLetter()
+        #expect(vm.currentLetterName == last && vm.learningPhase == .freeWrite,
+                "control: the right chevron holds too")
+        #expect(store.phaseCalls.count == rows, "navigation after the set wrote \(store.phaseCalls.count - rows) rows")
+    }
+
+    enum Chevron: String, CaseIterable, Sendable { case next, previous, random }
+
+    /// r7 review R2: the proctor taps a chevron inside the 2.0 s quiet window
+    /// that follows the free-writing of the set's LAST trained letter. The
+    /// letter is finished but not yet scored, so the end of the set has not
+    /// fired, the chevron's `awaitingNextParticipant` hold is still open,
+    /// and the tap used to load another trained letter — the first one, for
+    /// the right chevron — and start a second pass under the same
+    /// participant. The finished letter must be closed first: scored,
+    /// recorded, the end of the set announced once, and the chevron held.
+    @Test("a chevron inside the last letter's quiet window ends the set instead of starting another pass",
+          arguments: Chevron.allCases)
+    func chevronInLastLettersQuietWindow_endsTheSet(chevron: Chevron) async {
+        let prompts = SpyPromptPlayer()
+        let store = RecordingDashboardStore()
+        let vm = TracingViewModel(multiLetterDeps(spyPrompts: prompts).with(dashboardStore: store))
+        let canvas = CGSize(width: 400, height: 400)
+        vm.canvasSize = canvas
+        let pool = vm.visibleLetterNames
+        guard pool.count > 1, let last = pool.last else {
+            Issue.record("needs a multi-letter pool; got \(pool)")
+            return
+        }
+        vm.loadLetter(name: last)
+        vm.advanceLearningPhase()   // observe -> guided
+        vm.advanceLearningPhase()   // guided -> freeWrite
+        #expect(vm.learningPhase == .freeWrite, "precondition: \(last) is in free-writing")
+        driveFreeWriteInk(vm, canvas: canvas)
+        vm.endTouch()               // pen up: the quiet window is open
+        #expect(vm.touchDispatcher.isFreeWriteAdvanceScheduled && !vm.isPhaseSessionComplete
+                && !vm.awaitingNextParticipant,
+                "precondition: inside the quiet window of the last letter")
+
+        switch chevron {
+        case .next:     vm.nextLetter()
+        case .previous: vm.previousLetter()
+        case .random:   vm.randomLetter()
+        }
+        await settle()
+
+        #expect(vm.currentLetterName == last && vm.learningPhase == .freeWrite && vm.isPhaseSessionComplete,
+                "\(chevron): the tap opened \(vm.currentLetterName) in \(vm.learningPhase) after the set's last letter")
+        #expect(vm.awaitingNextParticipant, "\(chevron): the end of the set did not fire")
+        #expect(prompts.celebrations == 1, "\(chevron): end-of-set phrase \(prompts.celebrations) times among \(prompts.keys)")
+        let fw = store.phaseCalls.filter { $0.phase == LearningPhase.freeWrite.rawName }
+        #expect(fw.count == 1 && fw.first?.letter == last && fw.first?.completed == true,
+                "\(chevron): the finished free-write must be one completed row for \(last); got \(fw.map { ($0.letter, $0.completed) })")
+        #expect(store.phaseCalls.allSatisfy { $0.letter == last },
+                "\(chevron): rows for another letter: \(store.phaseCalls.map { ($0.letter, $0.phase) })")
+    }
+
+    /// The positive control: inside the quiet window of a letter that is NOT
+    /// last, the right chevron still finalises that letter and moves on.
+    @Test("a chevron inside a mid-set letter's quiet window still records it and moves on")
+    func chevronInMidLettersQuietWindow_movesOn() async {
+        let prompts = SpyPromptPlayer()
+        let store = RecordingDashboardStore()
+        let vm = TracingViewModel(multiLetterDeps(spyPrompts: prompts).with(dashboardStore: store))
+        let canvas = CGSize(width: 400, height: 400)
+        vm.canvasSize = canvas
+        let pool = vm.visibleLetterNames
+        guard pool.count > 1, let first = pool.first else {
+            Issue.record("needs a multi-letter pool; got \(pool)")
+            return
+        }
+        vm.loadLetter(name: first)
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        driveFreeWriteInk(vm, canvas: canvas)
+        vm.endTouch()
+        vm.nextLetter()
+        await settle()
+        #expect(vm.currentLetterName == pool[1] && !vm.awaitingNextParticipant && prompts.celebrations == 0,
+                "a mid-set chevron must move to \(pool[1]); got \(vm.currentLetterName)")
+        let fw = store.phaseCalls.filter { $0.phase == LearningPhase.freeWrite.rawName }
+        #expect(fw.count == 1 && fw.first?.letter == first && fw.first?.completed == true,
+                "the outgoing letter's free-write must still be one completed row; got \(fw.map { ($0.letter, $0.completed) })")
+    }
+
+    /// R-027 / B2-03 / H2-10: with the letter-repeat comparison switch above
+    /// 1, a finished cold probe was repeated from OBSERVE — a demonstration
+    /// and training pass of a probed letter. The switch is injected through
+    /// the deps seam, never the global key. The training pass is the
+    /// positive control: it still repeats, which also proves the seam
+    /// reaches the VM.
+    @Test("with letterRepeatCount 3 a finished cold probe is not repeated as training; a training letter is")
+    func repeatSwitch_neverRepeatsAProbe() async {
+        var deps = multiLetterDeps()
+        deps.letterRepeatCount = 3
+        let vm = TracingViewModel(deps)
+        guard let first = vm.visibleLetterNames.first else { return }
+
+        #expect(vm.startColdProbe(letter: first, kind: .pretest) == nil)
+        vm.advanceLearningPhase()
+        // Completed, or (the defect) already repeated back into observe.
+        await settle { vm.isPhaseSessionComplete || vm.learningPhase == .observe }
+        #expect(vm.currentProbe == .pretest && vm.learningPhase == .freeWrite && vm.isPhaseSessionComplete,
+                "the finished pretest was repeated: probe \(String(describing: vm.currentProbe)), phase \(vm.learningPhase)")
+        #expect(vm.repeatCurrentLetterIfConfigured() == false, "a probe must never start a repeat pass")
+
+        // Positive control: a training pass of the same letter repeats.
+        vm.loadLetter(name: first)
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        await settle { vm.learningPhase == .observe }
+        #expect(vm.learningPhase == .observe && !vm.isPhaseSessionComplete && vm.currentLetterName == first,
+                "a completed TRAINING pass must start pass 2 of 3 in observe; phase \(vm.learningPhase)")
     }
 
     // MARK: - C4: pinned device settings

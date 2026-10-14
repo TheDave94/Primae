@@ -807,7 +807,13 @@ public final class TracingViewModel {
     /// touch-began event from the overlays; `effectiveKind` drives
     /// grid preset promotion.
     let detector = InputModeDetector()
+    /// The session's engine: `armAudio`, the same object, typed as the
+    /// protocol every caller uses.
     let audio: AudioControlling
+    /// The arm gate behind `audio` (protocol r7): `SilentAudio` while the
+    /// current arm is silent, the real engine otherwise, re-pointed by
+    /// `applyArmAuthority` on every arm change. See `ArmGatedAudio`.
+    private let armAudio: ArmGatedAudio
     /// Test-only probe sink; see `init`. Never used for playback.
     private let audioSignalProbeSink: AudioControlling
     let haptics: HapticEngineProviding
@@ -1002,8 +1008,9 @@ public final class TracingViewModel {
     private let allFiveLetters: Bool
     /// How many times each letter's full three-phase flow runs before the
     /// proctor advances. 1 unless the comparison switch says otherwise —
-    /// the supervisor's "Buchstabe dreimal?".
-    private let letterRepeatCount = StudyComparisonSettings.letterRepeatCount
+    /// the supervisor's "Buchstabe dreimal?". Assigned in `init` from
+    /// `TracingDependencies.letterRepeatCount` (nil = the device setting).
+    private let letterRepeatCount: Int
     /// Whether this session draws the stroke start dots, and whether it
     /// drives stereo pan, and how long it pauses between letters.
     ///
@@ -1138,12 +1145,21 @@ public final class TracingViewModel {
         // Speech and prompts are nulled for it below on the same footing —
         // EXCEPT in a study session's voiceover (P3, 2026-10-04), whose
         // spoken content every arm hears alike; see `studyVoiceover` below.
+        //
+        // The no-op object sits behind a GATE that follows the arm
+        // (protocol r7, 2026-10-13): it was chosen here once, so an app
+        // launched in the silent arm kept it for every later child enrolled
+        // in place, and a sound arm reached later heard nothing (audit D1).
+        // `ArmGatedAudio` forwards to `SilentAudio` while the arm is silent
+        // and to `deps.audio` otherwise; `applyArmAuthority` flips it.
         let armIsSilent             = deps.audioCondition == .silent
-        let effectiveAudio: AudioControlling = armIsSilent ? SilentAudio() : deps.audio
+        let armAudio                = ArmGatedAudio(engine: deps.audio, arm: deps.audioCondition)
+        let effectiveAudio: AudioControlling = armAudio
+        self.armAudio               = armAudio
         self.audio                  = effectiveAudio
         // The REAL engine, kept reachable for the test-only audio probe.
         // MEASURED 2026-10-02 on the device: in the silent arm `audio`
-        // is a `SilentAudio`, whose measurement members are no-ops, so
+        // forwards to a `SilentAudio`, whose measurement members are no-ops, so
         // every measurement routed through `audio` vanished without a
         // word - and the silent arm is exactly the arm whose output most
         // needs asserting. `deps.audio` is the real engine in every arm,
@@ -1191,6 +1207,8 @@ public final class TracingViewModel {
         // device's own key otherwise. Same once-per-VM capture as
         // `observePasses` above.
         self.allFiveLetters         = deps.allFiveLetters ?? StudyComparisonSettings.allFiveLetters
+        self.letterRepeatCount      = deps.letterRepeatCount.map { max(1, $0) }
+            ?? StudyComparisonSettings.letterRepeatCount
         self.enablePaperTransfer    = deps.enablePaperTransfer
         self.enableFreeformMode     = deps.enableFreeformMode
         self.enablePhonemeMode      = deps.enablePhonemeMode
@@ -1665,51 +1683,75 @@ public final class TracingViewModel {
     }
 
     /// The current arm's own authority (ruling C3-2), applied whenever the
-    /// arm CHANGES. At launch this is done by construction — the silent
-    /// arm is handed a `SilentAudio` engine and a null speech/prompt pair
-    /// (`init`) — but construction happens once, and the comparison cycle
-    /// can reach the silent arm later.
+    /// arm CHANGES, and for every new participant (`reapplyParticipantIdentity`,
+    /// the same arm included). At launch this is done by construction —
+    /// the gate starts closed for a silent arm and the speech/prompt pair
+    /// is the null one (`init`) — but construction happens once, and both
+    /// the comparison cycle and in-place enrolment reach other arms later.
     ///
     /// What "silent" rests on for an arm reached mid-session, path by
-    /// path: the engine is stopped (its `stop()` clears the loaded file,
-    /// and its `play()` is a no-op without one), any in-flight pre-task
+    /// path: the outgoing engine is stopped, neutralised and then gated off
+    /// (`ArmGatedAudio.enter` — every later call goes to `SilentAudio`,
+    /// exactly as for a silent launch), any in-flight pre-task
     /// demonstration is cancelled, `activeAudioFiles` returns [] so no
     /// load site can hand the engine a file, `TouchDispatcher`'s coupling
     /// short-circuits on the live arm, and the speech/prompt pair becomes
-    /// the null one. Stepping back OUT restores the pair the session
-    /// began with, so this is a state, not a one-way ratchet.
+    /// the null one. Stepping back OUT reopens the gate onto the real
+    /// engine and restores the pair the session began with, so this is a
+    /// state, not a one-way ratchet (protocol r7: the gate used to be
+    /// fixed at construction — audit D1).
     ///
     /// In a study session running the voiceover (P3, 2026-10-04) the pair
     /// is NOT nulled: the silent arm hears the same spoken content as every
     /// arm, and only the voiceover's sound effects (tick, chimes) switch
     /// off with the arm.
-    ///
-    /// The remaining guarantee is the one construction gives and this
-    /// cannot: `vm.audio` stays the same object, so the ENGINE is a real
-    /// one holding no file rather than the `SilentAudio` no-op. Same
-    /// quiet, different mechanism.
     private func applyArmAuthority() {
         // Study voiceover (P3): the spoken content stays the same in
         // every arm, so the speech/prompt pair is NOT nulled for the silent
         // arm here — only its sound effects stop, below, and its engine.
         studyVoiceover?.soundEffectsAllowed = audioCondition != .silent
+        settleEngineForArm()
         guard audioCondition == .silent else {
             speech  = audibleSpeech
             prompts = audiblePrompts
             return
         }
-        if studyVoiceover != nil {
-            cancelPreTaskDemonstration()
-            audio.stop()
-            playback.request(.idle, immediate: true)
-            return
-        }
-        cancelPreTaskDemonstration()
+        if studyVoiceover != nil { return }
         speech.stop()
         speech  = NullSpeechSynthesizer()
         prompts = NullPromptPlayer()
-        audio.stop()
-        playback.request(.idle, immediate: true)
+    }
+
+    /// Hand the engine to the current arm (protocol r7). Whatever the
+    /// outgoing arm or child left running is ended FIRST, while the real
+    /// engine is still reachable: the pre-task demonstration is cancelled,
+    /// the playback machine is forced idle (so `TouchDispatcher.beginTouch`
+    /// never mistakes a stopped engine for a lift hold and skips the
+    /// reload — protocol r7), and the gate stops the engine (dropping its
+    /// file) and resets rate/pan/pitch to neutral before it re-points.
+    /// Without the neutral reset a phoneme child after a spatial child
+    /// heard every phoneme pitch-shifted (audit D2). See `ArmGatedAudio`.
+    private func settleEngineForArm() {
+        cancelPreTaskDemonstration()
+        playback.cancelPending()
+        playback.forceIdle()
+        isPlaying = false
+        armAudio.enter(audioCondition)
+        verifyEngineFollowsArm(at: "arm change")
+    }
+
+    /// Whether the gate is open exactly when the arm is a sound arm. True
+    /// by construction (`ArmGatedAudio.enter` is the gate's only writer and
+    /// is always handed `audioCondition`); `internal` so tests assert it.
+    var engineFollowsArm: Bool { armAudio.isSilenced == (audioCondition == .silent) }
+
+    /// A FAULT, never a quiet state (C1-6), and never an alert or a
+    /// relaunch prompt: a sound arm running on the no-op engine is the
+    /// audit D1 defect — the child hears nothing while the rows record a
+    /// sound arm. Checked at every arm change and every letter load.
+    private func verifyEngineFollowsArm(at site: String) {
+        guard !engineFollowsArm else { return }
+        pilotAudioLogger.fault("Arm/engine mismatch at \(site, privacy: .public): arm \(self.audioCondition.rawValue, privacy: .public) but the engine gate is \(self.armAudio.isSilenced ? "SILENCED" : "OPEN", privacy: .public) — the child is not hearing their arm.")
     }
 
     // MARK: - Pre-task sound-arm demonstration
@@ -1932,6 +1974,7 @@ public final class TracingViewModel {
 
     func loadLetter(name: String) {
         guard let idx = letters.firstIndex(where: { $0.name == name }) else { return }
+        closeOutgoingLetterBeforeNavigating()
         letterIndex = idx
         // Reset the repeat counter HERE, not in `load(letter:)` (2026-09-17).
         // It used to be reset only by `nextLetter`/`previousLetter`/
@@ -2111,6 +2154,26 @@ public final class TracingViewModel {
 
     var allLetterNames: [String] { letters.map(\.name) }
 
+    /// Closes the OUTGOING letter before a navigation action decides where
+    /// to go (protocol r7, review R2). A free-write the child finished, whose
+    /// 2.0 s quiet window has not scored it yet, is scored and recorded now,
+    /// while the letter on screen and `letterIndex` still name it.
+    ///
+    /// Under r1-r6 this happened later, inside `load(letter:)`, after the
+    /// chevron had already passed its `awaitingNextParticipant` hold and
+    /// chosen the next letter. When the finished letter was the set's last,
+    /// the end of the set fired (phrase, chime, hold) during that load, and
+    /// the load then carried on into another trained letter — the first
+    /// one for the right chevron — starting a second pass under the same
+    /// participant. Now the end of the set lands before the hold is read.
+    ///
+    /// A no-op outside study mode, with the pen down, or when nothing
+    /// finished is pending (`finalizeFinishedFreeWriteIfPending`), so
+    /// `load(letter:)`'s own unload record still handles everything else.
+    private func closeOutgoingLetterBeforeNavigating() {
+        phaseTransitions.finalizeFinishedFreeWriteIfPending()
+    }
+
     func nextLetter() {
         letterPasses = 1
         let visible = visibleLetterNames
@@ -2122,6 +2185,10 @@ public final class TracingViewModel {
         // been silently given a second pass — a second set of rows under
         // the same participantId. A study session ends when its set ends;
         // the only thing that starts another is "Nächstes Kind".
+        // The outgoing letter is closed FIRST (r7 review R2): finishing the
+        // last letter inside its quiet window is what ends the set, and the
+        // hold must see that.
+        closeOutgoingLetterBeforeNavigating()
         guard !awaitingNextParticipant else { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? -1
         let nextName = visible[(currentIdx + 1) % visible.count]
@@ -2135,6 +2202,13 @@ public final class TracingViewModel {
         letterPasses = 1
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }
+        // Same hold as `nextLetter()` (protocol r7, audit C1-tvm-a-02):
+        // the left chevron is child-facing too, and without this it
+        // reopened a trained letter after the set ended — a full observe,
+        // guided and free-write pass written as a second row set under the
+        // same participantId.
+        closeOutgoingLetterBeforeNavigating()
+        guard !awaitingNextParticipant else { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? 0
         let prevName = visible[(currentIdx - 1 + visible.count) % visible.count]
         guard let idx = letters.firstIndex(where: { $0.name == prevName }) else { return }
@@ -2161,6 +2235,15 @@ public final class TracingViewModel {
     /// row for a letter that in fact finished.
     @discardableResult
     func repeatCurrentLetterIfConfigured() -> Bool {
+        // A cold probe is never repeated (protocol r7, audits B2-03 /
+        // H2-10 / R-027). The repeat reloads through `load(letter:)` with
+        // no probe override, so it lands in OBSERVE: a finished pretest,
+        // post-test or delayed probe was followed by a full demonstration
+        // and training pass of that letter — for a post-test letter, the
+        // training the untrained contrast depends on never happening.
+        // (`loadLetter`'s `letterPasses = 1` did not prevent it: the probe
+        // completes on pass 1, and 1 < the configured count.)
+        guard currentProbe == nil else { return false }
         guard letterRepeatCount > 1, letterPasses < letterRepeatCount,
               letters.indices.contains(letterIndex) else { return false }
         letterPasses += 1
@@ -2181,6 +2264,10 @@ public final class TracingViewModel {
         letterPasses = 1
         let visible = visibleLetterNames
         guard !visible.isEmpty else { return }
+        // Same hold as `nextLetter()` (protocol r7): reachable through the
+        // canvas accessibility action, and it loads a trained letter.
+        closeOutgoingLetterBeforeNavigating()
+        guard !awaitingNextParticipant else { return }
         let randomName = visible[Int.random(in: 0..<visible.count)]
         guard let idx = letters.firstIndex(where: { $0.name == randomName }) else { return }
         letterIndex = idx
@@ -2396,8 +2483,12 @@ public final class TracingViewModel {
     /// sound starts with the coupling parameters of the dot's FIRST point,
     /// still (slowest rate), through `ArmCoupling` — the same mapping the
     /// pen uses — and `handleGuideFrame` then tracks the dot frame by frame.
-    /// Starting from the dot also replaces whatever rate/pan/pitch the
-    /// PREVIOUS letter's tracing left the engine in.
+    /// Starting from the dot also replaces whatever rate and pan the
+    /// PREVIOUS letter's tracing left the engine in — and, in the spatial
+    /// arm only, pitch. The phoneme arm never sets pitch, so its pitch is
+    /// neutral only because every arm change and every new participant
+    /// resets it (`settleEngineForArm`, protocol r7); before r7 a phoneme
+    /// child after a spatial child played shifted (audit D2).
     private func startObservePhaseAudio(startingAt firstPoint: CGPoint?) {
         guard letters.indices.contains(letterIndex) else { return }
         guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
@@ -2872,6 +2963,23 @@ public final class TracingViewModel {
                                          checkpointRadius: bboxStrokes.checkpointRadius
                                              * sqrt(gr.width * gr.height),
                                          strokes: mapped))
+    }
+
+    /// The study auto-advance, called by `SchuleWorldView` when a letter's
+    /// session completes (2026-09-18; the view owns the WHEN, this owns
+    /// the WHAT, so the decision is testable — see StudyAutoAdvanceTests).
+    ///
+    /// A TRAINING letter advances to the next trained letter. A COLD PROBE
+    /// does not advance at all (protocol r7, audit B2-01): the canvas stays
+    /// idle on the probe's finished free-write, as STUDY_DEVICE_DRYRUN §3
+    /// specifies, and the proctor opens the next probe from the research
+    /// dashboard. Advancing used to load the next TRAINED letter straight
+    /// into observe — its demonstration and, in the sound arms, its sound —
+    /// between two pretests, i.e. training a letter before that letter's
+    /// own cold pretest.
+    func advanceAfterCompletedStudyLetter() {
+        guard studyMode, currentProbe == nil else { return }
+        loadRecommendedLetter()
     }
 
     /// Load the spaced-repetition-recommended letter.
@@ -3408,6 +3516,7 @@ public final class TracingViewModel {
         // and main-actor isolated, so the arm cannot change between a
         // child's touch-down and touch-up.
         cycleAudioConditionIfConfigured(toLetterNamed: letter.name)
+        verifyEngineFollowsArm(at: "letter load")
         lastScheduledLetterPriority = 0   // only loadRecommendedLetter sets it, after this load
         phaseController.reset()
         // Cold-probe override (pretest / post-test / delayed), consumed
@@ -3977,7 +4086,18 @@ public final class TracingViewModel {
         // open from the other direction. `cycleArmLetter` is cleared so the
         // incoming child's FIRST letter adopts their assigned arm rather
         // than consuming a step of the outgoing child's cycle.
-        applyArm(.defaultForInstall)
+        //
+        // The SAME arm too (protocol r7): `applyArm` returns at once for an
+        // unchanged arm, but the incoming child must not inherit the
+        // outgoing child's engine state — a held sound, a loaded file, the
+        // last rate/pan/pitch. So an unchanged arm re-applies its authority
+        // directly, which settles the engine the same way an arm change does.
+        let incomingArm = PilotAudioCondition.defaultForInstall
+        if incomingArm == audioCondition {
+            applyArmAuthority()
+        } else {
+            applyArm(incomingArm)
+        }
         cycleArmLetter  = nil
         // The incoming child's session has demonstrated nothing yet
         // (2026-09-17). Without this, an iPad with `oncePerCondition` ON

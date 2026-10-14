@@ -166,9 +166,12 @@ struct SchuleWorldView: View {
         //
         // Nothing is enqueued, chimed or spoken, so the C1/C2 equity is
         // untouched — all three arms advance identically.
+        //
+        // A cold probe does NOT advance (protocol r7): the decision lives
+        // in `advanceAfterCompletedStudyLetter`, where it can be tested.
         .onChange(of: vm.isPhaseSessionComplete) { _, complete in
-            guard complete, vm.studyMode else { return }
-            vm.loadRecommendedLetter()
+            guard complete else { return }
+            vm.advanceAfterCompletedStudyLetter()
         }
         }
     }

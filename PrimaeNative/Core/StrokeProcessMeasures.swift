@@ -216,6 +216,22 @@ enum StrokeProcessScorer {
     /// into a letter-sized shape that scores as letter-like. 2% of the
     /// canvas (≈25 pt on the study iPad). Ruled 2026-10-05.
     static let scribbleExtent: CGFloat = 0.02
+    /// Whether a free-write contact is a PRODUCTION — something the lift's
+    /// 2.0 s quiet window advances on and the unload path scores and
+    /// records as a completed trial (protocol r7). At least two recorded
+    /// points AND a bounding box whose larger side, canvas-normalised as
+    /// `FreeWritePhaseRecorder.assess` normalises, is at least
+    /// `scribbleExtent` — the constant the r6 fit already uses to call a
+    /// drawing a scribble, so the two cannot disagree. Under the r7
+    /// kept-point filter a palm or finger creeping a few points across the
+    /// glass records several points; two points alone no longer tell a
+    /// contact from a mark.
+    static func isProduction(points: [CGPoint], canvasSize: CGSize) -> Bool {
+        guard points.count >= 2, let box = boundingBox([points]) else { return false }
+        let width = box.width / max(canvasSize.width, 1)
+        let height = box.height / max(canvasSize.height, 1)
+        return max(width, height) >= scribbleExtent
+    }
     /// An extent at or below this is zero (a straight vertical or
     /// horizontal line, or a single point) — that axis cannot be fitted.
     static let degenerateExtent: CGFloat = 1e-6

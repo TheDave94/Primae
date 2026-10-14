@@ -159,7 +159,14 @@ fileprivate final class CapturingStore: ParentDashboardStoring {
         } else {
             #expect(h.prompts.plays == 0, "outside the study the silent arm hears no prompt at all")
         }
-        #expect(h.vm.audio is SilentAudio, "the engine itself must be the no-op conformer, not merely unused")
+        // The engine itself must absorb calls, not merely be left unused —
+        // driven directly (the old type check `vm.audio is SilentAudio`;
+        // since protocol r7 `vm.audio` is the arm gate in every arm).
+        h.vm.audio.loadAudioFile(named: "probe.wav", autoplay: true)
+        h.vm.audio.play()
+        h.vm.audio.restart()
+        #expect(h.audio.anyAudioActivity == nil,
+                "the silent arm's engine let a direct call through (studyMode=\(studyMode)): \(h.audio.anyAudioActivity ?? "")")
     }
 
     @Test("positive control: the same drive makes sound in the phoneme arm outside study mode")

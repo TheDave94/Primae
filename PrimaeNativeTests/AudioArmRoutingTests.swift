@@ -197,9 +197,17 @@ fileprivate final class RecordingAudio: AudioControlling {
         #expect(audio.setAdaptiveCount == 0,
                 "silent arm must fire no setAdaptivePlayback — coupling gate breached (\(audio.setAdaptiveCount))")
         // Since 2026-09-04 (C3-2) the injected engine is not merely
-        // unused for the silent arm — it is replaced by a no-op conformer
-        // at the seam, so no path can reach a real engine at all.
-        #expect(vm.audio is SilentAudio)
+        // unused for the silent arm — every call is absorbed at the seam,
+        // so no path can reach a real engine at all. Asserted by DRIVING
+        // the engine directly (since protocol r7 `vm.audio` is the arm
+        // gate in every arm, so its type no longer says which arm it is).
+        vm.audio.loadAudioFile(named: "probe.wav", autoplay: true)
+        vm.audio.play()
+        vm.audio.setAdaptivePlayback(speed: 2, horizontalBias: 1)
+        vm.audio.setSpatialPitch(cents: 600)
+        #expect(audio.loadedFiles.isEmpty && audio.playCount == 0
+                && audio.setAdaptiveCount == 0 && audio.spatialPitches.isEmpty,
+                "the silent arm's engine let a direct call through: loads \(audio.loadedFiles), plays \(audio.playCount)")
     }
 
     /// The coupling must remain intact for a sound arm — the silent gate

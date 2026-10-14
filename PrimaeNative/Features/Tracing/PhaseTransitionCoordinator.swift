@@ -172,7 +172,9 @@ final class PhaseTransitionCoordinator {
         guard let vm, vm.studyMode,
               vm.phaseController.currentPhase == .freeWrite,
               !vm.phaseController.isLetterSessionComplete,
-              vm.freeWritePoints.count >= 2,   // a one-sample contact is not a production
+              // Same rule as the lift's quiet window (r7): two points
+              // spanning at least 2% of the canvas.
+              StrokeProcessScorer.isProduction(points: vm.freeWritePoints, canvasSize: vm.canvasSize),
               !vm.touchDispatcher.isSingleTouchInteractionActive else { return false }
         vm.abortInFlightRecognition()
         // Mark complete BEFORE recording so the dispatcher's quiet-window
@@ -402,9 +404,20 @@ final class PhaseTransitionCoordinator {
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration,
                             fallbackText: ChildSpeechLibrary.celebration)
-        } else if vm.isLastLetterOfSet {
+        } else if vm.currentProbe == nil, vm.isLastLetterOfSet {
             // THE END OF THE CHILD'S SET — the one study celebration
             // (2026-10-02, proctor's device run).
+            //
+            // TRAINING PASSES ONLY (protocol r7, audits C1-tvm-a-01 /
+            // C2-tvm-b-01 / B2-01 / H2-01). A cold probe — pretest,
+            // post-test, delayed — is not part of the set, but the pretest
+            // and the delayed test cover all five letters, so one of them is
+            // always the trained set's last letter. Without this check that
+            // probe spoke "Super gemacht!" in every arm and chimed in the
+            // sound arms INSIDE the outcome block ("a cold probe gets no
+            // reward-class feedback", STUDY_DEVICE_DRYRUN §3), and latched
+            // `awaitingNextParticipant` before training had started, so the
+            // chevron that leads into training was dead for the session.
             //
             // Per-LATTER silence stays: the C1/C2 ruling suppressed
             // celebrations because a per-letter reward gives every child

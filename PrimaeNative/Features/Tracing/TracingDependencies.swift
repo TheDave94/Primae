@@ -55,6 +55,12 @@ struct TracingDependencies {
     /// what that cost when it happened for real). Tests that mean to
     /// exercise the switch set it here, where no other test can see it.
     var allFiveLetters: Bool?
+    /// Seam for the `letterRepeatCount` comparison switch, same shape and
+    /// same reason as `allFiveLetters` above (protocol r7, audit R-027):
+    /// `nil` — every production caller — reads
+    /// `StudyComparisonSettings.letterRepeatCount` at VM construction; a
+    /// test sets a value here instead of writing the global key.
+    var letterRepeatCount: Int? = nil
     var schriftArt: SchriftArt
     var letterOrdering: LetterOrderingStrategy
     var enablePaperTransfer: Bool

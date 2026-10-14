@@ -208,16 +208,30 @@ import AVFoundation
     /// than by a fresh play per tap — the old `plays > 1` counted the
     /// restart after each immediate stop, which is exactly the cut the
     /// ruling removes.
+    ///
+    /// Re-pinned 2026-10-13 (protocol r7): "zero stops" alone could not see
+    /// the cut it was written against. The mock's `loadAudioFile` did not
+    /// stop playback, but the engine's does (`player.stop()`, no fade), and
+    /// every touch-down reloaded the arm file — so on the device the second
+    /// tap's touch-down silenced the held sound, the machine stayed
+    /// `.active`, no `play()` followed, and this test stayed green: it
+    /// locked the defect in. The mock now models the engine's load
+    /// (`isSounding = autoplay`), and the burst must stay SOUNDING after
+    /// every tap's move once it has started.
     @Test func debounceTouchBurst_rapidTaps_everyTapSounds() {
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
         let size = CGSize(width: 320, height: 480)
         let playsBefore = audio.playCount
         let stopsBefore = audio.stopCount
+        var startedAtTap: Int?
+        var silentTapsAfterStart: [Int] = []
         for i in 0..<20 {
             let t = CFTimeInterval(1.0) + Double(i) * 0.0002
             vm.beginTouch(at: CGPoint(x: CGFloat(10+i), y: CGFloat(10+i)), t: t)
             vm.updateTouch(at: CGPoint(x: CGFloat(80+i), y: CGFloat(80+i)), t: t+0.0001, canvasSize: size)
+            if audio.isSounding, startedAtTap == nil { startedAtTap = i }
+            if startedAtTap != nil, !audio.isSounding { silentTapsAfterStart.append(i) }
             vm.endTouch()
         }
         let plays = audio.playCount - playsBefore
@@ -225,6 +239,9 @@ import AVFoundation
         #expect(plays >= 1, "rapid taps must sound; got \(plays) plays for 20 taps")
         #expect(stops == 0,
                 "the sound was cut between rapid taps (\(stops) stops) — a lift inside the hold must not stop it")
+        #expect(startedAtTap != nil, "the burst never sounded")
+        #expect(silentTapsAfterStart.isEmpty,
+                "taps \(silentTapsAfterStart) were silent after the burst started at tap \(startedAtTap ?? -1) — the touch-down's reload stopped the held sound")
     }
 
     @Test func debounceWindow_afterExpiry_playbackIsAllowed() async {
@@ -402,10 +419,14 @@ private final class LocalMockAudioController: AudioControlling {
     private(set) var stopCount = 0
     private(set) var cancelPendingLifecycleWorkCount = 0
     private(set) var setAdaptivePlaybackCount = 0
-    func loadAudioFile(named fileName: String, autoplay: Bool) { loadedFiles.append(fileName) }
+    /// Mirrors the engine: a load stops the player (`AudioEngine
+    /// .loadAudioFile` opens with `player.stop()`) and plays only on
+    /// autoplay; `play()` sounds; `stop()` silences.
+    private(set) var isSounding = false
+    func loadAudioFile(named fileName: String, autoplay: Bool) { loadedFiles.append(fileName); isSounding = autoplay }
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) { setAdaptivePlaybackCount += 1 }
-    func play() { playCount += 1 }
-    func stop() { stopCount += 1 }
+    func play() { playCount += 1; isSounding = true }
+    func stop() { stopCount += 1; isSounding = false }
     func restart() {}
     func suspendForLifecycle() { suspendForLifecycleCount += 1 }
     func resumeAfterLifecycle() { resumeAfterLifecycleCount += 1 }

@@ -18,9 +18,36 @@ final class TouchDispatcher {
 
     /// True while a single-touch tracing gesture is in flight.
     private(set) var isSingleTouchInteractionActive = false
-    /// Last seen touch point in canvas pixels.
+    /// Last seen touch point in canvas pixels — EVERY sample. Drives the
+    /// velocity estimate, which needs sample-to-sample displacement.
     private(set) var lastPoint: CGPoint?
     private(set) var lastTimestamp: CFTimeInterval?
+    /// Last point KEPT into the ink (`vm.activePath`) and the freeWrite
+    /// recorder. The jitter filter measures against THIS, not against
+    /// `lastPoint` (protocol r7, audit E2-01). Measured against the
+    /// previous sample, the 1.5 pt hysteresis became a speed threshold —
+    /// 1.5 pt × sample rate, ≈180 pt/s for a finger at 120 Hz and ≈360
+    /// pt/s for the Pencil at 240 Hz — because every coalesced sample is
+    /// delivered (#21): a slow stroke, and the decelerating end of every
+    /// stroke, was dropped from the ink and from the scored, exported
+    /// trace. Against the last kept point the filter does what its own
+    /// doc says: a held finger's jitter (which never strays 1.5 pt from
+    /// where it rests) adds nothing, and any motion of 1.5 pt or more is
+    /// kept, however slowly it was made. Nil when the next in-bounds
+    /// sample must be kept unconditionally (a fresh stroke after an
+    /// out-of-bounds excursion).
+    private(set) var lastKeptPoint: CGPoint?
+    /// The most recent in-bounds sample that the filter did NOT keep,
+    /// with what `record` needs, or nil when the last sample was kept.
+    /// Flushed into the freeWrite recorder at the lift so the trace ends
+    /// where the pen did — mirroring the pen-down rule in `beginTouch`.
+    private var unkeptTail: (point: CGPoint, timestamp: CFTimeInterval, force: CGFloat, canvasSize: CGSize)?
+    /// Points kept since the current stroke began (the pen-down, or the
+    /// re-entry after an excursion, counts as one). The lift flush needs
+    /// at least one kept MOVE, so a stationary contact (a palm) with
+    /// sub-threshold jitter stays the one-sample contact it always was
+    /// and never becomes a two-point "production".
+    private var keptPointsInStroke = 0
     /// Exponentially-smoothed touch velocity. Drives audio time-stretch
     /// and the "should playback be active" gate.
     private(set) var smoothedVelocity: CGFloat = 0
@@ -99,6 +126,9 @@ final class TouchDispatcher {
         vm.playback.resumeIntent       = true
         lastPoint                      = p
         lastTimestamp                  = t
+        lastKeptPoint                  = p
+        unkeptTail                     = nil
+        keptPointsInStroke             = 1
         vm.activePath                  = [p]
         // New touch supersedes any lingering snapshot from the
         // previous phase — clear so the two paths don't overlay.
@@ -121,7 +151,24 @@ final class TouchDispatcher {
         // endTouch's stop() clears currentFile; reload before the next
         // play() would silently fail. (PlaybackController reloads again
         // before each play, for the same reason mid-stroke.)
-        vm.reloadActiveAudioFile()
+        //
+        // NOT while the lift hold is sounding (protocol r7, 2026-10-13).
+        // A lift while sounding leaves the machine `.active` and the engine
+        // playing for `SoundEnvelope.liftHoldSeconds`. Reloading here
+        // opened with the engine's `player.stop()` — a hard stop, no fade —
+        // while the machine stayed `.active`, so the next move's
+        // `request(.active)` was a no-op transition, `play()` never ran,
+        // and the stroke after a quick re-touch was SILENT in both sound
+        // arms in every writing phase (r5–r6). The held file is still
+        // loaded and is still the right one: every path that changes the
+        // file — a letter load, a phase transition, backgrounding, the
+        // out-of-bounds edge — forces the machine idle first, so `.active`
+        // at a touch-down means "the hold of this letter's sound". Idle (no
+        // hold, or the hold already expired) reloads exactly as before. The
+        // silent arm never goes active, so it is untouched.
+        if vm.playback.state != .active {
+            vm.reloadActiveAudioFile()
+        }
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
@@ -170,14 +217,24 @@ final class TouchDispatcher {
                 // null synthesiser where it always was.
                 vm.speech.speak("Probier's nochmal")
             }
+            // The excursion ended the stroke (ink wiped or split above):
+            // the re-entry starts a fresh one with its first sample.
+            lastKeptPoint      = nil
+            unkeptTail         = nil
+            keptPointsInStroke = 0
         }
         wasInBounds = isWithinCanvasBounds
 
+        // Sample-to-sample displacement: the velocity estimate below.
         let dx       = p.x - lastPoint.x
         let dy       = p.y - lastPoint.y
         let distance = hypot(dx, dy)
 
-        if isWithinCanvasBounds && distance >= minimumTouchMoveDistance {
+        // Displacement from the last KEPT point: the jitter filter. See
+        // `lastKeptPoint` for why this is not `distance` (r7, E2-01).
+        let distanceFromKept = lastKeptPoint.map { hypot(p.x - $0.x, p.y - $0.y) }
+            ?? .greatestFiniteMagnitude
+        if isWithinCanvasBounds && distanceFromKept >= minimumTouchMoveDistance {
             vm.activePath.append(p)
             // FreeWrite scoring + KP overlay buffers.
             if vm.phaseController.currentPhase == .freeWrite {
@@ -186,6 +243,11 @@ final class TouchDispatcher {
                                             force: vm.pencilPressure ?? 0,
                                             canvasSize: canvasSize)
             }
+            lastKeptPoint       = p
+            unkeptTail          = nil
+            keptPointsInStroke += 1
+        } else if isWithinCanvasBounds {
+            unkeptTail = (p, t, vm.pencilPressure ?? 0, canvasSize)
         }
 
         if let lastTimestamp {
@@ -247,6 +309,26 @@ final class TouchDispatcher {
         // lifting while a resting finger is the tracked touch) must not end
         // the finger's stroke (review 2026-09-05).
         if let fromPencil, isSingleTouchInteractionActive, fromPencil != sessionIsPencil { return }
+        // The stroke ends where the pen did (r7): a last sample the jitter
+        // filter held back — under 1.5 pt from the last kept point, e.g.
+        // the final creep of a decelerating stroke or a rest before the
+        // lift — is recorded now, so the trace's end and its span reach
+        // the lift exactly as `beginTouch` makes them start at the
+        // pen-down. Only after a kept MOVE: a stationary contact stays a
+        // one-sample contact (`keptPointsInStroke`).
+        if isSingleTouchInteractionActive,
+           let tail = unkeptTail,
+           keptPointsInStroke >= 2,
+           vm.phaseController.currentPhase == .freeWrite,
+           !vm.didCompleteCurrentLetter {
+            vm.freeWriteRecorder.record(point: tail.point,
+                                        timestamp: tail.timestamp,
+                                        force: tail.force,
+                                        canvasSize: tail.canvasSize)
+        }
+        unkeptTail                     = nil
+        lastKeptPoint                  = nil
+        keptPointsInStroke             = 0
         isSingleTouchInteractionActive = false
         lastPoint                      = nil
         lastTimestamp                  = nil
@@ -273,10 +355,17 @@ final class TouchDispatcher {
         // signal; re-touch within the window cancels.
         if vm.phaseController.currentPhase == .freeWrite,
            !vm.didCompleteCurrentLetter,
-           vm.freeWritePoints.count >= 2 {   // a one-sample contact (a palm) is not a production
+           // A one-sample contact (a palm), or one spanning under 2% of
+           // the canvas (a creeping palm, r7), is not a production.
+           StrokeProcessScorer.isProduction(points: vm.freeWritePoints, canvasSize: vm.canvasSize) {
             scheduleFreeWriteAutoAdvance()
         }
     }
+
+    /// Read-only: whether a lift has scheduled the free-write quiet-window
+    /// advance and it has not fired or been cancelled yet. Lets a test
+    /// see the lift's decision without waiting out the 2.0 s window.
+    var isFreeWriteAdvanceScheduled: Bool { freeWriteAutoAdvanceTask != nil }
 
     // MARK: - State-clearing entry points
 
@@ -286,6 +375,9 @@ final class TouchDispatcher {
         isSingleTouchInteractionActive = false
         lastPoint                      = nil
         lastTimestamp                  = nil
+        lastKeptPoint                  = nil
+        unkeptTail                     = nil
+        keptPointsInStroke             = 0
         smoothedVelocity               = 0
         freeWriteAutoAdvanceTask?.cancel()
         freeWriteAutoAdvanceTask = nil

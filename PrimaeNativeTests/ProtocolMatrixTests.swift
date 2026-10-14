@@ -48,8 +48,9 @@
 // Mutation checks (flip, confirm RED, restore — and read the test count
 // out of the log, CLAUDE.md "Test Infrastructure" 5):
 //   - silentArmMakesNoSoundInAnyWritingPass: in `TracingViewModel.init`,
-//     `effectiveAudio = armIsSilent ? SilentAudio() : deps.audio` →
-//     `deps.audio`. (Deleting only `TouchDispatcher`'s silent-arm return
+//     build the gate open — `ArmGatedAudio(engine: deps.audio, arm:
+//     deps.audioCondition)` → `arm: .phoneme` (protocol r7; before r7 the
+//     flip was `effectiveAudio = deps.audio`). (Deleting only `TouchDispatcher`'s silent-arm return
 //     is NOT caught here: `SilentAudio` absorbs it. The two are redundant
 //     layers; this pins the outcome.)
 //   - soundArmsSoundInEveryWritingPass: re-add the removed gate at the top
@@ -75,7 +76,8 @@
 //       · "stops at observe end" — in `resetForPhaseTransition`, delete
 //         `audio.stop()`: RED, the sound outlives observe.
 //       · "the silent arm gets the same animation start, no sound" — in
-//         `TracingViewModel.init`, `effectiveAudio = deps.audio` (RED, the
+//         `TracingViewModel.init`, build the gate open (`arm: .phoneme`, as
+//         above; pre-r7 `effectiveAudio = deps.audio`) (RED, the
 //         engine is reached); or make the presentation sound-arm only
 //         (`if armStudyObservePresentation && startWholeObserveSound`): RED,
 //         the silent arm's animation never starts and observe never ends.
@@ -96,6 +98,18 @@
 //         `pendingTransition` (so a re-touch cannot cancel it).
 //       · envelopeValues / controllerSleepsTheEnvelope: stall default 0.12;
 //         `fadeOutSeconds` 0.12.
+//   - r7 tests (2026-10-13; RED at f3630289 before the fix — every sound
+//     arm × pass silent in 15 of 15 samples of stroke 2, the only engine
+//     call after the lift a `load`):
+//       · reTouchThroughTheTouchPathKeepsTheSound: in
+//         `TouchDispatcher.beginTouch`, call `vm.reloadActiveAudioFile()`
+//         unconditionally (drop the `state != .active` guard).
+//       · letterChangeInsideTheHoldLoadsTheNewFile: make the guard skip the
+//         reload always (`if false`): the touch-down after a letter change
+//         no longer loads the new letter's file.
+//       · silentArmReTouchStaysSilent: in `TracingViewModel.init`,
+//         build the gate open (`arm: .phoneme`, as above; pre-r7
+//         `effectiveAudio = deps.audio`) (the engine is reached).
 //     NOT observable here: that `SoundEnvelope.makeAudioEngine()` applies
 //     the fade to the real engine (AudioEngine cannot run on the simulator),
 //     and that `UtteranceEndRelay` reports a real synthesiser's end.
@@ -124,43 +138,12 @@ import CoreGraphics
 
 // MARK: - Recording doubles (file-private, as every suite here keeps its own)
 
-@MainActor
-fileprivate final class RecordingAudio: AudioControlling {
-    enum Event: Equatable { case load(String), play(fade: TimeInterval), stop }
-    var initializationError: String? { nil }
-    private(set) var events: [Event] = []
-    private(set) var setAdaptiveCalls: [(speed: Float, bias: Float)] = []
-    private(set) var spatialPitches: [Float] = []
-    /// Mirrors the engine: a load stops the player and plays only on
-    /// autoplay; `stop()` stops.
-    private(set) var isPlaying = false
-    /// Phase the view model was in at each `stop()`, read through
-    /// `phaseAtCall` — so a stop that ends observe early can be told from
-    /// the one that ends it with the phase.
-    var phaseAtCall: @MainActor () -> LearningPhase? = { nil }
-    private(set) var stopsDuringObserve = 0
-
-    func loadAudioFile(named: String, autoplay: Bool) { events.append(.load(named)); isPlaying = autoplay }
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) { setAdaptiveCalls.append((speed, horizontalBias)) }
-    func setSpatialPitch(cents: Float) { spatialPitches.append(cents) }
-    func play() { events.append(.play(fade: 0)); isPlaying = true }
-    func play(fadeInSeconds: TimeInterval) { events.append(.play(fade: fadeInSeconds)); isPlaying = true }
-    func stop() {
-        events.append(.stop); isPlaying = false
-        if phaseAtCall() == .observe { stopsDuringObserve += 1 }
-    }
-    func restart() {}
-    /// Probe closing-window labels, in order — `emitAudioSignalSummary` is
-    /// a protocol requirement (`AudioControlling`), so the call reaches here.
-    private(set) var summaryLabels: [String] = []
-    func emitAudioSignalSummary(label: String) { summaryLabels.append(label) }
-    func suspendForLifecycle() { isPlaying = false }
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-
-    var playCount: Int { events.filter { if case .play = $0 { return true } else { return false } }.count }
-    var anyActivity: Bool { !events.isEmpty || !setAdaptiveCalls.isEmpty || !spatialPitches.isEmpty }
-}
+/// This suite's engine double, promoted to `TestFixtures.swift` as
+/// `EngineModelAudio` (2026-10-13) so `ArmEngineCarryOverTests` reuses it
+/// rather than adding another. Unchanged in behaviour; it gained only
+/// the engine state it models (loaded file, rate/pan/pitch, per-play
+/// snapshots), which nothing in this file reads.
+fileprivate typealias RecordingAudio = EngineModelAudio
 
 @MainActor
 fileprivate final class SpySpeech: SpeechSynthesizing {
@@ -424,7 +407,13 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         enter(pass, vm)
         write(vm)
         await vm.awaitPlaybackDebounce()
-        #expect(vm.audio is SilentAudio, "the silent arm's engine must be the no-op conformer")
+        // The engine itself, driven directly, must absorb every call — the
+        // behaviour the old `vm.audio is SilentAudio` type check stood for
+        // (since r7 `vm.audio` is the arm gate, whatever the arm).
+        vm.audio.loadAudioFile(named: "probe.wav", autoplay: true)
+        vm.audio.play()
+        vm.audio.setSpatialPitch(cents: 600)
+        #expect(vm.engineFollowsArm, "the silent arm's engine gate is open")
         #expect(!audio.anyActivity,
                 "silent arm, \(pass): the injected engine was reached — \(audio.events)")
     }
@@ -820,6 +809,132 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(log.holdsReturned == 1, "precondition: the hold's timer ran")
         #expect(!audio.events.contains(.stop), "the hold stopped the sound under the next stroke: \(audio.events)")
         #expect(audio.isPlaying)
+    }
+
+    // MARK: - r7 (2026-10-13): the re-touch inside the hold, through the REAL touch path
+    //
+    // `reTouchInsideTheHoldKeepsTheSound` above drives the controller
+    // directly, so it never saw what `beginTouch` does before the first move:
+    // it reloaded the arm file, and `AudioEngine.loadAudioFile` opens with
+    // `player.stop()` — a hard stop, no fade. The machine stayed `.active`,
+    // so the first move's `request(.active)` was a no-op transition and
+    // `play()` was never called: the whole next stroke was silent until the
+    // pen paused 0.3 s or lifted for longer than the hold (r5–r6). This
+    // file's `RecordingAudio` models the load-stops-playback faithfully
+    // (`isPlaying = autoplay`), and every test below goes through
+    // `beginTouch` → `updateTouch` → `endTouch` → `beginTouch` → `updateTouch`.
+
+    /// Stroke 1, lift, and a touch-down 0.2 s later — well inside the 0.8 s
+    /// hold. Synchronous on purpose: the hold's timer cannot fire before the
+    /// test yields the main actor, so "inside the hold" is exact. Returns the
+    /// pen's position and time at the second touch-down.
+    private func liftAndReTouchInsideTheHold(_ vm: TracingViewModel)
+        -> (p: CGPoint, t: CFTimeInterval) {
+        var t: CFTimeInterval = 1000
+        var p = CGPoint(x: 50, y: 200)
+        vm.beginTouch(at: p, t: t)
+        for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+        vm.endTouch()
+        t += 0.2
+        p = CGPoint(x: 100, y: 200)
+        vm.beginTouch(at: p, t: t)
+        return (p, t)
+    }
+
+    @Test("r7: a re-touch inside the lift hold keeps the sound through the real touch path — no stop, no reload, sounding from the touch-down through the whole next stroke",
+          arguments: [PilotAudioCondition.phoneme, .spatial],
+                     [WritingPass.guided, .sessionFreeWrite, .posttest])
+    func reTouchThroughTheTouchPathKeepsTheSound(arm: PilotAudioCondition, pass: WritingPass) {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio)
+        enter(pass, vm)
+        if pass == .posttest {
+            #expect(vm.currentProbe != nil && vm.learningPhase == .freeWrite,
+                    "precondition: the posttest probe opened in free-writing")
+        }
+        // Stroke 1, then the lift — checked before the re-touch.
+        var t: CFTimeInterval = 1000
+        var p = CGPoint(x: 50, y: 200)
+        vm.beginTouch(at: p, t: t)
+        for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+        #expect(audio.isPlaying, "precondition: \(arm), \(pass): stroke 1 sounds. Events: \(audio.events.suffix(6))")
+        vm.endTouch()
+        #expect(audio.isPlaying && vm.playback.pendingTransition != nil,
+                "precondition: \(arm), \(pass): the lift armed the hold and kept the sound")
+        let atLift = audio.events.count
+        // Re-touch 0.2 s later, inside the 0.8 s hold.
+        t += 0.2
+        p = CGPoint(x: 100, y: 200)
+        vm.beginTouch(at: p, t: t)
+        let soundingAtTouchDown = audio.isPlaying
+        var silentSamples = 0
+        var offLetterSamples = 0
+        for _ in 0..<15 {
+            t += 0.001; p.x += 10
+            vm.updateTouch(at: p, t: t, canvasSize: canvas)
+            if !audio.isPlaying { silentSamples += 1 }
+            if !vm.strokeTracker.isNearStroke { offLetterSamples += 1 }
+        }
+        if pass == .guided {
+            #expect(offLetterSamples == 0, "precondition: guided stroke 2 stays on the letter (\(offLetterSamples) off)")
+        }
+        let sinceLift = Array(audio.events.dropFirst(atLift))
+        #expect(soundingAtTouchDown,
+                "\(arm), \(pass): the touch-down inside the hold stopped the held sound. Since the lift: \(sinceLift)")
+        #expect(silentSamples == 0,
+                "\(arm), \(pass): stroke 2 was silent in \(silentSamples) of 15 samples. Since the lift: \(sinceLift)")
+        #expect(!sinceLift.contains(.stop),
+                "\(arm), \(pass): the sound was stopped between the strokes: \(sinceLift)")
+        // A load IS a hard stop in the engine (`player.stop()`, no fade),
+        // even when a play follows it at once — so the held sound must not
+        // be reloaded at all, not just replayed after the reload.
+        #expect(!sinceLift.contains { if case .load = $0 { return true } else { return false } },
+                "\(arm), \(pass): the held sound was reloaded (a hard stop on the device): \(sinceLift)")
+    }
+
+    @Test("r7: a letter change inside the lift hold still loads the NEW letter's file at the next touch-down, and it sounds",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func letterChangeInsideTheHoldLoadsTheNewFile(arm: PilotAudioCondition) {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio, withLetterI: true)
+        enter(.sessionFreeWrite, vm)
+        write(vm)
+        #expect(audio.isPlaying, "precondition: stroke 1 on A sounds")
+        vm.endTouch()
+        #expect(vm.playback.pendingTransition != nil, "precondition: the lift armed the hold")
+        // The letter changes while the hold is still pending.
+        vm.loadLetter(name: "I")
+        vm.phaseController.resume(at: .freeWrite)
+        #expect(vm.currentLetterName == "I" && vm.learningPhase == .freeWrite,
+                "precondition: I in free-writing (\(vm.currentLetterName), \(vm.learningPhase))")
+        let files = vm.activeAudioFiles(for: vm.letters[vm.letterIndex])
+        guard files.indices.contains(vm.audioIndex) else {
+            Issue.record("precondition: I has an arm file (\(files))"); return
+        }
+        let expected = files[vm.audioIndex]
+        let beforeTouch = audio.events.count
+        var t: CFTimeInterval = 5000
+        var p = CGPoint(x: 20, y: 370)
+        vm.beginTouch(at: p, t: t)
+        #expect(Array(audio.events.dropFirst(beforeTouch)) == [.load(expected)],
+                "\(arm): the touch-down after a letter change did not load I's file \(expected): \(audio.events.dropFirst(beforeTouch))")
+        for _ in 0..<15 { t += 0.01; p.x += 4; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+        #expect(audio.isPlaying, "\(arm): the new letter's stroke is silent: \(audio.events.suffix(6))")
+        let lastLoad = audio.events.last { if case .load = $0 { return true } else { return false } }
+        #expect(lastLoad == .load(expected), "\(arm): the sounding file is not I's: \(audio.events.suffix(6))")
+    }
+
+    @Test("r7: the silent arm's re-touch inside the window reaches nothing",
+          arguments: [WritingPass.guided, .sessionFreeWrite, .posttest])
+    func silentArmReTouchStaysSilent(pass: WritingPass) {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .silent, audio: audio)
+        enter(pass, vm)
+        var (p, t) = liftAndReTouchInsideTheHold(vm)
+        for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+        vm.endTouch()
+        #expect(vm.playback.state == .idle, "silent arm: the playback machine went active")
+        #expect(!audio.anyActivity, "silent arm, \(pass): the injected engine was reached — \(audio.events)")
     }
 
     @Test("envelope: the controller times the stall and the hold with the envelope's values")
