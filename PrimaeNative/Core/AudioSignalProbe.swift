@@ -32,9 +32,9 @@
 //      is downstream of the output. This probe only READS the buffer and
 //      never reconnects or re-routes anything, so there is no path back
 //      into the graph.
-//   2. `installTap` after the engine has stopped throws. Arming is done
+//   2. Installing the tap after the engine has stopped throws. Arming is done
 //      once at init, before anything plays, and removal is deferred to
-//      deinit.
+//      deinit (which did not exist until R-070, 2026-10-13; it does now).
 
 import AVFoundation
 import Foundation
@@ -130,6 +130,10 @@ final class AudioSignalProbe {
     private let log = Logger(subsystem: "de.flamingistan.primae", category: "AudioSignal")
     private var isInstalled = false
 
+    /// The node the tap is on, so `deinit` can take it off. Weak: the
+    /// probe observes the engine, it must not keep its graph alive.
+    @ObservationIgnored private weak var tappedNode: AVAudioNode?
+
     /// Buffers whose peak sample magnitude exceeded this. Chosen well
     /// above denormal noise and well below anything a child would hear as
     /// a tone: -60 dBFS is about 0.001, and the quietest arm content sits
@@ -161,8 +165,19 @@ final class AudioSignalProbe {
         // `@MainActor` and trap on the realtime thread — see the note on
         // `AudioSignalCounters`.
         let handler = Self.makeTapHandler(counters: counters, threshold: silenceThreshold)
-        mixer.installTap(onBus: 0, bufferSize: 1024, format: format, block: handler)
+        // `installAudioTap` (iOS 27) replaces the deprecated `installTap`.
+        // It reports a refused install (a tap already on the bus, an
+        // unusable format) as a Swift error rather than an Objective-C
+        // exception, so a failure leaves the probe disarmed and logged
+        // instead of crashing the app.
+        do {
+            try mixer.installAudioTap(onBus: 0, bufferSize: 1024, format: format, tapProvider: handler)
+        } catch {
+            log.error("AudioSignalProbe: installAudioTap failed (\(error)) — not arming")
+            return
+        }
         isInstalled = true
+        tappedNode = mixer
         log.notice("AudioSignalProbe armed at \(format.sampleRate) Hz, \(format.channelCount) ch")
     }
 
@@ -177,9 +192,13 @@ final class AudioSignalProbe {
     nonisolated static func makeTapHandler(
         counters: AudioSignalCounters,
         threshold: Float
-    ) -> AVAudioNodeTapBlock {
+    ) -> @Sendable (AVReadOnlyAudioPCMBuffer, AVAudioTime) -> Void {
         { buffer, _ in
-            counters.record(peak: peakMagnitude(of: buffer), threshold: threshold)
+            let peak = buffer.withUnsafeAudioBufferList {
+                peakMagnitude(of: $0, frameLength: buffer.frameLength,
+                              commonFormat: buffer.format.commonFormat)
+            }
+            counters.record(peak: peak, threshold: threshold)
         }
     }
 
@@ -187,6 +206,15 @@ final class AudioSignalProbe {
         guard isInstalled else { return }
         engine.mainMixerNode.removeTap(onBus: 0)
         isInstalled = false
+        tappedNode = nil
+    }
+
+    /// Take the tap off the node it was installed on. Without this a probe
+    /// released while its engine lives on (a new probe, a test) leaves a
+    /// tap on bus 0 that nothing reads and that refuses the next install.
+    /// `isolated` so the main-actor state is read on the main actor.
+    isolated deinit {
+        if isInstalled { tappedNode?.removeTap(onBus: 0) }
     }
 
     /// Peak absolute sample across every channel, computed off the tap's
@@ -202,50 +230,46 @@ final class AudioSignalProbe {
     /// test passed with the probe disarmed and crashed with it armed,
     /// which is what isolated it here rather than in the audio engine.
     ///
-    /// Both layouts are now handled, and the frame count is clamped to
-    /// what the buffer actually holds so a future mismatch degrades to a
-    /// quiet reading instead of a crash.
-    private nonisolated static func peakMagnitude(of buffer: AVAudioPCMBuffer) -> Float {
-        let channels = max(1, Int(buffer.format.channelCount))
+    /// Both layouts are handled, and the sample count is clamped to what
+    /// each block actually holds so a future mismatch degrades to a quiet
+    /// reading instead of a crash.
+    ///
+    /// R-070, 2026-10-13: the interleaved branch used to scan `frameLength`
+    /// SAMPLES, but `frameLength` counts FRAMES — a stereo interleaved block
+    /// holds frameLength × 2 samples, so the second half was never read and
+    /// a sound there was reported as silence. The scan now walks the
+    /// buffer's own `AudioBufferList`, where each block states how many
+    /// channels it interleaves (`mNumberChannels`: 1 per planar block, all
+    /// of them for an interleaved one), so the count is frameLength ×
+    /// mNumberChannels for both layouts with no branch on the layout.
+    ///
+    /// Peak absolute sample over the first `frameLength` frames of every
+    /// block in `bufferList`, normalised to 0...1. Pure: reads only what it
+    /// is handed. Formats other than float32 and int16 read as 0, as before.
+    nonisolated static func peakMagnitude(
+        of bufferList: UnsafePointer<AudioBufferList>,
+        frameLength: Int,
+        commonFormat: AVAudioCommonFormat
+    ) -> Float {
+        guard frameLength > 0 else { return 0 }
+        let blocks = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: bufferList))
         var peak: Float = 0
-
-        if let floats = buffer.floatChannelData {
-            if buffer.format.isInterleaved {
-                // ONE buffer, channels interleaved: frameLength already
-                // counts every sample in it.
-                let total = Int(buffer.frameLength)
-                guard total > 0 else { return 0 }
-                let samples = floats[0]
-                for i in 0..<min(total, Int(buffer.mutableAudioBufferList.pointee.mBuffers.mDataByteSize) / MemoryLayout<Float>.size) {
-                    peak = max(peak, abs(samples[i]))
-                }
-            } else {
-                let frames = Int(buffer.frameLength)
-                guard frames > 0 else { return 0 }
-                for channel in 0..<channels {
-                    let samples = floats[channel]
-                    for i in 0..<frames { peak = max(peak, abs(samples[i])) }
-                }
-            }
-            return peak
-        }
-
-        if let ints = buffer.int16ChannelData {
-            let frames = Int(buffer.frameLength)
-            guard frames > 0 else { return 0 }
-            if buffer.format.isInterleaved {
-                let total = Int(buffer.frameLength)
-                let samples = ints[0]
-                for i in 0..<min(total, Int(buffer.mutableAudioBufferList.pointee.mBuffers.mDataByteSize) / MemoryLayout<Int16>.size) {
+        for block in blocks {
+            guard let data = block.mData else { continue }
+            let wanted = frameLength * Int(block.mNumberChannels)
+            switch commonFormat {
+            case .pcmFormatFloat32:
+                let count = min(wanted, Int(block.mDataByteSize) / MemoryLayout<Float>.size)
+                let samples = data.assumingMemoryBound(to: Float.self)
+                for i in 0..<max(0, count) { peak = max(peak, abs(samples[i])) }
+            case .pcmFormatInt16:
+                let count = min(wanted, Int(block.mDataByteSize) / MemoryLayout<Int16>.size)
+                let samples = data.assumingMemoryBound(to: Int16.self)
+                for i in 0..<max(0, count) {
                     peak = max(peak, abs(Float(samples[i]) / Float(Int16.max)))
                 }
-            } else {
-                for channel in 0..<channels {
-                    let samples = ints[channel]
-                    for i in 0..<frames {
-                        peak = max(peak, abs(Float(samples[i]) / Float(Int16.max)))
-                    }
-                }
+            default:
+                return 0
             }
         }
         return peak
@@ -291,12 +315,25 @@ final class AudioSignalProbe {
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let file = folder.appendingPathComponent("audio-signal-probe.log")
         if let handle = try? FileHandle(forWritingTo: file) {
-            handle.seekToEndOfFile()
-            handle.write((line + "\n").data(using: .utf8) ?? Data())
-            try? handle.close()
+            defer { try? handle.close() }
+            // Best-effort: a failed append (disk full, revoked handle) loses
+            // one probe line and must not take the app down.
+            try? append(line, to: handle)
         } else {
             try? (line + "\n").data(using: .utf8)?.write(to: file)
         }
+    }
+
+    /// Append `line` and a newline at the end of `handle`'s file.
+    ///
+    /// R-070, 2026-10-13: this used `seekToEndOfFile()` and `write(_:)`,
+    /// which report failure by raising an Objective-C
+    /// `NSFileHandleOperationException`. Swift cannot catch that, so a
+    /// failed write crashed the app. The `throws` forms report the same
+    /// failure as a Swift error.
+    nonisolated static func append(_ line: String, to handle: FileHandle) throws {
+        try handle.seekToEnd()
+        try handle.write(contentsOf: Data((line + "\n").utf8))
     }
 
     func reset() {

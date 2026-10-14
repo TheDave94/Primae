@@ -78,7 +78,7 @@ struct AudioSignalProbeTests {
         let ran = DispatchSemaphore(value: 0)
         Thread.detachNewThread {
             XCTAssertFalse(Thread.isMainThread)
-            handler(buffer, AVAudioTime())
+            handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
             ran.signal()
         }
         #expect(ran.wait(timeout: .now() + 5) == .success)
@@ -97,7 +97,7 @@ struct AudioSignalProbeTests {
     func silentBufferRecordsNothing() {
         let counters = AudioSignalCounters()
         let handler = AudioSignalProbe.makeTapHandler(counters: counters, threshold: 0.001)
-        handler(makeBuffer(sampleCount: 256, value: 0.0), AVAudioTime())
+        handler(AVReadOnlyAudioPCMBuffer(copying: makeBuffer(sampleCount: 256, value: 0.0)), AVAudioTime())
 
         #expect(counters.total == 1)
         #expect(counters.nonSilent == 0)
@@ -123,7 +123,7 @@ struct AudioSignalProbeTests {
         // first-sample-only or first-channel-only peak would miss it.
         buffer.floatChannelData![0][0] = 0.01
         buffer.floatChannelData![1][7] = -0.75
-        handler(buffer, AVAudioTime())
+        handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
 
         #expect(counters.peak == 0.75)
     }
@@ -132,6 +132,8 @@ struct AudioSignalProbeTests {
     /// channels — and reading it per-channel walks off the end of the
     /// allocation. The device handed this probe interleaved buffers, which
     /// is how that crash was found; the layout is now handled, so pin it.
+    /// (This case only exercises the FIRST half of the block; the full
+    /// layout matrix below is what pins the second half, R-070.)
     @Test("interleaved buffers are read across all channels")
     func interleavedBufferIsReadCorrectly() {
         let counters = AudioSignalCounters()
@@ -145,13 +147,135 @@ struct AudioSignalProbeTests {
         )!
         let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4)!
         buffer.frameLength = 4
-        // frameLength counts SAMPLES when interleaved: 4 samples = 2 frames.
+        // frameLength counts FRAMES: 4 frames × 2 channels = 8 samples in one
+        // block. Only frames 0 and 1 are written here.
         let samples = buffer.floatChannelData![0]
         samples[0] = 0.02; samples[1] = -0.02
         samples[2] = 0.03; samples[3] = 0.9
-        handler(buffer, AVAudioTime())
+        handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
 
         #expect(counters.peak == 0.9)
+    }
+
+    // MARK: - Every sample of every layout (R-070)
+
+    /// One case of the layout × format × channel matrix: a stereo buffer
+    /// whose only non-zero sample sits in the LAST frame, on the given
+    /// channel(s). For an interleaved buffer that sample lies in the second
+    /// half of the single data block — exactly the half a scan of
+    /// `frameLength` SAMPLES (instead of frames × channels) never reads.
+    struct LayoutCase: Sendable, CustomTestStringConvertible {
+        let interleaved: Bool
+        let int16: Bool
+        let left: Bool
+        let right: Bool
+        var testDescription: String {
+            "\(interleaved ? "interleaved" : "planar") \(int16 ? "int16" : "float32") "
+                + (left && right ? "both" : left ? "left-only" : "right-only")
+        }
+    }
+
+    static let layoutCases: [LayoutCase] = [true, false].flatMap { interleaved in
+        [false, true].flatMap { int16 in
+            [(true, false), (false, true), (true, true)].map {
+                LayoutCase(interleaved: interleaved, int16: int16, left: $0.0, right: $0.1)
+            }
+        }
+    }
+
+    /// A zero-filled stereo buffer of `frames` frames, with `value` written
+    /// at (`frame`, `channel`) for each listed channel.
+    private func makeStereo(
+        interleaved: Bool, int16: Bool, frames: Int,
+        writes: [(frame: Int, channel: Int, value: Float)]
+    ) -> AVAudioPCMBuffer {
+        let format = AVAudioFormat(
+            commonFormat: int16 ? .pcmFormatInt16 : .pcmFormatFloat32,
+            sampleRate: 44_100, channels: 2, interleaved: interleaved
+        )!
+        let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frames))!
+        buffer.frameLength = AVAudioFrameCount(frames)
+        func index(_ frame: Int, _ channel: Int) -> (pointer: Int, offset: Int) {
+            interleaved ? (0, frame * 2 + channel) : (channel, frame)
+        }
+        for frame in 0..<frames {
+            for channel in 0..<2 {
+                let (p, o) = index(frame, channel)
+                if int16 { buffer.int16ChannelData![p][o] = 0 } else { buffer.floatChannelData![p][o] = 0 }
+            }
+        }
+        for w in writes {
+            let (p, o) = index(w.frame, w.channel)
+            if int16 {
+                buffer.int16ChannelData![p][o] = Int16(w.value * Float(Int16.max))
+            } else {
+                buffer.floatChannelData![p][o] = w.value
+            }
+        }
+        return buffer
+    }
+
+    /// The peak the probe records for `buffer`, read through the real tap
+    /// handler — the path AVFAudio drives on the device.
+    private func probedPeak(_ buffer: AVAudioPCMBuffer) -> (peak: Float, nonSilent: Int) {
+        let counters = AudioSignalCounters()
+        let handler = AudioSignalProbe.makeTapHandler(counters: counters, threshold: 0.001)
+        handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
+        return (counters.peak, counters.nonSilent)
+    }
+
+    @Test("a signal in the last frame is seen on every layout and channel",
+          arguments: layoutCases)
+    func lastFrameSignalIsSeen(_ c: LayoutCase) {
+        let frames = 256
+        var writes: [(frame: Int, channel: Int, value: Float)] = []
+        if c.left { writes.append((frames - 1, 0, 0.5)) }
+        if c.right { writes.append((frames - 1, 1, -0.5)) }
+        let buffer = makeStereo(interleaved: c.interleaved, int16: c.int16, frames: frames, writes: writes)
+
+        let expected: Float = c.int16
+            ? Float(Int16(0.5 * Float(Int16.max))) / Float(Int16.max)
+            : 0.5
+        let result = probedPeak(buffer)
+        #expect(result.peak == expected, "\(c.testDescription): the probe reported \(result.peak)")
+        #expect(result.nonSilent == 1, "\(c.testDescription): a signal read as silence")
+    }
+
+    @Test("samples past frameLength are not read", arguments: [true, false])
+    func samplesPastFrameLengthAreIgnored(_ interleaved: Bool) {
+        // Signal only in frame 6 of 8, then shorten the buffer to 4 frames:
+        // the probe must report silence, not the stale tail.
+        let buffer = makeStereo(interleaved: interleaved, int16: false, frames: 8,
+                                writes: [(6, 0, 0.7), (6, 1, 0.7)])
+        buffer.frameLength = 4
+        let result = probedPeak(buffer)
+        #expect(result.peak == 0)
+        #expect(result.nonSilent == 0)
+    }
+
+    /// The pure scan, on a hand-built list with no AVAudioPCMBuffer in the
+    /// way: one interleaved stereo block of 4 frames (8 samples). The count
+    /// comes from frameLength × mNumberChannels and is clamped by the
+    /// block's own byte size, so a block that claims fewer bytes than that
+    /// is never read past its end.
+    @Test("the pure scan reads frameLength × channels, clamped by byte size")
+    func pureScanCountsAndClamps() {
+        var samples: [Float] = [0, 0, 0, 0, 0, 0, 0, 0.6]   // last sample = frame 3, right
+        samples.withUnsafeMutableBytes { raw in
+            var list = AudioBufferList(
+                mNumberBuffers: 1,
+                mBuffers: AudioBuffer(mNumberChannels: 2, mDataByteSize: UInt32(raw.count),
+                                      mData: raw.baseAddress))
+            #expect(AudioSignalProbe.peakMagnitude(of: &list, frameLength: 4,
+                                                   commonFormat: .pcmFormatFloat32) == 0.6)
+            // frameLength 3 stops before the last frame.
+            #expect(AudioSignalProbe.peakMagnitude(of: &list, frameLength: 3,
+                                                   commonFormat: .pcmFormatFloat32) == 0)
+            // A byte size smaller than the frames claim wins.
+            list.mBuffers.mDataByteSize = UInt32(7 * MemoryLayout<Float>.size)
+            #expect(AudioSignalProbe.peakMagnitude(of: &list, frameLength: 4,
+                                                   commonFormat: .pcmFormatFloat32) == 0)
+        }
     }
 
     /// `reset()` opens a fresh window for the next phase. If it leaked state
@@ -161,13 +285,77 @@ struct AudioSignalProbeTests {
     func resetClearsCounters() {
         let counters = AudioSignalCounters()
         let handler = AudioSignalProbe.makeTapHandler(counters: counters, threshold: 0.001)
-        handler(makeBuffer(sampleCount: 128, value: 0.8), AVAudioTime())
+        handler(AVReadOnlyAudioPCMBuffer(copying: makeBuffer(sampleCount: 128, value: 0.8)), AVAudioTime())
         #expect(counters.nonSilent == 1)
 
         counters.reset()
         #expect(counters.total == 0)
         #expect(counters.nonSilent == 0)
         #expect(counters.peak == 0)
+    }
+
+    // MARK: - Probe log append (R-070)
+
+    /// The append must report a failed write as a Swift error. The legacy
+    /// `seekToEndOfFile()`/`write(_:)` raise an Objective-C exception
+    /// instead, which Swift cannot catch: this test then TRAPS rather than
+    /// failing cleanly (read a vanished run of this suite that way).
+    @Test("a failed probe-log append throws instead of crashing")
+    func failedAppendThrows() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("probe-append-\(UUID().uuidString).log")
+        try Data("x\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        // A read-only handle: every write through it fails.
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        #expect(throws: (any Error).self) {
+            try AudioSignalProbe.append("line", to: handle)
+        }
+    }
+
+    /// And on a writable handle it APPENDS — two calls, two lines, the
+    /// existing content kept.
+    @Test("probe-log append adds a line at the end")
+    func appendAddsALineAtTheEnd() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("probe-append-\(UUID().uuidString).log")
+        try Data("first\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let handle = try FileHandle(forWritingTo: url)
+        try AudioSignalProbe.append("second", to: handle)
+        try AudioSignalProbe.append("third", to: handle)
+        try handle.close()
+        #expect(try String(contentsOf: url, encoding: .utf8) == "first\nsecond\nthird\n")
+    }
+
+    // MARK: - Tap lifetime (R-070)
+
+    /// Releasing the probe takes its tap off the mixer. Observed through
+    /// the API itself: `installAudioTap` throws while a tap is on the bus,
+    /// so a second install fails while the probe lives and succeeds once
+    /// it is gone. An OFFLINE (manual-rendering) engine, never started, so
+    /// no audio hardware or converter service is involved.
+    @MainActor
+    @Test("releasing the probe removes its tap")
+    func deinitRemovesTheTap() throws {
+        let engine = AVAudioEngine()
+        let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 2)!
+        try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 1024)
+        let mixer = engine.mainMixerNode
+        let noop: @Sendable (AVReadOnlyAudioPCMBuffer, AVAudioTime) -> Void = { _, _ in }
+
+        var probe: AudioSignalProbe? = AudioSignalProbe()
+        probe?.arm(on: engine)
+        #expect(throws: (any Error).self, "precondition: the probe's tap is on bus 0") {
+            try mixer.installAudioTap(onBus: 0, bufferSize: 1024, format: nil, tapProvider: noop)
+        }
+
+        probe = nil
+        #expect(throws: Never.self, "the released probe left its tap on bus 0") {
+            try mixer.installAudioTap(onBus: 0, bufferSize: 1024, format: nil, tapProvider: noop)
+        }
+        mixer.removeTap(onBus: 0)
     }
 
     // MARK: - The call-site guard
@@ -200,12 +388,12 @@ struct AudioSignalProbeTests {
         // A trailing closure immediately after installTap( ... ) — the exact
         // shape that crashed three times.
         #expect(
-            !code.contains("installTap(onBus: 0, bufferSize: 1024, format: format) {"),
-            "AudioSignalProbe installs its tap with an inline closure literal, which inherits @MainActor and SIGTRAPs on AVFAudio's realtime thread. Pass block: a handler from makeTapHandler."
+            !code.contains("installAudioTap(onBus: 0, bufferSize: 1024, format: format) {"),
+            "AudioSignalProbe installs its tap with an inline closure literal, which inherits @MainActor and SIGTRAPs on AVFAudio's realtime thread. Pass tapProvider: a handler from makeTapHandler."
         )
 
         // And positively: the installation must go through the factory.
-        #expect(code.contains("block: handler"))
+        #expect(code.contains("tapProvider: handler"))
     }
 
     private func probeSourceURL() -> URL {

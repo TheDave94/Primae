@@ -40,7 +40,10 @@ made the guard itself the outage):
     below), restore the file from HEAD via `git checkout --`, print
     exactly what was wrong and what was restored — a rewrite Xcode
     performs unprompted overrides no one, so undoing it is not an
-    authoring act either. Anything this script cannot positively
+    authoring act either. Before each restore the working copy is saved
+    under the common git dir's primae-autofix-backups/<worktree>/<timestamp>/
+    (newest 20 runs kept) and the path is printed; if that backup cannot be made, the file is NOT restored (R-057:
+    the restore used to erase uncommitted edits with no copy kept). Anything this script cannot positively
     identify (an exception while parsing, a shape it has no check for)
     is reported and left untouched. None of that fails the build. Then
     gate_provenance() runs regardless, and THAT can fail the build — see
@@ -96,11 +99,14 @@ absence) — CI is the only backstop for this specific finding, by
 construction, not by omission.
 """
 import argparse
+import hashlib
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
+import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 INFO_PLIST = ROOT / "Primae" / "Info.plist"
@@ -230,6 +236,100 @@ def run_all_checks() -> None:
     check_scheme_wiring()
 
 
+def backup(path: pathlib.Path, run_dir: pathlib.Path) -> pathlib.Path:
+    """Copy the working-tree file into this run's backup directory before
+    restore() overwrites it, and return the copy's path. R-057: restore()
+    is `git checkout --`, which discards every uncommitted edit in the file,
+    deliberate ones included, and the provenance gate runs only AFTER it, so
+    it never sees what was erased. The directory lives inside the common
+    git dir (see backup_run_dir()), so the copy never shows in `git status`
+    and cannot trip gate_provenance(). Raises on any
+    failure; the caller then refuses to restore.
+    """
+    check_backup_tree(run_dir)
+    dest = run_dir / path.relative_to(ROOT)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, dest)
+    if dest.read_bytes() != path.read_bytes():
+        raise OSError(f"backup copy {dest} does not match {path}")
+    return dest
+
+
+BACKUP_RUNS_KEPT = 20
+BACKUP_ROOT_NAME = "primae-autofix-backups"
+_RUN_DIR_RE = re.compile(r"[0-9]{8}T[0-9]{6}-[0-9]+")
+
+
+def worktree_folder_name(root: pathlib.Path) -> str:
+    """One folder name per absolute worktree path, injective in practice.
+    A readable slug (the path with every run of characters outside
+    [A-Za-z0-9._] turned into "-", last 60 characters) so a person can tell
+    the folders apart, plus the first 12 hex digits of sha256 of the exact
+    path, which is what makes it one-to-one: the slug alone is not
+    (`/x/a-b/c/Primae` and `/x/a/b-c/Primae` slug identically).
+    """
+    path = str(root)
+    slug = re.sub(r"[^A-Za-z0-9._]+", "-", path).strip("-")[-60:].strip("-")
+    digest = hashlib.sha256(path.encode("utf-8")).hexdigest()[:12]
+    return f"{slug}-{digest}"
+
+
+def check_backup_tree(run_dir: pathlib.Path) -> None:
+    """Raise OSError unless <backup root>/<worktree> is a real directory
+    (or absent) directly inside a real backup root. A symlinked worktree
+    folder or backup root would make mkdir() write, and the trim DELETE,
+    outside the backup tree; callers treat the raise as "no backup, no
+    restore" and "no trim" respectively.
+    """
+    worktree_dir = run_dir.parent
+    root = worktree_dir.parent
+    if root.name != BACKUP_ROOT_NAME:
+        raise OSError(f"{root} is not a {BACKUP_ROOT_NAME} directory")
+    for d in (root, worktree_dir):
+        if d.is_symlink():
+            raise OSError(f"{d} is a symlink; refusing to use the backup tree through it")
+    if worktree_dir.resolve().parent != root.resolve():
+        raise OSError(f"{worktree_dir} resolves outside {root}")
+
+
+def backup_run_dir() -> pathlib.Path:
+    """<common git dir>/primae-autofix-backups/<worktree>/<timestamp>-<pid>.
+    The COMMON git dir, not the per-worktree one: `git worktree remove`
+    deletes a linked worktree's own git dir, and the backups with it.
+    <worktree> is worktree_folder_name(ROOT): every worktree of this repo
+    is named `Primae` (the SPM relative path requires it), so the bare
+    directory name would merge them all. The stamp is UTC so a DST change
+    cannot reorder runs, and name order stays chronological.
+    """
+    common = subprocess.run(["git", "-C", str(ROOT), "rev-parse", "--path-format=absolute",
+                             "--git-common-dir"],
+                            capture_output=True, text=True, check=True).stdout.strip()
+    stamp = time.strftime("%Y%m%dT%H%M%S", time.gmtime()) + f"-{os.getpid()}"
+    return pathlib.Path(common) / BACKUP_ROOT_NAME / worktree_folder_name(ROOT) / stamp
+
+
+def prune_backups(run_dir: pathlib.Path) -> None:
+    """Keep the newest BACKUP_RUNS_KEPT run directories for this worktree.
+    Only directories named like a run (<timestamp>-<pid>) are candidates;
+    the timestamp prefix makes name order chronological. Best-effort: a
+    failure is reported ("could not ...") and changes nothing else.
+    """
+    try:
+        check_backup_tree(run_dir)
+        runs = sorted(p for p in run_dir.parent.iterdir()
+                      if p.is_dir() and not p.is_symlink() and _RUN_DIR_RE.fullmatch(p.name))
+    except OSError as e:
+        print(f"  ! could not prune old autofix backups in {run_dir.parent}: {e!r}")
+        return
+    for old in runs[:-BACKUP_RUNS_KEPT]:
+        if old == run_dir:
+            continue
+        try:
+            shutil.rmtree(old)
+        except OSError as e:
+            print(f"  ! could not prune old autofix backup {old}: {e!r}")
+
+
 def restore(path: pathlib.Path) -> None:
     subprocess.run(["git", "-C", str(ROOT), "checkout", "--", str(path.relative_to(ROOT))],
                    check=True)
@@ -327,10 +427,24 @@ def main() -> int:
     print("Project-settings drift found — restoring from HEAD (Xcode's rewrite "
           "is not an authoring act; this does not override a decision):")
     restored: list[pathlib.Path] = []
+    run_dir = None
     for path, messages in by_file.items():
         for m in messages:
             print(f"  - {path.relative_to(ROOT) if path else '(unattributed)'}: {m}")
         if path is not None:
+            # No backup, no restore (R-057): leave the file as it is. The
+            # tree then stays dirty and gate_provenance() refuses the build,
+            # which costs a rebuild, not somebody's edit.
+            try:
+                if run_dir is None:
+                    run_dir = backup_run_dir()
+                saved = backup(path, run_dir)
+            except Exception as e:  # noqa: BLE001 — any failure means no restore
+                print(f"  ! NOT restoring {path.relative_to(ROOT)}: could not back up "
+                      f"the working copy first ({e!r}); left untouched")
+                continue
+            print(f"  backup: {saved}")
+            prune_backups(run_dir)
             try:
                 restore(path)
                 restored.append(path)
