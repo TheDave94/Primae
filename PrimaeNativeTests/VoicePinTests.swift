@@ -85,20 +85,46 @@ final class VoiceDouble: SpeechSynthesizing {
         return TracingViewModel(deps)
     }
 
-    @Test("R-021: a study session that speaks refuses to start without its voice")
-    func faultRefusesTheSession() {
+    @Test("r9: a study voiceover plays recorded phrases, so a missing DEVICE voice no longer refuses it")
+    func ttsFaultDoesNotRefuseTheRecordedSession() {
         let vm = studyVM(speech: VoiceDouble(voice: nil, fault: "Stimme fehlt"))
-        #expect(vm.studyPreconditionFailure == "Stimme fehlt")
+        #expect(vm.studyPreconditionFailure == nil,
+                "the session was refused for a TTS voice it never uses: \(String(describing: vm.studyPreconditionFailure))")
         let silent = studyVM(speech: VoiceDouble(voice: nil, fault: "Stimme fehlt"), spoken: false)
         #expect(silent.studyPreconditionFailure == nil, "a session that never speaks needs no voice")
     }
 
-    @Test("R-021: every row names the voice the child heard")
-    func rowCarriesTheVoice() {
+    @Test("r9: a study session that speaks refuses to start when ANY of the five recorded takes is missing")
+    func missingTakeRefusesTheSession() {
+        for key in RecordedPromptSet.requiredKeys {
+            var deps = TracingDependencies.stub
+            deps.studyMode = true
+            deps.thesisCondition = .threePhase
+            deps.audioCondition = .silent
+            deps.spokenFeedbackInStudy = true
+            deps.promptLocator = { $0 == key ? nil : PromptPlayer.locate($0) }
+            let vm = TracingViewModel(deps)
+            let refusal = vm.studyPreconditionFailure
+            #expect(refusal?.contains("\(key.rawValue).mp3") == true,
+                    "\(key.rawValue) missing but the session was not refused for it: \(String(describing: refusal))")
+            #expect(vm.sessionVoiceId == nil, "a set with a hole must not be stamped as a set")
+        }
+        var quiet = TracingDependencies.stub
+        quiet.studyMode = true; quiet.thesisCondition = .threePhase; quiet.audioCondition = .silent
+        quiet.spokenFeedbackInStudy = false
+        quiet.promptLocator = { _ in nil }
+        #expect(TracingViewModel(quiet).studyPreconditionFailure == nil,
+                "a session that plays no recorded phrase needs none")
+    }
+
+    @Test("r9: every row names the recorded set the child heard, not a device voice")
+    func rowCarriesTheRecordedSet() {
         let voice = SpeechVoiceInfo(identifier: "com.apple.voice.enhanced.de-DE.Anna", name: "Anna", quality: "Erweitert")
         let vm = studyVM(speech: VoiceDouble(voice: voice))
-        #expect(vm.sessionVoiceId == voice.identifier)
-        #expect(vm.phaseRowContext(for: .observe, finalizedBy: .child).delivery?.voiceId == voice.identifier)
+        let id = RecordedPromptSet.setId()
+        #expect(id?.hasPrefix("rec:kiki:") == true && id?.count == "rec:kiki:".count + 12, "\(String(describing: id))")
+        #expect(vm.sessionVoiceId == id)
+        #expect(vm.phaseRowContext(for: .observe, finalizedBy: .child).delivery?.voiceId == id)
         let mute = studyVM(speech: VoiceDouble(voice: voice), spoken: false)
         #expect(mute.sessionVoiceId == nil, "a session that never speaks heard no voice")
     }

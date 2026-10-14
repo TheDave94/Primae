@@ -210,6 +210,13 @@ jobs:
                 f"are present in the checked-out tree.")
           PY
 
+      # Protocol r9: the five recorded prompts a study child hears are the
+      # reviewed bytes (MANIFEST.json), and no other mp3 rides along.
+      - name: "Recorded study prompts match MANIFEST.json"
+        run: python3 -I scripts/check_study_prompts.py
+      - name: "Prompt checker tests (one mutation each)"
+        run: python3 -I -m unittest discover -s scripts/tests -p test_check_study_prompts.py -v
+
   project_invariants:
     name: "Project-settings drift tripwire (Layer 2)"
     runs-on: ubuntu-latest

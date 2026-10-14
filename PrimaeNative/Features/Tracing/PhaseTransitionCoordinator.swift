@@ -392,7 +392,7 @@ final class PhaseTransitionCoordinator {
         vm.freeWriteRecorder.startSession()
         vm.activePath.removeAll(keepingCapacity: true)
         vm.toast("Probier's nochmal")
-        vm.speech.speak("Probier's nochmal")
+        vm.prompts.play(.retryCue, fallbackText: "Probier's nochmal")
     }
 
     // MARK: - Final-phase pipeline
@@ -401,8 +401,11 @@ final class PhaseTransitionCoordinator {
         guard let vm else { return }
         // Study sessions: no celebration overlay, chime, or phrase —
         // the proctor advances via the nav arrows (audit C1/C2). The
-        // chime/prompt calls are doubly dead under studyMode (prompts
-        // is NullPromptPlayer), but the overlay gate is load-bearing.
+        // chime/prompt calls below are the casual path's per-letter
+        // celebration and are skipped under studyMode on purpose. (This
+        // used to say `prompts` is NullPromptPlayer there; since P3 a study
+        // session's prompts are the real, recorded voiceover.) The study's
+        // one celebration is the end-of-set branch further down.
         if !vm.studyMode {
             vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
             // Same chime + "Super gemacht!" regardless of star count so a

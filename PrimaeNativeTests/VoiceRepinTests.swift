@@ -43,18 +43,18 @@ private let hasGermanVoice = installedVoices.contains { $0.language.hasPrefix("d
         return TracingViewModel(deps)
     }
 
-    @Test("R-021: the SILENT arm is refused while the pinned voice is missing and voiceover is on, and accepted again after the re-pin")
-    func silentArmRefusedThenAcceptedAfterRepin() {
+    @Test("R-021 / r9: the re-pin still works, but the recorded voiceover is never refused for the device voice and its rows keep naming the recorded set")
+    func repinDoesNotTouchTheRecordedSet() {
         let synth = RepinnableVoiceDouble(faulted: "Stimme fehlt", afterRepin: healed)
         let vm = studyVM(speech: synth)
-        #expect(vm.studyPreconditionFailure == "Stimme fehlt",
-                "voiceover on: every arm that speaks, silent included, is refused")
+        let id = RecordedPromptSet.setId()
+        #expect(vm.studyPreconditionFailure == nil, "the recorded voiceover needs no device voice")
         vm.parentAreaDidOpen()
         #expect(vm.repinSpeechVoice() == true)
         #expect(synth.repinCount == 1)
-        #expect(vm.studyPreconditionFailure == nil, "still refused after the re-pin")
+        #expect(vm.studyPreconditionFailure == nil)
         #expect(vm.speechVoice?.identifier == healed.identifier)
-        #expect(vm.sessionVoiceId == healed.identifier, "the rows must name the new voice")
+        #expect(vm.sessionVoiceId == id, "a re-pin of the TTS voice changed what the rows say the child heard")
     }
 
     @Test("R-021: a re-pin is refused while a trial is running (parent area closed)")
@@ -63,7 +63,7 @@ private let hasGermanVoice = installedVoices.contains { $0.language.hasPrefix("d
         let vm = studyVM(speech: synth)
         #expect(vm.repinSpeechVoice() == false)
         #expect(synth.repinCount == 0, "the voice changed under a running trial")
-        #expect(vm.studyPreconditionFailure == "Stimme fehlt")
+        #expect(vm.speechVoiceFault == "Stimme fehlt")
     }
 
     @Test("R-021: the real synthesiser clears a stale pin and re-pins the first-pin rule's voice",

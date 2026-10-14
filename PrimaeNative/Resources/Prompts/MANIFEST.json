@@ -1,0 +1,14 @@
+{
+  "voice": "Kiki",
+  "elevenLabsVoiceId": "VDMfk0qKd9vRmRuG5nND",
+  "model": "eleven_multilingual_v2",
+  "settings": {"stability": 0.55, "similarity_boost": 0.80, "style": 0.10},
+  "setId": "rec:kiki:a889eab2b793",
+  "files": [
+    {"key": "phase_observe",   "text": "Schau genau hin.",       "sha256": "585055eb7a6659894f66dbb9496e703416511fd399cfe796649e14710240d277"},
+    {"key": "phase_guided",    "text": "Jetzt du.",              "sha256": "e26d051a1c0130d3e6cb19bdc786184378846028a5e51e5fa1de2ef0d12c4a25"},
+    {"key": "phase_freewrite", "text": "Und jetzt ganz allein.", "sha256": "2a2dc834a76607e1cec828ed0635d82dc1b7f991b0289162d7b5267e28eea68d"},
+    {"key": "retry_cue",       "text": "Probier's nochmal.",     "sha256": "91530988765fe37ba0f08bd48684e2176f6a114a4a1ba18cfccbc88307060be4"},
+    {"key": "celebration",     "text": "Super gemacht!",         "sha256": "3104cbfeb78fee4b03a7762e916c0db68c2b5337ef877f7bfdb436a23c3fd040"}
+  ]
+}

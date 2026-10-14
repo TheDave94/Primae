@@ -1033,7 +1033,8 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                 "spoken lines differ by arm — silent \(silent.speech), phoneme \(phoneme.speech), spatial \(spatial.speech)")
         // Positive controls: identical-because-empty would prove nothing.
         #expect(phoneme.prompts.contains(.phaseObserve), "the drive spoke no prompt: \(phoneme.prompts)")
-        #expect(phoneme.speech.contains("Probier's nochmal"), "the drive spoke no line: \(phoneme.speech)")
+        #expect(phoneme.prompts.contains(.retryCue), "the drive played no retry cue: \(phoneme.prompts)")
+        #expect(phoneme.speech.isEmpty, "a study child heard a live line: \(phoneme.speech)")
     }
 
     @Test("P3: the voiceover passes the study's spoken phrases, and no score-dependent praise")
@@ -1041,7 +1042,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         let inner = SpyPrompts()
         let voiceover = StudyVoiceoverPromptPlayer(inner: inner, soundEffectsAllowed: true)
         for key in PromptPlayer.PromptKey.allCases { voiceover.play(key, fallbackText: "") }
-        #expect(inner.keys == [.phaseObserve, .phaseDirect, .phaseGuided, .phaseFreeWrite, .celebration],
+        #expect(inner.keys == [.phaseObserve, .phaseDirect, .phaseGuided, .phaseFreeWrite, .celebration, .retryCue],
                 "the praise tiers, paper and retrieval phrases must stay unreachable: \(inner.keys)")
     }
 

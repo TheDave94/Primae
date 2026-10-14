@@ -48,6 +48,11 @@ protocol SpeechSynthesizing {
     /// `nil` removes it. Used by the study observe phase to start its
     /// presentation after the spoken cue has actually ended (2026-10-05).
     func setUtteranceEndHandler(_ handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?)
+    /// A RECORDED phrase (`PromptPlayer`) ended — finished or cut — and
+    /// reports it through the same handler an utterance would (r9), so the
+    /// observe cue ends the same way whether it is spoken or played. Stubs
+    /// and spies that never report ignore it.
+    func reportRecordedUtteranceEnd(text: String, cancelled: Bool)
 }
 
 extension SpeechSynthesizing {
@@ -58,6 +63,7 @@ extension SpeechSynthesizing {
     /// Null default: stubs and spies never report an end, so a caller
     /// waiting for one must have a fallback.
     func setUtteranceEndHandler(_ handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?) {}
+    func reportRecordedUtteranceEnd(text: String, cancelled: Bool) {}
 }
 
 // MARK: - Rate
@@ -248,6 +254,13 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 
     func setUtteranceEndHandler(_ handler: (@MainActor (_ text: String, _ cancelled: Bool) -> Void)?) {
         endHandler = handler
+    }
+
+    /// A recorded phrase's end, delivered through the registered handler:
+    /// the same one an utterance's end reaches, so the view model hears one
+    /// kind of report (r9).
+    func reportRecordedUtteranceEnd(text: String, cancelled: Bool) {
+        endHandler?(text, cancelled)
     }
 
     // MARK: Queue (review of batch C, items 2 and 3)

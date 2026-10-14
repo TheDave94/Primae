@@ -18,6 +18,8 @@ final class CueSpeechSpy: SpeechSynthesizing {
     func speak(_ text: String) { spoken.append(text) }
     func stop() { stopCount += 1 }
     func setUtteranceEndHandler(_ handler: (@MainActor (String, Bool) -> Void)?) { endHandler = handler }
+    /// A recorded phrase's end arrives through the same handler (r9).
+    func reportRecordedUtteranceEnd(text: String, cancelled: Bool) { endHandler?(text, cancelled) }
     /// Report that an utterance with `text` ended (finished, or cancelled).
     func end(_ text: String, cancelled: Bool = false) { endHandler?(text, cancelled) }
     func count(_ text: String) -> Int { spoken.filter { $0 == text }.count }

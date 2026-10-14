@@ -310,34 +310,54 @@ struct ResearchDashboardView: View {
             // the voice is PINNED at first launch and stamped on every row
             // and enrolment (`voiceId`); a missing pinned voice refuses the
             // session.
+            //
+            // Protocol r9: a study session speaks RECORDED phrases (voice
+            // Kiki), so the line below names the recorded set that is
+            // stamped as `voiceId`, and the system-voice readout, its
+            // fault line and the re-pin control show only for a session in
+            // which a live system voice can still be heard
+            // (`liveSpeechReachable`). The machinery is kept, not deleted.
             VStack(alignment: .leading, spacing: 2) {
-                Text("Sprachausgabe (festgelegt, in jeder Zeile exportiert)")
-                    .font(.body(FontSize.md, weight: .semibold))
-                Text(SpeechVoiceInfo.dashboardText(vm.speechVoice))
-                    .font(.system(.caption, design: .monospaced))
-                    .textSelection(.enabled)
-                // Recovery from a voice refusal without an uninstall (which
-                // would wipe the participant archive). Proctor area only.
-                if let fault = vm.speechVoiceFault {
-                    Text(fault)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                }
-                Button("Stimme neu festlegen") { showRepinVoiceConfirm = true }
-                    .buttonStyle(.bordered)
-                    .disabled(!vm.canRepinSpeechVoice)
-                    .accessibilityHint("Nur für Studienleitung. Verwirft die gespeicherte Stimme und legt die erste erweiterte deutsche Stimme (sonst die erste deutsche Stimme) neu fest. Die neue Stimme steht ab dann in jeder Zeile.")
-                    .confirmationDialog("Stimme neu festlegen?",
-                                        isPresented: $showRepinVoiceConfirm,
-                                        titleVisibility: .visible) {
-                        Button("Neu festlegen", role: .destructive) { vm.repinSpeechVoice() }
-                        Button("Abbrechen", role: .cancel) {}
-                    } message: {
-                        Text("Die Kinder davor haben die bisherige Stimme gehört. Die neue Stimme wird in jeder weiteren Zeile als voiceId gespeichert.")
+                if vm.playsRecordedPrompts {
+                    Text("Aufgenommene Ansagen (in jeder Zeile als voiceId exportiert)")
+                        .font(.body(FontSize.md, weight: .semibold))
+                    Text(vm.recordedPromptsDashboardText ?? "")
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle((vm.recordedPromptsDashboardText ?? "").hasPrefix("Kiki") ? Color.inkSoft : Color.red)
+                        .textSelection(.enabled)
+                } else if vm.liveSpeechReachable {
+                    Text("Sprachausgabe (festgelegt, in jeder Zeile exportiert)")
+                        .font(.body(FontSize.md, weight: .semibold))
+                    Text(SpeechVoiceInfo.dashboardText(vm.speechVoice))
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                    // Recovery from a voice refusal without an uninstall (which
+                    // would wipe the participant archive). Proctor area only.
+                    if let fault = vm.speechVoiceFault {
+                        Text(fault)
+                            .font(.caption)
+                            .foregroundStyle(.red)
                     }
-                Text("Sprechtempo: \(String(format: "%.2f", SpeechRate.effective()))")
-                    .font(.caption)
-                    .foregroundStyle(Color.inkSoft)
+                    Button("Stimme neu festlegen") { showRepinVoiceConfirm = true }
+                        .buttonStyle(.bordered)
+                        .disabled(!vm.canRepinSpeechVoice)
+                        .accessibilityHint("Nur für Studienleitung. Verwirft die gespeicherte Stimme und legt die erste erweiterte deutsche Stimme (sonst die erste deutsche Stimme) neu fest. Die neue Stimme steht ab dann in jeder Zeile.")
+                        .confirmationDialog("Stimme neu festlegen?",
+                                            isPresented: $showRepinVoiceConfirm,
+                                            titleVisibility: .visible) {
+                            Button("Neu festlegen", role: .destructive) { vm.repinSpeechVoice() }
+                            Button("Abbrechen", role: .cancel) {}
+                        } message: {
+                            Text("Die Kinder davor haben die bisherige Stimme gehört. Die neue Stimme wird in jeder weiteren Zeile als voiceId gespeichert.")
+                        }
+                    Text("Sprechtempo: \(String(format: "%.2f", SpeechRate.effective()))")
+                        .font(.caption)
+                        .foregroundStyle(Color.inkSoft)
+                } else {
+                    Text("Keine Sprachausgabe in dieser Sitzung")
+                        .font(.caption)
+                        .foregroundStyle(Color.inkSoft)
+                }
                 // R-034: warmed at launch and at every enrolment.
                 Text(vm.recognizerStatusText)
                     .font(.caption)

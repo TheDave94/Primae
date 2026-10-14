@@ -119,30 +119,23 @@ import CryptoKit
 
     // MARK: - Spoken prompts
 
-    /// The 14 prompt MP3s have never been committed: `Resources/Prompts/README.md`
-    /// documents the AVSpeechSynthesizer fallback as the expected state until
-    /// `scripts/generate_prompts.py` is run and the takes are copied in.
-    ///
-    /// So absence is NOT the failure. A PARTIAL set is: one misnamed or
-    /// missing take among thirteen present ones degrades that single prompt
-    /// to TTS, in a different voice from its neighbours, with nothing raised.
-    /// All-or-none is the invariant that holds in both worlds.
-    @Test("bundled prompt MP3s are all-or-none, never a partial set")
-    func promptMP3sAreAllOrNone() {
-        let keys = PromptPlayer.PromptKey.allCases
-        let present = keys.filter {
-            Self.resolvesInPackageBundle(
+    /// Protocol r9: the five recorded study prompts (voice Kiki) ARE the
+    /// study voiceover. A session refuses to start without any one of them
+    /// (`RecordedPromptSet.refusal`), so a build that does not carry all five
+    /// is a build that cannot run — caught here, in the real bundle, rather
+    /// than by a proctor with a child waiting. Resolves through the same
+    /// layouts `PromptPlayer.locate` walks.
+    @Test("all five recorded study prompts resolve in the package bundle)")
+    func studyPromptsAreBundled() {
+        let missing = RecordedPromptSet.requiredKeys.filter {
+            !Self.resolvesInPackageBundle(
                 firstOf: PrimaeBundle.layouts(dir: "Prompts", name: $0.rawValue, ext: "mp3"))
         }
-        let missing = keys.filter { key in !present.contains { $0 == key } }
-
-        #expect(present.isEmpty || missing.isEmpty,
-                """
-                partial prompt set: \(present.count) of \(keys.count) bundled, \
-                missing \(missing.map(\.rawValue).joined(separator: ", ")). \
-                Each missing take degrades to a TTS voice mid-session while its \
-                neighbours play a recorded one.
-                """)
+        #expect(missing.isEmpty,
+                "study prompts not bundled: \(missing.map(\.rawValue).joined(separator: ", "))")
+        #expect(RecordedPromptSet.missing().isEmpty,
+                "PromptPlayer.locate does not find what the layouts probe finds")
+        #expect(RecordedPromptSet.setId() != nil)
     }
 
     // MARK: - Letter assets

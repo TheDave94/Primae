@@ -506,13 +506,15 @@ import Foundation
         }
     }
 
-    @Test("R-021: an enrolment records the voice the session speaks with")
+    @Test("R-021 / r9: an enrolment records the recorded prompt set the session plays")
     func enrolmentRecordsTheVoice() async {
         await withRestoredStateAsync {
             let log = StubEnrolmentLog()
             let vm = stampedEnrolmentVM(log, env: FixedDeliveryEnvironment())
             _ = vm.resetForNewParticipant()
-            #expect(log.enrolments.last?.voiceId == "voice.de.Anna")
+            #expect(log.enrolments.last?.voiceId == RecordedPromptSet.setId(),
+                    "the enrolment names the device voice, not the recorded set")
+            #expect(log.enrolments.last?.voiceId?.hasPrefix("rec:kiki:") == true)
         }
     }
 

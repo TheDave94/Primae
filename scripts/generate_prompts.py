@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Generate pre-recorded ElevenLabs MP3s for the 14 static prompt
-phrases the child hears during normal practice.
+"""Generate pre-recorded ElevenLabs MP3s for the FIVE phrases a study
+child hears (protocol r9; see PROMPTS below).
 
 Why pre-recorded: the user flagged AVSpeechSynthesizer's quality as
 robotic, and the system TTS pipeline shares an AVAudioSession with
@@ -13,14 +13,12 @@ fixed durations of the recorded takes.
 
 Output layout:
     audio_variants/<Voice>/prompts/
-        phase_observe.mp3
-        phase_direct.mp3
-        phase_guided.mp3
-        phase_freewrite.mp3
-        praise_4.mp3 ... praise_0.mp3
-        paper_show.mp3 ... paper_assess.mp3
-        retrieval_question.mp3
-        celebration.mp3
+        phase_observe.mp3  phase_guided.mp3  phase_freewrite.mp3
+        retry_cue.mp3  celebration.mp3
+
+A new take is a protocol change: update PrimaeNative/Resources/Prompts/
+MANIFEST.json by hand (scripts/check_study_prompts.py) and bump
+StudyProtocol.revision.
 
 Voice strategy: we generate every prompt across the same 10 German
 voices that `generate_letter_audio.py` uses (so a future researcher
@@ -89,27 +87,14 @@ VOICE_SETTINGS: dict = {
 # Filename stem ⇄ German phrase. Stems must match
 # `PromptPlayer.PromptKey.rawValue` (PrimaeNative/Core/PromptPlayer.swift).
 PROMPTS: dict[str, str] = {
-    # Phase entry
-    "phase_observe":   "Pass jetzt gut auf!",
-    "phase_direct":    "Tipp die Punkte der Reihe nach an.",
-    "phase_guided":    "Fahr die Linie nach.",
-    "phase_freewrite": "Und jetzt du alleine.",
-    # Praise tiers
-    "praise_4": "Wow, das war perfekt! Super gemacht.",
-    "praise_3": "Toll gemacht!",
-    "praise_2": "Gut gemacht!",
-    "praise_1": "Schon gut! Probier's nochmal.",
-    "praise_0": "Probier's gleich nochmal.",
-    # Paper transfer
-    "paper_show":   "Schau dir den Buchstaben gut an.",
-    "paper_write":  "Jetzt schreibst du den Buchstaben auf Papier.",
-    "paper_assess": "Wie ist dein Buchstabe geworden?",
-    # Retrieval prompt
-    "retrieval_question": "Welchen Buchstaben hörst du?",
-    # Letter-completion celebration (paired with a system success
-    # chime in PromptPlayer.playSuccessChime; the voice line is
-    # always the same regardless of star count)
-    "celebration": "Super gemacht!",
+    # The study voiceover (DECISIONS D15, protocol r9): exactly these five.
+    # Stems are PromptPlayer.PromptKey raw values; same text as the
+    # audition script (voice Kiki). Nothing else is bundled.
+    "phase_observe":   "Schau genau hin.",
+    "phase_guided":    "Jetzt du.",
+    "phase_freewrite": "Und jetzt ganz allein.",
+    "retry_cue":       "Probier's nochmal.",
+    "celebration":     "Super gemacht!",
 }
 
 OUTPUT_ROOT = Path("audio_variants")

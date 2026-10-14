@@ -223,15 +223,17 @@ final class TouchDispatcher {
                 vm.strokeTracker.resetCurrentStroke()
                 vm.activePath.removeAll(keepingCapacity: true)
                 vm.toast("Probier's nochmal")
-                // Spoken in every arm (P3, 2026-10-04): a study voiceover
+                // Played in every arm (P3, 2026-10-04): a study voiceover
                 // session no longer nulls the silent arm's speech, so the
-                // spoken content is identical across arms. Outside the
-                // study, or with spoken feedback off, `vm.speech` is the
-                // null synthesiser where it always was. Rate-limited on
-                // the touch clock (R-071).
+                // spoken content is identical across arms. Since r9 it is
+                // the RECORDED retry cue, through the prompt player
+                // (`StudyVoiceoverPromptPlayer` passes it to every arm).
+                // With spoken feedback off, `vm.prompts` is the null
+                // player where `vm.speech` was the null synthesiser.
+                // Rate-limited on the touch clock (R-071).
                 if lastRetryCueAt.map({ t - $0 >= Self.retryCueMinimumInterval }) ?? true {
                     lastRetryCueAt = t
-                    vm.speech.speak("Probier's nochmal")
+                    vm.prompts.play(.retryCue, fallbackText: "Probier's nochmal")
                 }
             }
             // The excursion ended the stroke (ink wiped or split above):

@@ -1,5 +1,7 @@
 // RetryCueTests.swift
 // R-071 (audit 2026-10-13, H1-09 / H1-10).
+//  (r9: the cue is now the recorded `retry_cue` through the prompt player;
+//  the interval is unchanged.)
 //  - "Probier's nochmal" was spoken with a raw `speak` on EVERY
 //    out-of-bounds rising edge in guided. AVSpeechSynthesizer queues
 //    utterances, so a child scribbling past the edge three times in two
@@ -16,8 +18,6 @@ import CoreGraphics
 @testable import PrimaeNative
 
 @Suite @MainActor struct RetryCueTests {
-
-    private let retry = "Probier's nochmal"
 
     /// Guided on A, pen down, then `edges` excursions out of the canvas
     /// and back, the k-th leaving at touch time `t0 + k * spacing`.
@@ -43,8 +43,9 @@ import CoreGraphics
     func burstSpeaksOnce() {
         let rig = guidedRig()
         excursions(rig, edges: 3, spacing: 0.3)
-        #expect(rig.speech.count(retry) == 1,
-                "the retry cue was queued \(rig.speech.count(retry)) times for one burst of excursions")
+        #expect(rig.prompts.count(.retryCue) == 1,
+                "the retry cue was played \(rig.prompts.count(.retryCue)) times for one burst of excursions")
+        #expect(rig.speech.spoken.isEmpty, "the retry cue went to the live synthesiser: \(rig.speech.spoken)")
     }
 
     @Test("an excursion after the interval speaks it again")
@@ -52,6 +53,6 @@ import CoreGraphics
         let rig = guidedRig()
         let spacing = TouchDispatcher.retryCueMinimumInterval + 0.1
         excursions(rig, edges: 2, spacing: spacing)
-        #expect(rig.speech.count(retry) == 2)
+        #expect(rig.prompts.count(.retryCue) == 2)
     }
 }

@@ -962,6 +962,24 @@ public final class TracingViewModel {
     /// `applyArmAuthority` can switch its sound EFFECTS with the arm while
     /// its spoken content stays the same in every arm.
     private let studyVoiceover: StudyVoiceoverPromptPlayer?
+    /// What the check of the five recorded takes found, once, at init (r9);
+    /// nil when the session plays no recorded phrase. Never recomputed:
+    /// `studyPreconditionFailure` is read on every view update.
+    private let recordedVerdict: RecordedPromptSet.Verdict?
+    /// The recorded set this session plays, stamped as `voiceId`; nil unless
+    /// the takes are present and the reviewed ones.
+    private var recordedSetId: String? {
+        if case .ok(let id)? = recordedVerdict { return id }
+        return nil
+    }
+    /// Whether the session's spoken phrases are the recorded set.
+    var playsRecordedPrompts: Bool { studyVoiceover != nil }
+    /// The research dashboard's line for the recorded set, or nil.
+    var recordedPromptsDashboardText: String? {
+        recordedVerdict.map(RecordedPromptSet.dashboardText)
+    }
+    /// A live (system-voice) line can be heard in this session.
+    var liveSpeechReachable: Bool { studyVoiceover == nil && sessionSpeaks }
     /// The German voice the INJECTED synthesiser resolved, captured at
     /// init from `deps.speech` — not from `speech`, which is the null
     /// synthesiser whenever this session silences speech, and would
@@ -1302,6 +1320,8 @@ public final class TracingViewModel {
                                          soundEffectsAllowed: !armIsSilent)
             : nil
         self.studyVoiceover = studyVoiceover
+        self.recordedVerdict = studyVoiceover != nil
+            ? RecordedPromptSet.verify(locate: deps.promptLocator, read: deps.promptReader) : nil
         // Built once, stored twice: `audible*` is the pair this session
         // uses in every non-silent arm, and the live properties start
         // there too (which IS the null pair when the arm assigned at
@@ -3492,11 +3512,18 @@ public final class TracingViewModel {
         if let studyLetterSourceFailure {
             return "Keine Buchstaben aus dem Bundle geladen (\(studyLetterSourceFailure)). Die Sitzung wird nicht gestartet — ein Ersatz aus dem Cache oder ein eingebauter Beispielbuchstabe wäre nicht der eingefrorene Stimulus."
         }
-        // The session speaks to the child and its pinned voice is gone, or
-        // there is no German voice at all (R-021, D6 default): refused —
-        // another voice would say the instructions differently than it did
-        // for the children before.
-        if sessionSpeaks, let speechVoiceFault {
+        // The study voiceover plays RECORDED phrases (r9): a missing take
+        // refuses the session — a system voice would say that line
+        // differently than it did for the children before — and the device's
+        // TTS voice no longer matters to it.
+        if let recordedVerdict {
+            if let refusal = RecordedPromptSet.refusal(for: recordedVerdict) {
+                return refusal
+            }
+        } else if sessionSpeaks, let speechVoiceFault {
+            // A session whose synthesiser speaks and whose pinned voice is
+            // gone, or with no German voice at all (R-021, D6 default):
+            // refused, for the same reason.
             return speechVoiceFault
         }
         if !participantEnrolled {
@@ -5223,8 +5250,13 @@ extension TracingViewModel {
     }
 
     /// The identifier of the voice that speaks to the child in this
-    /// session (R-021); nil when nothing speaks.
-    var sessionVoiceId: String? { sessionSpeaks ? speechVoice?.identifier : nil }
+    /// session (R-021); nil when nothing speaks. In a study voiceover
+    /// session it names the RECORDED SET ("rec:kiki:<12 hex of the five
+    /// files' sha256>", r9), not a device voice.
+    var sessionVoiceId: String? {
+        if studyVoiceover != nil { return recordedSetId }
+        return sessionSpeaks ? speechVoice?.identifier : nil
+    }
 
     /// Whether anything in this session speaks to the child: the study
     /// voiceover, or an audible synthesiser.

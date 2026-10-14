@@ -203,6 +203,13 @@ struct TracingDependencies {
     /// can push rapid-tap tests past the wall-clock debounce.
     var makePromptPlayer: (SpeechSynthesizing) -> any PromptPlaying
 
+    /// Where the view model looks for the five recorded study prompts when
+    /// it decides whether a session may start and what `voiceId` to stamp
+    /// (r9, `RecordedPromptSet`). A seam so a test can take a file away.
+    var promptLocator: @MainActor (PromptPlayer.PromptKey) -> URL?
+    /// How the same check reads the takes' (and the manifest's) bytes.
+    var promptReader: (URL) -> Data?
+
     /// Factory for the per-VM message presenter; tests inject an
     /// instant sleep so auto-clear fires deterministically.
     var makeMessagePresenter: () -> TransientMessagePresenter
@@ -311,6 +318,8 @@ struct TracingDependencies {
         makePromptPlayer: @escaping (SpeechSynthesizing) -> any PromptPlaying = {
             PromptPlayer(fallbackSpeech: $0)
         },
+        promptLocator: @escaping @MainActor (PromptPlayer.PromptKey) -> URL? = PromptPlayer.locate,
+        promptReader: @escaping (URL) -> Data? = { try? Data(contentsOf: $0) },
         makeMessagePresenter: @escaping () -> TransientMessagePresenter = { TransientMessagePresenter() },
         makeAnimationGuide:   @escaping () -> AnimationGuideController   = { AnimationGuideController() },
         makeCalibrationStore: @escaping () -> CalibrationStore           = { CalibrationStore() },
@@ -356,6 +365,8 @@ struct TracingDependencies {
         self.buildStamp = buildStamp
         self.makePlaybackController = makePlaybackController
         self.makePromptPlayer       = makePromptPlayer
+        self.promptLocator          = promptLocator
+        self.promptReader           = promptReader
         self.makeMessagePresenter   = makeMessagePresenter
         self.makeAnimationGuide     = makeAnimationGuide
         self.makeCalibrationStore   = makeCalibrationStore
