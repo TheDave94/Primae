@@ -2,7 +2,7 @@
 // PrimaeNative
 //
 // Every JSON store in this app (ProgressStore, ParentDashboardStore,
-// StreakStore, RawTraceStore, ParticipantArchiveStore) wrote its disk
+// StreakStore, RawTraceStore, ParticipantArchiveStore, EnrolmentLog) wrote its disk
 // save the same way: `try? data.write(to: url, options: .atomic)`
 // inside a `do`/`catch` that logged a warning to OSLog and otherwise
 // let the app carry on as if nothing had happened. Nobody watches
@@ -56,13 +56,35 @@ nonisolated final class PersistenceFailureCenter: @unchecked Sendable {
     /// context).
     private var onFailure: (@MainActor (String) -> Void)?
 
+    /// Non-blocking findings the proctor must still SEE (R-055/R-056,
+    /// audit 2026-10-13): a store file moved aside at load, rows dropped
+    /// by an element-wise decode, an archived child that could not be
+    /// read, a cap that evicted records, a non-finite measurement. None of
+    /// these means "the data from now on may not be saving" — that is a
+    /// failure, above — so none blocks the session; they are listed in the
+    /// parent area (`ResearchDashboardView`), never on a child-facing
+    /// screen.
+    private var _notices: [String] = []
+
     init() {}
 
     /// Registers the MainActor handler that turns a failure into a
     /// visible, blocking message. Replaces any previous subscriber —
     /// there is exactly one live `TracingViewModel` per process.
+    ///
+    /// REPLAYS every failure already recorded (R-056, audit 2026-10-13):
+    /// the stores are built — and load, and may refuse to write — before
+    /// the view model exists to subscribe, so a failure reported in that
+    /// window used to reach no handler and never block the session.
     func subscribe(_ handler: @escaping @MainActor (String) -> Void) {
-        lock.lock(); onFailure = handler; lock.unlock()
+        lock.lock()
+        onFailure = handler
+        let earlier = _failures
+        lock.unlock()
+        guard !earlier.isEmpty else { return }
+        Task { @MainActor in
+            for description in earlier { handler(description) }
+        }
     }
 
     /// Records a disk-write failure for `store` and notifies the
@@ -84,6 +106,27 @@ nonisolated final class PersistenceFailureCenter: @unchecked Sendable {
 
     var hasFailed: Bool { !failures.isEmpty }
 
+    /// Records a non-blocking finding — see `_notices`. Logged at error
+    /// level so it is never quieter than before. Callable from any thread.
+    func reportNotice(store: String, message: String) {
+        let description = "\(store): \(message)"
+        lock.lock(); _notices.append(description); lock.unlock()
+        storePersistenceLogger.error("Persistence notice — \(description, privacy: .public)")
+    }
+
+    /// Every notice recorded so far this process, in order.
+    var notices: [String] {
+        lock.lock(); defer { lock.unlock() }
+        return _notices
+    }
+
+    /// What the parent area shows: nil while nothing has gone wrong.
+    var integritySummary: PersistenceIntegritySummary? {
+        lock.lock(); defer { lock.unlock() }
+        guard !_failures.isEmpty || !_notices.isEmpty else { return nil }
+        return PersistenceIntegritySummary(failures: _failures, notices: _notices)
+    }
+
     /// Test-only. Production never clears a live failure signal — a
     /// write failure does not self-heal without a device fix (more disk
     /// space, corrected permissions), and silently clearing it on, say,
@@ -91,6 +134,20 @@ nonisolated final class PersistenceFailureCenter: @unchecked Sendable {
     /// exactly the "looks fine, actually isn't" gap this type exists to
     /// close.
     func resetForTesting() {
-        lock.lock(); _failures = []; onFailure = nil; lock.unlock()
+        lock.lock(); _failures = []; _notices = []; onFailure = nil; lock.unlock()
+    }
+}
+
+/// The parent-area view of `PersistenceFailureCenter` (R-055): counts and
+/// the lines behind them, German headline for the proctor.
+nonisolated struct PersistenceIntegritySummary: Equatable, Sendable {
+    let failures: [String]
+    let notices: [String]
+
+    var headline: String {
+        var parts: [String] = []
+        if !failures.isEmpty { parts.append("\(failures.count) Speicherfehler") }
+        if !notices.isEmpty { parts.append("\(notices.count) Datenhinweis\(notices.count == 1 ? "" : "e")") }
+        return parts.joined(separator: " · ")
     }
 }

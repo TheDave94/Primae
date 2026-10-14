@@ -263,7 +263,7 @@ struct SettingsView: View {
                         set: {
                             comparisonObservePasses = $0
                             StudyComparisonSettings.observePasses = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         })) {
                         Text("Einmal").tag(1)
                         Text("Zweimal").tag(2)
@@ -275,16 +275,16 @@ struct SettingsView: View {
                         set: {
                             comparisonSpokenFeedback = $0
                             StudyComparisonSettings.spokenFeedbackInStudy = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
-                    .accessibilityHint("Aus ist die Vorgabe: die Studie entfernt jede Sprachausgabe. Ein stellt die Sprech-Rückmeldung der normalen App wieder her, damit beide Optionen verglichen werden können.")
+                    .accessibilityHint(ComparisonSwitchHints.spokenFeedback)
 
                     Toggle("Alle fünf Buchstaben üben", isOn: Binding(
                         get: { comparisonAllFiveLetters },
                         set: {
                             comparisonAllFiveLetters = $0
                             StudyComparisonSettings.allFiveLetters = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint("Aus ist die Vorgabe: das Kind übt 3 der 5 Buchstaben, die anderen 2 bleiben für den Nachtest ungeübt. Ein lässt jedes Kind alle 5 üben — damit entfällt der Vergleich geübt/ungeübt. Die Daten eines solchen Durchlaufs sind ein Vergleichslauf: die Spalte „trainedSubset“ jeder Zeile steht dann auf „AFILM“ und die Spalte für ungeübt bleibt leer, statt eine 3er-Teilmenge zu behaupten. Ein Post-Test ist nicht möglich, weil es keinen ungeübten Buchstaben gibt.")
 
@@ -293,7 +293,7 @@ struct SettingsView: View {
                         set: {
                             comparisonLetterRepeatCount = $0
                             StudyComparisonSettings.letterRepeatCount = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         })) {
                         Text("1").tag(1)
                         Text("2").tag(2)
@@ -306,7 +306,7 @@ struct SettingsView: View {
                         set: {
                             comparisonCycleAllConditions = $0
                             StudyComparisonSettings.cycleAllConditions = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint("Aus ist die Vorgabe: jedes Kind läuft in dem einen Arm, der ihm zugewiesen wurde. Ein lässt die Sitzung alle drei Audio-Bedingungen durchlaufen, eine je Buchstabe, in der Reihenfolge Phonem, Raumklang, Ohne Ton und wieder von vorn. Den ersten Buchstaben behält das Kind in dem Arm, der ihm zugewiesen wurde. Die Bedingung wechselt nur zwischen zwei Buchstaben, nie mitten in einem — der laufende Versuch bleibt unangetastet, und ein erneutes Laden desselben Buchstabens verbraucht keine Bedingung. Für den stillen Arm gilt dabei dieselbe Absicherung wie bei der Zuweisung: es entsteht kein Tonsignal. Ein Vergleichslauf, keine Pilotbedingung.")
 
@@ -315,7 +315,7 @@ struct SettingsView: View {
                         set: {
                             comparisonGuidedDotsVisible = $0
                             StudyComparisonSettings.guidedDotsVisible = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint("Ein ist die Vorgabe: Anschauen und Nachspuren zeichnen an jedem Strichanfang einen Punkt. Aus zeichnet sie gar nicht mehr. Antippen war dort noch nie möglich — antippbare, nummerierte Punkte gibt es nur in der Richtung-lernen-Phase, und die sind von diesem Schalter nicht betroffen. Der Endpunkt-Ring am Buchstabenende bleibt in beiden Stellungen sichtbar.")
 
@@ -324,7 +324,7 @@ struct SettingsView: View {
                         set: {
                             comparisonPanning = $0
                             StudyComparisonSettings.panningEnabled = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint("Ein ist die Vorgabe. Aus hält die Stereo-Ortung auf der Mitte, sodass die Sitzung auch über einen Lautsprecher funktioniert — die Anforderung \"Kopfhörer angeschlossen\" entfällt damit. Die Tonhöhen-Achse des Raumklang-Arms bleibt unverändert.")
 
@@ -333,16 +333,16 @@ struct SettingsView: View {
                         set: {
                             comparisonAxisDemonstration = $0
                             StudyComparisonSettings.spatialAxisDemonstration = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
-                    .accessibilityHint("Aus ist die Vorgabe und das Verhalten seit dem 17.09.: Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung. Ein stellt die Vorführung wieder her, die im Text der Arbeit steht: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten und die Ortung der Waagerechten. Die Begutachtung am Gerät hatte sie als Glissando beanstandet. Damit ist Aus eine Abweichung von der schriftlichen Spezifikation — die Entscheidung darüber liegt bei David, nicht im Code.")
+                    .accessibilityHint(ComparisonSwitchHints.axisDemonstration)
 
                     Toggle("Vorführung nur einmal je Kondition", isOn: Binding(
                         get: { comparisonOncePerCondition },
                         set: {
                             comparisonOncePerCondition = $0
                             StudyComparisonSettings.oncePerCondition = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint("Aus ist die Vorgabe: vor jedem Buchstaben läuft die Vorführung des Arms erneut — jede Spur beginnt mit derselben Darbietung. Ein lässt sie nur beim ersten Buchstaben einer Audio-Bedingung laufen; alle weiteren Buchstaben derselben Bedingung beginnen ohne Vorführung. Bei fester Kondition hört das Kind sie also genau einmal, vor dem ersten Buchstaben. Bei „Alle Konditionen durchlaufen“ bekommt jede Bedingung ihre eigene Vorführung, sodass bei fünf Buchstaben drei Vorführungen laufen und der vierte und fünfte leer ausgehen. Die Arme bleiben dabei untereinander gleich lang — alle verlieren die späteren Vorführungen gleichermaßen —, aber die Sitzung ist nicht mehr die, die der Trockenlauf beschreibt, und für den Raumklang-Arm wird die Tonhöhen-/Ortungszuordnung dadurch nur einmal gelegt statt vor jedem Buchstaben. Ein Vergleichslauf, keine Pilotbedingung. Der Zähler gilt je Kind: bei „Neuer Teilnehmer“ beginnt er von vorn.")
 
@@ -351,7 +351,7 @@ struct SettingsView: View {
                         set: {
                             comparisonPresentationSpacing = $0
                             StudyComparisonSettings.presentationSpacingSeconds = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         }), in: 0...10, step: 0.5) {
                         Text("Abstand zwischen Buchstaben: \(comparisonPresentationSpacing, specifier: "%.1f") s")
                     }
@@ -370,7 +370,7 @@ struct SettingsView: View {
                         set: {
                             comparisonTriggerRadiusFactor = $0
                             StudyComparisonSettings.soundGateRadiusFactor = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         })) {
                         Text("1× (nur auf dem Strich)").tag(1.0)
                         Text("2×").tag(2.0)
@@ -385,7 +385,7 @@ struct SettingsView: View {
                         set: {
                             comparisonTriggerVelocityFloor = $0
                             StudyComparisonSettings.soundGateVelocityFloor = $0
-                            vm.markAssignmentOverrideChanged()
+                            vm.markComparisonSettingChanged()
                         })) {
                         Text("Ohne Bewegungsschwelle (Vorgabe)").tag(0.0)
                         Text("22 pt/s").tag(22.0)
@@ -408,7 +408,7 @@ struct SettingsView: View {
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
                         comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
                         comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor
-                        vm.markAssignmentOverrideChanged()
+                        vm.markComparisonSettingChanged()
                     }
 
                     Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung. Wird ein Schalter während einer laufenden Sitzung umgestellt, sperrt die App die Sitzung bis zum Neustart — die Meldung nennt dabei den Studienarm, obwohl nur eine Sitzungseinstellung geändert wurde; gemeint ist immer „bitte App neu starten“.")
@@ -514,4 +514,11 @@ struct SettingsView: View {
             }
         }
     }
+}
+
+/// Proctor hints for two comparison switches, as values so a test can hold
+/// them to the defaults they describe (R-017, audit 2026-10-13).
+enum ComparisonSwitchHints {
+    static let spokenFeedback = "Ein ist die Vorgabe (seit 02.10.): jedes Kind hört dieselben gesprochenen Anweisungen, in jedem Arm gleich. Aus entfernt jede Sprachausgabe — eine so durchgeführte Sitzung ist ein Vergleichslauf."
+    static let axisDemonstration = "Aus ist die Vorgabe und die Spezifikation (Entscheidung vom 18.09.): Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung — dieselbe Art von Vorführung wie im Phonem-Arm. Ein stellt die frühere Vorführung wieder her: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten und die Ortung der Waagerechten. Eine so durchgeführte Sitzung ist ein Vergleichslauf."
 }

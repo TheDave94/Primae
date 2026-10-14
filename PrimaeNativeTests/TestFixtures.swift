@@ -220,18 +220,31 @@ final class StubRawTraceStore: RawTraceStoring {
 // MARK: - In-memory participant archive (records seals for assertions)
 final class StubParticipantArchive: ParticipantArchiving {
     private(set) var archivedParticipants: [ArchivedParticipant] = []
+    /// Counts lifecycle drains, for the same reason as
+    /// `StubRawTraceStore.flushCount`: the protocol default is a no-op.
+    private(set) var flushCount = 0
+    /// Append-only, like the real store (R-047).
     func archive(_ record: ArchivedParticipant) {
-        archivedParticipants.removeAll { $0.participantId == record.participantId }
         archivedParticipants.append(record)
     }
+    func flush() async { flushCount += 1 }
 }
 
 final class StubEnrolmentLog: EnrolmentLogging {
     private(set) var enrolments: [EnrolmentRecord] = []
+    /// Counts lifecycle drains (the protocol default is a no-op).
+    private(set) var flushCount = 0
+    func flush() async { flushCount += 1 }
     func append(_ record: EnrolmentRecord) {
         enrolments.removeAll { $0.participantId == record.participantId }
         enrolments.append(record)
     }
+}
+
+final class StubSetCompletionLedger: SetCompletionRecording {
+    private(set) var completed: Set<UUID> = []
+    func isSetComplete(for participantId: UUID) -> Bool { completed.contains(participantId) }
+    func markSetComplete(for participantId: UUID) { completed.insert(participantId) }
 }
 
 // MARK: - No-op onboarding store
@@ -263,6 +276,26 @@ struct NullLetterCache: LetterCacheStoring {
         throw LetterRepositoryError.cacheReadFailed(path: "")
     }
     func clear() {}
+}
+
+// MARK: - Fixed delivery environment (batch D)
+/// The device/audio state a fixture reports: a settable value, so a test
+/// can change "the device" between two samples without touching it.
+@MainActor
+final class FixedDeliveryEnvironment: DeliveryEnvironmentProviding {
+    static let defaultStamp = EnvironmentStamp(
+        outputRoute: "Headphones", outputVolume: 0.5, outputLatency: 0.005,
+        otherAudioPlaying: false, secondaryAudioHint: false,
+        guidedAccess: true, idleTimerDisabled: true, lowPowerMode: false,
+        thermalState: "nominal", batteryLevel: 0.8)
+    static let build = BuildStamp(
+        launchId: "00000000-0000-0000-0000-00000000D0D0", previousRunAbnormal: false,
+        appVersion: "1.0 (1)", buildConfiguration: "test", buildUUID: "TEST-BUILD",
+        osVersion: "test-os", deviceModel: "test-device")
+    var stamp: EnvironmentStamp
+    private(set) var sampleCount = 0
+    init(_ stamp: EnvironmentStamp? = nil) { self.stamp = stamp ?? Self.defaultStamp }
+    func sample() -> EnvironmentStamp { sampleCount += 1; return stamp }
 }
 
 // MARK: - Shared VM factory
@@ -298,6 +331,10 @@ extension TracingDependencies {
             // In memory: a test that enrols a child must never append to
             // the simulator's real `Enrolments/` directory.
             enrolmentLog:         StubEnrolmentLog(),
+            // In memory, per fixture: the live ledger is a global
+            // UserDefaults key, and a hold written by one test must never
+            // park another test's VM.
+            setCompletion:        StubSetCompletionLedger(),
             onboardingStore:      StubOnboardingStore(),
             notificationScheduler: LocalNotificationScheduler(center: StubNotificationCenter()),
             thesisCondition:      .guidedOnly,
@@ -349,6 +386,12 @@ extension TracingDependencies {
             oncePerCondition:     false,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
+            // Batch D: a fixed environment, no sentinel file and a fixed
+            // build stamp — a fixture must never read the device or write
+            // the app container's launch marker.
+            deliveryEnvironment:  FixedDeliveryEnvironment(),
+            launchSentinel:       NullLaunchSentinel(),
+            buildStamp:           FixedDeliveryEnvironment.build,
             // Real AVAudioPlayer.play() in PromptPlayer adds enough
             // simulator overhead per call to push the rapid-tap test
             // past its 100 ms wall-clock playIntent debounce.

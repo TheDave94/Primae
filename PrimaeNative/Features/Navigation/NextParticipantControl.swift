@@ -69,6 +69,11 @@ enum NextParticipantCopy {
     static let readyTitle = "Neues Kind bereit"
     static let readyOKButton = "OK"
     static let readyMessage = "Studienarm-Zuordnung ist neu abgeleitet und die App ist sofort startklar."
+
+    /// Shown INSTEAD of the ready alert when the outgoing child could not
+    /// be sealed, so nothing was wiped and no child was enrolled (R-050).
+    /// The message is `TracingViewModel.participantSealFailure`.
+    static let sealFailedTitle = "Kein neues Kind begonnen"
 }
 
 /// A button that runs the "seal the outgoing child, wipe, enrol the next"
@@ -94,6 +99,7 @@ struct NextParticipantControl<Label: View>: View {
 
     @State private var showConfirm = false
     @State private var showReady = false
+    @State private var sealFailure: String?
 
     init(onReset: @escaping () -> Void = {}, @ViewBuilder label: () -> Label) {
         self.onReset = onReset
@@ -113,6 +119,12 @@ struct NextParticipantControl<Label: View>: View {
         ) {
             Button(NextParticipantCopy.startButton, role: .destructive) {
                 vm.resetForNewParticipant()
+                // A seal that could not be confirmed changed nothing: say
+                // so, and do not claim a new child is ready (R-050).
+                if let failure = vm.participantSealFailure {
+                    sealFailure = failure
+                    return
+                }
                 showReady = true
                 // Fired AFTER showReady, and safe only because the rail
                 // keeps this control mounted — an earlier version called
@@ -122,12 +134,22 @@ struct NextParticipantControl<Label: View>: View {
             }
             Button(NextParticipantCopy.cancelButton, role: .cancel) {}
         } message: {
-            Text(NextParticipantCopy.confirmMessage)
+            // A comparison run is named at the enrolment gate (R-017).
+            Text(vm.comparisonRunBanner.map { "\($0)\n\n" + NextParticipantCopy.confirmMessage }
+                 ?? NextParticipantCopy.confirmMessage)
         }
         .alert(NextParticipantCopy.readyTitle, isPresented: $showReady) {
             Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
         } message: {
             Text(NextParticipantCopy.readyMessage)
+        }
+        .alert(NextParticipantCopy.sealFailedTitle, isPresented: Binding(
+            get: { sealFailure != nil },
+            set: { if !$0 { sealFailure = nil } }
+        )) {
+            Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
+        } message: {
+            Text(sealFailure ?? "")
         }
     }
 }

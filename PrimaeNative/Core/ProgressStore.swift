@@ -196,7 +196,21 @@ public final class JSONProgressStore: ProgressStoring {
 
     // MARK: Init
 
-    public init(fileURL: URL? = nil) {
+    /// Where this store reports a lost save, a refused write, or a load-
+    /// time finding. `.shared` in the app; tests inject their own so a
+    /// failure never leaks into other suites.
+    private let failureCenter: PersistenceFailureCenter
+    /// Non-nil when the file on disk must not be overwritten (unreadable,
+    /// future schema) — `save()` then writes nothing. See
+    /// `StoreFileQuarantine.load`.
+    private(set) var writeRefusal: String?
+
+    public convenience init(fileURL: URL? = nil) {
+        self.init(fileURL: fileURL, failureCenter: .shared)
+    }
+
+    init(fileURL: URL?, failureCenter: PersistenceFailureCenter) {
+        self.failureCenter = failureCenter
         if let url = fileURL {
             self.fileURL = url
         } else {
@@ -211,7 +225,13 @@ public final class JSONProgressStore: ProgressStoring {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("progress.json")
         }
-        self.store = Self.load(from: self.fileURL)
+        let loaded = StoreFileQuarantine.load(
+            self.fileURL, store: "ProgressStore", center: failureCenter,
+            currentSchemaVersion: Self.currentSchemaVersion,
+            schemaVersion: { (store: Store) in store.schemaVersion },
+            decode: { try StoreCoding.decoder().decode(Store.self, from: $0) })
+        self.store = loaded.value ?? Store()
+        self.writeRefusal = loaded.writeRefusal
     }
 
     // MARK: - Caps
@@ -251,7 +271,16 @@ public final class JSONProgressStore: ProgressStoring {
         let key = Self.canonicalKey(letter)
         var p = store.letterProgress[key] ?? LetterProgress()
         p.completionCount += 1
-        p.bestAccuracy = max(p.bestAccuracy, min(1.0, max(0.0, accuracy)))
+        // A non-finite accuracy / form accuracy is not a reading (R-053):
+        // `max(0, NaN)` is 0.0, so it used to enter the history as a valid
+        // zero. Skipped, and listed for the proctor.
+        if accuracy.isFinite {
+            p.bestAccuracy = max(p.bestAccuracy, min(1.0, max(0.0, accuracy)))
+        }
+        if !accuracy.isFinite || formAccuracy.map({ !$0.isFinite }) == true {
+            failureCenter.reportNotice(store: "ProgressStore",
+                                       message: "non-finite accuracy reading for \(key) skipped")
+        }
         p.lastCompletedAt = Date()
         if let scores = phaseScores { p.phaseScores = scores }
         if let s = speed {
@@ -268,7 +297,7 @@ public final class JSONProgressStore: ProgressStoring {
         if let rr = recognitionResult {
             Self.appendRecognition(rr, into: &p)
         }
-        if let fa = formAccuracy {
+        if let fa = formAccuracy, fa.isFinite {
             var history = p.formAccuracyHistory ?? []
             history.append(min(1.0, max(0.0, fa)))
             if history.count > Self.rollingChannelCap {
@@ -386,43 +415,18 @@ public final class JSONProgressStore: ProgressStoring {
 
     // MARK: Persistence
 
-    private static func load(from url: URL) -> Store {
-        // No file yet is the ordinary first-launch case and stays quiet.
-        guard let data = try? Data(contentsOf: url) else { return Store() }
-        let decoded: Store
-        do {
-            decoded = try JSONDecoder().decode(Store.self, from: data)
-        } catch {
-            // A file that EXISTS but does not decode used to be
-            // indistinguishable from a fresh install (2026-09-04): the
-            // store came up empty with no log line and the next save
-            // atomically replaced the undecodable file. Say so loudly
-            // and move the file aside so nothing is destroyed.
-            storePersistenceLogger.error(
-                "ProgressStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
-            StoreFileQuarantine.quarantine(url)
-            return Store()
-        }
-        // Refuse files from a future schema — silently dropping
-        // unknown fields would clobber them on next save.
-        if let v = decoded.schemaVersion, v > currentSchemaVersion {
-            storePersistenceLogger.warning(
-                "ProgressStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(currentSchemaVersion); ignoring on-disk state.")
-            return Store()
-        }
-        return decoded
-    }
-
     private func save() {
         // Encode on main, write off main. The bounded value-type
         // Store sidesteps Swift 6's restriction on calling a
         // MainActor-isolated Encodable from a detached Task; only
         // the atomic disk write runs off main.
-        guard let data = try? JSONEncoder().encode(store) else {
-            storePersistenceLogger.warning("ProgressStore encode failed — progress not persisted.")
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("ProgressStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
             return
         }
+        guard let data = StoreCoding.encode(store, store: "ProgressStore", center: failureCenter) else { return }
         let url = fileURL
+        let center = failureCenter
         // Coalesce + serialise: each call cancels its predecessor
         // and awaits it before writing. Avoids unbounded chain
         // growth under rapid save() bursts and preserves write
@@ -444,7 +448,7 @@ public final class JSONProgressStore: ProgressStoring {
                 // into a hard session stop under studyMode.
                 storePersistenceLogger.warning(
                     "ProgressStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                PersistenceFailureCenter.shared.reportFailure(store: "ProgressStore", error: error)
+                center.reportFailure(store: "ProgressStore", error: error)
             }
         }
     }

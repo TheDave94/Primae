@@ -3,7 +3,8 @@
 //
 // Pins `StudyProtocol` (2026-10-04): the hand-bumped revision of the
 // child-facing protocol, stamped on every phase row at creation and
-// exported as the LAST column. Nothing here writes a global.
+// exported as a column of its own (followed, since batch D, by the
+// delivery columns). Nothing here writes a global.
 //
 // Mutation checks (flip, confirm RED, restore — and read the test count
 // out of the log, CLAUDE.md "Test Infrastructure" 5):
@@ -12,7 +13,7 @@
 //   - storeStampsCurrentRevisionAtCreation: delete
 //     `self.protocolRevision = protocolRevision` in
 //     `PhaseSessionRecord.init`.
-//   - exportCarriesRevisionAsLastColumn: drop `"protocolRevision"` from
+//   - exportCarriesProtocolRevisionFromTheRecord: drop `"protocolRevision"` from
 //     the exporter's header array.
 //   - legacyRowDecodesRevisionAsNil: change the decode to
 //     `(try? c.decode(Int.self, forKey: .protocolRevision)) ?? StudyProtocol.revision`.
@@ -69,8 +70,8 @@ import Foundation
         #expect(reread.protocolRevision == StudyProtocol.revision)
     }
 
-    @Test("the export carries protocolRevision as the LAST column, from the record")
-    func exportCarriesRevisionAsLastColumn() throws {
+    @Test("the export carries protocolRevision as its own column, from the record")
+    func exportCarriesProtocolRevisionFromTheRecord() throws {
         var snap = DashboardSnapshot()
         // A current row, and a row as a pre-revision build wrote it.
         snap.phaseSessionRecords.append(PhaseSessionRecord(
@@ -86,10 +87,11 @@ import Foundation
         let lines = csv.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let header = try #require(lines.first { $0.hasPrefix("letter,phase,completed") })
         let names = header.components(separatedBy: ",")
-        // r6 (2026-10-05) appended `spatialDeviationRaw` after it, newest-last.
-        #expect(names.last == "spatialDeviationRaw", "Header: \(header)")
-        #expect(names.dropLast().last == "protocolRevision", "Header: \(header)")
-        #expect(names.dropLast(2).last == "comparisonConfiguration",
+        // r6 (2026-10-05) appended `spatialDeviationRaw` after it, and batch D
+        // (2026-10-13) its columns after that — newest-last.
+        let r6End = try #require(names.firstIndex(of: "spatialDeviationRaw"), "Header: \(header)")
+        #expect(names[r6End - 1] == "protocolRevision", "Header: \(header)")
+        #expect(names[r6End - 2] == "comparisonConfiguration",
                 "protocolRevision must be appended after the previous last column, not inserted")
         let revisionColumn = try #require(names.firstIndex(of: "protocolRevision"))
 

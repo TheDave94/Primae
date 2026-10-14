@@ -401,6 +401,8 @@ struct TracingCanvasView: View {
                     },
                     onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
                     onSingleTouchEnded:  { vm.endTouch(fromPencil: false) },
+                    // A system cancel is not a lift (R-024).
+                    onSingleTouchCancelled: { vm.cancelTouch(fromPencil: false) },
                     // Two-finger swipe cycles audio variants.
                     onTwoFingerSwipeUp:   { vm.nextAudioVariant() },
                     onTwoFingerSwipeDown: { vm.previousAudioVariant() }
@@ -422,6 +424,7 @@ struct TracingCanvasView: View {
                         vm.updateTouch(at: pt, t: t, canvasSize: size)
                     },
                     onEnded:  { vm.endTouch(fromPencil: true) },
+                    onCancelled: { vm.cancelTouch(fromPencil: true) },
                     onPencilSqueeze: { vm.replayAudio() }
                 )
                 // Suspend tracing during calibration so a drag doesn't
@@ -720,6 +723,7 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
     let onSingleTouchBegan: (CGPoint, CFTimeInterval) -> Void
     let onSingleTouchMoved: (CGPoint, CFTimeInterval, CGSize) -> Void
     let onSingleTouchEnded: () -> Void
+    let onSingleTouchCancelled: () -> Void
     let onTwoFingerSwipeUp: () -> Void
     let onTwoFingerSwipeDown: () -> Void
 
@@ -729,6 +733,7 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             onSingleTouchBegan:   onSingleTouchBegan,
             onSingleTouchMoved:   onSingleTouchMoved,
             onSingleTouchEnded:   onSingleTouchEnded,
+            onSingleTouchCancelled: onSingleTouchCancelled,
             onTwoFingerSwipeUp:   onTwoFingerSwipeUp,
             onTwoFingerSwipeDown: onTwoFingerSwipeDown
         )
@@ -779,7 +784,7 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             coordinator.touchesEnded(touches, with: event)
         }
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
-            coordinator.touchesEnded(touches, with: event)
+            coordinator.touchesEnded(touches, with: event, cancelled: true)
         }
     }
 
@@ -788,6 +793,7 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         private let onSingleTouchBegan: (CGPoint, CFTimeInterval) -> Void
         private let onSingleTouchMoved: (CGPoint, CFTimeInterval, CGSize) -> Void
         private let onSingleTouchEnded: () -> Void
+        private let onSingleTouchCancelled: () -> Void
         private let onTwoFingerSwipeUp: () -> Void
         private let onTwoFingerSwipeDown: () -> Void
 
@@ -798,12 +804,14 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
              onSingleTouchBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
              onSingleTouchMoved: @escaping (CGPoint, CFTimeInterval, CGSize) -> Void,
              onSingleTouchEnded: @escaping () -> Void,
+             onSingleTouchCancelled: @escaping () -> Void,
              onTwoFingerSwipeUp: @escaping () -> Void,
              onTwoFingerSwipeDown: @escaping () -> Void) {
             self.canvasSize           = canvasSize
             self.onSingleTouchBegan   = onSingleTouchBegan
             self.onSingleTouchMoved   = onSingleTouchMoved
             self.onSingleTouchEnded   = onSingleTouchEnded
+            self.onSingleTouchCancelled = onSingleTouchCancelled
             self.onTwoFingerSwipeUp   = onTwoFingerSwipeUp
             self.onTwoFingerSwipeDown = onTwoFingerSwipeDown
         }
@@ -829,10 +837,10 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             }
         }
 
-        func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?, cancelled: Bool = false) {
             guard let tracked = trackedTouch, touches.contains(tracked) else { return }
             trackedTouch = nil
-            onSingleTouchEnded()
+            if cancelled { onSingleTouchCancelled() } else { onSingleTouchEnded() }
         }
 
         @objc func handleTwoFingerPan(_ gesture: UIPanGestureRecognizer) {
@@ -877,13 +885,15 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let onBegan:  (CGPoint, CFTimeInterval) -> Void
     let onMoved:  (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
     let onEnded:  () -> Void
+    /// `touchesCancelled` — the system took the pencil touch (R-024).
+    let onCancelled: () -> Void
     /// Apple Pencil 2 squeeze handler — replays letter audio.
     /// nil on devices without `UIPencilInteraction`.
     let onPencilSqueeze: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded,
-                    onPencilSqueeze: onPencilSqueeze)
+                    onCancelled: onCancelled, onPencilSqueeze: onPencilSqueeze)
     }
 
     func makeUIView(context: Context) -> TouchTrackingView {
@@ -903,14 +913,17 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
         let onBegan: (CGPoint, CFTimeInterval) -> Void
         let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
         let onEnded: () -> Void
+        let onCancelled: () -> Void
         let onPencilSqueeze: (() -> Void)?
         init(onBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
              onMoved: @escaping (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
              onEnded: @escaping () -> Void,
+             onCancelled: @escaping () -> Void,
              onPencilSqueeze: (() -> Void)?) {
             self.onBegan = onBegan
             self.onMoved = onMoved
             self.onEnded = onEnded
+            self.onCancelled = onCancelled
             self.onPencilSqueeze = onPencilSqueeze
         }
 
@@ -981,7 +994,7 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
 
         override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard touches.contains(where: { $0.type == .pencil }) else { return }
-            coordinator?.onEnded()
+            coordinator?.onCancelled()
         }
     }
 }

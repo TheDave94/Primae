@@ -223,6 +223,25 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// at export time. Nil for every record written before the field
     /// existed — those are revisions 1–3, separable only by `recordedAt`.
     var protocolRevision: Int?
+    /// A per-row identifier minted when the STORE builds the row (R-123,
+    /// audit 2026-10-13). Every export re-emits every child, and every
+    /// phase row of one letter shares a second-precision `recordedAt`, so
+    /// merging exports had no dedupe key. Nil for every earlier record.
+    var rowId: UUID?
+    /// What closed the trial (`RowFinalization.rawValue`, R-020): "child",
+    /// "background" or "navigation". Before it, a free-writing trial the
+    /// app's backgrounding or the proctor's chevron force-finalised was a
+    /// `completed: true` row indistinguishable from a trial the child
+    /// finished. Nil for every earlier record.
+    var finalizedBy: String?
+    /// For a cold-probe row: the n-th row of this probe kind for this
+    /// letter and this participant (R-032). A repeated pretest used to be
+    /// visible only by its timestamp. Nil for training rows and every
+    /// earlier record.
+    var probeAttempt: Int?
+    /// What this phase actually delivered — route, interruptions, observe
+    /// restarts, voice, build (R-020). Nil for every earlier record.
+    var delivery: PhaseDelivery?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
@@ -244,30 +263,41 @@ struct PhaseSessionRecord: Codable, Equatable {
          probe: String? = nil,
          comparisonConfiguration: String? = nil,
          protocolRevision: Int? = StudyProtocol.revision,
-         spatialDeviationRaw: Double? = nil) {
+         spatialDeviationRaw: Double? = nil,
+         rowId: UUID? = nil,
+         context: PhaseRowContext? = nil) {
         self.letter = letter
         self.phase = phase
         self.completed = completed
-        self.score = max(0, min(1, score))
+        // A non-finite score stays NaN (R-053, audit 2026-10-13): with
+        // Swift's `min(x, y) = y < x ? y : x`, `max(0, min(1, NaN))` is
+        // 1.0, so a NaN measurement used to be recorded as a PERFECT
+        // score. No valid value exists to substitute; NaN reaches the
+        // file as "NaN" (StoreCoding) and the CSV as "nan".
+        self.score = score.isFinite ? max(0, min(1, score)) : .nan
         self.schedulerPriority = schedulerPriority
         self.condition = condition
         self.audioCondition = audioCondition
         self.recordedAt = recordedAt
-        self.formAccuracy     = assessment.map { Double($0.formAccuracy) }
-        self.tempoConsistency = assessment.map { Double($0.tempoConsistency) }
-        self.pressureControl  = assessment.map { Double($0.pressureControl) }
-        self.rhythmScore      = assessment.map { Double($0.rhythmScore) }
+        // Optional measures: a non-finite value is recorded as ABSENT
+        // (R-053) — the store reports it as a notice, so the parent area
+        // shows that a measurement broke; see `nonFiniteMeasureNames`.
+        let finite = Self.finiteOrNil
+        self.formAccuracy     = finite(assessment.map { Double($0.formAccuracy) })
+        self.tempoConsistency = finite(assessment.map { Double($0.tempoConsistency) })
+        self.pressureControl  = finite(assessment.map { Double($0.pressureControl) })
+        self.rhythmScore      = finite(assessment.map { Double($0.rhythmScore) })
         self.recognitionPredicted    = recognition?.predictedLetter
-        self.recognitionConfidence   = recognition?.confidence
-        self.recognitionConfidenceRaw = recognition?.rawConfidence
+        self.recognitionConfidence   = finite(recognition?.confidence)
+        self.recognitionConfidenceRaw = finite(recognition?.rawConfidence)
         self.recognitionCorrect      = recognition?.isCorrect
         self.inputDevice             = inputDevice
         self.rawTraceID              = rawTraceID
         self.trainedSubset           = trainedSubset
-        self.phaseDurationSeconds    = phaseDurationSeconds
-        self.frechetDistance         = frechetDistance
-        self.checkpointCoverage      = checkpointCoverage
-        self.spatialDeviation        = spatialDeviation
+        self.phaseDurationSeconds    = finite(phaseDurationSeconds)
+        self.frechetDistance         = finite(frechetDistance)
+        self.checkpointCoverage      = finite(checkpointCoverage)
+        self.spatialDeviation        = finite(spatialDeviation)
         self.strokeCount             = strokeCount
         self.strokeOrder             = strokeOrder
         self.reversedStrokeCount     = reversedStrokeCount
@@ -275,7 +305,35 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.probe                   = probe
         self.comparisonConfiguration = comparisonConfiguration
         self.protocolRevision        = protocolRevision
-        self.spatialDeviationRaw     = spatialDeviationRaw
+        self.spatialDeviationRaw     = finite(spatialDeviationRaw)
+        self.rowId                   = rowId
+        self.finalizedBy             = context?.finalizedBy?.rawValue
+        self.probeAttempt            = context?.probeAttempt
+        self.delivery                = context?.delivery
+    }
+
+    private static func finiteOrNil(_ value: Double?) -> Double? {
+        guard let value, value.isFinite else { return nil }
+        return value
+    }
+
+    /// Names of the inputs `init` had to sanitise (R-053) — the store
+    /// reports them so the loss is visible rather than silent.
+    static func nonFiniteMeasureNames(score: Double, assessment: WritingAssessment?,
+                                      recognition: RecognitionSample?,
+                                      _ named: [(String, Double?)]) -> [String] {
+        var all: [(String, Double?)] = [("score", score)]
+        if let a = assessment {
+            all += [("formAccuracy", Double(a.formAccuracy)), ("tempoConsistency", Double(a.tempoConsistency)),
+                    ("pressureControl", Double(a.pressureControl)), ("rhythmScore", Double(a.rhythmScore))]
+        }
+        all += [("recognitionConfidence", recognition?.confidence),
+                ("recognitionConfidenceRaw", recognition?.rawConfidence)]
+        all += named
+        return all.compactMap { name, value in
+            guard let value, !value.isFinite else { return nil }
+            return name
+        }
     }
 
     init(from decoder: Decoder) throws {
@@ -339,6 +397,23 @@ struct PhaseSessionRecord: Codable, Equatable {
         protocolRevision         = try? c.decode(Int.self, forKey: .protocolRevision)
         // Added 2026-10-05 (r6); nil for every earlier record.
         spatialDeviationRaw      = try? c.decode(Double.self, forKey: .spatialDeviationRaw)
+        // Added by fix batch D (audit 2026-10-13); nil for every earlier
+        // record, and a malformed value costs only itself.
+        rowId                    = try? c.decode(UUID.self, forKey: .rowId)
+        finalizedBy              = try? c.decode(String.self, forKey: .finalizedBy)
+        probeAttempt             = try? c.decode(Int.self, forKey: .probeAttempt)
+        delivery                 = try? c.decode(PhaseDelivery.self, forKey: .delivery)
+    }
+}
+
+extension PhaseSessionRecord {
+    /// A completed freeWrite row with a FINITE score — the only rows a score
+    /// aggregate reads (dashboard and export). A NaN score (an unscored
+    /// phase, see `LearningPhaseController.advance`) stays in the per-row
+    /// CSV/JSON, but an aggregate skips it, so one such row cannot blank an
+    /// arm's mean; with no finite row the aggregate reads as "no data".
+    var isScoredFreeWrite: Bool {
+        completed && phase == LearningPhase.freeWrite.rawName && score.isFinite
     }
 }
 
@@ -414,6 +489,14 @@ struct SessionDurationRecord: Codable, Equatable {
     let audioCondition: PilotAudioCondition?
     let studyMode: Bool?
     let probe: String?
+    /// The session's trained set and comparison stamp, the build's
+    /// protocol revision and a row identifier (R-123, audit 2026-10-13) —
+    /// the phase row's stamps, so durations attribute to a configuration
+    /// and a revision without a `recordedAt` join. Nil on earlier rows.
+    var trainedSubset: String?
+    var comparisonConfiguration: String?
+    var protocolRevision: Int?
+    var rowId: UUID?
 
     init(dateString: String, durationSeconds: TimeInterval,
          wallClockSeconds: TimeInterval? = nil,
@@ -423,7 +506,11 @@ struct SessionDurationRecord: Codable, Equatable {
          letter: String? = nil,
          audioCondition: PilotAudioCondition? = nil,
          studyMode: Bool? = nil,
-         probe: String? = nil) {
+         probe: String? = nil,
+         trainedSubset: String? = nil,
+         comparisonConfiguration: String? = nil,
+         protocolRevision: Int? = StudyProtocol.revision,
+         rowId: UUID? = nil) {
         self.dateString = dateString
         self.durationSeconds = durationSeconds
         self.wallClockSeconds = wallClockSeconds
@@ -434,6 +521,10 @@ struct SessionDurationRecord: Codable, Equatable {
         self.audioCondition = audioCondition
         self.studyMode = studyMode
         self.probe = probe
+        self.trainedSubset = trainedSubset
+        self.comparisonConfiguration = comparisonConfiguration
+        self.protocolRevision = protocolRevision
+        self.rowId = rowId
     }
 
     init(from decoder: Decoder) throws {
@@ -448,6 +539,11 @@ struct SessionDurationRecord: Codable, Equatable {
         audioCondition = try? c.decode(PilotAudioCondition.self, forKey: .audioCondition)
         studyMode = try? c.decode(Bool.self, forKey: .studyMode)
         probe = try? c.decode(String.self, forKey: .probe)
+        // Batch D (R-123); nil on every earlier row — never back-filled.
+        trainedSubset = try? c.decode(String.self, forKey: .trainedSubset)
+        comparisonConfiguration = try? c.decode(String.self, forKey: .comparisonConfiguration)
+        protocolRevision = try? c.decode(Int.self, forKey: .protocolRevision)
+        rowId = try? c.decode(UUID.self, forKey: .rowId)
     }
 }
 
@@ -489,6 +585,7 @@ struct DashboardSnapshot: Codable, Equatable {
         // individually and counted in the log.
         let durations = try c.decode(LossyArray<SessionDurationRecord>.self, forKey: .sessionDurations)
         sessionDurations = durations.elements
+        decoder.storeDecodeTally?.record(durations.droppedCount, of: "sessionDurations")
         if durations.droppedCount > 0 {
             storePersistenceLogger.error(
                 "DashboardSnapshot: dropped \(durations.droppedCount) undecodable sessionDurations row(s); \(durations.elements.count) kept.")
@@ -498,6 +595,7 @@ struct DashboardSnapshot: Codable, Equatable {
         if c.contains(.phaseSessionRecords),
            let records = try? c.decode(LossyArray<PhaseSessionRecord>.self, forKey: .phaseSessionRecords) {
             phaseSessionRecords = records.elements
+            decoder.storeDecodeTally?.record(records.droppedCount, of: "phaseSessionRecords")
             if records.droppedCount > 0 {
                 storePersistenceLogger.error(
                     "DashboardSnapshot: dropped \(records.droppedCount) undecodable phaseSessionRecords row(s); \(records.elements.count) kept — these are study rows; the file is worth inspecting.")
@@ -585,7 +683,7 @@ struct DashboardSnapshot: Codable, Equatable {
     /// Mean overall score across all completed freeWrite phase sessions.
     var averageFreeWriteScore: Double {
         let scores = phaseSessionRecords
-            .filter { $0.phase == LearningPhase.freeWrite.rawName && $0.completed }
+            .filter(\.isScoredFreeWrite)
             .map { $0.score }
         guard !scores.isEmpty else { return 0 }
         return scores.reduce(0, +) / Double(scores.count)
@@ -628,7 +726,7 @@ struct DashboardSnapshot: Codable, Equatable {
             // true chronological order.
             // freeWrite rows only — see the exporter twin (audit 2026-09-04).
             let records = phaseSessionRecords
-                .filter { $0.letter == letter && $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
+                .filter { $0.letter == letter && $0.isScoredFreeWrite }
                 .sorted { ($0.recordedAt ?? .distantPast) < ($1.recordedAt ?? .distantPast) }
             guard records.count >= 2 else { continue }
             for i in 0..<(records.count - 1) {
@@ -683,6 +781,26 @@ protocol ParentDashboardStoring {
     /// which drops `spatialDeviationRaw`), so doubles that implement only
     /// the variant above still conform; the JSON store overrides it.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?, spatialDeviationRaw: Double?)
+    /// Batch-D variant (audit 2026-10-13): also carries what the phase
+    /// delivered and why the row was written (`PhaseRowContext`). Same
+    /// shape as the r6 variant — a requirement WITH a forwarding default
+    /// that drops the context, so doubles still conform; the JSON store
+    /// overrides it.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?, spatialDeviationRaw: Double?, context: PhaseRowContext)
+    /// Batch-D duration variant (R-123): the session's trained set and
+    /// comparison stamp on the duration row, so a duration attributes to a
+    /// configuration without a `recordedAt` join. Forwarding default drops
+    /// both.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?,
+                       audioCondition: PilotAudioCondition?,
+                       studyMode: Bool?,
+                       probe: String?,
+                       trainedSubset: String?,
+                       comparisonConfiguration: String?)
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
@@ -693,6 +811,28 @@ extension ParentDashboardStoring {
     /// `spatialDeviationRaw`; the JSON store overrides this.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?, spatialDeviationRaw: Double?) {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score, schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: probe, comparisonConfiguration: comparisonConfiguration)
+    }
+    /// Forwarding default for the batch-D variant — see the requirement.
+    /// Drops `context`; the JSON store overrides this.
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String?, rawTraceID: UUID?, trainedSubset: String?, phaseDurationSeconds: Double?, frechetDistance: Double?, checkpointCoverage: Double?, spatialDeviation: Double?, strokeCount: Int?, strokeOrder: String?, reversedStrokeCount: Int?, studyMode: Bool?, probe: String?, comparisonConfiguration: String?, spatialDeviationRaw: Double?, context: PhaseRowContext) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score, schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: probe, comparisonConfiguration: comparisonConfiguration, spatialDeviationRaw: spatialDeviationRaw)
+    }
+    /// Forwarding default for the batch-D duration variant. Drops the two
+    /// stamps; the JSON store overrides this.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?,
+                       audioCondition: PilotAudioCondition?,
+                       studyMode: Bool?,
+                       probe: String?,
+                       trainedSubset: String?,
+                       comparisonConfiguration: String?) {
+        recordSession(letter: letter, accuracy: accuracy, durationSeconds: durationSeconds,
+                      wallClockSeconds: wallClockSeconds, date: date, condition: condition,
+                      inputDevice: inputDevice, audioCondition: audioCondition,
+                      studyMode: studyMode, probe: probe)
     }
     /// Backward-compatible overloads for call sites that don't supply an
     /// assessment / recognition / inputDevice. `audioCondition` defaults
@@ -786,8 +926,14 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     private(set) var snapshot: DashboardSnapshot
     private var pendingSave: Task<Void, Never>?
 
-    init(fileURL: URL? = nil, calendar: Calendar = .current) {
+    /// See `JSONProgressStore.failureCenter` / `.writeRefusal`.
+    private let failureCenter: PersistenceFailureCenter
+    private(set) var writeRefusal: String?
+
+    init(fileURL: URL? = nil, calendar: Calendar = .current,
+         failureCenter: PersistenceFailureCenter = .shared) {
         self.calendar = calendar
+        self.failureCenter = failureCenter
         if let url = fileURL {
             self.fileURL = url
         } else {
@@ -800,7 +946,9 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("dashboard.json")
         }
-        self.snapshot = Self.load(from: self.fileURL) ?? DashboardSnapshot()
+        let loaded = Self.load(from: self.fileURL, center: failureCenter)
+        self.snapshot = loaded.value ?? DashboardSnapshot()
+        self.writeRefusal = loaded.writeRefusal
     }
 
     /// Hard ceiling on per-letter accuracy samples — keeps the JSON
@@ -834,6 +982,24 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                        audioCondition: PilotAudioCondition?,
                        studyMode: Bool?,
                        probe: String?) {
+        recordSession(letter: letter, accuracy: accuracy, durationSeconds: durationSeconds,
+                      wallClockSeconds: wallClockSeconds, date: date, condition: condition,
+                      inputDevice: inputDevice, audioCondition: audioCondition,
+                      studyMode: studyMode, probe: probe,
+                      trainedSubset: nil, comparisonConfiguration: nil)
+    }
+
+    /// Batch D (R-123): the one place a duration row is built.
+    func recordSession(letter: String, accuracy: Double,
+                       durationSeconds: TimeInterval,
+                       wallClockSeconds: TimeInterval?,
+                       date: Date, condition: ThesisCondition,
+                       inputDevice: String?,
+                       audioCondition: PilotAudioCondition?,
+                       studyMode: Bool?,
+                       probe: String?,
+                       trainedSubset: String?,
+                       comparisonConfiguration: String?) {
         let key = LetterProgress.canonicalKey(letter)
         // Word-mode sessions arrive with multi-character keys
         // (`"BUCH"`); adding those to `letterStats` would corrupt the
@@ -841,7 +1007,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         // `progressStore.recordCompletion` on each cell letter, so we
         // skip the letterStats update here but still record the
         // duration once for the whole word.
-        if key.count == 1 {
+        if !accuracy.isFinite {
+            // A NaN letter accuracy (a NaN phase score averages to NaN) is
+            // no sample: skipped, and listed (R-053 review). The duration
+            // row below is still recorded.
+            failureCenter.reportNotice(store: "ParentDashboardStore",
+                                       message: "non-finite session accuracy for \(key) — not added to the accuracy samples")
+        } else if key.count == 1 {
             let existing = snapshot.letterStats[key] ?? LetterAccuracyStat(letter: key, accuracySamples: [], accuracyConditions: [])
             var samples = existing.accuracySamples
             samples.append(accuracy)
@@ -877,12 +1049,17 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                                        letter: letter.count == 1 ? LetterProgress.canonicalKey(letter) : letter,
                                        audioCondition: audioCondition,
                                        studyMode: studyMode,
-                                       probe: probe)
+                                       probe: probe,
+                                       trainedSubset: trainedSubset,
+                                       comparisonConfiguration: comparisonConfiguration,
+                                       rowId: UUID())
             )
             if snapshot.sessionDurations.count > Self.sessionDurationsCap {
-                snapshot.sessionDurations.removeFirst(
-                    snapshot.sessionDurations.count - Self.sessionDurationsCap
-                )
+                let evicted = snapshot.sessionDurations.count - Self.sessionDurationsCap
+                snapshot.sessionDurations.removeFirst(evicted)
+                // Loud (R-056): an evicted duration row is exported data.
+                failureCenter.reportNotice(store: "ParentDashboardStore",
+                                           message: "sessionDurations cap \(Self.sessionDurationsCap) reached — \(evicted) oldest row(s) evicted")
             }
         }
         persist()
@@ -892,10 +1069,16 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score, schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: probe, comparisonConfiguration: comparisonConfiguration, spatialDeviationRaw: nil)
     }
 
-    /// r6 (2026-10-05): the one place a phase row is built. No default on
-    /// `spatialDeviationRaw`, so a call that omits it resolves to the
-    /// variant above rather than becoming ambiguous.
+    /// r6 (2026-10-05). No default on `spatialDeviationRaw`, so a call that
+    /// omits it resolves to the variant above rather than becoming
+    /// ambiguous. Forwards with an empty context.
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil, spatialDeviation: Double? = nil, strokeCount: Int? = nil, strokeOrder: String? = nil, reversedStrokeCount: Int? = nil, studyMode: Bool? = nil, probe: String? = nil, comparisonConfiguration: String? = nil, spatialDeviationRaw: Double?) {
+        recordPhaseSession(letter: letter, phase: phase, completed: completed, score: score, schedulerPriority: schedulerPriority, condition: condition, audioCondition: audioCondition, assessment: assessment, recognition: recognition, inputDevice: inputDevice, rawTraceID: rawTraceID, trainedSubset: trainedSubset, phaseDurationSeconds: phaseDurationSeconds, frechetDistance: frechetDistance, checkpointCoverage: checkpointCoverage, spatialDeviation: spatialDeviation, strokeCount: strokeCount, strokeOrder: strokeOrder, reversedStrokeCount: reversedStrokeCount, studyMode: studyMode, probe: probe, comparisonConfiguration: comparisonConfiguration, spatialDeviationRaw: spatialDeviationRaw, context: PhaseRowContext())
+    }
+
+    /// Batch D (audit 2026-10-13): the one place a phase row is built. The
+    /// row's identifier is minted here (R-123).
+    func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil, spatialDeviation: Double? = nil, strokeCount: Int? = nil, strokeOrder: String? = nil, reversedStrokeCount: Int? = nil, studyMode: Bool? = nil, probe: String? = nil, comparisonConfiguration: String? = nil, spatialDeviationRaw: Double?, context: PhaseRowContext) {
         let record = PhaseSessionRecord(
             letter: LetterProgress.canonicalKey(letter),
             phase: phase,
@@ -919,13 +1102,29 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             studyMode: studyMode,
             probe: probe,
             comparisonConfiguration: comparisonConfiguration,
-            spatialDeviationRaw: spatialDeviationRaw
+            spatialDeviationRaw: spatialDeviationRaw,
+            rowId: UUID(),
+            context: context
         )
+        let nonFinite = PhaseSessionRecord.nonFiniteMeasureNames(
+            score: score, assessment: assessment, recognition: recognition,
+            [("phaseDurationSeconds", phaseDurationSeconds), ("frechetDistance", frechetDistance),
+             ("checkpointCoverage", checkpointCoverage), ("spatialDeviation", spatialDeviation),
+             ("spatialDeviationRaw", spatialDeviationRaw)])
+        if !nonFinite.isEmpty {
+            failureCenter.reportNotice(
+                store: "ParentDashboardStore",
+                message: "non-finite \(nonFinite.joined(separator: ", ")) in a \(record.letter)/\(phase) row — score kept as NaN, other measures recorded as empty")
+        }
         snapshot.phaseSessionRecords.append(record)
         if snapshot.phaseSessionRecords.count > Self.phaseSessionRecordsCap {
-            snapshot.phaseSessionRecords.removeFirst(
-                snapshot.phaseSessionRecords.count - Self.phaseSessionRecordsCap
-            )
+            let evicted = snapshot.phaseSessionRecords.count - Self.phaseSessionRecordsCap
+            snapshot.phaseSessionRecords.removeFirst(evicted)
+            // Loud (R-056): these are study rows. Unreachable per child
+            // (the store is reset for every child), so if it ever fires
+            // something else is wrong — never let it be silent.
+            failureCenter.reportNotice(store: "ParentDashboardStore",
+                                       message: "phaseSessionRecords cap \(Self.phaseSessionRecordsCap) reached — \(evicted) oldest study row(s) evicted")
         }
         persist()
     }
@@ -946,11 +1145,13 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         // them into a single disk write — each successor cancels its
         // predecessor before the atomic write fires. See
         // ParentDashboardStoreTests for the regression guard.
-        guard let data = try? JSONEncoder().encode(snapshot) else {
-            storePersistenceLogger.warning("ParentDashboardStore encode failed — snapshot not persisted; every later session is lost silently without this line.")
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("ParentDashboardStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
             return
         }
+        guard let data = StoreCoding.encode(snapshot, store: "ParentDashboardStore", center: failureCenter) else { return }
         let url = fileURL
+        let center = failureCenter
         // Coalesce + order: see ProgressStore.save() for rationale.
         let previous = pendingSave
         previous?.cancel()
@@ -966,7 +1167,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                 // the defect that type exists to close.
                 storePersistenceLogger.warning(
                     "ParentDashboardStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                PersistenceFailureCenter.shared.reportFailure(store: "ParentDashboardStore", error: error)
+                center.reportFailure(store: "ParentDashboardStore", error: error)
             }
         }
     }
@@ -977,36 +1178,26 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         await pendingSave?.value
     }
 
-    private static func load(from url: URL) -> DashboardSnapshot? {
-        // No file yet is the ordinary first-launch case and stays quiet.
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        let decoded: DashboardSnapshot
-        do {
-            decoded = try JSONDecoder().decode(DashboardSnapshot.self, from: data)
-            if decoded.letterStatsUndecodable {
-                // The rows are kept in memory and the next persist rewrites
-                // the file; keep the original bytes beside it so the bad
-                // aggregate stays inspectable (review 2026-09-05).
-                StoreFileQuarantine.preserveCopy(url)
-            }
-        } catch {
-            // See ProgressStore.load: an existing-but-undecodable file
-            // silently came up empty and was overwritten on the next
-            // persist. These are the study's phase records — move the
-            // file aside so nothing is destroyed.
-            storePersistenceLogger.error(
-                "ParentDashboardStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
-            StoreFileQuarantine.quarantine(url)
-            return nil
+    private static func load(from url: URL, center: PersistenceFailureCenter) -> StoreLoad<DashboardSnapshot> {
+        // Missing / unreadable / undecodable / future schema: see
+        // `StoreFileQuarantine.load` (R-054, audit 2026-10-13).
+        let tally = StoreDecodeTally()
+        let loaded = StoreFileQuarantine.load(
+            url, store: "ParentDashboardStore", center: center,
+            currentSchemaVersion: dashboardSchemaVersion,
+            schemaVersion: { (snapshot: DashboardSnapshot) in snapshot.schemaVersion },
+            decode: { try StoreCoding.decoder(tally: tally).decode(DashboardSnapshot.self, from: $0) })
+        if let decoded = loaded.value, decoded.letterStatsUndecodable || !tally.dropped.isEmpty {
+            // The kept rows stay in memory and the next persist rewrites
+            // the file WITHOUT the dropped ones; keep the original bytes
+            // beside it (review 2026-09-05), and say so where the proctor
+            // looks (R-055) — these are study rows.
+            let copy = StoreFileQuarantine.preserveCopy(url)
+            let what = decoded.letterStatsUndecodable ? tally.dropped + ["letterStats"] : tally.dropped
+            center.reportNotice(store: "ParentDashboardStore",
+                                message: "dropped undecodable \(what.joined(separator: ", ")) at load; original copied to \(copy?.lastPathComponent ?? "— copy FAILED")")
         }
-        // Refuse files written by a future schema rather than
-        // mis-decoding them. See ProgressStore.load.
-        if let v = decoded.schemaVersion, v > dashboardSchemaVersion {
-            storePersistenceLogger.warning(
-                "ParentDashboardStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(dashboardSchemaVersion); ignoring on-disk state.")
-            return nil
-        }
-        return decoded
+        return loaded
     }
 }
 

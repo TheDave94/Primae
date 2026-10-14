@@ -274,11 +274,17 @@ private func lineReference(checkpointRadius: CGFloat = 0.2) -> LetterStrokes {
                          encoding: .utf8)!
         let lines = csv.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let header = try #require(lines.first { $0.hasPrefix("letter,phase,completed") })
-        #expect(header.hasSuffix(",protocolRevision,spatialDeviationRaw"), "Header: \(header)")
-        let mRow = try #require(lines.first { $0.hasPrefix("M,freeWrite") })
-        let fRow = try #require(lines.first { $0.hasPrefix("F,freeWrite") })
-        #expect(mRow.hasSuffix(",0.234567"), "M row: \(mRow)")
-        #expect(fRow.hasSuffix(","), "a row without the raw distance must leave the column empty: \(fRow)")
+        // r6's column follows protocolRevision; batch D (2026-10-13)
+        // appended its own columns after it.
+        #expect(header.contains(",protocolRevision,spatialDeviationRaw,participantId,"), "Header: \(header)")
+        let names = header.components(separatedBy: ",")
+        let rawColumn = try #require(names.firstIndex(of: "spatialDeviationRaw"))
+        // RFC 4180-aware split: the M row's strokeOrder "0,1" is a quoted field.
+        let mRow = DelimitedExport.fields(try #require(lines.first { $0.hasPrefix("M,freeWrite") }))
+        let fRow = DelimitedExport.fields(try #require(lines.first { $0.hasPrefix("F,freeWrite") }))
+        try #require(mRow.count == names.count && fRow.count == names.count)
+        #expect(mRow[rawColumn] == "0.234567", "M row: \(mRow)")
+        #expect(fRow[rawColumn] == "", "a row without the raw distance must leave the column empty: \(fRow)")
     }
 
     @Test("per-phase CSV gains strokeCount + strokeOrder + reversedStrokeCount columns")

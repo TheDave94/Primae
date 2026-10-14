@@ -30,6 +30,9 @@ struct TracingDependencies {
     /// and kept apart from participant data (2026-10-04). See
     /// `EnrolmentLog.swift`.
     var enrolmentLog: EnrolmentLogging
+    /// Which participants have finished their trained set, so the
+    /// end-of-set hold survives a relaunch. See `SetCompletionLedger.swift`.
+    var setCompletion: SetCompletionRecording
     var onboardingStore: OnboardingStoring
     var notificationScheduler: LocalNotificationScheduler
     var thesisCondition: ThesisCondition
@@ -170,6 +173,21 @@ struct TracingDependencies {
     var letterRecognizer: LetterRecognizerProtocol
     /// German speech synthesiser; tests inject `NullSpeechSynthesizer`.
     var speech: SpeechSynthesizing
+    /// Grants background execution time for the background flush
+    /// (batch C, R-051). A seam so a test can see the assertion taken and
+    /// released; production is `UIApplication.shared`, read only when used.
+    var backgroundTasks: BackgroundTaskGranting = UIApplicationBackgroundTasks()
+    /// Reads the device and audio state a phase starts under and an
+    /// enrolment happens in (fix batch D, R-020 / R-018). A seam so a test
+    /// fixes the environment and asserts the rows; production reads the
+    /// device (`LiveDeliveryEnvironment`).
+    var deliveryEnvironment: DeliveryEnvironmentProviding
+    /// Marks foreground/background so the next launch can tell an unclean
+    /// exit (batch D, R-020). Production: `LaunchSentinel.shared`.
+    var launchSentinel: LaunchSentinelRecording
+    /// The binary and process launch stamped on every row (batch D,
+    /// R-020). Production: `BuildIdentity.current()`.
+    var buildStamp: BuildStamp
 
     /// Factory for the per-VM playback controller. Receives audio + the
     /// isPlaying callback the VM closes over with `[weak self]`.
@@ -209,6 +227,7 @@ struct TracingDependencies {
         rawTraceStore: RawTraceStoring = JSONRawTraceStore(),
         participantArchive: ParticipantArchiving = JSONParticipantArchiveStore(),
         enrolmentLog: EnrolmentLogging = JSONEnrolmentLog(),
+        setCompletion: SetCompletionRecording = UserDefaultsSetCompletionLedger(),
         onboardingStore: OnboardingStoring = JSONOnboardingStore(),
         notificationScheduler: LocalNotificationScheduler = LocalNotificationScheduler(),
         // Default to the full three-phase flow unless the install opted
@@ -279,6 +298,9 @@ struct TracingDependencies {
         ),
         letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
         speech: SpeechSynthesizing = AVSpeechSpeechSynthesizer(),
+        deliveryEnvironment: DeliveryEnvironmentProviding = LiveDeliveryEnvironment(),
+        launchSentinel: LaunchSentinelRecording = LaunchSentinel.shared,
+        buildStamp: BuildStamp = BuildIdentity.current(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
             PlaybackController(audio: $0, onIsPlayingChanged: $1)
         },
@@ -300,6 +322,7 @@ struct TracingDependencies {
         self.rawTraceStore = rawTraceStore
         self.participantArchive = participantArchive
         self.enrolmentLog = enrolmentLog
+        self.setCompletion = setCompletion
         self.onboardingStore = onboardingStore
         self.notificationScheduler = notificationScheduler
         self.thesisCondition = thesisCondition
@@ -325,6 +348,9 @@ struct TracingDependencies {
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer
         self.speech = speech
+        self.deliveryEnvironment = deliveryEnvironment
+        self.launchSentinel = launchSentinel
+        self.buildStamp = buildStamp
         self.makePlaybackController = makePlaybackController
         self.makePromptPlayer       = makePromptPlayer
         self.makeMessagePresenter   = makeMessagePresenter

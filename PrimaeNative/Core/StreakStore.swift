@@ -79,8 +79,14 @@ final class JSONStreakStore: StreakStoring {
     private var state: StreakState
     private var pendingSave: Task<Void, Never>?
 
-    init(fileURL: URL? = nil, calendar: Calendar = .current) {
+    /// See `JSONProgressStore.failureCenter` / `.writeRefusal`.
+    private let failureCenter: PersistenceFailureCenter
+    private(set) var writeRefusal: String?
+
+    init(fileURL: URL? = nil, calendar: Calendar = .current,
+         failureCenter: PersistenceFailureCenter = .shared) {
         self.calendar = calendar
+        self.failureCenter = failureCenter
         if let url = fileURL {
             self.fileURL = url
         } else {
@@ -93,7 +99,17 @@ final class JSONStreakStore: StreakStoring {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("streak.json")
         }
-        self.state = Self.load(from: self.fileURL) ?? StreakState()
+        // Missing / unreadable / undecodable / future schema: see
+        // `StoreFileQuarantine.load` (R-054, audit 2026-10-13). The old
+        // comment here promised "never silently overwritten"; an unreadable
+        // or future-schema file was, by the next persist.
+        let loaded = StoreFileQuarantine.load(
+            self.fileURL, store: "StreakStore", center: failureCenter,
+            currentSchemaVersion: streakSchemaVersion,
+            schemaVersion: { (state: StreakState) in state.schemaVersion },
+            decode: { try StoreCoding.decoder().decode(StreakState.self, from: $0) })
+        self.state = loaded.value ?? StreakState()
+        self.writeRefusal = loaded.writeRefusal
     }
 
     var currentStreak: Int { state.currentStreak }
@@ -195,11 +211,13 @@ final class JSONStreakStore: StreakStoring {
 
     private func persist() {
         // Encode on main, write off main — see ProgressStore.save().
-        guard let data = try? JSONEncoder().encode(state) else {
-            storePersistenceLogger.warning("StreakStore encode failed — streak state not persisted.")
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("StreakStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
             return
         }
+        guard let data = StoreCoding.encode(state, store: "StreakStore", center: failureCenter) else { return }
         let url = fileURL
+        let center = failureCenter
         // Coalesce + order: see ProgressStore.save() for rationale.
         let previous = pendingSave
         previous?.cancel()
@@ -212,7 +230,7 @@ final class JSONStreakStore: StreakStoring {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
                     "StreakStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                PersistenceFailureCenter.shared.reportFailure(store: "StreakStore", error: error)
+                center.reportFailure(store: "StreakStore", error: error)
             }
         }
     }
@@ -221,31 +239,5 @@ final class JSONStreakStore: StreakStoring {
     /// from another store instance.
     func flush() async {
         await pendingSave?.value
-    }
-
-    private static func load(from url: URL) -> StreakState? {
-        // No file is the normal first launch; an UNREADABLE file is a
-        // finding — logged and moved aside, never silently overwritten by
-        // the next save (audit 2026-09-04; same rule as the other stores).
-        // An unreadable file (transient I/O, data protection while locked)
-        // is NOT a decode failure — return nil without touching it, as the
-        // other three stores do (review 2026-09-05).
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        let decoded: StreakState
-        do {
-            decoded = try JSONDecoder().decode(StreakState.self, from: data)
-        } catch {
-            storePersistenceLogger.error(
-                "StreakStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
-            StoreFileQuarantine.quarantine(url)
-            return nil
-        }
-        // Refuse a future-schema file — see ProgressStore.load.
-        if let v = decoded.schemaVersion, v > streakSchemaVersion {
-            storePersistenceLogger.warning(
-                "StreakStore at \(url.path, privacy: .public) is schema v\(v) but build expects v\(streakSchemaVersion); ignoring on-disk state.")
-            return nil
-        }
-        return decoded
     }
 }

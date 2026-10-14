@@ -58,7 +58,8 @@ struct LearningPhaseController: Equatable {
     /// actually tracing caps at 2 stars rather than 4.
     var starsEarned: Int {
         phaseScores.reduce(0) { acc, entry in
-            acc + (entry.value >= Self.starThreshold(for: entry.key) ? 1 : 0)
+            // A NaN score (see `advance`) earns no star; `isFinite` is redundant (NaN >= x is already false), so no test can pin it.
+            acc + (entry.value.isFinite && entry.value >= Self.starThreshold(for: entry.key) ? 1 : 0)
         }
     }
 
@@ -161,7 +162,15 @@ struct LearningPhaseController: Equatable {
     ///   letter session is now complete.
     @discardableResult
     mutating func advance(score: CGFloat) -> Bool {
-        let clamped = max(0, min(1, score))
+        // A non-finite score is stored as NaN, not clamped (audit
+        // 2026-10-13, R-053 review): with Swift's `min(x, y) = y < x ? y : x`,
+        // `max(0, min(1, NaN))` is 1.0, which recorded a broken measurement
+        // as a perfect COMPLETED score and awarded the star. The phase still
+        // completes (the child did it); the score is NaN — the same choice
+        // `PhaseSessionRecord.init` makes for the abandoned-letter row — so
+        // the row carries "NaN", it earns no star (`starsEarned`), and the
+        // stores list it as a notice.
+        let clamped = score.isFinite ? max(0, min(1, score)) : .nan
         phaseScores[currentPhase] = clamped
 
         // Walk the ACTIVE list, not `rawValue + 1`. Those agreed while

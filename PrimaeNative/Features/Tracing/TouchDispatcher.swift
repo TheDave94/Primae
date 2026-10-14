@@ -98,6 +98,17 @@ final class TouchDispatcher {
     /// fires only on the rising edge.
     private var wasInBounds: Bool = true
 
+    /// R-071 (audit 2026-10-13, H1-09): the spoken retry cue ("Probier's
+    /// nochmal") at most once per this many seconds of TOUCH time. It was
+    /// spoken on every out-of-bounds rising edge, and the synthesiser
+    /// queues, so a child scribbling past the edge three times in two
+    /// seconds heard it three times back to back over the next attempt.
+    /// The toast still shows on every edge. 3.0 s is a batch-C choice
+    /// (about one cue's length plus a breath), flagged for David.
+    static let retryCueMinimumInterval: CFTimeInterval = 3.0
+    /// Touch timestamp of the last spoken retry cue; nil after a reset.
+    private var lastRetryCueAt: CFTimeInterval?
+
     // MARK: - Public API (forwarded from VM)
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
@@ -117,6 +128,8 @@ final class TouchDispatcher {
         // Re-touch cancels a pending freeWrite auto-advance.
         freeWriteAutoAdvanceTask?.cancel()
         freeWriteAutoAdvanceTask = nil
+        // The new stroke's own lift decides the window from here.
+        cancelledStrokeAwaitsWindow = false
         // A real touch beginning always supersedes an in-flight
         // pre-task demonstration — see PreTaskDemonstration.
         vm.cancelPreTaskDemonstration()
@@ -214,8 +227,12 @@ final class TouchDispatcher {
                 // session no longer nulls the silent arm's speech, so the
                 // spoken content is identical across arms. Outside the
                 // study, or with spoken feedback off, `vm.speech` is the
-                // null synthesiser where it always was.
-                vm.speech.speak("Probier's nochmal")
+                // null synthesiser where it always was. Rate-limited on
+                // the touch clock (R-071).
+                if lastRetryCueAt.map({ t - $0 >= Self.retryCueMinimumInterval }) ?? true {
+                    lastRetryCueAt = t
+                    vm.speech.speak("Probier's nochmal")
+                }
             }
             // The excursion ended the stroke (ink wiped or split above):
             // the re-entry starts a fresh one with its first sample.
@@ -304,11 +321,37 @@ final class TouchDispatcher {
     }
 
     func endTouch(fromPencil: Bool? = nil) {
+        finishTouch(fromPencil: fromPencil, cancelled: false)
+    }
+
+    /// A touch the SYSTEM cancelled (`touchesCancelled`: an edge gesture,
+    /// Control Center, palm rejection, an interruption) — R-024, audit
+    /// 2026-10-13. Closed exactly like a lift (the samples stay in the
+    /// trace, the sound gets its hold, the jitter tail is recorded), with
+    /// one difference: a cancel is not the child's "done", so it never
+    /// arms the free-writing quiet window. Counted per letter in
+    /// `lifecycleCounters.strokesCancelled`. Before this the canvas
+    /// overlays forwarded a cancel as `touchesEnded`, so a cancelled
+    /// stroke could end the outcome trial two seconds later.
+    func cancelTouch(fromPencil: Bool? = nil) {
+        finishTouch(fromPencil: fromPencil, cancelled: true)
+    }
+
+    private func finishTouch(fromPencil: Bool?, cancelled: Bool) {
         guard let vm else { return }
         // A lift from the device that does not own the session (the Pencil
         // lifting while a resting finger is the tracked touch) must not end
         // the finger's stroke (review 2026-09-05).
         if let fromPencil, isSingleTouchInteractionActive, fromPencil != sessionIsPencil { return }
+        if cancelled && isSingleTouchInteractionActive {
+            vm.countLifecycleEvent(\.strokesCancelled)
+            // Remembered for the resume of an interruption, whichever of
+            // the two the system delivers first (delta review of batch C,
+            // item 1; reviewer probe P8).
+            if vm.phaseController.currentPhase == .freeWrite, !vm.didCompleteCurrentLetter {
+                cancelledStrokeAwaitsWindow = true
+            }
+        }
         // The stroke ends where the pen did (r7): a last sample the jitter
         // filter held back — under 1.5 pt from the last kept point, e.g.
         // the final creep of a decelerating stroke or a rest before the
@@ -352,8 +395,10 @@ final class TouchDispatcher {
         }
 
         // FreeWrite advance: lift-then-quiet is the implicit "done"
-        // signal; re-touch within the window cancels.
-        if vm.phaseController.currentPhase == .freeWrite,
+        // signal; re-touch within the window cancels. A system cancel is
+        // not a lift (R-024): the child's next real lift arms it.
+        if !cancelled,
+           vm.phaseController.currentPhase == .freeWrite,
            !vm.didCompleteCurrentLetter,
            // A one-sample contact (a palm), or one spanning under 2% of
            // the canvas (a creeping palm, r7), is not a production.
@@ -367,11 +412,48 @@ final class TouchDispatcher {
     /// see the lift's decision without waiting out the 2.0 s window.
     var isFreeWriteAdvanceScheduled: Bool { freeWriteAutoAdvanceTask != nil }
 
+    /// A freeWrite stroke the SYSTEM cancelled (R-024: no quiet window)
+    /// and no later stroke or window since. An interruption's resume arms
+    /// the window for it, so the trial does not wait for another lift or
+    /// the chevron — whether the cancel came before or inside the
+    /// interruption (UIKit may cancel the touch before the scene goes
+    /// inactive). Cleared by a new stroke, an armed window or a reset.
+    private(set) var cancelledStrokeAwaitsWindow = false
+
+    /// Hold the free-writing quiet window for an interruption (R-005):
+    /// cancels a pending window and reports whether there was one, so the
+    /// resume can re-arm it.
+    func holdFreeWriteAutoAdvance() -> Bool {
+        guard let task = freeWriteAutoAdvanceTask else { return false }
+        task.cancel()
+        freeWriteAutoAdvanceTask = nil
+        return true
+    }
+
+    /// Re-arm a held quiet window — a fresh `freeWriteQuietSeconds` —
+    /// under the same conditions a lift arms it.
+    func rearmFreeWriteAutoAdvance() {
+        guard let vm,
+              vm.phaseController.currentPhase == .freeWrite,
+              !vm.didCompleteCurrentLetter,
+              !isSingleTouchInteractionActive,
+              StrokeProcessScorer.isProduction(points: vm.freeWritePoints, canvasSize: vm.canvasSize)
+        else { return }
+        scheduleFreeWriteAutoAdvance()
+    }
+
+    /// Forget a cancelled stroke's claim on a window (a participant
+    /// switch, a blocked resume).
+    func clearCancelledStroke() {
+        cancelledStrokeAwaitsWindow = false
+    }
+
     // MARK: - State-clearing entry points
 
     /// Reset all owned state. Called by VM transitions so a stale
     /// `lastPoint` can't bleed across sessions.
     func resetTouchState() {
+        lastRetryCueAt                 = nil
         isSingleTouchInteractionActive = false
         lastPoint                      = nil
         lastTimestamp                  = nil
@@ -381,6 +463,7 @@ final class TouchDispatcher {
         smoothedVelocity               = 0
         freeWriteAutoAdvanceTask?.cancel()
         freeWriteAutoAdvanceTask = nil
+        cancelledStrokeAwaitsWindow    = false
     }
 
     /// Clear the velocity smoother without touching the active flag,
@@ -580,6 +663,7 @@ final class TouchDispatcher {
     /// `freeWriteQuietSeconds` of no re-touch advances the phase,
     /// runs the recognizer, and writes stars via `commitCompletion`.
     private func scheduleFreeWriteAutoAdvance() {
+        cancelledStrokeAwaitsWindow = false
         freeWriteAutoAdvanceTask?.cancel()
         let seconds = freeWriteQuietSeconds
         freeWriteAutoAdvanceTask = Task { @MainActor [weak self] in

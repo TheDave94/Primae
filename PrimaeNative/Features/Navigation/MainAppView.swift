@@ -6,6 +6,7 @@
 // area is gated behind the gear long-press (fullScreenCover).
 
 import SwiftUI
+import UIKit
 
 public struct MainAppView: View {
     @Environment(TracingViewModel.self) private var vm
@@ -105,6 +106,20 @@ public struct MainAppView: View {
             ParentAreaView()
                 .environment(vm)
         }
+        // The parent area covers the child's screen: the session is
+        // suspended while it is open and resumes when it closes (R-026).
+        .onChange(of: showParentArea) { _, isOpen in
+            if isOpen { vm.parentAreaDidOpen() } else { vm.parentAreaDidClose() }
+        }
+        // R-044: Auto-Lock must not lock the iPad mid-session
+        // (`TracingViewModel.keepsScreenAwake`), and a child's swipe at a
+        // screen edge must not open Control Center / Notification Center
+        // on the first try — the system defers its edge gestures to a
+        // second swipe. No visual change.
+        .onChange(of: vm.keepsScreenAwake, initial: true) { _, awake in
+            UIApplication.shared.isIdleTimerDisabled = awake
+        }
+        .defersSystemGestures(on: .all)
         .onChange(of: activeWorldRaw) { _, _ in
             #if !STUDY_BUILD
             // Leaving Werkstatt — drop freeform so the other worlds see

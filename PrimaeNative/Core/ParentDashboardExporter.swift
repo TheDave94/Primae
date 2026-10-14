@@ -77,6 +77,75 @@ struct ParentDashboardExporter {
         return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
     }
 
+    /// One delimited data row, every field through `delimitedField`
+    /// (R-123: the letter, duration and metric blocks used to join raw).
+    static func quotedRow(_ fields: [String], _ sep: String) -> String {
+        fields.map { delimitedField($0, separator: sep) }.joined(separator: sep)
+    }
+
+    /// Columns appended to every phase row after `spatialDeviationRaw`,
+    /// in order (R-123: participant and row id).
+    /// R-020: why the row was written and what its phase delivered —
+    /// counts, the output route at its start and end, the device state at
+    /// its start, the voice, the recognizer, and the binary and launch
+    /// that wrote it. All empty on a row written before batch D.
+    static let phaseRowAppendedColumns: [String] = [
+        "participantId", "rowId", "finalizedBy", "probeAttempt",
+        "observeRestarts", "strokesCancelled", "routeChanges", "interruptions",
+        "outputRouteAtStart", "outputRouteAtEnd", "outputVolume", "outputLatency",
+        "otherAudioPlaying", "secondaryAudioHint", "voiceId", "recognizerAvailable",
+        "guidedAccess", "idleTimerDisabled", "lowPowerMode", "thermalState", "batteryLevel",
+    ] + buildColumns
+
+    /// The values for `phaseRowAppendedColumns`, in the same order.
+    static func phaseRowAppendedFields(_ rec: PhaseSessionRecord, participantId: UUID) -> [String] {
+        let d = rec.delivery
+        let e = d?.atStart
+        let int: (Int?) -> String = { $0.map(String.init) ?? "" }
+        let bool: (Bool?) -> String = { $0.map(String.init) ?? "" }
+        return [
+            participantId.uuidString, rec.rowId?.uuidString ?? "", rec.finalizedBy ?? "",
+            int(rec.probeAttempt),
+            int(d?.observeRestarts), int(d?.strokesCancelled), int(d?.routeChanges), int(d?.interruptions),
+            e?.outputRoute ?? "", d?.outputRouteAtEnd ?? "",
+            e?.outputVolume.map { String(format: "%.4f", $0) } ?? "",
+            e?.outputLatency.map { String(format: "%.6f", $0) } ?? "",
+            bool(e?.otherAudioPlaying), bool(e?.secondaryAudioHint),
+            d?.voiceId ?? "", bool(d?.recognizerAvailable),
+            bool(e?.guidedAccess), bool(e?.idleTimerDisabled), bool(e?.lowPowerMode),
+            e?.thermalState ?? "", e?.batteryLevel.map { String(format: "%.4f", $0) } ?? "",
+        ] + buildFields(d?.build)
+    }
+
+    /// The device state, as the enrolment block names it (R-020, R-018).
+    static let environmentColumns: [String] = [
+        "outputRoute", "outputVolume", "outputLatency", "otherAudioPlaying", "secondaryAudioHint",
+        "guidedAccess", "idleTimerDisabled", "lowPowerMode", "thermalState", "batteryLevel",
+    ]
+
+    static func environmentFields(_ e: EnvironmentStamp?) -> [String] {
+        let bool: (Bool?) -> String = { $0.map(String.init) ?? "" }
+        return [
+            e?.outputRoute ?? "",
+            e?.outputVolume.map { String(format: "%.4f", $0) } ?? "",
+            e?.outputLatency.map { String(format: "%.6f", $0) } ?? "",
+            bool(e?.otherAudioPlaying), bool(e?.secondaryAudioHint),
+            bool(e?.guidedAccess), bool(e?.idleTimerDisabled), bool(e?.lowPowerMode),
+            e?.thermalState ?? "", e?.batteryLevel.map { String(format: "%.4f", $0) } ?? "",
+        ]
+    }
+
+    /// The binary and launch (R-020).
+    static let buildColumns: [String] = [
+        "launchId", "previousRunAbnormal", "appVersion", "buildConfiguration",
+        "buildUUID", "osVersion", "deviceModel",
+    ]
+
+    static func buildFields(_ b: BuildStamp?) -> [String] {
+        [b?.launchId ?? "", b?.previousRunAbnormal.map(String.init) ?? "", b?.appVersion ?? "",
+         b?.buildConfiguration ?? "", b?.buildUUID ?? "", b?.osVersion ?? "", b?.deviceModel ?? ""]
+    }
+
     private static func delimitedData(
         from snapshot: DashboardSnapshot,
         participantId: UUID,
@@ -128,7 +197,7 @@ struct ParentDashboardExporter {
                 let acc = Double(attempts.filter { $0 }.count) / Double(attempts.count)
                 return String(format: "%.4f", acc)
             }()
-            lines.append([stat.letter, "\(cnt)", tnd, "\(recCount)", recAvg, speedField, freeformField, retrievalField].joined(separator: sep))
+            lines.append(quotedRow([stat.letter, "\(cnt)", tnd, "\(recCount)", recAvg, speedField, freeformField, retrievalField], sep))
         }
         lines.append("")
 
@@ -150,18 +219,32 @@ struct ParentDashboardExporter {
                 return ts >= enrolledAt
             }
         }()
-        lines.append(["date","recordedAt","durationSeconds","wallClockSeconds","condition","inputDevice","letter","audioCondition","studyMode","probe"].joined(separator: sep))
+        // R-123 (audit 2026-10-13): `participantId`, `rowId`, and the phase
+        // rows' `trainedSubset` / `comparisonConfiguration` /
+        // `protocolRevision`, appended in turn — every export re-emits every
+        // child, so merged files had no dedupe key and no participant per
+        // row; and a duration attributed to a configuration only through a
+        // `recordedAt` join. Empty on rows written before them.
+        lines.append(["date","recordedAt","durationSeconds","wallClockSeconds","condition","inputDevice","letter","audioCondition","studyMode","probe","participantId","rowId","trainedSubset","comparisonConfiguration","protocolRevision"].joined(separator: sep))
         for rec in enrolledDurations.sorted(by: { $0.dateString < $1.dateString }) {
             let recordedAtField = rec.recordedAt.map { isoFormatter.string(from: $0) } ?? ""
             let wallField = rec.wallClockSeconds.map { String(format: "%.3f", $0) } ?? ""
-            lines.append([rec.dateString, recordedAtField,
-                          String(format: "%.3f", rec.durationSeconds),
-                          wallField, rec.condition.rawValue,
-                          rec.inputDevice ?? "",
-                          rec.letter ?? "",
-                          rec.audioCondition?.rawValue ?? "",
-                          rec.studyMode.map(String.init) ?? "",
-                          rec.probe ?? ""].joined(separator: sep))
+            let row: [String] = [
+                rec.dateString, recordedAtField,
+                String(format: "%.3f", rec.durationSeconds),
+                wallField, rec.condition.rawValue,
+                rec.inputDevice ?? "",
+                rec.letter ?? "",
+                rec.audioCondition?.rawValue ?? "",
+                rec.studyMode.map(String.init) ?? "",
+                rec.probe ?? "",
+                participantId.uuidString,
+                rec.rowId?.uuidString ?? "",
+                rec.trainedSubset ?? "",
+                rec.comparisonConfiguration ?? "",
+                rec.protocolRevision.map(String.init) ?? ""
+            ]
+            lines.append(quotedRow(row, sep))
         }
         lines.append("")
 
@@ -225,17 +308,23 @@ struct ParentDashboardExporter {
         // legacy order. The value rides on the record and is never
         // recomputed here — see `PhaseSessionRecord
         // .comparisonConfiguration`.
-        // `protocolRevision` appended LAST (2026-10-04): which
+        // `protocolRevision` appended (2026-10-04; the delivery columns
+        // were appended after it in batch D): which
         // child-facing protocol revision wrote the row
         // (`StudyProtocol.revision`), read off the RECORD like the stamp
         // above. Empty for rows written before the field existed
         // (revisions 1–3). See `StudyProtocol` for why the stamp alone
         // could not carry this.
-        // `spatialDeviationRaw` appended LAST (2026-10-05, protocol r6):
+        // `spatialDeviationRaw` appended (2026-10-05, protocol r6; later
+        // columns follow it):
         // since r6 `spatialDeviation` is measured after fitting the drawn
         // letter's bounding box onto the reference's; this is the same
         // distance without the fit (what `spatialDeviation` was before r6).
-        lines.append(["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration","protocolRevision","spatialDeviationRaw"].joined(separator: sep))
+        // R-123 / R-020 / R-032 (audit 2026-10-13): `phaseRowAppendedColumns`
+        // — participant, row id, and what the phase delivered — appended
+        // after `spatialDeviationRaw`, newest-last like every column before.
+        lines.append((["letter","phase","completed","score","schedulerPriority","condition","recordedAt","recognition_predicted","recognition_confidence","recognition_confidence_raw","recognition_correct","formAccuracy","tempoConsistency","pressureControl","rhythmScore","inputDevice","audioCondition","trainedSubset","phaseDurationSeconds",Self.retiredFrechetColumnName,"checkpointCoverage","spatialDeviation","strokeCount","strokeOrder","reversedStrokeCount","studyMode","probe","comparisonConfiguration","protocolRevision","spatialDeviationRaw"]
+            + Self.phaseRowAppendedColumns).joined(separator: sep))
         // D11#1: filtered ONCE, here, and every aggregate below —
         // including the arm-split ones — reads `enrolledRecords`, never
         // `snapshot.phaseSessionRecords` directly. The raw-row loop and
@@ -333,8 +422,8 @@ struct ParentDashboardExporter {
                 // same 6 dp as spatialDeviation. Empty before r6 and for
                 // non-freeWrite rows.
                 rec.spatialDeviationRaw.map { String(format: "%.6f", $0) } ?? ""
-            ]
-            lines.append(row.map { delimitedField($0, separator: sep) }.joined(separator: sep))
+            ] + Self.phaseRowAppendedFields(rec, participantId: participantId)
+            lines.append(quotedRow(row, sep))
         }
         lines.append("")
 
@@ -356,7 +445,7 @@ struct ParentDashboardExporter {
         // priority scale, so the cross-arm proxy is invalid.
         for arm in ThesisCondition.allCases {
             let armRecords = enrolledRecords.filter { $0.condition == arm }
-            let freeWrite = armRecords.filter { $0.phase == LearningPhase.freeWrite.rawName && $0.completed }.map(\.score)
+            let freeWrite = armRecords.filter(\.isScoredFreeWrite).map(\.score)
             if !freeWrite.isEmpty {
                 let avg = freeWrite.reduce(0, +) / Double(freeWrite.count)
                 lines.append(["averageFreeWriteScore_\(arm.rawValue)", String(format: "%.4f", avg)].joined(separator: sep))
@@ -374,7 +463,7 @@ struct ParentDashboardExporter {
                 // instruments, so cross-phase deltas are not learning gains
                 // (audit 2026-09-04).
                 let chrono = armRecords
-                    .filter { $0.letter == letter && $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
+                    .filter { $0.letter == letter && $0.isScoredFreeWrite }
                     .sorted { ($0.recordedAt ?? .distantPast) < ($1.recordedAt ?? .distantPast) }
                 guard chrono.count >= 2 else { continue }
                 for i in 0..<(chrono.count - 1) {
@@ -409,14 +498,14 @@ struct ParentDashboardExporter {
         // so averaging every phase floored the per-arm accuracy near 0.5
         // and compared the arms on a completion counter. Same phase
         // filter as `averageFreeWriteScore_<arm>` above.
-        let phaseByArm = Dictionary(grouping: enrolledRecords.filter { $0.completed && $0.phase == LearningPhase.freeWrite.rawName }, by: { $0.condition })
+        let phaseByArm = Dictionary(grouping: enrolledRecords.filter(\.isScoredFreeWrite), by: { $0.condition })
         for arm in ThesisCondition.allCases {
             guard let records = phaseByArm[arm] else { continue }
             let byLetter = Dictionary(grouping: records, by: { $0.letter })
             for (letter, group) in byLetter.sorted(by: { $0.key < $1.key }) {
                 let n = group.count
                 let avg = group.map(\.score).reduce(0, +) / Double(n)
-                lines.append(["letterByArm", letter, arm.rawValue, "\(n)", String(format: "%.4f", avg)].joined(separator: sep))
+                lines.append(quotedRow(["letterByArm", letter, arm.rawValue, "\(n)", String(format: "%.4f", avg)], sep))
             }
         }
         // Pilot audio axis — the PRIMARY between-subjects IV (the
@@ -426,7 +515,7 @@ struct ParentDashboardExporter {
         // pedagogical contrast stay exportable from one file.
         for arm in PilotAudioCondition.allCases {
             let armRecords = enrolledRecords.filter { $0.audioCondition == arm }
-            let freeWrite = armRecords.filter { $0.phase == LearningPhase.freeWrite.rawName && $0.completed }.map(\.score)
+            let freeWrite = armRecords.filter(\.isScoredFreeWrite).map(\.score)
             if !freeWrite.isEmpty {
                 let avg = freeWrite.reduce(0, +) / Double(freeWrite.count)
                 lines.append(["averageFreeWriteScore_audio_\(arm.rawValue)", String(format: "%.4f", avg)].joined(separator: sep))
@@ -436,14 +525,14 @@ struct ParentDashboardExporter {
         // `letterByArm`. Format:
         // `letterByAudioArm,letter,audioArm,sampleCount,averageScore`.
         lines.append(["letterByAudioArm","letter","audioArm","sampleCount","averageScore"].joined(separator: sep))
-        let phaseByAudioArm = Dictionary(grouping: enrolledRecords.filter { $0.completed && $0.phase == LearningPhase.freeWrite.rawName }, by: { $0.audioCondition })
+        let phaseByAudioArm = Dictionary(grouping: enrolledRecords.filter(\.isScoredFreeWrite), by: { $0.audioCondition })
         for arm in PilotAudioCondition.allCases {
             guard let records = phaseByAudioArm[arm] else { continue }
             let byLetter = Dictionary(grouping: records, by: { $0.letter })
             for (letter, group) in byLetter.sorted(by: { $0.key < $1.key }) {
                 let n = group.count
                 let avg = group.map(\.score).reduce(0, +) / Double(n)
-                lines.append(["letterByAudioArm", letter, arm.rawValue, "\(n)", String(format: "%.4f", avg)].joined(separator: sep))
+                lines.append(quotedRow(["letterByAudioArm", letter, arm.rawValue, "\(n)", String(format: "%.4f", avg)], sep))
             }
         }
         // Aggregate Schreibmotorik dimensions across all completed
@@ -507,14 +596,21 @@ struct ParentDashboardExporter {
     /// adding a sibling would change that shape for every consumer.
     static func enrolmentBlock(_ enrolments: [EnrolmentRecord], separator sep: String) -> String {
         let iso = ISO8601DateFormatter()
-        var lines = [["enrolment_participantId", "enrolledAt", "audioCondition",
-                      "trainedSubset", "protocolRevision"].joined(separator: sep)]
+        // The device state and the build at enrolment (R-020, R-018),
+        // appended after the original five columns; empty for an
+        // enrolment logged before batch D.
+        var lines = [(["enrolment_participantId", "enrolledAt", "audioCondition",
+                       "trainedSubset", "protocolRevision", "comparisonConfiguration", "voiceId"]
+                      + environmentColumns + buildColumns).joined(separator: sep)]
         for e in enrolments {
             let row = [e.participantId.uuidString,
                        e.enrolledAt.map { iso.string(from: $0) } ?? "",
                        e.audioCondition.rawValue,
                        e.trainedSubset,
-                       String(e.protocolRevision)]
+                       String(e.protocolRevision),
+                       e.comparisonConfiguration ?? "",
+                       e.voiceId ?? ""]
+                + environmentFields(e.environment) + buildFields(e.build)
             lines.append(row.map { delimitedField($0, separator: sep) }.joined(separator: sep))
         }
         return lines.joined(separator: "\n")
@@ -533,6 +629,8 @@ struct ParentDashboardExporter {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
+            // A NaN score (R-053) must not fail the whole export.
+            encoder.nonConformingFloatEncodingStrategy = StoreCoding.encoder().nonConformingFloatEncodingStrategy
             let export = snapshotWithMetrics(from: snapshot, participantId: participantId,
                                              progress: progress, rawTraces: rawTraces,
                                              enrolledAt: enrolledAt)
@@ -549,6 +647,8 @@ struct ParentDashboardExporter {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = .iso8601
+            // A NaN score (R-053) must not fail the whole export.
+            encoder.nonConformingFloatEncodingStrategy = StoreCoding.encoder().nonConformingFloatEncodingStrategy
             let exports = participants.map {
                 snapshotWithMetrics(from: $0.snapshot, participantId: $0.participantId,
                                     progress: $0.progress, rawTraces: $0.rawTraces,
@@ -707,6 +807,16 @@ struct ParentDashboardExporter {
     /// device, current plus archived — to one temp file (2026-09-14).
     /// The proctor-facing "export once at the end" action; see
     /// `TracingViewModel.allParticipantExportSources`.
+    /// How many CHILDREN the sources hold. Not `participants.count`: since
+    /// the archive became append-only (R-047) a restored child exports as
+    /// two blocks — training seal and delayed seal — under one
+    /// participantId, and counting blocks counted that child twice (review
+    /// 2026-10-14, item 2). Shared with the export screen's count so the
+    /// two cannot disagree.
+    static func distinctParticipantCount(_ participants: [ParticipantExportSource]) -> Int {
+        Set(participants.map(\.participantId)).count
+    }
+
     static func combinedExportFileURL(
         participants: [ParticipantExportSource],
         enrolments: [EnrolmentRecord] = [],
@@ -715,9 +825,10 @@ struct ParentDashboardExporter {
     ) throws(ExportError) -> URL {
         let data: Data
         let filename: String
-        // `participants.count`, never the enrolments: N is the children
-        // with data (see `enrolmentBlock`).
-        let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(participants.count)"
+        // Distinct participants, never the enrolments: N is the children
+        // with data (see `enrolmentBlock`), and a restored child's two
+        // blocks are one child (`distinctParticipantCount`).
+        let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(distinctParticipantCount(participants))"
         switch format {
         case .csv:
             data     = combinedDelimitedData(participants: participants, enrolments: enrolments, separator: ",")

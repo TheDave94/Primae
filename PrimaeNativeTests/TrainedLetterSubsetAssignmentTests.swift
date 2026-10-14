@@ -12,7 +12,7 @@ import Foundation
 import Testing
 @testable import PrimaeNative
 
-@Suite struct TrainedLetterSubsetAssignmentTests {
+@Suite(.serialized) @MainActor struct TrainedLetterSubsetAssignmentTests {
 
     @Test("Exactly 10 canonical subsets, unique, 3 letters each, all from the study set")
     func canonical_enumeration() {

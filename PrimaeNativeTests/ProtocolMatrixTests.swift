@@ -112,7 +112,8 @@
 //         `effectiveAudio = deps.audio`) (the engine is reached).
 //     NOT observable here: that `SoundEnvelope.makeAudioEngine()` applies
 //     the fade to the real engine (AudioEngine cannot run on the simulator),
-//     and that `UtteranceEndRelay` reports a real synthesiser's end.
+//     and that `UtteranceEventRelay` reports a real synthesiser's end
+//     (that one is now `SpeechQueueTests`' device-only probes).
 //   - observeCueReachesEveryArm: after P3 the cue reaches the child through
 //     `StudyVoiceoverPromptPlayer`, which `TracingViewModel.init` builds from
 //     `studyVoiceoverOn` — NOT from `silenceSpeech`. So restoring the old

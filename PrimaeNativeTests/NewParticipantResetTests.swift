@@ -356,17 +356,15 @@ import Foundation
             #expect(!sealed.contains { $0.participantId == child2 },
                     "the child that recorded nothing must NOT be sealed: an empty archive exports as a full block with a valid participantId header and zero rows, inflating N and every per-arm denominator")
 
-            // The property the export's N actually rests on. Scoped to the
-            // ARCHIVED participants deliberately: the CURRENT participant is
-            // appended unconditionally by `allParticipantExportSources`,
-            // and legitimately has no rows yet — they are mid-session. That
-            // is not a phantom; it is the child currently being tested. Only
-            // the sealed set accumulates across the whole sitting, so only
-            // the sealed set is the population a denominator must count.
-            let archived = vm.allParticipantExportSources.dropLast()
-            #expect(!archived.isEmpty)
-            #expect(archived.allSatisfy { !$0.snapshot.phaseSessionRecords.isEmpty },
-                    "every ARCHIVED export source must carry rows; an archived child who did nothing must not exist")
+            // The property the export's N actually rests on. Since R-059
+            // (audit 2026-10-13) the CURRENT participant is an export source
+            // only under the same did-anything predicate as the seal, so
+            // the zero-row live child is not in the list either: every
+            // source must carry rows.
+            let sources = vm.allParticipantExportSources
+            #expect(!sources.isEmpty)
+            #expect(sources.allSatisfy { !$0.snapshot.phaseSessionRecords.isEmpty },
+                    "every export source must carry rows; a child who did nothing must not be a participant")
         }
     }
 
@@ -475,8 +473,61 @@ import Foundation
 
             #expect(archive.archivedParticipants.isEmpty,
                     "a child who recorded nothing was sealed — the phantom participant is back")
-            #expect(vm.allParticipantExportSources.count == 1,
+            // Neither child recorded anything, so neither is a participant —
+            // including the live one (R-059).
+            #expect(vm.allParticipantExportSources.isEmpty,
                     "enrolments must never become participants: \(vm.allParticipantExportSources.count) sources")
+        }
+    }
+
+    // MARK: - Batch D: what an enrolment records (audit 2026-10-13)
+
+    /// A study VM whose enrolment stamps are all observable: a comparison
+    /// switch off its default, a voice, a fixed device state and build.
+    private func stampedEnrolmentVM(_ log: StubEnrolmentLog, env: FixedDeliveryEnvironment) -> TracingViewModel {
+        var deps = TracingDependencies.stub.with(studyMode: true)
+        deps.enrolmentLog = log
+        deps.deliveryEnvironment = env
+        deps.spokenFeedbackInStudy = true
+        deps.speech = VoiceDouble(voice: SpeechVoiceInfo(identifier: "voice.de.Anna", name: "Anna", quality: "Erweitert"))
+        deps.soundGateRadiusFactor = StudyComparisonSettings.soundGateRadiusFactorDefault * 2
+        return TracingViewModel(deps)
+    }
+
+    @Test("R-017: an enrolment records the comparison switches it ran under")
+    func enrolmentRecordsTheComparisonStamp() async {
+        await withRestoredStateAsync {
+            let log = StubEnrolmentLog()
+            let vm = stampedEnrolmentVM(log, env: FixedDeliveryEnvironment())
+            _ = vm.resetForNewParticipant()
+            #expect(vm.comparisonConfigurationStamp != nil, "precondition: a comparison run")
+            #expect(log.enrolments.last?.comparisonConfiguration == vm.comparisonConfigurationStamp,
+                    "a dropout's configuration is unknown: \(String(describing: log.enrolments.last?.comparisonConfiguration))")
+        }
+    }
+
+    @Test("R-021: an enrolment records the voice the session speaks with")
+    func enrolmentRecordsTheVoice() async {
+        await withRestoredStateAsync {
+            let log = StubEnrolmentLog()
+            let vm = stampedEnrolmentVM(log, env: FixedDeliveryEnvironment())
+            _ = vm.resetForNewParticipant()
+            #expect(log.enrolments.last?.voiceId == "voice.de.Anna")
+        }
+    }
+
+    @Test("R-020 / R-018: an enrolment records the device state and the build at that moment")
+    func enrolmentRecordsTheEnvironment() async {
+        await withRestoredStateAsync {
+            let log = StubEnrolmentLog()
+            let env = FixedDeliveryEnvironment()
+            env.stamp.otherAudioPlaying = true
+            let vm = stampedEnrolmentVM(log, env: env)
+            _ = vm.resetForNewParticipant()
+            let record = log.enrolments.last
+            #expect(record?.environment == env.stamp, "\(String(describing: record?.environment))")
+            #expect(record?.environment?.otherAudioPlaying == true, "R-018's flag is missing at enrolment")
+            #expect(record?.build == FixedDeliveryEnvironment.build)
         }
     }
 

@@ -46,6 +46,17 @@ struct RawTrace: Codable, Equatable, Identifiable {
     var referenceStrokes: LetterStrokes? = nil
 }
 
+extension RawTrace {
+    /// Whether any sample, force, timestamp or the canvas size is NaN or
+    /// infinite (R-053).
+    var hasNonFiniteValue: Bool {
+        !canvasSize.width.isFinite || !canvasSize.height.isFinite
+            || points.contains { !$0.x.isFinite || !$0.y.isFinite }
+            || forces.contains { !$0.isFinite }
+            || timestamps.contains { !$0.isFinite }
+    }
+}
+
 @MainActor
 protocol RawTraceStoring {
     /// All stored traces, oldest first.
@@ -76,7 +87,12 @@ final class JSONRawTraceStore: RawTraceStoring {
     /// headroom; the new-participant reset clears it between children.
     private static let cap = 500
 
-    init(fileURL: URL? = nil) {
+    /// See `JSONProgressStore.failureCenter` / `.writeRefusal`.
+    private let failureCenter: PersistenceFailureCenter
+    private(set) var writeRefusal: String?
+
+    init(fileURL: URL? = nil, failureCenter: PersistenceFailureCenter = .shared) {
+        self.failureCenter = failureCenter
         if let url = fileURL {
             self.fileURL = url
         } else {
@@ -89,13 +105,28 @@ final class JSONRawTraceStore: RawTraceStoring {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.fileURL = dir.appendingPathComponent("rawtraces.json")
         }
-        self.traces = Self.load(from: self.fileURL) ?? []
+        let loaded = Self.load(from: self.fileURL, center: failureCenter)
+        self.traces = loaded.value ?? []
+        self.writeRefusal = loaded.writeRefusal
     }
 
     func append(_ trace: RawTrace) {
+        // Raw data stays raw: a non-finite sample is KEPT (StoreCoding
+        // writes it as a token, so it can no longer stop every later save,
+        // R-053) and listed for the proctor.
+        if trace.hasNonFiniteValue {
+            failureCenter.reportNotice(store: "RawTraceStore",
+                                       message: "trace \(trace.id.uuidString.prefix(8)) (\(trace.letter)) carries non-finite samples — kept as recorded")
+        }
         traces.append(trace)
         if traces.count > Self.cap {
-            traces.removeFirst(traces.count - Self.cap)
+            // Loud (R-056, audit 2026-10-13): an evicted trace leaves its
+            // record's rawTraceID dangling — the invariant above — so the
+            // eviction is listed for the proctor, never silent.
+            let evicted = traces.count - Self.cap
+            traces.removeFirst(evicted)
+            failureCenter.reportNotice(store: "RawTraceStore",
+                                       message: "cap \(Self.cap) reached — \(evicted) oldest trace(s) evicted; their records now point at no trace")
         }
         persist()
     }
@@ -112,11 +143,13 @@ final class JSONRawTraceStore: RawTraceStoring {
     private func persist() {
         // Encode on main, write off main. See ParentDashboardStore.persist
         // for the cancel-and-replace coalescing rationale.
-        guard let data = try? JSONEncoder().encode(traces) else {
-            storePersistenceLogger.warning("RawTraceStore encode failed — raw traces not persisted.")
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("RawTraceStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
             return
         }
+        guard let data = StoreCoding.encode(traces, store: "RawTraceStore", center: failureCenter) else { return }
         let url = fileURL
+        let center = failureCenter
         let previous = pendingSave
         previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {
@@ -128,30 +161,30 @@ final class JSONRawTraceStore: RawTraceStoring {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
                     "RawTraceStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
-                PersistenceFailureCenter.shared.reportFailure(store: "RawTraceStore", error: error)
+                center.reportFailure(store: "RawTraceStore", error: error)
             }
         }
     }
 
-    private static func load(from url: URL) -> [RawTrace]? {
-        // No file yet is the ordinary first-launch case and stays quiet.
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        do {
-            // Element-wise: one malformed trace must not cost the rest
-            // (see LossyArray). A whole-file failure is quarantined.
-            let lossy = try JSONDecoder().decode(LossyArray<RawTrace>.self, from: data)
-            if lossy.droppedCount > 0 {
-                storePersistenceLogger.error(
-                    "RawTraceStore: dropped \(lossy.droppedCount) undecodable trace(s); \(lossy.elements.count) kept. Copy \(url.path, privacy: .public) off the device before it is rewritten.")
-            }
-            return lossy.elements
-        } catch {
-            // See ProgressStore.load: these are the re-analysis raw
-            // traces, and an undecodable file used to vanish silently.
-            storePersistenceLogger.error(
-                "RawTraceStore at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
-            StoreFileQuarantine.quarantine(url)
-            return nil
+    private static func load(from url: URL, center: PersistenceFailureCenter) -> StoreLoad<[RawTrace]> {
+        // Missing / unreadable / undecodable: see `StoreFileQuarantine.load`
+        // (R-054). Element-wise: one malformed trace must not cost the
+        // rest (see LossyArray).
+        var dropped = 0
+        let loaded = StoreFileQuarantine.load(
+            url, store: "RawTraceStore", center: center,
+            decode: { data -> [RawTrace] in
+                let lossy = try StoreCoding.decoder().decode(LossyArray<RawTrace>.self, from: data)
+                dropped = lossy.droppedCount
+                return lossy.elements
+            })
+        if dropped > 0 {
+            // The next persist rewrites the file without them — keep the
+            // original bytes and tell the proctor (R-055).
+            let copy = StoreFileQuarantine.preserveCopy(url)
+            center.reportNotice(store: "RawTraceStore",
+                                message: "dropped \(dropped) undecodable trace(s) at load, \(loaded.value?.count ?? 0) kept; original copied to \(copy?.lastPathComponent ?? "— copy FAILED")")
         }
+        return loaded
     }
 }

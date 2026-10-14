@@ -10,7 +10,7 @@ import Foundation
 import Testing
 @testable import PrimaeNative
 
-@Suite struct PilotAudioConditionAssignmentTests {
+@Suite(.serialized) @MainActor struct PilotAudioConditionAssignmentTests {
 
     @Test("Same UUID always maps to the same audio arm")
     func stable_assignment() {

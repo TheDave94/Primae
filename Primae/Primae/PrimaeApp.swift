@@ -10,6 +10,9 @@ import PrimaeNative
 struct MainEntryPoint {
     static func main() {
         if NSClassFromString("XCTestCase") != nil {
+            // Before anything reads a default: the hosted unit tests get
+            // their own preferences domain, never the pilot's (R-052).
+            HostedTestIsolation.installIfHostingTests()
             TestApp.main()
         } else {
             PrimaeApp.main()
@@ -47,19 +50,12 @@ struct PrimaeApp: App {
                 .preferredColorScheme(vm.studyMode ? .light : PrimaeAppearance.resolve(appearance))
         }
         .onChange(of: scenePhase) { _, newPhase in
-            switch newPhase {
-            case .active:
-                vm.appDidBecomeActive()
-            case .background, .inactive:
-                // `appDidEnterBackground` is async — drains pending JSON
-                // store writes. Wrap in a Task so iOS's scene-suspension
-                // grace window holds the process alive until the awaits
-                // resolve, instead of losing a freshly completed letter
-                // to a half-flushed write on suspension.
-                Task { await vm.appDidEnterBackground() }
-            @unknown default:
-                Task { await vm.appDidEnterBackground() }
-            }
+            // `.inactive` suspends the session (Control Center, a banner,
+            // an app-switcher peek); `.background` also finalises and
+            // drains the stores; `.active` resumes. The mapping lives on
+            // the view model so it is tested (R-005,
+            // `ScenePhaseInterruptionTests`).
+            vm.scenePhaseDidChange(to: newPhase)
         }
     }
 }

@@ -90,11 +90,9 @@ final class PhaseTransitionCoordinator {
                 vm.startGuideAnimation()
             }
             vm.toast(vm.phaseController.currentPhase.displayName)
-            // Verbal phase prompt for non-reading children.
-            vm.prompts.play(
-                ChildSpeechLibrary.phaseEntryPromptKey(vm.phaseController.currentPhase),
-                fallbackText: ChildSpeechLibrary.phaseEntry(vm.phaseController.currentPhase)
-            )
+            // Verbal phase prompt for non-reading children — in a study
+            // session after the outgoing sound's fade (R-029).
+            vm.playPhaseEntryPrompt()
         } else {
             // Non-freeWrite final phase (.guidedOnly / .control land
             // here at end-of-guided). No recognizer; celebrate.
@@ -167,8 +165,10 @@ final class PhaseTransitionCoordinator {
     /// the recorder and cancelled the recognizer token, so no score, no
     /// row and no raw trace were ever written. Scores and records it now,
     /// recognition nil. Returns true when it did so. Study mode only.
+    /// `finalizedBy` says what closed it — the app's backgrounding or the
+    /// proctor's navigation — and is written on its rows (batch D, R-020).
     @discardableResult
-    func finalizeFinishedFreeWriteIfPending() -> Bool {
+    func finalizeFinishedFreeWriteIfPending(finalizedBy: RowFinalization = .navigation) -> Bool {
         guard let vm, vm.studyMode,
               vm.phaseController.currentPhase == .freeWrite,
               !vm.phaseController.isLetterSessionComplete,
@@ -182,7 +182,8 @@ final class PhaseTransitionCoordinator {
         // stands down; `resetTouchState` cancels it outright.
         vm.didCompleteCurrentLetter = true
         vm.touchDispatcher.resetTouchState()
-        completePostFreeWriteRecognition(score: scoreFreeWrite(), result: nil)
+        completePostFreeWriteRecognition(score: scoreFreeWrite(), result: nil,
+                                         finalizedBy: finalizedBy)
         return true
     }
 
@@ -201,7 +202,7 @@ final class PhaseTransitionCoordinator {
         // recorded — not even an abandonment row (review 2026-09-05).
         guard let vm, vm.studyMode, !vm.participantIdentityChanged,
               !vm.phaseController.isLetterSessionComplete else { return }
-        if !touchStillActive, finalizeFinishedFreeWriteIfPending() { return }
+        if !touchStillActive, finalizeFinishedFreeWriteIfPending(finalizedBy: .navigation) { return }
 
         let phase = vm.phaseController.currentPhase
         let hasFreeWriteInk = !vm.freeWritePoints.isEmpty
@@ -253,7 +254,10 @@ final class PhaseTransitionCoordinator {
             // switches at their defaults), so this column is empty on
             // every pilot row.
             comparisonConfiguration: vm.comparisonConfigurationStamp,
-            spatialDeviationRaw: m.spatialDeviationRaw
+            spatialDeviationRaw: m.spatialDeviationRaw,
+            // What the phase delivered and why the row exists (batch D):
+            // a letter left mid-phase is closed by navigation.
+            context: vm.phaseRowContext(for: phase, finalizedBy: .navigation)
         )
     }
 
@@ -324,7 +328,8 @@ final class PhaseTransitionCoordinator {
     /// `!isCorrect && confidence > 0.7`); everything else celebrates so
     /// uncertain models can't lock the child out.
     func completePostFreeWriteRecognition(score: CGFloat,
-                                          result: RecognitionResult?) {
+                                          result: RecognitionResult?,
+                                          finalizedBy: RowFinalization = .child) {
         guard let vm else { return }
         // One binding decides and carries the value. The previous shape
         // computed a Bool from `if let r = result`, then re-unwrapped
@@ -338,12 +343,13 @@ final class PhaseTransitionCoordinator {
         if let r = result, !vm.studyMode, !r.isCorrect, r.confidence > 0.7 {
             requestFreeWriteRetry(result: r)
         } else {
-            celebrateFreeWrite(score: score, result: result)
+            celebrateFreeWrite(score: score, result: result, finalizedBy: finalizedBy)
         }
     }
 
     private func celebrateFreeWrite(score: CGFloat,
-                                    result: RecognitionResult?) {
+                                    result: RecognitionResult?,
+                                    finalizedBy: RowFinalization) {
         guard let vm else { return }
         // Study sessions: no KP reference-line overlay (a learning
         // intervention), no recognition badge, no praise — all arms end
@@ -365,7 +371,7 @@ final class PhaseTransitionCoordinator {
         // Final-phase advance — sets isLetterSessionComplete but
         // leaves currentPhase at .freeWrite; returns false.
         _ = vm.phaseController.advance(score: score)
-        recordSessionCompletion()
+        recordSessionCompletion(finalizedBy: finalizedBy)
     }
 
     private func requestFreeWriteRetry(result: RecognitionResult) {
@@ -391,7 +397,7 @@ final class PhaseTransitionCoordinator {
 
     // MARK: - Final-phase pipeline
 
-    private func recordSessionCompletion() {
+    private func recordSessionCompletion(finalizedBy: RowFinalization = .child) {
         guard let vm else { return }
         // Study sessions: no celebration overlay, chime, or phrase —
         // the proctor advances via the nav arrows (audit C1/C2). The
@@ -516,7 +522,10 @@ final class PhaseTransitionCoordinator {
                 // Same stamp, same rule as the incomplete-row site above:
                 // captured here, from the session, and never at export.
                 comparisonConfiguration: vm.comparisonConfigurationStamp,
-                spatialDeviationRaw: isFreeWrite ? m.spatialDeviationRaw : nil
+                spatialDeviationRaw: isFreeWrite ? m.spatialDeviationRaw : nil,
+                // Each phase's own delivery; every row of the letter shares
+                // what closed it (batch D).
+                context: vm.phaseRowContext(for: phase, finalizedBy: finalizedBy)
             )
         }
         commitCompletion(letter: vm.currentLetterName,
@@ -608,7 +617,10 @@ final class PhaseTransitionCoordinator {
                                         inputDevice: device,
                                         audioCondition: vm.audioCondition,
                                         studyMode: vm.studyMode,
-                                        probe: vm.currentProbe?.rawValue)
+                                        probe: vm.currentProbe?.rawValue,
+                                        // The phase rows' stamps (R-123).
+                                        trainedSubset: vm.effectiveTrainedSubset.rawValue,
+                                        comparisonConfiguration: vm.comparisonConfigurationStamp)
 
         // Difficulty-tier adaptation — gated on studyMode, same shape as
         // the errorless-learning ramp (`load(letter:)`) and the

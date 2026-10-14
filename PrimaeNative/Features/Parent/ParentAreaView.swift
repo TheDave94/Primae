@@ -155,7 +155,7 @@ private struct ExportCenterView: View {
                 }
             }
             Section("Hinweis") {
-                Text("Exportiert die Daten ALLER auf diesem Gerät erfassten Teilnehmer in einer Datei — sowohl den aktuellen als auch jeden zuvor über „Neuer Teilnehmer“ abgeschlossenen, jeweils mit eigener Teilnehmer-ID (\(vm.allParticipantExportSources.count) Teilnehmer aktuell gespeichert). Enthält Phasen-Daten, Schreibmotorik-Dimensionen (Form, Tempo, Druck, Rhythmus) und KI-Erkennungs-Konfidenzen. TSV passt am besten zu SPSS/R, CSV zu Excel/pandas.")
+                Text("Exportiert die Daten ALLER auf diesem Gerät erfassten Teilnehmer in einer Datei — sowohl den aktuellen als auch jeden zuvor über „Neuer Teilnehmer“ abgeschlossenen, jeweils mit eigener Teilnehmer-ID (\(ParentDashboardExporter.distinctParticipantCount(vm.allParticipantExportSources)) Teilnehmer aktuell gespeichert). Enthält Phasen-Daten, Schreibmotorik-Dimensionen (Form, Tempo, Druck, Rhythmus) und KI-Erkennungs-Konfidenzen. TSV passt am besten zu SPSS/R, CSV zu Excel/pandas.")
                     .font(.footnote)
                     .foregroundStyle(Color.inkSoft)
             }

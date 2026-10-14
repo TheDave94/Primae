@@ -146,7 +146,10 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
     /// mutex covers construction, not use.
     private struct ModelCache {
         var model: VNCoreMLModel?
-        var didAttemptLoad = false
+        /// Load attempts so far. A failed load used to latch for the life
+        /// of the process (R-034); `RecognizerLoadPolicy` now allows one
+        /// retry, then latches.
+        var attempts = 0
     }
     private static let modelCache = Mutex<ModelCache>(ModelCache())
 
@@ -242,8 +245,11 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
     /// this function, so holding the lock across it cannot re-enter.
     private static func loadModelIfNeeded() -> VNCoreMLModel? {
         modelCache.withLock { cache in
-            if cache.didAttemptLoad { return cache.model }
-            cache.didAttemptLoad = true
+            guard RecognizerLoadPolicy.shouldAttemptLoad(attempts: cache.attempts,
+                                                        modelLoaded: cache.model != nil) else {
+                return cache.model
+            }
+            cache.attempts += 1
             let started = Date()
             cache.model = loadModel()
             // Measured on hosted CI simulators (job logs, 2026-09-04): the

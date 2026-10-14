@@ -5,7 +5,7 @@ import Foundation
 import Testing
 @testable import PrimaeNative
 
-@Suite struct ThesisConditionAssignmentTests {
+@Suite(.serialized) @MainActor struct ThesisConditionAssignmentTests {
 
     @Test("Same UUID always maps to the same condition")
     func stable_assignment() {

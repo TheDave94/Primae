@@ -46,11 +46,12 @@ import Foundation
         let lines = csv.components(separatedBy: "\n")
         let header = try #require(lines.firstIndex { $0.hasPrefix("enrolment_participantId,") },
                                   "no enrolment block in the combined export")
-        #expect(lines[header] == "enrolment_participantId,enrolledAt,audioCondition,trainedSubset,protocolRevision")
+        // Batch D (2026-10-13) appended its columns after these five.
+        #expect(lines[header].hasPrefix("enrolment_participantId,enrolledAt,audioCondition,trainedSubset,protocolRevision,"))
         let rows = Array(lines[(header + 1)...]).filter { !$0.isEmpty }
         #expect(rows.count == 2, "one row per enrolment: \(rows)")
         #expect(rows.last?.hasPrefix(dropout.participantId.uuidString) == true)
-        #expect(rows.last?.hasSuffix(",silent,AFI,\(StudyProtocol.revision)") == true,
+        #expect(rows.last?.contains(",silent,AFI,\(StudyProtocol.revision),") == true,
                 "the dropout's arm, subset and revision must be on its row: \(rows.last ?? "")")
         // The participant blocks come first and are not renamed.
         let firstPhaseHeader = try #require(lines.firstIndex { $0.hasPrefix("letter,phase,completed") })

@@ -12,9 +12,13 @@ struct ResearchDashboardView: View {
     @Environment(TracingViewModel.self) private var vm
     @Environment(\.dismiss) private var dismiss
     @State private var showClearCalibrationConfirm = false
+    @State private var showRepinVoiceConfirm = false
     /// Live headphone-route check for the spatial arm (read-only session
     /// query — never touches AudioEngine). Refreshed on route changes.
     @State private var headphonesConnected = ResearchDashboardView.headphoneRouteActive()
+    /// Another app's audio (R-018); refreshed on appear and on every
+    /// route / secondary-audio notification.
+    @State private var otherAudioWarning: String?
     /// Only the delayed-retention-test RESTORE still needs a relaunch —
     /// it re-derives identity from a typed UUID. The "next child" flow
     /// re-derives in place and is owned by `NextParticipantControl`,
@@ -34,6 +38,15 @@ struct ResearchDashboardView: View {
     /// indistinguishable from the dismissal itself doing nothing
     /// (2026-09-15).
     @State private var probeError: String?
+    /// A probe the proctor must confirm first (R-032): a repeat, or a
+    /// post-test before training is complete. Warned, never blocked.
+    @State private var pendingProbe: PendingProbe?
+    struct PendingProbe: Identifiable {
+        let letter: String
+        let kind: StudyProbe
+        let warning: String
+        var id: String { "\(kind.rawValue)-\(letter)" }
+    }
     /// Closes the WHOLE parent area (its own root `NavigationSplitView`
     /// dismiss), not just this detail column. Defaults to a no-op so any
     /// other construction site keeps compiling. `dismiss()` from a
@@ -55,6 +68,17 @@ struct ResearchDashboardView: View {
                 if vm.audioCondition != .silent && !headphonesConnected {
                     headphoneWarning
                 }
+                // Another app's audio, in EVERY arm (R-018) — beside the
+                // headphone banner. A warning; nothing is blocked (D7).
+                if let otherAudioWarning {
+                    preflightWarning(otherAudioWarning)
+                }
+                // Load-time quarantines, dropped rows, unreadable archived
+                // children, cap evictions and write failures (R-055/R-056).
+                // Parent area only — never a child-facing screen.
+                if let integrity = PersistenceFailureCenter.shared.integritySummary {
+                    dataIntegritySection(integrity)
+                }
                 schreibmotorikSection
                 recognitionSection
                 conditionSection
@@ -75,7 +99,14 @@ struct ResearchDashboardView: View {
             .publisher(for: AVAudioSession.routeChangeNotification)
             .receive(on: RunLoop.main)) { _ in
             headphonesConnected = Self.headphoneRouteActive()
+            otherAudioWarning = vm.audioPreflightWarning
         }
+        .onReceive(NotificationCenter.default
+            .publisher(for: AVAudioSession.silenceSecondaryAudioHintNotification)
+            .receive(on: RunLoop.main)) { _ in
+            otherAudioWarning = vm.audioPreflightWarning
+        }
+        .onAppear { otherAudioWarning = vm.audioPreflightWarning }
     }
 
     // MARK: - Headphone route (spatial arm)
@@ -90,6 +121,20 @@ struct ResearchDashboardView: View {
             .contains { headphonePorts.contains($0.portType) }
     }
 
+    private func preflightWarning(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Andere Audio-Wiedergabe aktiv", systemImage: "speaker.wave.2.circle.fill")
+                .font(.body(FontSize.md, weight: .semibold))
+                .foregroundStyle(.red)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(Color.inkSoft)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+    }
+
     private var headphoneWarning: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Keine Kopfhörer verbunden", systemImage: "exclamationmark.triangle.fill")
@@ -101,6 +146,28 @@ struct ResearchDashboardView: View {
                  + "Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos — eine so durchgeführte Session ist ungültige Studien-Daten. Vor der Session Kopfhörer verbinden.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - Data integrity (R-055)
+
+    private func dataIntegritySection(_ summary: PersistenceIntegritySummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Datenintegrität: \(summary.headline)", systemImage: "exclamationmark.octagon.fill")
+                .font(.body(FontSize.md, weight: .semibold))
+                .foregroundStyle(.red)
+            Text("Vor dem Export prüfen. Beiseitegelegte Dateien (\u{201E}.undecodable-\u{201C}) liegen im App-Container unter Application Support/PrimaeNative und sind NICHT im Export enthalten — vor jeder Neuinstallation mit devicectl sichern.")
+                .font(.caption)
+                .foregroundStyle(Color.inkSoft)
+            ForEach(Array((summary.failures + summary.notices).enumerated()), id: \.offset) { _, line in
+                Text(line)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(Color.inkSoft)
+                    .textSelection(.enabled)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
@@ -125,6 +192,14 @@ struct ResearchDashboardView: View {
             Text("Teilnehmer \(String(shortID))")
                 .font(.system(.title2, design: .monospaced).weight(.bold))
                 .textSelection(.enabled)
+            // Comparison switches persist across children (R-017): say so
+            // on the card the proctor checks at every handoff.
+            if let banner = vm.comparisonRunBanner {
+                Text(banner)
+                    .font(.callout.weight(.bold))
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+            }
             Text("\(vm.audioCondition.displayName) · \(vm.thesisCondition.displayName)")
                 .font(.callout.weight(.medium))
                 .foregroundStyle(Color.inkSoft)
@@ -231,18 +306,42 @@ struct ResearchDashboardView: View {
             #endif
 
             // Read-only: which German voice this iPad's synthesiser
-            // resolved, and the rate it speaks at. The voice depends on
-            // what is installed on the device, so the proctor records it at
-            // session start; it is not pinned and not exported (2026-10-05).
+            // resolved, and the rate it speaks at. Since batch D (R-021)
+            // the voice is PINNED at first launch and stamped on every row
+            // and enrolment (`voiceId`); a missing pinned voice refuses the
+            // session.
             VStack(alignment: .leading, spacing: 2) {
-                Text("Sprachausgabe (für das Protokoll notieren)")
+                Text("Sprachausgabe (festgelegt, in jeder Zeile exportiert)")
                     .font(.body(FontSize.md, weight: .semibold))
                 Text(SpeechVoiceInfo.dashboardText(vm.speechVoice))
                     .font(.system(.caption, design: .monospaced))
                     .textSelection(.enabled)
+                // Recovery from a voice refusal without an uninstall (which
+                // would wipe the participant archive). Proctor area only.
+                if let fault = vm.speechVoiceFault {
+                    Text(fault)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+                Button("Stimme neu festlegen") { showRepinVoiceConfirm = true }
+                    .buttonStyle(.bordered)
+                    .disabled(!vm.canRepinSpeechVoice)
+                    .accessibilityHint("Nur für Studienleitung. Verwirft die gespeicherte Stimme und legt die erste erweiterte deutsche Stimme (sonst die erste deutsche Stimme) neu fest. Die neue Stimme steht ab dann in jeder Zeile.")
+                    .confirmationDialog("Stimme neu festlegen?",
+                                        isPresented: $showRepinVoiceConfirm,
+                                        titleVisibility: .visible) {
+                        Button("Neu festlegen", role: .destructive) { vm.repinSpeechVoice() }
+                        Button("Abbrechen", role: .cancel) {}
+                    } message: {
+                        Text("Die Kinder davor haben die bisherige Stimme gehört. Die neue Stimme wird in jeder weiteren Zeile als voiceId gespeichert.")
+                    }
                 Text("Sprechtempo: \(String(format: "%.2f", SpeechRate.effective()))")
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
+                // R-034: warmed at launch and at every enrolment.
+                Text(vm.recognizerStatusText)
+                    .font(.caption)
+                    .foregroundStyle(vm.recognizerAvailable == false ? Color.red : Color.inkSoft)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
@@ -266,7 +365,7 @@ struct ResearchDashboardView: View {
             Divider().padding(.vertical, 2)
             Text("Teilnehmer wiederherstellen (Nachtest)")
                 .font(.body(FontSize.md, weight: .semibold))
-            Text("Für den verzögerten Nachtest: die Teilnehmer-ID aus dem Export-Header der ersten Sitzung (`# participantId=…`) eingeben. Studienarm und geübte Buchstaben leiten sich wieder aus der ID ab; ein damals gesetzter Override muss aus dem Export erneut gesetzt werden. Wirksam nach Neustart.")
+            Text("Für den verzögerten Nachtest: die Teilnehmer-ID DIESES Kindes eingeben — aus der Zeile `# participantId=…` über seinem eigenen Block im Sammel-Export oder aus dem Einschreibungs-Block am Ende. Nicht einfach die erste Zeile der Datei: die gehört zum ältesten Kind. Nur IDs, die auf diesem Gerät archiviert oder eingeschrieben sind, werden angenommen. Das aktuelle Kind wird vorher archiviert. Studienarm und geübte Buchstaben werden so übernommen, wie sie bei der Einschreibung angewendet wurden — ein damals gesetzter Override eingeschlossen. Wirksam nach Neustart.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
             TextField("Teilnehmer-ID (UUID)", text: $restoreIDText)
@@ -280,12 +379,16 @@ struct ResearchDashboardView: View {
                     .foregroundStyle(.orange)
             }
             Button {
-                if ParticipantStore.restoreParticipant(uuidString: restoreIDText) != nil {
+                switch vm.restoreParticipant(uuidString: restoreIDText) {
+                case .restored:
                     restoreError = nil
-                    vm.markParticipantRestored()   // block tracing until the relaunch
                     showRelaunchAlert = true
-                } else {
-                    restoreError = "Keine gültige UUID — die ID steht in der ersten Zeile des CSV/JSON-Exports der ersten Sitzung."
+                case .invalidID:
+                    restoreError = "Keine gültige UUID — die ID steht in der Zeile `# participantId=…` über dem Block des Kindes im Sammel-Export."
+                case .unknownID:
+                    restoreError = "Diese ID ist auf diesem Gerät weder archiviert noch eingeschrieben — bitte die ID des Kindes im Sammel-Export prüfen. Es wurde nichts geändert."
+                case .sealFailed(let message):
+                    restoreError = message
                 }
             } label: {
                 Label("Teilnehmer wiederherstellen", systemImage: "person.crop.circle.badge.clock")
@@ -335,6 +438,17 @@ struct ResearchDashboardView: View {
             Button("OK", role: .cancel) {}
         } message: { reason in
             Text(reason)
+        }
+        .alert("Test trotzdem starten?", isPresented: Binding(
+            get: { pendingProbe != nil },
+            set: { if !$0 { pendingProbe = nil } }
+        ), presenting: pendingProbe) { probe in
+            Button("Trotzdem starten", role: .destructive) {
+                startProbe(letter: probe.letter, kind: probe.kind)
+            }
+            Button("Abbrechen", role: .cancel) {}
+        } message: { probe in
+            Text(probe.warning)
         }
     }
 
@@ -556,19 +670,27 @@ struct ResearchDashboardView: View {
         }
     }
 
+    private func startProbe(letter: String, kind: StudyProbe) {
+        if let reason = vm.startColdProbe(letter: letter, kind: kind) {
+            probeError = reason
+        } else {
+            onLeaveParentArea()
+            // Belt-and-braces: dismisses this detail column if
+            // that alone is ever sufficient. A no-op otherwise.
+            dismiss()
+        }
+    }
+
     /// One button per letter for a cold probe of `kind`; each opens the
     /// letter directly in freeWrite and leaves the parent area.
     private func probeButtons(kind: StudyProbe, letters: [String]) -> some View {
         VStack(spacing: 8) {
             ForEach(letters, id: \.self) { letter in
                 Button {
-                    if let reason = vm.startColdProbe(letter: letter, kind: kind) {
-                        probeError = reason
+                    if let warning = vm.probeWarning(letter: letter, kind: kind) {
+                        pendingProbe = PendingProbe(letter: letter, kind: kind, warning: warning)
                     } else {
-                        onLeaveParentArea()
-                        // Belt-and-braces: dismisses this detail column if
-                        // that alone is ever sufficient. A no-op otherwise.
-                        dismiss()
+                        startProbe(letter: letter, kind: kind)
                     }
                 } label: {
                     Label("\(kind.displayName) starten: \(letter)", systemImage: "pencil.and.outline")
