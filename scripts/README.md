@@ -1,6 +1,6 @@
 # scripts/
 
-Asset-generation utilities and the local Git pre-commit hook. Each
+Asset-generation utilities and CI/tooling scripts. Each
 file here is run by hand from the repo root (no part of the iOS build
 depends on these). Run order when adding a new letter is documented at
 the bottom.
@@ -213,25 +213,11 @@ are run by hand and referenced from no code.
 
 ## Git hooks
 
-### `install-hooks.sh`
-Copies `scripts/pre-commit` into `.git/hooks/pre-commit` and makes it
-executable. Run **once** after every fresh clone.
-
-```bash
-./scripts/install-hooks.sh
-```
-
-### `pre-commit`
-Pre-commit gate that runs `swift build --build-tests` and
-`swift test --parallel` whenever a `PrimaeNative/`, `PrimaeNativeTests/`
-Swift file or `Package.swift` is staged. Blocks the commit on a build
-or test failure. On non-macOS machines (claudebox) it skips with a
-notice — the Apple toolchain isn't available there; CI is the gate.
-
-Emergency bypass:
-```bash
-git commit --no-verify
-```
+There are none. `install-hooks.sh` and `pre-commit` were removed (R-113,
+audit 2026-10-13): the hook ran `swift build --build-tests` / `swift test`
+on the macOS host, but the package imports UIKit unconditionally, so it
+could never pass and every Swift commit would have needed `--no-verify`.
+Use `scripts/typecheck_package.sh` for a fast local type-check.
 
 ## Adding a new letter
 

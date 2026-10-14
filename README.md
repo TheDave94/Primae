@@ -96,12 +96,12 @@ xcodebuild test -project Primae.xcodeproj -scheme Primae \
   -configuration Debug CODE_SIGNING_ALLOWED=NO
 ```
 
-### Pre-commit hook
-A pre-commit hook gates commits on `swift build --build-tests` + `swift test --parallel`.
-After cloning, install once:
-```bash
-./scripts/install-hooks.sh
-```
+### Local type-check
+There is no pre-commit hook. The old one ran `swift build --build-tests` /
+`swift test` on the host, which cannot succeed (the package imports UIKit
+unconditionally) and would have blocked every Swift commit; it was removed
+(R-113). For a fast local check without `xcodebuild`, run
+`scripts/typecheck_package.sh` (iOS 27 simulator target, `STUDY_BUILD` on).
 
 ### CI
 Every push to `main` runs:

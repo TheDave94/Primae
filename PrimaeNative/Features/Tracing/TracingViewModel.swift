@@ -3232,18 +3232,16 @@ public final class TracingViewModel {
                 canvasSize: size, expectedLetter: expected,
                 historicalFormScores: history)
             guard let self else { return }
-            await MainActor.run {
-                guard self.recognitionTokens.isStillActive(token) else { return }
-                self.freeform.isRecognizing = false
-                self.lastRecognitionResult = result
-                if let r = result {
-                    self.progressStore.recordRecognitionSample(
-                        letter: expected, result: r)
-                    self.refreshProgressMirror()
-                }
-                self.phaseTransitions.completePostFreeWriteRecognition(
-                    score: score, result: result)
+            guard self.recognitionTokens.isStillActive(token) else { return }
+            self.freeform.isRecognizing = false
+            self.lastRecognitionResult = result
+            if let r = result {
+                self.progressStore.recordRecognitionSample(
+                    letter: expected, result: r)
+                self.refreshProgressMirror()
             }
+            self.phaseTransitions.completePostFreeWriteRecognition(
+                score: score, result: result)
         }
     }
 
@@ -3454,7 +3452,7 @@ public final class TracingViewModel {
         // overlay dismisses.
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(600))
-            await MainActor.run { self?.overlayQueue.dismiss() }
+            self?.overlayQueue.dismiss()
         }
     }
 
@@ -4852,10 +4850,8 @@ public final class TracingViewModel {
             freeform.isProbingModel = true
             Task { [weak self, letterRecognizer] in
                 let available = await letterRecognizer.isModelAvailable()
-                await MainActor.run {
-                    self?.freeform.isRecognitionModelAvailable = available
-                    self?.freeform.isProbingModel = false
-                }
+                self?.freeform.isRecognitionModelAvailable = available
+                self?.freeform.isProbingModel = false
             }
         }
         toast(subMode == .word ? "Wort schreiben" : "Freies Schreiben")
@@ -4961,37 +4957,35 @@ public final class TracingViewModel {
             let result = await letterRecognizer.recognize(
                 points: pts, canvasSize: size, expectedLetter: nil)
             guard let self else { return }
-            await MainActor.run {
-                guard self.recognitionTokens.isStillActive(token) else { return }
-                self.freeform.isRecognizing = false
-                self.freeform.hasRecognitionCompleted = true
-                self.lastRecognitionResult = result
-                if let result {
-                    self.freeform.lastFreeformFormScore = self.freeformFormAccuracy(
-                        points: pts, canvasSize: size,
-                        predictedLetter: result.predictedLetter)
-                    self.recordFreeformCompletion(result: result)
-                    // Verbal mirror of the freeform popup's headline so a
-                    // child who can't read still hears whether the model
-                    // recognised their letter. Empty string returns are
-                    // intentional silence (low confidence).
-                    // W-30: recognizer was called with expectedLetter: nil,
-                    // so result.isCorrect is always false — ChildSpeechLibrary
-                    // would never take the positive "Du hast ein X geschrieben!"
-                    // branch. In freeform mode the prediction IS the answer
-                    // (there is no wrong letter), so synthesise a corrected
-                    // result that treats the top prediction as correct.
-                    let corrected = RecognitionResult(
-                        predictedLetter: result.predictedLetter,
-                        confidence: result.confidence,
-                        topThree: result.topThree,
-                        isCorrect: true)
-                    let line = ChildSpeechLibrary.recognition(
-                        corrected, expected: result.predictedLetter)
-                    if !line.isEmpty { self.speech.speak(line) }
-                } else {
-                    self.freeform.lastFreeformFormScore = nil
-                }
+            guard self.recognitionTokens.isStillActive(token) else { return }
+            self.freeform.isRecognizing = false
+            self.freeform.hasRecognitionCompleted = true
+            self.lastRecognitionResult = result
+            if let result {
+                self.freeform.lastFreeformFormScore = self.freeformFormAccuracy(
+                    points: pts, canvasSize: size,
+                    predictedLetter: result.predictedLetter)
+                self.recordFreeformCompletion(result: result)
+                // Verbal mirror of the freeform popup's headline so a
+                // child who can't read still hears whether the model
+                // recognised their letter. Empty string returns are
+                // intentional silence (low confidence).
+                // W-30: recognizer was called with expectedLetter: nil,
+                // so result.isCorrect is always false — ChildSpeechLibrary
+                // would never take the positive "Du hast ein X geschrieben!"
+                // branch. In freeform mode the prediction IS the answer
+                // (there is no wrong letter), so synthesise a corrected
+                // result that treats the top prediction as correct.
+                let corrected = RecognitionResult(
+                    predictedLetter: result.predictedLetter,
+                    confidence: result.confidence,
+                    topThree: result.topThree,
+                    isCorrect: true)
+                let line = ChildSpeechLibrary.recognition(
+                    corrected, expected: result.predictedLetter)
+                if !line.isEmpty { self.speech.speak(line) }
+            } else {
+                self.freeform.lastFreeformFormScore = nil
             }
         }
     }
@@ -5111,19 +5105,17 @@ public final class TracingViewModel {
                 slots.append(r)
             }
             guard let self else { return }
-            await MainActor.run {
-                guard self.recognitionTokens.isStillActive(token) else { return }
-                self.freeform.isRecognizing = false
-                self.freeform.hasRecognitionCompleted = true
-                let present = slots.compactMap { $0 }
-                self.freeform.freeformWordResultSlots = slots
-                self.freeform.freeformWordResults = present
-                if let last = present.last {
-                    self.lastRecognitionResult = last
-                }
-                self.recordFreeformWordCompletion(
-                    target: target, results: present)
+            guard self.recognitionTokens.isStillActive(token) else { return }
+            self.freeform.isRecognizing = false
+            self.freeform.hasRecognitionCompleted = true
+            let present = slots.compactMap { $0 }
+            self.freeform.freeformWordResultSlots = slots
+            self.freeform.freeformWordResults = present
+            if let last = present.last {
+                self.lastRecognitionResult = last
             }
+            self.recordFreeformWordCompletion(
+                target: target, results: present)
         }
     }
 

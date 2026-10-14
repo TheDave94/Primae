@@ -17,7 +17,7 @@ import Foundation
 import CoreGraphics
 import OSLog
 
-private nonisolated(unsafe) let sessionLogger = Logger(
+private nonisolated let sessionLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
     category: "CalibrationSessionLogger")
 

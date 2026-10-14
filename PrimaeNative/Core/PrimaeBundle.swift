@@ -38,15 +38,18 @@ enum PrimaeBundle {
     /// That argument is a CFBundleIdentifier, not a filename — the real
     /// identifier is `primae.PrimaeNative.resources`, so the probe was
     /// dead in both former call sites and had been since it was written.
-    /// `nonisolated(unsafe)`: the package sets `-default-isolation
-    /// MainActor`, and `Bundle` is not `Sendable`. Written once by a pure
-    /// lookup, then only read.
-    nonisolated(unsafe) static let resources: Bundle = resolveResourceBundle()
+    /// `nonisolated`: the package sets `-default-isolation MainActor`, so
+    /// without it this static would be MainActor-isolated. `Bundle` IS
+    /// `Sendable` in the iOS 27 SDK (`NSBundle` is `NS_SWIFT_SENDABLE`,
+    /// NSBundle.h:100, in both the 27.0 and 27.2 SDKs), so no `unsafe` is
+    /// needed; an earlier comment here claiming otherwise was stale.
+    /// Written once by a pure lookup, then only read.
+    nonisolated static let resources: Bundle = resolveResourceBundle()
 
     /// The resolution itself, as a `nonisolated` function. As a
     /// `= { … }()` initialiser the closure took the package's MainActor
     /// default and the compiler rejected a main-actor default value in a
-    /// `nonisolated(unsafe)` context — measured at :44, not predicted.
+    /// `nonisolated` context — measured at :44, not predicted.
     nonisolated private static func resolveResourceBundle() -> Bundle {
         var anchors: [Bundle] = [Bundle(for: Anchor.self), .main]
         anchors.append(contentsOf: Bundle.allFrameworks)

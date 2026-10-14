@@ -117,27 +117,61 @@ XCSCHEME = ROOT / "Primae" / "Primae.xcodeproj" / "xcshareddata" / "xcschemes" /
 findings: list[tuple[pathlib.Path, str]] = []
 
 
+# The decided shape of Primae/Info.plist: (key, value element). Any other key,
+# or a changed value, fails check_info_plist().
+INFO_PLIST_EXPECTED = [
+    ("UIFileSharingEnabled", "<true/>"),
+    ("LSSupportsOpeningDocumentsInPlace", "<true/>"),
+    ("ITSAppUsesNonExemptEncryption", "<false/>"),
+]
+
+# R-112 (audit 2026-10-13). One team, everywhere: a dead project-level team
+# (XMX37BH48B, no account on the build machine) already broke two targets
+# (b1ab17a, 51f29ac5) because only per-target overrides hid it.
+EXPECTED_TEAM = "J7JH8FJK2W"
+EXPECTED_DEPLOYMENT_TARGET = "27.0"
+# IPHONEOS_DEPLOYMENT_TARGET entries in project.pbxproj (bin/toolchain.pin:
+# "all 12"). Counted, not searched: one unanchored `re.search` passed with
+# eleven of twelve reverted.
+EXPECTED_DEPLOYMENT_TARGET_COUNT = 12
+# Xcode 27.x (DTXcode 27xx). With 2640 Xcode 27 offers "Update to recommended
+# settings" and rewrites the file; a reviewed bump stops the prompt. Checked
+# by MAJOR (27xx), not exactly: an Xcode 27.3 upgrade writes 2730, and an exact
+# pin would make the pre-action autofix revert the project file over it.
+EXPECTED_UPGRADE_MARKER_MAJOR = "27"
+
+
+def upgrade_marker_ok(markers: list) -> bool:
+    return (len(markers) == 1
+            and re.fullmatch(rf"{EXPECTED_UPGRADE_MARKER_MAJOR}\d\d", markers[0]) is not None)
+# All four XCConfigurationLists default to the study configuration; "Release"
+# is the casual configuration, which cannot link (CLAUDE.md "Study builds").
+EXPECTED_DEFAULT_CONFIGURATION = "Release-Study"
+
+
 def check_info_plist() -> None:
     text = INFO_PLIST.read_text()
     # The decided shape: exactly these three keys, this value each. Not
     # "at least these" — a fourth key or a reordered/reformatted file is
     # itself a sign Xcode's plist editor touched the file (see the module
     # docstring), so the count is checked too, not just presence.
-    required = [
-        ("UIFileSharingEnabled", "<true/>"),
-        ("LSSupportsOpeningDocumentsInPlace", "<true/>"),
-        ("ITSAppUsesNonExemptEncryption", "<false/>"),
-    ]
+    required = INFO_PLIST_EXPECTED
     for key, expected in required:
         if not re.search(rf"<key>{re.escape(key)}</key>\s*{re.escape(expected)}", text):
             findings.append((INFO_PLIST, f"<key>{key}</key> {expected} missing or altered"))
-    key_count = len(re.findall(r"<key>", text))
-    if key_count != len(required):
+    # R-112 (G2-09c): the key SET is the table above, and a deviation names
+    # the key. It used to compare a bare count, which said "expected exactly
+    # 3 keys, found 4" without saying which. Changing the plist's shape on
+    # purpose is now one edit to INFO_PLIST_EXPECTED, in the same commit.
+    allowed = {k for k, _ in required}
+    present = re.findall(r"<key>([^<]*)</key>", text)
+    for key in sorted(set(present) - allowed):
         findings.append((INFO_PLIST,
-            f"expected exactly {len(required)} keys, found {key_count} — a key "
-            f"was added or removed (Xcode's plist editor rewrites the whole file "
-            f"and drops comments; this count catches that even if the specific "
-            f"keys above still happen to match)"))
+            f"unexpected key <key>{key}</key> — not in INFO_PLIST_EXPECTED "
+            f"(Xcode's plist editor rewrites the whole file and drops comments; "
+            f"a deliberate new key needs the checker table changed with it)"))
+    for key in sorted({k for k in present if present.count(k) > 1}):
+        findings.append((INFO_PLIST, f"duplicate key <key>{key}</key>"))
 
 
 # Only the Primae APP target's own build configurations carry an app icon;
@@ -168,11 +202,50 @@ def check_pbxproj() -> None:
     # device-support exclusion (a school iPad still on iOS 26.x cannot install
     # this build) is a separate decision with its own evidence — not something
     # to undo quietly here.
-    if not re.search(r"IPHONEOS_DEPLOYMENT_TARGET\s*=\s*27\.0", text):
+    targets = re.findall(r"IPHONEOS_DEPLOYMENT_TARGET\s*=\s*([^;\s]+);", text)
+    wrong = [t for t in targets if t != EXPECTED_DEPLOYMENT_TARGET]
+    if wrong or len(targets) != EXPECTED_DEPLOYMENT_TARGET_COUNT:
         findings.append((PBXPROJ,
-            "IPHONEOS_DEPLOYMENT_TARGET = 27.0 expected (pinned 2026-10-01, see "
-            "bin/toolchain.pin) but not found — this file has been silently "
-            "rewritten before; restore with git rather than re-deriving"))
+            f"IPHONEOS_DEPLOYMENT_TARGET = {EXPECTED_DEPLOYMENT_TARGET} expected in "
+            f"all {EXPECTED_DEPLOYMENT_TARGET_COUNT} entries (pinned 2026-10-01, see "
+            f"bin/toolchain.pin); found {len(targets)} entries, "
+            f"{len(wrong)} with another value {sorted(set(wrong))} — this file "
+            f"has been silently rewritten before; restore with git rather than "
+            f"re-deriving"))
+
+    # R-112 (G2-09a): every DEVELOPMENT_TEAM, project level included.
+    teams = re.findall(r"DEVELOPMENT_TEAM\s*=\s*([^;\s]+);", text)
+    foreign = sorted({t for t in teams if t != EXPECTED_TEAM})
+    if foreign:
+        findings.append((PBXPROJ,
+            f"DEVELOPMENT_TEAM must be {EXPECTED_TEAM} everywhere; found {foreign} "
+            f"— a team with no account on the build machine fails signing for "
+            f"any target that inherits it"))
+
+    # R-112 (G2-20): see EXPECTED_DEFAULT_CONFIGURATION.
+    defaults = re.findall(r"defaultConfigurationName\s*=\s*([^;\s]+);", text)
+    bad_defaults = sorted({d for d in defaults if d != EXPECTED_DEFAULT_CONFIGURATION})
+    if bad_defaults or not defaults:
+        findings.append((PBXPROJ,
+            f"defaultConfigurationName must be {EXPECTED_DEFAULT_CONFIGURATION} in "
+            f"every XCConfigurationList; found {bad_defaults or 'none'} — a bare "
+            f"xcodebuild/-showBuildSettings would resolve to a configuration "
+            f"that cannot link"))
+
+    # R-112 (G2-14): the key does nothing (the build system has no such
+    # INFOPLIST_KEY entry; fonts are registered by PrimaeFonts.registerAll())
+    # and invites the false belief that fonts are registered by plist.
+    if "INFOPLIST_KEY_UIAppFonts" in text:
+        findings.append((PBXPROJ,
+            "INFOPLIST_KEY_UIAppFonts must not exist — it is not a supported "
+            "generated key, and fonts are registered in code "
+            "(PrimaeFonts.registerAll)"))
+
+    # R-112 (G2-09d)
+    upgrade = re.findall(r"LastUpgradeCheck\s*=\s*([^;\s]+);", text)
+    if not upgrade_marker_ok(upgrade):
+        findings.append((PBXPROJ,
+            f"LastUpgradeCheck must be {EXPECTED_UPGRADE_MARKER_MAJOR}xx; found {upgrade}"))
 
     # These two keys belong in Info.plist only; Xcode's INFOPLIST_KEY_*
     # auto-generation is a second, competing encoding of the same facts
@@ -229,11 +302,22 @@ def check_scheme_wiring() -> None:
             "thing that can still see this finding"))
 
 
+def check_scheme_upgrade_markers() -> None:
+    """R-112 (G2-09d): every shared scheme carries the reviewed upgrade
+    marker (see EXPECTED_UPGRADE_MARKER_MAJOR)."""
+    for scheme in sorted(XCSCHEME.parent.glob("*.xcscheme")):
+        found = re.findall(r'LastUpgradeVersion\s*=\s*"([^"]*)"', scheme.read_text())
+        if not upgrade_marker_ok(found):
+            findings.append((scheme,
+                f"LastUpgradeVersion must be {EXPECTED_UPGRADE_MARKER_MAJOR}xx; found {found}"))
+
+
 def run_all_checks() -> None:
     findings.clear()
     check_info_plist()
     check_pbxproj()
     check_scheme_wiring()
+    check_scheme_upgrade_markers()
 
 
 def backup(path: pathlib.Path, run_dir: pathlib.Path) -> pathlib.Path:

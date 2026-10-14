@@ -2,9 +2,10 @@ import Foundation
 import os
 
 /// Disk-write logger shared by every JSON-backed store so write
-/// failures surface in OSLog. `nonisolated(unsafe)` opts out of the
-/// module-level MainActor default isolation for detached-Task use.
-nonisolated(unsafe) let storePersistenceLogger = Logger(
+/// failures surface in OSLog. `nonisolated` opts out of the
+/// module-level MainActor default isolation for detached-Task use;
+/// `os.Logger` is `Sendable`, so no `unsafe` is needed.
+nonisolated let storePersistenceLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
     category: "StorePersistence"
 )

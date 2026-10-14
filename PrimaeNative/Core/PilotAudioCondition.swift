@@ -19,9 +19,9 @@ import os
 /// Surfaces pilot-audio integrity issues (e.g. a phoneme-arm study
 /// device degrading to name audio because a letter has no phoneme
 /// recording). Logged at letter-load frequency — never on the per-tick
-/// coupling path. `nonisolated(unsafe)` matches the module's other
-/// shared loggers.
-nonisolated(unsafe) let pilotAudioLogger = Logger(
+/// coupling path. `nonisolated` matches the module's other
+/// shared loggers (`os.Logger` is `Sendable`).
+nonisolated let pilotAudioLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
     category: "PilotAudio"
 )

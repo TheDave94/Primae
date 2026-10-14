@@ -31,39 +31,139 @@
 #
 # This script:
 #   1. refuses to build from anything but a clean, fully-committed tree
-#   2. finds the connected iPad itself — no UDID to copy/paste, no
-#      placeholder to fill in
+#      (and reports whether HEAD is reachable from origin/main)
+#   2. finds the connected iPad itself via `devicectl list devices
+#      --json-output` — no UDID to copy/paste, no placeholder to fill in
 #   3. builds the pilot artefact (Release-Study, -O, code-signed)
 #   4. verifies the build identity BEFORE installing (the only reliable
-#      proof of which binary you're holding — CLAUDE.md "Study builds")
-#   5. installs it
-#   6. prints exactly which commit is now on the device
+#      proof of which binary you're holding — CLAUDE.md "Study builds"),
+#      checks the toolchain major against bin/toolchain.pin and records the
+#      exact Xcode build and the binary's sha256
+#   5. UNINSTALLS the previous install (behind an explicit confirmation —
+#      it destroys every unexported child's data on the device), re-verifies
+#      the sha256, then installs, then prints exactly which commit is now
+#      on the device
 #
-# That printout is the provenance record for the listen. Any earlier
-# install is superseded the moment this script succeeds.
+# That printout is the provenance record for the listen.
 #
-# RUN THIS FROM YOUR OWN TERMINAL. Claude Code's sandboxed seat cannot
-# reach device discovery at all — `xcrun devicectl` times out waiting on
-# CoreDeviceService, `xcrun xctrace` hits a cache-permission error before
-# it can even try. Steps 3-5 below (the build/verify/install machinery)
-# reuse scripts/build_study.sh and the nm-nm identity check verbatim from
-# the documented, previously-run-by-hand pilot procedure (CLAUDE.md
-# "Study builds"). Step 2 (device discovery) is new and has NOT been run
-# against a real device from any seat — its parsing logic was tested here
-# against a hand-built sample matching `xcrun xctrace list devices`'
-# documented output shape, not against this machine's real output, which
-# this sandbox cannot produce. If it prints "could not parse device
-# listing" below, paste the raw output it dumps back and it gets fixed in
-# one pass, not re-derived from scratch.
+# WHY THE UNINSTALL (R-058, audit 2026-10-13). An over-install preserves the
+# app container — UserDefaults, Application Support/PrimaeNative progress,
+# enrolment and archive — so participant IDs, arm assignment and archived
+# children from an earlier (dry-run) install would ride into the pilot while
+# the old record claimed the earlier install was void. CLAUDE.md's clean-slate
+# sequence is uninstall, re-verify sha256 + nm, reinstall; this script now
+# does exactly that. EXPORT FIRST: nothing is recoverable after the uninstall.
+# Confirmation: type the bundle identifier at the prompt, or set
+# PRIMAE_CONFIRM_WIPE to the bundle identifier for a non-interactive run.
+# --first-install skips the uninstall (nothing is installed yet); it is an
+# explicit statement by the operator, never inferred.
 #
-# Usage: scripts/deploy_verified_pilot_build.sh
+# STEP 2 HISTORY (R-058). Device discovery used to pipe `xctrace list
+# devices` into `python3 - <<'PY'`; with a pipe AND a here-document the
+# here-document wins stdin, so the listing was discarded and the script could
+# never find an iPad. Parsing now lives in scripts/pilot_find_ipad.py, which
+# takes the JSON file path as an argument. The JSON schema in it is written
+# from devicectl's documented shape, NOT from a capture of the study iPad:
+# if step 2 reports NONE with a device attached, the raw JSON is dumped for
+# a one-line fix. scripts/test_deploy_verified_pilot_build.sh reproduces the
+# stdin defect and pins the selection rules against stub devicectl output.
+#
+# RUN THIS FROM YOUR OWN TERMINAL (a sandboxed seat cannot reach device
+# discovery reliably). Steps 3-4 reuse scripts/build_study.sh and the nm
+# identity check from the documented pilot procedure (CLAUDE.md "Study builds").
+#
+# Usage:
+#   scripts/deploy_verified_pilot_build.sh                 full run
+#   scripts/deploy_verified_pilot_build.sh --first-install no uninstall step
+#   scripts/deploy_verified_pilot_build.sh --find-device-only
+#                                   step 2 only; prints the UDID and exits
+#   scripts/deploy_verified_pilot_build.sh --confirm-wipe-only
+#                                   the confirmation gate only (testing)
+# Env:
+#   PRIMAE_DEVICECTL       devicectl command (default: xcrun devicectl)
+#   PRIMAE_CONFIRM_WIPE    the bundle identifier, to confirm the uninstall
 # Requires: unlocked, connected iPad, and only that one iOS device
 # attached; -allowProvisioningUpdates signing (matches the documented
 # pilot-artefact procedure).
 set -eu
 
+BUNDLE_ID=com.flamingistan.primae.study
+DEVICECTL="${PRIMAE_DEVICECTL:-xcrun devicectl}"
+
+FIRST_INSTALL=0
+MODE=full
+for arg in "$@"; do
+    case "$arg" in
+        --first-install) FIRST_INSTALL=1 ;;
+        --find-device-only) MODE=find ;;
+        --confirm-wipe-only) MODE=confirm ;;
+        *) echo "FATAL: unknown argument '$arg' (see header for usage)" >&2; exit 2 ;;
+    esac
+done
+
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$ROOT"
+
+# The wipe gate. Returns 0 only when the operator has named the bundle id,
+# either via PRIMAE_CONFIRM_WIPE or by typing it at a terminal.
+confirm_wipe() {
+    echo "This UNINSTALLS $BUNDLE_ID from the device. Everything in its container"
+    echo "(progress, enrolment, ParticipantArchive) is destroyed. Export first."
+    if [ "${PRIMAE_CONFIRM_WIPE:-}" = "$BUNDLE_ID" ]; then
+        echo "ok — PRIMAE_CONFIRM_WIPE matches; proceeding"
+        return 0
+    fi
+    if [ -t 0 ]; then
+        printf 'Type the bundle identifier (%s) to confirm: ' "$BUNDLE_ID"
+        read -r typed || typed=""
+        if [ "$typed" = "$BUNDLE_ID" ]; then
+            return 0
+        fi
+        echo "FATAL: confirmation did not match; nothing was uninstalled." >&2
+        return 1
+    fi
+    echo "FATAL: no terminal and PRIMAE_CONFIRM_WIPE is not set to $BUNDLE_ID;" >&2
+    echo "nothing was uninstalled." >&2
+    return 1
+}
+
+# Sets UDID, or prints a diagnosis and returns 1.
+find_device() {
+    DEVLIST=$(mktemp "${TMPDIR:-/tmp}/primae-devicectl-list.XXXXXX")
+    # DEVICECTL is deliberately unquoted: it is a command with arguments.
+    if ! $DEVICECTL list devices --json-output "$DEVLIST" >/dev/null 2>&1; then
+        echo "FATAL: '$DEVICECTL list devices --json-output' failed." >&2
+        rm -f "$DEVLIST"
+        return 1
+    fi
+    rc=0
+    UDID=$(python3 -I "$ROOT/scripts/pilot_find_ipad.py" "$DEVLIST") || rc=$?
+    if [ "$rc" -ne 0 ]; then
+        echo "FATAL: could not identify exactly one connected iPad (exit $rc)." >&2
+        echo "" >&2
+        echo "Raw devicectl JSON, for diagnosis:" >&2
+        cat "$DEVLIST" >&2
+        echo "" >&2
+        echo "Connect and unlock the target iPad, with no other iPad attached," >&2
+        echo "and re-run. If the JSON above shows the iPad and this still" >&2
+        echo "failed, scripts/pilot_find_ipad.py needs a one-line fix." >&2
+        rm -f "$DEVLIST"
+        return 1
+    fi
+    rm -f "$DEVLIST"
+    return 0
+}
+
+if [ "$MODE" = confirm ]; then
+    confirm_wipe
+    exit $?
+fi
+
+if [ "$MODE" = find ]; then
+    find_device || exit 1
+    echo "$UDID"
+    exit 0
+fi
 
 echo "=== 1/5 verifying the source tree is clean and committed ==="
 DIRTY=$(git status --porcelain)
@@ -79,60 +179,18 @@ COMMIT_SHA=$(git rev-parse HEAD)
 COMMIT_SHORT=$(git rev-parse --short HEAD)
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 echo "ok — clean tree at $COMMIT_SHORT ($BRANCH)"
+if git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+    ON_ORIGIN_MAIN=yes
+    echo "ok — HEAD is reachable from origin/main"
+else
+    ON_ORIGIN_MAIN="NO (WARNING: this commit may exist nowhere but this clone, or origin/main is stale; git fetch)"
+    echo "WARNING: HEAD is NOT reachable from origin/main (or origin/main is not fetched)." >&2
+    echo "The installed binary would be attributed to a commit others may not be able to see." >&2
+fi
 
 echo ""
 echo "=== 2/5 finding the connected iPad ==="
-RAW_DEVICES=$(xcrun xctrace list devices 2>&1 || true)
-UDID=$(printf '%s\n' "$RAW_DEVICES" | python3 - <<'PY'
-import re, sys
-
-UDID_RE = re.compile(r"\(([0-9A-Fa-f]{8}-[0-9A-Fa-f]{16}|[0-9A-Fa-f]{40})\)\s*$")
-
-def find_candidates(raw: str):
-    in_devices = False
-    candidates = []
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if stripped == "== Devices ==":
-            in_devices = True
-            continue
-        if stripped.startswith("=="):
-            in_devices = False
-            continue
-        if not in_devices or not stripped:
-            continue
-        if stripped.startswith("My Mac"):
-            continue
-        m = UDID_RE.search(stripped)
-        if m:
-            candidates.append((m.group(1), stripped))
-    return candidates
-
-raw = sys.stdin.read()
-candidates = find_candidates(raw)
-if len(candidates) == 0:
-    print("NONE", file=sys.stderr)
-    sys.exit(1)
-if len(candidates) > 1:
-    print("AMBIGUOUS", file=sys.stderr)
-    for udid, line in candidates:
-        print(f"  {line}", file=sys.stderr)
-    sys.exit(1)
-print(candidates[0][0])
-PY
-) || {
-    rc=$?
-    echo "FATAL: could not identify exactly one connected iPad (exit $rc)." >&2
-    echo "" >&2
-    echo "Raw 'xcrun xctrace list devices' output, for diagnosis:" >&2
-    echo "$RAW_DEVICES" >&2
-    echo "" >&2
-    echo "If nothing above looks wrong: connect and unlock the target" >&2
-    echo "iPad, with no other iOS device attached, and re-run. If the" >&2
-    echo "output above looks reasonable but this still failed, paste it" >&2
-    echo "back — the parser needs a one-line fix, not a re-derivation." >&2
-    exit 1
-}
+find_device || exit 1
 echo "ok — found device UDID: $UDID"
 
 echo ""
@@ -160,20 +218,47 @@ if [ -z "$IDENTITY" ]; then
     exit 1
 fi
 echo "ok — _primae_build_identity_study confirmed present"
+TOOLCHAIN=$("$ROOT/scripts/check_toolchain_pin.sh" "$APP") || {
+    echo "$TOOLCHAIN" >&2
+    echo "FATAL: toolchain check failed; refusing to install." >&2
+    exit 1
+}
+echo "$TOOLCHAIN"
+SHA_BEFORE=$(shasum -a 256 "$APP/Primae" | cut -d' ' -f1)
+echo "ok — binary sha256 $SHA_BEFORE"
 
 echo ""
-echo "=== 5/5 installing ==="
-xcrun devicectl device install app --device "$UDID" "$APP"
+echo "=== 5/5 clean-slate install ==="
+if [ "$FIRST_INSTALL" -eq 1 ]; then
+    echo "--first-install given: skipping uninstall (operator states nothing is installed)"
+    UNINSTALLED="skipped (--first-install)"
+else
+    confirm_wipe || exit 1
+    $DEVICECTL device uninstall app --device "$UDID" "$BUNDLE_ID" || {
+        echo "FATAL: uninstall failed. If nothing is installed yet, re-run with --first-install." >&2
+        exit 1
+    }
+    UNINSTALLED=yes
+fi
+SHA_AFTER=$(shasum -a 256 "$APP/Primae" | cut -d' ' -f1)
+if [ "$SHA_BEFORE" != "$SHA_AFTER" ]; then
+    echo "FATAL: the binary changed between verification and install ($SHA_BEFORE -> $SHA_AFTER)." >&2
+    exit 1
+fi
+$DEVICECTL device install app --device "$UDID" "$APP"
 
 echo ""
 echo "================================================================"
 echo " INSTALLED — provenance record for the listen"
 echo "================================================================"
-echo " commit:     $COMMIT_SHA"
-echo " branch:     $BRANCH"
-echo " device:     $UDID"
-echo " identity:   _primae_build_identity_study (verified before install)"
-echo " installed:  $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo " commit:         $COMMIT_SHA"
+echo " branch:         $BRANCH"
+echo " on origin/main: $ON_ORIGIN_MAIN"
+echo " device:         $UDID"
+echo " identity:       _primae_build_identity_study (verified before install)"
+echo " binary sha256:  $SHA_AFTER"
+echo " uninstalled:    $UNINSTALLED"
+echo " installed:      $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo " toolchain:"
+echo "$TOOLCHAIN" | sed 's/^/   /'
 echo "================================================================"
-echo ""
-echo "Any earlier install on this device is superseded — treat it as void."

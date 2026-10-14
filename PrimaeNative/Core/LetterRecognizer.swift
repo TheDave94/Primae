@@ -111,7 +111,7 @@ extension LetterRecognizerProtocol {
 
 // MARK: - CoreML-backed recognizer
 
-private nonisolated(unsafe) let recognizerLogger = Logger(
+private nonisolated let recognizerLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
     category: "LetterRecognizer"
 )

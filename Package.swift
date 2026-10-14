@@ -48,7 +48,10 @@ let package = Package(
             resources: [.copy("Resources"), .process("MLResources")],
             swiftSettings: [
                 .defaultIsolation(MainActor.self),
-                .enableUpcomingFeature("InferSendableFromCaptures"),
+                // `InferSendableFromCaptures` was enabled here until R-101
+                // (audit 2026-10-13): the target builds in Swift 6 language
+                // mode, which already enables it, and the compiler warned
+                // "already enabled as of the Swift 6 language mode".
                 // STUDY_BUILD unconditionally on (2026-09-14): the pilot is
                 // the only thing this app runs now (CLAUDE.md, "the casual
                 // path is paused"), so there is exactly one configuration
@@ -79,6 +82,13 @@ let package = Package(
                 // with the inferred @MainActor isolation. Minimal concurrency checking
                 // in the test target avoids this without affecting production code.
                 .swiftLanguageMode(.v5),
+                // Same default isolation as the PrimaeNative target and as the
+                // Xcode project's PrimaeNativeTests target (which sets
+                // SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor over these same
+                // sources, and is the one CI builds). Without it the
+                // package-built test target compiled the same files under a
+                // different isolation regime than CI does (G2-10).
+                .defaultIsolation(MainActor.self),
                 // Must match the PrimaeNative target above: `#if STUDY_BUILD`
                 // inside a test file is evaluated against THIS target's own
                 // flags, not inherited from the module it imports. Without

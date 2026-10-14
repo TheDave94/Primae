@@ -71,6 +71,10 @@ esac
 echo "build_study.sh: action=$ACTION configuration=$CONFIGURATION signing=$SIGNING"
 echo "build_study.sh: destination=$DESTINATION"
 echo "build_study.sh: xcodebuild=$(xcodebuild -version | tr '\n' ' ')"
+# R-114: bin/toolchain.pin is READ, not just documented. Refuses to build with
+# an Xcode whose major differs from the pin (the exact build is printed above;
+# the built app's DTXcodeBuild is recorded by check_toolchain_pin.sh APP).
+"$ROOT/scripts/check_toolchain_pin.sh" || exit 1
 
 # No SWIFT_ACTIVE_COMPILATION_CONDITIONS override here (removed
 # 2026-09-14) — STUDY_BUILD is unconditional in Package.swift now, so

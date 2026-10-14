@@ -32,6 +32,25 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # R-109: floor for the Swift Testing "Test run with N tests" count that
+  # scripts/check_test_count.sh enforces after each PrimaeNativeTests run.
+  # A FLOOR below the current count (measured at R-109, see the commit message), not an expectation: raise
+  # it when the suite grows for good; an honest removal does not need a CI edit.
+  PRIMAE_MIN_SWIFT_TESTING_TESTS: "1000"
+
+# R-110: least privilege. Every job only checks out the repo and uploads
+# artefacts (upload-artifact uses the runtime token, not GITHUB_TOKEN), so
+# read-only contents is enough. No job reads a secret.
+permissions:
+  contents: read
+
+# R-111: one live run per branch. A newer push cancels the superseded run on
+# feature branches (never on main, so a main run always finishes). Keyed on
+# head_ref/ref_name so a push run and a pull_request run for the same branch
+# share a group instead of both burning a macOS runner.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # ---------------------------------------------------------------------
 # FOUR-LAYER SPLIT (2026-09-15). CI's job here is not "prove the app works
@@ -63,8 +82,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.12"
       - name: Install scikit-image / pillow / numpy / fonttools
@@ -128,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       # Zero Xcode/simulator dependency by design — this is the fast half
       # of Layer 2, complementing (not replacing) study_build's slower
       # nm-based identity scan and PrimaeNativeTests/ResourceResolutionTests
@@ -196,7 +215,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       # This is the CI half of scripts/check_project_invariants.py — the
       # other half is the Primae scheme's own Pre-actions build script
       # (Primae.xcscheme), which fails a local Xcode build the moment the
@@ -208,12 +227,17 @@ jobs:
       - name: "Info.plist / project.pbxproj invariants"
         run: python3 scripts/check_project_invariants.py
 
+      # R-112: the checks above are only as good as their ability to fail.
+      # Each case mutates ONE setting in a temp copy and requires a finding.
+      - name: "Invariant checker tests (one mutation each)"
+        run: python3 -m unittest discover -s scripts/tests -p test_check_project_invariants_checks.py -v
+
   unwired_guards:
     name: "Unwired-guard gate (xcode-27)"
     runs-on: xcode-27
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # macos, not ubuntu, and that is load-bearing. The gate PROBES each
       # --self-test by running it, so every probed script must be able to
@@ -227,8 +251,8 @@ jobs:
       # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
       # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
       # toolchain twice, by two names that could disagree.
-      - name: Report toolchain version
-        run: xcodebuild -version
+      - name: Report toolchain version + verify bin/toolchain.pin major
+        run: sh scripts/check_toolchain_pin.sh
 
       # FIRST, prove the gate can fail. A scan trusted before its own
       # self-test has run is a scan whose CLEAN means nothing — and this
@@ -241,6 +265,14 @@ jobs:
       # gate reports nothing it does not also fail on.
       - name: "Scan for guards that assert nothing"
         run: sh scripts/check_unwired_guards.sh
+
+      # R-058 / R-109 / R-114: shell tests for the deploy script's device
+      # discovery + wipe gate, the toolchain-pin check and the test-count
+      # floor. They need plutil (macOS), which is why they live in this job.
+      - name: "Shell script tests (stub devicectl / xcodebuild, canned logs)"
+        run: |
+          sh scripts/test_deploy_verified_pilot_build.sh
+          sh scripts/test_check_test_count.sh
 
   xcode_test:
     name: "Build & Test — ${{ matrix.simulator }} (xcode-27)"
@@ -270,20 +302,18 @@ jobs:
     # without re-measuring the whole job, not just the suite.
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
       # `xcode-27` runner label IS the pin — it ran macOS 26 before
       # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
       # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
       # toolchain twice, by two names that could disagree.
-      - name: Report toolchain version
-        run: xcodebuild -version
+      - name: Report toolchain version + verify bin/toolchain.pin major
+        run: sh scripts/check_toolchain_pin.sh
 
-      - name: Show Xcode + Swift version
-        run: |
-          xcodebuild -version
-          swift --version
+      - name: Show Swift version
+        run: swift --version
 
       - name: List available iPad simulators
         run: xcrun simctl list devices available | grep -i ipad
@@ -332,13 +362,22 @@ jobs:
             -resultBundlePath /tmp/TestResults.xcresult \
             2>&1 | tee /tmp/xcode-test.log
 
+      # R-109: xcodebuild's exit status cannot tell an empty run from a full
+      # one (an -only-testing filter that matches nothing reports success).
+      - name: Executed-test floor
+        run: sh scripts/check_test_count.sh /tmp/xcode-test.log "$PRIMAE_MIN_SWIFT_TESTING_TESTS"
+
       - name: Extract failure summary
         if: failure()
         run: |
           ERRORS=$(grep -E "error:|#expect.*failed|XCTAssert.*failed|Test.*FAILED" \
             /tmp/xcode-test.log 2>/dev/null \
-            | grep -v "^Binary" | head -15 \
-            || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+            | grep -v "^Binary" | head -15 || true)
+          # The old `|| echo "See run: ..."` could never fire: a pipeline's
+          # status is its LAST command's (`head`), which succeeds on no input.
+          if [ -z "$ERRORS" ]; then
+            ERRORS="See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
           printf '%s' "$ERRORS" > /tmp/ci_errors.txt
           cat /tmp/ci_errors.txt
 
@@ -347,7 +386,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: xcode-test-results-${{ strategy.job-index }}
           if-no-files-found: warn
@@ -383,20 +422,18 @@ jobs:
     # twice, not two unrelated flakes.
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
       # `xcode-27` runner label IS the pin — it ran macOS 26 before
       # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
       # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
       # toolchain twice, by two names that could disagree.
-      - name: Report toolchain version
-        run: xcodebuild -version
+      - name: Report toolchain version + verify bin/toolchain.pin major
+        run: sh scripts/check_toolchain_pin.sh
 
-      - name: Show Xcode + Swift version
-        run: |
-          xcodebuild -version
-          swift --version
+      - name: Show Swift version
+        run: swift --version
 
       - name: Resolve Swift Package dependencies
         run: |
@@ -420,13 +457,20 @@ jobs:
             -resultBundlePath /tmp/ReleaseStudyResults.xcresult \
             2>&1 | tee /tmp/release-study-test.log
 
+      - name: Executed-test floor
+        run: sh scripts/check_test_count.sh /tmp/release-study-test.log "$PRIMAE_MIN_SWIFT_TESTING_TESTS"
+
       - name: Extract failure summary
         if: failure()
         run: |
           ERRORS=$(grep -E "error:|#expect.*failed|XCTAssert.*failed|Test.*FAILED" \
             /tmp/release-study-test.log 2>/dev/null \
-            | grep -v "^Binary" | head -15 \
-            || echo "See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}")
+            | grep -v "^Binary" | head -15 || true)
+          # The old `|| echo "See run: ..."` could never fire: a pipeline's
+          # status is its LAST command's (`head`), which succeeds on no input.
+          if [ -z "$ERRORS" ]; then
+            ERRORS="See run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
           printf '%s' "$ERRORS" > /tmp/ci_errors.txt
           cat /tmp/ci_errors.txt
 
@@ -435,15 +479,15 @@ jobs:
     runs-on: xcode-27
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       # Toolchain: pinned by bin/toolchain.pin (ROADMAP F11). The
       # `xcode-27` runner label IS the pin — it ran macOS 26 before
       # 2026-09-10 and macOS 27 after, so do NOT reintroduce a
       # `macos-26` + /Applications/Xcode_26.4.app pair: that named the
       # toolchain twice, by two names that could disagree.
-      - name: Report toolchain version
-        run: xcodebuild -version
+      - name: Report toolchain version + verify bin/toolchain.pin major
+        run: sh scripts/check_toolchain_pin.sh
 
       - name: Resolve Swift Package dependencies
         run: |
@@ -551,26 +595,14 @@ jobs:
             exit 1
           fi
 
-      # -only-testing:PrimaeNativeTests (2026-09-15): this step runs the
-      # FULL scheme via build_study.sh, so it inherited the same
-      # PrimaeUITests-on-simulator flake the xcode_test job's narrowing
-      # (Layer 3, this file's top-of-file comment) already fixed there but
-      # not here — caught live when this exact flake (StudyDryRunUITests.
-      # testEnrolmentProbeCompletionSecondEnrolmentExport, share-sheet
-      # dismissal timing) failed THIS step on a build unrelated to it.
-      # Scoping here too for the same reason: this step exists to prove
-      # the study build's OWN logic, not to re-litigate a simulator UI
-      # test that Layer 4 (scripts/run_device_uitests.sh) exists
-      # specifically because simulator UI-test results aren't trustworthy.
-      - name: "Build & test the study build"
-        run: |
-          set -o pipefail
-          PRIMAE_DESTINATION='platform=iOS Simulator,name=iPad (A16),OS=latest' \
-          PRIMAE_DERIVED_DATA=/tmp/dd-study \
-            scripts/build_study.sh test \
-              -enableCodeCoverage NO \
-              -only-testing:PrimaeNativeTests \
-              2>&1 | tee /tmp/study-test.log | tail -20
+      # (R-111) The "Build & test the study build" step that stood here ran
+      # `build_study.sh test` on Debug-Study / iPad (A16) with
+      # -only-testing:PrimaeNativeTests, which is byte-for-byte what the
+      # second `xcode_test` matrix entry already runs, so every push executed
+      # the suite four times. It is removed; the suite still runs in
+      # xcode_test (Debug-Study, two simulators) and release_study_tests
+      # (Release-Study, -O). build_study.sh's `build` action is still
+      # exercised by the two scan builds below.
 
       # The artefact that gets SCANNED must be built the same way as the
       # one it is compared against. The `test` action above produced an
@@ -615,7 +647,13 @@ jobs:
       # sibling Mach-O (ENABLE_DEBUG_DYLIB, embedded frameworks), and
       # `nm` on a stub reports absence exactly like a missing symbol.
       # ---------------------------------------------------------------
-      - name: "Build identity — nm scan over the study bundle"
+      # R-108 (audit G2-04): the scan runs over BOTH built configurations.
+      # It used to read only Debug-Study, where `#if DEBUG` surfaces are
+      # compiled IN, so a DEBUG-gated leak into the pilot artefact (and the
+      # plist the proctor actually ships) could never be seen. The loop below
+      # is NOT re-indented, so that this diff stays reviewable; every check in
+      # it applies to whichever configuration `$CFG` names.
+      - name: "Build identity — nm scan over the study bundles (Debug-Study + Release-Study)"
         run: |
           {
           rc=0
@@ -625,6 +663,18 @@ jobs:
             [ -z "$hit" ] && hit=$(find "$1" -maxdepth 6 -type d -path "$2" 2>/dev/null | head -1)
             FOUND="$hit"
           }
+
+          # R-108: capture nm to a FILE and grep that, rather than
+          # `nm | grep -q`. This step runs `bash -e` WITHOUT pipefail (no
+          # `shell:` key, see the skeleton-audit comment above), so the old
+          # pipeline form was not wrong here. Under `-o pipefail`, though, it
+          # is a race (grep -q exits at the first match, nm dies of SIGPIPE,
+          # the pipeline reads as failed - reproduced locally with llvm-nm), and
+          # that is exactly the false red the scheme-run step hit on
+          # 2026-09-15 and fixed the same way. Reading from a file keeps this
+          # step correct if pipefail is ever turned on.
+          NMTMP=$(mktemp "${TMPDIR:-/tmp}/nm-scan.XXXXXX")
+          nm_to_file() { nm -jU "$1" > "$NMTMP" 2>/dev/null || true; }
 
           machos() { # $1=bundle -> every Mach-O file inside it
             find "$1" -type f 2>/dev/null | while read -r f; do
@@ -656,9 +706,17 @@ jobs:
             return 0
           }
 
-          locate_app /tmp/dd-study-scan '*/Debug-Study-*/Primae.app'; STUDY="$FOUND"
+          for CFG in Debug-Study Release-Study; do
+          if [ "$CFG" = Debug-Study ]; then DD=/tmp/dd-study-scan; else DD=/tmp/dd-release-study; fi
+          echo ""
+          echo "=================== $CFG ($DD) ==================="
+          locate_app "$DD" "*/$CFG-*/Primae.app"; STUDY="$FOUND"
 
-          describe study "$STUDY" /tmp/dd-study-scan '*/Debug-Study-*/Primae.app' || rc=1
+          describe "study ($CFG)" "$STUDY" "$DD" "*/$CFG-*/Primae.app" || rc=1
+          if [ -n "$STUDY" ]; then
+            # R-114: record the exact toolchain next to the artefact it built.
+            sh scripts/check_toolchain_pin.sh "$STUDY" || rc=1
+          fi
 
           # -------------------------------------------------------------
           # Plausibility floor, replacing the old study-vs-normal ratio
@@ -671,7 +729,7 @@ jobs:
           # -------------------------------------------------------------
           if [ -n "$STUDY" ]; then
             SS=$(bundle_syms "$STUDY")
-            echo "study defined symbols: $SS"
+            echo "study ($CFG) defined symbols: $SS"
             if [ "$SS" -lt 5000 ]; then
               echo "FAIL  IMPLAUSIBLY FEW SYMBOLS ($SS) — looks like a launcher stub"
               echo "      (real code in a sibling Mach-O) rather than the full app."
@@ -687,7 +745,8 @@ jobs:
           # -------------------------------------------------------------
           identity_hits() { # $1=bundle $2=half -> "file" lines carrying that identity
             machos "$1" | while read -r f; do
-              if nm -jU "$f" 2>/dev/null | grep -qx "_primae_build_identity_$2"; then echo "$f"; fi
+              nm_to_file "$f"
+              if grep -qx "_primae_build_identity_$2" "$NMTMP"; then echo "$f"; fi
             done
           }
 
@@ -710,10 +769,10 @@ jobs:
               rc=1
             fi
           }
-          check study "$STUDY" study normal
+          check "study ($CFG)" "$STUDY" study normal
 
           if [ $rc -eq 0 ]; then
-            echo "Build identity OK — study bundle carries exactly its own."
+            echo "Build identity OK so far — $CFG bundle carries exactly its own."
           fi
 
           # -------------------------------------------------------------
@@ -726,7 +785,8 @@ jobs:
           # -------------------------------------------------------------
           sym_in_bundle() { # $1=bundle $2=pattern -> files whose symbols match
             machos "$1" | while read -r f; do
-              if nm -jU "$f" 2>/dev/null | grep -q "$2"; then echo "$f"; fi
+              nm_to_file "$f"
+              if grep -q "$2" "$NMTMP"; then echo "$f"; fi
             done
           }
 
@@ -751,11 +811,47 @@ jobs:
             for sym in $SURFACES; do
               in_study=$(sym_in_bundle "$STUDY" "$sym")
               if [ -n "$in_study" ]; then
-                echo "FAIL  $sym is still IN the study bundle:"
+                echo "FAIL  $sym is still IN the study ($CFG) bundle:"
                 echo "$in_study" | sed 's/^/        /'
                 rc=1
               else
-                echo "ok    $sym absent from study"
+                echo "ok    $sym absent from study ($CFG)"
+              fi
+            done
+
+            # R-108: members that exist ONLY under `#if DEBUG`. They must be
+            # PRESENT in Debug-Study (otherwise the name was renamed and the
+            # Release-Study absence check below is vacuous) and ABSENT from
+            # Release-Study (a DEBUG surface shipped in the pilot artefact).
+            # Each name sits inside an `#if DEBUG` block (AudioEngine.swift:86-93,
+            # TracingViewModel.swift:3261) and was checked present in a
+            # Debug-Study and absent from a Release-Study build.
+            # `debugAudioSignalSummary` is NOT here: it is compiled in both
+            # configurations and only the optimiser strips it from Release.
+            # `debugActivePathCount` and
+            # `awaitPlaybackDebounce` are deliberately NOT here: they are
+            # compiled in both configurations (6473b17e).
+            DEBUG_ONLY="debugShouldResumePlayback
+                        debugInterruptionResumeGateRequired
+                        thesisConditionRawName
+                        debugAppIsForeground"
+            for sym in $DEBUG_ONLY; do
+              hit=$(sym_in_bundle "$STUDY" "$sym")
+              if [ "$CFG" = Debug-Study ]; then
+                if [ -z "$hit" ]; then
+                  echo "FAIL  DEBUG-only $sym is MISSING from Debug-Study — renamed? the Release-Study absence check would be vacuous"
+                  rc=1
+                else
+                  echo "ok    DEBUG-only $sym present in Debug-Study (guard is not vacuous)"
+                fi
+              else
+                if [ -n "$hit" ]; then
+                  echo "FAIL  DEBUG-only $sym is IN the Release-Study bundle:"
+                  echo "$hit" | sed 's/^/        /'
+                  rc=1
+                else
+                  echo "ok    DEBUG-only $sym absent from Release-Study"
+                fi
               fi
             done
           fi
@@ -825,21 +921,21 @@ jobs:
             fi
           fi
 
+          done
+
           echo "SCAN_RESULT=$rc"
           } 2>&1 | tee /tmp/identity-scan.log
           grep -qx 'SCAN_RESULT=0' /tmp/identity-scan.log
 
       - name: Upload study build logs
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: study-build-logs
           if-no-files-found: warn
           path: |
-            /tmp/guard-a.log
             /tmp/scheme-run-build.log
             /tmp/scheme-run-nm.txt
-            /tmp/study-test.log
             /tmp/study-scan-build.log
             /tmp/release-study-build.log
             /tmp/identity-scan.log

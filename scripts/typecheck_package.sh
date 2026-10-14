@@ -19,6 +19,13 @@
 #   3. Unknown arguments were silently ignored — `--self-test` ran an
 #      ordinary check and reported CLEAN. Fixed: unknown args exit 3.
 #
+# TARGET MUST MATCH THE PACKAGE (R-113, audit 2026-10-13). Package.swift
+# defines STUDY_BUILD unconditionally and targets iOS 27.0; this script used
+# to pass neither (`-target ...ios26.0` and no `-D STUDY_BUILD`), so it
+# type-checked the `#if !STUDY_BUILD` branches the pilot never compiles and
+# skipped the `#if STUDY_BUILD` ones it does. Keep the -target / -D flags in
+# compile() in step with Package.swift.
+#
 # SCOPE LIMIT — READ BEFORE TRUSTING A CLEAN. Checks the PACKAGE target
 # only, never PrimaeNativeTests. Covering tests needs `-emit-module`, which
 # collapses the macro plugin server where -typecheck survives. Three
@@ -67,8 +74,8 @@ compile() {
 $(find PrimaeNative -name '*.swift' | sort)
 EOF
   xcrun swiftc -typecheck \
-    -sdk "$SDK" -target arm64-apple-ios26.0-simulator \
-    -swift-version 6 -default-isolation MainActor \
+    -sdk "$SDK" -target arm64-apple-ios27.0-simulator \
+    -swift-version 6 -default-isolation MainActor -D STUDY_BUILD \
     -module-name PrimaeNative -module-cache-path "$cache" \
     -external-plugin-path "$TOOLCHAIN/lib/swift/host/plugins#$TOOLCHAIN/bin/swift-plugin-server" \
     -external-plugin-path "$IOSPLAT/lib/swift/host/plugins#$IOSPLAT/bin/swift-plugin-server" \
