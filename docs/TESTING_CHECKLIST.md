@@ -234,10 +234,12 @@ line numbers — line numbers drift, names don't.
 - [ ] **Studienteilnahme (A/B-Arm)** toggle. When on, **Studienarm überschreiben** picker appears with Automatisch / threePhase / guidedOnly / control.
 - [ ] **Kurze Einführung** toggle.
 - [ ] **Einführung wiederholen** button.
+  - Correction 2026-10-14: both live in `Section("Hilfe")` inside `#if !STUDY_BUILD` (`SettingsView.swift:443-468`). `STUDY_BUILD` is unconditional, so neither is present in any build; skip these two items.
 
 ### 7.4 · Datenexport
 
 - [ ] **CSV exportieren / TSV exportieren / JSON exportieren** buttons each open the iOS share sheet with a file named `primae_progress_<YYYY-MM-DD>.<ext>`.
+  - Correction 2026-10-14: these three buttons (`ParentAreaView.swift:144-154`) write the combined export of every child on the iPad, named `primae_progress_ALL_<YYYY-MM-DD>_<HHmmss>_all<N>.<ext>` (`ParentDashboardExporter.swift:831-841`), N = distinct children with data. The per-child name `primae_progress_<date>_<HHmmss>_<first 8 hex of participantId>.<ext>` (`:783-795`) belongs to the single "Exportieren" button of `ParentDashboardView`, which is compiled out of a study build. Check the `primae_progress_` prefix, not the date-only form.
   - If the filename starts with `buchstaben_` instead: `ParentDashboardExporter.swift` — old prefix not migrated.
 - [ ] Sharing the file (e.g. Save to Files) writes a non-empty file with at least one phase-session row.
 
@@ -351,7 +353,7 @@ line numbers — line numbers drift, names don't.
   → tap `+ Punkt` again → tap at (~0.66, 0.05) → Speichern. Reopen
   Ä: two single-checkpoint dot strokes visible at the placed
   positions (matches the Ü dot template).
-- [ ] **Session log captures the dot add**: open Files app → Primae
+- [ ] **Session log captures the dot add** (Correction 2026-10-14: the calibration overlay is `#if !STUDY_BUILD`, so this whole calibration section is not reachable in any current build; the Files-app path below is historical): open Files app → Primae
   → `PrimaeNative/CalibrationSessions/Ä/<timestamp>.json` →
   inspect: `post_polyline` should include the new single-point
   stroke as a 1-element array. `tool` field reads `"ANKER"` (dot

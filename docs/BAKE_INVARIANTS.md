@@ -25,7 +25,11 @@ Replaces the earlier split across `INVARIANTS.md`,
 `STROKE_CALIBRATION.md`, and `RENDERING.md`. Phase 2b Track B
 shipped the gates (G1 / G3 / G4 enforced via `bake-gates.yml`;
 G2 investigated 2026-05-23 and not viable as a freeze-gate
-metric; G5 wires the gates into CI). Supersession of the three
+metric; G5 wires the gates into CI). Correction 2026-10-14: the
+workflow now also runs G6 (T-junction attachment-tangent drift,
+blocking, added 2026-05-26) and G7 (stroke direction / start point,
+ADVISORY, added 2026-10-13 by audit G3-05) — see §6; the "G1 / G3 /
+G4" lists in this file predate them. Supersession of the three
 older files is a separate pending decision — they remain in
 place until that review completes.
 
@@ -70,8 +74,10 @@ reproducibility claim than SPEC-MEDIAL-AXIS. Mitigated by:
   `research_data/calibration_sessions/<date>/` — transparent
   record of what was changed when.
 - The visual-review cadence in §4 below.
-- Threshold 6 (determinism) still automated; bake output is
-  byte-stable.
+- Threshold 6 (determinism): see the Correction 2026-10-14 under
+  Threshold 6 below — `verify_bake.sh` no longer verifies anything for
+  the shipped corpus (exits 2, not applicable), so this bullet is not
+  currently a live guarantee.
 - The spec itself is self-revising and version-controlled. When
   the spec or thresholds change because new evidence accumulates
   (e.g. new session pairs surface bake-bug patterns the threshold
@@ -166,8 +172,8 @@ meeting point.
 
 **Enforced by**
 - *Construction (endpoint sharing).* Per-letter `anchor_cache`
-  (`scripts/generate_strokes_auto.py:3952`), shared-apex pre-
-  compute (`shared_apex_cache` at line 4067, commit `e9cd0f3`),
+  (`scripts/generate_strokes_auto.py:3971`), shared-apex pre-
+  compute (`shared_apex_cache` at line 4086, commit `e9cd0f3`),
   T-junction pre-compute (same commit). Both arms terminate on
   the same resolved pixel by construction. See APP_DOCUMENTATION.md
   §13.5.
@@ -181,7 +187,11 @@ meeting point.
 The four rules expand into six numeric thresholds. A candidate that
 fails any measured threshold must auto-reject. Thresholds 1 / 3
 (straight) / 4 / 6 are measured today by G1 / G3 / G4 / `verify_bake.sh`
-respectively (Phase 2b Track B, 2026-05-24). Threshold 2 was
+respectively (Phase 2b Track B, 2026-05-24). [Correction 2026-10-14:
+the Threshold 6 half of that sentence is stale — `verify_bake.sh`
+exits 2 ("not applicable") for the shipped corpus, so Threshold 6 is
+not measured today; see Threshold 6 below. G6 and G7 are additional
+gates (§6) that are not among the six numbered thresholds.] Threshold 2 was
 investigated 2026-05-23 and judged not-viable as a freeze-gate
 metric. Threshold 3-curved was investigated 2026-05-26 and likewise
 judged not-viable (see `g3_curved_not_viable.md`). Threshold 5
@@ -357,7 +367,10 @@ stroke's interior, e.g., lowercase p's bowl attaches mid-stem)
 classify as `no_junctions_detected` and are out of G4's scope. G4
 specifically gates end-to-end junctions per Rule 4. Mid-stroke
 attachment quality is scoped as the **G6 workstream item in
-Phase 2c** — see `research_data/phase2b_gates/phase2c_design.md`
+Phase 2c** [Correction 2026-10-14: G6 has since shipped and is a
+blocking job in `bake-gates.yml`, threshold `G6_DEFAULT_THRESHOLD_DEG
+= 4.50` at `scripts/audit_invariants.py:1083`, `gate_g6` at `:1297`;
+see §6] — see `research_data/phase2b_gates/phase2c_design.md`
 for the design discussion + calibration plan, and
 `g4_calibration_run.md` "Discovered scope constraint" section for
 the original characterization.
@@ -425,6 +438,29 @@ manual / pre-commit guard; run it before any commit that touches
 `verify_bake.sh` into CI did not ship with Track B and remains
 post-Phase-2b future work.
 
+**Correction 2026-10-14 (audit 2026-10-13, G3-02).** Three statements
+above are no longer true:
+- `verify_bake.sh` does not verify the shipped corpus. All 59 Regular
+  letters are in `SHIPPED_AS_STATIC_ARTIFACT` (the corpus comes from the
+  iPad calibrator + `scripts/calibration_to_override.py`, not the
+  bake), so `main()` skips every letter and the script now exits **2**
+  ("not applicable", distinct from 0 = verified and 1 = a check failed;
+  see the script header, `scripts/verify_bake.sh:5-24`). The three
+  `verify_bake.sh:NN-NN` line references above describe checks that are
+  unchanged but unreachable for any committed letter; they have not been
+  re-pinned. Byte-identity vs HEAD would additionally fail on format
+  (committed files end in a newline and carry `checkpointRadius 0.1`; the
+  bake writes neither).
+- `bake-gates.yml` no longer runs "G1 / G3 / G4 only": it runs G1, G3,
+  G4 and G6 as blocking steps and G7 as an advisory step
+  (`continue-on-error`), plus blocking gate/script unit tests, an
+  advisory Light-weight G1 + G3 + G7 step and an advisory bake smoke
+  (`.github/workflows/bake-gates.yml:1-17,118-186`).
+- Numbering: this file's "Threshold 6" (determinism) is unrelated to
+  "G6" (T-junction attachment-tangent drift). There is no gate that
+  measures Threshold 6 in CI.
+Status: Threshold 6 is not applicable to the shipped corpus. `scripts/verify_bake.sh` exits 2 ("not applicable") because every Regular letter is a static artifact (`SHIPPED_AS_STATIC_ARTIFACT`), so there is nothing to bake twice; its b-firewall target (`Regular/b_l/strokes.json`) was replaced by calibrator imports and could not pass in any case. The script is kept (it re-activates if a bakeable letter ever appears) and no replacement check exists. What guards the corpus today: G1 / G3 / G4 / G6 against origin/main (blocking), G7 (advisory), and `StrokeGeometryGoldenTests` (all five study letters frozen). Other documents that describe `verify_bake.sh` as confirming determinism (`docs/APP_DOCUMENTATION.md`, `scripts/README.md`) carry the same exit-2 note.
+
 ---
 
 ## 3. Sweep diagnostics — informational gauges, not ship gates
@@ -476,6 +512,13 @@ Treat them as canaries, not gates.
 David retains spot-check veto: if a shipped letter reads wrong,
 the calibration grows a rule (a new measurable threshold) before
 further shipping.
+
+Correction 2026-10-14: the list of "automated checks that exist today"
+above is out of date in two ways. Threshold 6 / `verify_bake.sh` is not
+a check that can pass for the shipped corpus (exits 2, see Threshold 6),
+and the blocking gates in `bake-gates.yml` are G1 / G3 / G4 **and G6**;
+G7 runs advisory (`.github/workflows/bake-gates.yml:118-146`).
+Operating practice for autonomous work (stricter than the rule above, no gate changed): "passes every automated check" is read as G1 / G3 / G4 / G6 passing (all blocking in `bake-gates.yml`), and any G7 flag is treated as "David's eyes required" before shipping. G7 is the only gate that sees a changed stroke direction or start point; naming it here changes no CI behaviour.
 
 The visual-sweep workflow (CLAUDE.md "Visual sweep workflow" +
 APP_DOCUMENTATION.md §13.7) is the primary tool: bake all
@@ -575,7 +618,7 @@ algorithm:
 
 | Stage | Where | Algorithm | Output |
 |---|---|---|---|
-| 1. Bake | `scripts/generate_strokes_auto.py` | Moving-average window=5 on BFS-walked medial-axis pixels (`_smooth_path` at `:2662-2683`), then arc-length resample to `CHECKPOINT_COUNT = 40` | 40 cps per stroke |
+| 1. Bake | `scripts/generate_strokes_auto.py` | Moving-average window=5 on BFS-walked medial-axis pixels (`_smooth_path` at `:2681-2702`), then arc-length resample to `CHECKPOINT_COUNT = 40` | 40 cps per stroke |
 | 2. Calibrator (authoring) | `PrimaeNative/Features/Tracing/StrokeCalibrationOverlay.swift` | Centripetal Catmull-Rom (α = 0.5) over RDP-derived handles (`:907-940`), then arc-length resample to a stroke-complexity-dependent count via `denseCount` (`:811-813`) | 40–200 cps per stroke |
 | 3. Renderer (display) | `PrimaeNative/Features/Tracing/TracingCanvasView.swift` | Uniform Catmull-Rom (tension = 1/6) → cubic Bezier (`:361-382`) | renders to screen |
 
@@ -663,7 +706,9 @@ mismatch".
 | Threshold 3 — curved (no straight runs ≥ 5 cp with turn-sum < 5°) | **Not enforced** — investigated 2026-05-26, not viable as freeze-gate metric (see `g3_curved_not_viable.md`) |
 | Threshold 4 — tangent-kink drift ≤ 4.43° (post-G4 calibration 2026-05-23) | **Enforced** via `bake-gates.yml` (G5); CLI: `scripts/run_gates.py --gate g4` |
 | Threshold 5 — Y-junction gap = 0 px | Construction (T-junction pre-compute) |
-| Threshold 6 — determinism + b firewall + byte-identity vs HEAD | Automated (`scripts/verify_bake.sh`, manual / pre-commit) |
+| Threshold 6 — determinism + b firewall + byte-identity vs HEAD | Automated (`scripts/verify_bake.sh`, manual / pre-commit) [Correction 2026-10-14: **not applicable to the shipped corpus** — script exits 2, every letter is a static artifact; see Threshold 6] |
+| G6 — T-junction attachment-tangent drift ≤ 4.50° (calibrated 2026-05-26; `research_data/phase2b_gates/g6_calibration_run.md`) | **Enforced** via `bake-gates.yml` (blocking step, no `continue-on-error`); `gate_g6` at `scripts/audit_invariants.py:1297`, `G6_DEFAULT_THRESHOLD_DEG` at `:1083`; CLI: `scripts/run_gates.py --gate g6`. Added 2026-10-14 to this table (row missing since G6 shipped) |
+| G7 — stroke start/end position drift (detects reversed direction / moved start point; G1/G3/G4/G6 are all invariant to stroke reversal) | **Advisory** — `bake-gates.yml` G7 step has `continue-on-error: true`; thresholds `G7_DEFAULT_THRESHOLD_PX = 40.0` / `G7_PATH_THRESHOLD_PX = 40.0` at `scripts/audit_invariants.py:1434,1436` are the audit lane's **provisional** proposals, not calibrated values of record (header comment `:1406-1407`); intended direction changes go in `scripts/g7_allowlist.json`; CLI: `scripts/run_gates.py --gate g7`. Status: provisional and advisory. The 40 px values have not been calibrated against the history of `Regular/*/strokes.json`; the audit measured polish drift at up to 63 px (endpoints) and 50 px (path points) only as upper bounds at the 819 px render size (about 30 px or less on the estimated glyph box); the margin to the smallest reversal displacement (about 50 px) is about 1.25x on the weakest stroke, which is thin. A reversed stroke shorter than 40 px would be missed, and a looser value would miss more. G7 stays `continue-on-error` until a calibration run over that history is recorded. |
 
 **Sweep diagnostics** (overshoot, reversal, max-turn, advisory
 skeleton audit) are informational gauges, not ship gates.
@@ -681,7 +726,11 @@ plus measurement (G4 tangent alignment). Threshold 6
 (determinism + b firewall + byte-identity) is automated via
 `scripts/verify_bake.sh` (manual / pre-commit; not in CI). The
 automated CI enforcement floor is: every PR passes G1, G3, G4
-in `bake-gates.yml` before merge. Threshold 2 was investigated
+in `bake-gates.yml` before merge. [Correction 2026-10-14: the floor
+is now G1, G3, G4 and G6 (blocking); G7 is advisory; and
+`verify_bake.sh` exits 2 (not applicable) for the shipped corpus, so
+Threshold 6 is not currently automated in any meaningful sense. See the
+G6 / G7 rows above and the Threshold 6 correction.] Threshold 2 was investigated
 2026-05-23 and is not viable as a freeze-gate metric (preserved
 in code; see `g2_calibration_run.md`). Threshold 3-curved was
 investigated 2026-05-26 and is likewise not viable as a

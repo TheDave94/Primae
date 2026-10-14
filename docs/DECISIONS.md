@@ -157,7 +157,11 @@ Implications:
     `ParentDashboardStore.swift:142`; exported as the LAST CSV column,
     `ParentDashboardExporter.swift:238`, value at `:335`). The process
     secondaries (`strokeOrder`, `reversedStrokeCount`) come from the
-    fitted pairing.
+    fitted pairing. *[Correction 2026-10-14, as of `60e8b805`: no longer the
+    LAST column. Protocol revision 8 (#47) appended 28 columns after
+    `spatialDeviationRaw` (`ParentDashboardExporter.phaseRowAppendedColumns`,
+    `participantId` … `deviceModel`); the file:line anchors in this entry have
+    moved.]*
   - **Score and stars.** `formAccuracy` reads the same fitted distance
     (`FreeWriteScorer.swift:205`), so the free-writing score and the stars
     derived from it are position- and size-free too (ruled 2026-10-05:
@@ -536,7 +540,13 @@ Implications:
     any other utterance is ignored (`cueUtteranceEnded`,
     `TracingViewModel.swift:2574`; `armObservePresentationAfterCue`,
     `:2528`). This replaces the fixed 2.0 s from the cue's start
-    recorded in the 2026-10-05 revision above.
+    recorded in the 2026-10-05 revision above. *[Correction 2026-10-14: from
+    protocol revision 9 the end comes from the END OF THE RECORDING of the
+    observe instruction, not from the speech synthesiser's end report; the
+    1.0 s / 3.0 s rule and the stale-cue handling are unchanged. The
+    recording, `phase_observe.mp3`, is 1.25 s, where the system voice took
+    about 2.4 s, so the presentation starts earlier. See the D15 correction
+    below and `StudyProtocol.history` r9.]*
   - **Sound envelope (same revision; all writing phases, both sound
     arms).** Fade-out 0.4 s (was 0.12), set at the engine's construction
     site (`SoundEnvelope.makeAudioEngine`, `TracingDependencies.swift:196`;
@@ -544,7 +554,11 @@ Implications:
     (was 0.12); a pen lift holds the sound 0.8 s (was an immediate
     stop), and a re-touch inside the hold keeps it
     (`PlaybackController.requestIdleAfterHold`, called at
-    `TouchDispatcher.swift:264`). The three values are one block,
+    `TouchDispatcher.swift:264`). *[Correction 2026-10-14: the re-touch
+    clause was specified here but NOT delivered by r5 or r6: the touch-down
+    reloaded the arm file, which hard-stopped the held sound, and nothing
+    restarted it. Protocol revision 7 (#46) delivers it; rows with
+    `protocolRevision` 5-6 did not have it. See `StudyProtocol.history` r7.]* The three values are one block,
     `SoundEnvelope.swift`, deliberately not a `StudyComparisonSettings`
     switch.
   - **Protocol revision 5.** `StudyProtocol.revision` = 5
@@ -781,6 +795,10 @@ Implications:
   for rows written before revision 4 (#34), so it does not separate
   pre-#27 rows from rows written between #27 and #34; that cut-over
   has to be recovered from `recordedAt` against the install log.
+  *[Correction 2026-10-14, as of `60e8b805`: `StudyProtocol.revision` is
+  9, and the `protocolRevision` column is no longer the last column of a
+  phase row (see the D8 correction). The anchors above are as of the
+  revision-4 reading.]*
 
   **Revision 2026-10-05 (David's ruling; protocol revision 6) — the
   on-path gate is removed from free-writing and every cold probe; guided
@@ -810,6 +828,10 @@ Implications:
 
 - **D15 — The spoken content is IDENTICAL in all three arms (David,
   2026-10-04; implemented in #34, `875104d5`, protocol revision 4).**
+  **THE SPEECH MECHANISM DESCRIBED BELOW IS SUPERSEDED 2026-10-14
+  (protocol revision 9): the five study phrases are now RECORDED audio —
+  read "Correction 2026-10-14" at the end of this entry before acting on
+  "What the speech is" and "Speech pin".**
   ("Instructions only" was a supervisor paraphrase of this rule,
   withdrawn the same day.)
   David: *"children cannot read; the voiceover is the same for every
@@ -868,6 +890,94 @@ Implications:
   session start, and it is not exported.
   Rationale: not recorded (David, 2026-10-05); decision stands as
   ruled.
+
+  **Correction 2026-10-14 (protocol revision 9, PR #50, `60e8b805`) — the
+  five study phrases are RECORDED, not live text-to-speech. For those
+  phrases this supersedes the "Live text-to-speech, not a recording" and
+  "Voice" bullets under "What the speech is" and the whole "Speech pin"
+  paragraph. The rule that the spoken content is identical in all three
+  arms is unchanged.**
+  - **What it is now.** Five bundled mp3 takes in `Resources/Prompts/`,
+    voice "Kiki" (ElevenLabs `eleven_multilingual_v2`, stability 0.55,
+    similarity 0.80, style 0.10): `phase_observe` "Schau genau hin.",
+    `phase_guided` "Jetzt du.", `phase_freewrite` "Und jetzt ganz
+    allein.", `retry_cue` "Probier's nochmal.", `celebration` "Super
+    gemacht!". `Resources/Prompts/MANIFEST.json` pins each file's sha256
+    and the set id `rec:kiki:a889eab2b793`;
+    `scripts/check_study_prompts.py` (CI) fails on any other mp3 or any
+    changed byte. `PromptPlayer` plays them behind
+    `StudyVoiceoverPromptPlayer`, whose `studySpokenKeys` filter gains
+    `.retryCue` in r9 ("Probier's nochmal." was spoken straight through the
+    synthesiser before); its other keys are unchanged.
+  - **No fallback; refusal.** A study session refuses to start when any
+    of the five is missing or differs from the manifest
+    (`RecordedPromptSet.refusal`, surfaced through
+    `studyPreconditionFailure`). A missing take is a logged fault and
+    silence, never the system voice (`PromptPlayer`: the speech fallback
+    is off in a study build).
+  - **What the export says.** `voiceId` holds `rec:kiki:` plus the first
+    12 hex characters of the SHA-256 over the five files in the order
+    observe, guided, free-writing, retry, celebration, on phase rows and
+    enrolment records. Rows of r8 and earlier carry the device voice
+    identifier (r8) or nothing (r1-r7).
+  - **What r8 did in between.** Protocol revision 8 (#47) pinned the
+    first-used German system voice, stamped it on every row as `voiceId`,
+    refused a session whose pinned voice was gone, and added a proctor
+    re-pin. So "Which voice the study iPad resolves to is UNMEASURED" and
+    "The voice is NOT pinned by identifier … and it is not exported" above
+    were already false from r8, before r9 replaced the mechanism.
+  - **What no longer applies.** The device's German system voice does not
+    matter to a study session, so a missing or changed system voice no
+    longer refuses it. The 0.42 rate pin governs the synthesiser, which a
+    study session no longer uses for these five phrases.
+  - **The end-of-set phrase.** Before r7, a cold probe of the trained
+    set's last letter also spoke "Super gemacht!" and chimed (the reading
+    in the audit's H2-01); r7 (#46) stopped that, so the "end-of-set
+    'Super gemacht!'" bullet above is now accurate as written.
+  - **Observe timing:** see the D9 correction on the cue end (r9).
+  - The reason for choosing recordings is not recorded in the repo; the audit register's D6 states the trade-off (recordings freeze voice and duration, and contradict this entry's live-TTS wording). Any thesis passage that describes the voiceover as the iPad's system voice is stale by r9 (the thesis repo was not checked here).
+
+- **Protocol revisions 7, 8 and 9 — record of what landed on 2026-10-14
+  (PRs #46, #47, #50). A log, not a ruling.** The authoritative
+  child-facing text of every revision is `StudyProtocol.history`
+  (`StudyProtocol.swift`); this entry says only which decisions above each
+  touches. `StudyProtocolTests` pins the history's order and dating.
+  - **r7 (#46, merged 2026-10-14 18:44 UTC).** Touches D9/D14: a pen put
+    back down inside the 0.8 s lift hold keeps the sound; the audio engine
+    follows an arm change in the same app run and every arm change or new
+    child resets rate, pan and pitch (under r1-r6 a phoneme child after a
+    spatial child could hear phonemes pitch-shifted by up to ±1200
+    cents). Touches D8: a slow pen now leaves ink and is recorded (the
+    jitter filter measures from the last kept point), and a free-writing
+    contact counts as a production only with at least two points spanning
+    at least 2% of the canvas. Touches D15: a probe of the last trained
+    letter no longer ends the set; after the set ends the chevrons and
+    the random-letter action hold.
+  - **r8 (#47, merged 2026-10-14 18:46 UTC).** Touches D9: `.inactive`
+    suspends the session instead of finalising it, and an interrupted
+    observe restarts from the instruction cue in every arm. Touches D15:
+    voice pinned and stamped (superseded by r9, above). Touches the
+    export: new phase-row columns after `spatialDeviationRaw`,
+    `protocolRevision` no longer last, new fields on duration rows and
+    enrolment records, a NaN phase score stored as NaN. Identity, arm
+    assignment and archive seal are written durably.
+  - **r9 (#50, merged 2026-10-14 20:24 UTC per `git log`;
+    `StudyProtocol.history` still has `mergedAtUTC` and `pullRequest` nil
+    for it at `60e8b805`).** The D15 correction above.
+  - **Numbering warning.** The 2026-10-13 audit register numbers its owner
+    decisions D1-D14; those are NOT this file's D-series (this file's D6 is
+    the stop-consonant looping note, D7 the pitch evidence). The audit's
+    "D6" (voice and prompts) became r9. The audit's "D9" (interrupted
+    observe) was implemented as its recommended default, restart from the
+    cue, in r8. The audit's "D7" (AudioEngine, route and other-audio
+    policy) produced a proctor banner and per-row route and other-audio
+    stamps (r8) and no `AudioEngine.swift` edit: the file is unchanged
+    since `f3630289`; blocking a sound-arm session on a non-headphone route
+    was not implemented. Both were applied as the audit's recommended defaults and stand until changed here.
+  - File:line anchors quoted in D8-D15 were measured at `9d8e0df3` and
+    `f3630289`; `TouchDispatcher.swift`, `TracingViewModel.swift` and
+    `ParentDashboardExporter.swift` have changed since (#46-#50). Search by
+    symbol.
 
 ---
 

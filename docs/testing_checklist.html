@@ -416,12 +416,14 @@
 <li class="check"><input class="cb" type="checkbox" id="cb-81"><label for="cb-81"><strong>Studienteilnahme (A/B-Arm)</strong> toggle. When on, <strong>Studienarm überschreiben</strong> picker appears with Automatisch / threePhase / guidedOnly / control.</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-82"><label for="cb-82"><strong>Kurze Einführung</strong> toggle.</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-83"><label for="cb-83"><strong>Einführung wiederholen</strong> button.</label></li>
+<li class="sub">Correction 2026-10-14: both live in <code>Section("Hilfe")</code> inside <code>#if !STUDY_BUILD</code> (<code>SettingsView.swift:443-468</code>). <code>STUDY_BUILD</code> is unconditional, so neither is present in any build; skip these two items.</li>
 </ul>
 
 <h3>7.4 · Datenexport</h3>
 
 <ul>
 <li class="check"><input class="cb" type="checkbox" id="cb-84"><label for="cb-84"><strong>CSV exportieren / TSV exportieren / JSON exportieren</strong> buttons each open the iOS share sheet with a file named <code>primae_progress_&lt;YYYY-MM-DD&gt;.&lt;ext&gt;</code>.</label></li>
+<li class="sub">Correction 2026-10-14: these three buttons (<code>ParentAreaView.swift:144-154</code>) write the combined export of every child on the iPad, named <code>primae_progress_ALL_&lt;YYYY-MM-DD&gt;_&lt;HHmmss&gt;_all&lt;N&gt;.&lt;ext&gt;</code> (<code>ParentDashboardExporter.swift:831-841</code>), N = distinct children with data. The per-child name <code>primae_progress_&lt;date&gt;_&lt;HHmmss&gt;_&lt;first 8 hex of participantId&gt;.&lt;ext&gt;</code> (<code>:783-795</code>) belongs to the single "Exportieren" button of <code>ParentDashboardView</code>, which is compiled out of a study build. Check the <code>primae_progress_</code> prefix, not the date-only form.</li>
 <li class="sub">If the filename starts with <code>buchstaben_</code> instead: <code>ParentDashboardExporter.swift</code> — old prefix not migrated.</li>
 <li class="check"><input class="cb" type="checkbox" id="cb-85"><label for="cb-85">Sharing the file (e.g. Save to Files) writes a non-empty file with at least one phase-session row.</label></li>
 </ul>
@@ -573,7 +575,7 @@
 <p>  Ä: two single-checkpoint dot strokes visible at the placed</p>
 <p>  positions (matches the Ü dot template).</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-127"><label for="cb-127"><strong>Session log captures the dot add</strong>: open Files app → Primae</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-127"><label for="cb-127"><strong>Session log captures the dot add</strong> (Correction 2026-10-14: the calibration overlay is <code>#if !STUDY_BUILD</code>, so this whole calibration section is not reachable in any current build; the Files-app path below is historical): open Files app → Primae</label></li>
 </ul>
 <p>  → <code>PrimaeNative/CalibrationSessions/Ä/&lt;timestamp&gt;.json</code> →</p>
 <p>  inspect: <code>post_polyline</code> should include the new single-point</p>

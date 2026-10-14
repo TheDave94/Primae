@@ -45,6 +45,19 @@ Both sets ship into the same app audio pipeline and must therefore meet the
 **same** technical format and the **same** coupling-survival constraints
 (§2, §3).
 
+> **Note 2026-10-14 (protocol revision 9) — ElevenLabs and the study's
+> spoken prompts.** The rejection of ElevenLabs above is for the PHONEMES
+> and stands. ElevenLabs IS the source of the five SPOKEN study prompts,
+> which are not part of either sound set: "Schau genau hin.", "Jetzt
+> du.", "Und jetzt ganz allein.", "Probier's nochmal.", "Super gemacht!",
+> voice "Kiki", model `eleven_multilingual_v2` (stability 0.55, similarity
+> 0.80, style 0.10), bundled as mono 44.1 kHz mp3 in
+> `PrimaeNative/Resources/Prompts/`. Their bytes are pinned by
+> `Resources/Prompts/MANIFEST.json` and checked by
+> `scripts/check_study_prompts.py`; candidate takes come from
+> `scripts/generate_prompts.py --voice Kiki` (see `Prompts/README.md`), and
+> the committed takes are the ones the manifest pins.
+
 ---
 
 ## 2. Target format — CODE-CONFIRMED
@@ -67,6 +80,19 @@ not assumed. Sources cited inline.
 `Mmmmm.mp3`, `Affe.mp3`, …) are the legacy **letter-name / word** population
 (`audioFiles`), not phonemes. Producing the phoneme set *is* closing the
 H5/P6 gap.
+
+> **Correction 2026-10-14 — this paragraph describes the state before H5
+> and is no longer true; the table above it describes only the legacy MP3
+> letter-name files, not the phoneme files.** Five phoneme
+> files ARE bundled, one per study letter: `Letters/{A,F,I,L,M}/
+> <L>_phoneme1.wav`. Measured today with `afinfo`: each is **2 channels,
+> 48 kHz, 24-bit linear PCM** (A 1.965 s, F 2.000 s, I 1.968 s, L 1.970 s,
+> M 1.970 s), not the MP3 / 128 kbps / 44.1 kHz / mono of the table. The
+> arm's other asset, `Sonification/spatial_carrier.wav`, is 1 channel,
+> 44.1 kHz, 16-bit, 2.000 s. That the two arms' files differ in channel
+> count and rate is the open question of §2.1 (audit 2026-10-13, F2-04:
+> "dual-mono" per the audit's offline decode, UNVERIFIED here), not a
+> resolved one. An offline pan/level probe has since been run on the real assets (2026-10-14, offline manual rendering of player -> time-pitch -> mixer, not the device output path): the mono carrier and the stereo L and F phonemes follow the same balance law (the louder side stays at full level, the other scales by 1-|pan|; power ratio at pan 0.5 is 0.625 for all three), and volume scales peaks linearly up to 2.99 with no clamping or clipping (peaks below 1.0). Pan behaviour is thus the same for mono and stereo files in this graph; §2.1 is left as written. Not covered: the real-device output path and perception at intermediate pan.
 
 ### 2.1 Mono is load-bearing — CODE-CONFIRMED
 

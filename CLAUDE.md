@@ -3,7 +3,7 @@
 > Brand: **Primae** (formerly "Buchstaben-Lernen-App"). Everything carries the new name: the GitHub repo (`TheDave94/Primae`), Xcode project, scheme, host app, host folder (`Primae/`), Swift Package target (`PrimaeNative`), test target (`PrimaeNativeTests`), bundle identifier (`de.flamingistan.primae`), and the SPM relative path (`../../Primae`). Pre-rebrand UserDefaults keys (`de.flamingistan.buchstaben.*`) moved to `de.flamingistan.primae.*` — the app is in alpha so existing test-device state is intentionally reset. The local working tree is `/opt/repos/Primae`, matching the SPM relative path.
 
 ## Project Overview
-iPad app for teaching German children (ages 5-6) to trace letters. Built with SwiftUI, Swift 6.3, targeting iOS 26+ (the SPM manifest targets iOS 26.0). Academic thesis project.
+iPad app for teaching German children (ages 5-6) to trace letters. Built with SwiftUI, Swift 6.4, targeting iOS 27+ (the SPM manifest is `swift-tools-version: 6.4` with `.iOS(.v27)`; see "The toolchain pin has landed" below). Academic thesis project.
 
 ## Bounded autonomy
 
@@ -70,7 +70,7 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 
 ## Proctor batch enrolment (one gesture, no relaunch, ONE export)
 
-Enrolling the next child is a **double-tap on the rail bar** → "Nächstes Kind" → confirm. No Settings, no force-quit, no per-child share sheet. The outgoing child is sealed to `ParticipantArchive/` by `resetForNewParticipant()`, and the arms re-derive **in place** (`reapplyParticipantIdentity()`), so the device is ready for the next child immediately — pinned by `NewParticipantResetTests.reappliesIdentityWithoutRelaunch`. **The export is taken ONCE after the last child**: `allParticipantExportSources` is `archived + [current]`, so `ParentDashboardExporter.combinedExportFileURL` writes every ARCHIVED child into one `primae_progress_ALL_<date>_<time>_all<N>` file. **That is not every enrolled child.** `resetForNewParticipant()` seals the outgoing child only if it has a phase row or a session duration (`outgoingDidAnything`, the #21 phantom guard), so a child who stopped before finishing a letter is not archived and is not in `all<N>`. **Evidence (`9c1499a4`, #22, read bare 2026-10-05):** the per-child export that PR removed wrote `participantId` and `enrolledAt` for every outgoing child, by construction before the wipe confirm could show (`ParentDashboardExporter.jsonData`/`SnapshotWithMetrics`) — but never that child's arm or trained subset; that schema has no `audioCondition`/`trainedSubset` field. So #22 cost a zero-row child its id and enrolment time, not its arm, which no earlier mechanism ever captured for one. Protocol revision 4 (#34) closes both at once: such a child now survives as an `EnrolmentRecord` (`EnrolmentLog.swift`) in the export's trailing enrolment block — id, enrolment time, AND (new) arm, subset, protocol revision; no session data. Do **not** reintroduce a per-child export or a relaunch prompt — both were removed in PR #22 (see `docs/ROADMAP.md`, "Proctor batch enrolment").
+Enrolling the next child is a **double-tap on the rail bar** → "Nächstes Kind" → confirm. No Settings, no force-quit, no per-child share sheet. The outgoing child is sealed to `ParticipantArchive/` by `resetForNewParticipant()`, and the arms re-derive **in place** (`reapplyParticipantIdentity()`), so the device is ready for the next child immediately — pinned by `NewParticipantResetTests.reappliesIdentityWithoutRelaunch`. **The export is taken ONCE after the last child**: `allParticipantExportSources` is `archived + [current]` — `current` only if that child did anything, by the same predicate that decides the seal (`participantDidAnything`; R-059, #47) — so `ParentDashboardExporter.combinedExportFileURL` writes every ARCHIVED child into one `primae_progress_ALL_<date>_<time>_all<N>` file. **That is not every enrolled child.** `resetForNewParticipant()` seals the outgoing child only if it has a phase row or a session duration (`participantDidAnything`, the #21 phantom guard), so a child who stopped before finishing a letter is not archived and is not in `all<N>`. **Evidence (`9c1499a4`, #22, read bare 2026-10-05):** the per-child export that PR removed wrote `participantId` and `enrolledAt` for every outgoing child, by construction before the wipe confirm could show (`ParentDashboardExporter.jsonData`/`SnapshotWithMetrics`) — but never that child's arm or trained subset; that schema has no `audioCondition`/`trainedSubset` field. So #22 cost a zero-row child its id and enrolment time, not its arm, which no earlier mechanism ever captured for one. Protocol revision 4 (#34) closes both at once: such a child now survives as an `EnrolmentRecord` (`EnrolmentLog.swift`) in the export's trailing enrolment block — id, enrolment time, AND (new) arm, subset, protocol revision; no session data. Revision 8 (#47) adds to the record the comparison stamp, the voice id (from r9 the recorded set, `rec:kiki:<12 hex>`), the device/audio environment stamp and the build stamp (`EnrolmentRecord`, R-017/R-018/R-020/R-021). Do **not** reintroduce a per-child export or a relaunch prompt — both were removed in PR #22 (see `docs/ROADMAP.md`, "Proctor batch enrolment").
 
 Note the rail is a **64pt vertical bar on the LEFT**, not a top bar: `mainShell` is an `HStack` whose leading child is the rail. An accessibility snapshot once reported its frame as `{{0,0},{820,64}}` — width and height **transposed** — and a "fix the stale rail comment" reading of that frame would have been wrong. Measured on the physical iPad (2732×2048 px screenshot, 2× scale): a vertical edge at x=128 px = 64 pt runs the height of the screen, while a horizontal edge at y=128 px is exactly 0 contrast at every sampled width.
 
@@ -84,7 +84,7 @@ Note the rail is a **64pt vertical bar on the LEFT**, not a top bar: `mainShell`
 - `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
 - `StrokeTracker.swift` — checkpoint proximity detection
 - `AudioEngine.swift` — ⚠️ STABLE AND FRAGILE — do NOT modify
-- `SpeechSynthesizer.swift` — German TTS for child-facing verbal feedback
+- `SpeechSynthesizer.swift` — German system-voice TTS for child-facing verbal feedback outside the study's five fixed phrases (from protocol r9 those are RECORDED mp3s in `Resources/Prompts/`, played by `PromptPlayer.swift`, set checked by `RecordedPromptSet.swift` and `scripts/check_study_prompts.py`)
 - `LetterRepository.swift` — loads letters from bundle
 - `PrimaeLetterRenderer.swift` — renders letter glyphs using Primae font
 - `ProgressStore.swift` — persists learning progress
@@ -134,9 +134,9 @@ that failed for the WRONG reason (see below) — a test that cannot PASS is
 the mirror of one that cannot fail, and just as worthless.
 
 **2. Tests that cannot fail inflate the count.** Measured in this suite:
-`AudioEngineTests`' 36 methods skip unconditionally on the simulator
+`AudioEngineTests`' 37 methods skip unconditionally on the simulator
 (`XCTSkip` in `setUp`, correct — AVAudioEngine crashes the sim) and **CI is
-a simulator**, so 36 tests contribute to the count and nothing to CI's
+a simulator**, so 37 tests contribute to the count and nothing to CI's
 evidence. `PerformanceBenchmarkTests`' 5 have no assertions, and
 `StrokeTrackerRegressionGateTests`' 5 are `measure`-only with no committed
 baseline — CI starts clean, so each run establishes fresh baselines and
@@ -183,7 +183,7 @@ NO branch coverage (swiftlang/swift#81730, open since 2025-05-23) — and the
 inert defect moved no line anyway, so line, function and diff-coverage were
 all green. `.timeLimit` is minutes-only, so it cannot police a sub-second
 hang. Swift Testing retries re-run the WHOLE target, not just the failures
-(FB20922425). And `PrimaeUITests` (6 tests) never runs in CI — Layer 3
+(FB20922425). And `PrimaeUITests` (9 tests) never runs in CI — Layer 3
 scopes the job to `PrimaeNativeTests`.
 
 **AND `PrimaeUITests` CAN RUN ON THE PHYSICAL iPAD — MEASURED 2026-09-21, and
@@ -450,6 +450,17 @@ not be read as current.
 > to an un-touched key, which is the more likely reading and the cheaper one to
 > test. **Check the retry before you check anything else.**
 >
+> **NOTE 2026-10-14 — how work LANDS now, measured off `git log`, so the
+> signing notes above are not read as the current landing path.** The audit
+> fixes (PRs #44-#50, `f1d1d255` … `60e8b805`) were committed by worktree
+> lanes UNSIGNED (`git -c commit.gpgsign=false`; signing is the human's) and
+> landed as squash merges that the forge signed:
+> `git log --format='%G? %GK %GS'` on `f3630289..60e8b805` → `G`,
+> `SHA256:fMfpTI+7Q/2NYQTpPBUCoavr0WyCWq3L55CXt3AjlOQ`, signer
+> `forgejo@flamingistan.com`, committer David. That is a different key from the
+> SK key recorded above (`SHA256:jfM/zcvEffP…`): both verify `G`, they are not
+> the same signature path. Landing (`scripts/land.sh`) runs `git commit -F` in the human's terminal, and `commit.gpgsign` is true in effect (global git config), so it signs with the SK key and DOES need the touch; a missed touch fails the commit step with nothing pushed, and the same command is simply rerun. The forge then squash-merges the PR and signs that merge commit with its own key.
+>
 > **SUPERSEDED 2026-10-01 — the claim below is FALSE, and the way it is
 > false matters more than the fact.** Everything in this block was measured
 > about ONE invocation path: `xcodebuild`/`swift build` invoked bare. The
@@ -531,7 +542,7 @@ not be read as current.
 >
 > **First thing a fresh seat will hit on a build: the provenance gate.** With
 > ANY uncommitted change present, the `Primae` scheme's Pre-action
-> (`scripts/check_project_invariants.py`, `gate_provenance()`, `:225-246`)
+> (`scripts/check_project_invariants.py`, `gate_provenance()`, `:427-470`)
 > fails the build outright and prints the offending `git status --porcelain`
 > lines. That is by design — it is the one place `--autofix` is allowed to
 > fail — so **resolve the tree, never bypass the gate.** Untracked files count;
@@ -1135,7 +1146,7 @@ nm -jU /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app/Primae \
 produces a study build (2026-09-14).** This was NOT true before that date —
 it used to fail at link time on the missing `_primae_build_identity_study`
 symbol, because the package needed the flag and Xcode's UI had no channel to
-supply it. There is exactly one scheme now, named `Primae` — the OLD `Primae`
+supply it. There is exactly one scheme that builds the study configurations, named `Primae` (a second shared scheme, `Primae-DeviceTests`, still names the unlinkable `Debug`/`Release` configurations and is not a way to build the pilot: audit R-104) — the OLD `Primae`
 scheme (which built the casual Debug/Release configuration) was deleted, and
 `Primae-Study` was renamed to `Primae` to take its place; a leftover second
 scheme naming a distinction that no longer exists failed at link on a symbol
@@ -1462,7 +1473,7 @@ one compiler run, not a cleared gate.
 **Still record the EXACT build with the artefact.** The pin is by MAJOR
 version (27.x) per the estate decision, so it cannot distinguish 27.0 from
 27.2 — and this machine has both (`Xcode.app` 27.0 release `27A266a`,
-`Xcode-beta.app` 27.2 beta `27B5019j`). Pin = what we accept; build stamp =
+`Xcode-beta.app` 27.2 beta — `27B5028f` as of 2026-10-14; the pilot artefacts built through 2026-10-05 carry `27B5019j`, read it from the built `Info.plist` `DTXcodeBuild`, not from this line). Pin = what we accept; build stamp =
 what actually ran. `build_study.sh` prints `xcodebuild -version` on every run;
 capture it. A pilot binary whose exact compiler is unknown is not a
 reproducible artefact, and the thesis will be asked which one built it.

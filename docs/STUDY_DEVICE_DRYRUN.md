@@ -35,7 +35,7 @@ steps in `.github/workflows/ios-build.yml` pass
 `-only-testing:PrimaeNativeTests`, so `PrimaeUITests` only COMPILES
 there. It runs when it is run by hand — on the physical iPad, where all
 7 passed on 2026-10-02 (see the device notes below). It covers: **enrolment**
-("Neuer Teilnehmer" through to the relaunch alert), **the
+("Neuer Teilnehmer" through to the "Neues Kind bereit" alert; no relaunch), **the
 Vortest/Post-Test/Nachtest flow** (tapping a probe button and landing
 correctly on the canvas, or getting a clear refusal alert instead of
 silence), **a session completing** (a real canvas stroke through to
@@ -96,12 +96,20 @@ does and does not establish.
   three runs so the three are comparable.
 - **Do Not Disturb on, no other audio app playing.** Turning the
   iPad's Do Not Disturb on and making sure nothing else is playing
-  audio isn't just tidiness — opening Control Center or a notification
-  banner during a trial can end that trial early. Either one briefly
-  puts the app's scene into `.inactive`, and the app treats that the
-  same as full backgrounding: `appDidEnterBackground()` runs and
-  finalises any finished-but-not-yet-scored free-write in progress,
-  cutting the trial short.
+  audio is still worth doing: another app's audio plays through every
+  arm, and the research tab shows a banner when it detects some. Opening
+  Control Center, a notification banner or the app switcher briefly
+  puts the app's scene into `.inactive`. Since protocol revision 8
+  (#47) that SUSPENDS the session instead of ending it: the stroke
+  under the pen is cancelled, a pending free-write quiet window is held,
+  the sound and the voice stop, an interrupted observe restarts from the
+  instruction on return, and nothing is scored or recorded for the
+  interruption. Only `.background` (leaving the app) still finalises a
+  finished-but-not-yet-scored free-write
+  (`TracingViewModel.scenePhaseDidChange`). Do Not Disturb does not
+  block Control Center or the edge swipes, so a suspended trial is still
+  possible; the interruption count is recorded on the row
+  (`interruptions`).
 - **Reach the parent area**: on the Schule canvas, long-press the gear
   icon at the bottom of the left rail for about 2 seconds (a blue ring
   fills around it). This opens "Eltern-Bereich" full-screen. A red
@@ -122,17 +130,21 @@ does and does not establish.
 2. You should see **"Studienmodus: An (Studien-Build)"** with a lock
    icon — no toggle. That's correct: this build can't run outside
    study mode.
-3. Tap **"Neuer Teilnehmer."** A share sheet opens first — this is an
-   automatic export of whatever data is currently on the device
-   (empty, on the very first run). **Save it somewhere** (Files, or
-   "Save to Files") rather than just dismissing — this is your first
-   "did data land" checkpoint, and it's also how a delayed-retest
-   participant would later be restored. Dismiss the share sheet.
-4. A confirmation appears: **"Teilnehmer-Daten löschen?"** Tap
-   **"Löschen & neu starten."**
-5. An alert reads **"Neuer Teilnehmer angelegt... App jetzt vollständig
-   schließen und neu starten."** Don't relaunch yet — do step 2 below
-   first, so one relaunch covers both changes.
+3. Tap **"Neuer Teilnehmer."** (The same action is the rail's
+   double-tap, then **"Nächstes Kind"**.) There is no share sheet: the
+   outgoing child, if they did anything, is sealed to the on-device
+   archive first and is part of the ONE combined export taken at the end
+   (Section 6). It is also where a delayed-retest participant's id is
+   later read from.
+4. A confirmation appears: **"Neuen Teilnehmer beginnen?"** Tap
+   **"Neues Kind starten."** If the outgoing child cannot be sealed, an
+   alert **"Kein neues Kind begonnen"** says so and nothing is wiped or
+   enrolled.
+5. An alert reads **"Neues Kind bereit"** (arm re-derived, app ready).
+   No relaunch is asked for or needed by enrolment itself. Enrolling also
+   starts the first trained letter's observe at once
+   (`reapplyParticipantIdentity` -> `startParkedLetter`).
+   Known deviation, open (audit R-007, rated CRITICAL): this procedure puts the Vortest (Section 3) before training, but in-place enrolment un-parks letter 1 first, so its demonstration and arm sound can play before its Vortest and that letter's pretest is not cold. The code states the opposite invariant (`TracingViewModel`: the `launchParked` doc comment and `advanceAfterCompletedStudyLetter`), but `reapplyParticipantIdentity` deliberately un-parks anyway, and the audit's recommended fix is to stay parked after enrolment until the pretests are done. Until that fix lands, do not read the first trained letter's Vortest as cold.
 
 ---
 
@@ -158,8 +170,10 @@ chance — force it explicitly so you know which run is which.
    you specifically want fixed letters — either way, the app will tell
    you which three it picked (next step).
 6. **Now force-quit the app and relaunch it** (swipe up, swipe the app
-   away, tap the "Primae Studie" icon again). One relaunch covers both
-   the new participant and the arm override.
+   away, tap the "Primae Studie" icon again). The relaunch is needed
+   only because of the override ("Zuweisung geändert — die App muss neu
+   gestartet werden" blocks the canvas until then); enrolling itself
+   needs none. If you set no override, skip it.
 7. **Verify before doing anything else.** Long-press the gear again →
    Forschungs-Daten → look at the top card, **"Aktiver Teilnehmer."**
    It shows a short participant ID, then a line like **"Phonem ·
@@ -232,27 +246,33 @@ For **each of the three trained letters** (the ones named on the
   stuck past ~20 seconds, that's a defect, not patience being tested.
   (The tripwire was ~15 s and had four seconds of headroom; the window
   change left it about one, so it moved.)
-- **What you hear, per arm (protocol revision 4, 2026-10-04):**
-  - **Phonem:** the spoken prompt **"Schau genau hin."**, then — about
-    **2 s** after the letter appears — the letter's own recorded sound,
-    **looping for the rest of the animation** and stopping when the
-    phase moves on.
-  - **Raumklang:** the same spoken prompt, then about 2 s later a
-    synthetic tone, **STEADY for the rest of the animation**: neutral
-    rate, centre pan, zero pitch — no sweep. (It used to sweep pitch and
-    pan across the canvas; that was removed on 2026-09-17, "Glissando
-    weg". **Expect a plain held tone and nothing else.** What the arm
-    does with pitch and pan happens during the child's own tracing, not
-    here.)
-  - **Ohne Ton:** the spoken prompt **only** — the same words as the
+- **What you hear, per arm (protocol revision 9, 2026-10-14; the timing
+  is r5, the recorded voice r9):** the instruction is a bundled recording
+  (voice Kiki, `phase_observe.mp3`, 1.25 s), identical in every arm.
+  - **Phonem:** the recorded prompt **"Schau genau hin."**, then —
+    **1.0 s after the prompt ENDS** (3.0 s after it started if no end is
+    reported) — the guide-dot animation starts and, together with it, the
+    letter's own recorded sound, **looping for the whole pass** and
+    stopping when the phase moves on. The sound follows the dot as it
+    follows the pen: rate from the dot's speed (a still dot plays on at
+    the slowest rate), pan from its horizontal position.
+  - **Raumklang:** the same prompt and the same start, with the
+    synthetic carrier tone following the dot: rate from its speed, pan
+    from x, **pitch from its height (y)**. It is no longer a steady
+    held tone: r5 (#42) reversed the 2026-09-17 "Glissando weg" steady
+    carrier for observe.
+  - **Ohne Ton:** the recorded prompt **only** — the same words as the
     other two arms — then the guide-dot animation in silence, same
-    length as the other two arms.
-- **Check, every run: the prompt must FINISH before the arm's sound
-  starts**, at the speech rate set on this iPad (Einstellungen →
-  Sprechgeschwindigkeit). The sound waits a fixed 2.0 s; it does not
-  listen for the end of the speech. **If the voice and the sound
-  overlap, that is a defect — flag it**, with the speech-rate setting
-  you were on.
+    timing as the other two arms.
+- An observe phase that is interrupted (Control Center, banner, app
+  switcher, opening the parent area) restarts from the instruction in
+  every arm (r8), so the sound and the animation are never heard from the
+  middle.
+- **Check, every run: the prompt must FINISH before the animation and
+  the arm's sound start** (the start is tied to the end of the
+  recording, not to a fixed delay or to the iPad's speech-rate setting,
+  which no longer applies to the five study phrases). **If the voice and
+  the sound overlap, that is a defect — flag it.**
 - The screen does not react to touch during this phase — that's
   correct, not a glitch.
 
@@ -273,12 +293,13 @@ For **each of the three trained letters** (the ones named on the
 - A faint ghost letter appears. Trace it with your finger or the
   Pencil.
 - **This is where the arm's sound actually plays while you write:**
-  - **Phonem / Raumklang:** sound is active only while you're near the
-    expected checkpoint and moving above a small speed threshold; it
-    speeds up / slows down and (Raumklang only) changes pitch with
-    your vertical position and pans with your horizontal position. If
-    you stop moving, it holds briefly then goes idle within about a
-    tenth of a second; moving again brings it back.
+  - **Phonem / Raumklang:** sound is active only while the pen is on
+    the path (near the expected checkpoint); since r3 there is no speed
+    threshold. It speeds up / slows down and (Raumklang only) changes
+    pitch with your vertical position and pans with your horizontal
+    position. If you pause for 0.3 s it stops, and after a lift it is
+    held for 0.8 s (a pen put back down inside that hold keeps the sound,
+    r7), fading out over 0.4 s once it ends.
   - **Ohne Ton:** silent throughout, by design.
 - **No haptics anywhere in this phase, in any arm.** Under study mode
   the haptic engine is a silent no-op (same substitution as 4b), so
@@ -287,8 +308,10 @@ For **each of the three trained letters** (the ones named on the
 - If your finger or the Pencil leaves the canvas bounds mid-stroke,
   the app shows a text toast reading "Probier's nochmal" and resets
   the current stroke so you retrace it from its start point, and the
-  app SAYS "Probier's nochmal" — in all three arms alike, Ohne Ton
-  included (revision 4: spoken content is identical in every arm).
+  app SAYS "Probier's nochmal" (the recorded `retry_cue`, at most once
+  per 3.0 s of touch time; it waits for an instruction still playing) —
+  in all three arms alike, Ohne Ton included (spoken content is
+  identical in every arm).
   That's the expected recovery path, not a defect. If one arm says it
   and another doesn't, that is a defect.
 
@@ -305,7 +328,9 @@ For **each of the three trained letters** (the ones named on the
   canvas, that is a defect — flag it:** it is a trace the child could
   copy in the one unassisted trial.
 - **The arms are NOT identical here, and that is the design (P2).**
-  Phonem and Raumklang couple to the pen exactly as in Guided — if
+  Phonem and Raumklang couple to the pen as in Guided, except that since
+  r6 the sound follows the pen anywhere on the canvas, not only on the
+  letter — if
   you hear NOTHING under either sound arm while writing, that is now
   the defect, flag it. **Ohne Ton stays silent** — if you hear the
   arm's sound there, that is a defect, flag it. (This bullet used to
@@ -337,10 +362,11 @@ After the third trained letter's FreeWrite, training is done. **There
 is no separate "post-test" step for the three trained letters** — that
 FreeWrite pass you just did already is their post-test measure.
 
-**End of the set — what you hear and see (protocol revision 4).** When
-the LAST trained letter's FreeWrite is recorded
-(`PhaseTransitionCoordinator`, `} else if vm.isLastLetterOfSet {`):
-- **All three arms say "Super gemacht!"** — spoken content is identical
+**End of the set — what you hear and see (protocol revision 9; since r7 only
+a TRAINING pass ends the set, never a cold probe).** When
+the LAST trained letter's FreeWrite is recorded in training
+(`PhaseTransitionCoordinator`, `} else if vm.currentProbe == nil, vm.isLastLetterOfSet {`):
+- **All three arms play the recorded "Super gemacht!"** — content is identical
   in every arm (`vm.prompts.play(.celebration, …)`; `.celebration` is in
   `StudyVoiceoverPromptPlayer.studySpokenKeys`).
 - **Phonem and Raumklang also play a short chime; Ohne Ton does not**
@@ -366,8 +392,11 @@ participant did NOT train.
 
 For each of the two:
 1. Tap **"Post-Test starten: `<letter>`."** Drops straight to canvas.
-2. Same as pretest: blank canvas, no ghost, no demonstration, no
-   sound, single cold FreeWrite attempt.
+2. Same as pretest: blank canvas, no ghost, no demonstration, single
+   cold FreeWrite attempt; the sound arms sound while you write (as in
+   Section 3), Ohne Ton stays silent. Repeating a probe, or starting a
+   post-test before the child's set is complete, asks you to confirm
+   (warned, never blocked; r8).
 3. Long-press the gear, back to Forschungs-Daten, do the second
    letter.
 
@@ -378,13 +407,19 @@ That's the end of the session for this run.
 ## 6 · Confirming the data landed
 
 Long-press the gear → **Datenexport** (third tab). Tap **"JSON
-exportieren"** (or CSV). A share sheet opens with a file named
-`primae_progress_<date>.json`. Save it to Files.
+exportieren"** (or CSV). A share sheet opens with the combined file for every child on
+this iPad, named `primae_progress_ALL_<date>_<time>_all<N>.json`
+(`<N>` = children with data; the same for CSV/TSV). Save it to Files.
+(Take this export ONCE, after the last child; the app keeps the newest
+five copies in `Application Support/PrimaeNative/Exports/` for `devicectl`
+retrieval, and deletes the temporary file once a share activity completes
+(a leftover is swept at the next launch).)
 
 You don't need a terminal to sanity-check it: open it in the Files app
 preview, or in a text/spreadsheet app if you have one on the iPad. You
 should be able to see:
-- the participant ID matching the "Aktiver Teilnehmer" card,
+- the participant ID matching the "Aktiver Teilnehmer" card (in the
+  combined file, in that child's block),
 - a header line naming `enrolledAt`,
 - one row per **phase** completed, not per letter — each row carries
   its own `phase` (observe/direct/guided/freeWrite) and, for the cold
@@ -392,10 +427,10 @@ should be able to see:
   pretest or post-test letter) opens straight into freeWrite, so it
   writes exactly **1 row**: **5 pretest rows** (one per letter) and
   **2 post-test rows** (one per letter). Each of the **3 trained
-  letters** writes **up to 4 rows** — one per phase it completed
-  (observe, direct, guided, freeWrite; `LearningPhase` has exactly
-  these four cases) — all written together at that letter's freeWrite
-  completion. That caps a clean run at **5 + (3 × 4) + 2 = 19 rows**,
+  letters** writes **up to 3 rows** — one per phase it completed
+  (observe, guided, freeWrite; `direct` no longer runs, see 4b) — all
+  written together at that letter's freeWrite
+  completion. That caps a clean run at **5 + (3 × 3) + 2 = 16 rows**,
   fewer if a trained letter's session ended before every phase scored
   (e.g. you had to abandon a letter mid-phase). Nothing should be
   entirely missing for a letter you actually wrote.
@@ -417,8 +452,9 @@ what pins the arm for the new run.
 
 What **"Neuer Teilnehmer" wipes**: all progress, stars, phase-session
 records, raw traces, and on-device stroke calibrations for the
-outgoing participant (it exports them first, per Section 1 step 3, so
-nothing is lost — just cleared off the device).
+outgoing participant (if the child did anything, it seals them to the on-device archive first, so
+they stay in the combined export — cleared from the live stores only; a child who did nothing
+is kept only in the export's enrolment block).
 
 What it **does not touch**: device-level settings — appearance,
 speech rate, and so on. You don't need to redo anything there between
@@ -441,7 +477,8 @@ working as intended:
 |---|---|---|---|
 | Full-screen stop, "Studie kann nicht starten" | "Kein Teilnehmer eingeschrieben..." | You skipped Section 1 (never enrolled, or forgot after a fresh install) | You DID enrol and this still shows |
 | Same screen | "Zuweisung geändert — die App muss neu gestartet werden..." | You changed an override (Section 2) and haven't relaunched yet | It still shows AFTER a full relaunch |
-| Same screen | "Teilnehmer gewechselt — die App muss neu gestartet werden..." | You just did "Neuer Teilnehmer" and haven't relaunched yet | It still shows after relaunch |
+| Same screen | "Teilnehmer gewechselt — die App muss neu gestartet werden..." | You just did "Teilnehmer wiederherstellen" (the delayed-retest restore) and haven't relaunched yet; "Neuer Teilnehmer" no longer needs a relaunch | It shows after "Neuer Teilnehmer", or still shows after relaunch |
+| Same screen | "Aufgenommene Anweisungen fehlen: …" / "…sind nicht die geprüften…" | Should never happen — the five recorded study phrases are bundled and pinned by `Resources/Prompts/MANIFEST.json` (r9) | Shows at all, on any run |
 | Same screen | "Spatial-Arm ohne Trägerton..." | Should never happen — the carrier file is bundled | Shows at all, on any run |
 | Same screen | "Phonem-Arm ohne Phonem-Aufnahmen für: ..." | Should never happen — all five recordings are bundled (H5 closed 2026-09-14) | Shows at all, on any run |
 | "Buchstaben nicht geladen — Bitte die App neu starten." | — | Should never happen on a correctly built artefact | Shows at all |

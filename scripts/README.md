@@ -232,8 +232,9 @@ Use `scripts/typecheck_package.sh` for a fast local type-check.
 2. `python3 scripts/generate_letter_audio.py --letter X` — auditions
    all bundled voices for the phoneme. Pick one, copy its files into
    `PrimaeNative/Resources/Letters/X/`.
-3. `./scripts/verify_bake.sh` — confirms 3-trial determinism + that no
-   already-shipped letter's `strokes.json` regressed (the b firewall).
+3. `./scripts/verify_bake.sh` — would confirm 3-trial determinism + that no
+   already-shipped letter's `strokes.json` regressed (the b firewall); it
+   currently exits 2 "not applicable" for the static corpus (`verify_bake.sh:72,79`).
 4. The DEBUG-only `StrokeCalibrationOverlay` is for on-device
    inspection only — it persists tweaked checkpoints to Application
    Support so you can see them inside that session, but there is no

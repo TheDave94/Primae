@@ -43,18 +43,18 @@ reach those screens accidentally.
 
 ### 1.3 Platform
 
-* **iPad** in landscape, iOS 26+. Built against Swift 6.3 / Xcode 26.4.
+* **iPad** in landscape, iOS 27+. Built against Swift 6.4 / Xcode 27 (pinned by major version in `bin/toolchain.pin`; the exact Xcode build that made an artefact is recorded with it, not here).
 * Both **finger** and **Apple Pencil** input. Pencil pressure +
   azimuth feed the pressure-control dimension; finger input is treated
   as zero-force.
-* The package targets `iOS 26.0` and `macOS 15.0`
-  (`Package.swift:6-9`); the Primae Xcode wrapper hosts it on iOS.
+* The package targets `iOS 27.0` and `macOS 15.0`
+  (`Package.swift:24-27`, `swift-tools-version: 6.4`); the Primae Xcode wrapper hosts it on iOS.
 
 ### 1.4 Language
 
 The UI is **German throughout**, including all child-facing strings,
-parent dashboard labels, settings, accessibility labels, and TTS
-utterances. The only English strings in the entire codebase are inside
+parent dashboard labels, settings, accessibility labels, and spoken
+utterances (TTS, and from protocol r9 five recorded study phrases). The only English strings in the entire codebase are inside
 `#if DEBUG` blocks of the calibration tooling (and even those were
 translated in the latest pass — see `StrokeCalibrationOverlay.swift`).
 
@@ -127,7 +127,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 | `ParentDashboardStore.swift` | 497 | Session + phase-record JSON store. `PhaseSessionRecord` carries Schreibmotorik dimensions, session-aligned recognition (D-2), `recordedAt` timestamp (D-3), `inputDevice` (D-6). `SessionDurationRecord` also carries `recordedAt` (D-9). accuracySamples cap 200. Schema-versioned (W-17). |
 | `ParentDashboardExporter.swift` | 354 | CSV / TSV / JSON exporter. 15-column per-phase rows; per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`); `letterByArm` block (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
 | `StreakStore.swift` | 219 | Daily-streak JSON store + `RewardEvent` enum. `earnedRewards: Set<RewardEvent>` exposed on the protocol so the Fortschritte gallery can render achievement badges. Schema-versioned (W-17). |
-| `LocalNotificationScheduler.swift` | small | Daily reminder with quiet hours + streak-aware copy. |
+| `LocalNotificationScheduler.swift` | small | Daily reminder with quiet hours + streak-aware copy. Compiled out of the study build (`#if !STUDY_BUILD`, R-065, #49). |
 | `OnboardingCoordinator.swift` | 220 | 7-step state machine. U4 adds an `OnboardingVariant` enum (`.full` 7-step, `.short` 3-step) so the cohort can A/B compare onboarding length. The variant the child actually completed is locked into `OnboardingState.variantUsedRaw` on first complete (re-runs don't overwrite) so post-hoc analysis can correlate engagement metrics with the original variant. |
 | `LetterScheduler.swift` | 152 | Spaced-repetition prioritiser. Ebbinghaus-style decay. |
 | `RetrievalScheduler.swift` | 75 | P1 — every-Nth-letter cadence for retrieval-practice prompts (Roediger & Karpicke 2006). Persisted counter survives relaunch; minimum-prior-completions guard skips testing on never-seen letters. Drives `RetrievalPromptView` via `OverlayQueueManager.retrievalPrompt`. |
@@ -207,7 +207,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 * `Letters/<X>/<X><n>.mp3` — recorded letter-name + phoneme audio variants.
 * `Fonts/Primae-*.otf` (12 weights) + `PlaywriteAT-Regular.ttf` + `PlaywriteAT-OFL.txt` (license).
 * `ML/GermanLetterRecognizer.mlpackage/` — CoreML model + manifest.
-* `letter_set.json` — `active_letters: ["A","F","I","K","L","M","O"]`.
+* `letter_set.json` — `active_letters: ["A","F","I","K","L","M","O"]`. Referenced by no Swift, script, workflow or test (grep at `60e8b805`); the study letter set is `TrainedLetterSubset.studyLetters` (A F I L M), not this file (audit F2-09).
 
 #### `PrimaeNativeTests/`
 40+ test files using **Swift Testing** (`@Test`, `@Suite`, `#expect`).
@@ -219,8 +219,8 @@ Notable: `WritingAssessmentTests`, `LetterSchedulerTests`,
 `TestFixtures.swift`.
 
 #### `.github/workflows/`
-* `ios-build.yml` — main GitHub Actions runner, macos-26 / Xcode 26.4. Runs `xcodebuild test` on iPad simulator.
-* `ipad-device-test.yml` — self-hosted MacBook physical-device test job.
+* `ios-build.yml` — GitHub Actions on the hosted `xcode-27` runner image (the label is the toolchain pin, `bin/toolchain.pin`). Runs `xcodebuild test` on the iPad simulator matrix (iPad Pro 13-inch (M5) and iPad (A16)).
+* `ipad-device-test.yml` — removed 2026-07-13 (`c6731761`); it was a self-hosted MacBook physical-device test job. See §10.4.
 
 ### 2.2 Dependency graph
 
@@ -355,7 +355,7 @@ ProgressStore.recordRecognitionSample
 - The letter glyph rendered in the active script (Druckschrift or Schreibschrift).
 - An animated guide dot tracing each stroke in canonical order.
 - Numbered start dots indicating where each stroke begins.
-- A "Schau mal genau hin." prompt is spoken via TTS on phase entry.
+- "Schau genau hin." is played on phase entry: from protocol r9 a recorded take (voice Kiki, `Resources/Prompts/phase_observe.mp3`), not synthesised speech. [Before r9, and in the text of r2-r8, the system voice spoke it.]
 - The child taps anywhere on the overlay to advance — or the phase
   auto-advances after the animation's single pass so a child who
   can't read isn't stuck. The pass plays at 0.4x, so one pass is about
@@ -495,8 +495,9 @@ ProgressStore.recordRecognitionSample
   `TracingCanvasView` before drawing the glyph). Outside the study the
   glyph stays visible.
 - The child writes the letter from memory.
-- "Und jetzt ganz allein." is spoken on entry
-  (`ChildSpeechLibrary.phaseEntry(.freeWrite)`, `SpeechSynthesizer.swift`).
+- "Und jetzt ganz allein." is played on entry: from protocol r9 the recorded take
+  `Resources/Prompts/phase_freewrite.mp3` through `PromptPlayer`; before r9 it was
+  spoken by `SpeechSynthesizer` (`ChildSpeechLibrary.phaseEntry(.freeWrite)`).
 - No haptics (`feedbackIntensity == 0.0`). Real-time audio is a
   separate gate (§7.3/§7.4): in a STUDY session the sound arms couple
   in freeWrite exactly as in guided — every writing part sounds,
@@ -1429,8 +1430,20 @@ letter,phase,completed,score,schedulerPriority,condition,recordedAt,
 recognition_predicted,recognition_confidence,recognition_confidence_raw,
 recognition_correct,formAccuracy,tempoConsistency,pressureControl,
 rhythmScore,inputDevice,audioCondition,trainedSubset,
-phaseDurationSeconds,frechetDistance,checkpointCoverage
+phaseDurationSeconds,frechetDistance_RETIRED_alwaysEmpty,checkpointCoverage,
+spatialDeviation,strokeCount,strokeOrder,reversedStrokeCount,studyMode,probe,
+comparisonConfiguration,protocolRevision,spatialDeviationRaw,
+participantId,rowId,finalizedBy,probeAttempt,observeRestarts,strokesCancelled,
+routeChanges,interruptions,outputRouteAtStart,outputRouteAtEnd,outputVolume,
+outputLatency,otherAudioPlaying,secondaryAudioHint,voiceId,recognizerAvailable,
+guidedAccess,idleTimerDisabled,lowPowerMode,thermalState,batteryLevel,
+launchId,previousRunAbnormal,appVersion,buildConfiguration,buildUUID,
+osVersion,deviceModel
 ```
+
+(As of `60e8b805`, protocol r9; the authoritative order is the header array in
+`ParentDashboardExporter.swift` — `phaseRowAppendedColumns` is the tail after
+`spatialDeviationRaw`.)
 
 New columns are always appended **last**, so existing consumers keep
 their column offsets. Legacy rows decode absent fields as nil and emit
@@ -1460,7 +1473,7 @@ page.
 | `audioCondition` | Pilot audio arm (phoneme / spatial / silent) in effect for the row — the pilot's primary between-subjects IV. |
 | `trainedSubset` | The participant's trained 3-of-5 study letters (e.g. `"AFI"`), so trained vs untrained can be partitioned per row without a join. |
 | `phaseDurationSeconds` | **Time outcome.** freeWrite measured-phase span, first sample → last sample, end-inclusive (§6.4.1). freeWrite rows only. |
-| `frechetDistance` | **Primary accuracy outcome.** Raw discrete-Fréchet distance in normalised 0–1 letter-box units; lower is better; unclamped, so it does not saturate. freeWrite rows only. Defined precisely in §4.12.1. |
+| `frechetDistance` | **RETIRED: this column is always empty and exports as `frechetDistance_RETIRED_alwaysEmpty`** (`ParentDashboardExporter.retiredFrechetColumnName`). The live primary accuracy outcome exports as `spatialDeviation` (`StrokeProcessMeasures.swift`, header). Sections 4.12 and 4.12.1 and Appendix B still describe the Fréchet distance as the primary outcome as it was defined before the 2026-09-04 stroke-correspondence redefinition; they are out of date and this row states only what the exported column is. |
 | `checkpointCoverage` | **Secondary accuracy outcome.** Fraction of reference checkpoints reached during the freeWrite pass (0–1). Saturates at ceiling — see §4.12.2. freeWrite rows only. |
 
 > **Analyse per letter.** The five study letters differ structurally
@@ -1526,9 +1539,15 @@ Additional sections in the export:
   the thesis's export appendix documents. Guarded by
   `ParentDashboardExporterTests.csvDoesNotContainRemovedAverageAccuracyColumn`.
 * Per-day session durations (`date,recordedAt,durationSeconds,
-  wallClockSeconds,condition,inputDevice,letter`) — `recordedAt` is the
+  wallClockSeconds,condition,inputDevice,letter,audioCondition,studyMode,
+  probe,participantId,rowId,trainedSubset,comparisonConfiguration,
+  protocolRevision`) — `recordedAt` is the
   full ISO-8601 timestamp (D-9); `letter` names the practised letter (or
-  word label) so per-letter time-to-complete needs no `recordedAt` join.
+  word label) so per-letter time-to-complete needs no `recordedAt` join;
+  the last eight columns are the phase row's stamps, so a duration
+  attributes to an arm, a timepoint, a participant and a protocol
+  revision without a join (`rowId`, `participantId`, `trainedSubset`,
+  `comparisonConfiguration`, `protocolRevision`: R-123, protocol r8).
 * Phase-completion rates (one row per phase).
 * Aggregate `averageFreeWriteScore`, plus per-arm `averageFreeWriteScore_<arm>`
   rows (D-7).
@@ -1540,11 +1559,29 @@ Additional sections in the export:
 * The four average-Schreibmotorik-dimension rows when ≥ 1 freeWrite
   sample exists.
 
-The first line of every file is `# participantId=<UUID>` so a
+The first line of every file (in the combined export: of every
+participant block) is `# participantId=<UUID>` so a
 researcher can align data across installs. When `enrolledAt` is set,
 a second `# enrolledAt=<ISO-8601>` header line documents the cutoff
 the exporter applies to discard pre-enrolment rows (D-7) and legacy
 rows missing `recordedAt` (D-8).
+
+**The export the parent area offers is the combined one**
+(`primae_progress_ALL_<date>_<time>_all<N>.<csv|tsv|json>`;
+`ParentAreaView.export(format:)`): one block per archived participant
+plus the live one, the live one only if it has a phase row or a session
+duration (`TracingViewModel.allParticipantExportSources`,
+`participantDidAnything`, R-059). `<N>` is the number of distinct
+participant ids with a block. CSV/TSV blocks are separated by a
+`# ==================== next participant ====================` line and
+the file ends with an enrolment block after a
+`# ==================== enrolments (not participants) ====================`
+line: one row per enrolment on the device (`enrolment_participantId,
+enrolledAt,audioCondition,trainedSubset,protocolRevision,
+comparisonConfiguration,voiceId`, then the device-state and build
+columns), so a child who was enrolled and stopped before any phase row is
+visible there and is not counted in `<N>`. The combined JSON is an array
+of participant objects and has no enrolment block.
 
 ### 6.5 GDPR / DSGVO considerations
 
@@ -1559,6 +1596,11 @@ rows missing `recordedAt` (D-8).
   contribute to A/B analysis.
 * The CSV / TSV / JSON export is share-sheet driven: the parent /
   researcher exports manually; the app does no automatic transmission.
+  The temporary export file is deleted once a share activity completes (a
+  leftover is swept at the next launch); a copy of the newest five exports is kept in
+  `Application Support/PrimaeNative/Exports/` (excluded from backup) for
+  retrieval with `devicectl`. The sheet offers no Mail, Messages or Copy
+  (R-062, #49: `ExportFileRetention`, `ActivitySheet.excludedActivityTypes`).
 * No personal identifiers are stored: no name, no birthday, no email.
 * CoreML inference is **on-device only** — stroke images never leave
   the iPad.
@@ -1878,16 +1920,16 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 ### 10.4 CI pipeline
 
 `.github/workflows/ios-build.yml`:
-* Runs on **macos-26** with **Xcode 26.4**.
-* `xcodebuild test` against the iPad simulator scheme.
+* Runs on the hosted **`xcode-27`** runner image (the label is the toolchain pin, `bin/toolchain.pin`; it ran `macos-26` / Xcode 26.4 until the 2026-10-01 pin).
+* `xcodebuild test -only-testing:PrimaeNativeTests` against the iPad simulator matrix (iPad Pro 13-inch (M5), iPad (A16)); `PrimaeUITests` is built but not run in CI.
 * Uploads `/tmp/TestResults.xcresult` and `/tmp/xcode-test.log` as
   artifacts.
 * Greps the test log for `error:` / `#expect.*failed` /
   `XCTAssert.*failed` / `Test.*FAILED` and surfaces the matches.
 
-`ipad-device-test.yml` runs on a self-hosted MacBook for physical-
-device validation; skipped on this run because the simulator job
-failed first.
+`ipad-device-test.yml` (self-hosted MacBook, physical-device
+validation) was removed on 2026-07-13 (`c6731761`); physical-device runs
+are a local act (`docs/STUDY_DEVICE_DRYRUN.md`, CLAUDE.md).
 
 ### 10.5 Tests added in rounds 3 and 4 (audit response)
 
@@ -2238,7 +2280,7 @@ correct. Every subsequent script change is required to produce
 byte-identical `b_l/strokes.json`. Any diff to `b` flags a regression
 in shared code before it lands.
 
-Both properties are codified in `scripts/verify_bake.sh` — it bakes
+Both properties are codified in `scripts/verify_bake.sh` (as of 2026-10-14 it exits 2 "not applicable" because every Regular letter is a static artifact; see BAKE_INVARIANTS.md, Threshold 6) — it bakes
 the LETTERS dict three times into a tmp dir, asserts byte-identity
 across the three bakes, and diffs against HEAD's checked-in
 `strokes.json` for every letter the dict covers. Exits non-zero on
@@ -2297,7 +2339,9 @@ Operationally, adding or revising a letter is:
 5. **Visual review** — eyeball the grid; pick the best column.
 6. **Bake the chosen variant for all affected letters**, then run
    `./scripts/verify_bake.sh` to confirm determinism + byte-identity
-   for unchanged letters (the b firewall is checked here too).
+   for unchanged letters (the b firewall is checked here too). Note: it
+   currently exits 2 "not applicable" for the static corpus, so this step
+   verifies nothing today; see BAKE_INVARIANTS.md, Threshold 6.
 7. **Single commit** capturing the spec change + regenerated
    `strokes.json` files + a commit message describing the construction
    choice (and what was ruled out and why).
@@ -2361,6 +2405,8 @@ Children can't read fluently yet, so every numeric metric the data model capture
 | `PaperTransferView` phase rotation | `paperTransferShow / Write / Assess` |
 | `appDidEnterBackground` | `speech.stop()` |
 
+> **Study build (protocol r9, 2026-10-14):** only the phase-entry phrases (observe, guided, free-writing), "Probier's nochmal." and the end-of-set "Super gemacht!" are heard, identically in every arm, and they are the five bundled recorded takes (`Resources/Prompts/`, `PromptPlayer`, `StudyVoiceoverPromptPlayer.studySpokenKeys`), not `SpeechSynthesizer` output. `praise(starsEarned:)`, the recognition lines, the paper-transfer phrases and the retrieval question are not reachable in a study session. A missing take is a logged fault and silence, never a system-voice fallback, and a study session refuses to start when one of the five is missing (`RecordedPromptSet.refusal`).
+
 ## Letters with full support
 
 **Geometry (strokes.json):** all 59 letters (26 upper + 26 lower + Ä Ö Ü ß)
@@ -2376,7 +2422,7 @@ in §13. Coverage by primitive class:
 **Audio:** 7 letters ship recordings (A F I K L M O). The other 52
 folders contain `strokes.json` but no MP3s — phase scaffolding still
 runs (the empty-strokes-skip branch is no longer triggered), and prompts
-that would normally play a recording fall back to TTS.
+that would normally play a recording fall back to TTS (not in a study build, where a missing prompt take is a logged fault and silence).
 
 ---
 
@@ -2390,11 +2436,11 @@ Every CSV / TSV begins with comment lines starting `#`:
 
 | Header | Source | Meaning |
 |---|---|---|
-| `# participantId=<UUID>` | `ParticipantStore.participantId` | Stable per-install UUID. Persists across reinstall via iCloud KV. |
+| `# participantId=<UUID>` | `ParticipantStore.participantId` | Per-install UUID, kept in `UserDefaults`: it survives app updates and relaunches but NOT a reinstall (no iCloud entitlement exists). A proctor can put a known id back by hand for a delayed session (`ParticipantStore.restoreParticipant`); "Nächstes Kind" starts a new one. |
 | `# enrolledAt=<ISO-8601>` | `ParticipantStore.enrolledAt` | First time the install opted into the thesis study. Only present when set. |
 | `# timezone=<IANA>` | `TimeZone.current.identifier` | Device timezone at export time. Useful for interpreting `recordedAt` columns. |
 
-Then a blank line, followed by five data sections.
+Then a blank line, followed by five data sections. (In the combined export these headers and sections repeat per participant block; see §6.4.)
 
 ## Section 1 — Per-letter aggregates
 
@@ -2424,6 +2470,14 @@ above §"Additional sections in the export" for why.
 | `condition` | string | `SessionDurationRecord.condition` | `threePhase` / `guidedOnly` / `control`. |
 | `inputDevice` | string / blank | `SessionDurationRecord.inputDevice` | T7: `finger` / `pencil` / blank. |
 | `letter` | string / blank | `SessionDurationRecord.letter` | The practised letter (or word label) — per-letter time-to-complete without a `recordedAt` join. Blank for legacy records. |
+| `audioCondition` | string / blank | `SessionDurationRecord.audioCondition` | Pilot audio arm (`phoneme` / `spatial` / `silent`) in effect for the session. Blank for legacy records. |
+| `studyMode` | bool / blank | `SessionDurationRecord.studyMode` | Whether the session ran in study mode. Blank for legacy records. |
+| `probe` | string / blank | `SessionDurationRecord.probe` | The cold-probe timepoint when the session was a probe (same stamp as the phase row's `probe`). Blank otherwise and for legacy records. |
+| `participantId` | UUID | the participant block's id | Dedupe/merge key with `rowId`; present on every row (protocol r8, R-123). |
+| `rowId` | UUID / blank | `SessionDurationRecord.rowId` | Row identifier. Blank on rows written before r8. |
+| `trainedSubset` | string / blank | `SessionDurationRecord.trainedSubset` | The session's trained letters. Blank before r8. |
+| `comparisonConfiguration` | string / blank | `SessionDurationRecord.comparisonConfiguration` | The comparison stamp (blank = pilot defaults). Blank before r8. |
+| `protocolRevision` | int / blank | `SessionDurationRecord.protocolRevision` | `StudyProtocol.revision` when the record was written. Blank before r8. |
 
 `condition == threePhase` does not imply four phases ran — the case label predates the `direct` phase.
 
@@ -2454,12 +2508,22 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 | `phaseDurationSeconds` | `PhaseSessionRecord.phaseDurationSeconds` | **Time outcome.** freeWrite rows only: measured-phase time = first sample → last sample, end-inclusive (§6.4.1). Excludes the trailing 2.0 s quiet-window auto-advance (`freeWriteQuietSeconds`) by construction; that constant is identical across arms. Blank otherwise. |
 | `frechetDistance` | `PhaseSessionRecord.frechetDistance` | **Primary accuracy outcome.** Raw discrete-Fréchet distance, normalised 0–1 letter-box units, 6 dp, lower = better, unclamped. freeWrite rows only; blank otherwise and for legacy rows. Full definition in §4.12.1. |
 | `checkpointCoverage` | `PhaseSessionRecord.checkpointCoverage` | **Secondary accuracy outcome.** Reached ÷ total reference checkpoints for the freeWrite pass (0–1, 4 dp). Saturates at ceiling — §4.12.2. freeWrite rows only; blank otherwise and for legacy rows. |
-| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | **The LAST column** (2026-10-04), after `comparisonConfiguration`. Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
+| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | Added 2026-10-04 after `comparisonConfiguration`; **no longer the last column**: `spatialDeviationRaw` (r6) and, from r8, the 28 `phaseRowAppendedColumns` (`participantId` … `deviceModel`) follow it. Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
 
 > **This table is incomplete.** It does not yet list the columns between
 > `checkpointCoverage` and `protocolRevision` (`spatialDeviation`,
 > `strokeCount`, `strokeOrder`, `reversedStrokeCount`, `studyMode`,
-> `probe`, `comparisonConfiguration`), and the `frechetDistance` row above
+> `probe`, `comparisonConfiguration`), nor the columns after it
+> (`spatialDeviationRaw`, then `participantId`, `rowId`, `finalizedBy`,
+> `probeAttempt`, `observeRestarts`, `strokesCancelled`, `routeChanges`,
+> `interruptions`, `outputRouteAtStart`, `outputRouteAtEnd`, `outputVolume`,
+> `outputLatency`, `otherAudioPlaying`, `secondaryAudioHint`, `voiceId`,
+> `recognizerAvailable`, `guidedAccess`, `idleTimerDisabled`, `lowPowerMode`,
+> `thermalState`, `batteryLevel`, `launchId`, `previousRunAbnormal`,
+> `appVersion`, `buildConfiguration`, `buildUUID`, `osVersion`,
+> `deviceModel`). `voiceId` holds, from r9, the recorded prompt set
+> (`rec:kiki:<12 hex>`; rows of r8 and earlier carry the device voice
+> identifier or nothing). The `frechetDistance` row above
 > is retired: it now exports as `frechetDistance_RETIRED_alwaysEmpty`. The
 > authoritative order is the header array in
 > `ParentDashboardExporter.swift`.
