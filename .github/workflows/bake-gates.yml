@@ -19,7 +19,49 @@ name: "Bake gates (G1/G3/G4/G6)"
 # and its name are left as they were on purpose -- renaming a job renames
 # the required status check.
 
+# THE `pull_request` TRIGGER BELOW NEVER FIRES FOR THE PULL REQUESTS THIS
+# PROJECT OPENS. MEASURED 2026-10-15: every run this workflow has ever had
+# came from a GitHub pull request or a manual dispatch — the last was
+# 2026-08-21 — because a pull request here is opened on the FORGE
+# (git.flamingistan.com), and the GitHub repo is a push mirror that never sees
+# one. So the gate this file's header calls a merge-blocker had not run
+# against a real change since the move to forge-origin PRs.
+#
+# `push` is what reaches the mirror, and it is what restores the gate. The
+# `pull_request` block is kept rather than swapped out because a GitHub-side
+# pull request (a Copilot agent's, say) is still a real shape this gate should
+# answer to; it costs nothing to keep and the duplication is named below.
+#
+# THE TWO `paths` LISTS MUST STAY IDENTICAL. GitHub Actions has no YAML
+# anchors and no way to share one list between two event types, so a path
+# added to one block and not the other silently narrows a trigger that still
+# reads as complete in the diff.
 on:
+  push:
+    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**"]
+    paths:
+      - "PrimaeNative/Resources/Letters/Regular/**/strokes.json"
+      - "PrimaeNative/Resources/Letters/Light/**/strokes.json"
+      - "scripts/audit_invariants.py"
+      - "scripts/run_gates.py"
+      - "scripts/tests/**"
+      - "scripts/calibration_to_override.py"
+      - "scripts/calibrate_g6_threshold.py"
+      - "scripts/skeleton_audit.py"
+      - "scripts/g7_allowlist.json"
+      - "scripts/generate_letter_audio.py"
+      - "scripts/generate_prompts.py"
+      - "scripts/verify_bake.sh"
+      - "scripts/render_checklist.py"
+      - "scripts/render_dryrun.py"
+      - ".gitignore"
+      - "docs/TESTING_CHECKLIST.md"
+      - "docs/testing_checklist.html"
+      - "docs/STUDY_DEVICE_DRYRUN.md"
+      - "docs/STUDY_DEVICE_DRYRUN.html"
+      - "scripts/generate_strokes_auto.py"
+      - "design-system/fonts/**"
+      - ".github/workflows/bake-gates.yml"
   pull_request:
     branches: ["main"]
     paths:
@@ -204,3 +246,61 @@ jobs:
             g6.json
             g7.json
           if-no-files-found: warn
+
+  # Same bridge as ios-build.yml's `report_forge_status`, under its own
+  # context so a pull request can show the two gates independently. The shell
+  # is duplicated on purpose: it is short, and the alternative (a composite
+  # action or a script) would have to be checked out into a job that today
+  # needs no checkout at all. If it changes, change both.
+  report_forge_status:
+    name: "Report the bake-gate verdict to the forge"
+    needs: [bake-gates]
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post the aggregate verdict as a Forgejo commit status
+        env:
+          FORGEJO_STATUS_TOKEN: ${{ secrets.FORGEJO_STATUS_TOKEN }}
+          FORGEJO_REPO: "David/Primae"
+          JOB_RESULTS: "${{ needs.bake-gates.result }}"
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -eu
+
+          if [ -z "${FORGEJO_STATUS_TOKEN:-}" ]; then
+            echo "::warning title=Forgejo status bridge is unwired::FORGEJO_STATUS_TOKEN is empty, so no commit status was posted. Create a Forgejo token carrying the write:repository scope on ${FORGEJO_REPO} and save it as this repository's FORGEJO_STATUS_TOKEN secret."
+            exit 0
+          fi
+
+          # Forgejo does not validate `state` (MEASURED 2026-10-15: "banana"
+          # was accepted with HTTP 201), so `success` and `failure` below must
+          # be spelled exactly.
+          state=success
+          description="every gate succeeded"
+          for r in $JOB_RESULTS; do
+            case "$r" in
+              failure|cancelled)
+                state=failure
+                description="at least one gate did not succeed"
+                break ;;
+            esac
+          done
+          echo "results: $JOB_RESULTS"
+          echo "verdict: $state — $description"
+
+          http=$(curl -sS --retry 3 --retry-all-errors -o /tmp/forgejo-status.json -w '%{http_code}' \
+            -X POST "https://git.flamingistan.com/api/v1/repos/${FORGEJO_REPO}/statuses/${SHA}" \
+            -H "Authorization: token ${FORGEJO_STATUS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"state\":\"${state}\",\"context\":\"ci/bake-gates\",\"description\":\"${description}\",\"target_url\":\"${TARGET_URL}\"}")
+          echo "forgejo answered HTTP $http"
+          cat /tmp/forgejo-status.json 2>/dev/null || true
+
+          case "$http" in
+            2??) : ;;
+            *)
+              echo "::error title=Forgejo status post failed::HTTP $http from the commit-status API for ${SHA}"
+              exit 1 ;;
+          esac

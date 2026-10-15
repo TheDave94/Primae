@@ -966,3 +966,98 @@ jobs:
             /tmp/release-study-build.log
             /tmp/identity-scan.log
 
+  # ------------------------------------------------------------------ forge
+  #
+  # WHY THIS JOB EXISTS. Forgejo (git.flamingistan.com) is this repository's
+  # origin and the ONLY place a pull request is opened, reviewed or merged;
+  # GitHub carries a push mirror of it and nothing else. GitHub Actions is
+  # where CI actually runs, and until now the forge had no way to hear the
+  # verdict. MEASURED 2026-10-15: `gh secret list --repo TheDave94/Primae`
+  # returned nothing and no step in either workflow named the forge, so a
+  # Forgejo pull request showed an empty check list whatever CI said — the
+  # gap was a missing WRITER, not a misconfiguration.
+  #
+  # WHAT IT POSTS. One commit status, context `ci/github-actions`, against
+  # this push's SHA. A push mirror copies commits verbatim, so the SHA here is
+  # the same object the forge's pull request is built on and the status lands
+  # on that PR. `target_url` points at the GitHub run so the forge links back
+  # to the logs.
+  #
+  # IT IS A REPORT, NEVER A GATE. main's branch protection carries
+  # `enable_status_check: false`, so nothing posted here can block a merge.
+  # Making it a required check is a separate, deliberate act on the forge —
+  # and it has a trap: a path-filtered workflow posts NO status on a push that
+  # misses its paths, so a context that is required but sometimes absent reads
+  # as pending forever. This one is unfiltered and posts on every push, which
+  # is what makes it the safe candidate if that is ever wanted.
+  #
+  # `skipped` IS NOT A FAILURE. Two of the seven jobs above are advisory by
+  # design and a job that never ran made no claim about this commit.
+  #
+  # PUSH ONLY (plus manual dispatch). A GitHub `pull_request` event fires only
+  # for pull requests opened ON GITHUB, and none are: the forge opens them. On
+  # such an event `github.sha` is a synthetic merge commit that exists on no
+  # remote, so a status posted from it would bind to nothing. A manual
+  # dispatch is admitted so the bridge can be exercised on demand.
+  report_forge_status:
+    name: "Report the CI verdict to the forge"
+    needs: [stroke_audit, resource_presence, project_invariants, unwired_guards, xcode_test, release_study_tests, study_build]
+    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post the aggregate verdict as a Forgejo commit status
+        env:
+          FORGEJO_STATUS_TOKEN: ${{ secrets.FORGEJO_STATUS_TOKEN }}
+          FORGEJO_REPO: "David/Primae"
+          # Every job named in `needs`, in the same order. A plain string is
+          # used rather than toJSON(needs) on purpose: grepping the JSON also
+          # matches a job's own OUTPUT if one ever happens to carry a field
+          # named `result`, which would report a failure that did not occur.
+          JOB_RESULTS: "${{ needs.stroke_audit.result }} ${{ needs.resource_presence.result }} ${{ needs.project_invariants.result }} ${{ needs.unwired_guards.result }} ${{ needs.xcode_test.result }} ${{ needs.release_study_tests.result }} ${{ needs.study_build.result }}"
+          SHA: ${{ github.sha }}
+          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -eu
+
+          if [ -z "${FORGEJO_STATUS_TOKEN:-}" ]; then
+            echo "::warning title=Forgejo status bridge is unwired::FORGEJO_STATUS_TOKEN is empty, so no commit status was posted. Create a Forgejo token carrying the write:repository scope on ${FORGEJO_REPO} and save it as this repository's FORGEJO_STATUS_TOKEN secret."
+            exit 0
+          fi
+
+          # FORGEJO DOES NOT VALIDATE `state`. MEASURED 2026-10-15: posting
+          # state "banana" returned HTTP 201 and stored the row, so a typo
+          # here is accepted silently and renders as an unknown marker rather
+          # than an error. The two strings below must stay exactly `success`
+          # and `failure`; nothing downstream will reject a third spelling.
+          #
+          # `skipped` is not a failure: a job that never ran made no claim
+          # about this commit, and two of the seven are advisory by design.
+          state=success
+          description="every job succeeded"
+          for r in $JOB_RESULTS; do
+            case "$r" in
+              failure|cancelled)
+                state=failure
+                description="at least one job did not succeed"
+                break ;;
+            esac
+          done
+          echo "results: $JOB_RESULTS"
+          echo "verdict: $state — $description"
+
+          http=$(curl -sS --retry 3 --retry-all-errors -o /tmp/forgejo-status.json -w '%{http_code}' \
+            -X POST "https://git.flamingistan.com/api/v1/repos/${FORGEJO_REPO}/statuses/${SHA}" \
+            -H "Authorization: token ${FORGEJO_STATUS_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"state\":\"${state}\",\"context\":\"ci/github-actions\",\"description\":\"${description}\",\"target_url\":\"${TARGET_URL}\"}")
+          echo "forgejo answered HTTP $http"
+          cat /tmp/forgejo-status.json 2>/dev/null || true
+
+          case "$http" in
+            2??) : ;;
+            *)
+              echo "::error title=Forgejo status post failed::HTTP $http from the commit-status API for ${SHA}"
+              exit 1 ;;
+          esac
+
