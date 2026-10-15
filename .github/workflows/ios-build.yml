@@ -1004,7 +1004,10 @@ jobs:
     needs: [stroke_audit, resource_presence, project_invariants, unwired_guards, xcode_test, release_study_tests, study_build]
     if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 3 min, not 5: with --connect-timeout 10 --max-time 30 and 2 retries the
+    # step cannot exceed ~96 s, so the job budget is now an outer guard rather
+    # than the thing that ends the job (see the note in the step below).
+    timeout-minutes: 3
     steps:
       - name: Post the aggregate verdict as a Forgejo commit status
         env:
@@ -1046,18 +1049,36 @@ jobs:
           echo "results: $JOB_RESULTS"
           echo "verdict: $state — $description"
 
-          http=$(curl -sS --retry 3 --retry-all-errors -o /tmp/forgejo-status.json -w '%{http_code}' \
+          # MEASURED 2026-10-15, from a GitHub-hosted runner: this call could not
+          # be completed at all. Two attempts each burned ~134 s inside TCP
+          # connect - "curl: (28) Failed to connect to git.flamingistan.com port
+          # 443 after 133601 ms: Couldn't connect to server" - and the 5 min job
+          # timeout then killed the step, which GitHub reports as `cancelled`.
+          # That made an otherwise-green RUN read as cancelled, which is worse
+          # than having no bridge at all: main's bake-gates run on eae6b3f5 is
+          # exactly that. With no --connect-timeout/--max-time there was nothing
+          # to stop the retry loop from eating the entire budget. Every network
+          # call below is time-bounded, and a delivery failure now WARNS instead
+          # of failing the job: the ruling is that this bridge reports and never
+          # gates, and a bridge that cannot deliver must not redden main.
+          http=$(curl -sS --connect-timeout 10 --max-time 30 \
+            --retry 2 --retry-delay 3 --retry-all-errors \
+            -o /tmp/forgejo-status.json -w '%{http_code}' \
             -X POST "https://git.flamingistan.com/api/v1/repos/${FORGEJO_REPO}/statuses/${SHA}" \
             -H "Authorization: token ${FORGEJO_STATUS_TOKEN}" \
             -H "Content-Type: application/json" \
-            --data "{\"state\":\"${state}\",\"context\":\"ci/github-actions\",\"description\":\"${description}\",\"target_url\":\"${TARGET_URL}\"}")
-          echo "forgejo answered HTTP $http"
+            --data "{\"state\":\"${state}\",\"context\":\"ci/github-actions\",\"description\":\"${description}\",\"target_url\":\"${TARGET_URL}\"}" || true)
+          echo "forgejo answered HTTP ${http:-000}"
           cat /tmp/forgejo-status.json 2>/dev/null || true
 
           case "$http" in
             2??) : ;;
             *)
-              echo "::error title=Forgejo status post failed::HTTP $http from the commit-status API for ${SHA}"
-              exit 1 ;;
+              # HTTP 000 is curl's own "no response at all" code, which is what
+              # an unreachable forge produces. Say which one it was: a 4xx means
+              # the token was rejected and is fixable here; a 000 means the
+              # network path never completed and no token can fix that.
+              echo "::warning title=Forgejo status bridge did not deliver::HTTP ${http:-000} from the commit-status API for ${SHA}. The verdict '${state}' was computed but the forge did not receive it. HTTP 000 means the connection never completed; a 4xx means the forge answered and refused the request."
+              ;;
           esac
 
