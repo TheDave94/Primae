@@ -78,7 +78,7 @@ struct AudioSignalProbeTests {
         let ran = DispatchSemaphore(value: 0)
         Thread.detachNewThread {
             XCTAssertFalse(Thread.isMainThread)
-            handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
+            handler(Self.readOnlyView(buffer), AVAudioTime())
             ran.signal()
         }
         #expect(ran.wait(timeout: .now() + 5) == .success)
@@ -97,7 +97,7 @@ struct AudioSignalProbeTests {
     func silentBufferRecordsNothing() {
         let counters = AudioSignalCounters()
         let handler = AudioSignalProbe.makeTapHandler(counters: counters, threshold: 0.001)
-        handler(AVReadOnlyAudioPCMBuffer(copying: makeBuffer(sampleCount: 256, value: 0.0)), AVAudioTime())
+        handler(Self.readOnlyView(makeBuffer(sampleCount: 256, value: 0.0)), AVAudioTime())
 
         #expect(counters.total == 1)
         #expect(counters.nonSilent == 0)
@@ -123,7 +123,7 @@ struct AudioSignalProbeTests {
         // first-sample-only or first-channel-only peak would miss it.
         buffer.floatChannelData![0][0] = 0.01
         buffer.floatChannelData![1][7] = -0.75
-        handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
+        handler(Self.readOnlyView(buffer), AVAudioTime())
 
         #expect(counters.peak == 0.75)
     }
@@ -152,7 +152,7 @@ struct AudioSignalProbeTests {
         let samples = buffer.floatChannelData![0]
         samples[0] = 0.02; samples[1] = -0.02
         samples[2] = 0.03; samples[3] = 0.9
-        handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
+        handler(Self.readOnlyView(buffer), AVAudioTime())
 
         #expect(counters.peak == 0.9)
     }
@@ -220,8 +220,43 @@ struct AudioSignalProbeTests {
     private func probedPeak(_ buffer: AVAudioPCMBuffer) -> (peak: Float, nonSilent: Int) {
         let counters = AudioSignalCounters()
         let handler = AudioSignalProbe.makeTapHandler(counters: counters, threshold: 0.001)
-        handler(AVReadOnlyAudioPCMBuffer(copying: buffer), AVAudioTime())
+        handler(Self.readOnlyView(buffer), AVAudioTime())
         return (counters.peak, counters.nonSilent)
+    }
+
+    /// Wrap `buffer` for the tap handler the way AVFAudio wraps the buffers
+    /// it hands a tap: a read-only view over the buffer's OWN memory, not a
+    /// copy of it.
+    ///
+    /// MEASURED ON CI 2026-10-14 (xcode-27 image, iOS 27.0 simulator
+    /// runtime): `AVReadOnlyAudioPCMBuffer(copying:)` delivers an
+    /// INTERLEAVED payload's samples only up to `frameLength` — the second
+    /// half of the block arrives zeroed. Every layout case whose only
+    /// signal sat in the last frame (the second half) read silence and
+    /// failed, float32 and int16 alike, while the same tests passed on the
+    /// 27.2 runtime; early-frame interleaved signals were copied and seen,
+    /// which is what pinned the loss on the copy and not on the write or
+    /// the scan. So the harness copies nothing: `unsafeRetaining` keeps the
+    /// scan on the exact memory `makeStereo` wrote, and every buffer handed
+    /// through here outlives the handler call, which is the documented
+    /// precondition of that initializer.
+    private static func readOnlyView(_ buffer: AVAudioPCMBuffer) -> AVReadOnlyAudioPCMBuffer {
+        AVReadOnlyAudioPCMBuffer(unsafeRetaining: buffer)
+    }
+
+    /// What the probe is actually handed: the block count, and for each block
+    /// its channel count and byte size, plus the frame length and format the
+    /// buffer reports. Read from the same memory the handler scans (the
+    /// original buffer), so a failing layout case prints the shape of what
+    /// was really handed, not of a copy that may differ from it.
+    private func shape(of buffer: AVAudioPCMBuffer) -> String {
+        let blocks = buffer.withUnsafeAudioBufferList { list -> String in
+            UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: list))
+                .map { "ch=\($0.mNumberChannels) bytes=\($0.mDataByteSize)" }
+                .joined(separator: "; ")
+        }
+        return "frameLength=\(buffer.frameLength) interleaved=\(buffer.format.isInterleaved) "
+            + "channels=\(buffer.format.channelCount) common=\(buffer.format.commonFormat.rawValue) blocks=[\(blocks)]"
     }
 
     @Test("a signal in the last frame is seen on every layout and channel",
@@ -237,8 +272,9 @@ struct AudioSignalProbeTests {
             ? Float(Int16(0.5 * Float(Int16.max))) / Float(Int16.max)
             : 0.5
         let result = probedPeak(buffer)
-        #expect(result.peak == expected, "\(c.testDescription): the probe reported \(result.peak)")
-        #expect(result.nonSilent == 1, "\(c.testDescription): a signal read as silence")
+        let seen = shape(of: buffer)
+        #expect(result.peak == expected, "\(c.testDescription): the probe reported \(result.peak); handed \(seen)")
+        #expect(result.nonSilent == 1, "\(c.testDescription): a signal read as silence; handed \(seen)")
     }
 
     @Test("samples past frameLength are not read", arguments: [true, false])
@@ -377,7 +413,16 @@ struct AudioSignalProbeTests {
     /// `@MainActor` from the enclosing method and is therefore banned here.
     /// This is a source-level check rather than a behavioural one because the
     /// behaviour in question is a trap that only a device can observe.
-    @Test("the tap is never installed with an inline closure literal")
+    ///
+    /// SKIPPED, visibly, when the source file is not readable: `#filePath` is
+    /// the Mac checkout's path baked in at compile time, and a test bundle
+    /// running on the physical iPad cannot open it. The skip shows in the
+    /// results with its reason (it is not a known issue and not a silent pass);
+    /// the check still runs, and can fail, wherever the checkout is readable
+    /// (the simulator and the Mac).
+    @Test("the tap is never installed with an inline closure literal",
+          .enabled(if: Self.probeSourceIsReadable,
+                   "AudioSignalProbe.swift is not readable here (#filePath is a Mac path; on the physical iPad the checkout does not exist)"))
     func tapIsNotInstalledWithAnInlineClosure() throws {
         let source = try String(contentsOf: probeSourceURL(), encoding: .utf8)
 
@@ -396,7 +441,13 @@ struct AudioSignalProbeTests {
         #expect(code.contains("tapProvider: handler"))
     }
 
-    private func probeSourceURL() -> URL {
+    private static var probeSourceIsReadable: Bool {
+        FileManager.default.isReadableFile(atPath: probeSourceURL().path)
+    }
+
+    private func probeSourceURL() -> URL { Self.probeSourceURL() }
+
+    private static func probeSourceURL() -> URL {
         // `#filePath` is this test file's absolute path AT COMPILE TIME, so
         // walking up from it reaches the repo root with no dependence on
         // bundle layout, build directory shape, or working directory.

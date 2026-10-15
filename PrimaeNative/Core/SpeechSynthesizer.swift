@@ -497,7 +497,11 @@ final class AVSpeechSpeechSynthesizer: SpeechSynthesizing {
 /// static knowledge, so the methods are nonisolated, take the utterance's
 /// IDENTITY (not the non-Sendable utterance), and hop to the main actor.
 final class UtteranceEventRelay: NSObject, AVSpeechSynthesizerDelegate {
-    weak var owner: AVSpeechSpeechSynthesizer?
+    /// Set once by the owner's `init` and read only inside the `@MainActor`
+    /// hops below, so it is main-actor isolated (R-101): the relay is
+    /// `Sendable` (it is a delegate called from AVFoundation's thread) and a
+    /// plain mutable stored property would not be.
+    @MainActor weak var owner: AVSpeechSpeechSynthesizer?
     /// Utterances the system has reported ended whose report has not yet
     /// reached the main actor. Written on the delegate's thread, so the
     /// watchdog can tell "never reported" from "reported, still queued".

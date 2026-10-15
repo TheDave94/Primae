@@ -207,7 +207,7 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
     func doubleReportIsReportedOnce() async {
         let system = DeviceLikeSynthesizer()
         system.doubleReportOnCancel = true
-        let synth = AVSpeechSpeechSynthesizer(synthesizer: system)
+        let synth = AVSpeechSpeechSynthesizer(synthesizer: system, lineBudget: { _ in 60.0 })
         let reports = EndReports(); reports.attach(to: synth)
         synth.speak(cue)
         await handedOver(system)
@@ -223,7 +223,7 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
     func lateReportOfTheCutLineDoesNotEndTheNext() async {
         let system = DeviceLikeSynthesizer()
         system.doubleReportOnCancel = true
-        let synth = AVSpeechSpeechSynthesizer(synthesizer: system)
+        let synth = AVSpeechSpeechSynthesizer(synthesizer: system, lineBudget: { _ in 60.0 })
         let reports = EndReports(); reports.attach(to: synth)
         synth.speak(cue)
         await handedOver(system)
