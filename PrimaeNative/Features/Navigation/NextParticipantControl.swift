@@ -98,7 +98,6 @@ struct NextParticipantControl<Label: View>: View {
     private let onReset: () -> Void
 
     @State private var showConfirm = false
-    @State private var showReady = false
     @State private var sealFailure: String?
 
     init(onReset: @escaping () -> Void = {}, @ViewBuilder label: () -> Label) {
@@ -125,11 +124,16 @@ struct NextParticipantControl<Label: View>: View {
                     sealFailure = failure
                     return
                 }
-                showReady = true
-                // Fired AFTER showReady, and safe only because the rail
-                // keeps this control mounted — an earlier version called
-                // it while the rail was still UNMOUNTING the control, and
-                // that removed the very alert `showReady` had just set.
+                // NON-BLOCKING. This used to set a modal alert, and a modal
+                // alert BLOCKS the tracing canvas until dismissed — so the
+                // proctor had to tap OK before the child could draw, for a
+                // message whose whole content is that nothing needs doing
+                // ("…die App ist sofort startklar"). REPORTED by the proctor
+                // 2026-10-16: "when I start a new participant the drawing
+                // start waits until the popup is confirmed". The confirmation
+                // still happens, as a toast; the seal-FAILURE alert below
+                // stays modal, because that one does require the proctor.
+                vm.announceNewChildReady()
                 onReset()
             }
             Button(NextParticipantCopy.cancelButton, role: .cancel) {}
@@ -137,11 +141,6 @@ struct NextParticipantControl<Label: View>: View {
             // A comparison run is named at the enrolment gate (R-017).
             Text(vm.comparisonRunBanner.map { "\($0)\n\n" + NextParticipantCopy.confirmMessage }
                  ?? NextParticipantCopy.confirmMessage)
-        }
-        .alert(NextParticipantCopy.readyTitle, isPresented: $showReady) {
-            Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
-        } message: {
-            Text(NextParticipantCopy.readyMessage)
         }
         .alert(NextParticipantCopy.sealFailedTitle, isPresented: Binding(
             get: { sealFailure != nil },

@@ -102,6 +102,22 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         player.prepare(withFrameCount: 1024)
         timePitch.rate = 1.0; timePitch.pitch = 0.0
 
+        // ARM THE MEASUREMENT TAP HERE, not in `startIfNeeded`.
+        //
+        // MEASURED 2026-10-16, and it cost a whole diagnosis: `arm(on:)` refuses
+        // when `engine.isRunning`, and its only caller was `startIfNeeded`,
+        // which itself returns early when the engine is ALREADY running. So any
+        // path that started the engine first — a warm-up, a pretest, a resume —
+        // left the tap UNINSTALLED, and the probe reported
+        // `nonSilent=0 total=0 peak=0.0` over audio the proctor could HEAR.
+        // The red `MeasuredAudioUITests` was therefore a false failure caused by
+        // its own instrument. Installing at construction is the one point that is
+        // always before the first start (`installTap` after a start is the
+        // documented crash), so the tap exists for every start path.
+        if AudioSignalProbe.isArmedByLaunchArgument {
+            signalProbe.arm(on: engine)
+        }
+
         do {
             try AVAudioSession.sharedInstance().setCategory(
                 .playback, mode: .default, options: [.interruptSpokenAudioAndMixWithOthers]
@@ -245,6 +261,15 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// off the accessibility tree. See `AudioSignalProbe
     /// .latestSummaryLine` for why that is the channel.
     var latestAudioSignalSummary: String? { signalProbe.latestSummaryLine }
+
+    /// TEST-ONLY: the engine's own state for the accessibility readout. A
+    /// session that measured nothing and reported no route event left one
+    /// question the probe could not answer — whether the engine could run at
+    /// all — so the category and running state ride along with it.
+    var debugAudioStateSummary: String {
+        let cat = AVAudioSession.sharedInstance().category.rawValue
+        return "cat=\(cat) run=\(engine.isRunning) playing=\(isPlaying) file=\(currentFile != nil)"
+    }
 
     func stopAudioSignalTicker() {
         signalTicker?.invalidate()
@@ -523,12 +548,8 @@ private extension AudioEngine {
 
     func startIfNeeded() {
         guard !engine.isRunning else { return }
-        // Arm the output tap BEFORE the engine runs: `installTap` after a
-        // start is the documented crash, and a tap armed once here stays
-        // armed across stop/start cycles for the life of the process.
-        if AudioSignalProbe.isArmedByLaunchArgument {
-            signalProbe.arm(on: engine)
-        }
+        // The tap is armed in `init` (see the note there) — arming it here meant
+        // it never happened on any path that started the engine first.
         let session  = AVAudioSession.sharedInstance()
         let category = session.category
         let canStart = category == .playback || category == .playAndRecord || category == .multiRoute

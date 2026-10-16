@@ -3875,7 +3875,16 @@ public final class TracingViewModel {
     /// the app and the test runner (see `AudioSignalProbe
     /// .latestSummaryLine`). nil in any launch that is not probe-armed,
     /// so it is inert in the pilot artefact.
-    var debugAudioSignalSummary: String? { audioSignalProbeSink.latestAudioSignalSummary }
+    var debugAudioSignalSummary: String? {
+        guard let line = audioSignalProbeSink.latestAudioSignalSummary else { return nil }
+        // The ENGINE's own state rides along with every measurement. This is
+        // what turns "the probe says 0" into an answer: 2026-10-16, a silent
+        // session reported `total=0` and the missing facts were `run=` and
+        // `cat=` — the engine was running, the category valid, a file loaded,
+        // and the tap simply had never been installed (see `AudioEngine.init`).
+        // Without these four fields that question took hours to reach.
+        return "\(line) \(audioSignalProbeSink.debugAudioStateSummary)"
+    }
     var debugLetterActiveTimeAccumulated: TimeInterval { letterActiveTimeAccumulated }
 
     // MARK: - Private helpers
@@ -4558,6 +4567,19 @@ public final class TracingViewModel {
     /// unchanged current id, with `participantSealFailure` set and nothing
     /// wiped (audit 2026-10-13, R-050).
     @discardableResult
+    /// Non-blocking confirmation that a new child is enrolled and the app is
+    /// ready to start them.
+    ///
+    /// A TOAST, not a modal alert, and that is the point: a modal blocks the
+    /// tracing canvas, and this message's whole content is that nothing needs
+    /// dismissing ("…die App ist sofort startklar"). REPORTED by the proctor
+    /// 2026-10-16: with the modal, "the drawing start waits until the popup is
+    /// confirmed". The copy is unchanged — `NextParticipantControlTests`
+    /// asserts it — only its presentation moved here.
+    func announceNewChildReady() {
+        messages.show(toast: NextParticipantCopy.readyMessage)
+    }
+
     func resetForNewParticipant() -> UUID {
         guard sealOutgoingParticipant() else { return ParticipantStore.participantId }
         wipeLiveParticipantState()

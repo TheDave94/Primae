@@ -63,6 +63,13 @@ protocol AudioControlling: AnyObject {
     /// a startup toast so silent failure is visible. No protocol default
     /// is provided so conformers must spell out their state explicitly.
     var initializationError: String? { get }
+
+    /// TEST-ONLY: the engine's own state, for the accessibility readout —
+    /// session category, whether the engine is running, playback state and
+    /// whether a file is loaded. Exists because a silent session had NO
+    /// route event and NO measurement: the question was whether the engine
+    /// could run at all, which only the engine can answer.
+    var debugAudioStateSummary: String { get }
 }
 
 extension AudioControlling {
@@ -101,6 +108,9 @@ extension AudioControlling {
     func startAudioSignalTicker(intervalSeconds: TimeInterval,
                                 label: @escaping @MainActor () -> String) {}
     func stopAudioSignalTicker() {}
+
+    /// Default: nothing to say. Only the real engine reports state.
+    var debugAudioStateSummary: String { "" }
 
     /// Latest measured `AUDIO-SIGNAL` line; nil before the first window.
     var latestAudioSignalSummary: String? { nil }
