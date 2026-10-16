@@ -71,12 +71,13 @@ final class AnimationGuideController {
     /// at 0.4x takes `L/0.36` where two passes at 1.0x took `2L/0.9`, so
     /// the ratio is `2.778/2.222`. Halving the passes would have preserved
     /// it exactly; 0.4 is not 0.5. The five study letters therefore run
-    /// ~6.25-13.75 s rather than the ~5-11 s the thesis and
-    /// `docs/STUDY_DEVICE_DRYRUN.md` quote, and the dry-run's "stuck past
-    /// ~15 seconds is a defect" tripwire is left with about a second of
-    /// headroom where it had four. (Per-segment flooring at 1/240 s and a
-    /// flat 1/60 s first segment drift the true ratio slightly above 1.25
-    /// for checkpoint-dense letters.)
+    /// ~6.25-13.75 s rather than the ~5-11 s the thesis quotes, and the
+    /// dry-run's "stuck past ~20 seconds is a defect" tripwire was MOVED to
+    /// 20 s with this window — at the old ~15 s it had about a second of
+    /// headroom where it had four. `docs/STUDY_DEVICE_DRYRUN.md` §4a records
+    /// the move; this comment previously still cited the old 15 s. (Per-segment
+    /// flooring at 1/240 s and a flat 1/60 s first segment drift the true ratio
+    /// slightly above 1.25 for checkpoint-dense letters.)
     static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
 
     /// Live speed for `start`, defaulting to the production value above.
