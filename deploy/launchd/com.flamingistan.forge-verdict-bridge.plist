@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.flamingistan.forge-verdict-bridge — scheduled pull of GitHub's CI verdict
+  onto the forge, so a pull request on the forge shows the verdict GitHub reached.
+
+  MIRRORS THE ESTATE'S WORKING PRECEDENT, com.flamingistan.w340-bundle-push:
+  same label prefix, /bin/sh <script> invocation, StartInterval, both streams to
+  one log under ~/Library/Logs, minimal PATH, ProcessType Background.
+
+  LAUNCHD, NOT SYSTEMD. `launchctl` is /bin/launchctl on Yo-Mama and `systemctl`
+  is ABSENT (Darwin). A systemd unit would be inert here.
+
+  PREFER THE INSTALLER, which does these steps with pre-checks, a savepoint and a
+  read-back. The bare commands, if you would rather run them by hand:
+
+    plutil -lint deploy/launchd/com.flamingistan.forge-verdict-bridge.plist
+    launchctl bootout gui/$(id -u)/com.flamingistan.forge-verdict-bridge    # ignore "not found"
+    cp deploy/launchd/com.flamingistan.forge-verdict-bridge.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.flamingistan.forge-verdict-bridge.plist
+    launchctl kickstart -p gui/$(id -u)/com.flamingistan.forge-verdict-bridge   # one manual run
+    tail -40 ~/Library/Logs/forge-verdict-bridge.log
+
+  REMOVE:
+    launchctl bootout gui/$(id -u)/com.flamingistan.forge-verdict-bridge
+    rm ~/Library/LaunchAgents/com.flamingistan.forge-verdict-bridge.plist
+
+  INSTALL IS AN OPERATOR ACT, as it is for w340: the delivering seat writes the
+  artefact and proves it in plan mode; loading an unattended unit on Yo-Mama is
+  the operator's to run.
+
+  RunAtLoad is FALSE deliberately — loading the agent must not fire a poll as a
+  side effect of a login. The first run is the explicit kickstart above.
+
+  THE SCRIPT PATH IS THE INSTALLED COPY, not the repository checkout. w340 points
+  at its live working tree and is therefore whatever that checkout happens to
+  contain; this unit runs the copy the installer verified by sha256, so a branch
+  switch cannot change what the unattended job executes.
+
+  STDERR IS NOT DISCARDED. Both streams append to the log below, which the runner
+  also writes to directly with its own timestamps.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.flamingistan.forge-verdict-bridge</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>/Users/musicbox/Library/Application Support/forge-verdict-bridge/forge-verdict-bridge-runner.sh</string>
+    </array>
+
+    <!-- 900s = 15 min. Reasoning: CI takes ~10-20 min after a push, so a 15-minute
+         cadence puts a verdict on the forge within ~15 min of GitHub finishing it,
+         and 96 polls/day against two APIs is negligible. The poller writes a status
+         ONLY when the value actually changed, so a steady state costs one read per
+         branch and writes nothing. -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <key>RunAtLoad</key>
+    <false/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/musicbox/Library/Logs/forge-verdict-bridge.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/musicbox/Library/Logs/forge-verdict-bridge.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <!-- launchd agents get a minimal PATH; gh lives in homebrew, jq/curl in /usr/bin. -->
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>ProcessType</key>
+    <string>Background</string>
+</dict>
+</plist>
