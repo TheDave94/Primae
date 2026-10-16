@@ -72,7 +72,19 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
         return bundles
     }
 
+    /// MEMOISED 2026-10-16 — this is the fix for the defect measured on the
+    /// device that day. `resourceURL(for:)`'s last-resort pass calls this on
+    /// EVERY miss, and one letter load issues ~448 of them: the instrumented
+    /// run logged **1344 fallbacks at ~0.089 s each**, i.e. ~40 s of a 41.6 s
+    /// load, on real hardware. The list is bundle-determined and cannot change
+    /// during a run (see the de-duplication note below), so it is computed once
+    /// per search-bundle set instead of once per miss. Keyed by the roots so
+    /// distinct providers (test fixtures) stay independent.
+    nonisolated(unsafe) private static var resourceURLCache: [String: [URL]] = [:]
+
     func allResourceURLs() -> [URL] {
+        let key = searchBundles.compactMap { $0.resourceURL?.path }.joined(separator: "|")
+        if let cached = Self.resourceURLCache[key] { return cached }
         let fm = FileManager.default
         // DE-DUPLICATE BY RESOLVED PATH. `searchBundles` deliberately
         // lists the module bundle AND the app bundle, and the app bundle
@@ -103,9 +115,11 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
                 (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
             }
         }
-        return all.filter { url in
+        let result = all.filter { url in
             seen.insert(url.resolvingSymlinksInPath().path).inserted
         }
+        Self.resourceURLCache[key] = result
+        return result
     }
 
     func resourceURL(for relativePath: String) -> URL? {

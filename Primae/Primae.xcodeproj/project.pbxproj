@@ -932,9 +932,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		DBDE4FB82F6330730052F95D /* XCLocalSwiftPackageReference "../../Primae" */ = {
+		DBDE4FB82F6330730052F95D /* XCLocalSwiftPackageReference ".." */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../Primae;
+			relativePath = ..;
 		};
 /* End XCLocalSwiftPackageReference section */
 
