@@ -1,0 +1,148 @@
+# ci-verdict-bridge — carry GitHub Actions' verdict back onto this forge.
+#
+# WHY THIS FILE EXISTS, AND WHY IT PULLS. Forgejo is this repository's origin
+# and the only place a pull request is opened, reviewed or merged; GitHub
+# carries a push mirror of it and GitHub Actions is where CI actually runs. A
+# Forgejo pull request therefore showed an empty check list whatever CI said.
+#
+# THE OBVIOUS DESIGN — have the GitHub workflow POST the status to the forge —
+# WAS SHIPPED, RAN, AND NEVER DELIVERED. MEASURED 2026-10-15 from a
+# GitHub-hosted runner: the connection never completes.
+#
+#   curl: (28) Failed to connect to git.flamingistan.com port 443 after
+#   133601 ms: Couldn't connect to server
+#
+# Each attempt burned ~134 s inside TCP connect; the 5 min job timeout then
+# killed the step, which GitHub reports as `cancelled` — so an otherwise-green
+# run READ AS CANCELLED, worse than having no bridge at all. An 8-node external
+# probe (check-host.net) splits cleanly along geography: ch2 CH, it2 IT, nl1 NL,
+# pt1 PT, uk1 UK are answered 403, while us3 US, br1 BR, ir7 IR and ca1 CA time
+# out. GitHub's runners are Azure-US, so they sit on the wrong side of that
+# filter — and BOTH halves of that split are documented policy, not a fault:
+# homelab-ops `docs/systems/edge.md:8` allows :80/:443 from `<GEO_ALLOW_EU>` only
+# (that is the timeout, dropped at pf) and `:15` denies unless `<local-src>` (that
+# is the 403, answered by HAProxy). Opening the forge to GitHub means editing
+# GEO_ALLOW_EU — widening a country policy so a home service answers a public
+# cloud, and breaking silently when those ranges drift, because a stale allowlist
+# looks exactly like a working bridge.
+#
+# So the verdict is PULLED from inside the network. This job, a scheduled
+# Forgejo workflow, reads GitHub's check-runs for the branch head and writes one
+# commit status to this forge. It rules out nothing about the edge: if the
+# inbound path is ever opened the push design could return, and this one would
+# simply be redundant.
+#
+# WHY NO SHA MAPPING IS NEEDED. A push mirror copies commits verbatim, so the
+# forge's commit and GitHub's commit are the SAME object. MEASURED 2026-10-15:
+# forge main == github main == 72c8a02cf8b24a75e0ec0c29949d99a4b4049daf.
+#
+# THE GATE IS INVOKED, NEVER RE-IMPLEMENTED. The step runs
+# scripts/forge_ci_verdict_bridge.sh, which carries its own --self-test and
+# drives BOTH of its verdicts. There is no second copy of the collapse policy
+# here to drift from the first.
+#
+# IT IS A REPORT, NEVER A GATE. main's branch protection carries
+# `enable_status_check: false`; enabling that setting is a separate, deliberate
+# act and this file does not touch it. Note also the trap named in the removed
+# push reporter: a path-filtered workflow posts NO status on a push that misses
+# its paths, so a context that is required but sometimes absent reads as pending
+# forever. This one is unfiltered.
+#
+# NOTHING HERE CAN REDDEN ANYTHING. A missing or rejected credential exits 0
+# with a `::warning`; the step is written to swallow the script's exit code for
+# that reason. A bridge that reports and cannot deliver must stay quiet.
+#
+# ------------------------------------------------------- ASSUMPTIONS, LABELLED
+#
+# Three things this file rests on could NOT be measured from the seat that
+# wrote it, and each fails SAFE (a warning, never a red job). They are listed
+# rather than assumed. The first thing to do once this lands is dispatch it by
+# hand and read the log:
+#
+#   gh api --method POST \
+#     /repos/David/Primae/actions/workflows/ci-verdict-bridge.yml/dispatches \
+#     -f ref=main          # or the forge UI's "Run workflow" button
+#
+#   1. UNVERIFIED — that `secrets.GITHUB_TOKEN` is usable FROM A WORKFLOW on
+#      this forge as a repo-scoped API token. Forgejo auto-injects it under the
+#      GitHub Actions name, and .forgejo/workflows/nightly-audit.yml already
+#      uses it this same way against `${{ github.api_url }}` for issue
+#      creation — but repo-standard-gate.yml labels the assumption unmeasured
+#      on this forge, and no document here shows a status POST succeeding with
+#      it. If it is empty or lacks write scope, the fix is a named repo secret
+#      carrying write:repository, passed as FORGE_TOKEN below.
+#   2. UNVERIFIED — that this repo has a `GH_READ_TOKEN` secret, and that the
+#      token behind it can read check-runs. GitHub is private, so an anonymous
+#      read is not possible and there is no free token on THIS side: the token
+#      has to be minted on GitHub and stored here. A fine-grained PAT with
+#      `Checks: read` (+ `Metadata: read`) on TheDave94/Primae is enough; the
+#      push mirror's own credential would also do and adds no new surface.
+#   3. UNVERIFIED — that jq is present in the runner image
+#      (`catthehacker/ubuntu:act-22.04`). corpus-gate.yml checks for it rather
+#      than relying on it, which is why this is listed. The script's own
+#      precondition reports it plainly: "FATAL: 'jq' is not on PATH".
+#
+# A fourth, structural one, stated because it bounds what a green run means:
+# the runner here advertises exactly ONE label, so a long job would occupy the
+# estate's only runner. This job is a checkout plus a handful of curls and is
+# capped at 10 minutes for that reason; it does NOT wait for CI to finish.
+
+name: ci-verdict-bridge
+
+on:
+  schedule:
+    # Every 10 minutes. A push mirror copies a commit within seconds, but the
+    # ios build takes ~20-40 minutes to reach a verdict, so the job runs often
+    # and mostly finds "CI still running" and does nothing. An unchanged
+    # verdict is never re-posted, so the cadence costs a checkout and nothing
+    # else, and Forgejo's status history stays free of duplicates.
+    - cron: "4,14,24,34,44,54 * * * *"
+  workflow_dispatch:
+
+jobs:
+  bridge:
+    name: "Pull GitHub's verdict and post it as a commit status"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: check out the branch carrying the poller
+        uses: actions/checkout@v4
+
+      - name: pull the GitHub verdict and post it to this forge
+        env:
+          FORGE_BASE: ${{ github.api_url }}
+          SERVER_URL: ${{ github.server_url }}
+          FORGE_REPO: ${{ github.repository }}
+          FORGE_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: "TheDave94/Primae"
+          GH_TOKEN: ${{ secrets.GH_READ_TOKEN }}
+        run: |
+          set -u
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::warning title=verdict bridge is unwired::GH_READ_TOKEN is empty, so GitHub's check-runs cannot be read and no commit status was posted. GitHub is private, so this token must be minted there (a fine-grained PAT with 'Checks: read' on TheDave94/Primae is enough) and stored here as GH_READ_TOKEN."
+            exit 0
+          fi
+
+          # Two spellings of the API base are in use across the estate; resolve
+          # whichever this event carries and SAY which, so a mismatch is read
+          # off the log rather than guessed at.
+          export FORGE_BASE="${FORGE_BASE:-${SERVER_URL:-https://git.flamingistan.com}/api/v1}"
+          echo "forge api base: $FORGE_BASE"
+
+          sh scripts/forge_ci_verdict_bridge.sh --self-test || {
+            echo "::warning title=verdict bridge self-test failed::the collapse logic did not drive both of its verdicts, so nothing was posted and nothing was trusted."
+            exit 0
+          }
+
+          # `set +e` on purpose: the script exits non-zero when a POST failed,
+          # and a delivery failure must WARN, never redden.
+          set +e
+          sh scripts/forge_ci_verdict_bridge.sh --go
+          rc=$?
+          set -e
+
+          if [ "$rc" -ne 0 ]; then
+            echo "::warning title=verdict bridge did not deliver::the script exited $rc. Read its output above: HTTP 000 means the network path never completed, a 4xx means the forge answered and refused the request."
+          fi
+          exit 0

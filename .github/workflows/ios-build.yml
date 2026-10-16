@@ -968,117 +968,25 @@ jobs:
 
   # ------------------------------------------------------------------ forge
   #
-  # WHY THIS JOB EXISTS. Forgejo (git.flamingistan.com) is this repository's
-  # origin and the ONLY place a pull request is opened, reviewed or merged;
-  # GitHub carries a push mirror of it and nothing else. GitHub Actions is
-  # where CI actually runs, and until now the forge had no way to hear the
-  # verdict. MEASURED 2026-10-15: `gh secret list --repo TheDave94/Primae`
-  # returned nothing and no step in either workflow named the forge, so a
-  # Forgejo pull request showed an empty check list whatever CI said — the
-  # gap was a missing WRITER, not a misconfiguration.
+  # THE PUSH BRIDGE WAS HERE, AND IT IS GONE. Until 2026-10-16 this file ended
+  # with a `report_forge_status` job that POSTed the aggregate verdict to
+  # Forgejo. It never delivered, and it could not. MEASURED 2026-10-15 from a
+  # GitHub-hosted runner, the connection never completes:
   #
-  # WHAT IT POSTS. One commit status, context `ci/github-actions`, against
-  # this push's SHA. A push mirror copies commits verbatim, so the SHA here is
-  # the same object the forge's pull request is built on and the status lands
-  # on that PR. `target_url` points at the GitHub run so the forge links back
-  # to the logs.
+  #   curl: (28) Failed to connect to git.flamingistan.com port 443 after
+  #   133601 ms: Couldn't connect to server
   #
-  # IT IS A REPORT, NEVER A GATE. main's branch protection carries
-  # `enable_status_check: false`, so nothing posted here can block a merge.
-  # Making it a required check is a separate, deliberate act on the forge —
-  # and it has a trap: a path-filtered workflow posts NO status on a push that
-  # misses its paths, so a context that is required but sometimes absent reads
-  # as pending forever. This one is unfiltered and posts on every push, which
-  # is what makes it the safe candidate if that is ever wanted.
+  # Each attempt burned ~134 s inside TCP connect, and the 5 min job timeout
+  # then killed the step — which GitHub reports as `cancelled`, so an otherwise
+  # green run READ AS CANCELLED, worse than having no bridge at all. GitHub's
+  # runners are Azure-US, and the forge's edge answers European sources while
+  # dropping US ones (8-node probe, 2026-10-15: ch2/it2/nl1/pt1/uk1 answered;
+  # us3/br1/ir7/ca1 timed out).
   #
-  # `skipped` IS NOT A FAILURE. Two of the seven jobs above are advisory by
-  # design and a job that never ran made no claim about this commit.
-  #
-  # PUSH ONLY (plus manual dispatch). A GitHub `pull_request` event fires only
-  # for pull requests opened ON GITHUB, and none are: the forge opens them. On
-  # such an event `github.sha` is a synthetic merge commit that exists on no
-  # remote, so a status posted from it would bind to nothing. A manual
-  # dispatch is admitted so the bridge can be exercised on demand.
-  report_forge_status:
-    name: "Report the CI verdict to the forge"
-    needs: [stroke_audit, resource_presence, project_invariants, unwired_guards, xcode_test, release_study_tests, study_build]
-    if: always() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-    # 3 min, not 5: with --connect-timeout 10 --max-time 30 and 2 retries the
-    # step cannot exceed ~96 s, so the job budget is now an outer guard rather
-    # than the thing that ends the job (see the note in the step below).
-    timeout-minutes: 3
-    steps:
-      - name: Post the aggregate verdict as a Forgejo commit status
-        env:
-          FORGEJO_STATUS_TOKEN: ${{ secrets.FORGEJO_STATUS_TOKEN }}
-          FORGEJO_REPO: "David/Primae"
-          # Every job named in `needs`, in the same order. A plain string is
-          # used rather than toJSON(needs) on purpose: grepping the JSON also
-          # matches a job's own OUTPUT if one ever happens to carry a field
-          # named `result`, which would report a failure that did not occur.
-          JOB_RESULTS: "${{ needs.stroke_audit.result }} ${{ needs.resource_presence.result }} ${{ needs.project_invariants.result }} ${{ needs.unwired_guards.result }} ${{ needs.xcode_test.result }} ${{ needs.release_study_tests.result }} ${{ needs.study_build.result }}"
-          SHA: ${{ github.sha }}
-          TARGET_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -eu
-
-          if [ -z "${FORGEJO_STATUS_TOKEN:-}" ]; then
-            echo "::warning title=Forgejo status bridge is unwired::FORGEJO_STATUS_TOKEN is empty, so no commit status was posted. Create a Forgejo token carrying the write:repository scope on ${FORGEJO_REPO} and save it as this repository's FORGEJO_STATUS_TOKEN secret."
-            exit 0
-          fi
-
-          # FORGEJO DOES NOT VALIDATE `state`. MEASURED 2026-10-15: posting
-          # state "banana" returned HTTP 201 and stored the row, so a typo
-          # here is accepted silently and renders as an unknown marker rather
-          # than an error. The two strings below must stay exactly `success`
-          # and `failure`; nothing downstream will reject a third spelling.
-          #
-          # `skipped` is not a failure: a job that never ran made no claim
-          # about this commit, and two of the seven are advisory by design.
-          state=success
-          description="every job succeeded"
-          for r in $JOB_RESULTS; do
-            case "$r" in
-              failure|cancelled)
-                state=failure
-                description="at least one job did not succeed"
-                break ;;
-            esac
-          done
-          echo "results: $JOB_RESULTS"
-          echo "verdict: $state — $description"
-
-          # MEASURED 2026-10-15, from a GitHub-hosted runner: this call could not
-          # be completed at all. Two attempts each burned ~134 s inside TCP
-          # connect - "curl: (28) Failed to connect to git.flamingistan.com port
-          # 443 after 133601 ms: Couldn't connect to server" - and the 5 min job
-          # timeout then killed the step, which GitHub reports as `cancelled`.
-          # That made an otherwise-green RUN read as cancelled, which is worse
-          # than having no bridge at all: main's bake-gates run on eae6b3f5 is
-          # exactly that. With no --connect-timeout/--max-time there was nothing
-          # to stop the retry loop from eating the entire budget. Every network
-          # call below is time-bounded, and a delivery failure now WARNS instead
-          # of failing the job: the ruling is that this bridge reports and never
-          # gates, and a bridge that cannot deliver must not redden main.
-          http=$(curl -sS --connect-timeout 10 --max-time 30 \
-            --retry 2 --retry-delay 3 --retry-all-errors \
-            -o /tmp/forgejo-status.json -w '%{http_code}' \
-            -X POST "https://git.flamingistan.com/api/v1/repos/${FORGEJO_REPO}/statuses/${SHA}" \
-            -H "Authorization: token ${FORGEJO_STATUS_TOKEN}" \
-            -H "Content-Type: application/json" \
-            --data "{\"state\":\"${state}\",\"context\":\"ci/github-actions\",\"description\":\"${description}\",\"target_url\":\"${TARGET_URL}\"}" || true)
-          echo "forgejo answered HTTP ${http:-000}"
-          cat /tmp/forgejo-status.json 2>/dev/null || true
-
-          case "$http" in
-            2??) : ;;
-            *)
-              # HTTP 000 is curl's own "no response at all" code, which is what
-              # an unreachable forge produces. Say which one it was: a 4xx means
-              # the token was rejected and is fixable here; a 000 means the
-              # network path never completed and no token can fix that.
-              echo "::warning title=Forgejo status bridge did not deliver::HTTP ${http:-000} from the commit-status API for ${SHA}. The verdict '${state}' was computed but the forge did not receive it. HTTP 000 means the connection never completed; a 4xx means the forge answered and refused the request."
-              ;;
-          esac
-
+  # The verdict is PULLED from inside the network instead now: the scheduled
+  # Forgejo workflow `.forgejo/workflows/ci-verdict-bridge.yml` reads these
+  # same check-runs by API and posts one commit status to the forge, running
+  # `scripts/forge_ci_verdict_bridge.sh`. No verdict this workflow produces
+  # changed; the delivery moved, and the job that could not deliver went with
+  # it. Git history keeps it: if the inbound path is ever opened, the push
+  # design can come back — it would just be redundant while the poller runs.
