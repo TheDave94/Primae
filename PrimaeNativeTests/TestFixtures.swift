@@ -321,7 +321,7 @@ extension TracingDependencies {
     static var stub: TracingDependencies {
         let progressStore = StubProgressStore()
         let streakStore   = StubStreakStore()
-        let deps = TracingDependencies(
+        var deps = TracingDependencies(
             audio:                StubAudio(),
             progressStore:        progressStore,
             haptics:              StubHaptics(),
@@ -346,6 +346,11 @@ extension TracingDependencies {
             // Pin the trained subset for the same reason (the default
             // reads ParticipantStore). "AFI" = allSubsets[0].
             trainedSubset:        TrainedLetterSubset.allSubsets[0],
+            // The optional comparison seams (2026-10-16): left nil, each of
+            // these falls through to the global at construction, which is the
+            // same cross-suite leak the four above are pinned against. Tests
+            // that mean to exercise one say so at the call site.
+            allFiveLetters:       StudyComparisonSettings.allFiveLettersDefault,
             // Pin studyMode for the same reason as the three axes above,
             // plus one specific to it: since B2 the default resolves ON in
             // a study build, so an unpinned fixture makes every VM-building
@@ -355,6 +360,8 @@ extension TracingDependencies {
             // so at the call site with `.with(studyMode:)`, in whichever
             // direction they are asserting.
             studyMode:            false,
+            // Same reason as `allFiveLetters` above — nil would read the key.
+            spokenFeedbackInStudy: StudyComparisonSettings.spokenFeedbackInStudyDefault,
             participantEnrolled:  true,   // the precondition reads THIS, not the device
             // Pin the arm-cycle comparison switch OFF, for the same reason
             // as studyMode above and one sharper: `StudyComparisonSwitches
@@ -394,6 +401,16 @@ extension TracingDependencies {
             // other. Tests that mean to exercise it say so at the call site
             // (`deps.observePasses = 2`).
             observePasses:        StudyComparisonSettings.observePassesDefault,
+            // The last three comparison settings the view model read from the
+            // global directly, pinned for the same reason (2026-10-16). These
+            // were the remainder left open by the pass that closed
+            // `observePasses`: same class, same fixture, so leaving them would
+            // mean the rule was stated and then not applied. Tests that mean to
+            // exercise any of them say so at the call site
+            // (`deps.panningEnabled = false`).
+            guidedDotsVisible:    StudyComparisonSettings.guidedDotsVisibleDefault,
+            panningEnabled:       StudyComparisonSettings.panningEnabledDefault,
+            spatialAxisDemonstration: StudyComparisonSettings.spatialAxisDemonstrationDefault,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Batch D: a fixed environment, no sentinel file and a fixed
@@ -407,6 +424,10 @@ extension TracingDependencies {
             // past its 100 ms wall-clock playIntent debounce.
             makePromptPlayer:     { _ in NullPromptPlayer() }
         )
+        // `letterRepeatCount` is a PROPERTY on the dependency bundle, not an
+        // init parameter, so it is pinned here rather than in the call above —
+        // same reason as the six in the call: left nil it reads the global.
+        deps.letterRepeatCount = StudyComparisonSettings.letterRepeatCountDefault
         #if STUDY_BUILD
         return deps
         #else

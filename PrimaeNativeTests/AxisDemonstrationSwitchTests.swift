@@ -99,11 +99,16 @@ private final class SweepRecordingAudio: AudioControlling {
     var callCount: Int { pitches.count }
 }
 
-/// `.serialized` because every test here that touches the switch writes a
-/// GLOBAL. Swift Testing would otherwise run them concurrently, and this
-/// file would then be the source of the very cross-test interference the
-/// header warns about — one test's ON window landing inside another's OFF
-/// assertion.
+/// `.serialized` because the STORAGE tests here (the default, the round-trip,
+/// the reset) legitimately write the GLOBAL, and Swift Testing would otherwise
+/// run them concurrently and let one test's write land inside another's read.
+///
+/// The BEHAVIOUR tests no longer write the key at all. Since 2026-10-16 the
+/// switch reaches the view model through `TracingDependencies`' seam and
+/// `stub` pins it, so an ON window is invisible to every other fixture in the
+/// run — the class CONVENTIONS 140 names. `.serialized` is kept for the storage
+/// tests, which would need it even if this file were the only one touching the
+/// key.
 @Suite(.serialized) @MainActor
 struct AxisDemonstrationSwitchTests {
 
@@ -204,9 +209,8 @@ struct AxisDemonstrationSwitchTests {
     @Test("OFF: the carrier is held steady for the window, then stopped")
     func offPathHoldsTheCarrierSteady() async {
         await withRestoredComparisonKeysAsync {
-            StudyComparisonSettings.spatialAxisDemonstration = false
             let audio = SweepRecordingAudio()
-            let vm = studySpatialVM(audio: audio)
+            let vm = studySpatialVM(audio: audio, axisDemonstration: false)
             audio.reset()
 
             vm.armPreTaskDemonstration(for: asset(), duration: 0.1)
@@ -233,22 +237,19 @@ struct AxisDemonstrationSwitchTests {
     /// what is pinned HERE is the part those cannot see — that the samples
     /// reach `setSpatialPitch`/`setAdaptivePlayback` at all.
     ///
-    /// The key is restored immediately after arming. That is safe and not a
-    /// trick: the view model reads the switch at INIT and builds the sample
-    /// array at ARM time, so by the time
-    /// `armPreTaskDemonstration` has returned, nothing downstream reads the
-    /// key again. Keeping it true for the length of the demonstration would
-    /// hold a global for ~100 ms for no additional evidence.
+    /// The switch is passed into construction and the key is never written: the
+    /// view model reads it at INIT and builds the sample array at ARM time, so
+    /// nothing downstream reads it again — which is why the previous version
+    /// could restore the key immediately. Through the seam there is nothing to
+    /// restore, and no global is held even for ~100 ms.
     @Test("ON: pitch and pan both sweep the full canvas, then the carrier stops")
     func onPathRunsTheScriptedSweep() async {
         await withRestoredComparisonKeysAsync {
-            StudyComparisonSettings.spatialAxisDemonstration = true
             let audio = SweepRecordingAudio()
-            let vm = studySpatialVM(audio: audio)
+            let vm = studySpatialVM(audio: audio, axisDemonstration: true)
             audio.reset()
 
             vm.armPreTaskDemonstration(for: asset(), duration: 0.1)
-            StudyComparisonSettings.spatialAxisDemonstration = false   // see above
             await waitUntil { audio.stopCount > 0 }
             try? await Task.sleep(for: .milliseconds(50))
 
@@ -327,15 +328,13 @@ struct AxisDemonstrationSwitchTests {
     @Test("ON: cancelling mid-sweep stops it within a sample or two")
     func onPathCancellationStopsTheSweep() async {
         await withRestoredComparisonKeysAsync {
-            StudyComparisonSettings.spatialAxisDemonstration = true
             let audio = SweepRecordingAudio()
-            let vm = studySpatialVM(audio: audio)
+            let vm = studySpatialVM(audio: audio, axisDemonstration: true)
             audio.reset()
 
             // The production duration, so the sweep is long enough to
             // cancel part-way through rather than after it has finished.
             vm.armPreTaskDemonstration(for: asset(), duration: 2.0)
-            StudyComparisonSettings.spatialAxisDemonstration = false
 
             await waitUntil { audio.callCount >= 3 }
             let atCancel = audio.callCount
@@ -378,13 +377,11 @@ struct AxisDemonstrationSwitchTests {
     @Test("ON with no samples: nothing plays, rather than a silent skip")
     func emptySweepProducesNoAudio() async {
         await withRestoredComparisonKeysAsync {
-            StudyComparisonSettings.spatialAxisDemonstration = true
             let audio = SweepRecordingAudio()
-            let vm = studySpatialVM(audio: audio)
+            let vm = studySpatialVM(audio: audio, axisDemonstration: true)
             audio.reset()
 
             vm.armPreTaskDemonstration(for: asset(), duration: 0)
-            StudyComparisonSettings.spatialAxisDemonstration = false
             try? await Task.sleep(for: .milliseconds(150))
 
             #expect(audio.loadedFiles.isEmpty,
@@ -401,23 +398,30 @@ struct AxisDemonstrationSwitchTests {
     /// `bothBranchesSpanTheWindow`.
     private func stopDelay(on: Bool, window: TimeInterval) async -> TimeInterval {
         await withRestoredComparisonKeysAsync {
-            StudyComparisonSettings.spatialAxisDemonstration = on
             let audio = SweepRecordingAudio()
-            let vm = studySpatialVM(audio: audio)
+            let vm = studySpatialVM(audio: audio, axisDemonstration: on)
             audio.reset()
             let armedAt = Date()
             vm.armPreTaskDemonstration(for: asset(), duration: window)
-            StudyComparisonSettings.spatialAxisDemonstration = false
             await waitUntil { audio.stopCount > 0 }
             return Date().timeIntervalSince(armedAt)
         }
     }
 
-    private func studySpatialVM(audio: SweepRecordingAudio) -> TracingViewModel {
-        TracingViewModel(.stub
+    /// The switch comes through the deps SEAM, not the global key: the view
+    /// model reads `TracingDependencies.spatialAxisDemonstration` at init and
+    /// `stub` pins it, so a test that means to exercise the sweep says so here.
+    /// Until 2026-10-16 this wrote the key instead, which put a demonstration ON
+    /// window in front of every fixture constructed concurrently anywhere in the
+    /// run — the class CONVENTIONS 140 names.
+    private func studySpatialVM(audio: SweepRecordingAudio,
+                               axisDemonstration: Bool) -> TracingViewModel {
+        var deps = TracingDependencies.stub
             .with(audioCondition: .spatial)
             .with(audio: audio)
-            .with(studyMode: true))
+            .with(studyMode: true)
+        deps.spatialAxisDemonstration = axisDemonstration
+        return TracingViewModel(deps)
     }
 
     private func asset(_ name: String = "A") -> LetterAsset {

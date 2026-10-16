@@ -193,11 +193,24 @@ private final class RowCapturingStore: ParentDashboardStoring {
 
     // MARK: - 2. The default path is unchanged (switch OFF)
 
-    /// Production reads the device key; nothing in this file writes it.
-    @Test("the dependency seam defaults to nil, so production still reads the device key")
-    func seamDefaultsToReadingTheDeviceKey() {
-        #expect(TracingDependencies.stub.allFiveLetters == nil,
-                "the stub pins the seam — production leaves it nil and reads StudyComparisonSettings")
+    /// Production reads the device key; the FIXTURE pins the seam to the
+    /// switch's default instead, so this file's sessions cannot be moved by a
+    /// key another test — or a previous RUN — left set.
+    ///
+    /// This replaced an assertion that `.stub` left the seam NIL, i.e. it
+    /// asserted the ABSENCE of a pin. `UserDefaults` persists in the simulator
+    /// container between whole test runs, so an unpinned fixture can inherit a
+    /// value no test in the current run wrote at all. See CONVENTIONS 140a: the
+    /// pin belongs in the shared fixture, not in each helper — a lesson this
+    /// estate had already measured once and fixed per helper.
+    ///
+    /// What production relies on — a nil seam falling through to the key — is
+    /// asserted where a key may legitimately be written: the fall-through test
+    /// in `TestFixtureContractTests`.
+    @Test("the stub pins the seam to the switch's default rather than leaving it nil")
+    func stubPinsTheSeamRatherThanLeavingItNil() {
+        #expect(TracingDependencies.stub.allFiveLetters == StudyComparisonSettings.allFiveLettersDefault,
+                "the stub left the all-five seam unpinned — a key another test or a previous run wrote would decide this session's letter pool")
     }
 
     /// Switch OFF: the session's trained set IS the assignment, the

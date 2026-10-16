@@ -108,7 +108,13 @@ import Foundation
             spacing:             StudyComparisonSettings.presentationSpacingSeconds,
             observePasses:       StudyComparisonSettings.observePasses,
             radiusFactor:        StudyComparisonSettings.soundGateRadiusFactor,
-            velocityFloor:       StudyComparisonSettings.soundGateVelocityFloor
+            velocityFloor:       StudyComparisonSettings.soundGateVelocityFloor,
+            dotsVisible:         StudyComparisonSettings.guidedDotsVisible,
+            panningEnabled:      StudyComparisonSettings.panningEnabled,
+            axisDemonstration:   StudyComparisonSettings.spatialAxisDemonstration,
+            allFiveLetters:      StudyComparisonSettings.allFiveLetters,
+            letterRepeatCount:   StudyComparisonSettings.letterRepeatCount,
+            spokenFeedback:      StudyComparisonSettings.spokenFeedbackInStudy
         )
         defer {
             StudyComparisonSettings.cycleAllConditions = saved.cycleAllConditions
@@ -117,6 +123,12 @@ import Foundation
             StudyComparisonSettings.observePasses = saved.observePasses
             StudyComparisonSettings.soundGateRadiusFactor = saved.radiusFactor
             StudyComparisonSettings.soundGateVelocityFloor = saved.velocityFloor
+            StudyComparisonSettings.guidedDotsVisible = saved.dotsVisible
+            StudyComparisonSettings.panningEnabled = saved.panningEnabled
+            StudyComparisonSettings.spatialAxisDemonstration = saved.axisDemonstration
+            StudyComparisonSettings.allFiveLetters = saved.allFiveLetters
+            StudyComparisonSettings.letterRepeatCount = saved.letterRepeatCount
+            StudyComparisonSettings.spokenFeedbackInStudy = saved.spokenFeedback
         }
 
         // Every value non-default, so an inherited one would be visibly wrong.
@@ -126,6 +138,13 @@ import Foundation
         StudyComparisonSettings.observePasses = 2
         StudyComparisonSettings.soundGateRadiusFactor = 6.0
         StudyComparisonSettings.soundGateVelocityFloor = 22
+        StudyComparisonSettings.guidedDotsVisible = false
+        StudyComparisonSettings.panningEnabled = false
+        StudyComparisonSettings.spatialAxisDemonstration = true
+        StudyComparisonSettings.allFiveLetters = true
+        StudyComparisonSettings.letterRepeatCount = 3
+        StudyComparisonSettings.spokenFeedbackInStudy =
+            !StudyComparisonSettings.spokenFeedbackInStudyDefault
 
         let deps = TracingDependencies.stub
         #expect(deps.cycleAllConditions == StudyComparisonSettings.cycleAllConditionsDefault,
@@ -140,5 +159,41 @@ import Foundation
                 "the fixture inherited soundGateRadiusFactor from the global")
         #expect(deps.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault,
                 "the fixture inherited soundGateVelocityFloor from the global")
+        #expect(deps.guidedDotsVisible == StudyComparisonSettings.guidedDotsVisibleDefault,
+                "the fixture inherited guidedDotsVisible from the global — a parallel test would draw or hide the start dots in another suite's canvas")
+        #expect(deps.panningEnabled == StudyComparisonSettings.panningEnabledDefault,
+                "the fixture inherited panningEnabled from the global — a parallel test would silently switch the pan axis off in another suite")
+        #expect(deps.spatialAxisDemonstration == StudyComparisonSettings.spatialAxisDemonstrationDefault,
+                "the fixture inherited spatialAxisDemonstration from the global — a parallel test would install a sweeping demonstration in another suite's session")
+        #expect(deps.allFiveLetters == StudyComparisonSettings.allFiveLettersDefault,
+                "the fixture inherited allFiveLetters from the global — the letter pool would change shape under another suite")
+        #expect(deps.letterRepeatCount == StudyComparisonSettings.letterRepeatCountDefault,
+                "the fixture inherited letterRepeatCount from the global — another suite's letter would repeat")
+        #expect(deps.spokenFeedbackInStudy == StudyComparisonSettings.spokenFeedbackInStudyDefault,
+                "the fixture inherited spokenFeedbackInStudy from the global — another suite's session would gain or lose speech")
+    }
+
+    /// The other half of the pin: production's path is the seam's DEFAULT, so a
+    /// caller that leaves one of these nil still gets the device key. That is
+    /// why pinning the fixture changes no application behaviour — and why the
+    /// device build needed no reinstall for this change.
+    ///
+    /// It is asserted HERE, not in a suite that keeps itself out of
+    /// `UserDefaults`, because telling a fall-through apart from a default takes
+    /// a NON-default key.
+    @Test("a nil seam still falls through to the device key, which is what production relies on")
+    func aNilSeamFallsThroughToTheDeviceKey() {
+        let saved = StudyComparisonSettings.allFiveLetters
+        defer { StudyComparisonSettings.allFiveLetters = saved }
+
+        StudyComparisonSettings.allFiveLetters = true
+
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        deps.allFiveLetters = nil              // exactly what a production caller leaves it as
+        let vm = TracingViewModel(deps)
+
+        #expect(vm.effectiveTrainedSubset.isAllFive,
+                "a nil all-five seam did not fall through to StudyComparisonSettings — production would ignore the supervisor's switch")
     }
 }

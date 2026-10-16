@@ -38,8 +38,15 @@ import CoreGraphics
 import UIKit
 @testable import PrimaeNative
 
+/// `.serialized` because the STORAGE tests here (`switchesAreCapturedAtInit`'s
+/// flips, `switchesApplyOnNextConstruction`, `resetRestoresDefaults`) write the
+/// GLOBAL `UserDefaults` store, and Swift Testing would otherwise run them
+/// concurrently and let one test's write — a `resetToDefaults()`, above all —
+/// land inside another's read. The BEHAVIOUR tests no longer write any key:
+/// their switches arrive through the deps seam with `stub` pinning them, which
+/// is what closes the class CONVENTIONS 140 names.
 @MainActor
-@Suite struct StudyComparisonSwitchesTests {
+@Suite(.serialized) struct StudyComparisonSwitchesTests {
 
     private let canvas = CGSize(width: 400, height: 400)
 
@@ -69,10 +76,8 @@ import UIKit
     /// HUD for every arm.
     @Test("turning the start dots off does not remove the endpoint ring")
     func endpointRingSurvivesTheDotsSwitch() {
-        StudyComparisonSettings.guidedDotsVisible = false
-        defer { StudyComparisonSettings.resetToDefaults() }
-
-        let vm = studyVM()
+        // Driven through the deps seam, never the global key: see `studyVM`.
+        let vm = studyVM { $0.guidedDotsVisible = false }
         vm.canvasSize = canvas
 
         #expect(vm.showCheckpoints == false,
@@ -84,7 +89,6 @@ import UIKit
     /// And the converse: the ring stays a phase question, not a switch one.
     @Test("the endpoint ring is present in observe and guided, absent in freeWrite")
     func endpointRingIsPhaseDriven() {
-        StudyComparisonSettings.resetToDefaults()
         let vm = studyVM()
         vm.canvasSize = canvas
 
@@ -112,15 +116,11 @@ import UIKit
 
     @Test("the dots switch does suppress the start dots")
     func dotsSwitchSuppressesStartDots() {
-        StudyComparisonSettings.guidedDotsVisible = false
-        defer { StudyComparisonSettings.resetToDefaults() }
-
-        let vm = studyVM()
+        let vm = studyVM { $0.guidedDotsVisible = false }
         vm.canvasSize = canvas
         #expect(vm.showCheckpoints == false)
 
-        StudyComparisonSettings.guidedDotsVisible = true
-        let vm2 = studyVM()
+        let vm2 = studyVM { $0.guidedDotsVisible = true }
         vm2.canvasSize = canvas
         #expect(vm2.showCheckpoints, "the default keeps the start dots")
     }
@@ -155,10 +155,7 @@ import UIKit
     /// is handed, which makes the coupling an ordinary value comparison.
     @Test("the draw plan keeps the ring when the start dots are switched off")
     func planKeepsRingWithDotsOff() {
-        StudyComparisonSettings.guidedDotsVisible = false
-        defer { StudyComparisonSettings.resetToDefaults() }
-
-        let vm = studyVM()
+        let vm = studyVM { $0.guidedDotsVisible = false }
         vm.canvasSize = canvas
         let plan = vm.canvasDrawPlan
 
@@ -169,7 +166,6 @@ import UIKit
 
     @Test("the draw plan is phase-correct")
     func planIsPhaseCorrect() {
-        StudyComparisonSettings.resetToDefaults()
         let vm = studyVM()
         vm.canvasSize = canvas
 
@@ -222,11 +218,9 @@ import UIKit
     /// third pass is the last.
     @Test("letterRepeatCount = 3 repeats the letter twice and then stops")
     func letterRepeatCountRepeatsThenStops() {
-        StudyComparisonSettings.letterRepeatCount = 3
-        defer { StudyComparisonSettings.resetToDefaults() }
-
         var deps = TracingDependencies.stub
         deps.studyMode = true
+        deps.letterRepeatCount = 3
         let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
         vm.startParkedLetter()
@@ -239,7 +233,6 @@ import UIKit
 
     @Test("letterRepeatCount = 1 never repeats")
     func letterRepeatCountOneIsInert() {
-        StudyComparisonSettings.resetToDefaults()
         let vm = studyVM()
         vm.canvasSize = canvas
         vm.startParkedLetter()
@@ -261,15 +254,12 @@ import UIKit
     func spokenFeedbackSwitchIsRealButArmAuthorityHolds() {
         func adoptsInjectedSpeech(studyMode: Bool, spokenOn: Bool,
                                   arm: PilotAudioCondition) -> Bool {
-            StudyComparisonSettings.resetToDefaults()
-            StudyComparisonSettings.spokenFeedbackInStudy = spokenOn
-            defer { StudyComparisonSettings.resetToDefaults() }
-
             let injected = NullSpeechSynthesizer()   // a distinguishable instance
             var deps = TracingDependencies.stub
             deps.studyMode = studyMode
             deps.audioCondition = arm
             deps.speech = injected
+            deps.spokenFeedbackInStudy = spokenOn
 
             let vm = TracingViewModel(deps)
             return (vm.speech as AnyObject) === injected
@@ -303,7 +293,6 @@ import UIKit
     /// construction; writing the key afterwards must not move the VM.
     @Test("comparison switches are captured at init and do not move afterwards")
     func switchesAreCapturedAtInit() {
-        StudyComparisonSettings.resetToDefaults()
         let vm = studyVM()
 
         #expect(vm.panningEnabled, "panning defaults on")
@@ -321,16 +310,27 @@ import UIKit
                 "the dots setting moved after init — the canvas could change under the child")
     }
 
-    /// The next construction DOES pick the new values up, which is what
+    /// The next construction DOES pick up the current values, which is what
     /// makes the researcher screen's "takes effect at next app start"
     /// promise true rather than merely reassuring.
-    @Test("a fresh view model picks up the written values")
+    ///
+    /// The production path is the DEFAULT ARGUMENT: `TracingDependencies`'s
+    /// initialiser reads these settings when a caller omits them, which is what
+    /// every session in the app does. `stub` deliberately PINS them so no
+    /// fixture reads the global (CONVENTIONS 140), so this test seeds the seam
+    /// from the settings — exactly the read the default argument performs — and
+    /// asserts the view model honours it.
+    @Test("a fresh view model picks up the current values")
     func switchesApplyOnNextConstruction() {
         StudyComparisonSettings.panningEnabled = false
         StudyComparisonSettings.guidedDotsVisible = false
         defer { StudyComparisonSettings.resetToDefaults() }
 
-        let vm = studyVM()
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        deps.panningEnabled = StudyComparisonSettings.panningEnabled
+        deps.guidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
+        let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
         #expect(vm.panningEnabled == false)
         #expect(vm.showCheckpoints == false)

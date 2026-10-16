@@ -183,6 +183,25 @@ struct TracingDependencies {
     /// failed *"one full pass must end observe"*. `stub` pins it, so the key is
     /// never read by a fixture.
     var observePasses: Int
+    /// Whether the letter's start dots are drawn at all —
+    /// `StudyComparisonSettings.guidedDotsVisible`, captured at construction
+    /// like the switches above.
+    ///
+    /// Carried HERE for the same reason as `observePasses`: it is one of the
+    /// four comparison settings the view model read straight from the global,
+    /// and the last three fell to this pass on 2026-10-16. A parallel test must
+    /// be able to drive it without writing a key every other fixture in the run
+    /// reads.
+    var guidedDotsVisible: Bool
+    /// Whether the letter is panned by the pen's position across the canvas —
+    /// `StudyComparisonSettings.panningEnabled`, captured at construction.
+    /// Same reason as `guidedDotsVisible` above.
+    var panningEnabled: Bool
+    /// Whether the pre-task demonstration sweeps pitch and pan across the
+    /// canvas instead of holding the carrier steady —
+    /// `StudyComparisonSettings.spatialAxisDemonstration`, captured at
+    /// construction. Same reason as `guidedDotsVisible` above.
+    var spatialAxisDemonstration: Bool
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -317,6 +336,12 @@ struct TracingDependencies {
         // Same capture-at-construction rule; `stub` pins it to the default so
         // no fixture ever reads the key. See the property's own note.
         observePasses: Int = StudyComparisonSettings.observePasses,
+        // Same capture-at-construction rule for the last three comparison
+        // settings the view model used to read from the global directly; `stub`
+        // pins all three so no fixture reads a key (2026-10-16).
+        guidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible,
+        panningEnabled: Bool = StudyComparisonSettings.panningEnabled,
+        spatialAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -373,6 +398,9 @@ struct TracingDependencies {
         self.presentationSpacingSeconds = presentationSpacingSeconds
         self.oncePerCondition = oncePerCondition
         self.observePasses = observePasses
+        self.guidedDotsVisible = guidedDotsVisible
+        self.panningEnabled = panningEnabled
+        self.spatialAxisDemonstration = spatialAxisDemonstration
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

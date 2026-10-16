@@ -1071,9 +1071,9 @@ public final class TracingViewModel {
     /// nächsten App-Start wirksam"). A comparison run must be a property of
     /// the session that was set up, not something a proctor can change
     /// halfway through one.
-    private let dotsVisible = StudyComparisonSettings.guidedDotsVisible
+    private let dotsVisible: Bool
     /// Internal, not private: `TouchDispatcher` reads it on the touch path.
-    let panningEnabled = StudyComparisonSettings.panningEnabled
+    let panningEnabled: Bool
     /// Captured from `TracingDependencies.presentationSpacingSeconds`
     /// (which reads `StudyComparisonSettings` by default) at init.
     private let presentationSpacing: TimeInterval
@@ -1143,7 +1143,7 @@ public final class TracingViewModel {
     /// see `StudyComparisonSettings.spatialAxisDemonstration` for why OFF
     /// is nevertheless a divergence from the written protocol rather than
     /// a neutral default.
-    private let axisDemonstrationEnabled = StudyComparisonSettings.spatialAxisDemonstration
+    private let axisDemonstrationEnabled: Bool
     /// What THIS session runs under, as the stamp every row it writes
     /// carries: the non-default comparison switches, or nil when the
     /// session is at every default — the PILOT case, and the case that
@@ -1275,6 +1275,14 @@ public final class TracingViewModel {
         // once-per-VM capture, but a parallel test can drive it without writing
         // a global every other fixture in the run reads (2026-10-16).
         self.observePasses          = deps.observePasses
+        // All three through the seam for the same reason as `observePasses`
+        // above: read once at construction — the "captured at init, a proctor
+        // cannot change it mid-session" property the switches' own comments
+        // promise is unchanged — but never read from the global, so no parallel
+        // fixture can hand another suite a value (2026-10-16).
+        self.dotsVisible              = deps.guidedDotsVisible
+        self.panningEnabled           = deps.panningEnabled
+        self.axisDemonstrationEnabled = deps.spatialAxisDemonstration
         self.enableRetrievalPrompts = deps.enableRetrievalPrompts
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
