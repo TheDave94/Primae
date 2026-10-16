@@ -64,11 +64,25 @@
 # `::warning`. That is the same shape the removed push reporter had, and it is
 # deliberate: a bridge that reports and cannot deliver must stay quiet.
 #
-# POSIX sh. Requires: curl, jq.
+# POSIX sh. Requires: curl, jq, git (for the keychain lookup).
 #
 # TOKENS, never printed:
-#   FORGE_TOKEN      or FORGE_TOKEN_FILE   (default ~/.config/forgejo/push-security.token)
+#   FORGE_TOKEN      or FORGE_TOKEN_FILE   (explicit override, either wins)
 #   GH_TOKEN         or GH_TOKEN_FILE      (default: `gh auth token`)
+#
+#   DEFAULT (neither set): the forge credential is resolved from the macOS
+#   keychain as the NON-ADMIN service account `push-security`, exactly the way
+#   git resolves it for `origin` — `git credential fill` for <host from
+#   FORGE_BASE>. Least privilege, and no secret is copied to a file.
+#
+#   IT WAS NOT ALWAYS SO, AND THE OLD DEFAULT WAS MISNAMED. Until 2026-10-16
+#   this fell back to `~/.config/forgejo/push-security.token` — a file whose
+#   NAME says push-security but whose TOKEN authenticates as David (id 1,
+#   is_admin=true), measured by self-identity (`GET /api/v1/user`). So the
+#   bridge held an ADMIN credential, and rotating push-security would NOT have
+#   broken it while rotating David's would have, silently. It now posts as
+#   push-security (id 5, non-admin, `write` on David/Primae), which is all a
+#   status POST needs.
 #
 # ENVIRONMENT
 #   FORGE_BASE  default https://git.flamingistan.com/api/v1   (include /api/v1)
@@ -86,7 +100,8 @@ GH_WEB="${GH_WEB:-https://github.com}"
 FORGE_REPO="${FORGE_REPO:-David/Primae}"
 FORGE_BASE="${FORGE_BASE:-https://git.flamingistan.com/api/v1}"
 CONTEXT="${CONTEXT:-ci/github-actions}"
-FORGE_TOKEN_FILE="${FORGE_TOKEN_FILE:-$HOME/.config/forgejo/push-security.token}"
+FORGE_TOKEN_FILE="${FORGE_TOKEN_FILE:-}"
+FORGE_HOST="${FORGE_HOST:-$(printf '%s' "$FORGE_BASE" | sed -E 's#^https?://([^/]+).*#\1#')}"
 GH_TOKEN_FILE="${GH_TOKEN_FILE:-}"
 TMP="${TMPDIR:-/tmp}"
 NET_MAX="${NET_MAX:-25}"
@@ -243,10 +258,17 @@ done
 FORGE_TOKEN_V=''
 if [ -n "${FORGE_TOKEN:-}" ]; then
 	FORGE_TOKEN_V="$FORGE_TOKEN"
-elif [ -r "$FORGE_TOKEN_FILE" ]; then
+elif [ -n "${FORGE_TOKEN_FILE}" ] && [ -r "$FORGE_TOKEN_FILE" ]; then
 	FORGE_TOKEN_V=$(cat "$FORGE_TOKEN_FILE")
+elif [ -z "${FORGE_TOKEN_FILE}" ]; then
+	# DEFAULT, LEAST PRIVILEGE: the non-admin `push-security` credential, read
+	# from the keychain the same way git reads it for origin. No file, no copy,
+	# nothing to go stale. GIT_TERMINAL_PROMPT=0 so a missing entry returns
+	# empty instead of hanging on a prompt.
+	FORGE_TOKEN_V=$(printf 'protocol=https\nhost=%s\nusername=push-security\n\n' "$FORGE_HOST" \
+		| GIT_TERMINAL_PROMPT=0 git credential fill 2>/dev/null | sed -n 's/^password=//p')
 fi
-[ -n "$FORGE_TOKEN_V" ] || die "no forge token (set FORGE_TOKEN or make $FORGE_TOKEN_FILE readable)"
+[ -n "$FORGE_TOKEN_V" ] || die "no forge token (set FORGE_TOKEN/FORGE_TOKEN_FILE, or make the keychain 'push-security' entry readable for $FORGE_HOST)"
 
 GH_TOKEN_V=''
 if [ -n "${GH_TOKEN:-}" ]; then
