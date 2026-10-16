@@ -21,10 +21,20 @@
 #
 #   * A forge-side scheduled workflow needs `has_actions` on the repository.
 #     MEASURED 2026-10-16: `has_actions=false` on David/Primae, so
-#     `.forgejo/workflows/ci-verdict-bridge.yml` is DORMANT — and every estate repo
-#     that DOES have the unit on reports `{"workflow_runs":[],"total_count":0}`:
-#     the instance's single runner has never executed a job. It remains the better
-#     long-term home and it is not the verifiable one today.
+#     `.forgejo/workflows/ci-verdict-bridge.yml` is DORMANT on THIS repo. That is a
+#     property of Primae's own repo setting, NOT of a dead runner — and the
+#     difference was measured the same day, which is why this paragraph is
+#     rewritten rather than left standing. With the unit ON elsewhere the forge
+#     runs jobs: `David/homelab-ops` reports `has_actions=true` and
+#     `total_count: 1901` workflow runs, and its REQUIRED `corpus-gate` check runs
+#     and completes on pull requests — it held a land of mine for ~3.5 min and
+#     gitflow refused the merge until it passed. This paragraph used to say "the
+#     instance's single runner has never executed a job". THAT WAS REFUTED: a
+#     `{"workflow_runs":[],"total_count":0}` read on Primae's own repo, whose unit
+#     is off, was generalised to the whole instance. The forge route is therefore
+#     VIABLE and remains the better long-term home; the launchd agent was chosen
+#     because it was the one that could be VERIFIED that day, not because the forge
+#     could not run the workflow.
 #
 # IT WARNS AND EXITS 0, ALWAYS. A delivery failure must never redden a CI job or a
 # launchd job. The exit code reports whether THIS RUNNER worked; the poller's exit
