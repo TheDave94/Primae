@@ -80,4 +80,65 @@ import Foundation
         #expect(!study.isEmpty,
                 "the studyMode practice pool built from .stub is EMPTY (letters: \(normal), subset: \(subset.rawValue)) — every test that opts into studyMode will now fail on empty letter names rather than on its own subject")
     }
+
+    /// Every comparison switch a parallel test might write must be PINNED in
+    /// the fixture, never inherited from the process-global it also lives in.
+    ///
+    /// This is the third instance of the pattern the two tests above name, and
+    /// the first one to cost a red suite rather than merely invite one. The
+    /// switches live in `UserDefaults.standard`; Swift Testing runs tests in
+    /// PARALLEL; so a switch held inside one test's body is read by every
+    /// fixture constructed concurrently, in any file. MEASURED 2026-10-16:
+    /// `StudyComparisonSwitchesTests` held `observePasses = 2` while
+    /// `AuditThirdPassTests` built its fixture, that fixture needed two passes,
+    /// and *"one full pass must end observe"* failed on a suite that never
+    /// mentioned the switch. The view model read that one setting straight from
+    /// the global — the last such read — and `stub` did not pin it.
+    ///
+    /// The test writes the globals, because that is the only way to tell a pin
+    /// from an inheritance; it snapshots and restores the exact values rather
+    /// than calling `resetToDefaults()`, which would clear keys a parallel test
+    /// may be holding. Adding a switch to the fixture's pinned set should add
+    /// it here too.
+    @Test("the shared fixture pins the comparison switches against their globals")
+    func stubPinsTheComparisonSwitches() {
+        let saved = (
+            cycleAllConditions:  StudyComparisonSettings.cycleAllConditions,
+            oncePerCondition:    StudyComparisonSettings.oncePerCondition,
+            spacing:             StudyComparisonSettings.presentationSpacingSeconds,
+            observePasses:       StudyComparisonSettings.observePasses,
+            radiusFactor:        StudyComparisonSettings.soundGateRadiusFactor,
+            velocityFloor:       StudyComparisonSettings.soundGateVelocityFloor
+        )
+        defer {
+            StudyComparisonSettings.cycleAllConditions = saved.cycleAllConditions
+            StudyComparisonSettings.oncePerCondition = saved.oncePerCondition
+            StudyComparisonSettings.presentationSpacingSeconds = saved.spacing
+            StudyComparisonSettings.observePasses = saved.observePasses
+            StudyComparisonSettings.soundGateRadiusFactor = saved.radiusFactor
+            StudyComparisonSettings.soundGateVelocityFloor = saved.velocityFloor
+        }
+
+        // Every value non-default, so an inherited one would be visibly wrong.
+        StudyComparisonSettings.cycleAllConditions = true
+        StudyComparisonSettings.oncePerCondition = true
+        StudyComparisonSettings.presentationSpacingSeconds = 5
+        StudyComparisonSettings.observePasses = 2
+        StudyComparisonSettings.soundGateRadiusFactor = 6.0
+        StudyComparisonSettings.soundGateVelocityFloor = 22
+
+        let deps = TracingDependencies.stub
+        #expect(deps.cycleAllConditions == StudyComparisonSettings.cycleAllConditionsDefault,
+                "the fixture inherited cycleAllConditions from the global")
+        #expect(deps.oncePerCondition == StudyComparisonSettings.oncePerConditionDefault,
+                "the fixture inherited oncePerCondition from the global")
+        #expect(deps.presentationSpacingSeconds == StudyComparisonSettings.presentationSpacingSecondsDefault,
+                "the fixture inherited presentationSpacingSeconds from the global — an observe window would stretch while another test holds a non-zero value")
+        #expect(deps.observePasses == StudyComparisonSettings.observePassesDefault,
+                "the fixture inherited observePasses from the global — a parallel test would hand it whichever pass count it was holding, and an observe-exit assertion would fail on a suite that never set it")
+        #expect(deps.soundGateRadiusFactor == StudyComparisonSettings.soundGateRadiusFactorDefault,
+                "the fixture inherited soundGateRadiusFactor from the global")
+        #expect(deps.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault,
+                "the fixture inherited soundGateVelocityFloor from the global")
+    }
 }

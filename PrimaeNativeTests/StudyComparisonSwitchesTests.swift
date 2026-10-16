@@ -43,11 +43,21 @@ import UIKit
 
     private let canvas = CGSize(width: 400, height: 400)
 
-    /// Build a study VM and guarantee the comparison keys are cleared
-    /// afterwards, so one test cannot leak configuration into the next.
-    private func studyVM() -> TracingViewModel {
+    /// Build a study VM whose comparison switches come from the deps seam.
+    ///
+    /// A test that means to exercise a switch sets it through `configure`
+    /// rather than writing a global key. That matters because swift-testing
+    /// runs tests in PARALLEL: a key held inside one test's body is visible to
+    /// every fixture constructed concurrently, in this suite or any other.
+    /// MEASURED 2026-10-16: `observePassesTwoNeedsBothCycles` used to write
+    /// `StudyComparisonSettings.observePasses = 2` while `AuditThirdPassTests`
+    /// was building its fixture, which then needed TWO passes and failed its
+    /// *"one full pass must end observe"* assertion. `TracingDependencies.stub`
+    /// now pins the pass count, so the seam is the only way in.
+    private func studyVM(configure: (inout TracingDependencies) -> Void = { _ in }) -> TracingViewModel {
         var deps = TracingDependencies.stub
         deps.studyMode = true
+        configure(&deps)
         return TracingViewModel(deps)
     }
 
@@ -191,12 +201,11 @@ import UIKit
     /// using any of them would have been unpinned.
 
     /// `observePasses` = 2: observe must need BOTH cycles before it advances.
+    ///
+    /// Driven through the deps seam, never the global key: see `studyVM`.
     @Test("observePasses = 2 restores a two-cycle observe")
     func observePassesTwoNeedsBothCycles() {
-        StudyComparisonSettings.observePasses = 2
-        defer { StudyComparisonSettings.resetToDefaults() }
-
-        let vm = studyVM()
+        let vm = studyVM { $0.observePasses = 2 }
         vm.canvasSize = canvas
         vm.startParkedLetter()
         #expect(vm.learningPhase == .observe, "precondition: a study launch starts in observe")

@@ -1035,8 +1035,11 @@ public final class TracingViewModel {
     /// One, unless `StudyComparisonSettings.observePasses` restores the
     /// former two-pass behaviour for comparison — the supervisor's
     /// "einmal vorzeigen (vielleicht etwas langsamer)" made one pass the
-    /// behaviour and this switch the way back to two.
-    private let observePasses = StudyComparisonSettings.observePasses
+    /// behaviour and this switch the way back to two. Read from
+    /// `TracingDependencies.observePasses`, captured once at construction, so a
+    /// parallel test can drive it through the seam instead of writing the
+    /// global key every other fixture in the run also reads (2026-10-16).
+    private let observePasses: Int
     /// Whether this session practises all five study letters instead of
     /// the counterbalanced three. Off by default; on makes every letter
     /// trained, which removes the within-child trained/untrained
@@ -1268,6 +1271,10 @@ public final class TracingViewModel {
         self.buildStamp             = deps.buildStamp
         self.cyclesAudioConditions  = deps.cycleAllConditions
         self.demonstrationsOncePerCondition = deps.oncePerCondition
+        // Through the seam, not `StudyComparisonSettings.observePasses`: same
+        // once-per-VM capture, but a parallel test can drive it without writing
+        // a global every other fixture in the run reads (2026-10-16).
+        self.observePasses          = deps.observePasses
         self.enableRetrievalPrompts = deps.enableRetrievalPrompts
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
@@ -2800,8 +2807,9 @@ public final class TracingViewModel {
     /// (`lifecycleCounters`, in memory).
     ///
     /// Scope: whether a sound arm may continue on a non-headphone route is
-    /// NEEDS-DAVID (D7), and observe's recovery from a lost route needs an
-    /// `AudioEngine` change (batch E).
+    /// NEEDS-DAVID (D7). Observe's recovery from a lost route is implemented
+    /// below as of 2026-10-16 — it used to read "needs an `AudioEngine` change
+    /// (batch E)".
     func handleAudioRouteChange(reasonRawValue: UInt?, outputLost: Bool, outputPortType: String?) {
         // Only a DEVICE change is counted (batch D, R-020): the engine's own
         // category changes, a wake from sleep and a configuration change
@@ -2812,11 +2820,40 @@ public final class TracingViewModel {
         }
         lifecycleCounters.outputRoute = outputPortType
         lifecycleLogger.info("Audio route changed to \(outputPortType ?? "none", privacy: .public) (output lost: \(outputLost, privacy: .public)) on \(self.currentLetterName, privacy: .public)")
-        guard outputLost else { return }
+        guard outputLost else {
+            // A VALID ROUTE. If the output was previously LOST, THIS is the
+            // recovery point, and until now nothing ever was one: the loss
+            // below leaves the engine stopped, the playback machine idle and
+            // `isPlaying` false, and nothing re-arms them by itself — so a
+            // child whose route came back stayed silent for the rest of the
+            // session.
+            //
+            // GATED ON A PRIOR LOSS, deliberately: that gate is the whole
+            // lesson of the first attempt. Recovering on EVERY valid route
+            // change replayed the arm's file on a spurious notification (a
+            // category change, a wake, the simulator's own chatter) and turned
+            // three observe-cycle tests red. A route that was never lost has
+            // nothing to recover, so it does nothing.
+            guard routeOutputWasLost else { return }
+            routeOutputWasLost = false
+            lifecycleLogger.info("Audio route valid again — recovering playback on \(self.currentLetterName, privacy: .public)")
+            // Through the playback machine, not the engine: `request(.active)`
+            // reapplies the arm's file via `reloadBeforePlay` and plays, which
+            // is exactly what the loss interrupted. `forceIdle()` reset the
+            // machine's tracked state, so this re-enters active cleanly.
+            playback.request(.active, immediate: true)
+            return
+        }
+        routeOutputWasLost = true
         playback.cancelPending()
         playback.forceIdle()
         isPlaying = false
     }
+
+    /// True when a route change reported the output LOST and it has not been
+    /// recovered since. The recovery above is gated on it so an ordinary route
+    /// notification cannot replay audio.
+    @ObservationIgnored private var routeOutputWasLost = false
 
     /// The view model's own route-change ear (R-019); see
     /// `AudioRouteObserver`.

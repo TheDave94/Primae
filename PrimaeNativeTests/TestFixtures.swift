@@ -386,6 +386,14 @@ extension TracingDependencies {
             // demonstration. Tests that mean to exercise it say so at the
             // call site (`deps.oncePerCondition = true`).
             oncePerCondition:     false,
+            // Pin the observe pass count, same reason as the switches above —
+            // and this is the one that proved the rule (2026-10-16): a fixture
+            // built while `StudyComparisonSwitchesTests` held the global at 2
+            // needed two passes, so `AuditThirdPassTests`' *"one full pass must
+            // end observe"* failed in a run where neither test was about the
+            // other. Tests that mean to exercise it say so at the call site
+            // (`deps.observePasses = 2`).
+            observePasses:        StudyComparisonSettings.observePassesDefault,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Batch D: a fixed environment, no sentinel file and a fixed

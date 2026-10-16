@@ -170,6 +170,19 @@ struct TracingDependencies {
     /// init, a proctor cannot change it mid-session" property the other
     /// switches have is unchanged.
     var oncePerCondition: Bool
+    /// Passes the observe demonstration makes before the phase advances —
+    /// `StudyComparisonSettings.observePasses`, captured at construction like
+    /// the switches above.
+    ///
+    /// Carried HERE for exactly their reason, and it is the one that proved the
+    /// point the hard way (2026-10-16). It was the last comparison setting the
+    /// view model still read straight from the global, and the cost was three
+    /// intermittently red observe-exit tests: `StudyComparisonSwitchesTests`
+    /// held `observePasses = 2` inside one test's body, and every fixture built
+    /// concurrently — `AuditThirdPassTests`' among them — inherited it and then
+    /// failed *"one full pass must end observe"*. `stub` pins it, so the key is
+    /// never read by a fixture.
+    var observePasses: Int
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -301,6 +314,9 @@ struct TracingDependencies {
         presentationSpacingSeconds: TimeInterval = StudyComparisonSettings.presentationSpacingSeconds,
         // Same capture-at-construction rule as `cycleAllConditions` above.
         oncePerCondition: Bool = StudyComparisonSettings.oncePerCondition,
+        // Same capture-at-construction rule; `stub` pins it to the default so
+        // no fixture ever reads the key. See the property's own note.
+        observePasses: Int = StudyComparisonSettings.observePasses,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -356,6 +372,7 @@ struct TracingDependencies {
         self.soundGateVelocityFloor = soundGateVelocityFloor
         self.presentationSpacingSeconds = presentationSpacingSeconds
         self.oncePerCondition = oncePerCondition
+        self.observePasses = observePasses
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer
