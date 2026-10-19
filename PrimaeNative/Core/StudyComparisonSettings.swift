@@ -46,7 +46,7 @@ enum StudyComparisonSettings {
     /// named further down.
     static let observePassesDefault: Int = 1
     static var observePasses: Int {
-        get { intValue(observePassesKey, default: observePassesDefault) }
+        get { configuration(in: .standard).observePasses }
         set { UserDefaults.standard.set(newValue, forKey: observePassesKey) }
     }
 
@@ -78,7 +78,7 @@ enum StudyComparisonSettings {
     static let spokenFeedbackKey = prefix + "spokenFeedbackInStudy"
     static let spokenFeedbackInStudyDefault: Bool = true
     static var spokenFeedbackInStudy: Bool {
-        get { boolValue(spokenFeedbackKey, default: spokenFeedbackInStudyDefault) }
+        get { configuration(in: .standard).spokenFeedbackInStudy }
         set { UserDefaults.standard.set(newValue, forKey: spokenFeedbackKey) }
     }
 
@@ -102,7 +102,7 @@ enum StudyComparisonSettings {
     static let allFiveLettersKey = prefix + "allFiveLetters"
     static let allFiveLettersDefault: Bool = false
     static var allFiveLetters: Bool {
-        get { boolValue(allFiveLettersKey, default: allFiveLettersDefault) }
+        get { configuration(in: .standard).allFiveLetters }
         set { UserDefaults.standard.set(newValue, forKey: allFiveLettersKey) }
     }
 
@@ -112,7 +112,7 @@ enum StudyComparisonSettings {
     static let letterRepeatCountKey = prefix + "letterRepeatCount"
     static let letterRepeatCountDefault: Int = 1
     static var letterRepeatCount: Int {
-        get { max(1, intValue(letterRepeatCountKey, default: letterRepeatCountDefault)) }
+        get { configuration(in: .standard).letterRepeatCount }
         set { UserDefaults.standard.set(max(1, newValue), forKey: letterRepeatCountKey) }
     }
 
@@ -126,7 +126,7 @@ enum StudyComparisonSettings {
     static let cycleAllConditionsKey = prefix + "cycleAllConditions"
     static let cycleAllConditionsDefault: Bool = false
     static var cycleAllConditions: Bool {
-        get { boolValue(cycleAllConditionsKey, default: cycleAllConditionsDefault) }
+        get { configuration(in: .standard).cycleAllConditions }
         set { UserDefaults.standard.set(newValue, forKey: cycleAllConditionsKey) }
     }
 
@@ -136,7 +136,7 @@ enum StudyComparisonSettings {
     static let presentationSpacingKey = prefix + "presentationSpacingSeconds"
     static let presentationSpacingSecondsDefault: Double = 0
     static var presentationSpacingSeconds: Double {
-        get { max(0, doubleValue(presentationSpacingKey, default: presentationSpacingSecondsDefault)) }
+        get { configuration(in: .standard).presentationSpacingSeconds }
         set { UserDefaults.standard.set(max(0, newValue), forKey: presentationSpacingKey) }
     }
 
@@ -161,7 +161,7 @@ enum StudyComparisonSettings {
     static let panningEnabledKey = prefix + "panningEnabled"
     static let panningEnabledDefault: Bool = true
     static var panningEnabled: Bool {
-        get { boolValue(panningEnabledKey, default: panningEnabledDefault) }
+        get { configuration(in: .standard).panningEnabled }
         set { UserDefaults.standard.set(newValue, forKey: panningEnabledKey) }
     }
 
@@ -182,7 +182,7 @@ enum StudyComparisonSettings {
     static let guidedDotsVisibleKey = prefix + "guidedDotsVisible"
     static let guidedDotsVisibleDefault: Bool = true
     static var guidedDotsVisible: Bool {
-        get { boolValue(guidedDotsVisibleKey, default: guidedDotsVisibleDefault) }
+        get { configuration(in: .standard).guidedDotsVisible }
         set { UserDefaults.standard.set(newValue, forKey: guidedDotsVisibleKey) }
     }
 
@@ -231,7 +231,7 @@ enum StudyComparisonSettings {
     static let spatialAxisDemonstrationKey = prefix + "spatialAxisDemonstration"
     static let spatialAxisDemonstrationDefault: Bool = false
     static var spatialAxisDemonstration: Bool {
-        get { boolValue(spatialAxisDemonstrationKey, default: spatialAxisDemonstrationDefault) }
+        get { configuration(in: .standard).spatialAxisDemonstration }
         set { UserDefaults.standard.set(newValue, forKey: spatialAxisDemonstrationKey) }
     }
 
@@ -303,8 +303,7 @@ enum StudyComparisonSettings {
     /// researcher control and the production default cannot drift apart.
     static let soundGateRadiusFactorDefault: Double = 3.0
     static var soundGateRadiusFactor: Double {
-        get { max(1.0, doubleValue(soundGateRadiusFactorKey,
-                                   default: soundGateRadiusFactorDefault)) }
+        get { configuration(in: .standard).soundGateRadiusFactor }
         set { UserDefaults.standard.set(max(1.0, newValue), forKey: soundGateRadiusFactorKey) }
     }
 
@@ -338,8 +337,7 @@ enum StudyComparisonSettings {
     /// The default above, named for the same reason as its sibling.
     static let soundGateVelocityFloorDefault: Double = 0.0
     static var soundGateVelocityFloor: Double {
-        get { max(0, doubleValue(soundGateVelocityFloorKey,
-                                 default: soundGateVelocityFloorDefault)) }
+        get { configuration(in: .standard).soundGateVelocityFloor }
         set { UserDefaults.standard.set(max(0, newValue), forKey: soundGateVelocityFloorKey) }
     }
 
@@ -404,41 +402,74 @@ enum StudyComparisonSettings {
     static let oncePerConditionKey = prefix + "oncePerCondition"
     static let oncePerConditionDefault: Bool = false
     static var oncePerCondition: Bool {
-        get { boolValue(oncePerConditionKey, default: oncePerConditionDefault) }
+        get { configuration(in: .standard).oncePerCondition }
         set { UserDefaults.standard.set(newValue, forKey: oncePerConditionKey) }
     }
 
     /// Restore every switch to the behaviour the app had before this file
     /// existed. Used by the researcher UI's reset row, and by tests.
-    static func resetToDefaults() {
+    ///
+    /// `defaults` is a seam for tests (a throwaway `UserDefaults(suiteName:)`
+    /// instead of the device store); every production caller omits it.
+    static func resetToDefaults(in defaults: UserDefaults = .standard) {
         for key in [observePassesKey, spokenFeedbackKey, allFiveLettersKey,
                     letterRepeatCountKey, cycleAllConditionsKey,
                     presentationSpacingKey, guidedDotsVisibleKey,
                     panningEnabledKey, spatialAxisDemonstrationKey,
                     soundGateRadiusFactorKey, soundGateVelocityFloorKey,
                     oncePerConditionKey] {
-            UserDefaults.standard.removeObject(forKey: key)
+            defaults.removeObject(forKey: key)
         }
+    }
+
+    /// All twelve switches as `defaults` currently holds them, each with its
+    /// documented default for an unset key and its clamp for a stored one.
+    ///
+    /// THE ONE READ. Every getter above delegates here, so the device store
+    /// (`.standard`, which is what every production caller reads) and a
+    /// test's throwaway suite go through identical code — there is no second
+    /// copy of a clamp or a default that could drift from the first.
+    /// `TracingDependencies.comparisonDefaults` carries the store a session
+    /// reads from; it is `.standard` unless a test injects a suite.
+    static func configuration(in defaults: UserDefaults) -> StudyComparisonConfiguration {
+        StudyComparisonConfiguration(
+            observePasses: intValue(observePassesKey, default: observePassesDefault, in: defaults),
+            spokenFeedbackInStudy: boolValue(spokenFeedbackKey, default: spokenFeedbackInStudyDefault, in: defaults),
+            allFiveLetters: boolValue(allFiveLettersKey, default: allFiveLettersDefault, in: defaults),
+            letterRepeatCount: max(1, intValue(letterRepeatCountKey, default: letterRepeatCountDefault, in: defaults)),
+            cycleAllConditions: boolValue(cycleAllConditionsKey, default: cycleAllConditionsDefault, in: defaults),
+            presentationSpacingSeconds: max(0, doubleValue(presentationSpacingKey,
+                                                           default: presentationSpacingSecondsDefault, in: defaults)),
+            panningEnabled: boolValue(panningEnabledKey, default: panningEnabledDefault, in: defaults),
+            guidedDotsVisible: boolValue(guidedDotsVisibleKey, default: guidedDotsVisibleDefault, in: defaults),
+            spatialAxisDemonstration: boolValue(spatialAxisDemonstrationKey,
+                                                default: spatialAxisDemonstrationDefault, in: defaults),
+            soundGateRadiusFactor: max(1.0, doubleValue(soundGateRadiusFactorKey,
+                                                        default: soundGateRadiusFactorDefault, in: defaults)),
+            soundGateVelocityFloor: max(0, doubleValue(soundGateVelocityFloorKey,
+                                                       default: soundGateVelocityFloorDefault, in: defaults)),
+            oncePerCondition: boolValue(oncePerConditionKey, default: oncePerConditionDefault, in: defaults)
+        )
     }
 
     // MARK: - Typed reads
 
-    private static func boolValue(_ key: String, default fallback: Bool) -> Bool {
+    private static func boolValue(_ key: String, default fallback: Bool, in defaults: UserDefaults) -> Bool {
         // Same default-when-unset shape as `enableFreeformMode`: a stored
         // value is authoritative once written, and an untouched key takes
         // the current behaviour.
-        guard UserDefaults.standard.object(forKey: key) != nil else { return fallback }
-        return UserDefaults.standard.bool(forKey: key)
+        guard defaults.object(forKey: key) != nil else { return fallback }
+        return defaults.bool(forKey: key)
     }
 
-    private static func intValue(_ key: String, default fallback: Int) -> Int {
-        guard UserDefaults.standard.object(forKey: key) != nil else { return fallback }
-        return UserDefaults.standard.integer(forKey: key)
+    private static func intValue(_ key: String, default fallback: Int, in defaults: UserDefaults) -> Int {
+        guard defaults.object(forKey: key) != nil else { return fallback }
+        return defaults.integer(forKey: key)
     }
 
-    private static func doubleValue(_ key: String, default fallback: Double) -> Double {
-        guard UserDefaults.standard.object(forKey: key) != nil else { return fallback }
-        return UserDefaults.standard.double(forKey: key)
+    private static func doubleValue(_ key: String, default fallback: Double, in defaults: UserDefaults) -> Double {
+        guard defaults.object(forKey: key) != nil else { return fallback }
+        return defaults.double(forKey: key)
     }
 }
 

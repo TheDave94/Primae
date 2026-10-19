@@ -318,7 +318,16 @@ extension TracingDependencies {
     /// Fully-stubbed configuration safe for headless CI.
     /// No FileManager, no AVAudioEngine, no UNUserNotificationCenter.
     @MainActor
-    static var stub: TracingDependencies {
+    static var stub: TracingDependencies { stubReading(comparisonDefaults: .standard) }
+
+    /// `stub`, with the store its comparison switches would be read from made
+    /// explicit. Every switch is pinned below, so no key is read and the
+    /// store is irrelevant — which is exactly what
+    /// `TestFixtureContractTests` asserts by handing it a suite that holds
+    /// NON-default values and requiring the defaults back. A switch someone
+    /// forgets to pin would resolve from that suite and turn the test red.
+    @MainActor
+    static func stubReading(comparisonDefaults: UserDefaults) -> TracingDependencies {
         let progressStore = StubProgressStore()
         let streakStore   = StubStreakStore()
         var deps = TracingDependencies(
@@ -362,6 +371,7 @@ extension TracingDependencies {
             studyMode:            false,
             // Same reason as `allFiveLetters` above — nil would read the key.
             spokenFeedbackInStudy: StudyComparisonSettings.spokenFeedbackInStudyDefault,
+            comparisonDefaults:   comparisonDefaults,
             participantEnrolled:  true,   // the precondition reads THIS, not the device
             // Pin the arm-cycle comparison switch OFF, for the same reason
             // as studyMode above and one sharper: `StudyComparisonSwitches

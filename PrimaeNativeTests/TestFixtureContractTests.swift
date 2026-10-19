@@ -82,12 +82,12 @@ import Foundation
     }
 
     /// Every comparison switch a parallel test might write must be PINNED in
-    /// the fixture, never inherited from the process-global it also lives in.
+    /// the fixture, never inherited from the store it also lives in.
     ///
     /// This is the third instance of the pattern the two tests above name, and
     /// the first one to cost a red suite rather than merely invite one. The
-    /// switches live in `UserDefaults.standard`; Swift Testing runs tests in
-    /// PARALLEL; so a switch held inside one test's body is read by every
+    /// switches live in the device's `UserDefaults`; Swift Testing runs tests
+    /// in PARALLEL; so a switch held inside one test's body is read by every
     /// fixture constructed concurrently, in any file. MEASURED 2026-10-16:
     /// `StudyComparisonSwitchesTests` held `observePasses = 2` while
     /// `AuditThirdPassTests` built its fixture, that fixture needed two passes,
@@ -95,105 +95,91 @@ import Foundation
     /// mentioned the switch. The view model read that one setting straight from
     /// the global — the last such read — and `stub` did not pin it.
     ///
-    /// The test writes the globals, because that is the only way to tell a pin
-    /// from an inheritance; it snapshots and restores the exact values rather
-    /// than calling `resetToDefaults()`, which would clear keys a parallel test
-    /// may be holding. Adding a switch to the fixture's pinned set should add
-    /// it here too.
-    @Test("the shared fixture pins the comparison switches against their globals")
+    /// The only way to tell a pin from an inheritance is to give the fixture a
+    /// store that holds NON-default values and see whether any of them come
+    /// back. This test does that against a throwaway suite handed to the
+    /// fixture through `comparisonDefaults`, so it writes no device key and no
+    /// parallel test can observe it (the first version wrote all twelve into
+    /// the process-global store, which is the very hazard it checks for).
+    /// Adding a switch to the fixture's pinned set should add it here too.
+    @Test("the shared fixture pins the comparison switches against their store")
     func stubPinsTheComparisonSwitches() {
-        let saved = (
-            cycleAllConditions:  StudyComparisonSettings.cycleAllConditions,
-            oncePerCondition:    StudyComparisonSettings.oncePerCondition,
-            spacing:             StudyComparisonSettings.presentationSpacingSeconds,
-            observePasses:       StudyComparisonSettings.observePasses,
-            radiusFactor:        StudyComparisonSettings.soundGateRadiusFactor,
-            velocityFloor:       StudyComparisonSettings.soundGateVelocityFloor,
-            dotsVisible:         StudyComparisonSettings.guidedDotsVisible,
-            panningEnabled:      StudyComparisonSettings.panningEnabled,
-            axisDemonstration:   StudyComparisonSettings.spatialAxisDemonstration,
-            allFiveLetters:      StudyComparisonSettings.allFiveLetters,
-            letterRepeatCount:   StudyComparisonSettings.letterRepeatCount,
-            spokenFeedback:      StudyComparisonSettings.spokenFeedbackInStudy
-        )
-        defer {
-            StudyComparisonSettings.cycleAllConditions = saved.cycleAllConditions
-            StudyComparisonSettings.oncePerCondition = saved.oncePerCondition
-            StudyComparisonSettings.presentationSpacingSeconds = saved.spacing
-            StudyComparisonSettings.observePasses = saved.observePasses
-            StudyComparisonSettings.soundGateRadiusFactor = saved.radiusFactor
-            StudyComparisonSettings.soundGateVelocityFloor = saved.velocityFloor
-            StudyComparisonSettings.guidedDotsVisible = saved.dotsVisible
-            StudyComparisonSettings.panningEnabled = saved.panningEnabled
-            StudyComparisonSettings.spatialAxisDemonstration = saved.axisDemonstration
-            StudyComparisonSettings.allFiveLetters = saved.allFiveLetters
-            StudyComparisonSettings.letterRepeatCount = saved.letterRepeatCount
-            StudyComparisonSettings.spokenFeedbackInStudy = saved.spokenFeedback
-        }
+        let box = ThrowawayDefaults()
+        box.write(.everySwitchNonDefault)
+        #expect(StudyComparisonSettings.configuration(in: box.defaults) == .everySwitchNonDefault,
+                "precondition: the store handed to the fixture must hold non-default values, or this test proves nothing")
 
-        // Every value non-default, so an inherited one would be visibly wrong.
-        StudyComparisonSettings.cycleAllConditions = true
-        StudyComparisonSettings.oncePerCondition = true
-        StudyComparisonSettings.presentationSpacingSeconds = 5
-        StudyComparisonSettings.observePasses = 2
-        StudyComparisonSettings.soundGateRadiusFactor = 6.0
-        StudyComparisonSettings.soundGateVelocityFloor = 22
-        StudyComparisonSettings.guidedDotsVisible = false
-        StudyComparisonSettings.panningEnabled = false
-        StudyComparisonSettings.spatialAxisDemonstration = true
-        StudyComparisonSettings.allFiveLetters = true
-        StudyComparisonSettings.letterRepeatCount = 3
-        StudyComparisonSettings.spokenFeedbackInStudy =
-            !StudyComparisonSettings.spokenFeedbackInStudyDefault
-
-        let deps = TracingDependencies.stub
+        let deps = TracingDependencies.stubReading(comparisonDefaults: box.defaults)
         #expect(deps.cycleAllConditions == StudyComparisonSettings.cycleAllConditionsDefault,
-                "the fixture inherited cycleAllConditions from the global")
+                "the fixture inherited cycleAllConditions from the store")
         #expect(deps.oncePerCondition == StudyComparisonSettings.oncePerConditionDefault,
-                "the fixture inherited oncePerCondition from the global")
+                "the fixture inherited oncePerCondition from the store")
         #expect(deps.presentationSpacingSeconds == StudyComparisonSettings.presentationSpacingSecondsDefault,
-                "the fixture inherited presentationSpacingSeconds from the global — an observe window would stretch while another test holds a non-zero value")
+                "the fixture inherited presentationSpacingSeconds from the store — an observe window would stretch while another test holds a non-zero value")
         #expect(deps.observePasses == StudyComparisonSettings.observePassesDefault,
-                "the fixture inherited observePasses from the global — a parallel test would hand it whichever pass count it was holding, and an observe-exit assertion would fail on a suite that never set it")
+                "the fixture inherited observePasses from the store — a parallel test would hand it whichever pass count it was holding, and an observe-exit assertion would fail on a suite that never set it")
         #expect(deps.soundGateRadiusFactor == StudyComparisonSettings.soundGateRadiusFactorDefault,
-                "the fixture inherited soundGateRadiusFactor from the global")
+                "the fixture inherited soundGateRadiusFactor from the store")
         #expect(deps.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault,
-                "the fixture inherited soundGateVelocityFloor from the global")
+                "the fixture inherited soundGateVelocityFloor from the store")
         #expect(deps.guidedDotsVisible == StudyComparisonSettings.guidedDotsVisibleDefault,
-                "the fixture inherited guidedDotsVisible from the global — a parallel test would draw or hide the start dots in another suite's canvas")
+                "the fixture inherited guidedDotsVisible from the store — a parallel test would draw or hide the start dots in another suite's canvas")
         #expect(deps.panningEnabled == StudyComparisonSettings.panningEnabledDefault,
-                "the fixture inherited panningEnabled from the global — a parallel test would silently switch the pan axis off in another suite")
+                "the fixture inherited panningEnabled from the store — a parallel test would silently switch the pan axis off in another suite")
         #expect(deps.spatialAxisDemonstration == StudyComparisonSettings.spatialAxisDemonstrationDefault,
-                "the fixture inherited spatialAxisDemonstration from the global — a parallel test would install a sweeping demonstration in another suite's session")
+                "the fixture inherited spatialAxisDemonstration from the store — a parallel test would install a sweeping demonstration in another suite's session")
         #expect(deps.allFiveLetters == StudyComparisonSettings.allFiveLettersDefault,
-                "the fixture inherited allFiveLetters from the global — the letter pool would change shape under another suite")
+                "the fixture inherited allFiveLetters from the store — the letter pool would change shape under another suite")
         #expect(deps.letterRepeatCount == StudyComparisonSettings.letterRepeatCountDefault,
-                "the fixture inherited letterRepeatCount from the global — another suite's letter would repeat")
+                "the fixture inherited letterRepeatCount from the store — another suite's letter would repeat")
         #expect(deps.spokenFeedbackInStudy == StudyComparisonSettings.spokenFeedbackInStudyDefault,
-                "the fixture inherited spokenFeedbackInStudy from the global — another suite's session would gain or lose speech")
+                "the fixture inherited spokenFeedbackInStudy from the store — another suite's session would gain or lose speech")
+
+        // The proof that it is a PIN and not luck: a view model built from the
+        // fixture, over that same non-default store, stamps nothing.
+        var study = deps
+        study.studyMode = true
+        #expect(TracingViewModel(study).comparisonConfigurationStamp == nil,
+                "a view model built from the fixture ran under a non-default configuration")
     }
 
     /// The other half of the pin: production's path is the seam's DEFAULT, so a
-    /// caller that leaves one of these nil still gets the device key. That is
-    /// why pinning the fixture changes no application behaviour — and why the
-    /// device build needed no reinstall for this change.
+    /// caller that leaves one of these nil still gets the device setting. That
+    /// is why pinning the fixture changes no application behaviour — and why
+    /// the device build needed no reinstall for this change.
     ///
-    /// It is asserted HERE, not in a suite that keeps itself out of
-    /// `UserDefaults`, because telling a fall-through apart from a default takes
-    /// a NON-default key.
-    @Test("a nil seam still falls through to the device key, which is what production relies on")
+    /// It is asserted HERE, against the fixture's own `comparisonDefaults`
+    /// seam, because telling a fall-through apart from a default takes a
+    /// NON-default value in the store. All three optional seams are covered:
+    /// `allFiveLetters`, `letterRepeatCount` and `spokenFeedbackInStudy` are the
+    /// ones the view model resolves itself when they are nil.
+    @Test("a nil seam still falls through to the store, which is what production relies on")
     func aNilSeamFallsThroughToTheDeviceKey() {
-        let saved = StudyComparisonSettings.allFiveLetters
-        defer { StudyComparisonSettings.allFiveLetters = saved }
+        let box = ThrowawayDefaults()
+        box.write(.everySwitchNonDefault)
 
-        StudyComparisonSettings.allFiveLetters = true
-
-        var deps = TracingDependencies.stub
+        var deps = TracingDependencies.stubReading(comparisonDefaults: box.defaults)
         deps.studyMode = true
         deps.allFiveLetters = nil              // exactly what a production caller leaves it as
+        deps.letterRepeatCount = nil
+        deps.spokenFeedbackInStudy = nil
+        let injectedSpeech = NullSpeechSynthesizer()
+        deps.speech = injectedSpeech
         let vm = TracingViewModel(deps)
+        vm.canvasSize = CGSize(width: 400, height: 400)
 
         #expect(vm.effectiveTrainedSubset.isAllFive,
-                "a nil all-five seam did not fall through to StudyComparisonSettings — production would ignore the supervisor's switch")
+                "a nil all-five seam did not fall through to the store — production would ignore the supervisor's switch")
+
+        vm.startParkedLetter()
+        #expect(vm.repeatCurrentLetterIfConfigured(), "pass 2 of 3 must start")
+        #expect(vm.repeatCurrentLetterIfConfigured(), "pass 3 of 3 must start")
+        #expect(vm.repeatCurrentLetterIfConfigured() == false,
+                "a nil repeat-count seam did not fall through to the store (3) — the supervisor's switch is inert")
+
+        // The store holds spokenFeedback = !default (OFF), so a study session
+        // must NOT adopt the injected speech.
+        #expect((vm.speech as AnyObject) !== injectedSpeech,
+                "a nil spoken-feedback seam did not fall through to the store (OFF) — the study session kept the injected voice")
     }
 }

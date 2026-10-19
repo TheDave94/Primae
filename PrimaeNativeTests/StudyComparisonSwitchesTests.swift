@@ -38,15 +38,15 @@ import CoreGraphics
 import UIKit
 @testable import PrimaeNative
 
-/// `.serialized` because the STORAGE tests here (`switchesAreCapturedAtInit`'s
-/// flips, `switchesApplyOnNextConstruction`, `resetRestoresDefaults`) write the
-/// GLOBAL `UserDefaults` store, and Swift Testing would otherwise run them
-/// concurrently and let one test's write — a `resetToDefaults()`, above all —
-/// land inside another's read. The BEHAVIOUR tests no longer write any key:
-/// their switches arrive through the deps seam with `stub` pinning them, which
-/// is what closes the class CONVENTIONS 140 names.
+/// No test here writes a device key. The BEHAVIOUR tests receive their switches
+/// through the deps seam with `stub` pinning the rest; the STORAGE tests
+/// (`switchesAreReadOnceAtConstruction`, `resetRestoresDefaults`) run the real
+/// default-argument and reset paths against a throwaway `UserDefaults` suite
+/// (`ThrowawayDefaults`) handed over through `comparisonDefaults`. Swift
+/// Testing runs suites in PARALLEL, so a write to the shared store lands inside
+/// somebody else's read — which is what closes the class CONVENTIONS 140 names.
 @MainActor
-@Suite(.serialized) struct StudyComparisonSwitchesTests {
+@Suite struct StudyComparisonSwitchesTests {
 
     private let canvas = CGSize(width: 400, height: 400)
 
@@ -289,50 +289,69 @@ import UIKit
     // MARK: - The switches are session properties, not live values
 
     /// A comparison switch must not be able to change the manipulation
-    /// under a child mid-session. Every one is captured at view-model
-    /// construction; writing the key afterwards must not move the VM.
-    @Test("comparison switches are captured at init and do not move afterwards")
-    func switchesAreCapturedAtInit() {
-        let vm = studyVM()
+    /// under a child mid-session, and the NEXT construction must pick up the
+    /// current values — which is what makes the researcher screen's "takes
+    /// effect at next app start" promise true rather than merely reassuring.
+    ///
+    /// This drives the PRODUCTION path: `omittingComparisonSwitches` leaves
+    /// the nine switches out of the `TracingDependencies` call, so their real
+    /// default arguments run, against a throwaway store standing in for the
+    /// device's. (The test it replaces copied the global onto the seam by hand
+    /// — exactly the read the default argument performs — so a wrong default
+    /// argument still passed it.) The three the researcher screen exposes as
+    /// presentation switches — dots, panning, axis demonstration — are
+    /// asserted on observable view-model behaviour; the stamp, which is built
+    /// from the resolved values of all nine, covers the rest.
+    @Test("switches left to their default argument are read once, at construction")
+    func switchesAreReadOnceAtConstruction() {
+        let box = ThrowawayDefaults()
+        box.write(.everySwitchNonDefault)
 
-        #expect(vm.panningEnabled, "panning defaults on")
+        let vm = TracingViewModel(.omittingComparisonSwitches(reading: box.defaults))
+        vm.canvasSize = canvas
 
-        // Flip every key AFTER construction.
-        StudyComparisonSettings.panningEnabled = false
-        StudyComparisonSettings.guidedDotsVisible = false
-        StudyComparisonSettings.presentationSpacingSeconds = 5
-        StudyComparisonSettings.observePasses = 2
-        defer { StudyComparisonSettings.resetToDefaults() }
+        // At construction: the stored values reach the session.
+        #expect(vm.showCheckpoints == false,
+                "guidedDotsVisible's default argument did not read the store — the start dots ignore the switch")
+        #expect(vm.panningEnabled == false,
+                "panningEnabled's default argument did not read the store — the pan axis ignores the switch")
+        let stamp = vm.comparisonConfigurationStamp ?? ""
+        let stamped = Set(stamp.split(separator: ";").map { String($0.split(separator: "=")[0]) })
+        #expect(stamped == ["observePasses", "cycleAllConditions", "presentationSpacingSeconds",
+                            "panningEnabled", "guidedDotsVisible", "spatialAxisDemonstration",
+                            "soundGateRadiusFactor", "soundGateVelocityFloor", "oncePerCondition"],
+                "the session did not resolve all nine omitted switches from the store: \(stamp)")
+        #expect(stamp.contains("spatialAxisDemonstration=true"),
+                "spatialAxisDemonstration's default argument did not read the store")
 
-        #expect(vm.panningEnabled,
-                "panningEnabled moved after init — the pan axis could be switched off mid-session")
-        #expect(vm.showCheckpoints,
+        // After construction: flipping the store must not move the session.
+        StudyComparisonSettings.resetToDefaults(in: box.defaults)
+        #expect(vm.panningEnabled == false,
+                "panningEnabled moved after init — the pan axis could be switched on mid-session")
+        #expect(vm.showCheckpoints == false,
                 "the dots setting moved after init — the canvas could change under the child")
+        #expect(vm.comparisonConfigurationStamp == stamp,
+                "the stamp moved after init — rows would describe a configuration the session did not run")
+
+        // The next construction picks the new values up.
+        let vm2 = TracingViewModel(.omittingComparisonSwitches(reading: box.defaults))
+        vm2.canvasSize = canvas
+        #expect(vm2.panningEnabled, "a fresh view model did not pick up the reset pan setting")
+        #expect(vm2.showCheckpoints, "a fresh view model did not pick up the reset dots setting")
+        #expect(vm2.comparisonConfigurationStamp == nil,
+                "a fresh view model over an all-default store still stamps a comparison run")
     }
 
-    /// The next construction DOES pick up the current values, which is what
-    /// makes the researcher screen's "takes effect at next app start"
-    /// promise true rather than merely reassuring.
-    ///
-    /// The production path is the DEFAULT ARGUMENT: `TracingDependencies`'s
-    /// initialiser reads these settings when a caller omits them, which is what
-    /// every session in the app does. `stub` deliberately PINS them so no
-    /// fixture reads the global (CONVENTIONS 140), so this test seeds the seam
-    /// from the settings — exactly the read the default argument performs — and
-    /// asserts the view model honours it.
-    @Test("a fresh view model picks up the current values")
-    func switchesApplyOnNextConstruction() {
-        StudyComparisonSettings.panningEnabled = false
-        StudyComparisonSettings.guidedDotsVisible = false
-        defer { StudyComparisonSettings.resetToDefaults() }
+    /// Turning the dots off must leave the ring (the silent arm's only
+    /// end-of-letter cue) — here through the production default argument rather
+    /// than the seam, since this is the switch the original defect lived in.
+    @Test("dots off via the stored switch keeps the endpoint ring")
+    func storedDotsSwitchKeepsTheRing() {
+        let box = ThrowawayDefaults()
+        box.defaults.set(false, forKey: StudyComparisonSettings.guidedDotsVisibleKey)
 
-        var deps = TracingDependencies.stub
-        deps.studyMode = true
-        deps.panningEnabled = StudyComparisonSettings.panningEnabled
-        deps.guidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
-        let vm = TracingViewModel(deps)
+        let vm = TracingViewModel(.omittingComparisonSwitches(reading: box.defaults))
         vm.canvasSize = canvas
-        #expect(vm.panningEnabled == false)
         #expect(vm.showCheckpoints == false)
         #expect(vm.showEndpointRing,
                 "the ring must still be there with the dots off — see the first test in this file")
@@ -342,73 +361,37 @@ import UIKit
     /// run leaks into the next session on that device.
     @Test("resetToDefaults restores every switch")
     func resetRestoresDefaults() {
-        // This test legitimately writes the GLOBAL store — it is about the
-        // store — but it must not LEAK. MEASURED: `resetToDefaults()`
-        // removes the keys rather than writing values, so the global was
-        // left unset and every other suite running in parallel then read
+        // Runs against a throwaway suite (`resetToDefaults(in:)`), never the
+        // device store. The version of this test that wrote the global had to
+        // snapshot and restore the WHOLE `dictionaryRepresentation()`, because
+        // `resetToDefaults()` removes keys rather than writing values: the
+        // global was left unset and every suite running in parallel then read
         // the CURRENT default (spokenFeedbackInStudy is `true` since
-        // 2026-10-02). That flipped `silenceSpeech` in a concurrently
-        // building VM and broke `OncePerConditionTests`
-        // ("a newly enrolled participant gets the demonstration again") —
-        // a failure in someone else's test, caused here.
-        //
-        // Swift Testing runs suites in PARALLEL, so a `defer` restore is
-        // the minimum, not a nicety: without it this suite silently edits
-        // its neighbours.
-        let snapshot = UserDefaults.standard.dictionaryRepresentation()
-        defer {
-            // Remove first, then re-apply: `set(snapshot)` alone MERGES,
-            // so any key this test ADDED (which is exactly what
-            // `resetToDefaults` cannot un-write) would survive into the
-            // next suite.
-            for key in UserDefaults.standard.dictionaryRepresentation().keys {
-                if snapshot[key] == nil {
-                    UserDefaults.standard.removeObject(forKey: key)
-                }
-            }
-            for (key, value) in snapshot {
-                UserDefaults.standard.set(value, forKey: key)
-            }
-        }
+        // 2026-10-02), which flipped `silenceSpeech` in a concurrently
+        // building VM and broke `OncePerConditionTests` — a failure in
+        // someone else's test, caused here. A suite nobody else can see
+        // cannot leak.
+        let box = ThrowawayDefaults()
+        box.write(.everySwitchNonDefault)
+        #expect(StudyComparisonSettings.configuration(in: box.defaults) == .everySwitchNonDefault,
+                "precondition: every switch must be away from its default before the reset")
 
-        StudyComparisonSettings.observePasses = 2
-        // Away from the default, same as below's assertions expect.
-        // MEASURED: this wrote `true` and asserted `false` after the
-        // reset, which stopped holding when the default flipped to `true`
-        // (spoken feedback ON in study, 2026-10-02). Deriving both sides
-        // keeps the test true through any future default change.
-        StudyComparisonSettings.spokenFeedbackInStudy =
-            !StudyComparisonSettings.spokenFeedbackInStudyDefault
-        StudyComparisonSettings.allFiveLetters = true
-        StudyComparisonSettings.letterRepeatCount = 3
-        StudyComparisonSettings.cycleAllConditions = true
-        StudyComparisonSettings.presentationSpacingSeconds = 4
-        StudyComparisonSettings.panningEnabled = false
-        StudyComparisonSettings.guidedDotsVisible = false
-        StudyComparisonSettings.spatialAxisDemonstration = true
-        // The two trigger-boundary switches (2026-09-17). Their own file,
-        // `TriggerBoundaryTests`, deliberately writes no key it then
-        // asserts on — a parallel suite resetting mid-test would make that
-        // flaky — so the reset coverage for these two lives here with the
-        // other nine, where the assertions are all "equals the default"
-        // and a concurrent reset can only reinforce them.
-        StudyComparisonSettings.soundGateRadiusFactor = 6.0
-        StudyComparisonSettings.soundGateVelocityFloor = 22
+        StudyComparisonSettings.resetToDefaults(in: box.defaults)
 
-        StudyComparisonSettings.resetToDefaults()
-
-        #expect(StudyComparisonSettings.observePasses == 1)
-        #expect(StudyComparisonSettings.spokenFeedbackInStudy
-                == StudyComparisonSettings.spokenFeedbackInStudyDefault)
-        #expect(StudyComparisonSettings.allFiveLetters == false)
-        #expect(StudyComparisonSettings.letterRepeatCount == 1)
-        #expect(StudyComparisonSettings.cycleAllConditions == false)
-        #expect(StudyComparisonSettings.presentationSpacingSeconds == 0)
-        #expect(StudyComparisonSettings.panningEnabled)
-        #expect(StudyComparisonSettings.guidedDotsVisible)
-        #expect(StudyComparisonSettings.soundGateRadiusFactor
-                    == StudyComparisonSettings.soundGateRadiusFactorDefault)
-        #expect(StudyComparisonSettings.soundGateVelocityFloor
-                    == StudyComparisonSettings.soundGateVelocityFloorDefault)
+        let c = StudyComparisonSettings.configuration(in: box.defaults)
+        #expect(c.observePasses == 1)
+        #expect(c.spokenFeedbackInStudy == StudyComparisonSettings.spokenFeedbackInStudyDefault)
+        #expect(c.allFiveLetters == false)
+        #expect(c.letterRepeatCount == 1)
+        #expect(c.cycleAllConditions == false)
+        #expect(c.presentationSpacingSeconds == 0)
+        #expect(c.panningEnabled)
+        #expect(c.guidedDotsVisible)
+        #expect(c.spatialAxisDemonstration == false)
+        #expect(c.oncePerCondition == false)
+        #expect(c.soundGateRadiusFactor == StudyComparisonSettings.soundGateRadiusFactorDefault)
+        #expect(c.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault)
+        #expect(c == StudyComparisonConfiguration.defaults,
+                "resetToDefaults left a switch away from the documented default")
     }
 }

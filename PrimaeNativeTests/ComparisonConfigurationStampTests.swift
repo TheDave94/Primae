@@ -41,25 +41,19 @@
 // snapshot and requires the export to reproduce each row's own value.
 // Reading the device instead of the record cannot pass it.
 //
-// WE ARE PARALLEL, SO NOTHING HERE WRITES A GLOBAL. `StudyComparison
-// SwitchesTests` and `AxisDemonstrationSwitchTests` legitimately own the
-// `StudyComparisonSettings` keys and write them without a `defer` in one
-// case; a suite that read those keys would sample whatever they had
-// written at that instant — the trap this project has already paid for
-// once (`LetterWeightFallbackTests`' header). So the session-level tests
-// here drive only the five switches that have a `TracingDependencies`
-// seam, which `TracingDependencies.stub` pins, and the remaining
-// assertions are made on `StudyComparisonConfiguration` as a VALUE with
-// no device involved at all.
+// WE ARE PARALLEL, SO NOTHING HERE WRITES A GLOBAL. A suite that read the
+// device keys while another held a non-default value would sample whatever it
+// had written at that instant — the trap this project has already paid for
+// once (`LetterWeightFallbackTests`' header). So the session-level tests here
+// drive switches through the `TracingDependencies` seams, which
+// `TracingDependencies.stub` pins, and the remaining assertions are made on
+// `StudyComparisonConfiguration` as a VALUE with no device involved at all.
 //
-// WHAT THIS FILE CANNOT PIN, stated rather than papered over: a
-// view-model-level "an all-defaults session stamps nil" assertion is NOT
-// writable deterministically, because seven of the twelve switches have
-// no seam and are read from `UserDefaults.standard` inside
-// `TracingViewModel` — a concurrent suite's write would leak into it.
-// The claim is pinned exactly where it is unambiguous
-// (`defaultConfigurationStampsNothing`, on the value type) and
-// session-side only for the four seam switches `stub` pins.
+// All twelve switches now reach the view model through a seam (nine
+// non-optional, three optional that fall back to `comparisonDefaults`), so an
+// all-defaults session stamping nil IS writable deterministically — against
+// the pinned stub here, and against the real default arguments over a
+// throwaway store in `StudyComparisonSwitchesTests`.
 
 import Testing
 import Foundation
@@ -96,13 +90,10 @@ private final class StampCapturingStore: ParentDashboardStoring {
 
     private let canvas = CGSize(width: 400, height: 400)
 
-    /// The four switches `TracingDependencies.stub` pins at their
+    /// Four of the switches `TracingDependencies.stub` pins at their
     /// defaults, so a session built from it names none of them however
-    /// the rest of the parallel run is behaving. The other eight are
-    /// either read from `UserDefaults` inside the view model
-    /// (`allFiveLetters` when the seam is nil) or read from it by the
-    /// view model's own property initialisers, and cannot be asserted on
-    /// from a parallel suite — see this file's header.
+    /// the rest of the parallel run is behaving. (`stub` pins the other
+    /// eight too; these four are the ones this suite asserts on.)
     private let pinnedAtDefault = ["cycleAllConditions", "oncePerCondition",
                                    "soundGateRadiusFactor", "soundGateVelocityFloor"]
 

@@ -69,6 +69,20 @@ struct TracingDependencies {
     /// `StudyComparisonSettings.letterRepeatCount` at VM construction; a
     /// test sets a value here instead of writing the global key.
     var letterRepeatCount: Int? = nil
+    /// The store the comparison switches are read from: `.standard` — the
+    /// device's own settings — for every production caller. It is used twice:
+    /// by this initialiser, to resolve a switch the caller did not pass, and
+    /// by `TracingViewModel`, to resolve the three optional seams above
+    /// (`allFiveLetters`, `letterRepeatCount`, `spokenFeedbackInStudy`) when
+    /// they are `nil`.
+    ///
+    /// A SEAM, so a test can exercise the real "read the device setting" path
+    /// against a throwaway `UserDefaults(suiteName:)` instead of writing the
+    /// device keys, which every suite running in parallel can see. Never set
+    /// by production code; the default MUST stay `.standard` or the
+    /// supervisor's switches would be silently ignored on a study device
+    /// (pinned by `ComparisonSeamDefaultsTests`).
+    var comparisonDefaults: UserDefaults = .standard
     var schriftArt: SchriftArt
     var letterOrdering: LetterOrderingStrategy
     var enablePaperTransfer: Bool
@@ -193,7 +207,8 @@ struct TracingDependencies {
     /// be able to drive it without writing a key every other fixture in the run
     /// reads.
     var guidedDotsVisible: Bool
-    /// Whether the letter is panned by the pen's position across the canvas —
+    /// Whether the letter's audio is stereo-panned by the pen's horizontal
+    /// position across the canvas (the pan axis of the sound arms) —
     /// `StudyComparisonSettings.panningEnabled`, captured at construction.
     /// Same reason as `guidedDotsVisible` above.
     var panningEnabled: Bool
@@ -321,27 +336,30 @@ struct TracingDependencies {
         // always wins. See `StudyBuild.resolveStudyMode`.
         studyMode: Bool = StudyBuild.resolveStudyMode(),
         spokenFeedbackInStudy: Bool? = nil,
+        // Where `nil` switches below (and the three optional seams above)
+        // are read from. `.standard` in production — see the property.
+        comparisonDefaults: UserDefaults = .standard,
         observeCueEndToPresentationSeconds: TimeInterval = 1.0,
         observeCueFallbackSeconds: TimeInterval = 3.0,
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
         // Device config, like studyMode — read once here, never live.
-        cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions,
+        cycleAllConditions: Bool? = nil,
         // Both halves of the sound gate's ANDed trigger boundary. Device
         // config like `cycleAllConditions`, read once here and never live.
-        soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor,
-        soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor,
-        presentationSpacingSeconds: TimeInterval = StudyComparisonSettings.presentationSpacingSeconds,
+        soundGateRadiusFactor: Double? = nil,
+        soundGateVelocityFloor: Double? = nil,
+        presentationSpacingSeconds: TimeInterval? = nil,
         // Same capture-at-construction rule as `cycleAllConditions` above.
-        oncePerCondition: Bool = StudyComparisonSettings.oncePerCondition,
+        oncePerCondition: Bool? = nil,
         // Same capture-at-construction rule; `stub` pins it to the default so
         // no fixture ever reads the key. See the property's own note.
-        observePasses: Int = StudyComparisonSettings.observePasses,
+        observePasses: Int? = nil,
         // Same capture-at-construction rule for the last three comparison
         // settings the view model used to read from the global directly; `stub`
         // pins all three so no fixture reads a key (2026-10-16).
-        guidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible,
-        panningEnabled: Bool = StudyComparisonSettings.panningEnabled,
-        spatialAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration,
+        guidedDotsVisible: Bool? = nil,
+        panningEnabled: Bool? = nil,
+        spatialAxisDemonstration: Bool? = nil,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -382,6 +400,7 @@ struct TracingDependencies {
         self.audioCondition = audioCondition
         self.trainedSubset = trainedSubset
         self.allFiveLetters = allFiveLetters
+        self.comparisonDefaults = comparisonDefaults
         self.schriftArt = schriftArt
         self.letterOrdering = letterOrdering
         self.enablePaperTransfer = enablePaperTransfer
@@ -392,15 +411,21 @@ struct TracingDependencies {
         self.observeCueEndToPresentationSeconds = observeCueEndToPresentationSeconds
         self.observeCueFallbackSeconds = observeCueFallbackSeconds
         self.participantEnrolled = participantEnrolled
-        self.cycleAllConditions = cycleAllConditions
-        self.soundGateRadiusFactor = soundGateRadiusFactor
-        self.soundGateVelocityFloor = soundGateVelocityFloor
-        self.presentationSpacingSeconds = presentationSpacingSeconds
-        self.oncePerCondition = oncePerCondition
-        self.observePasses = observePasses
-        self.guidedDotsVisible = guidedDotsVisible
-        self.panningEnabled = panningEnabled
-        self.spatialAxisDemonstration = spatialAxisDemonstration
+        // Device config, read ONCE here and never live: a switch the caller
+        // did not pass is resolved from `comparisonDefaults` at this moment.
+        // (Resolved lazily so an all-explicit caller — `stub` — reads no key.)
+        func resolved() -> StudyComparisonConfiguration {
+            StudyComparisonSettings.configuration(in: comparisonDefaults)
+        }
+        self.cycleAllConditions = cycleAllConditions ?? resolved().cycleAllConditions
+        self.soundGateRadiusFactor = soundGateRadiusFactor ?? resolved().soundGateRadiusFactor
+        self.soundGateVelocityFloor = soundGateVelocityFloor ?? resolved().soundGateVelocityFloor
+        self.presentationSpacingSeconds = presentationSpacingSeconds ?? resolved().presentationSpacingSeconds
+        self.oncePerCondition = oncePerCondition ?? resolved().oncePerCondition
+        self.observePasses = observePasses ?? resolved().observePasses
+        self.guidedDotsVisible = guidedDotsVisible ?? resolved().guidedDotsVisible
+        self.panningEnabled = panningEnabled ?? resolved().panningEnabled
+        self.spatialAxisDemonstration = spatialAxisDemonstration ?? resolved().spatialAxisDemonstration
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

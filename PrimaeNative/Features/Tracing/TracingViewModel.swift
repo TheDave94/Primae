@@ -1050,7 +1050,7 @@ public final class TracingViewModel {
     /// Assigned in `init`, not from a property initialiser (2026-09-17),
     /// so `TracingDependencies.allFiveLetters` can inject it. Still
     /// captured ONCE — `StudyComparisonSwitchesTests
-    /// .switchesAreCapturedAtInit` pins that, and this switch changes
+    /// .switchesAreReadOnceAtConstruction` pins that, and this switch changes
     /// the practice pool, which must not move under a child. `nil` on
     /// the dependency means the device's own setting, unchanged.
     private let allFiveLetters: Bool
@@ -1150,12 +1150,18 @@ public final class TracingViewModel {
     /// must stay an empty column so existing pilot analysis is untouched.
     ///
     /// BUILT ONCE, IN `init`, from the values this session actually
-    /// RESOLVED — the injected `TracingDependencies` seams for the five
-    /// switches that have one, this type's own captured `let`s for the
-    /// other seven — and never recomputed. Deliberately not read at
-    /// export time: the export can happen days after the session, on a
-    /// device whose switches have since been changed, and a read there
-    /// would stamp yesterday's rows with today's configuration. See
+    /// RESOLVED — nine from the non-optional `TracingDependencies`
+    /// seams (`cycleAllConditions`, `oncePerCondition`, `observePasses`,
+    /// `soundGateRadiusFactor`, `soundGateVelocityFloor`,
+    /// `presentationSpacingSeconds`, `guidedDotsVisible`, `panningEnabled`,
+    /// `spatialAxisDemonstration`), and three from this type's own captured
+    /// `let`s, which resolve an optional seam (`allFiveLetters`,
+    /// `letterRepeatCount`, `spokenFeedbackInStudy`) and fall back to
+    /// `deps.comparisonDefaults` when it is nil — and never recomputed.
+    /// Deliberately not read at export time: the export can happen days
+    /// after the session, on a device whose switches have since been
+    /// changed, and a read there would stamp yesterday's rows with today's
+    /// configuration. See
     /// `StudyComparisonConfiguration`.
     ///
     /// It is a property of the SESSION rather than of the switch file, so
@@ -1257,9 +1263,10 @@ public final class TracingViewModel {
         // Captured from the injection seam when a test supplies one, the
         // device's own key otherwise. Same once-per-VM capture as
         // `observePasses` above.
-        self.allFiveLetters         = deps.allFiveLetters ?? StudyComparisonSettings.allFiveLetters
+        self.allFiveLetters         = deps.allFiveLetters
+            ?? StudyComparisonSettings.configuration(in: deps.comparisonDefaults).allFiveLetters
         self.letterRepeatCount      = deps.letterRepeatCount.map { max(1, $0) }
-            ?? StudyComparisonSettings.letterRepeatCount
+            ?? StudyComparisonSettings.configuration(in: deps.comparisonDefaults).letterRepeatCount
         self.enablePaperTransfer    = deps.enablePaperTransfer
         self.enableFreeformMode     = deps.enableFreeformMode
         self.enablePhonemeMode      = deps.enablePhonemeMode
@@ -1310,7 +1317,7 @@ public final class TracingViewModel {
         // session's configuration stamp further down cannot disagree
         // about which value this session ran under.
         let spokenFeedbackInStudy = deps.spokenFeedbackInStudy
-            ?? StudyComparisonSettings.spokenFeedbackInStudy
+            ?? StudyComparisonSettings.configuration(in: deps.comparisonDefaults).spokenFeedbackInStudy
         //
         // STUDY VOICEOVER (P3, David 2026-10-04): the spoken content is
         // IDENTICAL in ALL THREE ARMS. In study mode with spoken feedback
@@ -1412,7 +1419,7 @@ public final class TracingViewModel {
         // The sound gate's two ANDed trigger boundaries, captured HERE —
         // once, at view-model construction, so a proctor cannot move them
         // under a child mid-session (the property `StudyComparisonSwitches
-        // Tests.switchesAreCapturedAtInit` pins for the older switches).
+        // Tests.switchesAreReadOnceAtConstruction` pins for the older switches).
         //
         // One of them lands on the dispatcher, which the VM owns for the
         // life of the session. The other lands on the GRID, not on a
