@@ -37,11 +37,11 @@ enum StoreFileQuarantine {
         do {
             try FileManager.default.copyItem(at: url, to: dest)
             storePersistenceLogger.error(
-                "Partly undecodable store file copied to \(dest.path, privacy: .public) for inspection; the live file keeps running.")
+                "Partly undecodable store file copied to \(dest.path, privacy: .private) for inspection; the live file keeps running.")
             return dest
         } catch {
             storePersistenceLogger.error(
-                "Partly undecodable store file at \(url.path, privacy: .public) could NOT be copied aside (\(error.localizedDescription, privacy: .public)).")
+                "Partly undecodable store file at \(url.path, privacy: .private) could NOT be copied aside (\(error.localizedDescription, privacy: .private)).")
             return nil
         }
     }
@@ -121,7 +121,7 @@ nonisolated enum StoreCoding {
             return try encoder().encode(value)
         } catch {
             storePersistenceLogger.error(
-                "\(store, privacy: .public) encode failed (\(error.localizedDescription, privacy: .public)) — NOT persisted.")
+                "\(store, privacy: .public) encode failed (\(error.localizedDescription, privacy: .private)) — NOT persisted.")
             center.reportFailure(store: store, error: error)
             return nil
         }
@@ -206,7 +206,7 @@ extension StoreFileQuarantine {
             decoded = try decode(data)
         } catch {
             storePersistenceLogger.error(
-                "\(store, privacy: .public) at \(url.path, privacy: .public) exists but failed to decode (\(error.localizedDescription, privacy: .public)) — starting EMPTY.")
+                "\(store, privacy: .public) at \(url.path, privacy: .private) exists but failed to decode (\(error.localizedDescription, privacy: .private)) — starting EMPTY.")
             guard let dest = quarantine(url) else {
                 return refuse(url, store: store, center: center,
                               reason: "is undecodable and could not be moved aside")
@@ -227,7 +227,7 @@ extension StoreFileQuarantine {
         // The original stays exactly where it is, untouched — that IS the
         // preserved copy; a second copy per launch would only accumulate.
         let message = "\(url.lastPathComponent) \(reason) — kept on disk; this store will not write until it is resolved"
-        storePersistenceLogger.error("\(store, privacy: .public): \(message, privacy: .public)")
+        storePersistenceLogger.error("\(store, privacy: .public): \(message, privacy: .private)")
         center.reportFailure(store: store, error: StoreWriteRefusal(message: message))
         return StoreLoad(value: nil, writeRefusal: message)
     }
