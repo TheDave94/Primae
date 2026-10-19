@@ -29,6 +29,7 @@
 
 import Testing
 import Foundation
+import SwiftUI
 @testable import PrimaeNative
 
 @MainActor
@@ -126,6 +127,49 @@ import Foundation
         #expect(!NextParticipantCopy.readyTitle.contains("Neustart"))
         #expect(NextParticipantCopy.readyMessage.contains("sofort startklar"),
                 "the alert's whole job is to say the next child can start now")
+    }
+
+    // MARK: - Where the readiness is confirmed (#61 follow-up)
+
+    /// #61 turned the modal "Neues Kind bereit" alert into a toast, which is
+    /// right on the rail but left the Research Dashboard path with NO
+    /// confirmation: the parent area covers the Schule world the toast lives
+    /// in. The two entry points therefore confirm differently, exactly one
+    /// way each — never both, never neither.
+    @Test func theRailConfirmsWithAToastAndTheDashboardWithAnAlert() {
+        #expect(NewChildReadyPresentation.toast.announcesAsToast,
+                "the rail must stay non-blocking — #61's reported defect was a modal over the drawing")
+        #expect(!NewChildReadyPresentation.alert.announcesAsToast,
+                "the dashboard must NOT rely on the Schule toast; it is covered by the parent area")
+    }
+
+    /// The control's default is the rail's non-blocking behaviour: a caller
+    /// that says nothing must not be able to re-introduce the modal.
+    @Test func theControlDefaultsToTheNonBlockingToast() {
+        let control = NextParticipantControl { EmptyView() }
+        #expect(control.presentation == .toast)
+    }
+
+    /// The Schule toast carries an identifier so a UI test can wait on the
+    /// ready confirmation specifically (the five sites that waited for the
+    /// removed alert). Any other toast must NOT carry it, or the wait is
+    /// satisfied by an unrelated message.
+    @Test func onlyTheReadyToastCarriesTheReadyIdentifier() {
+        #expect(NextParticipantCopy.toastIdentifier(for: NextParticipantCopy.readyMessage)
+                == NextParticipantCopy.readyToastIdentifier)
+        #expect(NextParticipantCopy.toastIdentifier(for: "Beobachtungsphase")
+                == NextParticipantCopy.otherToastIdentifier)
+        #expect(NextParticipantCopy.readyToastIdentifier != NextParticipantCopy.otherToastIdentifier)
+    }
+
+    /// The toast the rail relies on must actually be raised by the view
+    /// model, with the ready copy — the identifier above only matches this
+    /// exact message.
+    @Test func announcingReadinessRaisesTheReadyToast() {
+        let vm = TracingViewModel(.stub)
+        #expect(vm.toastMessage == nil || vm.toastMessage != NextParticipantCopy.readyMessage)
+        vm.announceNewChildReady()
+        #expect(vm.toastMessage == NextParticipantCopy.readyMessage)
     }
 
     /// The destructive button must be identifiable by name from both

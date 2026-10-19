@@ -226,10 +226,12 @@ final class StudyAdvanceProbeUITests: XCTestCase {
                       "the destructive confirm should appear — the rail button runs the same flow as the dashboard")
         confirm.tap()
 
-        let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
-        XCTAssertTrue(readyOK.waitForExistence(timeout: 5),
-                      "the ready alert should appear, not a relaunch prompt")
-        readyOK.tap()
+        // #61 turned the rail's ready alert into a non-blocking toast; it
+        // carries an identifier (no visible text added) and dismisses itself,
+        // so there is nothing to tap.
+        let readyToast = app.descendants(matching: .any)["newChildReadyToast"]
+        XCTAssertTrue(readyToast.waitForExistence(timeout: 5),
+                      "the ready toast should appear, not a relaunch prompt")
 
         // THE GATE MUST BE GONE. "Studie kann nicht starten" is what a
         // study iPad shows when `sessionBlockReason` is non-nil, and on a
@@ -516,6 +518,9 @@ final class StudyAdvanceProbeUITests: XCTestCase {
                       "the destructive confirm dialog should appear")
         confirm.tap()
 
+        // The DASHBOARD path keeps a modal alert: the parent area covers the
+        // Schule world, so #61's toast is not visible from here
+        // (`NewChildReadyPresentation.alert`). The rail path uses the toast.
         let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
         XCTAssertTrue(readyOK.waitForExistence(timeout: 6), "the ready alert should appear")
         // Dismissed, NOT acted on — the point of the change is that no
@@ -634,10 +639,9 @@ final class MeasuredAudioUITests: XCTestCase {
                       "the destructive confirm must appear")
         confirm.tap()
 
-        let ok = app.alerts["Neues Kind bereit"].buttons["OK"]
-        XCTAssertTrue(ok.waitForExistence(timeout: 5),
-                      "the ready alert must appear once the child is enrolled")
-        ok.tap()
+        let readyToast = app.descendants(matching: .any)["newChildReadyToast"]
+        XCTAssertTrue(readyToast.waitForExistence(timeout: 5),
+                      "the ready toast must appear once the child is enrolled")
 
         // The gate must be GONE and the session running by itself — the
         // tap-to-start complaint was that it needed a further tap here.
@@ -737,9 +741,7 @@ final class MeasuredAudioUITests: XCTestCase {
         let confirm = app.buttons["Neues Kind starten"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         confirm.tap()
-        let ok = app.alerts["Neues Kind bereit"].buttons["OK"]
-        XCTAssertTrue(ok.waitForExistence(timeout: 5))
-        ok.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["newChildReadyToast"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Studie kann nicht starten"].waitForNonExistence(timeout: 15))
 
         // The pretest control lives in the parent area, reached by the

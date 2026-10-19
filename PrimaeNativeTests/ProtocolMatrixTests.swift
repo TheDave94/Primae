@@ -695,6 +695,34 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(clock.now - loaded >= .milliseconds(250), "\(arm): started before the fallback")
     }
 
+    @Test("P4 timing: a canvas layout while the presentation is PENDING cannot start the animator early")
+    func layoutWhilePendingDoesNotArmTheAnimator() async {
+        // WHY THIS EXISTS (L-A, 2026-10-18). Branch commit 91c13640 guarded two
+        // sites on `pendingObservePresentation == nil` against the animation
+        // running ahead of its sound, and #61's final commit dropped it. The
+        // guard is only live if the animator can be ARMED while a presentation
+        // is pending. The only site that could do so without the sound is the
+        // `canvasSize` re-arm, and it requires `animation.armedStrokes != nil`;
+        // a study load never arms the animator (the presentation does, when it
+        // fires). So the premise is: layout while pending leaves the animator
+        // idle and observe open. This pins that premise — if it ever fails,
+        // 91c13640's guard becomes needed again.
+        let prompts = SpyPrompts(); let speech = SpySpeech()
+        let vm = makeVM(arm: .phoneme, speech: speech, prompts: prompts,
+                        gap: 3600, cueEnd: 3600, withLetterI: true)
+        vm.loadLetter(name: "I")
+        try? await Task.sleep(for: .milliseconds(100))
+        #expect(vm.debugObservePresentationPending, "precondition: the presentation is pending")
+
+        vm.canvasSize = CGSize(width: 1366, height: 1024)   // a real layout arrives
+        try? await Task.sleep(for: .milliseconds(500))      // past the re-arm's 0.3 s delay
+
+        #expect(vm.animation.armedStrokes == nil,
+                "layout armed the animator while the presentation was pending — it can finish before its sound")
+        #expect(vm.debugObservePresentationPending)
+        #expect(vm.phaseController.currentPhase == .observe)
+    }
+
     @Test("P4 timing: an older load's cue ending, and any other utterance, start nothing; this load's cue end does")
     func staleAndOtherUtterancesAreIgnored() async {
         let prompts = SpyPrompts(); let speech = SpySpeech()

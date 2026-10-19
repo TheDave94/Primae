@@ -4604,14 +4604,6 @@ public final class TracingViewModel {
     static let participantSealFailureMessage =
         "Das aktuelle Kind konnte nicht archiviert werden. Es wurde nichts gelöscht und kein neues Kind begonnen — die Daten des aktuellen Kindes sind unverändert auf dem Gerät. Bitte Speicherplatz prüfen und erneut versuchen. Die App nicht löschen oder neu installieren."
 
-    /// "Nächstes Kind". Seals the outgoing child, wipes the live stores,
-    /// enrols a new participant and re-derives the arms in place.
-    ///
-    /// Returns the participant now on the device: the NEW id — or, when
-    /// the outgoing child's seal could not be confirmed on disk, the
-    /// unchanged current id, with `participantSealFailure` set and nothing
-    /// wiped (audit 2026-10-13, R-050).
-    @discardableResult
     /// Non-blocking confirmation that a new child is enrolled and the app is
     /// ready to start them.
     ///
@@ -4625,6 +4617,14 @@ public final class TracingViewModel {
         messages.show(toast: NextParticipantCopy.readyMessage)
     }
 
+    /// "Nächstes Kind". Seals the outgoing child, wipes the live stores,
+    /// enrols a new participant and re-derives the arms in place.
+    ///
+    /// Returns the participant now on the device: the NEW id — or, when
+    /// the outgoing child's seal could not be confirmed on disk, the
+    /// unchanged current id, with `participantSealFailure` set and nothing
+    /// wiped (audit 2026-10-13, R-050).
+    @discardableResult
     func resetForNewParticipant() -> UUID {
         guard sealOutgoingParticipant() else { return ParticipantStore.participantId }
         wipeLiveParticipantState()

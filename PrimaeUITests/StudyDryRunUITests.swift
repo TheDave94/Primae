@@ -207,6 +207,7 @@ final class StudyDryRunUITests: XCTestCase {
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the destructive confirm dialog should appear")
         confirm.tap()
 
+        // Dashboard path: a modal alert (see `NewChildReadyPresentation`).
         let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
         XCTAssertTrue(readyOK.waitForExistence(timeout: 5), "the ready alert should appear")
         readyOK.tap()

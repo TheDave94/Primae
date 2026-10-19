@@ -97,6 +97,10 @@ struct SchuleWorldView: View {
                         .background(AppSurface.card, in: Capsule())
                         .overlay(Capsule().stroke(AppSurface.cardEdge, lineWidth: 1))
                         .shadow(color: Color.ink.opacity(0.10), radius: 6, y: 2)
+                        // Identifier only — no new visible text for the
+                        // child. Lets a UI test tell the "new child ready"
+                        // toast from any other (#61 removed its alert).
+                        .accessibilityIdentifier(NextParticipantCopy.toastIdentifier(for: toast))
                         .padding(.top, 80)
                     Spacer()
                 }

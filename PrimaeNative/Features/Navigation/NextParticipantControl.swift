@@ -66,14 +66,48 @@ enum NextParticipantCopy {
     /// lose data".
     static let confirmMessage = "Die Daten des aktuellen Kindes werden unverändert archiviert und sind im Sammel-Export am Ende weiterhin enthalten. Anschließend werden Fortschritt, Sterne, Sessions und gespeicherte Schrift-Kalibrierungen gelöscht und ein neuer Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung angelegt. Geräte-Einstellungen bleiben erhalten. Ein Neustart ist nicht nötig — das Gerät kann direkt dem nächsten Kind gegeben werden."
 
+    /// The title of the dashboard's confirmation alert (`.alert`
+    /// presentation). The rail path shows only `readyMessage`, as a toast.
     static let readyTitle = "Neues Kind bereit"
     static let readyOKButton = "OK"
     static let readyMessage = "Studienarm-Zuordnung ist neu abgeleitet und die App ist sofort startklar."
 
-    /// Shown INSTEAD of the ready alert when the outgoing child could not
+    /// Accessibility identifiers for the Schule world's toast. The toast is
+    /// child-facing, so nothing here is visible text: the identifier is how
+    /// a UI test (and only a UI test) tells the ready confirmation from any
+    /// other toast — `PrimaeUITests` waits on it where it used to wait on
+    /// the alert #61 removed.
+    static let readyToastIdentifier = "newChildReadyToast"
+    static let otherToastIdentifier = "transientToast"
+
+    static func toastIdentifier(for message: String) -> String {
+        message == readyMessage ? readyToastIdentifier : otherToastIdentifier
+    }
+
+    /// Shown INSTEAD of the ready confirmation when the outgoing child could not
     /// be sealed, so nothing was wiped and no child was enrolled (R-050).
     /// The message is `TracingViewModel.participantSealFailure`.
     static let sealFailedTitle = "Kein neues Kind begonnen"
+}
+
+/// How the control confirms a successful enrolment. It depends on WHERE the
+/// proctor started the flow, not on what was enrolled.
+enum NewChildReadyPresentation: Equatable {
+    /// The rail: the child's drawing screen is under the proctor's thumb, and
+    /// a modal there would block the canvas until dismissed (#61, reported
+    /// 2026-10-16). The confirmation is a non-blocking toast in the Schule
+    /// world.
+    case toast
+    /// The Research Dashboard: a parent-area `fullScreenCover` sits OVER the
+    /// Schule world, so that toast is not visible there and #61 left the
+    /// proctor with no confirmation at all. Nothing is being drawn behind a
+    /// parent area, so a modal alert blocks nothing and is the one form that
+    /// cannot be missed.
+    case alert
+
+    /// Whether the enrolment is announced as a toast. The control shows the
+    /// alert in exactly the other case, never both.
+    var announcesAsToast: Bool { self == .toast }
 }
 
 /// A button that runs the "seal the outgoing child, wipe, enrol the next"
@@ -97,10 +131,17 @@ struct NextParticipantControl<Label: View>: View {
     @ViewBuilder private var label: Label
     private let onReset: () -> Void
 
+    /// Internal, not `private`, so a test can pin the default.
+    let presentation: NewChildReadyPresentation
+
     @State private var showConfirm = false
+    @State private var showReady = false
     @State private var sealFailure: String?
 
-    init(onReset: @escaping () -> Void = {}, @ViewBuilder label: () -> Label) {
+    init(presentation: NewChildReadyPresentation = .toast,
+         onReset: @escaping () -> Void = {},
+         @ViewBuilder label: () -> Label) {
+        self.presentation = presentation
         self.onReset = onReset
         self.label = label()
     }
@@ -124,16 +165,24 @@ struct NextParticipantControl<Label: View>: View {
                     sealFailure = failure
                     return
                 }
-                // NON-BLOCKING. This used to set a modal alert, and a modal
-                // alert BLOCKS the tracing canvas until dismissed — so the
-                // proctor had to tap OK before the child could draw, for a
-                // message whose whole content is that nothing needs doing
-                // ("…die App ist sofort startklar"). REPORTED by the proctor
-                // 2026-10-16: "when I start a new participant the drawing
-                // start waits until the popup is confirmed". The confirmation
-                // still happens, as a toast; the seal-FAILURE alert below
-                // stays modal, because that one does require the proctor.
-                vm.announceNewChildReady()
+                // NON-BLOCKING ON THE RAIL. This used to set a modal alert
+                // everywhere, and a modal alert BLOCKS the tracing canvas
+                // until dismissed — so the proctor had to tap OK before the
+                // child could draw, for a message whose whole content is that
+                // nothing needs doing ("…die App ist sofort startklar").
+                // REPORTED by the proctor 2026-10-16: "when I start a new
+                // participant the drawing start waits until the popup is
+                // confirmed". The rail therefore confirms with a toast. The
+                // dashboard is the other entry point and the toast cannot be
+                // seen from there (the parent area covers the Schule world),
+                // so it keeps a visible alert — see `NewChildReadyPresentation`.
+                // The seal-FAILURE alert below stays modal on both, because
+                // that one does require the proctor.
+                if presentation.announcesAsToast {
+                    vm.announceNewChildReady()
+                } else {
+                    showReady = true
+                }
                 onReset()
             }
             Button(NextParticipantCopy.cancelButton, role: .cancel) {}
@@ -141,6 +190,11 @@ struct NextParticipantControl<Label: View>: View {
             // A comparison run is named at the enrolment gate (R-017).
             Text(vm.comparisonRunBanner.map { "\($0)\n\n" + NextParticipantCopy.confirmMessage }
                  ?? NextParticipantCopy.confirmMessage)
+        }
+        .alert(NextParticipantCopy.readyTitle, isPresented: $showReady) {
+            Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
+        } message: {
+            Text(NextParticipantCopy.readyMessage)
         }
         .alert(NextParticipantCopy.sealFailedTitle, isPresented: Binding(
             get: { sealFailure != nil },

@@ -375,7 +375,7 @@ struct ResearchDashboardView: View {
             Text("Legt einen neuen Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung an. Die Daten des aktuellen Kindes bleiben im Archiv und damit im Sammel-Export enthalten; ein Neustart ist nicht nötig. Für eine Strecke von Kindern am Stück: hier starten und den Sammel-Export ganz am Ende einmal ziehen.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
-            NextParticipantControl {
+            NextParticipantControl(presentation: .alert) {
                 Label("Neuer Teilnehmer", systemImage: "person.crop.circle.badge.plus")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 4)
