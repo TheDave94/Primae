@@ -44,5 +44,26 @@ class RenderedDocsInSyncTests(unittest.TestCase):
         self._check(render_dryrun, "render_dryrun.py")
 
 
+class InlineMarkupTests(unittest.TestCase):
+    """A code span is verbatim: markup-looking text inside backticks must not
+    be turned into HTML. The 95f8fce5 lesson lines put `** TEST EXECUTE
+    SUCCEEDED **` inside backticks and the old _inline rendered it as
+    <code><strong>…</strong></code>."""
+
+    def test_bold_inside_backticks_stays_verbatim_code(self):
+        self.assertEqual(
+            render_checklist._inline("a `** TEST EXECUTE SUCCEEDED **` line"),
+            "a <code>** TEST EXECUTE SUCCEEDED **</code> line")
+
+    def test_link_inside_backticks_is_not_a_link(self):
+        self.assertEqual(render_checklist._inline("`[x](y)`"),
+                         "<code>[x](y)</code>")
+
+    def test_bold_and_code_outside_each_other_still_convert(self):
+        self.assertEqual(
+            render_checklist._inline("plain **bold** and `code`"),
+            "plain <strong>bold</strong> and <code>code</code>")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -185,12 +185,17 @@
 <ul>
 <li class="check"><input class="cb" type="checkbox" id="cb-1"><label for="cb-1"><strong>Repo clones cleanly.</strong></label></li>
 <li class="sub">Steps: <code>git clone https://github.com/TheDave94/Primae.git ~/repos/Primae &amp;&amp; cd ~/repos/Primae &amp;&amp; open Primae/Primae.xcodeproj</code>.</li>
-<li class="sub">Expected: Xcode opens the project; the SPM ref <code>../../Primae</code> resolves automatically; no red files.</li>
+<li class="sub">Expected: Xcode opens the project; the local Swift-package ref (<code>relativePath = ..</code>, the checkout root above <code>Primae/</code>) resolves automatically; no red files.</li>
+<li class="sub">A git worktree builds from any directory name: the ref is relative (<code>..</code>), so it resolves to that worktree's own checkout root, not a fixed path. Confirm the build resolves the worktree's own source.</li>
 <li class="sub">If broken: SPM relative path mismatch — check <code>Primae/Primae.xcodeproj/project.pbxproj</code> <code>XCLocalSwiftPackageReference</code>.</li>
 <li class="check"><input class="cb" type="checkbox" id="cb-2"><label for="cb-2"><strong>CI is green</strong> for the commit you're testing.</label></li>
 <li class="sub"><code>gh run list --repo TheDave94/Primae --limit 3</code> should show <code>success</code> for the SHA.</li>
 <li class="check"><input class="cb" type="checkbox" id="cb-3"><label for="cb-3"><strong>App builds</strong> to the iPad-A16 simulator with <code>xcodebuild build -project Primae/Primae.xcodeproj -scheme Primae -destination "platform=iOS Simulator,name=iPad (A16)" -configuration Debug CODE_SIGNING_ALLOWED=NO</code>.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-4"><label for="cb-4"><strong>App launches</strong> — a paper-cream screen appears with the world rail on the left.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-4"><label for="cb-4"><strong>Automated tests pass with a valid receipt.</strong></label></li>
+<li class="sub">A receipt must quote the Swift Testing line <code>Test run with N tests in M suites passed</code> (or XCTest's 'Executed N tests') with N &gt; 0; a <code>** TEST EXECUTE SUCCEEDED **</code> line alone is not a receipt. <code>CLAUDE.md</code> "Test Infrastructure" item 5 records the trap: a function-level <code>-only-testing:</code> filter matched nothing, the log read <code>Test run with 0 tests in 1 suite passed</code>, and the run still printed green. <code>scripts/check_test_count.sh</code> (R-109) is the guard that reads the count instead of trusting the exit status.</li>
+<li class="check"><input class="cb" type="checkbox" id="cb-5"><label for="cb-5"><strong>Simulator isolation and concurrency hygiene.</strong></label></li>
+<li class="sub">One simulator + one private <code>-derivedDataPath</code> per concurrent lane/agent; never share a device name across concurrent <code>xcodebuild</code> runs. <code>CLAUDE.md</code> "Build &amp; Test" runs each build at its own <code>-derivedDataPath</code>, and CI keeps its two simulator jobs on distinct device names (<code>.github/workflows/ios-build.yml</code>, the <code>xcode_test</code> matrix). Expect timing-sensitive suites (audio observe passes) to flake under concurrent load and re-run once solo before believing a failure.</li>
+<li class="check"><input class="cb" type="checkbox" id="cb-6"><label for="cb-6"><strong>App launches</strong> — a paper-cream screen appears with the world rail on the left.</label></li>
 <li class="sub">If broken: check <code>Primae/Primae/PrimaeApp.swift:MainEntryPoint</code> (the @main entry).</li>
 </ul>
 
@@ -199,9 +204,9 @@
 <h2>1 · App icon &amp; display name</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-5"><label for="cb-5"><strong>Home-screen icon</strong> shows the Primae glyph (rounded blue square, white "Aa" wordmark, amber dot top-right).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-7"><label for="cb-7"><strong>Home-screen icon</strong> shows the Primae glyph (rounded blue square, white "Aa" wordmark, amber dot top-right).</label></li>
 <li class="sub">If broken: <code>Primae/Primae/Assets.xcassets/AppIcon.appiconset/</code> — re-run <code>python3 scripts/gen_appicon.py</code>.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-6"><label for="cb-6"><strong>App display name</strong> under the icon reads <strong>"Primae"</strong> (not "BuchstabenApp" or any prior brand).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-8"><label for="cb-8"><strong>App display name</strong> under the icon reads <strong>"Primae"</strong> (not "BuchstabenApp" or any prior brand).</label></li>
 <li class="sub">If broken: <code>INFOPLIST_KEY_CFBundleDisplayName</code> build setting in <code>Primae/Primae.xcodeproj/project.pbxproj</code>.</li>
 </ul>
 
@@ -217,15 +222,15 @@
 </blockquote>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-7"><label for="cb-7"><strong>Welcome step</strong> shows ✏️ + "Willkommen!" + "Lerne, Buchstaben zu schreiben!" + a "Los geht's!" sticker button.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-8"><label for="cb-8"><strong>Tapping "Los geht's!"</strong> advances to the <strong>Anschauen</strong> step (eye 👁️ + "Schau, wie der Buchstabe geschrieben wird!" + an animated A glyph cycling through three strokes).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-9"><label for="cb-9"><strong>"Weiter"</strong> advances to <strong>Richtung lernen</strong> (☝️ + "Tippe die Punkte der Reihe nach an!" + numbered start-dot demo).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-10"><label for="cb-10">Advances to <strong>Nachspuren</strong> (✏️ + "Fahre mit dem Finger über die Linie!" + an animated 👆 dragging along an A).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-11"><label for="cb-11">Advances to <strong>Selbst schreiben</strong> (🖊️ + "Zum Schluss schreibst du den Buchstaben alleine!" + a static A reference).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-12"><label for="cb-12">Advances to <strong>Sammle Sterne!</strong> (⭐ + "Für jeden Buchstaben bekommst du bis zu 4 Sterne!" + the four phase icons).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-13"><label for="cb-13"><strong>"Fertig!"</strong> closes onboarding and lands you in the <strong>Schule</strong> world with the demo letter A.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-9"><label for="cb-9"><strong>Welcome step</strong> shows ✏️ + "Willkommen!" + "Lerne, Buchstaben zu schreiben!" + a "Los geht's!" sticker button.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-10"><label for="cb-10"><strong>Tapping "Los geht's!"</strong> advances to the <strong>Anschauen</strong> step (eye 👁️ + "Schau, wie der Buchstabe geschrieben wird!" + an animated A glyph cycling through three strokes).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-11"><label for="cb-11"><strong>"Weiter"</strong> advances to <strong>Richtung lernen</strong> (☝️ + "Tippe die Punkte der Reihe nach an!" + numbered start-dot demo).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-12"><label for="cb-12">Advances to <strong>Nachspuren</strong> (✏️ + "Fahre mit dem Finger über die Linie!" + an animated 👆 dragging along an A).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-13"><label for="cb-13">Advances to <strong>Selbst schreiben</strong> (🖊️ + "Zum Schluss schreibst du den Buchstaben alleine!" + a static A reference).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-14"><label for="cb-14">Advances to <strong>Sammle Sterne!</strong> (⭐ + "Für jeden Buchstaben bekommst du bis zu 4 Sterne!" + the four phase icons).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-15"><label for="cb-15"><strong>"Fertig!"</strong> closes onboarding and lands you in the <strong>Schule</strong> world with the demo letter A.</label></li>
 <li class="sub">If broken: <code>OnboardingView.swift:OnboardingCoordinator</code> — phase ordering enum.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-14"><label for="cb-14"><strong>"Für Eltern: gedrückt halten zum Überspringen"</strong> (long-press in the corner) skips onboarding entirely.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-16"><label for="cb-16"><strong>"Für Eltern: gedrückt halten zum Überspringen"</strong> (long-press in the corner) skips onboarding entirely.</label></li>
 </ul>
 
 <hr>
@@ -233,15 +238,15 @@
 <h2>3 · World rail (left side)</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-15"><label for="cb-15"><strong>Three world icons</strong> stacked vertically: Schule (book), Werkstatt (pencil tip), Fortschritte (star).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-16"><label for="cb-16"><strong>Active world</strong> is highlighted with its tint colour (Schule = blue, Werkstatt = amber, Fortschritte = pink); inactive worlds are tinted-faded.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-17"><label for="cb-17"><strong>Tapping a world icon</strong> swaps the right-hand content with a soft slide-in animation (or instant if Reduce Motion is on).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-17"><label for="cb-17"><strong>Three world icons</strong> stacked vertically: Schule (book), Werkstatt (pencil tip), Fortschritte (star).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-18"><label for="cb-18"><strong>Active world</strong> is highlighted with its tint colour (Schule = blue, Werkstatt = amber, Fortschritte = pink); inactive worlds are tinted-faded.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-19"><label for="cb-19"><strong>Tapping a world icon</strong> swaps the right-hand content with a soft slide-in animation (or instant if Reduce Motion is on).</label></li>
 <li class="sub"><strong>No crash</strong> on any tab switch (Schule ↔ Werkstatt ↔ Fortschritte, every direction).</li>
 <li class="sub">If broken: <code>MainAppView.swift:body</code> worldContent transition or <code>WorldSwitcherRail.swift:worldButton</code>.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-18"><label for="cb-18"><strong>Star badge</strong> sits on the Fortschritte tile (top-right corner) showing the total stars earned across all letters; "99+" when over 99.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-20"><label for="cb-20"><strong>Star badge</strong> sits on the Fortschritte tile (top-right corner) showing the total stars earned across all letters; "99+" when over 99.</label></li>
 <li class="sub">Hidden when <code>starTotal == 0</code>.</li>
 <li class="sub">If broken: <code>WorldSwitcherRail.swift:starBadge</code>.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-19"><label for="cb-19"><strong>Gear icon</strong> at the bottom of the rail. <strong>Single-tap does nothing</strong>; <strong>long-press for ~2 seconds</strong> opens the Eltern-Bereich (parent area) full-screen cover. A blue progress ring fills around the gear during the press.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-21"><label for="cb-21"><strong>Gear icon</strong> at the bottom of the rail. <strong>Single-tap does nothing</strong>; <strong>long-press for ~2 seconds</strong> opens the Eltern-Bereich (parent area) full-screen cover. A blue progress ring fills around the gear during the press.</label></li>
 <li class="sub">If broken: <code>WorldSwitcherRail.swift:gearButton</code> — <code>.onLongPressGesture</code> minimumDuration.</li>
 </ul>
 
@@ -256,20 +261,20 @@
 </blockquote>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-20"><label for="cb-20"><strong>Letter pill</strong> in the top-left shows the current uppercase letter (large) + a small chevron. Tap it: a wheel-style <strong>letter picker</strong> modal appears with all available letters and their star counts.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-22"><label for="cb-22"><strong>Letter pill</strong> in the top-left shows the current uppercase letter (large) + a small chevron. Tap it: a wheel-style <strong>letter picker</strong> modal appears with all available letters and their star counts.</label></li>
 <li class="sub">If broken: <code>SchuleWorldView.swift:letterPill</code> + <code>LetterWheelPicker.swift</code>.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-21"><label for="cb-21"><strong>Letter picker</strong> lets you pick any letter; tapping one closes the picker and loads that letter into the canvas.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-22"><label for="cb-22"><strong>Prev / Next arrows</strong> (chevron.left / chevron.right at the bottom) cycle through the demo set in the order configured in Settings → Buchstabenreihenfolge.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-23"><label for="cb-23"><strong>Letter picker</strong> lets you pick any letter; tapping one closes the picker and loads that letter into the canvas.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-24"><label for="cb-24"><strong>Prev / Next arrows</strong> (chevron.left / chevron.right at the bottom) cycle through the demo set in the order configured in Settings → Buchstabenreihenfolge.</label></li>
 </ul>
 
 <h3>4.1 · Observe phase (Anschauen)</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-23"><label for="cb-23">Phase enters with the <strong>brand-blue pill</strong> in the lower portion of the canvas showing only <strong>👁️ 👆</strong> (no text — children can't read).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-24"><label for="cb-24"><strong>Voiceover</strong> speaks "Pass jetzt gut auf!" (recorded ElevenLabs MP3 if <code>Resources/Prompts/phase_observe.mp3</code> is bundled, otherwise system TTS fallback).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-25"><label for="cb-25">Phase enters with the <strong>brand-blue pill</strong> in the lower portion of the canvas showing only <strong>👁️ 👆</strong> (no text — children can't read).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-26"><label for="cb-26"><strong>Voiceover</strong> speaks "Pass jetzt gut auf!" (recorded ElevenLabs MP3 if <code>Resources/Prompts/phase_observe.mp3</code> is bundled, otherwise system TTS fallback).</label></li>
 <li class="sub">If broken: <code>SpeechSynthesizer.swift:ChildSpeechLibrary.phaseEntry(.observe)</code> or <code>PromptPlayer.swift</code>.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-25"><label for="cb-25"><strong>Animated guide dot</strong> (amber) traces along the letter's strokes inside the canvas. Plays ONE pass, more slowly than it used to; it no longer loops.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-26"><label for="cb-26"><strong>Tapping anywhere</strong> on the canvas advances to the next phase.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-27"><label for="cb-27"><strong>Animated guide dot</strong> (amber) traces along the letter's strokes inside the canvas. Plays ONE pass, more slowly than it used to; it no longer loops.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-28"><label for="cb-28"><strong>Tapping anywhere</strong> on the canvas advances to the next phase.</label></li>
 </ul>
 
 <h3>4.2 · Direct phase (Richtung lernen) — CUT; this section can no longer run</h3>
@@ -283,47 +288,47 @@
 </blockquote>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-27"><label for="cb-27"><strong>Numbered start-dots</strong> appear over each stroke's start point (1, 2, 3, …). The next-expected dot pulses gently.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-28"><label for="cb-28"><strong>Voiceover</strong> speaks "Tipp die Punkte der Reihe nach an."</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-29"><label for="cb-29"><strong>Tapping the next-expected dot</strong> plays a confirmation tap (haptic + audio) and shows a <strong>directional arrow</strong> along the stroke for ~1.2 s.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-30"><label for="cb-30"><strong>Tapping a wrong dot</strong> fires a gentle off-path haptic and pulses the correct one. No advance.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-31"><label for="cb-31"><strong>All dots tapped in order</strong> → phase auto-advances.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-29"><label for="cb-29"><strong>Numbered start-dots</strong> appear over each stroke's start point (1, 2, 3, …). The next-expected dot pulses gently.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-30"><label for="cb-30"><strong>Voiceover</strong> speaks "Tipp die Punkte der Reihe nach an."</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-31"><label for="cb-31"><strong>Tapping the next-expected dot</strong> plays a confirmation tap (haptic + audio) and shows a <strong>directional arrow</strong> along the stroke for ~1.2 s.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-32"><label for="cb-32"><strong>Tapping a wrong dot</strong> fires a gentle off-path haptic and pulses the correct one. No advance.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-33"><label for="cb-33"><strong>All dots tapped in order</strong> → phase auto-advances.</label></li>
 </ul>
 
 <h3>4.3 · Guided phase (Nachspuren)</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-32"><label for="cb-32"><strong>Ghost letter</strong> (faint blue stroke) is drawn on the canvas as a tracing target.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-33"><label for="cb-33"><strong>Voiceover</strong> speaks "Fahr die Linie nach."</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-34"><label for="cb-34"><strong>Dragging your finger / pencil</strong> along the stroke leaves a <strong>green ink trail</strong> that follows the touch with sub-pixel hysteresis.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-35"><label for="cb-35"><strong>Audio time-stretches</strong> with writing speed: slower drag = slower letter sound; faster drag = faster. (Real-device test only — simulator audio works but pencil pressure differs.)</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-36"><label for="cb-36"><strong>Per-checkpoint haptic ticks</strong> fire as you cross each invisible checkpoint.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-37"><label for="cb-37"><strong>Stroke completion haptic</strong> fires at end of each stroke.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-38"><label for="cb-38"><strong>All strokes complete</strong> → auto-advances.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-34"><label for="cb-34"><strong>Ghost letter</strong> (faint blue stroke) is drawn on the canvas as a tracing target.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-35"><label for="cb-35"><strong>Voiceover</strong> speaks "Fahr die Linie nach."</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-36"><label for="cb-36"><strong>Dragging your finger / pencil</strong> along the stroke leaves a <strong>green ink trail</strong> that follows the touch with sub-pixel hysteresis.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-37"><label for="cb-37"><strong>Audio time-stretches</strong> with writing speed: slower drag = slower letter sound; faster drag = faster. (Real-device test only — simulator audio works but pencil pressure differs.)</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-38"><label for="cb-38"><strong>Per-checkpoint haptic ticks</strong> fire as you cross each invisible checkpoint.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-39"><label for="cb-39"><strong>Stroke completion haptic</strong> fires at end of each stroke.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-40"><label for="cb-40"><strong>All strokes complete</strong> → auto-advances.</label></li>
 </ul>
 
 <h3>4.4 · FreeWrite phase (Selbst schreiben)</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-39"><label for="cb-39">Canvas shows a blank glyph (no ghost letter — the child writes from memory).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-40"><label for="cb-40"><strong>Voiceover</strong> speaks "Und jetzt du alleine."</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-41"><label for="cb-41"><strong>Drawing on the canvas</strong> leaves green ink with no rails.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-42"><label for="cb-42"><strong>After lifting</strong> (no input for ~1.5 s), the <strong>CoreML recognizer</strong> runs and shows a coloured <strong>recognition badge</strong> above the canvas:</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-41"><label for="cb-41">Canvas shows a blank glyph (no ghost letter — the child writes from memory).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-42"><label for="cb-42"><strong>Voiceover</strong> speaks "Und jetzt du alleine."</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-43"><label for="cb-43"><strong>Drawing on the canvas</strong> leaves green ink with no rails.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-44"><label for="cb-44"><strong>After lifting</strong> (no input for ~1.5 s), the <strong>CoreML recognizer</strong> runs and shows a coloured <strong>recognition badge</strong> above the canvas:</label></li>
 <li class="sub">Green + "Du hast ein A geschrieben! 🎉" when correct + confident.</li>
 <li class="sub">Yellow + "Das sieht aus wie ein A — gut gemacht!" when correct + uncertain.</li>
 <li class="sub">Orange + "Das sieht eher nach O aus — schreib nochmal ein A!" when wrong + confident.</li>
 <li class="sub">No badge when confidence is below 0.4.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-43"><label for="cb-43"><strong>KP overlay</strong> (knowledge-of-performance) appears: dark scrim with the canonical reference stroke (blue) overlaid on the child's path (green). Auto-dismisses after ~3 s.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-45"><label for="cb-45"><strong>KP overlay</strong> (knowledge-of-performance) appears: dark scrim with the canonical reference stroke (blue) overlaid on the child's path (green). Auto-dismisses after ~3 s.</label></li>
 </ul>
 
 <h3>4.5 · Letter completion celebration</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-44"><label for="cb-44"><strong>System success chime</strong> plays the moment the final phase completes.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-46"><label for="cb-46"><strong>System success chime</strong> plays the moment the final phase completes.</label></li>
 <li class="sub">If broken: <code>PromptPlayer.swift:playSuccessChime</code> (<code>AudioServicesPlaySystemSound(1322)</code>).</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-45"><label for="cb-45"><strong>Voiceover</strong> speaks "Super gemacht!" (regardless of star count).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-46"><label for="cb-46"><strong>Celebration overlay</strong> appears: brand-blue panel with 🎉 + "Geschafft!" + a star row showing N-of-4 filled stars + a paper-coloured <strong>Weiter</strong> sticker button.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-47"><label for="cb-47"><strong>Tapping Weiter</strong> loads the next recommended letter and lands you on its observe phase.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-47"><label for="cb-47"><strong>Voiceover</strong> speaks "Super gemacht!" (regardless of star count).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-48"><label for="cb-48"><strong>Celebration overlay</strong> appears: brand-blue panel with 🎉 + "Geschafft!" + a star row showing N-of-4 filled stars + a paper-coloured <strong>Weiter</strong> sticker button.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-49"><label for="cb-49"><strong>Tapping Weiter</strong> loads the next recommended letter and lands you on its observe phase.</label></li>
 </ul>
 
 <hr>
@@ -336,19 +341,19 @@
 </blockquote>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-48"><label for="cb-48"><strong>Mode panel on the left</strong> shows two vertical cards:</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-50"><label for="cb-50"><strong>Mode panel on the left</strong> shows two vertical cards:</label></li>
 <li class="sub"><strong>Buchstabe</strong> card (character icon).</li>
 <li class="sub"><strong>Wort</strong> card (cursor icon).</li>
 <li class="sub">Active card = filled with <code>Color.werkstatt</code> (amber); inactive = paper card with the amber icon.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-49"><label for="cb-49"><strong>Tapping Buchstabe</strong> sets letter mode + clears canvas.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-50"><label for="cb-50"><strong>Tapping Wort</strong> sets word mode + auto-selects the first word in <code>FreeformWordList.all</code> (OMA by default).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-51"><label for="cb-51"><strong>No horizontal mode picker at the top of the canvas</strong> — was removed in commit <code>b41c916</code> so there's only one path to switch modes.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-51"><label for="cb-51"><strong>Tapping Buchstabe</strong> sets letter mode + clears canvas.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-52"><label for="cb-52"><strong>Tapping Wort</strong> sets word mode + auto-selects the first word in <code>FreeformWordList.all</code> (OMA by default).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-53"><label for="cb-53"><strong>No horizontal mode picker at the top of the canvas</strong> — was removed in commit <code>b41c916</code> so there's only one path to switch modes.</label></li>
 <li class="sub">If you see a segmented Buchstabe/Wort picker at the top: <code>FreeformWritingView.swift:header</code> — the Picker should be gone.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-52"><label for="cb-52"><strong>Header row</strong> at the top of the canvas has only <strong>Zurück</strong> (left) and <strong>Nochmal</strong> (right). The prompt row underneath shows "Schreibe einen Buchstaben mit dem Finger oder dem Stift." in letter mode, or "Schreibe: &lt;WORD&gt;" in word mode.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-53"><label for="cb-53"><strong>Tapping Nochmal</strong> clears the canvas.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-54"><label for="cb-54"><strong>Tapping Zurück</strong> exits freeform and returns to Schule.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-55"><label for="cb-55"><strong>Letter mode</strong>: writing on the canvas + lifting after ~1.5 s triggers recognition; a result popup appears centred (recognised letter + confidence chip).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-56"><label for="cb-56"><strong>Word mode</strong>: a word picker strip appears below the header; tapping a word sets it as the target. Writing it letter-by-letter shows per-cell recognition chips (green = correct, grey placeholder = missing).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-54"><label for="cb-54"><strong>Header row</strong> at the top of the canvas has only <strong>Zurück</strong> (left) and <strong>Nochmal</strong> (right). The prompt row underneath shows "Schreibe einen Buchstaben mit dem Finger oder dem Stift." in letter mode, or "Schreibe: &lt;WORD&gt;" in word mode.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-55"><label for="cb-55"><strong>Tapping Nochmal</strong> clears the canvas.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-56"><label for="cb-56"><strong>Tapping Zurück</strong> exits freeform and returns to Schule.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-57"><label for="cb-57"><strong>Letter mode</strong>: writing on the canvas + lifting after ~1.5 s triggers recognition; a result popup appears centred (recognised letter + confidence chip).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-58"><label for="cb-58"><strong>Word mode</strong>: a word picker strip appears below the header; tapping a word sets it as the target. Writing it letter-by-letter shows per-cell recognition chips (green = correct, grey placeholder = missing).</label></li>
 </ul>
 
 <hr>
@@ -356,14 +361,14 @@
 <h2>6 · Fortschritte world — progress</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-57"><label for="cb-57"><strong>Top row</strong> has three cards:</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-59"><label for="cb-59"><strong>Top row</strong> has three cards:</label></li>
 <li class="sub"><strong>Daily-goal pill</strong> ("X / Y today" with 🎯 or 📅 — green when goal met).</li>
 <li class="sub"><strong>Stars-earned card</strong> (⭐ + total stars + "gesammelt").</li>
 <li class="sub"><strong>Streak card</strong> (🔥 + day count + "Tage in Folge" or similar).</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-58"><label for="cb-58"><strong>Auszeichnungen</strong> (achievements) row scrolls horizontally with reward badges (only earned ones are coloured).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-59"><label for="cb-59"><strong>Deine Buchstaben</strong> gallery: a grid of letter tiles, each showing the letter glyph + a 0-of-4 star row.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-60"><label for="cb-60"><strong>Auszeichnungen</strong> (achievements) row scrolls horizontally with reward badges (only earned ones are coloured).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-61"><label for="cb-61"><strong>Deine Buchstaben</strong> gallery: a grid of letter tiles, each showing the letter glyph + a 0-of-4 star row.</label></li>
 <li class="sub"><strong>Tap a letter tile</strong> → loads that letter into Schule and switches the world.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-60"><label for="cb-60"><strong>Schreibflüssigkeit</strong> card at the bottom shows a fluency trend (improving / stable / declining + colour).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-62"><label for="cb-62"><strong>Schreibflüssigkeit</strong> card at the bottom shows a fluency trend (improving / stable / declining + colour).</label></li>
 </ul>
 
 <hr>
@@ -379,53 +384,53 @@
 <h3>7.1 · Übersicht (parent dashboard)</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-61"><label for="cb-61"><strong>Per-letter accuracy chart</strong> visible.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-62"><label for="cb-62"><strong>Phase completion rates</strong> card shows per-phase success counts.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-63"><label for="cb-63"><strong>30-day practice trend</strong> graph renders.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-64"><label for="cb-64"><strong>Paper-transfer scores</strong> section visible (only populated when the toggle is on and the child has completed paper-transfer trials).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-63"><label for="cb-63"><strong>Per-letter accuracy chart</strong> visible.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-64"><label for="cb-64"><strong>Phase completion rates</strong> card shows per-phase success counts.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-65"><label for="cb-65"><strong>30-day practice trend</strong> graph renders.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-66"><label for="cb-66"><strong>Paper-transfer scores</strong> section visible (only populated when the toggle is on and the child has completed paper-transfer trials).</label></li>
 </ul>
 
 <h3>7.2 · Forschungs-Daten (research dashboard)</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-65"><label for="cb-65"><strong>Schreibmotorik dimensions</strong> sparkline cards (Form, Tempo, Druck, Rhythmus).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-66"><label for="cb-66"><strong>KI predictions</strong> vs. expected count.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-67"><label for="cb-67"><strong>Condition-arm distribution</strong> pie/bar chart.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-68"><label for="cb-68"><strong>Scheduler-effectiveness Pearson r</strong> stat with explanatory caption.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-69"><label for="cb-69"><strong>Last-20 raw phase records</strong> table.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-70"><label for="cb-70"><strong>Per-letter aggregates</strong> table.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-67"><label for="cb-67"><strong>Schreibmotorik dimensions</strong> sparkline cards (Form, Tempo, Druck, Rhythmus).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-68"><label for="cb-68"><strong>KI predictions</strong> vs. expected count.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-69"><label for="cb-69"><strong>Condition-arm distribution</strong> pie/bar chart.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-70"><label for="cb-70"><strong>Scheduler-effectiveness Pearson r</strong> stat with explanatory caption.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-71"><label for="cb-71"><strong>Last-20 raw phase records</strong> table.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-72"><label for="cb-72"><strong>Per-letter aggregates</strong> table.</label></li>
 </ul>
 
 <h3>7.3 · Einstellungen</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-71"><label for="cb-71"><strong>Schriftart</strong> picker: Druckschrift / Schreibschrift. Switching reloads the active glyph in Schule.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-72"><label for="cb-72"><strong>Buchstabenreihenfolge</strong> picker: Motorisch ähnlich / Wortbildend / Alphabetisch. Switching re-orders the demo set.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-73"><label for="cb-73"><strong>Freies Schreiben erlauben</strong> toggle.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-74"><label for="cb-74"><strong>Letzten Strich zuerst</strong> toggle (P5 backward chaining — direct phase only).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-75"><label for="cb-75"><strong>Erinnerungstest aktivieren</strong> toggle (P1 spaced retrieval).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-76"><label for="cb-76"><strong>Lautwert wiedergeben</strong> toggle (P6 phoneme audio).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-77"><label for="cb-77"><strong>Sprechgeschwindigkeit</strong> picker: Langsam / Normal / Schnell. Verify TTS rate changes immediately.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-78"><label for="cb-78"><strong>Geisterbuchstabe anzeigen</strong> toggle.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-79"><label for="cb-79"><strong>Erscheinungsbild</strong> picker: System / Hell / Dunkel.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-73"><label for="cb-73"><strong>Schriftart</strong> picker: Druckschrift / Schreibschrift. Switching reloads the active glyph in Schule.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-74"><label for="cb-74"><strong>Buchstabenreihenfolge</strong> picker: Motorisch ähnlich / Wortbildend / Alphabetisch. Switching re-orders the demo set.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-75"><label for="cb-75"><strong>Freies Schreiben erlauben</strong> toggle.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-76"><label for="cb-76"><strong>Letzten Strich zuerst</strong> toggle (P5 backward chaining — direct phase only).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-77"><label for="cb-77"><strong>Erinnerungstest aktivieren</strong> toggle (P1 spaced retrieval).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-78"><label for="cb-78"><strong>Lautwert wiedergeben</strong> toggle (P6 phoneme audio).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-79"><label for="cb-79"><strong>Sprechgeschwindigkeit</strong> picker: Langsam / Normal / Schnell. Verify TTS rate changes immediately.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-80"><label for="cb-80"><strong>Geisterbuchstabe anzeigen</strong> toggle.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-81"><label for="cb-81"><strong>Erscheinungsbild</strong> picker: System / Hell / Dunkel.</label></li>
 <li class="sub"><strong>Hell</strong> → app stays in light mode regardless of iOS Settings.</li>
 <li class="sub"><strong>Dunkel</strong> → paper turns slate-950, ink turns near-white, canvas semantics flip (blue-400 ghost, emerald-400 ink, amber-400 guide dot). Star count, world tints, brand all flip too.</li>
 <li class="sub"><strong>System</strong> → follows iOS Settings → Display &amp; Brightness.</li>
 <li class="sub">If broken: <code>PrimaeAppearance.swift:resolve</code> + <code>Primae/Primae/Assets.xcassets/Colors/&lt;token&gt;.colorset/Contents.json</code> for any non-flipping token.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-80"><label for="cb-80"><strong>Schreiben auf Papier</strong> toggle (paper-transfer self-assessment).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-81"><label for="cb-81"><strong>Studienteilnahme (A/B-Arm)</strong> toggle. When on, <strong>Studienarm überschreiben</strong> picker appears with Automatisch / threePhase / guidedOnly / control.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-82"><label for="cb-82"><strong>Kurze Einführung</strong> toggle.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-83"><label for="cb-83"><strong>Einführung wiederholen</strong> button.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-82"><label for="cb-82"><strong>Schreiben auf Papier</strong> toggle (paper-transfer self-assessment).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-83"><label for="cb-83"><strong>Studienteilnahme (A/B-Arm)</strong> toggle. When on, <strong>Studienarm überschreiben</strong> picker appears with Automatisch / threePhase / guidedOnly / control.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-84"><label for="cb-84"><strong>Kurze Einführung</strong> toggle.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-85"><label for="cb-85"><strong>Einführung wiederholen</strong> button.</label></li>
 <li class="sub">Correction 2026-10-14: both live in <code>Section("Hilfe")</code> inside <code>#if !STUDY_BUILD</code> (<code>SettingsView.swift:443-468</code>). <code>STUDY_BUILD</code> is unconditional, so neither is present in any build; skip these two items.</li>
 </ul>
 
 <h3>7.4 · Datenexport</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-84"><label for="cb-84"><strong>CSV exportieren / TSV exportieren / JSON exportieren</strong> buttons each open the iOS share sheet with a file named <code>primae_progress_&lt;YYYY-MM-DD&gt;.&lt;ext&gt;</code>.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-86"><label for="cb-86"><strong>CSV exportieren / TSV exportieren / JSON exportieren</strong> buttons each open the iOS share sheet with a file named <code>primae_progress_&lt;YYYY-MM-DD&gt;.&lt;ext&gt;</code>.</label></li>
 <li class="sub">Correction 2026-10-14: these three buttons (<code>ParentAreaView.swift:144-154</code>) write the combined export of every child on the iPad, named <code>primae_progress_ALL_&lt;YYYY-MM-DD&gt;_&lt;HHmmss&gt;_all&lt;N&gt;.&lt;ext&gt;</code> (<code>ParentDashboardExporter.swift:831-841</code>), N = distinct children with data. The per-child name <code>primae_progress_&lt;date&gt;_&lt;HHmmss&gt;_&lt;first 8 hex of participantId&gt;.&lt;ext&gt;</code> (<code>:783-795</code>) belongs to the single "Exportieren" button of <code>ParentDashboardView</code>, which is compiled out of a study build. Check the <code>primae_progress_</code> prefix, not the date-only form.</li>
 <li class="sub">If the filename starts with <code>buchstaben_</code> instead: <code>ParentDashboardExporter.swift</code> — old prefix not migrated.</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-85"><label for="cb-85">Sharing the file (e.g. Save to Files) writes a non-empty file with at least one phase-session row.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-87"><label for="cb-87">Sharing the file (e.g. Save to Files) writes a non-empty file with at least one phase-session row.</label></li>
 </ul>
 
 <hr>
@@ -440,12 +445,12 @@
 </blockquote>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-86"><label for="cb-86"><strong>Phase entry prompts</strong> speak the four phrases above (4.1–4.4) in a German voice. Accent should be German, not English-reading-German.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-87"><label for="cb-87"><strong>Letter-completion celebration</strong> speaks "Super gemacht!" once.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-88"><label for="cb-88"><strong>Paper-transfer flow</strong> (when the toggle is on, after a freeWrite) speaks three lines in sequence: "Schau dir den Buchstaben gut an." → "Jetzt schreibst du den Buchstaben auf Papier." → "Wie ist dein Buchstabe geworden?"</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-89"><label for="cb-89"><strong>Retrieval prompt</strong> modal (when the toggle is on, every Nth letter) speaks "Welchen Buchstaben hörst du?" on appear.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-90"><label for="cb-90"><strong>Recognition feedback</strong> speaks the badge text (correct / wrong + letter) when the recognizer fires.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-91"><label for="cb-91"><strong>Switching Sprechgeschwindigkeit</strong> in Settings to <strong>Langsam</strong> noticeably slows the system-TTS lines (the recorded MP3s play at their fixed recorded rate).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-88"><label for="cb-88"><strong>Phase entry prompts</strong> speak the four phrases above (4.1–4.4) in a German voice. Accent should be German, not English-reading-German.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-89"><label for="cb-89"><strong>Letter-completion celebration</strong> speaks "Super gemacht!" once.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-90"><label for="cb-90"><strong>Paper-transfer flow</strong> (when the toggle is on, after a freeWrite) speaks three lines in sequence: "Schau dir den Buchstaben gut an." → "Jetzt schreibst du den Buchstaben auf Papier." → "Wie ist dein Buchstabe geworden?"</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-91"><label for="cb-91"><strong>Retrieval prompt</strong> modal (when the toggle is on, every Nth letter) speaks "Welchen Buchstaben hörst du?" on appear.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-92"><label for="cb-92"><strong>Recognition feedback</strong> speaks the badge text (correct / wrong + letter) when the recognizer fires.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-93"><label for="cb-93"><strong>Switching Sprechgeschwindigkeit</strong> in Settings to <strong>Langsam</strong> noticeably slows the system-TTS lines (the recorded MP3s play at their fixed recorded rate).</label></li>
 <li class="sub">If broken: <code>SpeechSynthesizer.swift:setRate</code>.</li>
 </ul>
 
@@ -454,12 +459,12 @@
 <h2>9 · Audio + haptics during writing</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-92"><label for="cb-92"><strong>Letter sound</strong> (the recorded phoneme/name MP3 from <code>Letters/&lt;X&gt;/&lt;X&gt;1.mp3</code>) plays when you start dragging on the canvas during the guided or freeWrite phase.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-93"><label for="cb-93"><strong>Pitch / speed</strong> of the letter sound stretches with stroke velocity — slower drag = lower / longer; faster = higher / shorter.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-94"><label for="cb-94"><strong>Per-checkpoint haptic</strong> ticks each time you cross an invisible checkpoint.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-95"><label for="cb-95"><strong>Stroke-completion haptic</strong> fires on each stroke end.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-96"><label for="cb-96"><strong>Letter-completion haptic</strong> fires (stronger pattern) when the whole letter is done.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-97"><label for="cb-97"><strong>Two-finger swipe up / down</strong> cycles through letter-sound variants (A1.mp3 → A2.mp3 → A3.mp3 in letter mode). Currently only the demo letters (A F I K L M O) ship audio variants — others may be silent.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-94"><label for="cb-94"><strong>Letter sound</strong> (the recorded phoneme/name MP3 from <code>Letters/&lt;X&gt;/&lt;X&gt;1.mp3</code>) plays when you start dragging on the canvas during the guided or freeWrite phase.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-95"><label for="cb-95"><strong>Pitch / speed</strong> of the letter sound stretches with stroke velocity — slower drag = lower / longer; faster = higher / shorter.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-96"><label for="cb-96"><strong>Per-checkpoint haptic</strong> ticks each time you cross an invisible checkpoint.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-97"><label for="cb-97"><strong>Stroke-completion haptic</strong> fires on each stroke end.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-98"><label for="cb-98"><strong>Letter-completion haptic</strong> fires (stronger pattern) when the whole letter is done.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-99"><label for="cb-99"><strong>Two-finger swipe up / down</strong> cycles through letter-sound variants (A1.mp3 → A2.mp3 → A3.mp3 in letter mode). Currently only the demo letters (A F I K L M O) ship audio variants — others may be silent.</label></li>
 </ul>
 
 <hr>
@@ -467,11 +472,11 @@
 <h2>10 · Adaptive difficulty + scheduler</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-98"><label for="cb-98">After <strong>two perfect freeWrite trials in a row</strong>, the <strong>checkpoint radius tightens</strong> on the next attempt (you have to hit closer to the centerline). Visible only on real iPad — easier to feel than see in the simulator.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-99"><label for="cb-99">After <strong>two poor trials</strong>, the radius widens.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-100"><label for="cb-100"><strong>Loading the recommended next letter</strong> (via Weiter on the celebration overlay) prefers letters with low recent accuracy / long since last seen.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-101"><label for="cb-101"><strong>Studienteilnahme = on</strong> + Studienarm = <code>guidedOnly</code> skips observe / direct / freeWrite — the child only sees guided.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-102"><label for="cb-102"><strong>Studienteilnahme = on</strong> + Studienarm = <code>control</code> runs the three-phase flow (observe → guided → freeWrite) at fixed difficulty (no adaptation).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-100"><label for="cb-100">After <strong>two perfect freeWrite trials in a row</strong>, the <strong>checkpoint radius tightens</strong> on the next attempt (you have to hit closer to the centerline). Visible only on real iPad — easier to feel than see in the simulator.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-101"><label for="cb-101">After <strong>two poor trials</strong>, the radius widens.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-102"><label for="cb-102"><strong>Loading the recommended next letter</strong> (via Weiter on the celebration overlay) prefers letters with low recent accuracy / long since last seen.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-103"><label for="cb-103"><strong>Studienteilnahme = on</strong> + Studienarm = <code>guidedOnly</code> skips observe / direct / freeWrite — the child only sees guided.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-104"><label for="cb-104"><strong>Studienteilnahme = on</strong> + Studienarm = <code>control</code> runs the three-phase flow (observe → guided → freeWrite) at fixed difficulty (no adaptation).</label></li>
 </ul>
 
 <hr>
@@ -479,9 +484,9 @@
 <h2>11 · Lifecycle</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-103"><label for="cb-103"><strong>Backgrounding the app</strong> (swipe up to home) mid-trace stops the audio + haptics; ink is preserved.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-104"><label for="cb-104"><strong>Resuming</strong> keeps the same letter loaded at the same phase; no lost progress.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-105"><label for="cb-105"><strong>Killing the app</strong> and relaunching restores the active world (<code>primaeAppearance</code> / <code>de.flamingistan.primae.activeWorld</code> AppStorage) and the last letter.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-105"><label for="cb-105"><strong>Backgrounding the app</strong> (swipe up to home) mid-trace stops the audio + haptics; ink is preserved.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-106"><label for="cb-106"><strong>Resuming</strong> keeps the same letter loaded at the same phase; no lost progress.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-107"><label for="cb-107"><strong>Killing the app</strong> and relaunching restores the active world (<code>primaeAppearance</code> / <code>de.flamingistan.primae.activeWorld</code> AppStorage) and the last letter.</label></li>
 </ul>
 
 <hr>
@@ -489,12 +494,12 @@
 <h2>12 · Edge cases</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-106"><label for="cb-106"><strong>Picking a letter without audio</strong> (any letter outside the demo set <code>A F I K L M O</code>) still runs the full flow (observe → guided → freeWrite), but prompts that would normally play a recording fall back to TTS. (All 59 letters now ship real baked <code>strokes.json</code> — the empty-strokes auto-skip branch is no longer reachable in normal use; if you do encounter it, that's a regression.)</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-107"><label for="cb-107"><strong>No internet connection</strong> — every screen still works; no spinners stuck. (The CoreML recognizer is on-device.)</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-108"><label for="cb-108"><strong>VoiceOver accessibility</strong> (Settings → Accessibility → VoiceOver) reads the world rail buttons + every Settings toggle correctly. Letter glyphs read as "Aktueller Buchstabe A".</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-109"><label for="cb-109"><strong>Dynamic Type</strong> (Settings → Accessibility → Larger Text) — Settings + dashboards scale up; canvas chrome stays at fixed sizes (intentional — the canvas is laid out on a fixed grid).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-110"><label for="cb-110"><strong>Reduce Motion</strong> (Settings → Accessibility) — world transitions become instant, animations on praise / celebration become opacity-only.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-111"><label for="cb-111"><strong>Pencil 2 squeeze</strong> (Pencil 2 only): squeezing replays the active letter audio. Pencil tap is independent of finger tap (no double-fire).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-108"><label for="cb-108"><strong>Picking a letter without audio</strong> (any letter outside the demo set <code>A F I K L M O</code>) still runs the full flow (observe → guided → freeWrite), but prompts that would normally play a recording fall back to TTS. (All 59 letters now ship real baked <code>strokes.json</code> — the empty-strokes auto-skip branch is no longer reachable in normal use; if you do encounter it, that's a regression.)</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-109"><label for="cb-109"><strong>No internet connection</strong> — every screen still works; no spinners stuck. (The CoreML recognizer is on-device.)</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-110"><label for="cb-110"><strong>VoiceOver accessibility</strong> (Settings → Accessibility → VoiceOver) reads the world rail buttons + every Settings toggle correctly. Letter glyphs read as "Aktueller Buchstabe A".</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-111"><label for="cb-111"><strong>Dynamic Type</strong> (Settings → Accessibility → Larger Text) — Settings + dashboards scale up; canvas chrome stays at fixed sizes (intentional — the canvas is laid out on a fixed grid).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-112"><label for="cb-112"><strong>Reduce Motion</strong> (Settings → Accessibility) — world transitions become instant, animations on praise / celebration become opacity-only.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-113"><label for="cb-113"><strong>Pencil 2 squeeze</strong> (Pencil 2 only): squeezing replays the active letter audio. Pencil tap is independent of finger tap (no double-fire).</label></li>
 </ul>
 
 <hr>
@@ -502,16 +507,16 @@
 <h2>13 · Visual identity smoke</h2>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-112"><label for="cb-112"><strong>Paper not glass</strong>: every card surface is opaque (Color.paper), not blurred / translucent.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-113"><label for="cb-113"><strong>Sticker buttons</strong> (CTAs): pill capsule, white label on tinted fill, slight shadow, 1-pt offset on press.</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-114"><label for="cb-114"><strong>Canvas semantics</strong> match the spec:</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-114"><label for="cb-114"><strong>Paper not glass</strong>: every card surface is opaque (Color.paper), not blurred / translucent.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-115"><label for="cb-115"><strong>Sticker buttons</strong> (CTAs): pill capsule, white label on tinted fill, slight shadow, 1-pt offset on press.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-116"><label for="cb-116"><strong>Canvas semantics</strong> match the spec:</label></li>
 <li class="sub">Ghost stroke = blue.</li>
 <li class="sub">Child ink = green.</li>
 <li class="sub">Animation guide dot = amber.</li>
 <li class="sub">Numbered start dot = ink-dark.</li>
 <li class="sub">In dark mode all four flip to their lighter variants (blue-400 / emerald-400 / amber-400 / near-white).</li>
-<li class="check"><input class="cb" type="checkbox" id="cb-115"><label for="cb-115"><strong>No emoji decoration</strong> in chrome. Only emoji are: 👁️ 👆 (observe overlay), 🎉 (celebration), 🔥 (streak), ⭐ (stars), 😟 😐 😊 (paper-transfer).</label></li>
-<li class="check"><input class="cb" type="checkbox" id="cb-116"><label for="cb-116"><strong>Font</strong>: every numeric / heading text uses the bundled <strong>Primae</strong> family (rounded humanist), not SF system. Body copy uses <strong>PrimaeText</strong>. Schreibschrift (when selected) uses <strong>Playwrite AT</strong>.</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-117"><label for="cb-117"><strong>No emoji decoration</strong> in chrome. Only emoji are: 👁️ 👆 (observe overlay), 🎉 (celebration), 🔥 (streak), ⭐ (stars), 😟 😐 😊 (paper-transfer).</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-118"><label for="cb-118"><strong>Font</strong>: every numeric / heading text uses the bundled <strong>Primae</strong> family (rounded humanist), not SF system. Body copy uses <strong>PrimaeText</strong>. Schreibschrift (when selected) uses <strong>Playwrite AT</strong>.</label></li>
 <li class="sub">If a label looks like SF instead of Primae: <code>PrimaeFonts.registerAll()</code> may have failed — check the logger output for "PrimaeFonts: register failed" lines.</li>
 </ul>
 
@@ -527,55 +532,55 @@
 </blockquote>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-117"><label for="cb-117"><strong><code>+ Punkt</code> button visible</strong> in the calibrator's bottom action</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-119"><label for="cb-119"><strong><code>+ Punkt</code> button visible</strong> in the calibrator's bottom action</label></li>
 </ul>
 <p>  row, next to <code>+ Strich</code>. Same green tint and visual weight. Icon</p>
 <p>  is a filled small-circle inside a circle.</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-118"><label for="cb-118"><strong>Tap <code>+ Punkt</code> with no letter loaded</strong>: silent no-op (button is</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-120"><label for="cb-120"><strong>Tap <code>+ Punkt</code> with no letter loaded</strong>: silent no-op (button is</label></li>
 </ul>
 <p>  inert until a letter is active).</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-119"><label for="cb-119"><strong>Tap <code>+ Punkt</code> on a loaded letter</strong>: a new empty stroke</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-121"><label for="cb-121"><strong>Tap <code>+ Punkt</code> on a loaded letter</strong>: a new empty stroke</label></li>
 </ul>
 <p>  appears in the chip row; calibrator switches to ANKER mode; status</p>
 <p>  hint reads "Punkt setzen — Strich N: tippen, um Punkt zu platzieren".</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-120"><label for="cb-120"><strong>Tap once in canvas</strong>: a single-point dot stroke is created</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-122"><label for="cb-122"><strong>Tap once in canvas</strong>: a single-point dot stroke is created</label></li>
 </ul>
 <p>  at the tap location; status hint updates to "Punkt setzen —</p>
 <p>  Strich N: Punkt platziert, erneut tippen zum Verschieben".</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-121"><label for="cb-121">**Tap a different canvas location while still in <code>+ Punkt</code></label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-123"><label for="cb-123">**Tap a different canvas location while still in <code>+ Punkt</code></label></li>
 </ul>
 <p>  mode**: the dot moves to the new location (the stroke remains a</p>
 <p>  single checkpoint; no new stroke added).</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-122"><label for="cb-122"><strong>Speichern</strong>: the dot persists. After save, reopening the</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-124"><label for="cb-124"><strong>Speichern</strong>: the dot persists. After save, reopening the</label></li>
 </ul>
 <p>  letter shows the dot at the same position.</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-123"><label for="cb-123"><strong><code>+ Punkt</code> without placement + Speichern</strong>: no-op. No empty</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-125"><label for="cb-125"><strong><code>+ Punkt</code> without placement + Speichern</strong>: no-op. No empty</label></li>
 </ul>
 <p>  stroke gets persisted; the chip row drops back to the prior</p>
 <p>  stroke count after save.</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-124"><label for="cb-124"><strong><code>+ Punkt</code> + switch to SKELETT mode without placement</strong>:</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-126"><label for="cb-126"><strong><code>+ Punkt</code> + switch to SKELETT mode without placement</strong>:</label></li>
 </ul>
 <p>  the empty stroke is pruned (chip count returns to prior).</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-125"><label for="cb-125"><strong>Tap <code>+ Punkt</code> outside the bbox</strong> (above the cap-height</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-127"><label for="cb-127"><strong>Tap <code>+ Punkt</code> outside the bbox</strong> (above the cap-height</label></li>
 </ul>
 <p>  margin): silent ignore — no stroke created at out-of-bbox</p>
 <p>  coordinates.</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-126"><label for="cb-126"><strong>Round-trip test on Ä</strong>: tap <code>+ Punkt</code> → tap at (~0.34, 0.05)</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-128"><label for="cb-128"><strong>Round-trip test on Ä</strong>: tap <code>+ Punkt</code> → tap at (~0.34, 0.05)</label></li>
 </ul>
 <p>  → tap <code>+ Punkt</code> again → tap at (~0.66, 0.05) → Speichern. Reopen</p>
 <p>  Ä: two single-checkpoint dot strokes visible at the placed</p>
 <p>  positions (matches the Ü dot template).</p>
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-127"><label for="cb-127"><strong>Session log captures the dot add</strong> (Correction 2026-10-14: the calibration overlay is <code>#if !STUDY_BUILD</code>, so this whole calibration section is not reachable in any current build; the Files-app path below is historical): open Files app → Primae</label></li>
+<li class="check"><input class="cb" type="checkbox" id="cb-129"><label for="cb-129"><strong>Session log captures the dot add</strong> (Correction 2026-10-14: the calibration overlay is <code>#if !STUDY_BUILD</code>, so this whole calibration section is not reachable in any current build; the Files-app path below is historical): open Files app → Primae</label></li>
 </ul>
 <p>  → <code>PrimaeNative/CalibrationSessions/Ä/&lt;timestamp&gt;.json</code> →</p>
 <p>  inspect: <code>post_polyline</code> should include the new single-point</p>

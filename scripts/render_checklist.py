@@ -41,8 +41,17 @@ OUT  = ROOT / "docs" / "testing_checklist.html"
 
 def _inline(text: str) -> str:
     """Bold / italic / inline-code / links. Run on already-escaped HTML."""
-    # Inline code first so its contents aren't further mangled.
-    text = re.sub(r"`([^`]+?)`", r"<code>\1</code>", text)
+    # Inline code FIRST, but shield its contents from the rules below: a code
+    # span is verbatim, so a `**...**` inside backticks must NOT become
+    # <strong>. Stash each span behind a sentinel that no rule matches, then
+    # restore it after bold/italic/link have run on the surrounding text.
+    spans: list[str] = []
+
+    def _stash(m: re.Match) -> str:
+        spans.append(m.group(1))
+        return f"\x00{len(spans) - 1}\x00"
+
+    text = re.sub(r"`([^`]+?)`", _stash, text)
     # Bold (**...**)
     text = re.sub(r"\*\*([^*]+?)\*\*", r"<strong>\1</strong>", text)
     # Italic (*...* but not part of **) — naive but matches the doc.
@@ -53,6 +62,9 @@ def _inline(text: str) -> str:
         r'<a href="\2">\1</a>',
         text,
     )
+    # Restore the code spans verbatim (their text was already escaped).
+    text = re.sub(r"\x00(\d+)\x00",
+                  lambda m: f"<code>{spans[int(m.group(1))]}</code>", text)
     return text
 
 

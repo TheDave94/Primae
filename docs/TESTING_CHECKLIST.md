@@ -41,11 +41,16 @@ line numbers — line numbers drift, names don't.
 
 - [ ] **Repo clones cleanly.**
   - Steps: `git clone https://github.com/TheDave94/Primae.git ~/repos/Primae && cd ~/repos/Primae && open Primae/Primae.xcodeproj`.
-  - Expected: Xcode opens the project; the SPM ref `../../Primae` resolves automatically; no red files.
+  - Expected: Xcode opens the project; the local Swift-package ref (`relativePath = ..`, the checkout root above `Primae/`) resolves automatically; no red files.
+  - A git worktree builds from any directory name: the ref is relative (`..`), so it resolves to that worktree's own checkout root, not a fixed path. Confirm the build resolves the worktree's own source.
   - If broken: SPM relative path mismatch — check `Primae/Primae.xcodeproj/project.pbxproj` `XCLocalSwiftPackageReference`.
 - [ ] **CI is green** for the commit you're testing.
   - `gh run list --repo TheDave94/Primae --limit 3` should show `success` for the SHA.
 - [ ] **App builds** to the iPad-A16 simulator with `xcodebuild build -project Primae/Primae.xcodeproj -scheme Primae -destination "platform=iOS Simulator,name=iPad (A16)" -configuration Debug CODE_SIGNING_ALLOWED=NO`.
+- [ ] **Automated tests pass with a valid receipt.**
+  - A receipt must quote the Swift Testing line `Test run with N tests in M suites passed` (or XCTest's 'Executed N tests') with N > 0; a `** TEST EXECUTE SUCCEEDED **` line alone is not a receipt. `CLAUDE.md` "Test Infrastructure" item 5 records the trap: a function-level `-only-testing:` filter matched nothing, the log read `Test run with 0 tests in 1 suite passed`, and the run still printed green. `scripts/check_test_count.sh` (R-109) is the guard that reads the count instead of trusting the exit status.
+- [ ] **Simulator isolation and concurrency hygiene.**
+  - One simulator + one private `-derivedDataPath` per concurrent lane/agent; never share a device name across concurrent `xcodebuild` runs. `CLAUDE.md` "Build & Test" runs each build at its own `-derivedDataPath`, and CI keeps its two simulator jobs on distinct device names (`.github/workflows/ios-build.yml`, the `xcode_test` matrix). Expect timing-sensitive suites (audio observe passes) to flake under concurrent load and re-run once solo before believing a failure.
 - [ ] **App launches** — a paper-cream screen appears with the world rail on the left.
   - If broken: check `Primae/Primae/PrimaeApp.swift:MainEntryPoint` (the @main entry).
 
