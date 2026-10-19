@@ -8,8 +8,9 @@
 //
 // Scope (batch C): the view model forces the machine idle so the next
 // moving sample plays again, and counts/stamps the change. Whether a sound
-// arm may continue on a non-headphone route at all is NEEDS-DAVID (D7),
-// and observe's recovery from a lost route is batch E (AudioEngine S2).
+// arm may continue on a non-headphone route at all is NEEDS-DAVID (D7).
+// The output coming back plays nothing and observe is not replayed
+// mid-pass (audit 2026-10-18, L-B) — see `RouteRecoveryTests`.
 
 import Testing
 import CoreGraphics

@@ -1463,9 +1463,9 @@ public final class TracingViewModel {
         }
         // R-019: hear route changes ourselves (AudioEngine stops on a lost
         // output and tells nobody).
-        audioRouteObserver = AudioRouteObserver { [weak self] reason, outputLost, port in
+        audioRouteObserver = AudioRouteObserver { [weak self] reason, outputLost, port, previous in
             self?.handleAudioRouteChange(reasonRawValue: reason, outputLost: outputLost,
-                                         outputPortType: port)
+                                         outputPortType: port, previousOutputPortType: previous)
         }
         // Same two-phase pattern: `self` is fully assigned now, so it's
         // safe to capture weakly. Subscribes to the FIRST disk-write
@@ -1861,6 +1861,9 @@ public final class TracingViewModel {
         playback.cancelPending()
         playback.forceIdle()
         isPlaying = false
+        // A lost output belongs to the outgoing arm or child: a re-plug
+        // under the incoming one is not that loss's recovery.
+        clearLostRoute()
         armAudio.enter(audioCondition)
         verifyEngineFollowsArm(at: "arm change")
     }
@@ -2814,11 +2817,29 @@ public final class TracingViewModel {
     /// change is counted and the new output stamped
     /// (`lifecycleCounters`, in memory).
     ///
+    /// THE OUTPUT COMING BACK PLAYS NOTHING (audit 2026-10-18, L-B). The
+    /// pen-coupled phases need no recovery: the idle machine above already
+    /// lets the next moving sample play, on whatever output is there. What
+    /// the loss can still cost is the rest of an observe sound, and that is
+    /// NOT replayed: the observe presentation is never heard from the middle
+    /// (D9, R-006 — an interruption restarts it from the cue instead), and a
+    /// restart on a re-plug would be a new child-facing behaviour outside
+    /// protocol r9. #62 recovered by `playback.request(.active, immediate:
+    /// true)`, which the stall timer stopped 0.3 s later: a blip of the arm's
+    /// file, heard in any phase with no pen down, recorded nowhere, and the
+    /// observe sound still not restored. That is gone.
+    ///
+    /// What a genuine re-plug DOES: it ends the loss and is logged and
+    /// counted (`routeRecoveries`). Genuine = `.newDeviceAvailable` back to
+    /// the port type that was lost (`RouteRecovery.isReplug`) — not a wake,
+    /// a configuration change or a different device. The loss is forgotten
+    /// at every engine hand-over (`settleEngineForArm`: an arm change, a new
+    /// child), so it never outlives the arm or child it happened to.
+    ///
     /// Scope: whether a sound arm may continue on a non-headphone route is
-    /// NEEDS-DAVID (D7). Observe's recovery from a lost route is implemented
-    /// below as of 2026-10-16 — it used to read "needs an `AudioEngine` change
-    /// (batch E)".
-    func handleAudioRouteChange(reasonRawValue: UInt?, outputLost: Bool, outputPortType: String?) {
+    /// NEEDS-DAVID (D7).
+    func handleAudioRouteChange(reasonRawValue: UInt?, outputLost: Bool, outputPortType: String?,
+                                previousOutputPortType: String? = nil) {
         // Only a DEVICE change is counted (batch D, R-020): the engine's own
         // category changes, a wake from sleep and a configuration change
         // arrive through the same notification and are not the child's
@@ -2829,39 +2850,42 @@ public final class TracingViewModel {
         lifecycleCounters.outputRoute = outputPortType
         lifecycleLogger.info("Audio route changed to \(outputPortType ?? "none", privacy: .public) (output lost: \(outputLost, privacy: .public)) on \(self.currentLetterName, privacy: .public)")
         guard outputLost else {
-            // A VALID ROUTE. If the output was previously LOST, THIS is the
-            // recovery point, and until now nothing ever was one: the loss
-            // below leaves the engine stopped, the playback machine idle and
-            // `isPlaying` false, and nothing re-arms them by itself — so a
-            // child whose route came back stayed silent for the rest of the
-            // session.
-            //
-            // GATED ON A PRIOR LOSS, deliberately: that gate is the whole
-            // lesson of the first attempt. Recovering on EVERY valid route
-            // change replayed the arm's file on a spurious notification (a
-            // category change, a wake, the simulator's own chatter) and turned
-            // three observe-cycle tests red. A route that was never lost has
-            // nothing to recover, so it does nothing.
-            guard routeOutputWasLost else { return }
-            routeOutputWasLost = false
-            lifecycleLogger.info("Audio route valid again — recovering playback on \(self.currentLetterName, privacy: .public)")
-            // Through the playback machine, not the engine: `request(.active)`
-            // reapplies the arm's file via `reloadBeforePlay` and plays, which
-            // is exactly what the loss interrupted. `forceIdle()` reset the
-            // machine's tracked state, so this re-enters active cleanly.
-            playback.request(.active, immediate: true)
+            guard routeOutputWasLost,
+                  RouteRecovery.isReplug(reasonRawValue: reasonRawValue,
+                                         newOutputPortType: outputPortType,
+                                         lostOutputPortType: lostOutputPortType) else { return }
+            // One-shot: the loss is over, so a later notification on the
+            // same output is not a second recovery.
+            clearLostRoute()
+            routeRecoveries += 1
+            lifecycleLogger.notice("Audio output \(outputPortType ?? "none", privacy: .public) is back on \(self.currentLetterName, privacy: .public) in \(self.phaseController.currentPhase.rawName, privacy: .public) — nothing replayed; the pen sounds again on its next movement")
             return
         }
         routeOutputWasLost = true
+        lostOutputPortType = previousOutputPortType
+        if phaseController.currentPhase == .observe, observeSoundTracksDot {
+            lifecycleLogger.notice("Observe sound cut by the lost output \(previousOutputPortType ?? "unknown", privacy: .public) on \(self.currentLetterName, privacy: .public) — not replayed mid-observe")
+        }
         playback.cancelPending()
         playback.forceIdle()
         isPlaying = false
     }
 
-    /// True when a route change reported the output LOST and it has not been
-    /// recovered since. The recovery above is gated on it so an ordinary route
-    /// notification cannot replay audio.
+    /// True when a route change reported the output LOST and no genuine
+    /// re-plug has ended the loss since; `lostOutputPortType` is the port
+    /// that went (nil: not reported, which no re-plug can match).
     @ObservationIgnored private var routeOutputWasLost = false
+    @ObservationIgnored private var lostOutputPortType: String?
+
+    /// Genuine re-plugs after a loss, for this view model's life. IN MEMORY
+    /// and in the lifecycle log only: an export column would change the
+    /// research-export schema, which is a protocol-revision question.
+    @ObservationIgnored private(set) var routeRecoveries = 0
+
+    private func clearLostRoute() {
+        routeOutputWasLost = false
+        lostOutputPortType = nil
+    }
 
     /// The view model's own route-change ear (R-019); see
     /// `AudioRouteObserver`.
