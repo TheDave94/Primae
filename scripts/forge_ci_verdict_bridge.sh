@@ -75,6 +75,16 @@
 #   git resolves it for `origin` — `git credential fill` for <host from
 #   FORGE_BASE>. Least privilege, and no secret is copied to a file.
 #
+#   THAT LOOKUP IS BOUNDED (CRED_MAX, default 10 s). A credential helper that
+#   waits for a touchid prompt, a keychain that never answers, or a stale lock
+#   used to hang this script — and it runs from launchd every 15 min, where a
+#   silent hang is indistinguishable from a healthy unit. A timeout is now a
+#   FATAL on stderr (the runner appends stderr to $BRIDGE_LOG) with rc 70.
+#
+#   AUTH HEADERS NEVER GO IN ARGV. `-H "Authorization: …"` is readable by any
+#   process through `ps`; the token is written to a 0600 temp file and passed
+#   as `curl -H @file` (curl >= 7.55), removed by an EXIT trap.
+#
 #   IT WAS NOT ALWAYS SO, AND THE OLD DEFAULT WAS MISNAMED. Until 2026-10-16
 #   this fell back to `~/.config/forgejo/push-security.token` — a file whose
 #   NAME says push-security but whose TOKEN authenticates as David (id 1,
@@ -89,6 +99,8 @@
 #   FORGE_REPO  default David/Primae
 #   GH_REPO     default TheDave94/Primae
 #   CONTEXT     default ci/github-actions
+#   CRED_MAX    default 10   seconds `git credential fill` may take before it
+#                            is killed and reported as FATAL
 
 set -eu
 
@@ -105,10 +117,52 @@ FORGE_HOST="${FORGE_HOST:-$(printf '%s' "$FORGE_BASE" | sed -E 's#^https?://([^/
 GH_TOKEN_FILE="${GH_TOKEN_FILE:-}"
 TMP="${TMPDIR:-/tmp}"
 NET_MAX="${NET_MAX:-25}"
+CRED_MAX="${CRED_MAX:-10}"
+case "$CRED_MAX" in ''|*[!0-9]*) CRED_MAX=10 ;; esac
 
 log() { printf '%s\n' "$*"; }
 warn() { printf '%s\n' "$*" >&2; }
 die() { printf 'FATAL: %s\n' "$*" >&2; exit 70; }
+
+# ------------------------------------------------------- the credential, bounded
+#
+# Prints the password for $1/$2 and nothing else. `git credential fill` is run
+# in the background behind a watchdog, because a credential helper that never
+# answers would otherwise hang this poller — and this poller is a launchd job,
+# so a hang is SILENT and reads exactly like a healthy unit. On timeout the
+# helper's process is killed, the failure is printed to stderr (the runner
+# appends stderr to $BRIDGE_LOG) and this returns non-zero. Nothing is written
+# to a file that outlives the call.
+credential_password() { # $1 = host, $2 = username
+	_req="$TMP/forge_cred_req.$$"
+	_out="$TMP/forge_cred_out.$$"
+	_late="$TMP/forge_cred_timeout.$$"
+	rm -f "$_req" "$_out" "$_late"
+	( umask 077; printf 'protocol=https\nhost=%s\nusername=%s\n\n' "$1" "$2" > "$_req" ) \
+		|| { warn "FATAL: cannot write $_req"; return 1; }
+	GIT_TERMINAL_PROMPT=0 git credential fill <"$_req" >"$_out" 2>/dev/null &
+	_pid=$!
+	# stdin/stdout/stderr away from the caller: a killed watchdog must not
+	# keep a pipe open (which would make a captured run look hung).
+	( sleep "$CRED_MAX"; : > "$_late"; kill "$_pid" 2>/dev/null ) >/dev/null 2>&1 &
+	_watch=$!
+	if wait "$_pid"; then _rc=0; else _rc=$?; fi
+	kill "$_watch" 2>/dev/null || true
+	wait "$_watch" 2>/dev/null || true
+	if [ "$_rc" -ne 0 ] && [ -f "$_late" ]; then
+		rm -f "$_req" "$_out" "$_late"
+		warn "FATAL: git credential fill for $1 did not answer within ${CRED_MAX}s — killed it; a hung credential helper must not hang this job"
+		return 1
+	fi
+	rm -f "$_req" "$_late"
+	if [ "$_rc" -ne 0 ]; then
+		rm -f "$_out"
+		return 1
+	fi
+	sed -n 's/^password=//p' "$_out"
+	rm -f "$_out"
+	return 0
+}
 
 # ------------------------------------------------------- the collapse, alone
 #
@@ -264,9 +318,10 @@ elif [ -z "${FORGE_TOKEN_FILE}" ]; then
 	# DEFAULT, LEAST PRIVILEGE: the non-admin `push-security` credential, read
 	# from the keychain the same way git reads it for origin. No file, no copy,
 	# nothing to go stale. GIT_TERMINAL_PROMPT=0 so a missing entry returns
-	# empty instead of hanging on a prompt.
-	FORGE_TOKEN_V=$(printf 'protocol=https\nhost=%s\nusername=push-security\n\n' "$FORGE_HOST" \
-		| GIT_TERMINAL_PROMPT=0 git credential fill 2>/dev/null | sed -n 's/^password=//p')
+	# empty instead of hanging on a prompt; CRED_MAX bounds the helper itself.
+	if ! FORGE_TOKEN_V=$(credential_password "$FORGE_HOST" push-security); then
+		die "git credential fill for $FORGE_HOST (user push-security) failed or timed out after ${CRED_MAX}s — see the FATAL line above; refusing to hang the scheduled job"
+	fi
 fi
 [ -n "$FORGE_TOKEN_V" ] || die "no forge token (set FORGE_TOKEN/FORGE_TOKEN_FILE, or make the keychain 'push-security' entry readable for $FORGE_HOST)"
 
@@ -280,12 +335,24 @@ elif command -v gh >/dev/null 2>&1; then
 fi
 [ -n "$GH_TOKEN_V" ] || die "no GitHub token (set GH_TOKEN, or authenticate gh)"
 
-forge_get() { curl -sS -m "$NET_MAX" -H "Authorization: token $FORGE_TOKEN_V" "$FORGE_BASE$1"; }
-gh_get() {
-	curl -sS -m "$NET_MAX" -H "Authorization: Bearer $GH_TOKEN_V" \
-		-H 'Accept: application/vnd.github+json' \
-		-H 'X-GitHub-Api-Version: 2022-11-28' "$GH_API$1"
-}
+# ------------------------------------------------------- auth headers, off argv
+#
+# `curl -H "Authorization: …"` puts the secret in the process's argv, which any
+# local process can read with `ps`. curl >= 7.55 reads headers from a file with
+# `-H @path`; both files are 0600 and removed by the trap on every exit path,
+# including `die` (which exits 70).
+umask 077
+FORGE_HDR="$TMP/forge_auth.$$"
+GH_HDR="$TMP/gh_auth.$$"
+trap 'rm -f "$FORGE_HDR" "$GH_HDR"' EXIT HUP INT TERM
+( umask 077; printf 'Authorization: token %s\n' "$FORGE_TOKEN_V" > "$FORGE_HDR" ) \
+	|| die "cannot write the forge auth header file $FORGE_HDR"
+( umask 077; printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\nX-GitHub-Api-Version: 2022-11-28\n' "$GH_TOKEN_V" > "$GH_HDR" ) \
+	|| die "cannot write the GitHub auth header file $GH_HDR"
+chmod 600 "$FORGE_HDR" "$GH_HDR" 2>/dev/null || true
+
+forge_get() { curl -sS -m "$NET_MAX" -H "@$FORGE_HDR" "$FORGE_BASE$1"; }
+gh_get() { curl -sS -m "$NET_MAX" -H "@$GH_HDR" "$GH_API$1"; }
 
 log "forge  : $FORGE_BASE/repos/$FORGE_REPO"
 forge_get "/repos/$FORGE_REPO" | jq -e -r '.full_name' >/dev/null 2>&1 \
@@ -361,7 +428,7 @@ while read -r BR SHA; do
 
 	HTTP=$(curl -sS -m "$NET_MAX" -o "$TMP/forge_verdict_post.json" -w '%{http_code}' \
 		-X POST "$FORGE_BASE/repos/$FORGE_REPO/statuses/$SHA" \
-		-H "Authorization: token $FORGE_TOKEN_V" \
+		-H "@$FORGE_HDR" \
 		-H 'Content-Type: application/json' \
 		--data "{\"state\":\"$STATE\",\"context\":\"$CONTEXT\",\"description\":\"$DESC\",\"target_url\":\"$TARGET\"}" \
 		2>/dev/null || printf '000')

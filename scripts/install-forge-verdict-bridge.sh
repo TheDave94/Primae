@@ -44,7 +44,22 @@
 # (--ntfy-url) rather than relying on anyone noticing an absence. Supply
 # --heartbeat-url with a dead-man's check you can reach and the residual closes.
 #
-# POSIX sh. Requires: sh, curl, jq, gh, launchctl, plutil.
+# POSIX sh. Requires: sh, curl (>= 7.55, for `-H @file`), jq, gh, launchctl,
+# plutil, git (for the same `git credential fill` lookup the poller uses).
+#
+# THE PRE-CHECK CHECKS WHAT THE POLLER ACTUALLY USES. It used to require
+# ~/.config/forgejo/push-security.token to be readable — a file whose token
+# authenticates as David (id 1, is_admin=true, per #59's own header) while the
+# poller posts as the NON-ADMIN keychain account `push-security`. Those are two
+# different credentials, so the gate could pass on a box where the poller had
+# no credential at all. The gate now resolves the poller's own credential
+# (FORGE_TOKEN, then FORGE_TOKEN_FILE, then `git credential fill`), and the
+# admin file is not read anywhere in this script.
+#
+# SECRETS NEVER GO IN ARGV. The two authenticated probes below passed
+# `-H "Authorization: …"` on the curl command line, which any local process can
+# read with `ps`. Both now write a 0600 header file and pass `-H @file`, removed
+# by an EXIT trap.
 
 set -u
 export LC_ALL=C
@@ -79,11 +94,66 @@ DOMAIN="gui/$(id -u)"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BAK="$BRIDGE_HOME/backup-$STAMP"
 
+FORGE_BASE="${FORGE_BASE:-https://git.flamingistan.com/api/v1}"
+FORGE_REPO="${FORGE_REPO:-David/Primae}"
+FORGE_HOST="${FORGE_HOST:-$(printf '%s' "$FORGE_BASE" | sed -E 's#^https?://([^/]+).*#\1#')}"
+GH_API="${GH_API:-https://api.github.com}"
+GH_REPO="${GH_REPO:-TheDave94/Primae}"
+TMP="${TMPDIR:-/tmp}"
+CRED_MAX="${CRED_MAX:-10}"
+case "$CRED_MAX" in ''|*[!0-9]*) CRED_MAX=10 ;; esac
+
+# The home the delivered plist hardcodes. Overridable ONLY so a stub test can
+# run this script end to end under a temp HOME; the production default is the
+# same literal it always was.
+OPERATOR_HOME="${OPERATOR_HOME:-/Users/musicbox}"
+
+FORGE_HDR="$TMP/forge_install_auth.$$"
+GH_HDR="$TMP/gh_install_auth.$$"
+trap 'rm -f "$FORGE_HDR" "$GH_HDR"' EXIT HUP INT TERM
+
 RC=0
 step(){ printf '\n--- %s\n' "$*"; }
 ok(){ printf '    ok   %s\n' "$*"; }
 bad(){ printf '    FAIL %s\n' "$*"; RC=1; }
 note(){ printf '         %s\n' "$*"; }
+
+# ------------------------------------------------- the credential, bounded
+#
+# Same helper as the poller's, and for the same reason: `git credential fill`
+# can wait forever on a helper (touchid prompt, keychain that never answers,
+# stale lock). Prints the password and nothing else; a timeout is loud on
+# stderr and non-zero.
+credential_password() { # $1 = host, $2 = username
+	_req="$TMP/forge_cred_req.$$"
+	_out="$TMP/forge_cred_out.$$"
+	_late="$TMP/forge_cred_timeout.$$"
+	rm -f "$_req" "$_out" "$_late"
+	( umask 077; printf 'protocol=https\nhost=%s\nusername=%s\n\n' "$1" "$2" > "$_req" ) \
+		|| { printf 'FATAL: cannot write %s\n' "$_req" >&2; return 1; }
+	GIT_TERMINAL_PROMPT=0 git credential fill <"$_req" >"$_out" 2>/dev/null &
+	_pid=$!
+	# stdin/stdout/stderr away from the caller: a killed watchdog must not
+	# keep a pipe open (which would make a captured run look hung).
+	( sleep "$CRED_MAX"; : > "$_late"; kill "$_pid" 2>/dev/null ) >/dev/null 2>&1 &
+	_watch=$!
+	if wait "$_pid"; then _rc=0; else _rc=$?; fi
+	kill "$_watch" 2>/dev/null || true
+	wait "$_watch" 2>/dev/null || true
+	if [ "$_rc" -ne 0 ] && [ -f "$_late" ]; then
+		rm -f "$_req" "$_out" "$_late"
+		printf 'FATAL: git credential fill for %s did not answer within %ss — killed it\n' "$1" "$CRED_MAX" >&2
+		return 1
+	fi
+	rm -f "$_req" "$_late"
+	if [ "$_rc" -ne 0 ]; then
+		rm -f "$_out"
+		return 1
+	fi
+	sed -n 's/^password=//p' "$_out"
+	rm -f "$_out"
+	return 0
+}
 
 dryrun_exit(){
 	if [ "$APPLY" -eq 0 ]; then
@@ -98,9 +168,9 @@ dryrun_exit(){
 # against a box that has drifted is the commonest way a correct script does damage.
 step "STEP 0 — live pre-checks on $(hostname -s) at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-[ "$HOME" = "/Users/musicbox" ] \
-	&& ok "operator home is /Users/musicbox (the plist hardcodes this path)" \
-	|| bad "operator home is $HOME, but the plist hardcodes /Users/musicbox — edit both or run as the right user"
+[ "$HOME" = "$OPERATOR_HOME" ] \
+	&& ok "operator home is $OPERATOR_HOME (the plist hardcodes this path)" \
+	|| bad "operator home is $HOME, but the plist hardcodes $OPERATOR_HOME — edit both or run as the right user"
 
 for b in curl jq gh launchctl plutil; do
 	p=$(command -v "$b" 2>/dev/null || true)
@@ -115,28 +185,57 @@ if command -v gh >/dev/null 2>&1; then
 	fi
 fi
 
-FTF="${FORGE_TOKEN_FILE:-$HOME/.config/forgejo/push-security.token}"
-[ -r "$FTF" ] && ok "forge token readable at $FTF" || bad "forge token not readable at $FTF"
+# THE CREDENTIAL THE POLLER USES, resolved exactly as the poller resolves it.
+# This used to read ~/.config/forgejo/push-security.token and stop there; that
+# file holds an ADMIN token (David, id 1) while the poller posts as the
+# NON-ADMIN keychain account push-security, so the gate could pass on a box
+# where the poller's own credential was missing. The admin file is not read.
+FORGE_TOKEN_V=''
+CRED_FROM=''
+if [ -n "${FORGE_TOKEN:-}" ]; then
+	FORGE_TOKEN_V="$FORGE_TOKEN"
+	CRED_FROM='FORGE_TOKEN'
+elif [ -n "${FORGE_TOKEN_FILE:-}" ]; then
+	if [ -r "$FORGE_TOKEN_FILE" ]; then
+		FORGE_TOKEN_V=$(cat "$FORGE_TOKEN_FILE")
+		CRED_FROM="FORGE_TOKEN_FILE=$FORGE_TOKEN_FILE"
+	else
+		bad "FORGE_TOKEN_FILE=$FORGE_TOKEN_FILE is not readable"
+	fi
+elif FORGE_TOKEN_V=$(credential_password "$FORGE_HOST" push-security); then
+	CRED_FROM="git credential fill ($FORGE_HOST, user push-security, non-admin)"
+else
+	bad "forge credential: git credential fill for $FORGE_HOST failed or did not answer (see the FATAL line above)"
+fi
+[ -n "$FORGE_TOKEN_V" ] \
+	&& ok "forge credential for the poller resolves via $CRED_FROM" \
+	|| bad "no forge credential for the poller — every scheduled run would exit 70"
 
 for f in "$SRC_POLLER" "$SRC_RUNNER" "$SRC_PLIST"; do
 	[ -r "$f" ] && ok "source artefact present: $(basename "$f")" || bad "source artefact MISSING: $f"
 done
 
 # The two calls the poller actually makes, authenticated. An unauthenticated
-# /api/v1/version returns 403 here, so the pre-check must carry the token.
-if [ -r "$FTF" ]; then
-	FT=$(cat "$FTF")
-	c=$(curl -s -m 10 -H "Authorization: token $FT" -o /dev/null -w '%{http_code}' \
-		"${FORGE_BASE:-https://git.flamingistan.com/api/v1}/repos/David/Primae" 2>/dev/null || echo 000)
-	[ "$c" = "200" ] && ok "forge authenticated read -> 200" || bad "forge authenticated read -> $c"
-	FT=''
+# /api/v1/version returns 403 here, so the pre-check must carry the credential —
+# off argv, in a 0600 header file the trap removes.
+if [ -n "$FORGE_TOKEN_V" ]; then
+	( umask 077; printf 'Authorization: token %s\n' "$FORGE_TOKEN_V" > "$FORGE_HDR" ) \
+		|| bad "cannot write the forge auth header file $FORGE_HDR"
+	c=$(curl -s -m 10 -H "@$FORGE_HDR" -o /dev/null -w '%{http_code}' \
+		"$FORGE_BASE/repos/$FORGE_REPO" 2>/dev/null || echo 000)
+	[ "$c" = "200" ] && ok "forge authenticated read ($FORGE_REPO) -> 200" || bad "forge authenticated read -> $c"
+	FORGE_TOKEN_V=''
 fi
 if command -v gh >/dev/null 2>&1; then
 	GH=$(gh auth token 2>/dev/null || true)
-	c=$(curl -s -m 10 -H "Authorization: Bearer $GH" -H 'Accept: application/vnd.github+json' \
-		-o /dev/null -w '%{http_code}' \
-		"https://api.github.com/repos/TheDave94/Primae/commits/565ed158/check-runs" 2>/dev/null || echo 000)
-	[ "$c" = "200" ] && ok "github check-runs read -> 200" || bad "github check-runs read -> $c"
+	if [ -n "$GH" ]; then
+		( umask 077; printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\n' "$GH" > "$GH_HDR" ) \
+			|| bad "cannot write the GitHub auth header file $GH_HDR"
+		c=$(curl -s -m 10 -H "@$GH_HDR" \
+			-o /dev/null -w '%{http_code}' \
+			"$GH_API/repos/$GH_REPO/commits/565ed158/check-runs" 2>/dev/null || echo 000)
+		[ "$c" = "200" ] && ok "github check-runs read -> 200" || bad "github check-runs read -> $c"
+	fi
 	GH=''
 fi
 
@@ -212,13 +311,17 @@ dryrun_exit 0
 step "APPLY — savepoint"
 mkdir -p "$BRIDGE_HOME" "$BAK" || { echo "FATAL: cannot create $BRIDGE_HOME"; exit 1; }
 chmod 700 "$BRIDGE_HOME" "$BAK" 2>/dev/null || true
-for pair in "$SRC_POLLER:$BRIDGE_HOME/forge_ci_verdict_bridge.sh" \
-            "$SRC_RUNNER:$BRIDGE_HOME/forge-verdict-bridge-runner.sh" \
-            "$SRC_PLIST:$AGENT_PLIST" \
-            "$BRIDGE_HOME/bridge.env:$BAK/bridge.env"; do
-	s=${pair%%:*}; d=${pair#*:}
-	if [ -f "$d" ] && [ ! -f "$BAK/$(basename "$d")" ]; then
-		cp "$d" "$BAK/$(basename "$d")" || { echo "FATAL: savepoint failed for $d"; exit 1; }
+# Each entry is an INSTALLED path; the backup name is its basename. The last
+# pair used to be written the other way round ("$BRIDGE_HOME/bridge.env:$BAK/
+# bridge.env"), so the loop tested `-f "$BAK/bridge.env"` — the backup it had
+# not made yet — and silently never saved bridge.env. Same convention for all.
+for src_copy in "$BRIDGE_HOME/forge_ci_verdict_bridge.sh" \
+                "$BRIDGE_HOME/forge-verdict-bridge-runner.sh" \
+                "$AGENT_PLIST" \
+                "$BRIDGE_HOME/bridge.env"; do
+	base=$(basename "$src_copy")
+	if [ -f "$src_copy" ] && [ ! -f "$BAK/$base" ]; then
+		cp "$src_copy" "$BAK/$base" || { echo "FATAL: savepoint failed for $src_copy"; exit 1; }
 	fi
 done
 ok "savepoint at $BAK"
