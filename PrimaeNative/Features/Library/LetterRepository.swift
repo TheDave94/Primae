@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import OSLog
+import Synchronization
 
 private let repoLogger = Logger(
     subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
@@ -80,11 +81,26 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
     /// during a run (see the de-duplication note below), so it is computed once
     /// per search-bundle set instead of once per miss. Keyed by the roots so
     /// distinct providers (test fixtures) stay independent.
-    nonisolated(unsafe) private static var resourceURLCache: [String: [URL]] = [:]
+    ///
+    /// LOCKED (2026-10-18, #58 follow-up). This shipped as
+    /// `nonisolated(unsafe) private static var resourceURLCache: [String: [URL]] = [:]`
+    /// — a shared mutable Dictionary with no lock at all, on the one
+    /// declaration whose whole purpose is to be reached from wherever a
+    /// letter load happens to run. Nothing may read or write it except
+    /// through `withLock`; `BundleResolutionTests.cacheIsNotAnUnlockedStatic`
+    /// pins that structurally.
+    ///
+    /// `Mutex` over `NSLock` for the reason `AudioEngine` and
+    /// `CoreMLLetterRecognizer` already use it: the protection is expressed
+    /// in the type, so the invariant is checked rather than commented, and
+    /// the `nonisolated(unsafe)` escape this carried is gone with it. Its
+    /// cost on the hot path is one uncontended `os_unfair_lock` acquire —
+    /// against the ~448 filesystem stats per miss it exists to collapse.
+    nonisolated private static let resourceURLCache = Mutex<[String: [URL]]>([:])
 
     func allResourceURLs() -> [URL] {
         let key = searchBundles.compactMap { $0.resourceURL?.path }.joined(separator: "|")
-        if let cached = Self.resourceURLCache[key] { return cached }
+        if let cached = Self.resourceURLCache.withLock({ $0[key] }) { return cached }
         let fm = FileManager.default
         // DE-DUPLICATE BY RESOLVED PATH. `searchBundles` deliberately
         // lists the module bundle AND the app bundle, and the app bundle
@@ -118,7 +134,7 @@ struct BundleLetterResourceProvider: LetterResourceProviding {
         let result = all.filter { url in
             seen.insert(url.resolvingSymlinksInPath().path).inserted
         }
-        Self.resourceURLCache[key] = result
+        Self.resourceURLCache.withLock { $0[key] = result }
         return result
     }
 

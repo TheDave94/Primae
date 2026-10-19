@@ -209,7 +209,7 @@
 			mainGroup = DBDE4FA12F632FC30052F95D;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				DBDE4FB82F6330730052F95D /* XCLocalSwiftPackageReference "../../Primae" */,
+				DBDE4FB82F6330730052F95D /* XCLocalSwiftPackageReference ".." */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = DBDE4FAB2F632FC30052F95D /* Products */;

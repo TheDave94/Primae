@@ -68,10 +68,22 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test func endTouch_stopsAudio() async {
         simulateFastTouch(t0: 1000)
-        try? await Task.sleep(for: .milliseconds(150))
+        // DETERMINISTIC, 2026-10-18. This used to sleep 150 ms, reset, call
+        // `endTouch()` and sleep 1.2 s before asserting — and it failed on the
+        // #62 branch's Release-Study CI run while passing on main with an
+        // identical tree (flake, measured). A wall-clock wait for a debounced
+        // production effect is the wrong instrument: on a contended runner the
+        // 1.2 s may not cover the 0.8 s lift-hold it was sized for.
+        //
+        // The pen is SOUNDING here (asserted, and the reason `endTouch` takes
+        // the hold path at `TouchDispatcher.finishTouch` rather than the
+        // immediate stop), so `endTouch` arms `requestIdleAfterHold(0.8)` and
+        // the idle — the only thing that stops the audio — is that pending
+        // transition. Await it instead of guessing at its duration.
+        #expect(vm.isPlaying, "precondition: the pen is sounding, so endTouch arms the lift hold")
         audio.reset()
         vm.endTouch()
-        try? await Task.sleep(nanoseconds: 1_200_000_000)
+        await vm.awaitPlaybackDebounce()
         #expect(audio.hasEvent(.stop))
         #expect(!vm.isPlaying)
     }
