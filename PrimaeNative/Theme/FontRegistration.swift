@@ -2,11 +2,12 @@
 // PrimaeNative — Theme
 //
 // Register the bundled Primae / PrimaeText / Playwrite AT fonts with
-// CoreText. The fonts ship inside the SPM resource bundle
-// (`Bundle.module`), not the main bundle, so the `UIAppFonts`
-// Info.plist key can't reach them — we register programmatically with
-// `CTFontManagerRegisterFontsForURLs`. Call `PrimaeFonts.registerAll()`
-// once at app launch (host app's `App.init()`). Idempotent.
+// CoreText. The fonts ship inside the SPM resource bundle, which
+// `UIAppFonts` cannot reach, so resolution goes through `PrimaeBundle`
+// (its `.main` probe additionally covers any host copy) and we register
+// programmatically with `CTFontManagerRegisterFontsForURLs`. Call
+// `PrimaeFonts.registerAll()` once at app launch (host app's
+// `App.init()`). Idempotent.
 
 import CoreText
 import Foundation
@@ -49,6 +50,16 @@ public enum PrimaeFonts {
     nonisolated(unsafe) private static var didRegister = false
     private static let log = Logger(subsystem: "buchstaben.primae", category: "fonts")
 
+    /// The URL of every registered face that resolves, through
+    /// `PrimaeBundle`. `roots:` is the seam `ResourceResolutionTests` uses
+    /// to take the package bundle away and see what registration gets.
+    static func fontURLs(roots: [URL] = PrimaeBundle.searchRoots) -> [URL] {
+        registrations.compactMap { name, ext in
+            PrimaeBundle.resourceURL(
+                firstOf: PrimaeBundle.layouts(dir: "Fonts", name: name, ext: ext), roots: roots)
+        }
+    }
+
     /// Register every bundled face. Safe to call repeatedly.
     public static func registerAll() {
         guard !didRegister else { return }
@@ -61,9 +72,7 @@ public enum PrimaeFonts {
         // `Bundle.module`, which calls `fatalError` when it cannot resolve
         // (`cb7291d`), behind a `urls.isEmpty` warning that degraded the whole
         // type system to the system font with nothing failing.
-        let urls: [URL] = registrations.compactMap { name, ext in
-            PrimaeBundle.resourceURL(firstOf: PrimaeBundle.layouts(dir: "Fonts", name: name, ext: ext))
-        }
+        let urls = fontURLs()
 
         defer { if !urls.isEmpty { didRegister = true } }
         guard !urls.isEmpty else {

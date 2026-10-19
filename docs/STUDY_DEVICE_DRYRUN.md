@@ -246,8 +246,9 @@ For **each of the three trained letters** (the ones named on the
   stuck past ~20 seconds, that's a defect, not patience being tested.
   (The tripwire was ~15 s and had four seconds of headroom; the window
   change left it about one, so it moved.)
-- **What you hear, per arm (protocol revision 9, 2026-10-14; the timing
-  is r5, the recorded voice r9):** the instruction is a bundled recording
+- **What you hear, per arm (protocol revision 10, 2026-10-18; the timing
+  is r5, the recorded voice r9, the phoneme files' mono 44.1 kHz format
+  r10 — same recordings, same loudness):** the instruction is a bundled recording
   (voice Kiki, `phase_observe.mp3`, 1.25 s), identical in every arm.
   - **Phonem:** the recorded prompt **"Schau genau hin."**, then —
     **1.0 s after the prompt ENDS** (3.0 s after it started if no end is

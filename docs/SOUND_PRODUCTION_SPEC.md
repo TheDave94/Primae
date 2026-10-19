@@ -93,6 +93,22 @@ H5/P6 gap.
 > count and rate is the open question of §2.1 (audit 2026-10-13, F2-04:
 > "dual-mono" per the audit's offline decode, UNVERIFIED here), not a
 > resolved one. An offline pan/level probe has since been run on the real assets (2026-10-14, offline manual rendering of player -> time-pitch -> mixer, not the device output path): the mono carrier and the stereo L and F phonemes follow the same balance law (the louder side stays at full level, the other scales by 1-|pan|; power ratio at pan 0.5 is 0.625 for all three), and volume scales peaks linearly up to 2.99 with no clamping or clipping (peaks below 1.0). Pan behaviour is thus the same for mono and stereo files in this graph; §2.1 is left as written. Not covered: the real-device output path and perception at intermediate pan.
+>
+> **Update 2026-10-18 (protocol revision 10) — the phoneme files above are
+> no longer 2 channels / 48 kHz / 24-bit.** All five were re-encoded to
+> **mono, 44.1 kHz, 16-bit PCM** (`31583cc8`), the carrier's format, so the
+> two sound arms' files now differ in content only, not in channel count or
+> rate. This is a deliberate choice, recorded here; it is not a mandate of
+> the §2 table, which describes the legacy MP3 letter-name files only (see
+> the correction above). The re-encode changed format, not sound, measured
+> offline against the revision-9 files: durations identical to the
+> millisecond; the old files were dual-mono (L and R differ by at most
+> 2.7e-4 of full scale), so mono is the same signal; steady-state RMS within
+> 0.01 dB, so the engine's per-file loudness gain is unchanged; peaks within
+> 0.06 dB except F, +0.94 dB. A child in the phoneme arm hears different
+> file bytes, so it is a protocol revision (`StudyProtocol` r10).
+> `AssetFormatComplianceTests` pins the chosen format (mono, 44.1 kHz) on
+> every phoneme recording the app serves.
 
 ### 2.1 Mono is load-bearing — CODE-CONFIRMED
 

@@ -279,7 +279,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     // MARK: - AudioControlling
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {
-        guard let url = resourceURL(for: fileName) else {
+        guard let url = PrimaeBundle.audioURL(for: fileName) else {
             log.warning("Missing audio file: \(fileName)")
             return
         }
@@ -521,29 +521,6 @@ private extension AudioEngine {
         let tasks = observerStore.withLock { $0.removeValue(forKey: key) }
         tasks?.interruption.cancel()
         tasks?.routeChange.cancel()
-    }
-
-    func resourceURL(for fileName: String) -> URL? {
-        let ns    = fileName as NSString
-        let name  = (ns.lastPathComponent as NSString).deletingPathExtension
-        let ext   = ns.pathExtension
-        let dir   = ns.deletingLastPathComponent as String
-        for bundle in [Bundle.main, Bundle.module] {
-            // FileManager path construction — reliable for nested SPM bundle paths
-            if let root = bundle.resourceURL {
-                let candidate = root.appendingPathComponent(fileName)
-                if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
-            }
-            // Bundle API with subdirectory
-            if !dir.isEmpty,
-               let url = bundle.url(forResource: name,
-                                    withExtension: ext.isEmpty ? nil : ext,
-                                    subdirectory: dir) { return url }
-            // Flat fallback
-            if let url = bundle.url(forResource: name,
-                                    withExtension: ext.isEmpty ? nil : ext) { return url }
-        }
-        return nil
     }
 
     func startIfNeeded() {

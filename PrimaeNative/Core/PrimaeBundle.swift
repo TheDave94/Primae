@@ -68,6 +68,24 @@ enum PrimaeBundle {
         return .main
     }
 
+    /// The directories `resourceURL` probes, in order: the package
+    /// bundle, then `.main` last, and deliberately: the host embeds some
+    /// resources directly (fonts via `INFOPLIST_KEY_UIAppFonts`), so a
+    /// lookup that misses the package bundle can still legitimately
+    /// succeed there. It is a probe INSIDE this resolver rather than a
+    /// second resolver beside it — one path, watched by one test, so a
+    /// resource that only resolves by accident cannot hide in a fallback
+    /// nobody reads.
+    ///
+    /// The `roots:` parameter below defaults to this and exists for one
+    /// reason: a test can hand the resolver a root list with the package
+    /// bundle MISSING and see what a caller gets. That is the case
+    /// `Bundle.module` traps on, and the only way to observe that a caller
+    /// goes through these roots rather than around them.
+    nonisolated static var searchRoots: [URL] {
+        [resources.bundleURL, resources.resourceURL, Bundle.main.resourceURL].compactMap { $0 }
+    }
+
     /// URL for a path relative to the resource bundle root, verified
     /// against the filesystem. Returns `nil` rather than a URL that does
     /// not exist, so callers can fall back rather than fail later.
@@ -78,15 +96,9 @@ enum PrimaeBundle {
     /// `CoreMLLetterRecognizer` is itself `nonisolated` so the model load
     /// can run on a detached Task, and a filesystem probe has no business
     /// hopping to the main actor to satisfy a package-wide default.
-    nonisolated static func resourceURL(_ relativePath: String) -> URL? {
-        // `.main` last, and deliberately: the host embeds some resources
-        // directly (fonts via `INFOPLIST_KEY_UIAppFonts`), so a lookup that
-        // misses the package bundle can still legitimately succeed there.
-        // It is a probe INSIDE this resolver rather than a second resolver
-        // beside it — one path, watched by one test, so a resource that
-        // only resolves by accident cannot hide in a fallback nobody reads.
-        let roots = [resources.bundleURL, resources.resourceURL, Bundle.main.resourceURL]
-        for root in roots.compactMap({ $0 }) {
+    nonisolated static func resourceURL(_ relativePath: String,
+                                        roots: [URL] = searchRoots) -> URL? {
+        for root in roots {
             let candidate = root.appendingPathComponent(relativePath)
             if FileManager.default.fileExists(atPath: candidate.path) { return candidate }
         }
@@ -99,15 +111,52 @@ enum PrimaeBundle {
     /// the bundle root, and an Xcode copy phase flattens differently again.
     /// Callers pass the layouts their resource can legitimately ship in,
     /// most-specific first, instead of each hand-rolling the same loop.
-    nonisolated static func resourceURL(firstOf relativePaths: [String]) -> URL? {
+    nonisolated static func resourceURL(firstOf relativePaths: [String],
+                                        roots: [URL] = searchRoots) -> URL? {
         for path in relativePaths {
-            if let url = resourceURL(path) { return url }
+            if let url = resourceURL(path, roots: roots) { return url }
         }
         return nil
     }
 
+    // MARK: - Audio
+
+    /// Bundle-relative audio filename → URL, or `nil` when it is not
+    /// bundled. The one audio lookup: `AudioEngine.loadAudioFile` and
+    /// `SpatialSonification.carrierToneURL()` (the spatial arm's start
+    /// precondition, ruling C1-6) both call it, so "the engine can play
+    /// it" and "the arm may start" cannot disagree about where a file is.
+    ///
+    /// WAS a hand-rolled `[Bundle.main, Bundle.module]` loop in each of
+    /// those two files. `Bundle.module` calls `fatalError` when it cannot
+    /// resolve the resource bundle, so a build that lost that bundle
+    /// crashed at the first audio load instead of going quiet, the shape
+    /// every other missing resource here already had. Every failure this
+    /// function can produce is a `nil` return.
+    nonisolated static func audioURL(for fileName: String,
+                                     roots: [URL] = searchRoots) -> URL? {
+        resourceURL(firstOf: audioLayouts(for: fileName), roots: roots)
+    }
+
+    /// The layouts an audio filename is probed under: the name as given,
+    /// then its last path component at the bundle root. These are the
+    /// files the replaced loop could reach — its resource-root path, its
+    /// subdirectory-API lookup (the same file as the path, for an
+    /// unlocalised bundle) and its flat fallback — so no lookup that
+    /// resolved before resolves elsewhere now, and none gains a layout.
+    /// The flat candidate is the whole last component, extension and
+    /// all, so a name without an extension is probed as itself.
+    nonisolated static func audioLayouts(for fileName: String) -> [String] {
+        let flat = (fileName as NSString).lastPathComponent
+        return flat == fileName ? [fileName] : [fileName, flat]
+    }
+
     /// Bundle-relative layouts a resource under `Resources/<dir>/` can ship in.
+    /// An empty `ext` is a file without an extension, laid out as `name`
+    /// itself: interpolating it gave `name.`, a file that never exists, so
+    /// an extensionless resource could not resolve in any layout.
     nonisolated static func layouts(dir: String, name: String, ext: String) -> [String] {
-        ["Resources/\(dir)/\(name).\(ext)", "\(dir)/\(name).\(ext)", "\(name).\(ext)"]
+        let file = ext.isEmpty ? name : "\(name).\(ext)"
+        return ["Resources/\(dir)/\(file)", "\(dir)/\(file)", file]
     }
 }
