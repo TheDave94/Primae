@@ -110,7 +110,14 @@ OPERATOR_HOME="${OPERATOR_HOME:-/Users/musicbox}"
 
 FORGE_HDR="$TMP/forge_install_auth.$$"
 GH_HDR="$TMP/gh_install_auth.$$"
-trap 'rm -f "$FORGE_HDR" "$GH_HDR"' EXIT HUP INT TERM
+# EXIT is the ONE place cleanup happens (idempotent: rm -f only). HUP/INT/TERM
+# must not merely clean up: a handler that returns lets the script CARRY ON, so
+# Ctrl-C or a TERM would no longer stop a state-changing install. They exit with
+# the shell's own 128+signal codes, which fires the EXIT trap.
+trap 'rm -f "$FORGE_HDR" "$GH_HDR" "$TMP/forge_cred_req.$$" "$TMP/forge_cred_out.$$" "$TMP/forge_cred_timeout.$$"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 RC=0
 step(){ printf '\n--- %s\n' "$*"; }
@@ -135,7 +142,11 @@ credential_password() { # $1 = host, $2 = username
 	_pid=$!
 	# stdin/stdout/stderr away from the caller: a killed watchdog must not
 	# keep a pipe open (which would make a captured run look hung).
-	( sleep "$CRED_MAX"; : > "$_late"; kill "$_pid" 2>/dev/null ) >/dev/null 2>&1 &
+	# The watchdog runs its sleep as a child it can kill: killing only the
+	# subshell would orphan `sleep $CRED_MAX` for the rest of its interval.
+	( trap 'kill "${_sl:-}" 2>/dev/null; exit 0' TERM
+	  sleep "$CRED_MAX" & _sl=$!
+	  wait "$_sl"; : > "$_late"; kill "$_pid" 2>/dev/null ) >/dev/null 2>&1 &
 	_watch=$!
 	if wait "$_pid"; then _rc=0; else _rc=$?; fi
 	kill "$_watch" 2>/dev/null || true

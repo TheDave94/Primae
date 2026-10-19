@@ -144,7 +144,11 @@ credential_password() { # $1 = host, $2 = username
 	_pid=$!
 	# stdin/stdout/stderr away from the caller: a killed watchdog must not
 	# keep a pipe open (which would make a captured run look hung).
-	( sleep "$CRED_MAX"; : > "$_late"; kill "$_pid" 2>/dev/null ) >/dev/null 2>&1 &
+	# The watchdog runs its sleep as a child it can kill: killing only the
+	# subshell would orphan `sleep $CRED_MAX` for the rest of its interval.
+	( trap 'kill "${_sl:-}" 2>/dev/null; exit 0' TERM
+	  sleep "$CRED_MAX" & _sl=$!
+	  wait "$_sl"; : > "$_late"; kill "$_pid" 2>/dev/null ) >/dev/null 2>&1 &
 	_watch=$!
 	if wait "$_pid"; then _rc=0; else _rc=$?; fi
 	kill "$_watch" 2>/dev/null || true
@@ -152,7 +156,7 @@ credential_password() { # $1 = host, $2 = username
 	if [ "$_rc" -ne 0 ] && [ -f "$_late" ]; then
 		rm -f "$_req" "$_out" "$_late"
 		warn "FATAL: git credential fill for $1 did not answer within ${CRED_MAX}s — killed it; a hung credential helper must not hang this job"
-		return 1
+		return 2
 	fi
 	rm -f "$_req" "$_late"
 	if [ "$_rc" -ne 0 ]; then
@@ -309,6 +313,17 @@ done
 [ -n "$FORGE_REPO" ] || die "FORGE_REPO is empty"
 [ -n "$GH_REPO" ] || die "GH_REPO is empty"
 
+# EXIT is the ONE place cleanup happens (idempotent: rm -f only). HUP/INT/TERM
+# must not merely clean up: a handler that returns lets the script CARRY ON — with its header files already
+# gone — so a `launchctl bootout` TERM would not stop the poller. They exit with
+# the shell's own 128+signal codes, which fires the EXIT trap.
+FORGE_HDR="$TMP/forge_auth.$$"
+GH_HDR="$TMP/gh_auth.$$"
+trap 'rm -f "$FORGE_HDR" "$GH_HDR" "$TMP/forge_cred_req.$$" "$TMP/forge_cred_out.$$" "$TMP/forge_cred_timeout.$$"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 FORGE_TOKEN_V=''
 if [ -n "${FORGE_TOKEN:-}" ]; then
 	FORGE_TOKEN_V="$FORGE_TOKEN"
@@ -319,8 +334,12 @@ elif [ -z "${FORGE_TOKEN_FILE}" ]; then
 	# from the keychain the same way git reads it for origin. No file, no copy,
 	# nothing to go stale. GIT_TERMINAL_PROMPT=0 so a missing entry returns
 	# empty instead of hanging on a prompt; CRED_MAX bounds the helper itself.
-	if ! FORGE_TOKEN_V=$(credential_password "$FORGE_HOST" push-security); then
-		die "git credential fill for $FORGE_HOST (user push-security) failed or timed out after ${CRED_MAX}s — see the FATAL line above; refusing to hang the scheduled job"
+	if FORGE_TOKEN_V=$(credential_password "$FORGE_HOST" push-security); then :; else
+		_crc=$?
+		if [ "$_crc" -eq 2 ]; then
+			die "git credential fill for $FORGE_HOST (user push-security) timed out after ${CRED_MAX}s — see the FATAL line above; refusing to hang the scheduled job"
+		fi
+		die "git credential fill for $FORGE_HOST (user push-security) exited non-zero (no usable 'push-security' keychain entry?) — refusing to run without a credential"
 	fi
 fi
 [ -n "$FORGE_TOKEN_V" ] || die "no forge token (set FORGE_TOKEN/FORGE_TOKEN_FILE, or make the keychain 'push-security' entry readable for $FORGE_HOST)"
@@ -342,9 +361,6 @@ fi
 # `-H @path`; both files are 0600 and removed by the trap on every exit path,
 # including `die` (which exits 70).
 umask 077
-FORGE_HDR="$TMP/forge_auth.$$"
-GH_HDR="$TMP/gh_auth.$$"
-trap 'rm -f "$FORGE_HDR" "$GH_HDR"' EXIT HUP INT TERM
 ( umask 077; printf 'Authorization: token %s\n' "$FORGE_TOKEN_V" > "$FORGE_HDR" ) \
 	|| die "cannot write the forge auth header file $FORGE_HDR"
 ( umask 077; printf 'Authorization: Bearer %s\nAccept: application/vnd.github+json\nX-GitHub-Api-Version: 2022-11-28\n' "$GH_TOKEN_V" > "$GH_HDR" ) \
