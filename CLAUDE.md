@@ -1,6 +1,6 @@
 # CLAUDE.md — Primae (Letter Learning App)
 
-> Brand: **Primae** (formerly "Buchstaben-Lernen-App"). Everything carries the new name: the GitHub repo (`TheDave94/Primae`), Xcode project, scheme, host app, host folder (`Primae/`), Swift Package target (`PrimaeNative`), test target (`PrimaeNativeTests`), bundle identifier (`de.flamingistan.primae`), and the SPM relative path (`../../Primae`). Pre-rebrand UserDefaults keys (`de.flamingistan.buchstaben.*`) moved to `de.flamingistan.primae.*` — the app is in alpha so existing test-device state is intentionally reset. The local working tree is `/opt/repos/Primae`, matching the SPM relative path.
+> Brand: **Primae** (formerly "Buchstaben-Lernen-App"). Everything carries the new name: the GitHub repo (`TheDave94/Primae`), Xcode project, scheme, host app, host folder (`Primae/`), Swift Package target (`PrimaeNative`), test target (`PrimaeNativeTests`), and bundle identifier (`de.flamingistan.primae`). Pre-rebrand UserDefaults keys (`de.flamingistan.buchstaben.*`) moved to `de.flamingistan.primae.*` — the app is in alpha so existing test-device state is intentionally reset. The Swift package is the repo root, referenced from the Xcode project as `..` (relative to `<repo>/Primae/`, set by #58), so the working tree's directory name no longer matters.
 
 ## Project Overview
 iPad app for teaching German children (ages 5-6) to trace letters. Built with SwiftUI, Swift 6.4, targeting iOS 27+ (the SPM manifest is `swift-tools-version: 6.4` with `.iOS(.v27)`; see "The toolchain pin has landed" below). Academic thesis project.
@@ -78,7 +78,7 @@ Note the rail is a **64pt vertical bar on the LEFT**, not a top bar: `mainShell`
 - `TracingViewModel.swift` — main VM, coordinates phases, strokes, audio, animation
 - `TracingCanvasView.swift` — Canvas rendering (ghost lines, start dots, ink, KP overlay)
 - `MainAppView.swift` — root host with WorldSwitcherRail + worlds
-- `NextParticipantControl.swift` — the proctor's "next child" action: confirm dialog + "Neues Kind bereit" alert, shared by the Research Dashboard button and the rail's double-tap. **Never unmount it to hide it** — the rail hides it by opacity/hit-testing, because unmounting also destroys the alert it presents.
+- `NextParticipantControl.swift` — the proctor's "next child" action: confirm dialog + a "new child ready" confirmation, shared by the Research Dashboard button and the rail's double-tap. The confirmation depends on the entry point (`NextParticipantControl(presentation:)`): on the rail (default `.toast`) it is a NON-blocking toast in the Schule world with accessibility identifier `newChildReadyToast`, no modal; on the Research Dashboard (`.alert`) it is a modal "Neues Kind bereit" alert (`readyTitle`/`readyMessage`/OK). Exactly one of the two fires. **Never unmount it to hide it** — the rail hides it by opacity/hit-testing, because unmounting also destroys the alert it presents.
 - `SchuleWorldView.swift` — World 1: guided three-phase tracing
 - `WerkstattWorldView.swift` — World 2: freeform writing
 - `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
@@ -254,36 +254,13 @@ a UI-test string that encodes a phase count, a star count or a row count is
 a doc-currency site; grep `von 4`, `von 3`, row-count literals and
 `allCases.count` when the phase model moves.
 
-**6. A git worktree CANNOT BUILD unless its directory is named `Primae`.**
-MEASURED 2026-09-17. The package is referenced as
-`XCLocalSwiftPackageReference "../../Primae"`, resolved relative to
-`<repo>/Primae/` — so it points at `<parent-of-repo>/Primae`, i.e. the repo
-root itself. A worktree at `/tmp/…/wtprobe/` therefore resolves to
-`/tmp/claude-501/Primae` and one at `.claude/worktrees/<name>/` resolves to
-`<repo>/.claude/worktrees/Primae`; **neither exists**, so neither can
-resolve package dependencies, and `xcodebuild` fails before compiling. This
-is why the six `agent-*` worktrees under `.claude/worktrees/` were found
-carrying committed changes and no verification: their agents could edit but
-not build. **Create parallel worktrees one level deeper, as
-`<anything>/Primae`** — the same rule as the scratch clone — or work in the
-main tree. Do not put them under `.claude/worktrees/`.
-
-**6. A git worktree CANNOT BUILD unless its directory is named `Primae`.**
-MEASURED 2026-09-17. The package is referenced as
-`XCLocalSwiftPackageReference "../../Primae"`, resolved relative to
-`/Users/musicbox/repos/Primae/Primae/` — so it points at
-`/Users/musicbox/repos/Primae`, the repo root itself. A worktree at
-`/tmp/claude-501/wtprobe/` therefore resolves to `/tmp/claude-501/Primae`,
-and one at `/Users/musicbox/repos/Primae/.claude/worktrees/agent-x/`
-resolves to `/Users/musicbox/repos/Primae/.claude/worktrees/Primae`.
-Neither path exists, so neither can resolve package dependencies and
-`xcodebuild` fails before compiling. This is why the six `agent-*`
-worktrees under `.claude/worktrees/` were found carrying committed changes
-and no verification: their agents could edit but not build. **Create
-parallel worktrees one level deeper, as `/tmp/claude-501/wt/agent-1/Primae`
-— the last path component must be `Primae`**, the same rule as the scratch
-clone — or work in the main tree. Do not put them under
-`.claude/worktrees/`.
+**6. A git worktree builds from any directory name (since #58).** The package
+is referenced as `XCLocalSwiftPackageReference ".."` (`relativePath = ..`),
+i.e. the checkout that contains the project, so a worktree resolves its OWN
+source. The 2026-09-17 measurement that a worktree "CANNOT BUILD unless its
+directory is named `Primae`" described the pre-#58 reference (a directory named
+`Primae` two levels up) and is history only. What to check on any new worktree: that the build
+resolves the worktree's own source, not the primary checkout's.
 
 **5. A test must not mutate global state — Swift Testing runs suites in
 PARALLEL, and the failure shows up in someone else's test.** Measured the
@@ -927,7 +904,8 @@ not be read as current.
 > `_Users_musicbox_Library_Caches_org.swift.swiftpm_manifests_manifest.db.lock`
 > and `_Users_musicbox_.swiftpm.lock`. It is not fetching: `Package.swift`
 > declares zero remote dependencies, and the project references only
-> `XCLocalSwiftPackageReference "../../Primae"`. Five build attempts,
+> `XCLocalSwiftPackageReference ".."` (a different relative path when
+> this was measured; #58 changed it). Five build attempts,
 > four distinct levers — fresh `-derivedDataPath`, a clone of an
 > already-resolved derived data (286 MB, `SourcePackages` present),
 > `-packageCachePath "$TMPDIR/…"`, `HOME` relocation, and
