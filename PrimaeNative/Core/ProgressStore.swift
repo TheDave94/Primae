@@ -448,7 +448,7 @@ public final class JSONProgressStore: ProgressStoring {
                 // `PersistenceFailureCenter`, which the live VM turns
                 // into a hard session stop under studyMode.
                 storePersistenceLogger.warning(
-                    "ProgressStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    "ProgressStore disk write failed at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 center.reportFailure(store: "ProgressStore", error: error)
             }
         }

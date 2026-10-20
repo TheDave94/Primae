@@ -160,7 +160,7 @@ final class JSONRawTraceStore: RawTraceStoring {
             } catch {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
-                    "RawTraceStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    "RawTraceStore disk write failed at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 center.reportFailure(store: "RawTraceStore", error: error)
             }
         }

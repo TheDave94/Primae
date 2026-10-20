@@ -1166,7 +1166,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                 // a silently-swallowed write here is the worst case of
                 // the defect that type exists to close.
                 storePersistenceLogger.warning(
-                    "ParentDashboardStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    "ParentDashboardStore disk write failed at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 center.reportFailure(store: "ParentDashboardStore", error: error)
             }
         }

@@ -229,7 +229,7 @@ final class JSONStreakStore: StreakStoring {
             } catch {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
-                    "StreakStore disk write failed at \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                    "StreakStore disk write failed at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
                 center.reportFailure(store: "StreakStore", error: error)
             }
         }
