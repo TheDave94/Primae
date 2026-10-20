@@ -201,6 +201,21 @@ self_test() {
 set -eu
 _title=$2
 _br=$(git rev-parse --abbrev-ref HEAD)
+if [ "${STUB_REMOVE_WORKTREE:-0}" = "1" ]; then
+	# What the real gitflow does from a linked worktree: merge, then delete
+	# the worktree the caller is standing in.
+	_wt=$(pwd)
+	cd "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+	_back=$(git rev-parse --abbrev-ref HEAD)
+	git checkout -q main
+	git merge -q --squash "$_br"
+	git commit -qm "$_title (#2)"
+	git push -q origin main
+	git checkout -q "$_back"
+	git worktree remove --force "$_wt"
+	echo "STUB gitflow: squash-merged $_br into main and removed $_wt"
+	exit 0
+fi
 git checkout -q main
 git merge -q --squash "$_br"
 git commit -qm "$_title (#1)"
@@ -347,6 +362,20 @@ STUB
 	set -e
 	_st_assert "14 refuses a real SHA absent from origin/main" 1 "does not contain" "$_c" "$_o"
 
+	# 15 — landing from a linked worktree that gitflow deletes after the merge.
+	# Before the fix this printed NOT LANDED over a real merge (#64–#73).
+	git checkout -q main
+	git pull -q origin main
+	git checkout -q feat/selftest
+	git worktree add -q -b feat/selftest-wt "$ST_TMP/wt" main
+	printf 'from a worktree\n' > "$ST_TMP/wt/wt.txt"
+	printf 'feat: landed from a worktree\n\nbody\n' > "$ST_TMP/msg_wt"
+	set +e
+	_o=$(cd "$ST_TMP/wt" && STUB_REMOVE_WORKTREE=1 sh "$SELF" < "$ST_TMP/msg_wt" 2>&1); _c=$?
+	set -e
+	cd "$R"
+	_st_assert "15 verifies a merge after gitflow removes the worktree" 0 "VERIFIED:" "$_c" "$_o"
+
 	echo ""
 	if [ "$ST_FAIL" -eq 0 ]; then
 		echo "SELF-TEST: PASS — $ST_TOTAL/$ST_TOTAL"
@@ -479,12 +508,25 @@ if ! git push -u origin HEAD; then
 fi
 
 # ---------------------------------------------------------------- land
+# gitflow, after a merge from a linked worktree, REMOVES that worktree —
+# this script's own cwd. Every git call after it then fails ("Unable to read
+# current working directory") and the run printed NOT LANDED over a merge
+# that had happened: ten times in a row on 2026-10-19 (#64–#73). So record
+# the shared git dir now, while the worktree still exists, and report from
+# there if the worktree is gone.
+COMMON=$(git rev-parse --path-format=absolute --git-common-dir) ||
+	die 3 "cannot resolve the repository's git dir"
+
 echo "gitflow: pr \"$TITLE\" --go"
 if ! sh "$GITFLOW" pr "$TITLE" --go; then
 	die 1 "gitflow failed — the branch is pushed but NOT merged; inspect before retrying"
 fi
 
 # ---------------------------------------------------------------- report
+if [ ! -d "$ROOT" ]; then
+	echo "note   : gitflow removed the worktree $ROOT; reporting from $COMMON"
+	cd "$COMMON" || die 1 "merged, but cannot reach $COMMON to verify it"
+fi
 if ! git fetch origin; then
 	die 1 "merged, but the post-merge fetch failed — cannot report the $BASE SHA"
 fi
