@@ -258,6 +258,9 @@ struct WorldSwitcherRail: View {
             }
         )
         .accessibilityLabel("Eltern-Bereich")
-        .accessibilityHint("Zwei Sekunden lang gedrückt halten, um Einstellungen zu öffnen")
+        .accessibilityHint("Zwei Sekunden lang gedrückt halten, um Einstellungen zu öffnen. Mit VoiceOver: doppeltippen und halten.")
+        // U10 audit (2026-10-21, iPad): without this the gear is exposed as an
+        // Image, so VoiceOver announces no control and no way to act on it.
+        .accessibilityAddTraits(.isButton)
     }
 }

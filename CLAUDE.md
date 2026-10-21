@@ -582,6 +582,14 @@ not be read as current.
 > branch that should render. `OnboardingView`'s gradient/progress-bar/footer
 > never appear either, so the app is not reaching a first frame at all.)
 >
+> **Re-measured 2026-10-21: the Debug-Study simulator freeze still
+> reproduces on Xcode 27.2 / iOS 27.2** ("App event loop idle notification
+> not received", then a UI-query timeout looking for the rail), while a
+> Release-Study simulator build renders (after a ~60 s idle wait at
+> launch). `xctrace list devices` sees no device from a sandboxed seat, so
+> Instruments traces on the iPad are a terminal act. Receipt:
+> `wt-primae-audit-notes/lanes-2026-10-21/C/RECEIPT.md`.
+>
 > **THE PILOT CONFIGURATION IS NOW TEST-COVERED (2026-09-17). This entry
 > replaces a "NAMED GAP" that said the opposite; every clause of it was true
 > when written and is now false.** It read that `PrimaeNativeTests`
@@ -816,6 +824,13 @@ not be read as current.
 > two-second window is the correct matched demonstration:** each arm
 > presents its own sound, for the same length, and teaches nothing beyond
 > it. So `6fb7233`'s removal STANDS.
+>
+> **SUPERSEDED 2026-10-05 (protocol revision 5) — the steady carrier is
+> REVERSED too.** In a study session the observe sound now TRACKS the
+> animated dot in both sound arms, through the same `ArmCoupling` mapping
+> the pen uses (pitch from y in the spatial arm only). The scripted
+> full-range sweep stays out. `docs/DECISIONS.md`, "Reversal 2026-10-05",
+> is the governing text; the paragraph above is the 2026-09-18 record.
 >
 > `PreTaskDemonstration.axisSweep` survives only behind
 > `StudyComparisonSettings.spatialAxisDemonstration` (OFF by default,

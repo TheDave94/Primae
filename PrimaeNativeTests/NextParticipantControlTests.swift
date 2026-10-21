@@ -172,6 +172,21 @@ import SwiftUI
         #expect(vm.toastMessage == NextParticipantCopy.readyMessage)
     }
 
+    /// The toast is visual only, so raising it must also ask VoiceOver to
+    /// announce the same message (U10). The system call cannot be observed, so
+    /// this pins that the request is made, through the injectable seam.
+    @Test func announcingReadinessRequestsAVoiceOverAnnouncement() {
+        final class Spy: AccessibilityAnnouncing {
+            var messages: [String] = []
+            func announce(_ message: String) { messages.append(message) }
+        }
+        let spy = Spy()
+        let vm = TracingViewModel(.stub)
+        vm.accessibilityAnnouncer = spy
+        vm.announceNewChildReady()
+        #expect(spy.messages == [NextParticipantCopy.readyMessage])
+    }
+
     /// The destructive button must be identifiable by name from both
     /// entry points (the rail button and the dashboard button share this
     /// control), because `StudyAdvanceProbeUITests` drives the flow by

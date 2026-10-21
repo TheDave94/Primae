@@ -134,9 +134,14 @@ struct NextParticipantControl<Label: View>: View {
     /// Internal, not `private`, so a test can pin the default.
     let presentation: NewChildReadyPresentation
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     @State private var showConfirm = false
     @State private var showReady = false
     @State private var sealFailure: String?
+    /// Set by the sheet's button; the action runs in `onDismiss`, so the ready
+    /// alert is not presented while the sheet is still on its way out.
+    @State private var startAfterSheetDismiss = false
 
     init(presentation: NewChildReadyPresentation = .toast,
          onReset: @escaping () -> Void = {},
@@ -144,6 +149,24 @@ struct NextParticipantControl<Label: View>: View {
         self.presentation = presentation
         self.onReset = onReset
         self.label = label()
+    }
+
+    /// At the largest accessibility text sizes the system `confirmationDialog`
+    /// popover on the iPad grows past the screen (measured on the iPad
+    /// 2026-10-21, AX-XXXL: popover 288×960, title 312 pt, "Neues Kind starten"
+    /// 256×232 pt at y=812…1044 on a 1024 pt screen, not hittable, accessibility
+    /// scroll-to-visible fails — the proctor could not confirm). A dialog cannot
+    /// scroll, so on that one path the same copy and the same two buttons are
+    /// shown in a sheet whose text scrolls and whose buttons stay pinned. Only the Research Dashboard (`.alert`)
+    /// entry uses it: the rail's dialog was measured reachable, and default
+    /// sizes are untouched everywhere.
+    private var confirmsInScrollingSheet: Bool {
+        presentation == .alert && dynamicTypeSize.isAccessibilitySize
+    }
+
+    private var confirmMessageText: String {
+        vm.comparisonRunBanner.map { "\($0)\n\n" + NextParticipantCopy.confirmMessage }
+            ?? NextParticipantCopy.confirmMessage
     }
 
     var body: some View {
@@ -154,42 +177,54 @@ struct NextParticipantControl<Label: View>: View {
         }
         .confirmationDialog(
             NextParticipantCopy.confirmTitle,
-            isPresented: $showConfirm,
+            isPresented: Binding(
+                get: { showConfirm && !confirmsInScrollingSheet },
+                set: { showConfirm = $0 }
+            ),
             titleVisibility: .visible
         ) {
             Button(NextParticipantCopy.startButton, role: .destructive) {
-                vm.resetForNewParticipant()
-                // A seal that could not be confirmed changed nothing: say
-                // so, and do not claim a new child is ready (R-050).
-                if let failure = vm.participantSealFailure {
-                    sealFailure = failure
-                    return
-                }
-                // NON-BLOCKING ON THE RAIL. This used to set a modal alert
-                // everywhere, and a modal alert BLOCKS the tracing canvas
-                // until dismissed — so the proctor had to tap OK before the
-                // child could draw, for a message whose whole content is that
-                // nothing needs doing ("…die App ist sofort startklar").
-                // REPORTED by the proctor 2026-10-16: "when I start a new
-                // participant the drawing start waits until the popup is
-                // confirmed". The rail therefore confirms with a toast. The
-                // dashboard is the other entry point and the toast cannot be
-                // seen from there (the parent area covers the Schule world),
-                // so it keeps a visible alert — see `NewChildReadyPresentation`.
-                // The seal-FAILURE alert below stays modal on both, because
-                // that one does require the proctor.
-                if presentation.announcesAsToast {
-                    vm.announceNewChildReady()
-                } else {
-                    showReady = true
-                }
-                onReset()
+                startNewChild()
             }
             Button(NextParticipantCopy.cancelButton, role: .cancel) {}
         } message: {
             // A comparison run is named at the enrolment gate (R-017).
-            Text(vm.comparisonRunBanner.map { "\($0)\n\n" + NextParticipantCopy.confirmMessage }
-                 ?? NextParticipantCopy.confirmMessage)
+            Text(confirmMessageText)
+        }
+        .sheet(isPresented: Binding(
+            get: { showConfirm && confirmsInScrollingSheet },
+            set: { showConfirm = $0 }
+        ), onDismiss: {
+            guard startAfterSheetDismiss else { return }
+            startAfterSheetDismiss = false
+            startNewChild()
+        }) {
+            // Title and message scroll; the two buttons are PINNED below them,
+            // so the confirm is on screen at any text size without a scroll.
+            VStack(spacing: 16) {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        Text(NextParticipantCopy.confirmTitle)
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                        Text(confirmMessageText)
+                            .font(.body)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                Button(NextParticipantCopy.startButton, role: .destructive) {
+                    startAfterSheetDismiss = true
+                    showConfirm = false
+                }
+                .buttonStyle(.borderedProminent)
+                Button(NextParticipantCopy.cancelButton, role: .cancel) {
+                    showConfirm = false
+                }
+                .buttonStyle(.bordered)
+            }
+            .padding(24)
+            .presentationDetents([.large])
         }
         .alert(NextParticipantCopy.readyTitle, isPresented: $showReady) {
             Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
@@ -204,5 +239,35 @@ struct NextParticipantControl<Label: View>: View {
         } message: {
             Text(sealFailure ?? "")
         }
+    }
+
+    /// The confirmed action, shared by the dialog button and the sheet button.
+    private func startNewChild() {
+        vm.resetForNewParticipant()
+        // A seal that could not be confirmed changed nothing: say
+        // so, and do not claim a new child is ready (R-050).
+        if let failure = vm.participantSealFailure {
+            sealFailure = failure
+            return
+        }
+        // NON-BLOCKING ON THE RAIL. This used to set a modal alert
+        // everywhere, and a modal alert BLOCKS the tracing canvas
+        // until dismissed — so the proctor had to tap OK before the
+        // child could draw, for a message whose whole content is that
+        // nothing needs doing ("…die App ist sofort startklar").
+        // REPORTED by the proctor 2026-10-16: "when I start a new
+        // participant the drawing start waits until the popup is
+        // confirmed". The rail therefore confirms with a toast. The
+        // dashboard is the other entry point and the toast cannot be
+        // seen from there (the parent area covers the Schule world),
+        // so it keeps a visible alert — see `NewChildReadyPresentation`.
+        // The seal-FAILURE alert in `body` stays modal on both, because
+        // that one does require the proctor.
+        if presentation.announcesAsToast {
+            vm.announceNewChildReady()
+        } else {
+            showReady = true
+        }
+        onReset()
     }
 }

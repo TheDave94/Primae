@@ -190,6 +190,8 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 
 **Recommendation.** Schedule 2–3 hours with VoiceOver enabled on the iPad before submitting the thesis to anyone external.
 
+**Automated audit, 2026-10-21 (iPad13,8, Debug-Study).** `PrimaeUITests/AccessibilityAuditUITests` runs `performAccessibilityAudit()` on every screen the study build compiles (tracing per phase, parent area, enrolment confirm and ready alert, the blocked-start gate on a fresh install) at the default and the largest accessibility text size, and records element order per screen. Fixed: the parent-area gear was exposed as an image, now carries the button trait (`WorldSwitcherRail.swift`). Moot in the study build: the "Weiter vs celebration" order (the celebration overlay is not compiled in) and the direct-phase dots (the direct phase does not run). Open, David's call: at the largest text size the "Neuer Teilnehmer" confirm in the parent area is unreachable (visual change; the rail's "Nächstes Kind" path works); whether the new-child toast is announced to VoiceOver; whether the gear gets an accessibility action, which would bypass the 2 s long-press gate. **Still needs a human on the iPad:** what VoiceOver actually speaks and in what order (the audit cannot confirm hidden elements are skipped), the gear long-press under VoiceOver, Switch Control and AssistiveTouch. Receipt: `wt-primae-audit-notes/lanes-2026-10-21/B/RECEIPT.md`.
+
 ---
 
 ## 4. TECHNICAL DEBT
@@ -271,6 +273,8 @@ matter to the outcome, that is a finding for the main study, not a pilot blocker
    - Throttle recorder writes to ~30 Hz (every other touch event). Coalescing halves redraw count without the child noticing.
 
 **Recommendation.** Don't pre-optimise. Profile only after a real classroom user reports lag or the device-test job reports a frame drop.
+
+**Measured 2026-10-21 (iPad13,8, 120 Hz, Debug-Study, synthetic finger drags 150–3200 pt/s, N=50).** `TracingCanvasView.body` evaluations per touch event = **0** (live ink is read inside the Canvas closure), so the >60 body-invocations/s trigger above is not met and `.equatable()` layers would not help. The Canvas closure redraws once per accepted ink point, capped at the display rate (~120/s here, ≤60/s on a 60 Hz iPad), at ~1.5 ms per draw of the 8.3 ms budget, with 0 hitches over 25 drags. The metric to watch is Canvas draws, not body. Unmeasured: GPU raster time (no Instruments trace from a sandboxed seat), Apple Pencil input, and older iPads. Receipt: `wt-primae-audit-notes/lanes-2026-10-21/C/RECEIPT.md`.
 
 ---
 

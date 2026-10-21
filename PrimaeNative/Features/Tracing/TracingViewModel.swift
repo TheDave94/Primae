@@ -4673,7 +4673,15 @@ public final class TracingViewModel {
     /// asserts it — only its presentation moved here.
     func announceNewChildReady() {
         messages.show(toast: NextParticipantCopy.readyMessage)
+        // The toast is a visual-only confirmation; a VoiceOver proctor who
+        // double-tapped the rail would otherwise get no feedback at all
+        // (U10, 2026-10-21). Announced, not focused: nothing moves.
+        accessibilityAnnouncer.announce(NextParticipantCopy.readyMessage)
     }
+
+    /// Where VoiceOver announcements go. Replaced in tests; the default posts
+    /// to the system.
+    @ObservationIgnored var accessibilityAnnouncer: any AccessibilityAnnouncing = SystemAccessibilityAnnouncer()
 
     /// "Nächstes Kind". Seals the outgoing child, wipes the live stores,
     /// enrols a new participant and re-derives the arms in place.
