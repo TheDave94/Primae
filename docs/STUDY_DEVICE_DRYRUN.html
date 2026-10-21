@@ -145,7 +145,7 @@
 <p>For <strong>each of the five letters</strong>, one at a time:</p>
 <ol>
 <li>Tap <strong>"Vortest starten: <code>&lt;letter&gt;</code>."</strong> The parent area closes immediately and drops you straight onto the canvas.</li>
-<li>The canvas shows a blank glyph — no ghost line, no demonstration. While you write, the sound arms couple exactly as in every other writing pass (Phonem plays the letter's sound under the pen, Raumklang the carrier — the outcome passes sound too, that is the design, P2) and <strong>Ohne Ton stays silent</strong>. No spoken instruction here: a probe phase has no phase-entry cue. Write the letter once from memory.</li>
+<li>The canvas shows a blank glyph — no ghost line, no demonstration. While you write, <strong>no arm plays any sound</strong> — every cold probe is sound-off in every arm since protocol r12 (2026-10-21; under r2-r11 Phonem and Raumklang sounded here). If you hear the letter's sound or the carrier under the pen during a probe, that is a defect. No spoken instruction here: a probe phase has no phase-entry cue. Write the letter once from memory.</li>
 <li>After you lift and pause briefly, the trial scores and the canvas goes idle (no celebration, no badge — a cold probe gets no reward-class feedback).</li>
 <li>Long-press the gear again, back to Forschungs-Daten, tap the next letter's pretest button. Repeat until all five are done.</li>
 </ol>
@@ -193,7 +193,7 @@
 <li><strong>After you lift: nothing, under study mode</strong> — except after the LAST trained letter of the set; see "End of the set" below. In the casual app a dark KP overlay would compare your trace to the reference, followed by a star-count celebration screen ("Geschafft!" + stars) — but under study mode BOTH are gated off (<code>celebrateFreeWrite</code> and <code>recordSessionCompletion</code> in <code>PhaseTransitionCoordinator</code> each gate on <code>!vm.studyMode</code>), and the views themselves (<code>CompletionCelebrationOverlay</code>, the freeWrite KP overlay) are compiled out of the study binary entirely. After the ~2 s quiet window following your last touch, the canvas simply goes idle — no overlay, no stars, no chime, in any arm. What you will <strong>not</strong> see in any arm, casual or study: the coloured recognition badge or the guided-score feedback card — both are reward-class feedback suppressed under study mode regardless of what else changes.</li>
 <li><strong>There is no "Weiter" button under study mode</strong> — it belongs to the celebration screen, which doesn't exist here. To move to the next trained letter, press the <strong>right-arrow (chevron) nav button</strong> in the bottom bar (<code>nextLetter()</code>); the left-arrow (<code>previousLetter()</code>) goes back. Then repeat 4a–4d. The demonstration in 4a plays again on every letter entry — that's intended (every trace is preceded by the same exposure), not a repeat-content bug.</li>
 </ul>
-<p>After the third trained letter's FreeWrite, training is done. <strong>There is no separate "post-test" step for the three trained letters</strong> — that FreeWrite pass you just did already is their post-test measure.</p>
+<p>After the third trained letter's FreeWrite, training is done. That FreeWrite was <strong>practice</strong>, not the post-test (protocol r12, 2026-10-21; under r1-r11 it was taken as the trained letters' post-test). <strong>All five letters, the three trained ones included, get their own cold post-test in Section 5.</strong></p>
 <p><strong>End of the set — what you hear and see (protocol revision 9; since r7 only a TRAINING pass ends the set, never a cold probe).</strong> When the LAST trained letter's FreeWrite is recorded in training (<code>PhaseTransitionCoordinator</code>, <code>} else if vm.currentProbe == nil, vm.isLastLetterOfSet {</code>):</p>
 <ul>
 <li><strong>All three arms play the recorded "Super gemacht!"</strong> — content is identical in every arm (<code>vm.prompts.play(.celebration, …)</code>; <code>.celebration</code> is in <code>StudyVoiceoverPromptPlayer.studySpokenKeys</code>).</li>
@@ -202,13 +202,13 @@
 <li><strong>The chevron stops advancing</strong> — the set is over (<code>nextLetter()</code>: <code>guard !awaitingNextParticipant else { return }</code>). That is the hand-over signal: enrol the next child with the rail double-tap ("Nächstes Kind"). If the chevron still moves to another letter after the last one, that is a defect.</li>
 </ul>
 <hr>
-<h2>5 · Post-test (the two untrained letters)</h2>
-<p>Long-press the gear → Forschungs-Daten → <strong>"Post-Test (ungeübte Buchstaben)."</strong> Exactly two buttons here, for the two letters this participant did NOT train.</p>
-<p>For each of the two:</p>
+<h2>5 · Post-test (all five letters)</h2>
+<p>Long-press the gear → Forschungs-Daten → <strong>"Post-Test (alle fünf Buchstaben, nach dem Training)."</strong> Five buttons, one per study letter, trained and untrained alike (protocol r12, 2026-10-21; under r1-r11 only the two untrained letters were offered).</p>
+<p>For each of the five:</p>
 <ol>
 <li>Tap <strong>"Post-Test starten: <code>&lt;letter&gt;</code>."</strong> Drops straight to canvas.</li>
-<li>Same as pretest: blank canvas, no ghost, no demonstration, single cold FreeWrite attempt; the sound arms sound while you write (as in Section 3), Ohne Ton stays silent. Repeating a probe, or starting a post-test before the child's set is complete, asks you to confirm (warned, never blocked; r8).</li>
-<li>Long-press the gear, back to Forschungs-Daten, do the second letter.</li>
+<li>Same as pretest: blank canvas, no ghost, no demonstration, single cold FreeWrite attempt, sound-off in every arm (as in Section 3). Repeating a probe, or starting a post-test before the child's set is complete, asks you to confirm (warned, never blocked; r8).</li>
+<li>Long-press the gear, back to Forschungs-Daten, do the next letter.</li>
 </ol>
 <p>That's the end of the session for this run.</p>
 <hr>
@@ -218,7 +218,7 @@
 <ul>
 <li>the participant ID matching the "Aktiver Teilnehmer" card (in the combined file, in that child's block),</li>
 <li>a header line naming <code>enrolledAt</code>,</li>
-<li>one row per <strong>phase</strong> completed, not per letter — each row carries its own <code>phase</code> (observe/direct/guided/freeWrite) and, for the cold probes, a <code>probe</code> column (pretest/posttest). Each cold probe (a pretest or post-test letter) opens straight into freeWrite, so it writes exactly <strong>1 row</strong>: <strong>5 pretest rows</strong> (one per letter) and <strong>2 post-test rows</strong> (one per letter). Each of the <strong>3 trained letters</strong> writes <strong>up to 3 rows</strong> — one per phase it completed (observe, guided, freeWrite; <code>direct</code> no longer runs, see 4b) — all written together at that letter's freeWrite completion. That caps a clean run at <strong>5 + (3 × 3) + 2 = 16 rows</strong>, fewer if a trained letter's session ended before every phase scored (e.g. you had to abandon a letter mid-phase). Nothing should be entirely missing for a letter you actually wrote.</li>
+<li>one row per <strong>phase</strong> completed, not per letter — each row carries its own <code>phase</code> (observe/direct/guided/freeWrite) and, for the cold probes, a <code>probe</code> column (pretest/posttest). Each cold probe (a pretest or post-test letter) opens straight into freeWrite, so it writes exactly <strong>1 row</strong>: <strong>5 pretest rows</strong> (one per letter) and <strong>5 post-test rows</strong> (one per letter, r12; 2 under r1-r11). Each of the <strong>3 trained letters</strong> writes <strong>up to 3 rows</strong> — one per phase it completed (observe, guided, freeWrite; <code>direct</code> no longer runs, see 4b) — all written together at that letter's freeWrite completion. That caps a clean run at <strong>5 + (3 × 3) + 5 = 19 rows</strong>, fewer if a trained letter's session ended before every phase scored (e.g. you had to abandon a letter mid-phase). Nothing should be entirely missing for a letter you actually wrote.</li>
 </ul>
 <p>If the export is empty or missing rows, that's a defect — stop and flag it rather than starting the next run.</p>
 <hr>

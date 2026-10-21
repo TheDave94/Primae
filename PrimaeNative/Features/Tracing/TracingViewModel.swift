@@ -2135,8 +2135,10 @@ public final class TracingViewModel {
         toast("Buchstabe: \(currentLetterName)")
     }
 
-    /// H6 post-test: load one of the two study letters this participant
-    /// does NOT train, for a single COLD `freeWrite` pass. `load(letter:)`
+    /// Post-test: load any of the five study letters, trained or not, for
+    /// a single COLD, sound-off `freeWrite` pass (protocol r12, David
+    /// 2026-10-21, "Cold probe for all"; H6 built it for the untrained
+    /// pair only). `load(letter:)`
     /// normally resets into `observe` (or `guided`, per thesis condition);
     /// this jumps straight to `freeWrite` instead, because reaching
     /// observe or guided at all would BE training the letter — the exact
@@ -2145,10 +2147,9 @@ public final class TracingViewModel {
     /// already stamped on every `PhaseSessionRecord`, so a freeWrite row
     /// for a letter outside it is already legible as untrained.
     ///
-    /// Guarded on `studyMode` and on the letter actually being untrained —
-    /// the researcher UI only ever offers the untrained pair, but the VM
-    /// re-checks so a stale UI state can't start a real practice session
-    /// under the post-test label. `loadLetter` itself is NOT gated by
+    /// Guarded on `studyMode` and on the letter being a study letter
+    /// (`StudyProbe.permits`); before r12 also on the letter being
+    /// untrained. `loadLetter` itself is NOT gated by
     /// `visibleLetterNames` (that filter is UI-only), which is what makes
     /// this reachable at all.
     @discardableResult
@@ -2160,8 +2161,8 @@ public final class TracingViewModel {
     /// (2026-09-04, generalising the H6 post-test route). `.pretest` and
     /// `.delayed` accept any of the five study letters — the thesis's
     /// pretest covers all five, trained included, and so does the delayed
-    /// retention test; `.posttest` keeps H6's restriction to the untrained
-    /// pair. The kind is stamped on the letter's rows. Refused outside
+    /// retention test; since r12 `.posttest` does too (H6's restriction
+    /// to the untrained pair is gone). The kind is stamped on the letter's rows. Refused outside
     /// study mode and for any letter outside the study set.
     /// Returns `nil` on success, or a short German proctor-facing reason
     /// when the probe was silently refused (2026-09-15: the researcher UI
@@ -2205,8 +2206,8 @@ public final class TracingViewModel {
     func startColdProbe(letter: String, kind: StudyProbe) -> String? {
         // After a reset/restore the arms in memory are stale until relaunch
         // (review 2026-09-05). Only that block applies here: a probe writes
-        // under whatever arm is current, coupling to its sound like every
-        // other writing pass (P2) — whose recording is checked below.
+        // under whatever arm is current (sound-off since r12; the arm's
+        // recording is still checked below, see r12 in DECISIONS.md).
         guard !(studyMode && participantIdentityChanged) else {
             return "Teilnehmer gewechselt — App neu starten"
         }
@@ -2216,19 +2217,13 @@ public final class TracingViewModel {
         if let studyLetterSourceFailure {
             return "Keine Buchstaben aus dem Bundle geladen (\(studyLetterSourceFailure))"
         }
-        // Under the `allFiveLetters` comparison switch there is no
-        // untrained letter, so the post-test has no population at all —
-        // `permits` below would refuse every letter for that reason, but
-        // its generic message reads as a per-letter refusal and hides the
-        // fact that the whole design's within-child contrast is
-        // unavailable in this configuration. Say so, and say why (2026-09-17).
-        //
-        // Keyed on the STATE (an empty untrained set), not on the switch
-        // label, so it stays true if some other configuration ever
-        // trains every letter.
-        if kind == .posttest, effectiveTrainedSubset.untrainedLetters.isEmpty {
-            return "Kein Post-Test in dieser Sitzung: das Kind hat alle fünf Buchstaben geübt — es gibt keinen ungeübten Buchstaben. Der Vergleich geübt/ungeübt entfällt damit, und die Sitzung ist ein Vergleichslauf, kein Pilotenlauf."
-        }
+        // r12 (David 2026-10-21, "Cold probe for all"): the post-test
+        // accepts every study letter, so the 2026-09-17 refusal under the
+        // `allFiveLetters` switch (no untrained letter, "no post-test
+        // population") is gone — every letter now has its own cold
+        // post-test. The trained/untrained contrast is still unavailable
+        // in that configuration; the research dashboard says so, and the
+        // rows' `trainedSubset` ("AFILM") marks it.
         guard kind.permits(letter: letter,
                            untrained: effectiveTrainedSubset.untrainedLetters,
                            studyLetters: studyBaseLetters) else {

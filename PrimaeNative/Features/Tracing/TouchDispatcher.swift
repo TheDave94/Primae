@@ -541,23 +541,31 @@ final class TouchDispatcher {
             vm.playback.request(.idle, immediate: true)
             return
         }
-        // Sound-off production was the locked pilot design ("sound-off
-        // post-test", DECISIONS.md header; thesis Ch.2 §2.5 / Ch.6) and
-        // the coupling was gated here accordingly on 2026-09-04.
+        // COLD PROBES ARE SILENT IN EVERY ARM (protocol r12, David
+        // 2026-10-21, option C: "probes silent"). A pretest, post-test or
+        // delayed probe (`startColdProbe(letter:kind:)`, rows stamped with
+        // `PhaseSessionRecord.probe`) requests no arm sound and drives no
+        // coupling, so every arm is tested under the same sound-off
+        // condition and a probe score is not sound-guided performance.
+        // Short-circuited here, BEFORE `ArmCoupling.apply`, exactly like
+        // the silent arm above. The predicate is `currentProbe != nil`:
+        // `load(letter:)` sets it from the one-shot probe override and
+        // clears it on every training load, and it is what the rows are
+        // stamped with — so the gate and the record cannot disagree about
+        // which freeWrite was a probe.
         //
-        // LIFTED 2026-10-02 on the proctor's explicit instruction, after
-        // a device run: "no audio for the free write mode". The child now
-        // hears their arm's sound in the unassisted draw too, so the
-        // letter is not traced in silence while the guided pass carried
-        // the sound — which is what made the two passes feel like
-        // different activities rather than two attempts at one letter.
-        //
-        // The silent arm is untouched and still returns above: this arm's
-        // condition is the absence of sound, so it cannot be brought in by
-        // a change to the two sound arms. The thesis statements that
-        // described sound-off freeWrite production (Ch.2 §2.5, Ch.6, and
-        // the DECISIONS.md header) now need to move with this; that is
-        // David's call and is recorded here rather than left implicit.
+        // The session's OWN freeWrite keeps the arm's sound (practice):
+        // sound-off freeWrite was the 2026-09-04 design, LIFTED 2026-10-02
+        // on the proctor's instruction ("no audio for the free write
+        // mode" — the child heard the guided pass with sound and the
+        // unassisted draw in silence, two different activities). r12
+        // restores sound-off for the outcome passes only, which is where
+        // the thesis (Ch.2 §2.5, Ch.6, the DECISIONS.md header) already
+        // places it — the code now matches it.
+        if vm.currentProbe != nil {
+            vm.playback.request(.idle, immediate: true)
+            return
+        }
         let azimuthBias = vm.pencilPressure != nil ? cos(vm.pencilAzimuth) * 0.2 : 0
         // Rate from velocity; pan follows absolute x across the whole
         // canvas (not the active cell), so a right-hand cell sounds from
@@ -605,9 +613,10 @@ final class TouchDispatcher {
         // was a mask: a letter written anywhere else, or larger or smaller,
         // fell silent. David: the letter's mask must go — "it must be
         // tracked wherever on the screen it is drawn". In free-writing
-        // (the session's free-write and every cold probe) the sound arms'
-        // sound now follows the pen anywhere on the canvas (the
-        // out-of-bounds edge above still stops it). Guided keeps the gate.
+        // (the session's free-write; cold probes are silent since r12 and
+        // returned above) the sound arms' sound follows the pen anywhere
+        // on the canvas (the out-of-bounds edge above still stops it).
+        // Guided keeps the gate.
         let ungated             = vm.phaseController.currentPhase == .freeWrite
         let shouldPlayForStroke = ungated || vm.strokeTracker.isNearStroke
         let shouldBeActive      = shouldPlayForStroke

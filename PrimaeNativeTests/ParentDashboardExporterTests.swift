@@ -351,13 +351,15 @@ struct ParentDashboardExporterTests {
 
     // MARK: - Derived post-test tag for a trained letter's final pass
 
-    /// A trained letter's post-test is the freeWrite phase of its FINAL
-    /// training pass (thesis Ch.6) — the live app never tags this row
-    /// (`StudyProbe.posttest` refuses a trained letter), so the export
-    /// must derive it: the later of two completed freeWrite rows for a
+    /// r1-r11 ROWS (explicitly `protocolRevision: 11`): a trained letter's
+    /// post-test is the freeWrite phase of its FINAL training pass (thesis
+    /// Ch.6) — the live app of those revisions never tagged this row
+    /// (`StudyProbe.posttest` refused a trained letter), so the export
+    /// derives it: the later of two completed freeWrite rows for a
     /// trained letter gets `probe == "posttest"`; the earlier one does
     /// not, and an untrained letter's live-tagged post-test row is
-    /// untouched.
+    /// untouched. From r12 the derivation is off — see
+    /// `csvDerivesNoPostTestTagFromR12`.
     @Test func csvDerivesPostTestTagForFinalTrainedPass() {
         var snap = DashboardSnapshot()
         let earlier = Date(timeIntervalSince1970: 1_770_000_000)
@@ -365,18 +367,18 @@ struct ParentDashboardExporterTests {
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "A", phase: "freeWrite", completed: true,
             score: 0.6, schedulerPriority: 0, condition: .threePhase,
-            recordedAt: earlier, trainedSubset: "AFI"
+            recordedAt: earlier, trainedSubset: "AFI", protocolRevision: 11
         ))
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "A", phase: "freeWrite", completed: true,
             score: 0.7, schedulerPriority: 0, condition: .threePhase,
-            recordedAt: later, trainedSubset: "AFI"
+            recordedAt: later, trainedSubset: "AFI", protocolRevision: 11
         ))
         // Untrained letter's post-test, already tagged live by the app.
         snap.phaseSessionRecords.append(PhaseSessionRecord(
             letter: "L", phase: "freeWrite", completed: true,
             score: 0.5, schedulerPriority: 0, condition: .threePhase,
-            recordedAt: later, trainedSubset: "AFI", probe: "posttest"
+            recordedAt: later, trainedSubset: "AFI", probe: "posttest", protocolRevision: 11
         ))
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
@@ -414,5 +416,50 @@ struct ParentDashboardExporterTests {
                 "The later (final) trained pass must be tagged posttest — found:\n\(laterRow ?? "<missing>")")
         #expect(probeValue(of: untrainedRow) == "posttest",
                 "The live-tagged untrained post-test row must be unaffected — found:\n\(untrainedRow ?? "<missing>")")
+    }
+
+    /// r12 (David 2026-10-21, "Cold probe for all"): a trained letter has
+    /// its own LIVE cold post-test row, and its final training freeWrite
+    /// is practice — the export derives NO tag for it. Exactly one
+    /// "posttest" row per letter. Also: an r11 earlier pass is not
+    /// promoted when the letter's final training freeWrite is r12.
+    @Test func csvDerivesNoPostTestTagFromR12() {
+        var snap = DashboardSnapshot()
+        let t0 = Date(timeIntervalSince1970: 1_770_000_000)
+        func row(_ letter: String, _ score: Double, _ dt: Double, rev: Int, probe: String? = nil) -> PhaseSessionRecord {
+            PhaseSessionRecord(letter: letter, phase: "freeWrite", completed: true,
+                               score: score, schedulerPriority: 0, condition: .threePhase,
+                               recordedAt: t0.addingTimeInterval(dt), trainedSubset: "AFI",
+                               probe: probe, protocolRevision: rev)
+        }
+        snap.phaseSessionRecords.append(row("A", 0.6, 0, rev: 12))                     // training
+        snap.phaseSessionRecords.append(row("A", 0.7, 100, rev: 12))                   // final training = practice
+        snap.phaseSessionRecords.append(row("A", 0.8, 200, rev: 12, probe: "posttest")) // live cold post-test
+        snap.phaseSessionRecords.append(row("L", 0.5, 200, rev: 12, probe: "posttest"))
+        snap.phaseSessionRecords.append(row("F", 0.3, 0, rev: 11))                     // r11 earlier pass …
+        snap.phaseSessionRecords.append(row("F", 0.4, 100, rev: 12))                   // … final pass is r12
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
+        let allLines = csv.components(separatedBy: "\n")
+        let header = allLines.first { $0.hasPrefix("letter,phase,") } ?? ""
+        guard let probeIndex = header.components(separatedBy: ",").firstIndex(of: "probe") else {
+            Issue.record("the CSV header has no `probe` column — header was: \(header)")
+            return
+        }
+        func probe(_ scoreText: String) -> String? {
+            allLines.first { $0.contains(",freeWrite,") && $0.contains(scoreText) }
+                .map { $0.components(separatedBy: ",") }
+                .flatMap { $0.indices.contains(probeIndex) ? $0[probeIndex] : nil }
+        }
+        #expect(probe("0.7000") == "", "r12: the final training freeWrite is practice, not a derived post-test")
+        #expect(probe("0.6000") == "")
+        #expect(probe("0.8000") == "posttest", "the live cold post-test row keeps its tag")
+        #expect(probe("0.3000") == "" && probe("0.4000") == "",
+                "F's final training freeWrite is r12: no derived tag, and the earlier r11 pass is not promoted")
+        let postTestRowsForA = allLines.filter { line in
+            line.hasPrefix("A,freeWrite,") && line.components(separatedBy: ",").indices.contains(probeIndex)
+                && line.components(separatedBy: ",")[probeIndex] == "posttest"
+        }
+        #expect(postTestRowsForA.count == 1, "exactly one post-test row for a trained letter from r12, got \(postTestRowsForA)")
     }
 }

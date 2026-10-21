@@ -188,6 +188,14 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// this field on export-time COPIES ONLY (`withDerivedPostTestTags`)
     /// to close that gap; nothing in the running app ever mutates a live
     /// record, and this mutability is not used anywhere else.
+    /// FROM PROTOCOL r12 (David 2026-10-21, "Cold probe for all") the
+    /// premise above holds only for rows RECORDED under r1-r11:
+    /// `StudyProbe.posttest` now accepts trained letters, so an r12+
+    /// trained letter has its own live cold "posttest" row, its final
+    /// training freeWrite is practice, and the exporter derives the tag
+    /// only when that final row's `protocolRevision` is <= 11 (or absent,
+    /// which can only be pre-r12) —
+    /// `ParentDashboardExporter.derivedPostTestLastRevision`.
     var probe: String?
     /// Which COMPARISON configuration this row's session ran under —
     /// `StudyComparisonConfiguration.nonDefaultStamp`, e.g.

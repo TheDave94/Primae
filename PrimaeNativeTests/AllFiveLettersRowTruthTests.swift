@@ -247,24 +247,23 @@ private final class RowCapturingStore: ParentDashboardStoring {
         #expect(vm.currentProbe == .posttest)
     }
 
-    /// Switch ON: the same letter — now TRAINED — must be refused, and
-    /// the reason must say why. Before the fix this returned nil and
-    /// started a probe on a letter the child had practised, which the
-    /// analysis would read as the untrained baseline.
-    @Test("with the switch on the post-test is refused, and says the contrast is unavailable")
-    func switchOnRefusesThePostTestWithItsOwnReason() {
+    /// Switch ON: every letter is TRAINED. Until r12 the post-test was
+    /// refused here ("no untrained letter, no post-test population").
+    /// From r12 (David 2026-10-21, "Cold probe for all") the post-test is
+    /// a cold probe of EVERY study letter, so it is accepted; the row's
+    /// `trainedSubset` "AFILM" still marks that no letter is untrained.
+    @Test("with the switch on the post-test is accepted for every letter (r12), and the row still says all five were trained")
+    func switchOnAcceptsThePostTestForEveryLetter() {
         let vm = studyVM(allFiveLetters: true)
         withAllFiveLettersLoaded(vm)
 
         for letter in TrainedLetterSubset.studyLetters {
             let reason = vm.startColdProbe(letter: letter, kind: .posttest)
-            let text = try? #require(reason)
-            #expect(text != nil,
-                    "\(letter) was accepted for the post-test — under all-five every letter is TRAINED, so this is the fabricated untrained probe back again")
-            #expect(text?.contains("alle fünf") == true,
-                    "the refusal does not say that all five were trained — a proctor reading it sees a per-letter refusal and assumes a bug. Got: \(text ?? "nil")")
-            #expect(vm.currentProbe == nil, "no probe may appear to have started")
+            #expect(reason == nil, "\(letter) was refused for the post-test — r12 accepts every study letter. Got: \(reason ?? "nil")")
+            #expect(vm.currentProbe == .posttest)
+            #expect(vm.learningPhase == .freeWrite)
         }
+        #expect(vm.effectiveTrainedSubset.rawValue == "AFILM")
     }
 
     /// The state the researcher UI branches on. It used to read the
@@ -352,36 +351,13 @@ private final class RowCapturingStore: ParentDashboardStoring {
     /// freeWrite of its final training pass). Under all-five every letter
     /// is trained, so all five must be tagged; before the fix the column
     /// said "AFI" and the tag was derived for three.
-    @Test("the export tags every letter's post-test under the switch")
+    /// r1-r11 rows (explicitly `protocolRevision: 11`); r12 is
+    /// `exporterDerivesNoPostTestFromR12UnderAllFive` below.
+    @Test("the export tags every letter's post-test under the switch (r11 rows)")
     func exporterDerivesPostTestForAllFive() {
         func probeColumn(trainedSubset: String) -> [String: String] {
-            var snap = DashboardSnapshot()
-            for (i, letter) in TrainedLetterSubset.studyLetters.enumerated() {
-                snap.phaseSessionRecords.append(PhaseSessionRecord(
-                    letter: letter, phase: "freeWrite", completed: true, score: 0.6,
-                    schedulerPriority: 0,
-                    recordedAt: Date(timeIntervalSince1970: 1_770_000_000 + Double(i)),
-                    trainedSubset: trainedSubset))
-            }
-            let csv = String(data: ParentDashboardExporter.csvData(
-                from: snap, participantId: UUID(), progress: [:], enrolledAt: nil),
-                             encoding: .utf8)!
-            let lines = csv.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-            let header = lines.first { $0.hasPrefix("letter,phase,") }
-            let cols = (header ?? "").split(separator: ",").map(String.init)
-            guard let subsetIdx = cols.firstIndex(of: "trainedSubset"),
-                  let probeIdx = cols.firstIndex(of: "probe") else { return [:] }
-            var out: [String: String] = [:]
-            for line in lines where line.hasPrefix("A,freeWrite") || line.hasPrefix("F,freeWrite")
-                || line.hasPrefix("I,freeWrite") || line.hasPrefix("L,freeWrite")
-                || line.hasPrefix("M,freeWrite") {
-                let f = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
-                guard f.count > max(subsetIdx, probeIdx) else { continue }
-                #expect(f[subsetIdx] == trainedSubset,
-                        "the row's trainedSubset column is not what was stamped")
-                out[f[0]] = f[probeIdx]
-            }
-            return out
+            Self.probeColumn(trainedSubset: trainedSubset, revision: 11, liveColdPostTests: false)
+                .mapValues { $0.joined() }
         }
 
         let allFive = probeColumn(trainedSubset: "AFILM")
@@ -395,6 +371,65 @@ private final class RowCapturingStore: ParentDashboardStoring {
         let three = probeColumn(trainedSubset: "AFI")
         #expect(three.filter { $0.value == "posttest" }.keys.sorted() == ["A", "F", "I"],
                 "the 3-subset control's derived tags moved: \(three.sorted(by: { $0.key < $1.key }))")
+    }
+
+    /// r12 under the switch: no derived tag on any letter's final training
+    /// freeWrite (practice), and each letter's post-test is its one live
+    /// cold probe row.
+    @Test("r12 under the switch: no derived post-test tag, one cold post-test row per letter")
+    func exporterDerivesNoPostTestFromR12UnderAllFive() {
+        let probes = Self.probeColumn(trainedSubset: "AFILM", revision: 12, liveColdPostTests: true)
+        #expect(probes.count == 5, "expected rows for every study letter, got \(probes)")
+        for letter in TrainedLetterSubset.studyLetters {
+            let values = probes[letter] ?? []
+            #expect(values.filter { $0 == "posttest" }.count == 1,
+                    "\(letter): expected exactly one post-test row (the live cold probe), got \(values)")
+            #expect(values.count == 2 && values.contains(""),
+                    "\(letter): the final training freeWrite must stay untagged (practice), got \(values)")
+        }
+    }
+
+    /// One completed training freeWrite per study letter at `revision`,
+    /// plus (optionally) a live cold post-test row per letter after it;
+    /// returns each letter's `probe` column values in row order.
+    private static func probeColumn(trainedSubset: String, revision: Int,
+                                    liveColdPostTests: Bool) -> [String: [String]] {
+        var snap = DashboardSnapshot()
+        for (i, letter) in TrainedLetterSubset.studyLetters.enumerated() {
+            snap.phaseSessionRecords.append(PhaseSessionRecord(
+                letter: letter, phase: "freeWrite", completed: true, score: 0.6,
+                schedulerPriority: 0,
+                recordedAt: Date(timeIntervalSince1970: 1_770_000_000 + Double(i)),
+                trainedSubset: trainedSubset, protocolRevision: revision))
+        }
+        if liveColdPostTests {
+            for (i, letter) in TrainedLetterSubset.studyLetters.enumerated() {
+                snap.phaseSessionRecords.append(PhaseSessionRecord(
+                    letter: letter, phase: "freeWrite", completed: true, score: 0.6,
+                    schedulerPriority: 0,
+                    recordedAt: Date(timeIntervalSince1970: 1_770_000_100 + Double(i)),
+                    trainedSubset: trainedSubset, probe: "posttest", protocolRevision: revision))
+            }
+        }
+        let csv = String(data: ParentDashboardExporter.csvData(
+            from: snap, participantId: UUID(), progress: [:], enrolledAt: nil),
+                         encoding: .utf8)!
+        let lines = csv.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+        let header = lines.first { $0.hasPrefix("letter,phase,") }
+        let cols = (header ?? "").split(separator: ",").map(String.init)
+        guard let subsetIdx = cols.firstIndex(of: "trainedSubset"),
+              let probeIdx = cols.firstIndex(of: "probe") else { return [:] }
+        var out: [String: [String]] = [:]
+        for line in lines where line.hasPrefix("A,freeWrite") || line.hasPrefix("F,freeWrite")
+            || line.hasPrefix("I,freeWrite") || line.hasPrefix("L,freeWrite")
+            || line.hasPrefix("M,freeWrite") {
+            let f = line.split(separator: ",", omittingEmptySubsequences: false).map(String.init)
+            guard f.count > max(subsetIdx, probeIdx) else { continue }
+            #expect(f[subsetIdx] == trainedSubset,
+                    "the row's trainedSubset column is not what was stamped")
+            out[f[0], default: []].append(f[probeIdx])
+        }
+        return out
     }
 
     // MARK: - Driver

@@ -500,10 +500,11 @@ ProgressStore.recordRecognitionSample
   spoken by `SpeechSynthesizer` (`ChildSpeechLibrary.phaseEntry(.freeWrite)`).
 - No haptics (`feedbackIntensity == 0.0`). Real-time audio is a
   separate gate (§7.3/§7.4): in a STUDY session the sound arms couple
-  in freeWrite exactly as in guided — every writing part sounds,
-  the outcome passes included (the sound-off post-test gate was
-  lifted 2026-10-02), and the silent arm alone stays silent; in the
-  casual app the phoneme keeps sounding as the glyph's auditory anchor.
+  in the session's freeWrite exactly as in guided (the sound-off gate
+  was lifted 2026-10-02), the silent arm stays silent, and from
+  protocol r12 (David, 2026-10-21) every COLD PROBE (pretest,
+  post-test, delayed) is sound-off in every arm; in the casual app the
+  phoneme keeps sounding as the glyph's auditory anchor.
 - On lift-off, the child lifts the pen and the phase ends.
 
 **What the code does**
@@ -609,9 +610,10 @@ learning: A behavioral emphasis* (4th ed.). Human Kinetics.
   2026-09-06, ruling AE-2b — see §7.3/§7.4): the letter sound is the
   glyph's phonemic anchor, not Schmidt & Lee guidance feedback, so it
   no longer fades with the haptics. `updateAdaptivePlayback` instead
-  short-circuits on the silent arm only — in a STUDY session the
-  `.freeWrite` coupling runs exactly like guided (the pilot's
-  sound-off post-test gate was lifted 2026-10-02; see §7.4).
+  short-circuits on the silent arm and, from protocol r12, on a cold
+  probe (`vm.currentProbe != nil`) — otherwise, in a STUDY session, the
+  session's `.freeWrite` coupling runs exactly like guided (the pilot's
+  sound-off gate was lifted 2026-10-02; see §7.4).
 
 **How the implementation differs.** The paper describes a continuous
 fade; this implementation uses four discrete phase-pinned haptic
@@ -1685,11 +1687,23 @@ AE-2b — §4.2, §7.3). Per phase:
 * `.direct`: letter-name audio on first correct dot tap.
 * `.guided`: real-time proximity audio, §7.3's `isNearStroke` +
   velocity gate.
-* `.freeWrite`: the coupling runs in every session. The sound-off
-  post-test gate that once silenced it in a STUDY session was LIFTED
+* `.freeWrite`: the coupling runs in the session's own free-writing.
+  The sound-off gate that once silenced it in a STUDY session was LIFTED
   2026-10-02 on the proctor's instruction, and the guided floor followed
-  on 2026-10-04 — so a letter is no longer traced in silence in either
-  production phase.
+  on 2026-10-04 — so a practice letter is not traced in silence in either
+  production phase. From protocol r12 (David, 2026-10-21, "probes
+  silent") a COLD PROBE — pretest, post-test, delayed, all landing in
+  `.freeWrite` — is sound-off in every arm: `updateAdaptivePlayback`
+  returns idle before the coupling when `vm.currentProbe != nil`, so every
+  arm is tested under the same sound-off condition. The same revision
+  ("Cold probe for all", David 2026-10-21) opens the POST-TEST to all five
+  study letters (`StudyProbe.posttest.permits`): trained letters get a
+  cold, sound-off post-test like the untrained ones, and a trained
+  letter's final training free-writing is practice, not its post-test.
+  From r12 the export no longer derives a `probe = "posttest"` tag for
+  that final training free-writing; rows recorded under r1-r11 keep it
+  (`ParentDashboardExporter.derivedTrainedPostTestIndices`, gated on the
+  row's `protocolRevision` <= 11 or absent).
 
 ---
 
@@ -2545,8 +2559,9 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 > sound was not claimed (Einmal pro Kondition, the spatial axis-sweep
 > switch, whose old 2 s sweep these columns do not measure). A loss during
 > the cue counts as without sound: the sound then starts on the output that
-> is present and is delivered in full. Whether a cut observe sound should
-> be replayed is OPEN (docs/DECISIONS.md, protocol revision 11). The `frechetDistance` row above
+> is present and is delivered in full. A cut observe sound is recorded
+> only and never replayed (David, 2026-10-21: record only; docs/DECISIONS.md,
+> protocol revision 11). The `frechetDistance` row above
 > is retired: it now exports as `frechetDistance_RETIRED_alwaysEmpty`. The
 > authoritative order is the header array in
 > `ParentDashboardExporter.swift`.

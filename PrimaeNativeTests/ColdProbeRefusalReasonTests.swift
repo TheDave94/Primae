@@ -120,22 +120,31 @@ private struct EmptyResourceProvider: LetterResourceProviding {
         #expect(vm.currentProbe == .pretest)
     }
 
-    @Test("a post-test of a TRAINED letter returns a non-nil reason and leaves state unchanged")
-    func postTestOfTrainedLetter_returnsReason_stateUnchanged() {
+    // r12 (David 2026-10-21, "Cold probe for all"): the post-test accepts
+    // every study letter, trained included; it still refuses a non-study one.
+    @Test("a post-test of a TRAINED letter is accepted and opens cold (r12); a non-study letter is still refused")
+    func postTestOfTrainedLetter_accepted_nonStudyRefused() {
         let vm = makeVM(studyMode: true)
         let letterBefore = vm.currentLetterName
         let phaseBefore = vm.learningPhase
-        let reason = vm.startColdProbe(letter: "A", kind: .posttest)   // A is trained (stub AFI)
-        #expect(reason != nil, "a trained letter must be refused for .posttest")
+        let refused = vm.startColdProbe(letter: "Z", kind: .posttest)
+        #expect(refused != nil, "Z is not a study letter and must be refused for .posttest")
         #expect(vm.currentLetterName == letterBefore)
         #expect(vm.learningPhase == phaseBefore)
+        #expect(vm.currentProbe == nil)
 
-        // startPostTest is a thin wrapper over the same guard and must
-        // propagate the same reason.
-        let wrapperReason = vm.startPostTest(letter: "A")
-        #expect(wrapperReason != nil)
-        #expect(vm.currentLetterName == letterBefore)
-        #expect(vm.learningPhase == phaseBefore)
+        let reason = vm.startColdProbe(letter: "A", kind: .posttest)   // A is trained (stub AFI)
+        #expect(reason == nil, "a trained letter must be accepted for .posttest since r12, got: \(reason ?? "nil")")
+        #expect(vm.currentLetterName == "A")
+        #expect(vm.learningPhase == .freeWrite)
+        #expect(vm.currentProbe == .posttest)
+
+        // startPostTest is a thin wrapper over the same guard.
+        let wrapperRefused = vm.startPostTest(letter: "Z")
+        #expect(wrapperRefused != nil)
+        let wrapperReason = vm.startPostTest(letter: "F")             // F is trained too
+        #expect(wrapperReason == nil)
+        #expect(vm.currentLetterName == "F" && vm.currentProbe == .posttest)
     }
 
     @Test("after markParticipantRestored, every probe kind returns a non-nil reason")

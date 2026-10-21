@@ -5,10 +5,13 @@
 // by arm and pass by pass in plain Swift — no rendering, no engine:
 //
 //   P1  silent arm: writing makes NO sound, in any pass.
-//   P2  phoneme / spatial: writing makes sound in EVERY writing part —
-//       guided, free-writing, and the outcome passes (the cold pretest,
-//       post-test and delayed probes; the trained letters' post-test is
-//       the session free-writing row). No sound-free pass, by design.
+//   P2  phoneme / spatial: writing makes sound in the PRACTICE writing
+//       parts — guided and the session's free-writing (practice from
+//       r12; under r1-r11 the trained letters' post-test was that row).
+//   P2' (protocol r12, David 2026-10-21, option C "probes silent"): the
+//       COLD PROBES — pretest, post-test, delayed — make NO arm sound in
+//       either sound arm, so every arm is tested sound-off. Before r12
+//       P2 covered the probes too ("no sound-free pass, by design").
 //   P3  the SPOKEN content is identical in all three arms (David's rule;
 //       "instructions only" was a supervisor paraphrase, withdrawn).
 //   P4  the sound arms hear their sound, steady, for the WHOLE observe
@@ -53,7 +56,11 @@
 //     flip was `effectiveAudio = deps.audio`). (Deleting only `TouchDispatcher`'s silent-arm return
 //     is NOT caught here: `SilentAudio` absorbs it. The two are redundant
 //     layers; this pins the outcome.)
-//   - soundArmsSoundInEveryWritingPass: re-add the removed gate at the top
+//   - coldProbesAreSilentInTheSoundArms (r12): delete the
+//     `if vm.currentProbe != nil { … return }` block in
+//     `TouchDispatcher.updateAdaptivePlayback` (lane J's mutation.patch):
+//     RED, the probe's writing drives the coupling and starts the sound.
+//   - soundArmsSoundInEveryPracticePass: re-add the removed gate at the top
 //     of `TouchDispatcher.updateAdaptivePlayback`'s sound-arm path:
 //     `if vm.studyMode, vm.phaseController.currentPhase == .freeWrite {
 //     vm.playback.request(.idle, immediate: true); return }`.
@@ -242,9 +249,10 @@ fileprivate final class LetterIResourceProvider: LetterResourceProviding {
 // MARK: - The writing passes
 
 /// Every pass in which a study child WRITES. The outcome passes are the
-/// cold probes (`StudyProbe`); the trained letters' post-test is the
-/// session free-writing row (`ParentDashboardExporter
-/// .derivedTrainedPostTestIndices`), so `.sessionFreeWrite` covers it.
+/// cold probes (`StudyProbe`) — from r12 for all five letters; under
+/// r1-r11 the trained letters' post-test was the final session
+/// free-writing row (`ParentDashboardExporter
+/// .derivedTrainedPostTestIndices`), which from r12 is practice.
 enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     case guided, sessionFreeWrite, pretest, posttest, delayed
     var testDescription: String { rawValue }
@@ -369,8 +377,10 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         for _ in 0..<15 { t += 0.01; p.x += 4; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
     }
 
-    @Test("r6: in free-writing and every cold probe the sound arms sound ANYWHERE on the canvas",
-          arguments: [WritingPass.sessionFreeWrite, .pretest, .posttest, .delayed],
+    // r12: the cold probes left this matrix — they are silent
+    // (`coldProbesAreSilentInTheSoundArms`), so "anywhere" is moot there.
+    @Test("r6: in the session's free-writing the sound arms sound ANYWHERE on the canvas",
+          arguments: [WritingPass.sessionFreeWrite],
                      [PilotAudioCondition.phoneme, .spatial])
     func freeWritingSoundsAnywhere(pass: WritingPass, arm: PilotAudioCondition) {
         let audio = RecordingAudio()
@@ -419,15 +429,18 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                 "silent arm, \(pass): the injected engine was reached — \(audio.events)")
     }
 
-    @Test("P2: the sound arms' writing makes sound in every pass, outcome passes included",
-          arguments: [PilotAudioCondition.phoneme, .spatial], WritingPass.allCases)
-    func soundArmsSoundInEveryWritingPass(arm: PilotAudioCondition, pass: WritingPass) async {
+    @Test("P2: the sound arms' writing makes sound in every PRACTICE pass — guided and the session's free-writing",
+          arguments: [PilotAudioCondition.phoneme, .spatial], [WritingPass.guided, .sessionFreeWrite])
+    func soundArmsSoundInEveryPracticePass(arm: PilotAudioCondition, pass: WritingPass) async {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, audio: audio)
         enter(pass, vm)
-        if pass == .pretest || pass == .posttest || pass == .delayed {
-            #expect(vm.currentProbe != nil, "precondition: the \(pass) probe was refused")
-            #expect(vm.learningPhase == .freeWrite, "precondition: a cold probe lands in free-writing")
+        #expect(vm.currentProbe == nil, "precondition: \(pass) is a training pass, not a probe")
+        if pass == .sessionFreeWrite {
+            // Guards the r12 gate against over-reach: the session's own
+            // free-writing is the same phase as a probe and must keep
+            // the arm's sound.
+            #expect(vm.learningPhase == .freeWrite, "precondition: session free-writing (\(vm.learningPhase))")
         }
         // Counted from HERE. The observe sound's delayed start never
         // fires in the session passes — `resume(at:)` leaves observe
@@ -442,6 +455,45 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                 "\(arm), \(pass): the trace coupling never ran")
         #expect(audio.playCount > playsBefore,
                 "\(arm), \(pass): writing did not start the arm's sound — a sound-free writing pass")
+    }
+
+    @Test("P2' (r12): a TRAINED letter's cold post-test is silent in the sound arms too",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func trainedLetterPostTestIsSilent(arm: PilotAudioCondition) async {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, trainsA: true, audio: audio)
+        let refusal = vm.startColdProbe(letter: "A", kind: .posttest)
+        #expect(refusal == nil, "precondition: r12 accepts a trained letter's post-test, got: \(refusal ?? "nil")")
+        #expect(vm.effectiveTrainedSubset.letters.contains("A"), "precondition: A is trained")
+        #expect(vm.currentProbe == .posttest && vm.learningPhase == .freeWrite)
+        let playsBefore = audio.playCount
+        let couplingBefore = audio.setAdaptiveCalls.count
+        write(vm)
+        await vm.awaitPlaybackDebounce()
+        #expect(audio.setAdaptiveCalls.count == couplingBefore && audio.playCount == playsBefore && !audio.isPlaying,
+                "\(arm): the trained letter's post-test sounded — events \(audio.events.suffix(6))")
+    }
+
+    @Test("P2' (r12): a cold probe in a sound arm requests NO arm sound and drives no coupling while the child writes",
+          arguments: [PilotAudioCondition.phoneme, .spatial], [WritingPass.pretest, .posttest, .delayed])
+    func coldProbesAreSilentInTheSoundArms(arm: PilotAudioCondition, pass: WritingPass) async {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio)
+        enter(pass, vm)
+        #expect(vm.currentProbe != nil, "precondition: the \(pass) probe was refused")
+        #expect(vm.learningPhase == .freeWrite, "precondition: a cold probe lands in free-writing")
+        #expect(vm.engineFollowsArm, "precondition: the engine follows the \(arm) arm — the silence is the probe gate, not a closed arm gate")
+        let playsBefore = audio.playCount
+        let couplingBefore = audio.setAdaptiveCalls.count
+        let pitchesBefore = audio.spatialPitches.count
+        write(vm)
+        await vm.awaitPlaybackDebounce()
+        #expect(audio.setAdaptiveCalls.count == couplingBefore,
+                "\(arm), \(pass): the probe's writing drove the trace coupling")
+        #expect(audio.spatialPitches.count == pitchesBefore,
+                "\(arm), \(pass): the probe's writing drove the spatial pitch")
+        #expect(audio.playCount == playsBefore && !audio.isPlaying,
+                "\(arm), \(pass): the probe's writing started the arm's sound — events \(audio.events.suffix(6))")
     }
 
     // MARK: - P4: the whole observe animation
@@ -872,15 +924,14 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
 
     @Test("r7: a re-touch inside the lift hold keeps the sound through the real touch path — no stop, no reload, sounding from the touch-down through the whole next stroke",
           arguments: [PilotAudioCondition.phoneme, .spatial],
-                     [WritingPass.guided, .sessionFreeWrite, .posttest])
+                     // Practice passes only: from r12 a cold probe sounds
+                     // nothing, so it has no sound to keep
+                     // (`coldProbesAreSilentInTheSoundArms`).
+                     [WritingPass.guided, .sessionFreeWrite])
     func reTouchThroughTheTouchPathKeepsTheSound(arm: PilotAudioCondition, pass: WritingPass) {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, audio: audio)
         enter(pass, vm)
-        if pass == .posttest {
-            #expect(vm.currentProbe != nil && vm.learningPhase == .freeWrite,
-                    "precondition: the posttest probe opened in free-writing")
-        }
         // Stroke 1, then the lift — checked before the re-touch.
         var t: CFTimeInterval = 1000
         var p = CGPoint(x: 50, y: 200)

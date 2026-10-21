@@ -766,6 +766,9 @@ Implications:
   D8's outcome passes (pretest, untrained post-test and delayed cold
   probes; the trained letters' final training free-writing) are
   produced WITH the arm's sound in the phoneme and spatial arms.
+  *Superseded by r12 (2026-10-21): every cold probe (pretest, post-test
+  on all five letters, delayed) is sound-off in every arm, and a trained
+  letter's final training free-writing is practice, not an outcome pass.*
 
   *What the code does (`9d8e0df3`).* Sound requires the pen to be on
   the letter path and moving: `shouldBeActive = shouldPlayForStroke &&
@@ -823,8 +826,9 @@ Implications:
   - **Data.** Rows with `protocolRevision` < 6 (or empty) were produced
     with the on-path gate in the sound arms.
   - **Pinned by** `ProtocolMatrixTests.freeWritingSoundsAnywhere`
-    (session free-writing and the three probes, both sound arms, a pen
-    far from letter I) and `.guidedStaysGated`.
+    (session free-writing, both sound arms, a pen far from letter I) and
+    `.guidedStaysGated`. (From protocol r12 the cold probes are sound-off,
+    see "Protocol revision 12" below, and left this test.)
 
 - **D15 — The spoken content is IDENTICAL in all three arms (David,
   2026-10-04; implemented in #34, `875104d5`, protocol revision 4).**
@@ -1008,10 +1012,70 @@ Implications:
     0.000, and any loss counts as without sound. A sound arm whose observe
     sound was not claimed (Einmal pro Kondition, the spatial axis-sweep
     switch) records the same way.
-  - **OPEN, David's.** Should a cut observe sound be replayed, for example
-    by restarting observe from the cue, as an interruption does (D9 /
-    R-006)? That would change what a child hears, so r11 does not decide
-    it. r11 only makes the cost visible in the data.
+  - **CLOSED 2026-10-21 (David, 2026-10-21: record only).** The question
+    was: should a cut observe sound be replayed, for example by restarting
+    observe from the cue, as an interruption does (D9 / R-006)? Ruling 2b,
+    option A: no. A cut observe sound is recorded only, in r11's columns,
+    and never replayed. Nothing a child hears changes; recorded in
+    `StudyProtocol.history` with r12.
+
+- **Protocol revision 12 — cold probes are sound-off in every arm (David,
+  2026-10-21, ruling 2a, option C: "probes silent").** The authoritative
+  text is `StudyProtocol.history` (r12).
+  - **The ruling.** In the two sound arms the trace-coupled arm sound does
+    not play during any cold probe: pretest, post-test and delayed
+    (`startColdProbe(letter:kind:)`, rows tagged `PhaseSessionRecord.probe`).
+    The session's own free-writing keeps the arm's sound (the 2026-10-02
+    lift, ungated since r6 / D14). Guided, observe and the silent arm are
+    unchanged. The five recorded spoken prompts are unchanged and identical
+    in every arm (D15).
+  - **What changes for a child.** In the phoneme and spatial arms, a child
+    writing a probe letter now hears no arm sound while writing: no
+    playback and no rate, pan or pitch coupling. Under r2-r11 the probe's
+    writing sounded exactly like the session's free-writing. Practice
+    (guided and the session's free-writing) sounds as before.
+  - **Why.** Every arm is now tested under identical sound-off conditions,
+    so a probe score measures the child's own production and is not
+    sound-guided performance. Practice keeps the sound, which is where the
+    arms are meant to differ. This restores the "sound-off post-test" of the
+    locked pilot design for the outcome passes; the thesis statements of a
+    sound-off outcome pass now match the code again.
+  - **What the code does.** `TouchDispatcher.updateAdaptivePlayback` returns
+    idle before `ArmCoupling.apply` when `vm.currentProbe != nil`, the same
+    short-circuit as the silent arm. `currentProbe` is set from the probe
+    override at `load(letter:)` and cleared on every training load, and it
+    is the value the rows are stamped with, so the gate and the record
+    agree on which free-writing was a probe.
+  - **Post-test for all five letters (David, 2026-10-21, "Cold probe for
+    all"), same revision.** The post-test probe accepts every study letter
+    (`StudyProbe.posttest.permits`), so the trained letters get a cold,
+    sound-off post-test after their last session, like the untrained ones.
+    A trained letter's final training free-writing is practice, with the
+    arm's sound, not the post-test; every outcome measure is sound-off.
+    Before r12 the post-test accepted the untrained pair only, and a
+    trained letter's post-test was its final training free-writing (thesis
+    Ch.6). The research dashboard offers the post-test on all five letters,
+    and the `allFiveLetters` comparison switch no longer refuses it (the
+    trained/untrained contrast is still unavailable there; `trainedSubset`
+    "AFILM" marks it). From r12 the export no longer derives a
+    post-test tag for the final training freeWrite; earlier rows keep it
+    (`ParentDashboardExporter.derivedTrainedPostTestIndices` tags a
+    letter's final training freeWrite only when that row's
+    `protocolRevision` is <= 11, or absent, which can only be pre-r12;
+    supervisor ruling 2026-10-21). So an r12 trained letter has exactly
+    one "posttest" row, its cold probe.
+  - **Left as is, for David.** `startColdProbe` still refuses a probe when
+    the current arm's recording for that letter is missing (r4, P2 "no
+    outcome pass runs silent in a sound arm"). Under r12 the probe does not
+    play that recording, so the refusal no longer protects the probe
+    itself; it still keeps the arm's assets checked before a probe runs.
+    Whether to keep it is not decided here.
+  - **Data.** Probe rows with `protocolRevision` 2-11 were written with the
+    arm's sound in the sound arms; r1 probes and r12+ probes were sound-off.
+  - **Pinned by** `ProtocolMatrixTests.coldProbesAreSilentInTheSoundArms`
+    (three probes, both sound arms), `.soundArmsSoundInEveryPracticePass`
+    (guided and session free-writing still sound) and
+    `.silentArmMakesNoSoundInAnyWritingPass` (unchanged).
 
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,

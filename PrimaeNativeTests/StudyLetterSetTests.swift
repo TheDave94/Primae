@@ -126,15 +126,14 @@ import CoreGraphics
                 "observe/guided must be skipped entirely — reaching either would train the letter")
     }
 
-    @Test("startPostTest refuses a TRAINED letter — state unchanged")
-    func startPostTest_trainedLetter_isNoOp() {
+    @Test("startPostTest opens a TRAINED letter cold in freeWrite too (r12, all five letters)")
+    func startPostTest_trainedLetter_jumpsToFreeWrite() {
         let vm = makeVM(studyMode: true)
-        let letterBefore = vm.currentLetterName
-        let phaseBefore = vm.learningPhase
         vm.startPostTest(letter: "A")  // A is trained in the stub subset (AFI)
-        #expect(vm.currentLetterName == letterBefore,
-                "a trained letter must not be reachable via the post-test entry point")
-        #expect(vm.learningPhase == phaseBefore)
+        #expect(vm.currentLetterName == "A")
+        #expect(vm.learningPhase == .freeWrite,
+                "r12: a trained letter's post-test is its own cold probe, not its final training free-writing")
+        #expect(vm.currentProbe == .posttest)
     }
 
     @Test("startPostTest is a no-op outside studyMode")
@@ -176,17 +175,18 @@ import CoreGraphics
         #expect(vm.currentProbe == .pretest)
     }
 
-    @Test("delayed probe opens any study letter cold; post-test still refuses a trained one")
-    func delayed_anyLetter_postTest_untrainedOnly() {
+    @Test("delayed probe and post-test (r12) open any study letter cold, trained or not")
+    func delayed_anyLetter_postTest_anyStudyLetter() {
         let vm = makeVM(studyMode: true)
         vm.startColdProbe(letter: "A", kind: .delayed)
         #expect(vm.learningPhase == .freeWrite && vm.currentProbe == .delayed)
-        let before = vm.currentLetterName
-        vm.startColdProbe(letter: "A", kind: .posttest)   // trained → refused
-        #expect(vm.currentLetterName == before && vm.currentProbe == .delayed,
-                "the post-test on a trained letter is its final training pass, not a cold entry")
+        vm.startColdProbe(letter: "F", kind: .posttest)   // trained → allowed since r12
+        #expect(vm.currentLetterName == "F" && vm.learningPhase == .freeWrite && vm.currentProbe == .posttest,
+                "r12: a trained letter gets its own cold post-test; its final training free-writing is practice")
         vm.startColdProbe(letter: "L", kind: .posttest)   // untrained → allowed
         #expect(vm.currentLetterName == "L" && vm.currentProbe == .posttest)
+        vm.startColdProbe(letter: "Z", kind: .posttest)   // not a study letter → refused
+        #expect(vm.currentLetterName == "L", "Z is not a study letter")
     }
 
     @Test("a probe refuses a letter outside the study set and is cleared by the next training load")

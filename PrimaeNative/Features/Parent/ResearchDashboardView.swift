@@ -636,35 +636,35 @@ struct ResearchDashboardView: View {
 
     // MARK: - Post-test (H6)
 
-    /// Reachability for the participant's two UNTRAINED study letters —
-    /// the within-child post-test the design depends on and that has no
-    /// other entry point (`visibleLetterNames` filters them out of the
-    /// normal practice pool by design). Tapping one starts a single COLD
-    /// `freeWrite` pass (see `startPostTest(letter:)`) and leaves the
-    /// parent area so the child sees the tracing canvas directly.
-    /// The study letters this SESSION did not train — the post-test's
-    /// whole population. Empty when the session trained all five (the
-    /// `allFiveLetters` comparison switch), which is exactly the
-    /// condition the section below renders honestly instead of claiming
-    /// a contrast. One owner, read by the count and the button list
-    /// alike, so the prose and the buttons cannot disagree.
+    /// Reachability for the post-test on all five study letters (protocol
+    /// r12, David 2026-10-21, "Cold probe for all"; H6 built it for the
+    /// two UNTRAINED letters only, which have no other entry point —
+    /// `visibleLetterNames` filters them out of the practice pool).
+    /// Tapping one starts a single COLD, sound-off `freeWrite` pass (see
+    /// `startPostTest(letter:)`) and leaves the parent area so the child
+    /// sees the tracing canvas directly.
+    /// The study letters this SESSION did not train. Empty when the
+    /// session trained all five (the `allFiveLetters` comparison switch),
+    /// which the section below states instead of claiming a
+    /// trained/untrained contrast.
     private var untrainedForThisSession: Set<String> {
         vm.effectiveTrainedSubset.untrainedLetters
     }
 
     private var postTestSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Three cold probes (2026-09-04): pretest and delayed test on
-            // all five study letters, post-test on the untrained pair.
-            // Each opens the letter directly in the freeWrite phase —
-            // no demonstration, no scaffolding, audio off, letter not
-            // shown — and tags the row with its kind (`probe` column).
+            // Three cold probes (2026-09-04): pretest, post-test (all five
+            // since r12, 2026-10-21) and delayed test on all five study
+            // letters. Each opens the letter directly in the freeWrite
+            // phase — no demonstration, no scaffolding, audio off (r12),
+            // letter not shown — and tags the row with its kind (`probe`
+            // column).
             sectionHeader(title: "Vortest (alle fünf Buchstaben, vor dem Training)",
                           subtitle: "Einmaliger, kalter Schreibversuch je Buchstabe — Kovariate der Analyse")
             probeButtons(kind: .pretest, letters: TrainedLetterSubset.studyLetters)
 
-            sectionHeader(title: "Post-Test (ungeübte Buchstaben)",
-                          subtitle: "Einmaliger, ungeübter Schreibversuch — kein Vorführen, kein Nachspuren")
+            sectionHeader(title: "Post-Test (alle fünf Buchstaben, nach dem Training)",
+                          subtitle: "Einmaliger, kalter Schreibversuch je Buchstabe ohne Ton — kein Vorführen, kein Nachspuren")
             // Reads the SESSION's untrained set, not the assignment axis
             // (2026-09-17). Under the `allFiveLetters` comparison switch
             // the assignment still names a 3-subset while the child
@@ -674,15 +674,15 @@ struct ResearchDashboardView: View {
             // count and the buttons now come from the same set the
             // export stamps.
             if untrainedForThisSession.isEmpty {
-                Text("In dieser Sitzung wurden ALLE FÜNF Buchstaben geübt (Vergleichseinstellung „Alle fünf Buchstaben üben“). Es gibt damit keinen ungeübten Buchstaben und keinen Post-Test: der Vergleich geübt/ungeübt, auf dem die Auswertung aufbaut, ist in dieser Konfiguration nicht verfügbar. Die Daten dieser Sitzung sind ein Vergleichslauf — die Spalte „trainedSubset“ weist sie als „AFILM“ aus, nicht als 3er-Teilmenge.")
+                Text("In dieser Sitzung wurden ALLE FÜNF Buchstaben geübt (Vergleichseinstellung „Alle fünf Buchstaben üben“). Es gibt damit keinen ungeübten Buchstaben: der Vergleich geübt/ungeübt, auf dem die Auswertung aufbaut, ist in dieser Konfiguration nicht verfügbar. Die Daten dieser Sitzung sind ein Vergleichslauf — die Spalte „trainedSubset“ weist sie als „AFILM“ aus, nicht als 3er-Teilmenge.")
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
             } else {
-                Text("Diese \(untrainedForThisSession.count) Buchstaben hat das Kind NICHT geübt. Ein Antippen startet direkt einen einzigen freien Schreibversuch — Anschauen- und Nachspuren-Phase werden übersprungen, da sie selbst bereits Übung wären. Der Post-Test der geübten Buchstaben ist die Selbst-schreiben-Phase ihres letzten Durchgangs.")
+                Text("Ungeübt: \(untrainedForThisSession.sorted().joined(separator: ", ")). Ein Antippen startet direkt einen einzigen freien Schreibversuch ohne Ton — Anschauen- und Nachspuren-Phase werden übersprungen, da sie selbst bereits Übung wären. Die Selbst-schreiben-Phase des letzten Trainingsdurchgangs ist Übung, nicht der Post-Test.")
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
-                probeButtons(kind: .posttest, letters: Array(untrainedForThisSession).sorted())
             }
+            probeButtons(kind: .posttest, letters: TrainedLetterSubset.studyLetters)
 
             sectionHeader(title: "Nachtest (verzögert, alle fünf Buchstaben)",
                           subtitle: "Wochen später, auf dem wiederhergestellten Teilnehmer (siehe „Teilnehmer wiederherstellen“)")

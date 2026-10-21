@@ -984,6 +984,21 @@ struct ParentDashboardExporter {
     /// freeWrite. `TrainedLetterSubset.init?(rawValue:)` accepts that
     /// value for this reason; a nil here would have dropped the tag from
     /// every letter of an all-five run.
+    ///
+    /// REVISION-GATED since protocol r12 (David 2026-10-21, "Cold probe for
+    /// all"; supervisor ruling on its export). The description above is
+    /// the r1-r11 design and still applies to rows RECORDED under r1-r11:
+    /// pilot data exists under it, so those rows keep the derived tag.
+    /// From r12 `StudyProbe.posttest` accepts every study letter, so a
+    /// trained letter's post-test is its own LIVE cold "posttest" row and
+    /// its final training freeWrite is practice — no derived tag. The gate
+    /// reads the row's own `protocolRevision`, applied to the letter's
+    /// FINAL training freeWrite: if that row is r12+, nothing is tagged
+    /// (an earlier r11 row is not promoted to "final"). A row with NO
+    /// revision (written before the field existed, r1-r3) keeps the old
+    /// behaviour: it can only be pre-r12.
+    static let derivedPostTestLastRevision = 11
+
     private static func derivedTrainedPostTestIndices(in records: [PhaseSessionRecord]) -> Set<Int> {
         var lastIndexPerLetter: [String: Int] = [:]
         for (i, rec) in records.enumerated() {
@@ -996,14 +1011,17 @@ struct ParentDashboardExporter {
             else { continue }
             lastIndexPerLetter[rec.letter] = i
         }
-        return Set(lastIndexPerLetter.values)
+        return Set(lastIndexPerLetter.values.filter {
+            (records[$0].protocolRevision ?? 0) <= derivedPostTestLastRevision
+        })
     }
 
     /// Applies `derivedTrainedPostTestIndices`, returning export-only
     /// copies with `probe` set to `StudyProbe.posttest.rawValue` where
     /// derived — so `probe == "posttest"` finds all five study letters'
-    /// post-test rows (two tagged live, three tagged here), not just the
-    /// two untrained ones. Mutates copies only: `records` was already
+    /// post-test rows (r1-r11: two tagged live, three tagged here; from
+    /// r12 all five are tagged live and none here), not just the two
+    /// untrained ones. Mutates copies only: `records` was already
     /// read from disk/memory before this runs, and nothing here writes
     /// back to any store.
     private static func withDerivedPostTestTags(_ records: [PhaseSessionRecord]) -> [PhaseSessionRecord] {

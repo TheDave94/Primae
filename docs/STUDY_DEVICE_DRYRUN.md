@@ -194,10 +194,10 @@ For **each of the five letters**, one at a time:
 1. Tap **"Vortest starten: `<letter>`."** The parent area closes
    immediately and drops you straight onto the canvas.
 2. The canvas shows a blank glyph — no ghost line, no demonstration.
-   While you write, the sound arms couple exactly as in every other
-   writing pass (Phonem plays the letter's sound under the pen,
-   Raumklang the carrier — the outcome passes sound too, that is the
-   design, P2) and **Ohne Ton stays silent**. No spoken instruction
+   While you write, **no arm plays any sound** — every cold probe is
+   sound-off in every arm since protocol r12 (2026-10-21; under r2-r11
+   Phonem and Raumklang sounded here). If you hear the letter's sound or
+   the carrier under the pen during a probe, that is a defect. No spoken instruction
    here: a probe phase has no phase-entry cue. Write the letter once
    from memory.
 3. After you lift and pause briefly, the trial scores and the canvas
@@ -359,9 +359,11 @@ For **each of the three trained letters** (the ones named on the
   every letter entry — that's intended (every trace is preceded by the
   same exposure), not a repeat-content bug.
 
-After the third trained letter's FreeWrite, training is done. **There
-is no separate "post-test" step for the three trained letters** — that
-FreeWrite pass you just did already is their post-test measure.
+After the third trained letter's FreeWrite, training is done. That
+FreeWrite was **practice**, not the post-test (protocol r12,
+2026-10-21; under r1-r11 it was taken as the trained letters'
+post-test). **All five letters, the three trained ones included, get
+their own cold post-test in Section 5.**
 
 **End of the set — what you hear and see (protocol revision 9; since r7 only
 a TRAINING pass ends the set, never a cold probe).** When
@@ -385,20 +387,20 @@ the LAST trained letter's FreeWrite is recorded in training
 
 ---
 
-## 5 · Post-test (the two untrained letters)
+## 5 · Post-test (all five letters)
 
-Long-press the gear → Forschungs-Daten → **"Post-Test (ungeübte
-Buchstaben)."** Exactly two buttons here, for the two letters this
-participant did NOT train.
+Long-press the gear → Forschungs-Daten → **"Post-Test (alle fünf
+Buchstaben, nach dem Training)."** Five buttons, one per study letter,
+trained and untrained alike (protocol r12, 2026-10-21; under r1-r11
+only the two untrained letters were offered).
 
-For each of the two:
+For each of the five:
 1. Tap **"Post-Test starten: `<letter>`."** Drops straight to canvas.
 2. Same as pretest: blank canvas, no ghost, no demonstration, single
-   cold FreeWrite attempt; the sound arms sound while you write (as in
-   Section 3), Ohne Ton stays silent. Repeating a probe, or starting a
+   cold FreeWrite attempt, sound-off in every arm (as in Section 3). Repeating a probe, or starting a
    post-test before the child's set is complete, asks you to confirm
    (warned, never blocked; r8).
-3. Long-press the gear, back to Forschungs-Daten, do the second
+3. Long-press the gear, back to Forschungs-Daten, do the next
    letter.
 
 That's the end of the session for this run.
@@ -427,11 +429,11 @@ should be able to see:
   probes, a `probe` column (pretest/posttest). Each cold probe (a
   pretest or post-test letter) opens straight into freeWrite, so it
   writes exactly **1 row**: **5 pretest rows** (one per letter) and
-  **2 post-test rows** (one per letter). Each of the **3 trained
+  **5 post-test rows** (one per letter, r12; 2 under r1-r11). Each of the **3 trained
   letters** writes **up to 3 rows** — one per phase it completed
   (observe, guided, freeWrite; `direct` no longer runs, see 4b) — all
   written together at that letter's freeWrite
-  completion. That caps a clean run at **5 + (3 × 3) + 2 = 16 rows**,
+  completion. That caps a clean run at **5 + (3 × 3) + 5 = 19 rows**,
   fewer if a trained letter's session ended before every phase scored
   (e.g. you had to abandon a letter mid-phase). Nothing should be
   entirely missing for a letter you actually wrote.

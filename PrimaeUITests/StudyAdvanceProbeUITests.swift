@@ -713,10 +713,13 @@ final class MeasuredAudioUITests: XCTestCase {
     /// assertion is deliberately NOT added in the same change (scope:
     /// lane H changed how the test draws, not what it claims).
     ///
-    /// r4 sound in the probe passes is covered at unit level by
-    /// `ProtocolMatrixTests.soundArmsSoundInEveryWritingPass` (pretest /
-    /// post-test / delayed) and is planned on the device in
-    /// `.build/audio-measurement-plan.md`.
+    /// SINCE PROTOCOL r12 (David 2026-10-21, "probes silent") a cold probe
+    /// is SILENT in every arm, so the pre-r4 reading (`peak == 0`) is the
+    /// expected one again; it is still NOT asserted here (scope: lane J
+    /// changed the gate, not what this device test claims). The r12 probe
+    /// silence is pinned at unit level by
+    /// `ProtocolMatrixTests.coldProbesAreSilentInTheSoundArms` (pretest /
+    /// post-test / delayed, both sound arms).
     ///
     /// WHAT THIS DOES NOT COVER, stated plainly: any sound claim, and the
     /// freeWrite pass of a normal SESSION (the proctor's original
