@@ -138,16 +138,20 @@ class AccessibilityAuditUITests: XCTestCase {
                       "observe should advance to guided by itself")
         try audit(app, screen: "05-schule-guided")
 
-        // Best effort: trace the letter so the natural session reaches
-        // freeWrite. The fallback (the parent-area cold probe in
-        // `testParentArea`) reaches freeWrite without a trace.
-        traceCurrentLetter(app)
-        if waitForPhase(app, "Selbst schreiben", timeout: 15) {
-            try audit(app, screen: "06-schule-freewrite-natural")
-        } else {
-            attachText("guided trace did not reach freeWrite; see testParentArea for the probe route",
-                       name: "freewrite-natural-not-reached-\(sizeTag)")
+        // Trace the letter along its real strokes (`LetterTracer`, the
+        // app-published geometry) so the session reaches freeWrite by its
+        // own guided gate, then audit the natural freeWrite screen.
+        var last: TracingHookSnapshot?
+        guard let guided = LetterTracer.waitForSnapshot(app, timeout: 15, last: &last, where: {
+            $0.phase == "guided" && !$0.strokes.isEmpty && !$0.blocked
+        }) else {
+            return XCTFail("guided never became traceable: \(last?.summary ?? "no hook")")
         }
+        LetterTracer.assertHookMatchesCanvas(guided, in: app)
+        LetterTracer.traceLetter(guided, in: app)
+        XCTAssertTrue(waitForPhase(app, "Selbst schreiben", timeout: 15),
+                      "the traced letter must advance guided to freeWrite: \(LetterTracer.snapshot(app)?.summary ?? "no hook")")
+        try audit(app, screen: "06-schule-freewrite-natural")
     }
 
     /// Parent area, dashboards, export, the new-child confirm, and the
@@ -224,6 +228,7 @@ class AccessibilityAuditUITests: XCTestCase {
 
     private func launch() -> XCUIApplication {
         let app = XCUIApplication()
+        app.launchArguments += [LetterTracer.launchArgument]
         if let category = contentSizeCategory {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", category]
         }
@@ -308,39 +313,6 @@ class AccessibilityAuditUITests: XCTestCase {
         return target.waitForExistence(timeout: timeout)
     }
 
-    /// Chained straight drags through a downsampled polyline of the current
-    /// letter (see `LetterPolylines`). Best effort.
-    @MainActor
-    private func traceCurrentLetter(_ app: XCUIApplication) {
-        let prefix = "Aktueller Buchstabe "
-        let pill = element(labelPrefix: prefix, in: app)
-        guard pill.waitForExistence(timeout: 5) else { return }
-        let letter = String(pill.label.dropFirst(prefix.count))
-        guard let strokes = LetterPolylines.table[letter] else {
-            attachText("no polyline for letter \(letter)", name: "trace-skipped-\(sizeTag)")
-            return
-        }
-        let canvas = element(labelPrefix: "Schreibfläche", in: app)
-        guard canvas.waitForExistence(timeout: 5) else { return }
-        for stroke in strokes {
-            guard let first = stroke.first, let last = stroke.last else { continue }
-            let from = canvas.coordinate(withNormalizedOffset: CGVector(dx: first.0, dy: first.1))
-            if LetterPolylines.isNearlyStraight(stroke) {
-                // One continuous touch: a chain of separate touches did not
-                // advance the tracker on the device (measured 2026-10-21).
-                let to = canvas.coordinate(withNormalizedOffset: CGVector(dx: last.0, dy: last.1))
-                from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0)
-            } else {
-                for (a, b) in zip(stroke, stroke.dropFirst()) {
-                    let p = canvas.coordinate(withNormalizedOffset: CGVector(dx: a.0, dy: a.1))
-                    let q = canvas.coordinate(withNormalizedOffset: CGVector(dx: b.0, dy: b.1))
-                    p.press(forDuration: 0.05, thenDragTo: q)
-                }
-            }
-            Thread.sleep(forTimeInterval: 0.3)
-        }
-    }
-
     // MARK: - Audit & records
 
     @MainActor
@@ -358,6 +330,12 @@ class AccessibilityAuditUITests: XCTestCase {
                 + "element: \(Self.describe(issue.element)) | "
                 + "detail: \(issue.detailedDescription)"
             self.issuesSeen.append(line)
+            // The LetterTracer hook is a test instrument, not app UI: a
+            // zero-opacity element whose label is JSON, compiled only into
+            // DEBUG and armed only by this test's launch argument. It is not
+            // in the pilot build, so its "label not human-readable" is not a
+            // finding about the app.
+            if issue.element?.identifier == "tracing-geometry-hook" { return true }
             if self.knownVisualFindings.contains(where: {
                 screen.hasPrefix($0.screen)
                     && issue.auditType.rawValue == $0.typeRaw
@@ -477,51 +455,3 @@ final class AccessibilityAuditXXXLUITests: AccessibilityAuditUITests {
     override var sizeTag: String { "AX-XXXL" }
 }
 
-/// Downsampled stroke polylines (normalised 0…1 of the canvas) for the
-/// letters a study subset can contain, taken from
-/// `PrimaeNative/Resources/Letters/Regular/<L>/strokes.json`. A UI test
-/// cannot read the repo, so they are inlined; they only need to be close
-/// enough to pass the checkpoint radius (0.1).
-private enum LetterPolylines {
-    /// True when every point lies within 0.04 (normalised) of the chord.
-    static func isNearlyStraight(_ stroke: [(Double, Double)]) -> Bool {
-        guard let a = stroke.first, let b = stroke.last else { return true }
-        let dx = b.0 - a.0, dy = b.1 - a.1
-        let length = (dx * dx + dy * dy).squareRoot()
-        guard length > 0 else { return true }
-        return stroke.allSatisfy { p in
-            abs(dy * (p.0 - a.0) - dx * (p.1 - a.1)) / length < 0.04
-        }
-    }
-
-    static let table: [String: [[(Double, Double)]]] = [
-        "A": [
-            [(0.583, 0.031), (0.516, 0.150), (0.448, 0.269), (0.381, 0.388), (0.313, 0.506), (0.259, 0.602), (0.192, 0.721), (0.125, 0.840), (0.058, 0.959)],
-            [(0.587, 0.039), (0.632, 0.156), (0.676, 0.274), (0.721, 0.391), (0.766, 0.508), (0.801, 0.602), (0.846, 0.719), (0.891, 0.836), (0.936, 0.953)],
-            [(0.286, 0.588), (0.351, 0.588), (0.417, 0.589), (0.483, 0.589), (0.549, 0.590), (0.601, 0.591), (0.667, 0.590), (0.733, 0.589), (0.798, 0.588)],
-        ],
-        "F": [
-            [(0.190, 0.040), (0.176, 0.157), (0.162, 0.273), (0.147, 0.390), (0.133, 0.506), (0.121, 0.599), (0.107, 0.716), (0.093, 0.832), (0.078, 0.949)],
-            [(0.190, 0.041), (0.286, 0.041), (0.383, 0.041), (0.479, 0.041), (0.575, 0.040), (0.652, 0.039), (0.748, 0.039), (0.844, 0.039), (0.940, 0.040)],
-            [(0.150, 0.480), (0.231, 0.480), (0.312, 0.480), (0.392, 0.480), (0.473, 0.480), (0.538, 0.480), (0.618, 0.480), (0.699, 0.480), (0.780, 0.480)],
-        ],
-        "I": [
-            [(0.710, 0.040), (0.654, 0.156), (0.599, 0.272), (0.544, 0.389), (0.489, 0.505), (0.446, 0.599), (0.398, 0.718), (0.354, 0.839), (0.310, 0.960)],
-        ],
-        "K": [
-            [(0.160, 0.040), (0.148, 0.158), (0.136, 0.276), (0.124, 0.394), (0.112, 0.512), (0.102, 0.606), (0.091, 0.724), (0.080, 0.842), (0.070, 0.960)],
-            [(0.931, 0.043), (0.847, 0.097), (0.762, 0.150), (0.678, 0.204), (0.594, 0.258), (0.513, 0.310), (0.429, 0.363), (0.345, 0.417), (0.260, 0.470)],
-            [(0.260, 0.480), (0.336, 0.543), (0.412, 0.605), (0.489, 0.667), (0.566, 0.728), (0.628, 0.777), (0.705, 0.838), (0.783, 0.899), (0.860, 0.960)],
-        ],
-        "L": [
-            [(0.200, 0.050), (0.184, 0.165), (0.167, 0.280), (0.152, 0.395), (0.138, 0.511), (0.128, 0.603), (0.115, 0.719), (0.102, 0.834), (0.090, 0.950)],
-            [(0.090, 0.950), (0.199, 0.950), (0.308, 0.950), (0.417, 0.950), (0.526, 0.950), (0.613, 0.950), (0.722, 0.950), (0.831, 0.950), (0.940, 0.950)],
-        ],
-        "M": [
-            [(0.050, 0.957), (0.117, 0.492), (0.206, 0.050), (0.355, 0.495), (0.506, 0.889), (0.695, 0.480), (0.894, 0.055), (0.935, 0.482), (0.949, 0.951)],
-        ],
-        "O": [
-            [(0.540, 0.040), (0.222, 0.167), (0.070, 0.476), (0.132, 0.813), (0.437, 0.956), (0.750, 0.853), (0.928, 0.558), (0.888, 0.217), (0.600, 0.040)],
-        ],
-    ]
-}

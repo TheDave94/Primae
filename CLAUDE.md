@@ -254,6 +254,18 @@ a UI-test string that encodes a phase count, a star count or a row count is
 a doc-currency site; grep `von 4`, `von 3`, row-count literals and
 `allCases.count` when the phase model moves.
 
+**UI tests draw the letter along its real strokes — MEASURED 2026-10-21 (#79).**
+Every UI test that traces goes through `PrimaeUITests/LetterTracer.swift`: one
+continuous synthesized touch per stroke, in order and direction, through every
+checkpoint, at about child speed. The points come from the APP, not from the
+test: launch with `LetterTracer.launchArgument` (`-tracingGeometryHook`) and a
+`#if DEBUG`-only accessibility element publishes the loaded checkpoints in
+window points (absent from Release-Study, checked with `nm`/`strings`).
+Synthesized touches take NATIVE-PORTRAIT screen points, so the tracer maps
+through XCUITest's own coordinate transform; a straight `press(thenDragTo:)`
+swipe does NOT complete guided (the negative control in `RealTracingUITests`).
+Do not add a test that "draws" with a single straight drag.
+
 **6. A git worktree builds from any directory name (since #58).** The package
 is referenced as `XCLocalSwiftPackageReference ".."` (`relativePath = ..`),
 i.e. the checkout that contains the project, so a worktree resolves its OWN
