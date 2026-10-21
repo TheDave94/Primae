@@ -1328,8 +1328,8 @@ public final class TracingViewModel {
         // sonification, and an arm that never hears "Jetzt du." is a
         // second manipulation the design does not contain. The prompts go
         // through `StudyVoiceoverPromptPlayer`, which passes the study's
-        // spoken phrases in every arm alike and forwards the non-speech
-        // effects (tick, chimes) for the sound arms only. The silent arm's
+        // spoken phrases in every arm alike and plays NO non-speech
+        // effects (tick, chimes) in any arm (r13). The silent arm's
         // SONIFICATION stays off unconditionally — `effectiveAudio` above
         // and `TouchDispatcher`'s silent-arm return, neither touched here.
         //
@@ -1341,8 +1341,7 @@ public final class TracingViewModel {
             ? false
             : (armIsSilent || deps.studyMode)
         let studyVoiceover: StudyVoiceoverPromptPlayer? = studyVoiceoverOn
-            ? StudyVoiceoverPromptPlayer(inner: deps.makePromptPlayer(deps.speech),
-                                         soundEffectsAllowed: !armIsSilent)
+            ? StudyVoiceoverPromptPlayer(inner: deps.makePromptPlayer(deps.speech))
             : nil
         self.studyVoiceover = studyVoiceover
         self.recordedVerdict = studyVoiceover != nil
@@ -1838,13 +1837,12 @@ public final class TracingViewModel {
     ///
     /// In a study session running the voiceover (P3, 2026-10-04) the pair
     /// is NOT nulled: the silent arm hears the same spoken content as every
-    /// arm, and only the voiceover's sound effects (tick, chimes) switch
-    /// off with the arm.
+    /// arm, and the voiceover plays no sound effects (tick, chimes) in any
+    /// arm (protocol r13).
     private func applyArmAuthority() {
         // Study voiceover (P3): the spoken content stays the same in
         // every arm, so the speech/prompt pair is NOT nulled for the silent
-        // arm here — only its sound effects stop, below, and its engine.
-        studyVoiceover?.soundEffectsAllowed = audioCondition != .silent
+        // arm here; the voiceover has no per-arm state (r13: no effects in any arm).
         settleEngineForArm()
         guard audioCondition == .silent else {
             speech  = audibleSpeech

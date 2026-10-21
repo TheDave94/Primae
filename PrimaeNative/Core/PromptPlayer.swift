@@ -55,10 +55,10 @@ final class NullPromptPlayer: PromptPlaying {
 ///     are not in the set, so no arm hears them in a study session (the
 ///     praise tiers were unreachable there before this, too).
 ///   - The non-speech effects (stroke tick, success chime, tap chimes) are
-///     sound, so they follow the arm: forwarded while
-///     `soundEffectsAllowed` (the phoneme and spatial arms), dropped for
-///     the silent arm. `applyArmAuthority` updates it when the arm changes
-///     mid-session.
+///     dropped in EVERY arm (protocol r13, David 2026-10-21): they are
+///     supplementary auditory feedback that, since r4, only the phoneme and
+///     spatial arms received, a confound on the sound-vs-silence contrast.
+///     The three arms now differ only in the arm's own sound.
 ///
 /// "Probier's nochmal" is the recorded `retryCue` and goes through here
 /// like the others (protocol r9), so it reaches every arm alike.
@@ -71,11 +71,9 @@ final class StudyVoiceoverPromptPlayer: PromptPlaying {
     ]
 
     private let inner: any PromptPlaying
-    var soundEffectsAllowed: Bool
 
-    init(inner: any PromptPlaying, soundEffectsAllowed: Bool) {
+    init(inner: any PromptPlaying) {
         self.inner = inner
-        self.soundEffectsAllowed = soundEffectsAllowed
     }
 
     func play(_ key: PromptPlayer.PromptKey, fallbackText: String) {
@@ -83,10 +81,10 @@ final class StudyVoiceoverPromptPlayer: PromptPlaying {
         inner.play(key, fallbackText: fallbackText)
     }
     func stop() { inner.stop() }
-    func playSuccessChime()  { if soundEffectsAllowed { inner.playSuccessChime() } }
-    func playTapChime()      { if soundEffectsAllowed { inner.playTapChime() } }
-    func playWrongTapChime() { if soundEffectsAllowed { inner.playWrongTapChime() } }
-    func playStrokeTick()    { if soundEffectsAllowed { inner.playStrokeTick() } }
+    func playSuccessChime()  {}
+    func playTapChime()      {}
+    func playWrongTapChime() {}
+    func playStrokeTick()    {}
 }
 
 @MainActor

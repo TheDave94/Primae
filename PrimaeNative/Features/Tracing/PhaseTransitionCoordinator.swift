@@ -428,7 +428,7 @@ final class PhaseTransitionCoordinator {
             // and the delayed test cover all five letters, so one of them is
             // always the trained set's last letter. Without this check that
             // probe spoke "Super gemacht!" in every arm and chimed in the
-            // sound arms INSIDE the outcome block ("a cold probe gets no
+            // sound arms (r4-r12) INSIDE the outcome block ("a cold probe gets no
             // reward-class feedback", STUDY_DEVICE_DRYRUN §3), and latched
             // `awaitingNextParticipant` before training had started, so the
             // chevron that leads into training was dead for the session.
@@ -444,9 +444,8 @@ final class PhaseTransitionCoordinator {
             //
             // What a STUDY build delivers: the spoken "Super gemacht!" in
             // EVERY arm (spoken content is identical across arms, P3) and
-            // the chime in the phoneme and spatial arms only (a sound
-            // effect; `StudyVoiceoverPromptPlayer` drops it for the silent
-            // arm). NOTHING IS DRAWN: the `.celebration` enqueued below is
+            // no chime in any arm (r13; `StudyVoiceoverPromptPlayer` drops
+            // every sound effect, so the call below is inert in a study). NOTHING IS DRAWN: the `.celebration` enqueued below is
             // rendered as `EmptyView()` under STUDY_BUILD
             // (`SchuleWorldView.queuedModalOverlay`), and
             // `CompletionCelebrationOverlay` is compiled out — the CI
@@ -456,8 +455,8 @@ final class PhaseTransitionCoordinator {
             // letter load clears it (`resetForNewParticipant` →
             // `reapplyParticipantIdentity` → `loadFirstTrainedLetter` →
             // `load(letter:)` → `overlayQueue.reset()`). The hand-over
-            // signal the proctor can rely on is the speech, the chime in
-            // the sound arms, and the chevron no longer advancing
+            // signal the proctor can rely on is the speech (r13: no chime in
+            // any arm) and the chevron no longer advancing
             // (`finishSetAwaitingNextParticipant`).
             vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
             vm.prompts.playSuccessChime()

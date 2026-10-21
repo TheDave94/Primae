@@ -197,7 +197,7 @@
 <p><strong>End of the set — what you hear and see (protocol revision 9; since r7 only a TRAINING pass ends the set, never a cold probe).</strong> When the LAST trained letter's FreeWrite is recorded in training (<code>PhaseTransitionCoordinator</code>, <code>} else if vm.currentProbe == nil, vm.isLastLetterOfSet {</code>):</p>
 <ul>
 <li><strong>All three arms play the recorded "Super gemacht!"</strong> — content is identical in every arm (<code>vm.prompts.play(.celebration, …)</code>; <code>.celebration</code> is in <code>StudyVoiceoverPromptPlayer.studySpokenKeys</code>).</li>
-<li><strong>Phonem and Raumklang also play a short chime; Ohne Ton does not</strong> (<code>vm.prompts.playSuccessChime()</code>, forwarded only <code>if soundEffectsAllowed</code>, which is off for the silent arm).</li>
+<li><strong>No chime in any arm</strong> (protocol r13, 2026-10-21; under r4-r12 Phonem and Raumklang played a short one). <code>StudyVoiceoverPromptPlayer</code> drops every sound effect, the stroke tick included.</li>
 <li><strong>Nothing appears on screen, in any arm.</strong> The celebration overlay is queued, but a study build draws nothing for it: <code>SchuleWorldView</code> renders <code>case .celebration</code> as <code>EmptyView()</code> under <code>STUDY_BUILD</code> (<code>CompletionCelebrationOverlay</code> is compiled out).</li>
 <li><strong>The chevron stops advancing</strong> — the set is over (<code>nextLetter()</code>: <code>guard !awaitingNextParticipant else { return }</code>). That is the hand-over signal: enrol the next child with the rail double-tap ("Nächstes Kind"). If the chevron still moves to another letter after the last one, that is a defect.</li>
 </ul>

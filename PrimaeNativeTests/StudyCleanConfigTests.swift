@@ -366,11 +366,11 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     /// one is what calls `recordSessionCompletion()`.
     ///
     /// What it asserts is what a STUDY build DELIVERS, per arm: the spoken
-    /// phrase in every arm, the chime in the sound arms only, the hand-over
+    /// phrase in every arm, no chime in any arm (r13), the hand-over
     /// hold — and nothing drawn. The overlay queue holding `.celebration`
     /// is NOT evidence that anything is shown: a study build renders it as
     /// `EmptyView()` (see `noCelebrationViewInAStudyBuild`).
-    @Test("the end of the child's set: spoken in every arm, chimed in the sound arms, nothing drawn",
+    @Test("the end of the child's set: spoken in every arm, chimed in none (r13), nothing drawn",
           arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
     func endOfSet_celebratesOnceAndHandsTheDeviceBack(arm: PilotAudioCondition) async {
         let prompts = SpyPromptPlayer()
@@ -401,12 +401,12 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
 
         // The spoken "Super gemacht!" is spoken content, so EVERY arm hears
         // it (P3, David 2026-10-04: spoken content identical across arms).
-        // The chime is sound, so only the sound arms hear it.
-        let expectedChimes = arm == .silent ? 0 : 1
+        // r13: the chime is dropped in every arm.
+        let expectedChimes = 0
         #expect(prompts.celebrations == 1,
                 "\(arm): the end-of-set celebration is the one study moment carrying this spoken phrase; got \(prompts.celebrations) of them alongside \(prompts.keys)")
         #expect(prompts.chimes == expectedChimes,
-                "\(arm): the end-of-set chime is sound — sound arms only; got \(prompts.chimes)")
+                "\(arm): the end-of-set chime is dropped in every arm (r13); got \(prompts.chimes)")
 
         // ...and it is a ONCE-per-set signal, not a per-letter reward.
         vm.advanceLearningPhase()

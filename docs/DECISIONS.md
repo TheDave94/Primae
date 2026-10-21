@@ -871,7 +871,8 @@ Implications:
     arm through the same real synthesiser.
   - **Not spoken, in any arm:** the score-dependent praise tiers
     (unreachable in study mode), retrieval and paper-transfer phrases.
-  - **Non-speech sounds (stroke tick, end-of-set chime) follow the
+  - **(Superseded by r13, 2026-10-21: no arm hears them.)
+    Non-speech sounds (stroke tick, end-of-set chime) follow the
     arm:** the phoneme and spatial arms hear them, the silent arm does
     not. The tick existed at baseline but was inaudible in study mode
     until #27 turned speech on; the end-of-set chime was added in #27.
@@ -1076,6 +1077,34 @@ Implications:
     (three probes, both sound arms), `.soundArmsSoundInEveryPracticePass`
     (guided and session free-writing still sound) and
     `.silentArmMakesNoSoundInAnyWritingPass` (unchanged).
+
+- **Protocol revision 13 — no sound effects in any arm (David,
+  2026-10-21, "do all 3 as you said", approving the supervisor's
+  recommendation).** The authoritative text is `StudyProtocol.history`
+  (r13).
+  - **The ruling.** The stroke-completion tick (`playStrokeTick`) and the
+    end-of-set success chime (`playSuccessChime`), heard in the phoneme and
+    spatial arms only under r4-r12, are removed in EVERY arm.
+    `StudyVoiceoverPromptPlayer` now plays no sound effects at all and
+    has no per-arm state (`soundEffectsAllowed` is gone). Haptics are
+    unchanged. The tap chimes are only called in the direct phase, which
+    study sessions do not run. Non-study behaviour is unchanged.
+  - **What changes for a child.** Phoneme and spatial children no longer
+    hear a tick when a stroke completes in guided, nor a chime at the end of
+    the set; the spoken "Super gemacht!" still ends it. The silent arm hears
+    what it heard before. The five spoken prompts are identical in every arm.
+  - **Why.** Both effects are supplementary auditory feedback (knowledge of
+    results, a reward) that two arms received and the silent arm did not: a
+    confound on the sound-versus-silence contrast, which should differ only
+    in the arm's own sound. r4 equalised the spoken prompts on the same
+    grounds; r13 does the same for the non-speech effects.
+  - **Data.** Rows with `protocolRevision` 4-12 in the sound arms were
+    written with the tick and chime; r13+ rows were not.
+  - **Pinned by** `ProtocolMatrixTests.noSoundEffectsInAnyArm` (the
+    voiceover, three arms) and `.studySessionRequestsNoTickOrChimeInAnyArm`
+    (stroke completion in guided, three arms) and
+    `StudyCleanConfigTests.endOfSet_celebratesOnceAndHandsTheDeviceBack`
+    (the end of the set, three arms).
 
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,

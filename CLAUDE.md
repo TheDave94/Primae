@@ -1302,8 +1302,9 @@ bundle-ID split has no other identity-scoped surface to have broken.
 
 ### The casual path is paused, on this same line, not on a branch (2026-09-13)
 
-**Decision, with the pilot running (a participant was being enrolled when this
-was made):** the casual `Debug`/`Release` configuration stops being built,
+**Decision (made during device testing; corrected 2026-10-21: no pilot
+session with a child has been run yet; every run so far was a test run
+that turned up bugs, per David):** the casual `Debug`/`Release` configuration stops being built,
 tested, or reasoned about — not deleted, paused. `STUDY_BUILD` is the only
 configuration this repo actively maintains from here until a deliberate,
 post-thesis restoration. No separate branch was created for this.

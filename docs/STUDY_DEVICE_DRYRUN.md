@@ -372,9 +372,9 @@ the LAST trained letter's FreeWrite is recorded in training
 - **All three arms play the recorded "Super gemacht!"** — content is identical
   in every arm (`vm.prompts.play(.celebration, …)`; `.celebration` is in
   `StudyVoiceoverPromptPlayer.studySpokenKeys`).
-- **Phonem and Raumklang also play a short chime; Ohne Ton does not**
-  (`vm.prompts.playSuccessChime()`, forwarded only
-  `if soundEffectsAllowed`, which is off for the silent arm).
+- **No chime in any arm** (protocol r13, 2026-10-21; under r4-r12 Phonem
+  and Raumklang played a short one). `StudyVoiceoverPromptPlayer` drops
+  every sound effect, the stroke tick included.
 - **Nothing appears on screen, in any arm.** The celebration overlay is
   queued, but a study build draws nothing for it: `SchuleWorldView`
   renders `case .celebration` as `EmptyView()` under `STUDY_BUILD`

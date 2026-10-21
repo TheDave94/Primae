@@ -184,8 +184,16 @@ Record the **isolated phone**, sustained, with **no trailing schwa and no
 letter name**:
 
 - ✅ `/aː/` (the vowel itself), `/fːː/`, `/mːː/`, `/lːː/`, `/sːː/`
-- ❌ "Ah", "Eff", "Em" — that is the letter **name** (already covered by the
+- ❌ "Eff", "Ell", "Emm" — that is the letter **name** (already covered by the
   `audioFiles` word/name population).
+- For the vowels the rule cannot apply: in German the letter names A [aː]
+  and I [iː] ARE the vowel sounds, so for A and I a correct take is simply a
+  clean sustained vowel. (Corrected 2026-10-21; this list used to reject
+  "Ah" as a name while accepting `/aː/`, which is the same sound in German.)
+
+The five study recordings (`Letters/{A,F,I,L,M}/<L>_phoneme1.wav`) are
+David's own, one speaker for the whole set, each the letter's sound rather
+than its name, checked by ear (reported by David, 2026-10-21).
 - ❌ "buh", "kuh", "tuh" — a consonant **plus a schwa vowel**. The schwa is a
   second speech sound; it contaminates the phoneme and (for stops) smuggles
   in a vowel the pilot is not coupling.

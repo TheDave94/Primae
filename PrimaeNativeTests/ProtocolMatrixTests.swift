@@ -135,9 +135,11 @@
 //     `vm.speech.speak("Probier's nochmal")` in `if !vm.studyMode` (RED: no
 //     arm says it), or restore the `silenceSpeech` expression above (RED:
 //     the silent arm differs).
-//   - voiceoverPassesTheStudySpokenSet / effectsFollowTheArm: delete the
-//     `guard Self.studySpokenKeys.contains(key)` / an
-//     `if soundEffectsAllowed` in `StudyVoiceoverPromptPlayer`.
+//   - voiceoverPassesTheStudySpokenSet: delete the
+//     `guard Self.studySpokenKeys.contains(key)` in `StudyVoiceoverPromptPlayer`.
+//   - noSoundEffectsInAnyArm / studySessionRequestsNoTickOrChimeInAnyArm (r13):
+//     make `StudyVoiceoverPromptPlayer.playStrokeTick` forward to `inner`
+//     (see lanes-2026-10-21/L/mutation.patch).
 
 import Testing
 import Foundation
@@ -1119,25 +1121,77 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     @Test("P3: the voiceover passes the study's spoken phrases, and no score-dependent praise")
     func voiceoverPassesTheStudySpokenSet() {
         let inner = SpyPrompts()
-        let voiceover = StudyVoiceoverPromptPlayer(inner: inner, soundEffectsAllowed: true)
+        let voiceover = StudyVoiceoverPromptPlayer(inner: inner)
         for key in PromptPlayer.PromptKey.allCases { voiceover.play(key, fallbackText: "") }
         #expect(inner.keys == [.phaseObserve, .phaseDirect, .phaseGuided, .phaseFreeWrite, .celebration, .retryCue],
                 "the praise tiers, paper and retrieval phrases must stay unreachable: \(inner.keys)")
     }
 
-    @Test("sound effects follow the arm: forwarded for the sound arms, dropped for the silent arm")
-    func effectsFollowTheArm() {
+    @Test("r13: the voiceover plays no sound effect, in any arm")
+    func noSoundEffectsInAnyArm() {
         let inner = SpyPrompts()
-        let voiceover = StudyVoiceoverPromptPlayer(inner: inner, soundEffectsAllowed: false)
+        let voiceover = StudyVoiceoverPromptPlayer(inner: inner)
         voiceover.playStrokeTick(); voiceover.playSuccessChime()
         voiceover.playTapChime(); voiceover.playWrongTapChime()
-        #expect(inner.effects.isEmpty, "the silent arm heard \(inner.effects)")
-        voiceover.soundEffectsAllowed = true
-        voiceover.playStrokeTick(); voiceover.playSuccessChime()
-        #expect(inner.effects == ["tick", "success"])
+        #expect(inner.effects.isEmpty, "the voiceover forwarded \(inner.effects)")
+        // Positive control: the same wrapper still passes speech.
+        voiceover.play(.celebration, fallbackText: "")
+        #expect(inner.keys == [.celebration])
     }
 
-    @Test("an arm reached mid-session keeps the voiceover and switches only the effects")
+    /// A study session, guided: the pen traces the whole of letter I, so a
+    /// stroke COMPLETES (`TouchDispatcher.fireMovementHaptics` asks for the
+    /// tick). No arm may request one. (r13, David 2026-10-21.) The pen
+    /// follows the tracker's OWN checkpoints, mapped cell-fraction -> canvas
+    /// exactly as `TracingGeometryTestHookView.snapshot` does (the inverse of
+    /// `TouchDispatcher`'s `normalized`), so the trace cannot miss the letter.
+    @Test("r13: completing a guided stroke requests no tick in any arm",
+          arguments: [PilotAudioCondition.silent, .phoneme, .spatial])
+    func studySessionRequestsNoTickOrChimeInAnyArm(arm: PilotAudioCondition) {
+        let prompts = SpyPrompts()
+        let vm = makeVM(arm: arm, prompts: prompts, withLetterI: true)
+        enterOnI(.guided, vm)
+        #expect(vm.learningPhase == .guided, "precondition: guided")
+        #expect(vm.feedbackIntensity > 0, "precondition: the tick is gated on feedback intensity")
+        #expect(vm.prompts is StudyVoiceoverPromptPlayer, "\(arm): not the study voiceover")
+        let checkpoints = vm.strokeTracker.definition?.strokes.first?.checkpoints ?? []
+        #expect(!checkpoints.isEmpty, "precondition: letter I has checkpoints")
+        let cell = vm.grid.activeCell.frame
+        let frame = (cell.width > 0 && cell.height > 0) ? cell : CGRect(origin: .zero, size: canvas)
+        func point(_ cp: Checkpoint) -> CGPoint {
+            CGPoint(x: frame.minX + cp.x * frame.width, y: frame.minY + cp.y * frame.height)
+        }
+        // Count completions at the tracker's own callback, chained so the
+        // app's wiring (if any) still runs: the tick is requested in the same
+        // update that completes a stroke (`fireMovementHaptics`).
+        var completions = 0
+        let prior = vm.strokeTracker.onStrokeCompleted
+        vm.strokeTracker.onStrokeCompleted = { idx in completions += 1; prior?(idx) }
+        var t: CFTimeInterval = 5000
+        guard let first = checkpoints.first else { return }
+        vm.beginTouch(at: point(first), t: t)
+        for cp in checkpoints.dropFirst() {
+            t += 0.02
+            vm.updateTouch(at: point(cp), t: t, canvasSize: canvas)
+        }
+        // The tracker consumes ONE checkpoint per update, and the first
+        // sample (the touch-down) consumes none, so the trace ends one
+        // checkpoint short (measured: nextCheckpoint 39 of 40). A few more
+        // samples on the last checkpoint, nudged by half a point so they are
+        // movement, finish the stroke.
+        if let last = checkpoints.last {
+            for i in 0..<4 {
+                t += 0.02
+                let p = point(last)
+                vm.updateTouch(at: CGPoint(x: p.x + (i % 2 == 0 ? 0.5 : -0.5), y: p.y), t: t, canvasSize: canvas)
+            }
+        }
+        #expect(completions >= 1,
+                "\(arm): precondition — the trace did not complete the stroke, so no tick was ever due")
+        #expect(prompts.effects.isEmpty, "\(arm): a study session requested \(prompts.effects)")
+    }
+
+    @Test("an arm reached mid-session keeps the voiceover, and no arm has an effect")
     func armChangeKeepsVoiceover() {
         let prompts = SpyPrompts()
         let vm = makeVM(arm: .phoneme, prompts: prompts)
@@ -1149,6 +1203,6 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(prompts.effects.isEmpty, "the silent arm reached mid-session heard a tick")
         vm.applyArm(.spatial)
         vm.prompts.playStrokeTick()
-        #expect(prompts.effects == ["tick"])
+        #expect(prompts.effects.isEmpty, "r13: the spatial arm reached mid-session heard \(prompts.effects)")
     }
 }
