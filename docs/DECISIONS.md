@@ -971,13 +971,59 @@ Implications:
     observe) was implemented as its recommended default, restart from the
     cue, in r8. The audit's "D7" (AudioEngine, route and other-audio
     policy) produced a proctor banner and per-row route and other-audio
-    stamps (r8) and no `AudioEngine.swift` edit: the file is unchanged
-    since `f3630289`; blocking a sound-arm session on a non-headphone route
-    was not implemented. Both were applied as the audit's recommended defaults and stand until changed here.
+    stamps (r8) and no `AudioEngine.swift` edit; blocking a sound-arm
+    session on a non-headphone route was not implemented. (Corrected
+    2026-10-21: this used to say the file "is unchanged since `f3630289`".
+    That held through r9, but `git log -- PrimaeNative/Core/AudioEngine.swift`
+    shows two later edits, neither of them for D7: #61 (`b1aa0ee9`) arms
+    the signal probe at engine construction and adds a debug state
+    summary, and #68 (`1dcdc62d`) resolves the audio file through
+    `PrimaeBundle.audioURL` instead of the engine's own lookup.) Both were applied as the audit's recommended defaults and stand until changed here.
   - File:line anchors quoted in D8-D15 were measured at `9d8e0df3` and
     `f3630289`; `TouchDispatcher.swift`, `TracingViewModel.swift` and
     `ParentDashboardExporter.swift` have changed since (#46-#50). Search by
     symbol.
+
+- **Protocol revision 11 — the observe row records a lost output (lane E,
+  2026-10-21). RECORD-ONLY: no change to what any child sees or hears, in
+  any arm.** The authoritative text is `StudyProtocol.history` (r11).
+  - **The gap it closes.** A sound-arm child whose headphones go during the
+    dot-tracked observe sound loses the rest of it, and it is not replayed
+    (D9: observe is never heard from the middle). The same loss during the
+    instruction cue costs nothing: the sound starts later on the output
+    then present. Up to r10 the observe row showed either case only as
+    `routeChanges >= 1` and a different `outputRouteAtEnd`, so partial and
+    full exposure could not be told apart (audit lane A, 2026-10-21, §4a).
+  - **What r11 records.** Four phase-row columns after `deviceModel`,
+    filled on observe rows only: `observeLossesDuringSound`,
+    `observeLossesWithoutSound`, `observeSoundSeconds` and
+    `observeSoundDeliveredSeconds`. The design is counts plus two
+    durations, not one flag. Counts, because a phase can lose its output
+    more than once. Both durations, because the length of the observe sound
+    depends on the letter, the number of observe passes and when the
+    proctor moves on, so delivered seconds alone cannot be read as a share.
+    Delivered ÷ ran can.
+  - **Same semantics in every arm.** The silent arm has no observe sound.
+    Its observe rows carry `observeLossesDuringSound` 0 and both durations
+    0.000, and any loss counts as without sound. A sound arm whose observe
+    sound was not claimed (Einmal pro Kondition, the spatial axis-sweep
+    switch) records the same way.
+  - **OPEN, David's.** Should a cut observe sound be replayed, for example
+    by restarting observe from the cue, as an interruption does (D9 /
+    R-006)? That would change what a child hears, so r11 does not decide
+    it. r11 only makes the cost visible in the data.
+
+- **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
+  (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
+  which the stall timer cut about 0.3 s later. That made a short,
+  unrecorded blip of the arm's file in any phase. It still stamped
+  `protocolRevision` 9, and #66 (`184527e6`) removed the blip without a
+  bump. So rows written by a build from `bbd03b0e` up to `184527e6` carry
+  r9 but could include that blip after a route recovery. Separate them by
+  `buildUUID` / `appVersion` (r8 columns). RELAYED, not measured here:
+  the artefact built from `bbd03b0e` and installed on the study iPad held
+  dry-run data only (David, recorded in the lane rules of 2026-10-18,
+  `wt-primae-audit-notes/LANE-RULES-2026-10-18.md:7`).
 
 ---
 

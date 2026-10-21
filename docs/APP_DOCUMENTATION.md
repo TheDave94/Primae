@@ -1438,10 +1438,11 @@ routeChanges,interruptions,outputRouteAtStart,outputRouteAtEnd,outputVolume,
 outputLatency,otherAudioPlaying,secondaryAudioHint,voiceId,recognizerAvailable,
 guidedAccess,idleTimerDisabled,lowPowerMode,thermalState,batteryLevel,
 launchId,previousRunAbnormal,appVersion,buildConfiguration,buildUUID,
-osVersion,deviceModel
+osVersion,deviceModel,observeLossesDuringSound,observeLossesWithoutSound,
+observeSoundSeconds,observeSoundDeliveredSeconds
 ```
 
-(As of `60e8b805`, protocol r9; the authoritative order is the header array in
+(As of protocol r11, 2026-10-21; the authoritative order is the header array in
 `ParentDashboardExporter.swift` — `phaseRowAppendedColumns` is the tail after
 `spatialDeviationRaw`.)
 
@@ -2508,7 +2509,7 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 | `phaseDurationSeconds` | `PhaseSessionRecord.phaseDurationSeconds` | **Time outcome.** freeWrite rows only: measured-phase time = first sample → last sample, end-inclusive (§6.4.1). Excludes the trailing 2.0 s quiet-window auto-advance (`freeWriteQuietSeconds`) by construction; that constant is identical across arms. Blank otherwise. |
 | `frechetDistance` | `PhaseSessionRecord.frechetDistance` | **Primary accuracy outcome.** Raw discrete-Fréchet distance, normalised 0–1 letter-box units, 6 dp, lower = better, unclamped. freeWrite rows only; blank otherwise and for legacy rows. Full definition in §4.12.1. |
 | `checkpointCoverage` | `PhaseSessionRecord.checkpointCoverage` | **Secondary accuracy outcome.** Reached ÷ total reference checkpoints for the freeWrite pass (0–1, 4 dp). Saturates at ceiling — §4.12.2. freeWrite rows only; blank otherwise and for legacy rows. |
-| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | Added 2026-10-04 after `comparisonConfiguration`; **no longer the last column**: `spatialDeviationRaw` (r6) and, from r8, the 28 `phaseRowAppendedColumns` (`participantId` … `deviceModel`) follow it. Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
+| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | Added 2026-10-04 after `comparisonConfiguration`; **no longer the last column**: `spatialDeviationRaw` (r6) and, from r8, the `phaseRowAppendedColumns` follow it (`participantId` … `deviceModel`, 28 from r8; plus 4 observe-sound columns from r11, 32 in all). Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
 
 > **This table is incomplete.** It does not yet list the columns between
 > `checkpointCoverage` and `protocolRevision` (`spatialDeviation`,
@@ -2521,9 +2522,31 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 > `recognizerAvailable`, `guidedAccess`, `idleTimerDisabled`, `lowPowerMode`,
 > `thermalState`, `batteryLevel`, `launchId`, `previousRunAbnormal`,
 > `appVersion`, `buildConfiguration`, `buildUUID`, `osVersion`,
-> `deviceModel`). `voiceId` holds, from r9, the recorded prompt set
+> `deviceModel`, then from r11 `observeLossesDuringSound`,
+> `observeLossesWithoutSound`, `observeSoundSeconds`,
+> `observeSoundDeliveredSeconds`). `voiceId` holds, from r9, the recorded prompt set
 > (`rec:kiki:<12 hex>`; rows of r8 and earlier carry the device voice
-> identifier or nothing). The `frechetDistance` row above
+> identifier or nothing).
+>
+> **The r11 observe-sound columns (record-only; `PhaseDelivery`).** They are
+> filled on `observe` rows only. They are empty on every other phase's row
+> and on every row written before r11.
+>
+> | Column | Type | Meaning |
+> |---|---|---|
+> | `observeLossesDuringSound` | int | Audio outputs lost (iOS: old device unavailable) in this observe phase while the arm's dot-tracked observe sound was playing. The rest of that sound was cut and is not replayed. |
+> | `observeLossesWithoutSound` | int | Outputs lost while no observe sound was playing: during the instruction cue, the gap before the presentation, a held observe, or after the sound had already been cut. In an arm with no observe sound, every loss counts here. |
+> | `observeSoundSeconds` | float, 3 dp | How long the observe sound ran, from its start to its stop (the phase's end, a load, an interruption), whatever the output did. The fade-in and fade-out are not separated out. |
+> | `observeSoundDeliveredSeconds` | float, 3 dp | The part of `observeSoundSeconds` before the output was lost. Delivered ÷ ran is the share of the observe sound the child could hear. |
+>
+> The semantics are the same in every arm. A silent-arm observe row carries
+> `observeLossesDuringSound` 0, `observeSoundSeconds` 0.000 and
+> `observeSoundDeliveredSeconds` 0.000. So does a sound arm whose observe
+> sound was not claimed (Einmal pro Kondition, the spatial axis-sweep
+> switch, whose old 2 s sweep these columns do not measure). A loss during
+> the cue counts as without sound: the sound then starts on the output that
+> is present and is delivered in full. Whether a cut observe sound should
+> be replayed is OPEN (docs/DECISIONS.md, protocol revision 11). The `frechetDistance` row above
 > is retired: it now exports as `frechetDistance_RETIRED_alwaysEmpty`. The
 > authoritative order is the header array in
 > `ParentDashboardExporter.swift`.

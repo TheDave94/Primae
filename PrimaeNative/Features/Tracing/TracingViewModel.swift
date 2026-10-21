@@ -941,6 +941,8 @@ public final class TracingViewModel {
     let deliveryEnvironment: DeliveryEnvironmentProviding
     let launchSentinel: LaunchSentinelRecording
     let buildStamp: BuildStamp
+    /// See `TracingDependencies.mediaClock`.
+    @ObservationIgnored private let mediaClock: () -> TimeInterval
     var phaseDelivery = PhaseDeliveryTracker()
     /// Whether the recognizer model loaded (R-034): nil until the warm-up
     /// answers.
@@ -1276,6 +1278,7 @@ public final class TracingViewModel {
         self.deliveryEnvironment    = deps.deliveryEnvironment
         self.launchSentinel         = deps.launchSentinel
         self.buildStamp             = deps.buildStamp
+        self.mediaClock             = deps.mediaClock
         self.cyclesAudioConditions  = deps.cycleAllConditions
         self.demonstrationsOncePerCondition = deps.oncePerCondition
         // Through the seam, not `StudyComparisonSettings.observePasses`: same
@@ -1869,8 +1872,10 @@ public final class TracingViewModel {
         playback.forceIdle()
         isPlaying = false
         // A lost output belongs to the outgoing arm or child: a re-plug
-        // under the incoming one is not that loss's recovery.
+        // under the incoming one is not that loss's recovery, and the
+        // outgoing one's recoveries are not the incoming one's.
         clearLostRoute()
+        routeRecoveries = 0
         armAudio.enter(audioCondition)
         verifyEngineFollowsArm(at: "arm change")
     }
@@ -2870,6 +2875,13 @@ public final class TracingViewModel {
         }
         routeOutputWasLost = true
         lostOutputPortType = previousOutputPortType
+        // Record-only (protocol r11): whether the loss cut the observe
+        // sound or came while none played, and when. Nothing audible
+        // depends on it.
+        if phaseController.currentPhase == .observe {
+            reconcilePhaseDelivery()
+            lifecycleCounters.observeOutputLost(at: mediaClock())
+        }
         if phaseController.currentPhase == .observe, observeSoundTracksDot {
             lifecycleLogger.notice("Observe sound cut by the lost output \(previousOutputPortType ?? "unknown", privacy: .public) on \(self.currentLetterName, privacy: .public) — not replayed mid-observe")
         }
@@ -2884,7 +2896,9 @@ public final class TracingViewModel {
     @ObservationIgnored private var routeOutputWasLost = false
     @ObservationIgnored private var lostOutputPortType: String?
 
-    /// Genuine re-plugs after a loss, for this view model's life. IN MEMORY
+    /// Genuine re-plugs after a loss, since the last engine hand-over (an
+    /// arm change, a new child: `settleEngineForArm` resets it with the
+    /// loss), so a child is never credited the previous child's. IN MEMORY
     /// and in the lifecycle log only: an export column would change the
     /// research-export schema, which is a protocol-revision question.
     @ObservationIgnored private(set) var routeRecoveries = 0
@@ -2991,13 +3005,26 @@ public final class TracingViewModel {
             to: audio)
         audio.loadAudioFile(named: first, autoplay: false)
         audio.play(fadeInSeconds: observeAudioFadeInSeconds)
+        // A start over one still tracked (no stop between) is a new sound
+        // on the output now present: close the old interval, open anew.
+        if observeSoundTracksDot { lifecycleCounters.startObserveSound(at: mediaClock()) }
         observeSoundTracksDot = true
     }
 
     /// Whether the observe sound is playing and should follow the dot.
     /// Set when `startObservePhaseAudio` starts it; cleared on every load
-    /// and phase transition.
-    private var observeSoundTracksDot = false
+    /// and phase transition. Its start and stop are the observe sound's
+    /// clock (protocol r11, record-only: `LifecycleCounters`).
+    private var observeSoundTracksDot = false {
+        didSet {
+            guard oldValue != observeSoundTracksDot else { return }
+            if observeSoundTracksDot {
+                lifecycleCounters.startObserveSound(at: mediaClock())
+            } else {
+                lifecycleCounters.endObserveSound(at: mediaClock())
+            }
+        }
+    }
 
     /// The dot's cell-normalised point → canvas-normalised (pan/pitch
     /// space). In a study session the one cell IS the canvas, so this is
@@ -5319,7 +5346,7 @@ extension TracingViewModel {
     func phaseRowContext(for phase: LearningPhase, finalizedBy: RowFinalization) -> PhaseRowContext {
         reconcilePhaseDelivery()
         let routeNow = phaseDelivery.openPhase == phase ? deliveryEnvironment.sample().outputRoute : nil
-        var delivery = phaseDelivery.delivery(for: phase, counters: lifecycleCounters,
+        var delivery = phaseDelivery.delivery(for: phase, counters: lifecycleCounters.settled(at: mediaClock()),
                                               outputRouteNow: routeNow) ?? PhaseDelivery()
         delivery.build = buildStamp
         delivery.voiceId = sessionVoiceId
@@ -5337,7 +5364,7 @@ extension TracingViewModel {
     func reconcilePhaseDelivery() {
         let current = phaseController.currentPhase
         guard phaseDelivery.openPhase != current else { return }
-        phaseDelivery.transition(to: current, counters: lifecycleCounters,
+        phaseDelivery.transition(to: current, counters: lifecycleCounters.settled(at: mediaClock()),
                                  environment: deliveryEnvironment.sample())
     }
 

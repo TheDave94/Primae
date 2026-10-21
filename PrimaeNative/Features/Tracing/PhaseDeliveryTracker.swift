@@ -31,7 +31,7 @@ struct PhaseDeliveryTracker: Equatable {
     mutating func transition(to next: LearningPhase, counters: LifecycleCounters,
                              environment: EnvironmentStamp) {
         if let phase = openPhase {
-            closed[phase] = share(counters: counters, outputRouteAtEnd: environment.outputRoute)
+            closed[phase] = share(of: phase, counters: counters, outputRouteAtEnd: environment.outputRoute)
         }
         open(next, counters: counters, environment: environment)
     }
@@ -43,7 +43,7 @@ struct PhaseDeliveryTracker: Equatable {
                   outputRouteNow: String?) -> PhaseDelivery? {
         if let done = closed[phase] { return done }
         guard openPhase == phase else { return nil }
-        return share(counters: counters, outputRouteAtEnd: outputRouteNow)
+        return share(of: phase, counters: counters, outputRouteAtEnd: outputRouteNow)
     }
 
     private mutating func open(_ phase: LearningPhase, counters: LifecycleCounters,
@@ -53,13 +53,26 @@ struct PhaseDeliveryTracker: Equatable {
         openedEnvironment = environment
     }
 
-    private func share(counters: LifecycleCounters, outputRouteAtEnd: String?) -> PhaseDelivery {
-        PhaseDelivery(
+    /// `counters` must be settled (`LifecycleCounters.settled(at:)`), so a
+    /// running observe sound's seconds are in them. The observe-sound
+    /// fields (protocol r11) belong to the observe row alone.
+    private func share(of phase: LearningPhase, counters: LifecycleCounters,
+                       outputRouteAtEnd: String?) -> PhaseDelivery {
+        let observe = phase == .observe
+        return PhaseDelivery(
             observeRestarts: counters.observeRestarts - openedWith.observeRestarts,
             strokesCancelled: counters.strokesCancelled - openedWith.strokesCancelled,
             routeChanges: counters.routeChanges - openedWith.routeChanges,
             interruptions: counters.interruptions - openedWith.interruptions,
             atStart: openedEnvironment,
-            outputRouteAtEnd: outputRouteAtEnd)
+            outputRouteAtEnd: outputRouteAtEnd,
+            observeLossesDuringSound: observe
+                ? counters.observeLossesDuringSound - openedWith.observeLossesDuringSound : nil,
+            observeLossesWithoutSound: observe
+                ? counters.observeLossesWithoutSound - openedWith.observeLossesWithoutSound : nil,
+            observeSoundSeconds: observe
+                ? counters.observeSoundSeconds - openedWith.observeSoundSeconds : nil,
+            observeSoundDeliveredSeconds: observe
+                ? counters.observeSoundDeliveredSeconds - openedWith.observeSoundDeliveredSeconds : nil)
     }
 }

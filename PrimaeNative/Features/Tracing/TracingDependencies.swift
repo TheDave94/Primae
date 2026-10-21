@@ -241,6 +241,11 @@ struct TracingDependencies {
     /// R-020). Production: `BuildIdentity.current()`.
     var buildStamp: BuildStamp
 
+    /// The monotonic clock the observe-sound seconds are read from
+    /// (protocol r11, `LifecycleCounters`). Production: the monotonic
+    /// system uptime; tests step it by hand.
+    var mediaClock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+
     /// Factory for the per-VM playback controller. Receives audio + the
     /// isPlaying callback the VM closes over with `[weak self]`.
     var makePlaybackController: (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController

@@ -26,7 +26,9 @@ import Foundation
     static let delivery = PhaseDelivery(
         observeRestarts: 1, strokesCancelled: 2, routeChanges: 3, interruptions: 4,
         atStart: environment, outputRouteAtEnd: "Speaker", voiceId: "com.apple.voice.premium.de-DE.Anna",
-        recognizerAvailable: false, build: build)
+        recognizerAvailable: false, build: build,
+        observeLossesDuringSound: 1, observeLossesWithoutSound: 2,
+        observeSoundSeconds: 4.25, observeSoundDeliveredSeconds: 1.5)
 
     /// Every delivery column and the value the row above must export.
     static let expected: [(String, String)] = [
@@ -41,6 +43,9 @@ import Foundation
         ("launchId", "L-1"), ("previousRunAbnormal", "true"), ("appVersion", "1.0 (7)"),
         ("buildConfiguration", "release"), ("buildUUID", "B-UUID"),
         ("osVersion", "Version 27.2"), ("deviceModel", "iPad13,1"),
+        // Protocol r11 (record-only), after the build columns.
+        ("observeLossesDuringSound", "1"), ("observeLossesWithoutSound", "2"),
+        ("observeSoundSeconds", "4.250"), ("observeSoundDeliveredSeconds", "1.500"),
     ]
 
     private func csvText(_ snap: DashboardSnapshot) -> String {
@@ -71,6 +76,10 @@ import Foundation
         for (column, value) in Self.expected {
             #expect(block.value(column) == value, "\(column): \(String(describing: block.value(column))) ≠ \(value)")
         }
+        // r11's columns are the newest: they follow `deviceModel`, in order.
+        let r8End = try #require(block.header.firstIndex(of: "deviceModel"))
+        #expect(Array(block.header.dropFirst(r8End + 1)) == ParentDashboardExporter.observeSoundColumns,
+                "the r11 columns are not appended last, in order: \(block.header.suffix(6))")
         // Appended after the legacy columns, never between them.
         let legacyEnd = try #require(block.header.firstIndex(of: "spatialDeviationRaw"))
         for (column, _) in Self.expected {

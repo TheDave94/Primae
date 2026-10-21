@@ -42,4 +42,67 @@ struct LifecycleCounters: Equatable {
     /// The output port type after the most recent route change
     /// (`AVAudioSessionPort` raw value, e.g. "Headphones", "Speaker").
     var outputRoute: String? = nil
+
+    // Observe sound vs a lost output (protocol r11, RECORD-ONLY: nothing
+    // here changes what any arm hears). Only the observe phase writes
+    // these; `PhaseDeliveryTracker` exports them on the observe row alone.
+
+    /// Outputs LOST in observe while the arm's dot-tracked observe sound
+    /// was playing: the rest of that sound was cut and is not replayed.
+    var observeLossesDuringSound = 0
+    /// Outputs LOST in observe while no observe sound was playing: the
+    /// cue, the gap before the presentation, a held observe, after the
+    /// sound was already cut — and, in an arm with no observe sound (the
+    /// silent arm, an unclaimed sound), the whole phase.
+    var observeLossesWithoutSound = 0
+    /// Seconds the observe sound ran, from its play call to its stop (the
+    /// phase's end, a load, an interruption), whatever the output did.
+    var observeSoundSeconds: Double = 0
+    /// Of `observeSoundSeconds`, the seconds before the output was lost.
+    var observeSoundDeliveredSeconds: Double = 0
+    /// When the observe sound now running started; nil when none runs.
+    var observeSoundStartedAt: TimeInterval? = nil
+    /// When the running observe sound's current output started carrying
+    /// it; nil when none runs or its output was lost.
+    var observeSoundDeliveringSince: TimeInterval? = nil
+
+    /// The observe sound started at `now` (one closed first if running).
+    mutating func startObserveSound(at now: TimeInterval) {
+        endObserveSound(at: now)
+        observeSoundStartedAt = now
+        observeSoundDeliveringSince = now
+    }
+
+    /// The observe sound stopped at `now`. No-op when none runs.
+    mutating func endObserveSound(at now: TimeInterval) {
+        if let since = observeSoundDeliveringSince {
+            observeSoundDeliveredSeconds += max(0, now - since)
+        }
+        if let start = observeSoundStartedAt {
+            observeSoundSeconds += max(0, now - start)
+        }
+        observeSoundStartedAt = nil
+        observeSoundDeliveringSince = nil
+    }
+
+    /// The output was lost at `now` in observe: booked as during or
+    /// without the sound, and the sound's delivery ends here.
+    mutating func observeOutputLost(at now: TimeInterval) {
+        if let since = observeSoundDeliveringSince {
+            observeLossesDuringSound += 1
+            observeSoundDeliveredSeconds += max(0, now - since)
+            observeSoundDeliveringSince = nil
+        } else {
+            observeLossesWithoutSound += 1
+        }
+    }
+
+    /// These counters as they stand at `now`, a running sound's seconds
+    /// included, so a row written while the sound still runs (or a phase
+    /// closed before its sound's stop is booked) carries them.
+    func settled(at now: TimeInterval) -> LifecycleCounters {
+        var copy = self
+        copy.endObserveSound(at: now)
+        return copy
+    }
 }

@@ -23,7 +23,11 @@
 // suite must not touch. It reaches the same `settleEngineForArm` as an arm
 // change does (`reapplyParticipantIdentity` → `applyArmAuthority`, the same
 // arm included) — the link `ArmEngineCarryOverTests.sameArmEnrolmentNeutralises`
-// already pins — so the arm-change test below pins the reset itself.
+// already pins — so the arm-change tests below pin the resets themselves
+// (the loss, and since 2026-10-21 `routeRecoveries`).
+//
+// Mutation check (lane E, 2026-10-21): delete `routeRecoveries = 0` in
+// `settleEngineForArm`; `recoveriesResetAtTheHandOver` goes RED.
 
 import Testing
 import Foundation
@@ -163,6 +167,20 @@ import CoreGraphics
 
         #expect(rig.vm.routeRecoveries == 0,
                 "a loss under the outgoing arm was recovered under the incoming one")
+    }
+
+    @Test("recoveries are per child: the hand-over to the next arm or child starts the count at 0")
+    func recoveriesResetAtTheHandOver() {
+        let rig = LifecycleRig(arm: .phoneme)
+        rig.vm.loadLetter(name: "A")
+        lose(rig)
+        arrive(rig)
+        #expect(rig.vm.routeRecoveries == 1, "precondition: one genuine re-plug")
+
+        rig.vm.applyArm(.spatial)
+
+        #expect(rig.vm.routeRecoveries == 0,
+                "the outgoing arm's (or child's) recoveries were carried into the incoming one")
     }
 
     @Test("the silent arm: the re-plug is recorded, and nothing sounds")

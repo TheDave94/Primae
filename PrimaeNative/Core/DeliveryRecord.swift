@@ -176,10 +176,25 @@ struct PhaseDelivery: Codable, Equatable {
     var recognizerAvailable: Bool?
     /// Which binary and launch wrote the row.
     var build: BuildStamp?
+    /// Protocol r11, RECORD-ONLY, observe rows only (nil on every other
+    /// phase's row and on rows written before r11). Outputs lost while the
+    /// arm's dot-tracked observe sound played (its rest cut, not replayed)
+    /// and while none played (the cue, the gap before the presentation, a
+    /// held observe; the whole phase in an arm with no observe sound).
+    /// Silent arm: `observeLossesDuringSound` and both seconds are 0.
+    var observeLossesDuringSound: Int?
+    var observeLossesWithoutSound: Int?
+    /// Seconds the observe sound ran (play call to stop), and of those the
+    /// seconds before a lost output — so delivered ÷ ran is the share of
+    /// the observe sound the child could hear. 0 where no sound ran.
+    var observeSoundSeconds: Double?
+    var observeSoundDeliveredSeconds: Double?
 
     init(observeRestarts: Int? = nil, strokesCancelled: Int? = nil, routeChanges: Int? = nil,
          interruptions: Int? = nil, atStart: EnvironmentStamp? = nil, outputRouteAtEnd: String? = nil,
-         voiceId: String? = nil, recognizerAvailable: Bool? = nil, build: BuildStamp? = nil) {
+         voiceId: String? = nil, recognizerAvailable: Bool? = nil, build: BuildStamp? = nil,
+         observeLossesDuringSound: Int? = nil, observeLossesWithoutSound: Int? = nil,
+         observeSoundSeconds: Double? = nil, observeSoundDeliveredSeconds: Double? = nil) {
         self.observeRestarts = observeRestarts
         self.strokesCancelled = strokesCancelled
         self.routeChanges = routeChanges
@@ -189,6 +204,10 @@ struct PhaseDelivery: Codable, Equatable {
         self.voiceId = voiceId
         self.recognizerAvailable = recognizerAvailable
         self.build = build
+        self.observeLossesDuringSound = observeLossesDuringSound
+        self.observeLossesWithoutSound = observeLossesWithoutSound
+        self.observeSoundSeconds = DeliveryCoding.finite(observeSoundSeconds)
+        self.observeSoundDeliveredSeconds = DeliveryCoding.finite(observeSoundDeliveredSeconds)
     }
 
     init(from decoder: Decoder) throws {
@@ -202,6 +221,10 @@ struct PhaseDelivery: Codable, Equatable {
         voiceId             = try? c.decode(String.self, forKey: .voiceId)
         recognizerAvailable = try? c.decode(Bool.self, forKey: .recognizerAvailable)
         build               = try? c.decode(BuildStamp.self, forKey: .build)
+        observeLossesDuringSound     = try? c.decode(Int.self, forKey: .observeLossesDuringSound)
+        observeLossesWithoutSound    = try? c.decode(Int.self, forKey: .observeLossesWithoutSound)
+        observeSoundSeconds          = try? c.decode(Double.self, forKey: .observeSoundSeconds)
+        observeSoundDeliveredSeconds = try? c.decode(Double.self, forKey: .observeSoundDeliveredSeconds)
     }
 }
 

@@ -89,13 +89,22 @@ struct ParentDashboardExporter {
     /// counts, the output route at its start and end, the device state at
     /// its start, the voice, the recognizer, and the binary and launch
     /// that wrote it. All empty on a row written before batch D.
+    /// Protocol r11 appends the observe-sound columns after the build
+    /// columns, newest-last (record-only; see `PhaseDelivery`): filled on
+    /// observe rows only, empty on every other row and before r11.
     static let phaseRowAppendedColumns: [String] = [
         "participantId", "rowId", "finalizedBy", "probeAttempt",
         "observeRestarts", "strokesCancelled", "routeChanges", "interruptions",
         "outputRouteAtStart", "outputRouteAtEnd", "outputVolume", "outputLatency",
         "otherAudioPlaying", "secondaryAudioHint", "voiceId", "recognizerAvailable",
         "guidedAccess", "idleTimerDisabled", "lowPowerMode", "thermalState", "batteryLevel",
-    ] + buildColumns
+    ] + buildColumns + observeSoundColumns
+
+    /// Protocol r11's observe-sound columns, in order.
+    static let observeSoundColumns: [String] = [
+        "observeLossesDuringSound", "observeLossesWithoutSound",
+        "observeSoundSeconds", "observeSoundDeliveredSeconds",
+    ]
 
     /// The values for `phaseRowAppendedColumns`, in the same order.
     static func phaseRowAppendedFields(_ rec: PhaseSessionRecord, participantId: UUID) -> [String] {
@@ -114,7 +123,11 @@ struct ParentDashboardExporter {
             d?.voiceId ?? "", bool(d?.recognizerAvailable),
             bool(e?.guidedAccess), bool(e?.idleTimerDisabled), bool(e?.lowPowerMode),
             e?.thermalState ?? "", e?.batteryLevel.map { String(format: "%.4f", $0) } ?? "",
-        ] + buildFields(d?.build)
+        ] + buildFields(d?.build) + [
+            int(d?.observeLossesDuringSound), int(d?.observeLossesWithoutSound),
+            d?.observeSoundSeconds.map { String(format: "%.3f", $0) } ?? "",
+            d?.observeSoundDeliveredSeconds.map { String(format: "%.3f", $0) } ?? "",
+        ]
     }
 
     /// The device state, as the enrolment block names it (R-020, R-018).
