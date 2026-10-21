@@ -705,14 +705,13 @@ final class MeasuredAudioUITests: XCTestCase {
     /// nonSilent=0 total=20 peak=0.0`). Since r4 (P2, 2026-10-04) a probe's
     /// writing couples to the arm's sound like every other writing pass, so
     /// that claim is false in the phoneme arm launched here. Nor can the
-    /// r4 claim (`nonSilent > 0`) be made: the drag below runs across the
-    /// middle of the screen, and sound is gated on
-    /// `StrokeTracker.isNearStroke` — distance to the NEXT checkpoint of the
-    /// current stroke, `checkpointRadius × 3` — whose first checkpoint for
-    /// A is the apex (`Regular/A/strokes.json`, stroke 0 starts at
-    /// (0.583, 0.031), radius 0.1). The drag never comes within 0.3 of it,
-    /// so it is not a stroke on the letter path in the sense the gate
-    /// measures, in any arm. (Read from the code, not measured.)
+    /// r4 claim (`nonSilent > 0`) be made from this test as it stood: its
+    /// drag ran across the middle of the screen, never near the letter
+    /// path that `StrokeTracker.isNearStroke` gates the sound on. Since
+    /// 2026-10-21 the letter is traced along its real strokes
+    /// (`LetterTracer`), so the gate is now reachable here; a sound
+    /// assertion is deliberately NOT added in the same change (scope:
+    /// lane H changed how the test draws, not what it claims).
     ///
     /// r4 sound in the probe passes is covered at unit level by
     /// `ProtocolMatrixTests.soundArmsSoundInEveryWritingPass` (pretest /
@@ -726,7 +725,7 @@ final class MeasuredAudioUITests: XCTestCase {
     /// break whenever one changes.
     func testColdPretestProbeIsMeasuredAndTagged() {
         let app = XCUIApplication()
-        app.launchArguments += ["-audioSignalProbe"]
+        app.launchArguments += ["-audioSignalProbe", LetterTracer.launchArgument]
         app.launchArguments += [
             "-de.flamingistan.primae.audioConditionOverride", "phoneme",
         ]
@@ -760,18 +759,17 @@ final class MeasuredAudioUITests: XCTestCase {
                     + (refusal.staticTexts.element(boundBy: 1).label))
         }
 
-        // Draw while SAMPLING: the readout carries only the latest value,
-        // so a poll after the stroke would read whatever came after it.
+        // Draw, then SAMPLE: the readout carries only the latest value.
+        // The letter is TRACED along its own strokes (LetterTracer,
+        // 2026-10-21) — it used to be a straight swipe across the middle
+        // of the screen, which never came near the letter path — and the
+        // production must be recognised as A. The cold probe stays on its
+        // finished freeWrite (no advance), so the windows sampled after
+        // the trace still carry the freeWrite tag.
         var readings: [AudioSignalReading] = []
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.55))
-        let deadline = Date().addingTimeInterval(14)
-        var drew = false
+        LetterTracer.traceColdProbeAndAssertRecognised(app, letter: "A", probe: "pretest")
+        let deadline = Date().addingTimeInterval(8)
         while Date() < deadline {
-            if !drew {
-                start.press(forDuration: 0.15, thenDragTo: end)
-                drew = true
-            }
             if let line = readoutLabel(app), line.hasPrefix("AUDIO-SIGNAL "),
                let reading = AudioSignalReading(line: line),
                !readings.contains(reading) {

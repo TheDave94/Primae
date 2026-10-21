@@ -399,6 +399,11 @@ final class PhaseTransitionCoordinator {
 
     private func recordSessionCompletion(finalizedBy: RowFinalization = .child) {
         guard let vm else { return }
+        #if DEBUG
+        // Test-only: the XCUI tracer reads a completed letter's scores
+        // after the study auto-advance has moved on (no-op unless armed).
+        TracingGeometryTestLog.shared.recordCompletion(of: vm)
+        #endif
         // Study sessions: no celebration overlay, chime, or phrase —
         // the proctor advances via the nav arrows (audit C1/C2). The
         // chime/prompt calls below are the casual path's per-letter

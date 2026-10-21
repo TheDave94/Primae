@@ -43,6 +43,8 @@ final class StudyDryRunUITests: XCTestCase {
     @MainActor
     func testEnrolmentProbeCompletionSecondEnrolmentExport() {
         let app = XCUIApplication()
+        // Arms the DEBUG-only geometry hook the letter tracer reads.
+        app.launchArguments += [LetterTracer.launchArgument]
         app.launch()
 
         openParentArea(app)
@@ -86,8 +88,13 @@ final class StudyDryRunUITests: XCTestCase {
             // endTouch/scheduleFreeWriteAutoAdvance) — study mode never
             // retries on a low-confidence pass (PhaseTransitionCoordinator
             // .completePostFreeWriteRecognition), so any real drag
-            // completes the session regardless of drawn shape.
-            drawFreeWriteStroke(app)
+            // completes the session regardless of drawn shape — which is
+            // why this used to be a straight swipe, and why that proved
+            // nothing about drawing. The letter is now TRACED along its
+            // own strokes (LetterTracer, 2026-10-21) and the production
+            // must be recognised: every checkpoint passed, and the scored
+            // freeWrite in the passing range.
+            LetterTracer.traceColdProbeAndAssertRecognised(app, letter: "A", probe: "pretest")
             // PhaseDotIndicator's accessibilityValue is unconditional
             // (not studyMode-gated) and reports "N von M abgeschlossen",
             // where M is the session's phase count. A cold probe only ever
@@ -211,15 +218,6 @@ final class StudyDryRunUITests: XCTestCase {
         let readyOK = app.alerts["Neues Kind bereit"].buttons["OK"]
         XCTAssertTrue(readyOK.waitForExistence(timeout: 5), "the ready alert should appear")
         readyOK.tap()
-    }
-
-    /// A short drag anywhere in the canvas area. `beginTouch`/`endTouch`
-    /// (TouchDispatcher.swift) don't care about touch type, only that
-    /// `freeWritePoints.count >= 2` before the lift.
-    private func drawFreeWriteStroke(_ app: XCUIApplication) {
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.35, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.55))
-        start.press(forDuration: 0.15, thenDragTo: end)
     }
 
     // MARK: - Element lookup (label/text only — no accessibilityIdentifier

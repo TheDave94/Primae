@@ -379,6 +379,13 @@ struct TracingCanvasView: View {
                         .padding(.leading, 12)
                         .padding(.bottom, 16)
                 }
+
+                // Test-only geometry readout for the XCUI letter tracer;
+                // compiled out of Release-Study, inert unless launch-armed
+                // (see TracingGeometryTestHook.swift).
+                #if DEBUG
+                TracingGeometryTestHookView(vm: vm, canvasFrame: geo.frame(in: .global))
+                #endif
             }
             .onAppear { vm.canvasSize = geo.size }
             .onChange(of: geo.size) { _, newSize in vm.canvasSize = newSize }
