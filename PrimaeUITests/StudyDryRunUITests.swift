@@ -49,6 +49,14 @@ final class StudyDryRunUITests: XCTestCase {
 
         openParentArea(app)
 
+        // The count BEFORE this test enrols anyone (2026-10-22). The device
+        // keeps its archive between runs, so an absolute count depends on
+        // what earlier runs left behind; the delta does not.
+        let baseline = exportParticipantCount(app)
+        let research = element(label: "Forschungs-Daten", in: app)
+        XCTAssertTrue(research.waitForExistence(timeout: 5), "Forschungs-Daten sidebar entry must exist")
+        research.tap()
+
         XCTContext.runActivity(named: "1 — enrolment") { _ in
             enrolNewParticipant(app)
             // Lands back on the research dashboard (ParentAreaView's
@@ -152,16 +160,17 @@ final class StudyDryRunUITests: XCTestCase {
             // step (outside this Swift target, where simctl is directly
             // callable) could still read the file's actual bytes if that
             // proves worth the added complexity.
-            let exportLink = element(label: "Datenexport", in: app)
-            XCTAssertTrue(exportLink.waitForExistence(timeout: 5), "Datenexport sidebar entry must exist")
-            exportLink.tap()
-
-            let countText = element(labelContains: "Teilnehmer aktuell gespeichert", in: app)
-            XCTAssertTrue(countText.waitForExistence(timeout: 5), "the participant-count hint must be visible")
-            let count = participantCount(fromHint: countText.label)
-            XCTAssertGreaterThanOrEqual(
-                count, 2,
-                "expected at least the two explicitly-enrolled participants to still be counted, got \(count) from '\(countText.label)'"
+            // Exactly ONE more than before (2026-10-22; this asserted ">= 2",
+            // which R-059 (#47) made wrong). Only a participant who did
+            // something is counted (`participantDidAnything`): the first
+            // child did the pretest and is sealed, the second did nothing
+            // and is in the enrolment block only. Whoever was current before
+            // the test is in `baseline` already if they did anything, and
+            // still counted once after being sealed.
+            let count = exportParticipantCount(app)
+            XCTAssertEqual(
+                count, baseline + 1,
+                "expected the pretest participant and only them to be added (baseline \(baseline)); a zero-activity enrolment must not be counted"
             )
 
             let csvButton = element(label: "CSV exportieren", in: app)
@@ -276,6 +285,18 @@ final class StudyDryRunUITests: XCTestCase {
         } else {
             app.swipeDown(velocity: .fast)
         }
+    }
+
+    /// Opens Datenexport and reads the participant count from its hint.
+    private func exportParticipantCount(_ app: XCUIApplication) -> Int {
+        let exportLink = element(label: "Datenexport", in: app)
+        XCTAssertTrue(exportLink.waitForExistence(timeout: 5), "Datenexport sidebar entry must exist")
+        exportLink.tap()
+        let countText = element(labelContains: "Teilnehmer aktuell gespeichert", in: app)
+        XCTAssertTrue(countText.waitForExistence(timeout: 5), "the participant-count hint must be visible")
+        let count = participantCount(fromHint: countText.label)
+        XCTAssertGreaterThanOrEqual(count, 0, "unreadable count in '\(countText.label)'")
+        return count
     }
 
     private func participantCount(fromHint label: String) -> Int {

@@ -40,6 +40,11 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     func testChevronAdvancesLetter() {
         let app = XCUIApplication.primaeUnderTest()
         app.launch()
+        // Enrol first (2026-10-22). Without a participant the study build
+        // shows its start gate, not a letter, so this test used to pass only
+        // when an earlier run had left someone enrolled on the device; on
+        // the iPad on 2026-10-22 nobody was, and it failed at the pill.
+        enrolViaRail(app)
 
         attach(app, name: "A-01-launch")
 
@@ -92,6 +97,8 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     func testChevronLandsOnUsableLetter() {
         let app = XCUIApplication.primaeUnderTest()
         app.launch()
+        // Enrol first, for the same reason as testChevronAdvancesLetter.
+        enrolViaRail(app)
 
         guard let before = currentLetter(app) else {
             attach(app, name: "A2-01-no-letter-pill-FAILURE")
