@@ -126,13 +126,15 @@ class AccessibilityAuditUITests: XCTestCase {
         let app = launch()
         try enrolViaRail(app, auditDialogs: true)
 
-        // Observe is short and already running when enrolment returns: the
-        // full-screen "Beobachtungsphase" element is its screen.
-        if element(label: "Beobachtungsphase", in: app).exists {
-            try audit(app, screen: "03-schule-observe")
-        } else {
-            attachText("observe had already ended", name: "observe-missed-\(sizeTag)")
-        }
+        // Enrolment leaves the first letter PARKED (R-007, 2026-10-22: the
+        // cold pretests come next). The full-screen "Beobachtungsphase"
+        // element is the observe screen; audit it, then tap it to start
+        // the letter, as the proctor does after the pretests.
+        let observe = element(label: "Beobachtungsphase", in: app)
+        XCTAssertTrue(observe.waitForExistence(timeout: 12),
+                      "enrolment must leave the parked observe screen up")
+        try audit(app, screen: "03-schule-observe")
+        observe.tap()
 
         XCTAssertTrue(waitForPhase(app, "Nachspuren", timeout: 40),
                       "observe should advance to guided by itself")
@@ -227,7 +229,7 @@ class AccessibilityAuditUITests: XCTestCase {
     // MARK: - Launch & navigation
 
     private func launch() -> XCUIApplication {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launchArguments += [LetterTracer.launchArgument]
         if let category = contentSizeCategory {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", category]
@@ -439,7 +441,7 @@ final class AccessibilityFixesUITests: XCTestCase {
     /// control. It must be a button.
     @MainActor
     func testParentAreaGearIsExposedAsAButton() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launch()
         let gear = app.descendants(matching: .any)
             .matching(NSPredicate(format: "label == %@", "Eltern-Bereich")).firstMatch

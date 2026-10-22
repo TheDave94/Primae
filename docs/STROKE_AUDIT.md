@@ -5,9 +5,13 @@
 > launched the bake-pipeline rewrite. Most of its recommendations have
 > shipped:
 >
-> - **Phase 1 (Critical letters)** — I, Z, U, M, V, B, E, H, i ship-blockers
->   all fixed; verified in the calibrator and committed to
->   `LETTER_OVERRIDES`.
+> - **Phase 1 (Critical letters)** — U, M, V, B, E, H, i fixed; verified in the
+>   calibrator and committed to `LETTER_OVERRIDES`. **I and Z were not
+>   defects** (corrected 2026-10-22, from the shipped data): read against
+>   the rendered glyph, I is a narrow, slightly slanted stem and Z's top bar
+>   genuinely starts inside the round cap, and both ship today with the
+>   geometry this audit flagged. **U ships as two strokes** (the bowl, then
+>   the right stem), not the single continuous bowl proposed below.
 > - **Phase 1.5 (Bake skeletonize)** — `generate_strokes_auto.py` now bakes
 >   `skimage.skeletonize` centerlines into `strokes.json`; the Swift loader
 >   prefers baked over runtime-derived (commits 77f1c22, 956bc5c, ce5f2f1,

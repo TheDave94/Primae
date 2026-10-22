@@ -38,7 +38,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     /// whether that path actually works.
     @MainActor
     func testChevronAdvancesLetter() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launch()
 
         attach(app, name: "A-01-launch")
@@ -90,7 +90,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     /// this confirms the visible consequence (phase indicator back to 0).
     @MainActor
     func testChevronLandsOnUsableLetter() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launch()
 
         guard let before = currentLetter(app) else {
@@ -163,7 +163,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     /// exactly once, at the top.
     @MainActor
     func testSecondEnrolmentUsableWithoutRelaunch() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launch()   // the ONLY launch in this test
 
         openParentArea(app)
@@ -201,7 +201,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
     /// element makes the test correct in either orientation.
     @MainActor
     func testRailDoubleTapEnrolsNextChildWithoutParentArea() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launch()   // the ONLY launch in this test
 
         let rail = element(label: "Navigationsleiste", in: app)
@@ -318,7 +318,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         // `continueAfterFailure = false` a failed assertion aborts the
         // test, which is exactly the case that must not skip the restore.
         addTeardownBlock { @MainActor in
-            let app = XCUIApplication()
+            let app = XCUIApplication.primaeUnderTest()
             app.launch()
             self.openParentArea(app)
             self.openSettings(app)
@@ -328,7 +328,7 @@ final class StudyAdvanceProbeUITests: XCTestCase {
             app.terminate()
         }
 
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         // Arm the output tap so this run MEASURES the sound instead of
         // only proving the engine was asked to play (2026-10-02). The
         // per-phase results land in
@@ -608,7 +608,7 @@ final class MeasuredAudioUITests: XCTestCase {
     }
 
     func testEnrollingThenObservingProducesMeasuredAudio() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launchArguments += ["-audioSignalProbe"]
         // MEASURED 2026-10-02: this test's own enrolled child drew the
         // SILENT arm (participant UUID byte 230, 230 % 3 = 2), so there
@@ -727,7 +727,7 @@ final class MeasuredAudioUITests: XCTestCase {
     /// guided walk, which depends on per-phase entry gestures and would
     /// break whenever one changes.
     func testColdPretestProbeIsMeasuredAndTagged() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launchArguments += ["-audioSignalProbe", LetterTracer.launchArgument]
         app.launchArguments += [
             "-de.flamingistan.primae.audioConditionOverride", "phoneme",

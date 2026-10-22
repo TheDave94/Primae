@@ -113,7 +113,7 @@
 <hr>
 <h2>0 · Before you start (once, not per run)</h2>
 <ul>
-<li><strong>Headphones connected.</strong> Both the Phonem and the Raumklang arm need them — the app now warns for either, not just Raumklang (a red banner reading "Keine Kopfhörer verbunden" appears in the research tab if not). Ohne Ton doesn't need them, but leave them in for all three runs so the three are comparable.</li>
+<li><strong>Headphones connected.</strong> Both the Phonem and the Raumklang arm need them, and since protocol r14 the session does not run without them: the canvas is replaced by "Studie kann nicht starten — Keine Kopfhörer verbunden …" until they are plugged in, and the red "Keine Kopfhörer verbunden" banner shows in the research tab. Ohne Ton doesn't need them, but leave them in for all three runs so the three are comparable.</li>
 <li><strong>Do Not Disturb on, no other audio app playing.</strong> Turning the iPad's Do Not Disturb on and making sure nothing else is playing audio is still worth doing: another app's audio plays through every arm, and the research tab shows a banner when it detects some. Opening Control Center, a notification banner or the app switcher briefly puts the app's scene into <code>.inactive</code>. Since protocol revision 8 (#47) that SUSPENDS the session instead of ending it: the stroke under the pen is cancelled, a pending free-write quiet window is held, the sound and the voice stop, an interrupted observe restarts from the instruction on return, and nothing is scored or recorded for the interruption. Only <code>.background</code> (leaving the app) still finalises a finished-but-not-yet-scored free-write (<code>TracingViewModel.scenePhaseDidChange</code>). Do Not Disturb does not block Control Center or the edge swipes, so a suspended trial is still possible; the interruption count is recorded on the row (<code>interruptions</code>).</li>
 <li><strong>Reach the parent area</strong>: on the Schule canvas, long-press the gear icon at the bottom of the left rail for about 2 seconds (a blue ring fills around it). This opens "Eltern-Bereich" full-screen. A red "STUDY BUILD" banner should be visible somewhere in it — if it's missing, this isn't the study binary; stop and check with me before running anything.</li>
 <li>The parent area has exactly three tabs on this build: <strong>Forschungs- Daten</strong>, <strong>Einstellungen</strong>, <strong>Datenexport</strong>. There is no "Übersicht" tab — that's the casual app's dashboard, compiled out here. That's correct, not a defect.</li>
@@ -125,7 +125,7 @@
 <li>You should see <strong>"Studienmodus: An (Studien-Build)"</strong> with a lock icon — no toggle. That's correct: this build can't run outside study mode.</li>
 <li>Tap <strong>"Neuer Teilnehmer."</strong> (The same action is the rail's double-tap, then <strong>"Nächstes Kind"</strong>.) There is no share sheet: the outgoing child, if they did anything, is sealed to the on-device archive first and is part of the ONE combined export taken at the end (Section 6). It is also where a delayed-retest participant's id is later read from.</li>
 <li>A confirmation appears: <strong>"Neuen Teilnehmer beginnen?"</strong> Tap <strong>"Neues Kind starten."</strong> If the outgoing child cannot be sealed, an alert <strong>"Kein neues Kind begonnen"</strong> says so and nothing is wiped or enrolled.</li>
-<li>An alert reads <strong>"Neues Kind bereit"</strong> (arm re-derived, app ready). No relaunch is asked for or needed by enrolment itself. Enrolling also starts the first trained letter's observe at once (<code>reapplyParticipantIdentity</code> -&gt; <code>startParkedLetter</code>). Known deviation, open (audit R-007, rated CRITICAL): this procedure puts the Vortest (Section 3) before training, but in-place enrolment un-parks letter 1 first, so its demonstration and arm sound can play before its Vortest and that letter's pretest is not cold. The code states the opposite invariant (<code>TracingViewModel</code>: the <code>launchParked</code> doc comment and <code>advanceAfterCompletedStudyLetter</code>), but <code>reapplyParticipantIdentity</code> deliberately un-parks anyway, and the audit's recommended fix is to stay parked after enrolment until the pretests are done. Until that fix lands, do not read the first trained letter's Vortest as cold.</li>
+<li>An alert reads <strong>"Neues Kind bereit"</strong> (arm re-derived, app ready). No relaunch is asked for or needed by enrolment itself. Enrolment loads the first trained letter <strong>parked</strong>, exactly as a fresh launch does: nothing plays and nothing animates until you start it, so the Vortests in Section 3 stay cold for every letter, the first trained letter included. (Fixed 2026-10-22, audit R-007: enrolment used to start that letter's observe at once, playing its demonstration and arm sound before its own Vortest.)</li>
 </ol>
 <hr>
 <h2>2 · Force the arm for this run</h2>
@@ -145,7 +145,7 @@
 <p>For <strong>each of the five letters</strong>, one at a time:</p>
 <ol>
 <li>Tap <strong>"Vortest starten: <code>&lt;letter&gt;</code>."</strong> The parent area closes immediately and drops you straight onto the canvas.</li>
-<li>The canvas shows a blank glyph — no ghost line, no demonstration. While you write, <strong>no arm plays any sound</strong> — every cold probe is sound-off in every arm since protocol r12 (2026-10-21; under r2-r11 Phonem and Raumklang sounded here). If you hear the letter's sound or the carrier under the pen during a probe, that is a defect. No spoken instruction here: a probe phase has no phase-entry cue. Write the letter once from memory.</li>
+<li>The canvas shows a blank glyph — no ghost line, no demonstration. While you write, <strong>no arm plays any sound</strong> — every cold probe is sound-off in every arm since protocol r12 (2026-10-21; under r2-r11 Phonem and Raumklang sounded here). If you hear the letter's sound or the carrier under the pen during a probe, that is a defect. No spoken instruction here: a probe phase has no phase-entry cue, so <strong>you</strong> tell the child which letter to write, by its letter name ("Schreib ein A"), in the same words for every child and every arm, and never by its sound. Write the letter once from memory.</li>
 <li>After you lift and pause briefly, the trial scores and the canvas goes idle (no celebration, no badge — a cold probe gets no reward-class feedback).</li>
 <li>Long-press the gear again, back to Forschungs-Daten, tap the next letter's pretest button. Repeat until all five are done.</li>
 </ol>
@@ -154,7 +154,7 @@
 <h2>4 · Training — the three trained letters</h2>
 <p>Close the parent area (or it should already be closed from the last pretest). You're on the canvas — what you see depends on how you got here:</p>
 <ul>
-<li><strong>Right after a fresh launch</strong> (before any pretest was run), the app opens on the <strong>first trained letter, "parked"</strong>: nothing is playing, nothing is animating yet. You'll see the brand-blue pill at the bottom with only 👁️ 👆 (no text — the app never shows unreadable text to a child). <strong>Tap it once</strong> to start the letter for real.</li>
+<li><strong>Right after a fresh launch or an enrolment</strong> (before any pretest was run), the app shows the <strong>first trained letter, "parked"</strong>: nothing is playing, nothing is animating yet. You'll see the brand-blue pill at the bottom with only 👁️ 👆 (no text — the app never shows unreadable text to a child). <strong>Tap it once</strong> to start the letter for real.</li>
 <li><strong>Right after the five pretests (the normal case, Section 3 just finished)</strong>, the canvas is still showing the <strong>last pretest letter</strong>, in its finished free-writing state — nothing is parked. Press the <strong>right-arrow (chevron) nav button</strong> in the bottom bar once to reach the first trained letter. That arrow calls <code>nextLetter()</code>, which cycles the trained pool; since the pretest letter you're leaving may not be one of the three trained letters, it isn't found in that pool and the arrow lands on the first trained letter rather than "the next one after it."</li>
 </ul>
 <p>For <strong>each of the three trained letters</strong> (the ones named on the "Aktiver Teilnehmer" card), in order:</p>
@@ -282,6 +282,12 @@
 <td>Red "Keine Kopfhörer verbunden" banner in Forschungs-Daten</td>
 <td>—</td>
 <td>Phonem or Raumklang run, headphones not plugged in</td>
+<td>Shows with headphones plugged in, or in the Ohne Ton run</td>
+</tr>
+<tr>
+<td>Full-screen stop, "Studie kann nicht starten"</td>
+<td>"Keine Kopfhörer verbunden. In diesem Arm läuft die Sitzung nur mit Kopfhörern …"</td>
+<td>Phonem or Raumklang run, headphones not plugged in (r14); goes away the moment they are</td>
 <td>Shows with headphones plugged in, or in the Ohne Ton run</td>
 </tr>
 </tbody></table></div>

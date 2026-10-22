@@ -427,6 +427,9 @@ extension TracingDependencies {
             // build stamp — a fixture must never read the device or write
             // the app container's launch marker.
             deliveryEnvironment:  FixedDeliveryEnvironment(),
+            // r14: off, so a fixture whose environment names a loudspeaker
+            // is not blocked; HeadphoneRequirementTests turns it on.
+            requiresHeadphones:   false,
             launchSentinel:       NullLaunchSentinel(),
             buildStamp:           FixedDeliveryEnvironment.build,
             // Real AVAudioPlayer.play() in PromptPlayer adds enough

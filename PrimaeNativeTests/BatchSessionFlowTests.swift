@@ -14,8 +14,11 @@
 //   1. The sequence needed a tap to start. The park exists for an
 //      unattended APP LAUNCH (it was added after a launch ran a whole
 //      observe phase into whatever the headphones pointed at and wrote
-//      rows for a letter nobody touched). Enrolling is the proctor saying
-//      the session starts, so the park is lifted THERE and only there.
+//      rows for a letter nobody touched). Enrolling was made to lift the
+//      park; that was REVERSED on 2026-10-22 (R-007): the five cold
+//      Vortests run between enrolment and training, so an un-parked first
+//      letter played its demonstration before its own pretest. Enrolment
+//      now leaves the letter parked, like a launch.
 //   2. The previous drawing's ink stayed on screen for ~5 s into the
 //      UNASSISTED trial. It is a comfort feature for observe -> guided,
 //      where the outline is still up; on freeWrite it is an aid the child
@@ -33,19 +36,36 @@ import CoreGraphics
 @MainActor
 @Suite struct BatchSessionFlowTests {
 
-    // MARK: - 1. The session starts without a tap
+    // MARK: - 1. Enrolment leaves the first letter parked (R-007)
 
-    /// Enrolling must leave the launch letter ARMED, not parked. This is
-    /// the tap the proctor had to make once per child.
-    @Test func enrollingLeavesTheLaunchLetterRunningNotParked() {
+    /// Enrolling must leave the first trained letter PARKED: the cold
+    /// Vortests come next, and an armed letter would play its
+    /// demonstration and arm sound before that letter's own pretest.
+    @Test func enrollingLeavesTheFirstLetterParkedForTheColdPretest() {
         let vm = TracingViewModel(.stub.with(studyMode: true))
         #expect(vm.launchParked,
                 "a study launch starts parked — that is the app-launch safeguard, not a bug")
 
         vm.resetForNewParticipant()
 
-        #expect(!vm.launchParked,
-                "enrolling IS the proctor starting the session; the letter must be armed without a tap")
+        #expect(vm.launchParked,
+                "enrolment must not arm the first trained letter before its cold pretest (R-007)")
+        #expect(vm.animation.onCycleComplete == nil,
+                "a parked letter runs no observe animation")
+    }
+
+    /// The first trained letter's own pretest, opened after enrolment,
+    /// runs through the probe's load and lifts the park — so staying
+    /// parked blocks nothing the protocol does next.
+    @Test func theFirstLettersPretestAfterEnrolmentRunsUnparked() {
+        let vm = TracingViewModel(.stub.with(studyMode: true))
+        vm.resetForNewParticipant()
+        let first = vm.currentLetterName
+        let refusal = vm.startColdProbe(letter: first, kind: .pretest)
+        #expect(refusal == nil, "the pretest of \(first) must open: \(refusal ?? "")")
+        #expect(vm.currentProbe == .pretest)
+        #expect(vm.currentLetterName == first)
+        #expect(!vm.launchParked, "the probe's own load lifts the park")
     }
 
     /// …and the safeguard itself must survive, because it is about the

@@ -623,8 +623,9 @@ algorithm:
 | 3. Renderer (display) | `PrimaeNative/Features/Tracing/TracingCanvasView.swift` | Uniform Catmull-Rom (tension = 1/6) → cubic Bezier (`:361-382`) | renders to screen |
 
 Bake output is what ships when no calibrator override exists.
-An approximate proxy for calibrator authorship: 33 of the 59
-Regular letters carry at least one stroke with ≥ 200 cps, which
+An approximate proxy for calibrator authorship: 38 of the 59
+Regular letters carry at least one stroke with ≥ 200 cps (re-counted
+from the shipped `strokes.json` on 2026-10-22; this line said 33), which
 is well above the bake's `CHECKPOINT_COUNT` default of 40. This
 is a heuristic — calibrator output isn't restricted to high-
 density strokes and bake-output strokes aren't restricted to

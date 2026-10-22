@@ -42,7 +42,7 @@ final class StudyDryRunUITests: XCTestCase {
     /// relaunch is required, and this test does not perform one.
     @MainActor
     func testEnrolmentProbeCompletionSecondEnrolmentExport() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         // Arms the DEBUG-only geometry hook the letter tracer reads.
         app.launchArguments += [LetterTracer.launchArgument]
         app.launch()

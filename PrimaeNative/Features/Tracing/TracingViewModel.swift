@@ -939,6 +939,12 @@ public final class TracingViewModel {
     /// reader, the launch marker, the build/launch stamp, and the per-phase
     /// split of the letter's interruption counters.
     let deliveryEnvironment: DeliveryEnvironmentProviding
+    /// See `TracingDependencies.requiresHeadphones` (r14).
+    let requiresHeadphones: Bool
+    /// The current output port, kept here so the headphone block (r14)
+    /// appears and lifts with the route: set at init, on every route
+    /// change and on every return to the foreground.
+    private(set) var currentOutputPortType: String?
     let launchSentinel: LaunchSentinelRecording
     let buildStamp: BuildStamp
     /// See `TracingDependencies.mediaClock`.
@@ -1276,6 +1282,8 @@ public final class TracingViewModel {
         self.participantEnrolled    = deps.participantEnrolled
         self.backgroundTasks        = deps.backgroundTasks
         self.deliveryEnvironment    = deps.deliveryEnvironment
+        self.requiresHeadphones     = deps.requiresHeadphones
+        self.currentOutputPortType  = deps.deliveryEnvironment.sample().outputRoute
         self.launchSentinel         = deps.launchSentinel
         self.buildStamp             = deps.buildStamp
         self.mediaClock             = deps.mediaClock
@@ -2355,9 +2363,9 @@ public final class TracingViewModel {
     /// "Buchstabe dreimal?". Returns true when it restarted, so the caller
     /// can skip what it would otherwise do next.
     ///
-    /// Advancement BETWEEN letters stays a proctor action
-    /// (06-evaluation.typ:15); this only repeats the letter the proctor is
-    /// already on, and only while the switch is on. At the default of 1 it
+    /// Advancement BETWEEN letters is `advanceAfterCompletedStudyLetter`'s
+    /// (automatic once a letter's session completes); this only repeats
+    /// the letter already on screen, and only while the switch is on. At the default of 1 it
     /// returns false immediately and nothing changes.
     ///
     /// Safe against the abandonment-row path: `load(letter:)` calls
@@ -2525,6 +2533,8 @@ public final class TracingViewModel {
 
     public func appDidBecomeActive() {
         launchSentinel.markActive()
+        // A route changed while suspended sends no notification (r14).
+        currentOutputPortType = deliveryEnvironment.sample().outputRoute
         sceneIsActive = true
         playback.appIsForeground = true
         audio.resumeAfterLifecycle()
@@ -2853,6 +2863,7 @@ public final class TracingViewModel {
             countLifecycleEvent(\.routeChanges)
         }
         lifecycleCounters.outputRoute = outputPortType
+        currentOutputPortType = outputPortType
         lifecycleLogger.info("Audio route changed to \(outputPortType ?? "none", privacy: .public) (output lost: \(outputLost, privacy: .public)) on \(self.currentLetterName, privacy: .public)")
         guard outputLost else {
             guard routeOutputWasLost,
@@ -3633,6 +3644,17 @@ public final class TracingViewModel {
             // action. Both routes are still offered: the dashboard button
             // runs the same control.
             return "Kein Teilnehmer eingeschrieben. In der Seitenleiste doppelt tippen und „Nächstes Kind“ wählen (auch im Forschungsbereich möglich), damit Arm und Buchstaben zugewiesen werden — sonst laufen alle Kinder unter denselben Voreinstellungen."
+        }
+        // A sound arm runs over headphones only (r14, David 2026-10-22).
+        // Live with the route: unplugging mid-letter brings this screen up
+        // and touches are refused; plugging back in lifts it and the letter
+        // carries on where it was. An observe sound cut by the unplug is
+        // not replayed (r11 records the loss).
+        if let block = HeadphoneRequirement.block(required: requiresHeadphones,
+                                                  arm: audioCondition,
+                                                  panningEnabled: panningEnabled,
+                                                  outputPortType: currentOutputPortType) {
+            return block
         }
         // Spatial arm: its stimulus and its demonstration are one bundled
         // carrier file; the engine merely logs when it is missing, so the
@@ -4911,20 +4933,16 @@ public final class TracingViewModel {
         demonstratedAudioConditions.removeAll()
         trainedSubset   = .defaultForInstall
         loadFirstTrainedLetter()
-        // …and UN-PARK it, because enrolling IS the proctor saying the
-        // session starts now (2026-10-02). The park exists for the APP
-        // LAUNCH: before it, an unattended launch ran a full observe
-        // phase — demonstration into whatever the headphones pointed at,
-        // auto-advancing, and a `completed:false` row for a letter nobody
-        // touched, all before the pretest. That risk is about the app
-        // coming up on its own, and it is untouched by this: nothing
-        // happens until a proctor has enrolled a child. What this removes
-        // is the extra tap between children in a batch of 30-40, which is
-        // the workflow the rail gesture (PR #22) exists to serve.
-        //
-        // A no-op unless the launch letter is actually parked, so it
-        // cannot double-start a letter, and inert outside studyMode.
-        startParkedLetter()
+        // …and leave it PARKED, exactly as a fresh launch does (R-007, r14,
+        // 2026-10-22). From 2026-10-02 to here enrolment un-parked it, to
+        // save the proctor one tap per child; but the protocol runs the
+        // five cold Vortests BEFORE training (STUDY_DEVICE_DRYRUN §3), so
+        // un-parking played the first trained letter's demonstration and
+        // arm sound before that letter's pretest, and its pretest was no
+        // longer cold. Parked, nothing plays until the proctor starts a
+        // Vortest (its own load) or taps the observe pill / chevron after
+        // the pretests. The tap saved was never free: it cost the first
+        // trained letter its baseline.
         participantIdentityChanged = false
         // The outgoing child's override was cleared by
         // `startNewParticipant` and the arms above re-derived without it,

@@ -1106,6 +1106,40 @@ Implications:
     `StudyCleanConfigTests.endOfSet_celebratesOnceAndHandsTheDeviceBack`
     (the end of the set, three arms).
 
+- **Protocol revision 14 — headphones required in the sound arms (David,
+  2026-10-22: "Headphones should be no but for testing especially
+  automated one it should work without"); enrolment leaves the first
+  trained letter parked (audit R-007).** The authoritative text is
+  `StudyProtocol.history` (r14).
+  - **Headphones.** In the phoneme and spatial arms a study session runs
+    only while a headphone-class output is connected (wired, Bluetooth, USB:
+    `HeadphoneRequirement.headphonePortTypes`). Without one,
+    `studyPreconditionFailure` returns "Keine Kopfhörer verbunden …" and the
+    session screen is the "Studie kann nicht starten" stop, live with the
+    route: unplugging mid-letter stops the letter and refuses touches;
+    plugging back in resumes it where it was. An observe sound cut by the
+    unplug is not replayed (r11 records it). The silent arm, and the
+    panning-off comparison configuration (built for a loudspeaker), are
+    unaffected. This closes the open question the 2026-10-13 audit called
+    D7 ("blocking a sound-arm session on a non-headphone route was not
+    implemented"); no `AudioEngine.swift` edit.
+  - **The test waiver.** Automated tests run without headphones. The
+    launch argument `-allowNonHeadphoneRoute`
+    (`HeadphoneRequirement.testWaiverArgument`) waives the requirement;
+    only test tooling (XCUITest, `xcodebuild`, `devicectl`) can pass a
+    launch argument, so no on-device control can turn it off. Every UI
+    test launches through `XCUIApplication.primaeUnderTest()`, which adds
+    it; the unit-test stub sets `requiresHeadphones: false`. Every phase
+    row records the output route, so a waived run is visible in the export.
+  - **Enrolment parks (R-007).** Under r1-r13 in-place enrolment started
+    the first trained letter's observe at once, so its demonstration and
+    arm sound played before that letter's cold pretest. Enrolment now leaves
+    it parked, as a fresh launch does.
+  - **Pinned by** `HeadphoneRequirementTests` (both sound arms stopped on
+    the speaker, the stop following the route both ways, silent arm,
+    panning off, waiver) and
+    `BatchSessionFlowTests.enrollingLeavesTheFirstLetterParkedForTheColdPretest`.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

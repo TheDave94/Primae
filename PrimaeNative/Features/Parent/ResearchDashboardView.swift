@@ -65,7 +65,7 @@ struct ResearchDashboardView: View {
                 // Until 2026-09-04 only the spatial arm was warned; a
                 // speaker-run phoneme session was silently accepted.
                 // Researcher-facing only (parent-gated).
-                if vm.audioCondition != .silent && !headphonesConnected {
+                if vm.audioCondition != .silent && vm.panningEnabled && !headphonesConnected {
                     headphoneWarning
                 }
                 // Another app's audio, in EVERY arm (R-018) — beside the
@@ -114,11 +114,8 @@ struct ResearchDashboardView: View {
     /// Whether the active output route is headphone-class (wired,
     /// Bluetooth, USB). The spatial arm's stereo-pan axis requires it.
     private static func headphoneRouteActive() -> Bool {
-        let headphonePorts: Set<AVAudioSession.Port> = [
-            .headphones, .bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .usbAudio
-        ]
-        return AVAudioSession.sharedInstance().currentRoute.outputs
-            .contains { headphonePorts.contains($0.portType) }
+        AVAudioSession.sharedInstance().currentRoute.outputs
+            .contains { HeadphoneRequirement.isHeadphones($0.portType.rawValue) }
     }
 
     private func preflightWarning(_ text: String) -> some View {
@@ -143,7 +140,10 @@ struct ResearchDashboardView: View {
             Text((vm.audioCondition == .spatial
                   ? "Dieses Gerät ist dem Raumklang-Arm zugeordnet. "
                   : "Dieses Gerät ist dem Phonem-Arm zugeordnet. ")
-                 + "Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos — eine so durchgeführte Session ist ungültige Studien-Daten. Vor der Session Kopfhörer verbinden.")
+                 + "Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos. "
+                 + (vm.requiresHeadphones
+                    ? "Die Sitzung läuft in diesem Arm erst, wenn Kopfhörer verbunden sind."
+                    : "Testlauf: die Kopfhörerpflicht ist per Startargument aufgehoben, diese Daten sind keine Studiendaten."))
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
         }

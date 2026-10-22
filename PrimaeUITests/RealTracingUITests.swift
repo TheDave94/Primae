@@ -143,7 +143,7 @@ final class RealTracingUITests: XCTestCase {
     /// pinned for this launch only, and enrol a child through the rail.
     @MainActor
     private func launchAndEnrol(arm: String) -> XCUIApplication {
-        let app = XCUIApplication()
+        let app = XCUIApplication.primaeUnderTest()
         app.launchArguments += [
             LetterTracer.launchArgument,
             "-de.flamingistan.primae.audioConditionOverride", arm,

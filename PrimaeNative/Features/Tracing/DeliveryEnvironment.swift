@@ -73,6 +73,53 @@ enum AudioPreflight {
     }
 }
 
+// MARK: - Headphone requirement (r14)
+
+/// A sound arm runs over headphones only (David, 2026-10-22, protocol
+/// r14). Before r14 a missing headphone route only raised a banner in the
+/// research dashboard; the session ran on the loudspeaker, where the pan
+/// axis of both sound arms means nothing.
+///
+/// Automated tests run without headphones, so the requirement can be
+/// waived by a LAUNCH ARGUMENT. Only test tooling can set one (XCUITest,
+/// `xcodebuild`, `devicectl`); nothing in the app's own UI can, so a
+/// proctor cannot switch it off. Every phase row records the output route,
+/// so a waived run is visible in the export.
+enum HeadphoneRequirement {
+    /// Output ports that count as headphones: wired, Bluetooth, USB audio.
+    static let headphonePortTypes: Set<String> = [
+        AVAudioSession.Port.headphones.rawValue,
+        AVAudioSession.Port.bluetoothA2DP.rawValue,
+        AVAudioSession.Port.bluetoothHFP.rawValue,
+        AVAudioSession.Port.bluetoothLE.rawValue,
+        AVAudioSession.Port.usbAudio.rawValue,
+    ]
+
+    /// The launch argument that waives the requirement for automated tests.
+    static let testWaiverArgument = "-allowNonHeadphoneRoute"
+
+    /// Whether this process was launched with the test waiver.
+    static func waived(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.contains(testWaiverArgument)
+    }
+
+    static func isHeadphones(_ portType: String?) -> Bool {
+        portType.map(headphonePortTypes.contains) ?? false
+    }
+
+    static let refusal = "Keine Kopfhörer verbunden. In diesem Arm läuft die Sitzung nur mit Kopfhörern — bitte Kopfhörer anschließen, dann geht es an derselben Stelle weiter."
+
+    /// The block, or nil. Only the sound arms need headphones, and only
+    /// while their coupling drives pan: with the panning comparison switch
+    /// OFF the sessions are built for a loudspeaker (`StudyComparisonSettings
+    /// .panningEnabled`), so the requirement does not apply.
+    static func block(required: Bool, arm: PilotAudioCondition,
+                      panningEnabled: Bool, outputPortType: String?) -> String? {
+        guard required, arm != .silent, panningEnabled, !isHeadphones(outputPortType) else { return nil }
+        return refusal
+    }
+}
+
 // MARK: - Launch sentinel
 
 /// Marks whether the app is running in the foreground, so the NEXT launch

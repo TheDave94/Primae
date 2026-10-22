@@ -90,10 +90,11 @@ does and does not establish.
 ## 0 · Before you start (once, not per run)
 
 - **Headphones connected.** Both the Phonem and the Raumklang arm need
-  them — the app now warns for either, not just Raumklang (a red
-  banner reading "Keine Kopfhörer verbunden" appears in the research
-  tab if not). Ohne Ton doesn't need them, but leave them in for all
-  three runs so the three are comparable.
+  them, and since protocol r14 the session does not run without them:
+  the canvas is replaced by "Studie kann nicht starten — Keine Kopfhörer
+  verbunden …" until they are plugged in, and the red "Keine Kopfhörer
+  verbunden" banner shows in the research tab. Ohne Ton doesn't need
+  them, but leave them in for all three runs so the three are comparable.
 - **Do Not Disturb on, no other audio app playing.** Turning the
   iPad's Do Not Disturb on and making sure nothing else is playing
   audio is still worth doing: another app's audio plays through every
@@ -141,10 +142,13 @@ does and does not establish.
    alert **"Kein neues Kind begonnen"** says so and nothing is wiped or
    enrolled.
 5. An alert reads **"Neues Kind bereit"** (arm re-derived, app ready).
-   No relaunch is asked for or needed by enrolment itself. Enrolling also
-   starts the first trained letter's observe at once
-   (`reapplyParticipantIdentity` -> `startParkedLetter`).
-   Known deviation, open (audit R-007, rated CRITICAL): this procedure puts the Vortest (Section 3) before training, but in-place enrolment un-parks letter 1 first, so its demonstration and arm sound can play before its Vortest and that letter's pretest is not cold. The code states the opposite invariant (`TracingViewModel`: the `launchParked` doc comment and `advanceAfterCompletedStudyLetter`), but `reapplyParticipantIdentity` deliberately un-parks anyway, and the audit's recommended fix is to stay parked after enrolment until the pretests are done. Until that fix lands, do not read the first trained letter's Vortest as cold.
+   No relaunch is asked for or needed by enrolment itself. Enrolment
+   loads the first trained letter **parked**, exactly as a fresh launch
+   does: nothing plays and nothing animates until you start it, so the
+   Vortests in Section 3 stay cold for every letter, the first trained
+   letter included. (Fixed 2026-10-22, audit R-007: enrolment used to
+   start that letter's observe at once, playing its demonstration and
+   arm sound before its own Vortest.)
 
 ---
 
@@ -198,8 +202,10 @@ For **each of the five letters**, one at a time:
    sound-off in every arm since protocol r12 (2026-10-21; under r2-r11
    Phonem and Raumklang sounded here). If you hear the letter's sound or
    the carrier under the pen during a probe, that is a defect. No spoken instruction
-   here: a probe phase has no phase-entry cue. Write the letter once
-   from memory.
+   here: a probe phase has no phase-entry cue, so **you** tell the child
+   which letter to write, by its letter name ("Schreib ein A"), in the
+   same words for every child and every arm, and never by its sound.
+   Write the letter once from memory.
 3. After you lift and pause briefly, the trial scores and the canvas
    goes idle (no celebration, no badge — a cold probe gets no
    reward-class feedback).
@@ -217,8 +223,8 @@ Close the parent area (or it should already be closed from the last
 pretest). You're on the canvas — what you see depends on how you got
 here:
 
-- **Right after a fresh launch** (before any pretest was run), the
-  app opens on the **first trained letter, "parked"**: nothing is
+- **Right after a fresh launch or an enrolment** (before any pretest
+  was run), the app shows the **first trained letter, "parked"**: nothing is
   playing, nothing is animating yet. You'll see the brand-blue pill at
   the bottom with only 👁️ 👆 (no text — the app never shows unreadable
   text to a child). **Tap it once** to start the letter for real.
@@ -486,6 +492,7 @@ working as intended:
 | Same screen | "Phonem-Arm ohne Phonem-Aufnahmen für: ..." | Should never happen — all five recordings are bundled (H5 closed 2026-09-14) | Shows at all, on any run |
 | "Buchstaben nicht geladen — Bitte die App neu starten." | — | Should never happen on a correctly built artefact | Shows at all |
 | Red "Keine Kopfhörer verbunden" banner in Forschungs-Daten | — | Phonem or Raumklang run, headphones not plugged in | Shows with headphones plugged in, or in the Ohne Ton run |
+| Full-screen stop, "Studie kann nicht starten" | "Keine Kopfhörer verbunden. In diesem Arm läuft die Sitzung nur mit Kopfhörern …" | Phonem or Raumklang run, headphones not plugged in (r14); goes away the moment they are | Shows with headphones plugged in, or in the Ohne Ton run |
 
 Anything that blocks the canvas with **any other** message, or that
 lets a session start silently in a state that looks wrong (e.g. the

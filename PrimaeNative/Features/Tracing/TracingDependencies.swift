@@ -234,6 +234,11 @@ struct TracingDependencies {
     /// fixes the environment and asserts the rows; production reads the
     /// device (`LiveDeliveryEnvironment`).
     var deliveryEnvironment: DeliveryEnvironmentProviding
+    /// Whether a study session in a sound arm refuses to run without
+    /// headphones (r14). Production: on, unless the process was launched
+    /// with `HeadphoneRequirement.testWaiverArgument`. The test stub turns
+    /// it off; the tests of the requirement turn it on.
+    var requiresHeadphones: Bool
     /// Marks foreground/background so the next launch can tell an unclean
     /// exit (batch D, R-020). Production: `LaunchSentinel.shared`.
     var launchSentinel: LaunchSentinelRecording
@@ -374,6 +379,7 @@ struct TracingDependencies {
         letterRecognizer: LetterRecognizerProtocol = CoreMLLetterRecognizer(),
         speech: SpeechSynthesizing = AVSpeechSpeechSynthesizer(),
         deliveryEnvironment: DeliveryEnvironmentProviding = LiveDeliveryEnvironment(),
+        requiresHeadphones: Bool = !HeadphoneRequirement.waived(),
         launchSentinel: LaunchSentinelRecording = LaunchSentinel.shared,
         buildStamp: BuildStamp = BuildIdentity.current(),
         makePlaybackController: @escaping (AudioControlling, @escaping (Bool) -> Void) -> PlaybackController = {
@@ -436,6 +442,7 @@ struct TracingDependencies {
         self.letterRecognizer = letterRecognizer
         self.speech = speech
         self.deliveryEnvironment = deliveryEnvironment
+        self.requiresHeadphones = requiresHeadphones
         self.launchSentinel = launchSentinel
         self.buildStamp = buildStamp
         self.makePlaybackController = makePlaybackController

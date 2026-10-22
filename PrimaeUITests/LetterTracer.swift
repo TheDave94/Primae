@@ -304,3 +304,16 @@ extension LetterTracer {
         return entry
     }
 }
+
+extension XCUIApplication {
+    /// The app as every UI test launches it. Protocol r14 stops a sound-arm
+    /// session without headphones, and automated runs have none, so the
+    /// requirement is waived by the launch argument the app reads
+    /// (`HeadphoneRequirement.testWaiverArgument`; the literal is repeated
+    /// here because this target does not import the app module).
+    static func primaeUnderTest() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments += ["-allowNonHeadphoneRoute"]
+        return app
+    }
+}
