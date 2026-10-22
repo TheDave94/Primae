@@ -35,14 +35,25 @@
 # identity guard does once it's there.
 #
 # Usage:
-#   scripts/build_study.sh build  [extra xcodebuild args...]
-#   scripts/build_study.sh test   [extra xcodebuild args...]
+#   scripts/build_study.sh build  [options] [extra xcodebuild args...]
+#   scripts/build_study.sh test   [options] [extra xcodebuild args...]
 #
-# Env:
-#   PRIMAE_CONFIGURATION  Debug-Study (default) or Release-Study
-#   PRIMAE_DESTINATION    xcodebuild -destination (default: generic simulator)
-#   PRIMAE_DERIVED_DATA   -derivedDataPath       (default: /tmp/DerivedData-Primae-Study)
-#   PRIMAE_CODE_SIGNING   NO (default, simulator) or YES (device)
+# Options (each overrides the matching env var):
+#   --configuration X   PRIMAE_CONFIGURATION  Debug-Study (default) or Release-Study
+#   --destination X     PRIMAE_DESTINATION    xcodebuild -destination (default: generic simulator)
+#   --derived-data X    PRIMAE_DERIVED_DATA   -derivedDataPath (default: /tmp/DerivedData-Primae-Study)
+#   --code-signing X    PRIMAE_CODE_SIGNING   NO (default, simulator) or YES (device)
+#
+# Why options as well as env (2026-10-22): a Claude Code seat runs this script
+# unsandboxed only as a BARE call that matches its excludedCommands entry
+# (`sh /Users/musicbox/repos/Primae/scripts/build_study.sh *`). An env prefix
+# (`PRIMAE_CONFIGURATION=… sh …`) is a different leading word and re-sandboxes
+# the whole call, so a seat passes the inputs as options. Example, the pilot
+# artefact on the iPad:
+#   sh /Users/musicbox/repos/Primae/scripts/build_study.sh build \
+#     --configuration Release-Study --code-signing YES \
+#     --destination platform=iOS,id=<UDID> --derived-data /tmp/dd-pilot \
+#     -allowProvisioningUpdates
 #
 # THE PILOT ARTEFACT is Release-Study on a device. Debug-Study is a DEBUG
 # build: `#if DEBUG` surfaces are compiled IN, -Onone, ENABLE_TESTABILITY.
@@ -60,9 +71,32 @@ DESTINATION="${PRIMAE_DESTINATION:-generic/platform=iOS Simulator}"
 DERIVED="${PRIMAE_DERIVED_DATA:-/tmp/DerivedData-Primae-Study}"
 SIGNING="${PRIMAE_CODE_SIGNING:-NO}"
 
+# Leading options override the env; the first argument that is not one of
+# them, and everything after it, goes to xcodebuild untouched.
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --configuration|--destination|--derived-data|--code-signing)
+            [ $# -ge 2 ] || { echo "FATAL: $1 needs a value" >&2; exit 1; }
+            case "$1" in
+                --configuration) CONFIGURATION="$2" ;;
+                --destination)   DESTINATION="$2" ;;
+                --derived-data)  DERIVED="$2" ;;
+                --code-signing)  SIGNING="$2" ;;
+            esac
+            shift 2 ;;
+        *) break ;;
+    esac
+done
+
+case "$SIGNING" in
+    YES|NO) ;;
+    *) echo "FATAL: code signing must be YES or NO (got '$SIGNING')" >&2
+       exit 1 ;;
+esac
+
 case "$CONFIGURATION" in
     Debug-Study|Release-Study) ;;
-    *) echo "FATAL: PRIMAE_CONFIGURATION must be Debug-Study or Release-Study (got '$CONFIGURATION')" >&2
+    *) echo "FATAL: configuration must be Debug-Study or Release-Study (got '$CONFIGURATION')" >&2
        exit 1 ;;
 esac
 
