@@ -236,9 +236,14 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
             // that does not call it, and the assertion could not fail.
             // Deleted rather than rewritten: there is no reachable state in
             // which it is non-empty.
+            // r15 (R-015): the outgoing child's in-flight trial is recorded
+            // BEFORE the switch, under the outgoing id, so rows from the
+            // resets above are expected. What must not happen is a row
+            // written AFTER the switch for the stale phase state.
+            let beforeNextLoad = store.phaseCalls.count
             vm.loadLetter(name: vm.currentLetterName)   // what the next probe/letter would do
-            #expect(store.phaseCalls.isEmpty,
-                    "no phantom row may be written for the outgoing child's stale phase state: \(store.phaseCalls.count)")
+            #expect(store.phaseCalls.count == beforeNextLoad,
+                    "no phantom row may be written for the outgoing child's stale phase state: \(store.phaseCalls.count - beforeNextLoad)")
             break
         }
         #expect(hitTheEdgeCase, "the retry loop must have drawn a trainedSubset excluding \"A\" at least once in 40 tries")
@@ -395,9 +400,16 @@ fileprivate final class ThirdPassRecordingStore: ParentDashboardStoring {
         let prevID = ParticipantStore.participantId
         defer { UserDefaults.standard.set(prevID.uuidString, forKey: "de.flamingistan.primae.participantId") }
         _ = vm.resetForNewParticipant()
-        #expect(vm.freeWritePoints.isEmpty, "the outgoing child's ink is discarded")
+        // r15 (R-015): the outgoing trial is recorded BEFORE the seal and
+        // the switch, so it is written once, under the outgoing id…
+        #expect(store.phaseCalls.count == 1 && store.phaseCalls.first?.phase == LearningPhase.freeWrite.rawName,
+                "the outgoing child's finished trial is recorded once before the switch: \(store.phaseCalls.map(\.phase))")
+        #expect(vm.freeWritePoints.isEmpty, "the outgoing child's ink is not carried over")
+        let beforeNextLoad = store.phaseCalls.count
         vm.loadLetter(name: vm.currentLetterName)   // what the next probe/letter would do
-        #expect(store.phaseCalls.isEmpty, "no row may be written for the outgoing child after the reset: \(store.phaseCalls.count)")
+        // …and nothing of it is written after the switch, under the new id.
+        #expect(store.phaseCalls.count == beforeNextLoad,
+                "no row may be written for the outgoing child after the reset: \(store.phaseCalls.count - beforeNextLoad)")
     }
 
     @Test("a blocked session refuses cold probes too")

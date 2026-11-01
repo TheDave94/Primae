@@ -1140,6 +1140,27 @@ Implications:
     panning off, waiver) and
     `BatchSessionFlowTests.enrollingLeavesTheFirstLetterParkedForTheColdPretest`.
 
+- **Protocol revision 15 — the outgoing child's in-flight letter is
+  recorded under the outgoing id before the seal (audit R-015).** The
+  authoritative text is `StudyProtocol.history` (r15). Record-only: nothing
+  a child sees or hears changes. "Nächstes Kind" and "Teilnehmer
+  wiederherstellen" now record the letter on screen as a letter change does
+  (`TracingViewModel.recordOutgoingInFlightLetter`), then seal, then switch.
+  Under r1-r14 the switch discarded that trial (review 2026-09-05), so an
+  end-of-session abandonment never got its `completed: false` row, a
+  finished but unscored free-writing was lost, and a child who stopped
+  inside their first letter was not sealed. That review's purpose, nothing
+  of the outgoing child under the incoming id, is kept by the ordering. A
+  pen still down at the reset is ended first (`endTouch()`), so a freeWrite
+  stroke in progress closes and records `completed: true`, as backgrounding
+  does.
+  - **Pinned by** `NewParticipantResetTests` (`inFlightGuidedIsSealedUnderTheOutgoingId`,
+    `finishedUnscoredFreeWriteIsSealedUnderTheOutgoingId`,
+    `childWhoStoppedInsideLetterOneIsArchived`,
+    `restoreRecordsTheLiveChildsInFlightLetterBeforeTheSeal`,
+    `sealFailureDoesNotDuplicateAbandonmentRowOnRetryOrNextLoad`) and
+    `AuditThirdPassTests.resetClosesTheOutgoingTrial`.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

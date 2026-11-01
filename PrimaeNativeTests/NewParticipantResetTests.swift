@@ -9,6 +9,7 @@
 
 import Testing
 import Foundation
+import CoreGraphics
 @testable import PrimaeNative
 
 @Suite(.serialized) @MainActor struct NewParticipantResetTests {
@@ -530,6 +531,240 @@ import Foundation
             #expect(record?.environment == env.stamp, "\(String(describing: record?.environment))")
             #expect(record?.environment?.otherAudioPlaying == true, "R-018's flag is missing at enrolment")
             #expect(record?.build == FixedDeliveryEnvironment.build)
+        }
+    }
+
+    // MARK: - The outgoing child's in-flight letter (R-015, protocol r15)
+    //
+    // "Nächstes Kind" used to seal first and then discard the letter on
+    // screen, so an end-of-session abandonment never got its
+    // `completed: false` row and a child who stopped inside letter 1 had
+    // no row and was not sealed. Now the letter is recorded under the
+    // OUTGOING id, then sealed, then the identity switches.
+
+    private let inFlightCanvas = CGSize(width: 400, height: 400)
+
+    private func inFlightVM(_ dashboard: JSONParentDashboardStore,
+                            _ archive: JSONParticipantArchiveStore) -> TracingViewModel {
+        let vm = TracingViewModel(.stub
+            .with(dashboardStore: dashboard)
+            .with(participantArchive: archive)
+            .with(studyMode: true))
+        vm.canvasSize = inFlightCanvas
+        return vm
+    }
+
+    /// Traces the first few checkpoints of the guided phase and lifts.
+    /// Returns the coverage reached.
+    private func traceGuidedPartly(_ vm: TracingViewModel) -> CGFloat {
+        vm.phaseController.resume(at: .guided)
+        let cps = Array((vm.strokeTracker.definition?.strokes.flatMap(\.checkpoints) ?? []).prefix(5))
+        let size = inFlightCanvas
+        let px: (Checkpoint) -> CGPoint = { CGPoint(x: $0.x * size.width, y: $0.y * size.height) }
+        var t: CFTimeInterval = 1000
+        vm.beginTouch(at: cps.first.map(px) ?? .zero, t: t)
+        for cp in cps { t += 0.01; vm.updateTouch(at: px(cp), t: t, canvasSize: size) }
+        vm.endTouch()
+        return vm.progress
+    }
+
+    /// A free-writing production; the pen is left DOWN.
+    private func writeFreely(_ vm: TracingViewModel) {
+        vm.phaseController.resume(at: .freeWrite)
+        var t: CFTimeInterval = 1000
+        var p = CGPoint(x: 50, y: 200)
+        vm.beginTouch(at: p, t: t)
+        for _ in 0..<15 { t += 0.01; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: inFlightCanvas) }
+    }
+
+    /// Mutation: delete the `recordOutgoingInFlightLetter()` call at the top
+    /// of `resetForNewParticipant` → no row, no seal → RED.
+    @Test("R-015: a partly traced guided letter is sealed as one completed:false row under the outgoing id")
+    func inFlightGuidedIsSealedUnderTheOutgoingId() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = inFlightVM(dashboard, archive)
+            #expect(vm.sessionBlockReason == nil, "precondition: the session runs")
+            let outgoing = ParticipantStore.participantId
+
+            let progress = traceGuidedPartly(vm)
+            #expect(progress > 0 && progress < 1, "precondition: partly traced, got \(progress)")
+            #expect(dashboard.snapshot.phaseSessionRecords.isEmpty, "precondition: nothing recorded yet")
+
+            let incoming = vm.resetForNewParticipant()
+            #expect(incoming != outgoing)
+            await archive.flush()
+
+            let reopened = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let rows = reopened.archivedParticipants.filter { $0.participantId == outgoing }
+                .flatMap(\.snapshot.phaseSessionRecords)
+            #expect(rows.count == 1, "one row for the abandoned letter, got \(rows.map(\.phase))")
+            #expect(rows.first?.phase == LearningPhase.guided.rawName && rows.first?.completed == false,
+                    "\(String(describing: rows.first))")
+            #expect(rows.first.map { abs($0.score - Double(progress)) < 1e-9 } == true,
+                    "the row carries the coverage reached")
+            // No carry-over, no misattribution.
+            #expect(!reopened.archivedParticipants.contains { $0.participantId == incoming })
+            #expect(dashboard.snapshot.phaseSessionRecords.isEmpty,
+                    "the incoming child must start with no row of the outgoing child")
+            #expect(vm.progress == 0)
+        }
+    }
+
+    /// Mutation: in `recordOutgoingInFlightLetter`, pass
+    /// `touchStillActive: true` → the finished production is recorded as an
+    /// abandonment (`completed: false`) → RED.
+    @Test("R-015: a finished but unscored free-writing (quiet window pending) is sealed as the completed trial")
+    func finishedUnscoredFreeWriteIsSealedUnderTheOutgoingId() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = inFlightVM(dashboard, archive)
+            let outgoing = ParticipantStore.participantId
+
+            writeFreely(vm)
+            vm.endTouch()
+            #expect(vm.touchDispatcher.isFreeWriteAdvanceScheduled, "precondition: quiet window pending")
+            #expect(dashboard.snapshot.phaseSessionRecords.isEmpty, "precondition: not scored yet")
+
+            let incoming = vm.resetForNewParticipant()
+            await archive.flush()
+
+            let reopened = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let sealed = reopened.archivedParticipants.filter { $0.participantId == outgoing }
+            let rows = sealed.flatMap(\.snapshot.phaseSessionRecords)
+                .filter { $0.phase == LearningPhase.freeWrite.rawName }
+            #expect(rows.count == 1, "exactly one free-writing row, got \(rows.count)")
+            #expect(rows.first?.completed == true, "a finished production is the completed trial")
+            #expect(rows.first?.rawTraceID != nil, "the row links its raw trace")
+            #expect(sealed.flatMap(\.rawTraces).contains { $0.id == rows.first?.rawTraceID },
+                    "the raw trace is sealed with the child")
+            #expect(!vm.touchDispatcher.isFreeWriteAdvanceScheduled, "the quiet window is closed")
+            #expect(!reopened.archivedParticipants.contains { $0.participantId == incoming })
+            #expect(dashboard.snapshot.phaseSessionRecords.isEmpty)
+            #expect(vm.freeWritePoints.isEmpty, "the outgoing ink is not carried over")
+        }
+    }
+
+    /// The child who stops inside their first letter, pen still down: under
+    /// r14 they had no row, `participantDidAnything` was false, and only
+    /// the enrolment record survived.
+    /// Mutation: delete `if touchDispatcher.isSingleTouchInteractionActive
+    /// { endTouch() }` in `recordOutgoingInFlightLetter` → the row is
+    /// `completed: false` → RED on the `completed == true` expectation.
+    @Test("R-015: a child who stopped inside letter 1 is archived and exported under their id")
+    func childWhoStoppedInsideLetterOneIsArchived() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = inFlightVM(dashboard, archive)
+            let outgoing = ParticipantStore.participantId
+
+            writeFreely(vm)   // pen still down
+            #expect(vm.touchDispatcher.isSingleTouchInteractionActive, "precondition: pen down")
+            #expect(!TracingViewModel.participantDidAnything(dashboard.snapshot),
+                    "precondition: under r14 this child would not be sealed")
+
+            _ = vm.resetForNewParticipant()
+            await archive.flush()
+
+            let reopened = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let sealed = reopened.archivedParticipants.filter { $0.participantId == outgoing }
+            #expect(sealed.count == 1, "the child must be archived")
+            let rows = sealed.flatMap(\.snapshot.phaseSessionRecords)
+            #expect(rows.count == 1 && rows.first?.phase == LearningPhase.freeWrite.rawName)
+            #expect(rows.first?.completed == true,
+                    "the reset ends the pen and closes the production, as backgrounding does")
+            #expect(vm.allParticipantExportSources.contains {
+                $0.participantId == outgoing && $0.snapshot.phaseSessionRecords.count == 1
+            }, "the child is in the combined export")
+            #expect(!vm.touchDispatcher.isSingleTouchInteractionActive)
+        }
+    }
+
+    /// Mutation: delete the `recordOutgoingInFlightLetter()` call in
+    /// `restoreParticipant` → child B is sealed with no row (or not at
+    /// all) → RED.
+    @Test("R-015: 'Teilnehmer wiederherstellen' records the live child's in-flight letter before the seal")
+    func restoreRecordsTheLiveChildsInFlightLetterBeforeTheSeal() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            defer { try? FileManager.default.removeItem(at: archiveDir) }
+            let archive = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let vm = inFlightVM(dashboard, archive)
+
+            let childA = vm.resetForNewParticipant()
+            dashboard.recordPhaseSession(letter: "A", phase: "freeWrite", completed: true,
+                                         score: 0.8, schedulerPriority: 0, condition: .threePhase)
+            let childB = vm.resetForNewParticipant()
+            vm.loadLetter(name: "A")
+            #expect(vm.sessionBlockReason == nil, "precondition: B's session runs")
+            let progress = traceGuidedPartly(vm)
+            #expect(progress > 0 && progress < 1, "precondition: partly traced, got \(progress)")
+
+            #expect(vm.restoreParticipant(uuidString: childA.uuidString) == .restored(childA))
+            await archive.flush()
+
+            let reopened = JSONParticipantArchiveStore(directoryURL: archiveDir)
+            let rowsB = reopened.archivedParticipants.filter { $0.participantId == childB }
+                .flatMap(\.snapshot.phaseSessionRecords)
+            #expect(rowsB.count == 1 && rowsB.first?.phase == LearningPhase.guided.rawName
+                    && rowsB.first?.completed == false,
+                    "B's abandoned letter is sealed under B: \(rowsB.map(\.phase))")
+            let rowsA = reopened.archivedParticipants.filter { $0.participantId == childA }
+                .flatMap(\.snapshot.phaseSessionRecords)
+            #expect(!rowsA.contains { $0.phase == LearningPhase.guided.rawName },
+                    "nothing of B may be filed under A")
+            #expect(dashboard.snapshot.phaseSessionRecords.isEmpty,
+                    "the restored child starts with no row of B")
+        }
+    }
+
+    /// If the seal fails after `recordOutgoingInFlightLetter` wrote the
+    /// abandonment row, nothing is wiped; a retry of `resetForNewParticipant`
+    /// or a subsequent `loadLetter` must not write a second `completed: false`
+    /// row for that same letter and phase.
+    /// Mutation: delete `guard abandonmentRecordedPhase != phase else { return }`
+    /// in `PhaseTransitionCoordinator.recordUnloadOfCurrentLetter` → 3 rows → RED.
+    @Test("R-015: a failed seal does not duplicate the in-flight abandonment row on retry or next load")
+    func sealFailureDoesNotDuplicateAbandonmentRowOnRetryOrNextLoad() async {
+        await withRestoredStateAsync {
+            let (dashboard, archiveDir) = makeRealStores()
+            let blocker = FileManager.default.temporaryDirectory
+                .appendingPathComponent("blocker-\(UUID().uuidString)")
+            FileManager.default.createFile(atPath: blocker.path, contents: Data("x".utf8))
+            let unwritableDir = blocker.appendingPathComponent("ParticipantArchive", isDirectory: true)
+            defer {
+                try? FileManager.default.removeItem(at: archiveDir)
+                try? FileManager.default.removeItem(at: blocker)
+            }
+            let failingArchive = JSONParticipantArchiveStore(directoryURL: unwritableDir)
+            let vm = inFlightVM(dashboard, failingArchive)
+            let outgoing = ParticipantStore.participantId
+
+            let progress = traceGuidedPartly(vm)
+            #expect(progress > 0 && progress < 1, "precondition: partly traced, got \(progress)")
+
+            // First reset attempt: records the abandonment row, then fails to seal.
+            _ = vm.resetForNewParticipant()
+            await failingArchive.flush()
+            #expect(vm.participantSealFailure != nil, "precondition: seal failed")
+            #expect(ParticipantStore.participantId == outgoing, "precondition: not switched")
+
+            // Retry reset, then load another letter: neither may record A's guided phase again.
+            _ = vm.resetForNewParticipant()
+            vm.loadLetter(name: "F")
+
+            let guidedARows = dashboard.snapshot.phaseSessionRecords.filter {
+                $0.letter == "A" && $0.phase == LearningPhase.guided.rawName
+            }
+            #expect(guidedARows.count == 1,
+                    "expected exactly one completed:false row for A after seal failure + retry + load, got \(guidedARows.count)")
+            #expect(guidedARows.first?.completed == false)
         }
     }
 

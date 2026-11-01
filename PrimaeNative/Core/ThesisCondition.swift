@@ -189,10 +189,12 @@ enum ParticipantStore {
     /// Data stores are wiped separately by the caller
     /// (`TracingViewModel.resetForNewParticipant`).
     ///
-    /// `enrolledAt` is stamped at this instant; the new participant's
-    /// first record can only occur after the required app relaunch
-    /// (strictly later), so no real record can fall before it and the
-    /// exporter's pre-enrolment filter never drops a legitimate row.
+    /// `enrolledAt` is stamped at this instant, after the outgoing
+    /// child's stores have been sealed and wiped and before the new
+    /// participant's arms are re-derived in place
+    /// (`reapplyParticipantIdentity`), so no new-participant row can
+    /// fall before it and the exporter's pre-enrolment filter never
+    /// drops a legitimate row.
     @discardableResult
     static func startNewParticipant() -> UUID {
         let new = UUID()

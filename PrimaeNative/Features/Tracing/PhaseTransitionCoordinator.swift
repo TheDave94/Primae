@@ -197,14 +197,25 @@ final class PhaseTransitionCoordinator {
     /// writer of `completed == false`: the column, and the exported
     /// `phaseCompletionRate_*`, carried a constant `true` before. Study
     /// mode only; an untouched letter records nothing.
+    /// The phase of the CURRENT letter that already has its
+    /// `completed: false` row, or nil. Cleared by every letter load.
+    var abandonmentRecordedPhase: LearningPhase?
+
     func recordUnloadOfCurrentLetter(touchStillActive: Bool) {
-        // After a participant reset nothing of the outgoing child may be
-        // recorded — not even an abandonment row (review 2026-09-05).
+        // After a participant switch nothing of the outgoing child may be
+        // recorded under the new id (review 2026-09-05). Their in-flight
+        // letter is recorded by this function BEFORE the switch, while the
+        // flag is still clear (`recordOutgoingInFlightLetter`, R-015).
         guard let vm, vm.studyMode, !vm.participantIdentityChanged,
               !vm.phaseController.isLetterSessionComplete else { return }
         if !touchStillActive, finalizeFinishedFreeWriteIfPending(finalizedBy: .navigation) { return }
 
         let phase = vm.phaseController.currentPhase
+        // One abandonment row per letter and phase (r15). A participant
+        // switch records it before the seal; if the seal then fails,
+        // nothing is wiped, and the next load or switch attempt would
+        // record the same phase again.
+        guard abandonmentRecordedPhase != phase else { return }
         let hasFreeWriteInk = !vm.freeWritePoints.isEmpty
         let hasInput = !vm.phaseController.phaseScores.isEmpty
             || vm.progress > 0
@@ -213,6 +224,7 @@ final class PhaseTransitionCoordinator {
         guard hasInput else { return }
 
         vm.abortInFlightRecognition()
+        abandonmentRecordedPhase = phase
         let score: CGFloat
         switch phase {
         case .guided:           score = vm.progress

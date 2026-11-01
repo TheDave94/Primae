@@ -107,8 +107,10 @@ struct StrokeProcessMeasures: Equatable {
     /// used. Unmatched (extra/missing) strokes do NOT enter this
     /// average — their signal is `strokeCount`, not a distance penalty;
     /// see the file header.
-    /// UNIT: a fraction of the (square) study canvas — the same 0–1 frame
-    /// the recorder's points and the tracker's reference share. It is NOT
+    /// UNIT: a fraction of the study canvas, normalised per axis to 0–1
+    /// (`RawTrace.canvasSize` records the rectangular point dimensions) —
+    /// the same 0–1 frame the recorder's points and the tracker's reference
+    /// share. It is NOT
     /// normalised by letter size, so a narrow I and a wide M are on
     /// different physical scales; the planned contrasts are within
     /// letter (same device, orientation and letter per contrast), and a

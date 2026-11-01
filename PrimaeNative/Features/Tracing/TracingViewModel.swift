@@ -4102,6 +4102,7 @@ public final class TracingViewModel {
         // .recordUnloadOfCurrentLetter (2026-09-04).
         phaseTransitions.recordUnloadOfCurrentLetter(
             touchStillActive: touchDispatcher.isSingleTouchInteractionActive)
+        phaseTransitions.abandonmentRecordedPhase = nil   // a new letter starts
         // The arm steps HERE — after that unload row, and before anything
         // below reads the arm (the pre-task demonstration, the audio file
         // list, the phase rows). Both halves are deliberate (2026-09-17):
@@ -4596,6 +4597,10 @@ public final class TracingViewModel {
         // but wrong UUID — re-deriving a random arm and subset and filing
         // the delayed rows under somebody else.
         guard knownParticipantIDs.contains(restored) else { return .unknownID }
+        // The live child's in-flight letter, under the live id, before
+        // anything seals or switches (R-015, r15) — see
+        // `recordOutgoingInFlightLetter`.
+        recordOutgoingInFlightLetter()
         if restored != ParticipantStore.participantId {
             guard sealOutgoingParticipant() else {
                 return .sealFailed(participantSealFailure ?? Self.participantSealFailureMessage)
@@ -4715,6 +4720,9 @@ public final class TracingViewModel {
     /// wiped (audit 2026-10-13, R-050).
     @discardableResult
     func resetForNewParticipant() -> UUID {
+        // Record the outgoing child's in-flight letter FIRST, under the
+        // outgoing id, so the seal below contains it (R-015, r15).
+        recordOutgoingInFlightLetter()
         guard sealOutgoingParticipant() else { return ParticipantStore.participantId }
         wipeLiveParticipantState()
         let newID = ParticipantStore.startNewParticipant()  // new UUID + arms + enrolment
@@ -4761,6 +4769,26 @@ public final class TracingViewModel {
         return newID
     }
 
+    /// Records the live child's in-flight letter under the LIVE id, as a
+    /// letter unload does: a finished-but-unscored freeWrite (quiet window
+    /// pending, recognizer in flight) is scored and recorded, a letter left
+    /// mid-phase gets its `completed: false` row (audit 2026-10-13, R-015,
+    /// protocol r15). Called by "Nächstes Kind" and "Teilnehmer
+    /// wiederherstellen" BEFORE the seal and the identity switch. Until r14
+    /// the switch discarded this trial (review 2026-09-05), so an
+    /// end-of-session abandonment never got its row and a child who stopped
+    /// inside their first letter had no row and was not sealed. The
+    /// 2026-09-05 purpose, nothing of the outgoing child under the NEW id,
+    /// is kept by the ordering: the row is written before the seal copies
+    /// the snapshot and before the wipe and the switch, and
+    /// `recordUnloadOfCurrentLetter` still records nothing while
+    /// `participantIdentityChanged` is set. A pen still down is ended
+    /// first, as backgrounding does.
+    private func recordOutgoingInFlightLetter() {
+        if touchDispatcher.isSingleTouchInteractionActive { endTouch() }
+        phaseTransitions.recordUnloadOfCurrentLetter(touchStillActive: false)
+    }
+
     /// Closes the outgoing child's in-flight trial and wipes every
     /// participant-scoped live store. Only ever called after
     /// `sealOutgoingParticipant()` returned true. Shared by "Nächstes Kind"
@@ -4768,10 +4796,12 @@ public final class TracingViewModel {
     /// from one child to another in the same way.
     private func wipeLiveParticipantState() {
         participantIdentityChanged = true
-        // Close the outgoing child's in-flight trial FIRST: a pending
-        // quiet-window task, an in-flight recognition, or the ink still
-        // in the recorder would otherwise be scored on the next load and
-        // written under the NEW id with the OLD arms (review 2026-09-05).
+        // Discard what is left of the outgoing child's trial: it was
+        // already recorded under their id before the seal
+        // (`recordOutgoingInFlightLetter`, R-015). A pending quiet-window
+        // task, an in-flight recognition, or the ink still in the recorder
+        // would otherwise be scored on the next load and written under the
+        // NEW id with the OLD arms (review 2026-09-05).
         touchDispatcher.resetTouchState()
         abortInFlightRecognition()
         freeWriteRecorder.clearAll()
@@ -4799,6 +4829,7 @@ public final class TracingViewModel {
         // reason — `load(letter:)` clears both too, but only on a
         // successful load.
         phaseController.reset()
+        phaseTransitions.abandonmentRecordedPhase = nil
         progress = 0
         directTappedDots.removeAll()
         // A new child's session begins; the previous one's "finished,
