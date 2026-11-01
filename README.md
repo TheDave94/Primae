@@ -3,16 +3,16 @@
 > An iPad app that teaches **Austrian Volksschule 1. Klasse** children to write the alphabet by hand — through a research-backed three-phase pedagogical flow, on-device CoreML handwriting recognition, and a multidimensional *Schreibmotorik* motor-skill assessment.
 
 [![iOS Build & Test](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml/badge.svg)](https://github.com/TheDave94/Primae/actions/workflows/ios-build.yml)
-![Platform](https://img.shields.io/badge/platform-iPadOS%2026%2B-blue)
-![Swift](https://img.shields.io/badge/Swift-6.3-orange)
-![Xcode](https://img.shields.io/badge/Xcode-26.4-blue)
+![Platform](https://img.shields.io/badge/platform-iPadOS%2027%2B-blue)
+![Swift](https://img.shields.io/badge/Swift-6.4-orange)
+![Xcode](https://img.shields.io/badge/Xcode-27-blue)
 ![License](https://img.shields.io/badge/license-Master's%20thesis-lightgrey)
 
 ## About
 
 ***Primae*** (Latin: *the first ones*) — the child's first letters, the first strokes of school cursive, the first taste of literacy. The brand also shares its name with the bundled display typeface, the same Druckschrift the app renders on every glyph the child traces.
 
-The app teaches the Latin alphabet to 5–6 year-olds, using a four-step pedagogical arc with adaptive scaffolding withdrawal, real-time audio + haptic feedback, on-device CoreML letter recognition, and a four-dimension *Schreibmotorik* motor-skill assessment (Marquardt & Söhl, 2016). Built as the practical artefact for a master's thesis comparing adaptive vs. non-adaptive handwriting instruction.
+The app teaches the Latin alphabet to 5–6 year-olds, using a three-phase pedagogical arc (observe, guided, freeWrite) with adaptive scaffolding withdrawal, real-time audio + haptic feedback, on-device CoreML letter recognition, and a four-dimension *Schreibmotorik* motor-skill assessment (Marquardt & Söhl, 2016). Built as the practical artefact for a master's thesis comparing adaptive vs. non-adaptive handwriting instruction.
 
 The child sees **only verbal evaluations and stars** — every numeric metric (Klarheit, Form, Tempo, Druck, Rhythmus, recognition confidence) lives behind a parental-gate research dashboard. Children at this age can't read fluently, so the app speaks every prompt aloud in German via `AVSpeechSynthesizer`.
 
@@ -58,13 +58,13 @@ The three phases implement **Gradual Release of Responsibility** (Pearson & Gall
 
 ## Tech stack
 
-- **Swift 6.3** with strict concurrency and `@MainActor` default isolation
+- **Swift 6.4** with strict concurrency and `@MainActor` default isolation
 - **SwiftUI** + UIKit overlays for pencil / finger touch handling
 - **AVAudioEngine** + `AVAudioUnitTimePitch` — velocity-driven time-stretching
 - **AVSpeechSynthesizer** — German verbal feedback (`de-DE`, enhanced voice when available)
 - **CoreML** + Vision — on-device 40 × 40 grayscale CNN, 53 classes (A–Z, a–z, ß)
 - **CoreHaptics** — phase-aware haptic patterns
-- **Swift Testing** + a small core of XCTest — ~94 `@Test` declarations
+- **Swift Testing** + a small core of XCTest — 1388 tests in 153 suites at a3260ca4 (2026-11-01; CI is the source of truth)
 - **Zero third-party dependencies**
 
 ## Gestures
@@ -79,7 +79,7 @@ The three phases implement **Gradual Release of Responsibility** (Pearson & Gall
 ## Building
 
 ### Requirements
-- macOS with **Xcode 26+** (project targets iOS 26 SDK)
+- macOS with **Xcode 27** (`bin/toolchain.pin`; project targets iOS 27+, `swift-tools-version: 6.4`)
 - iPad Simulator or physical iPad
 
 ### Open in Xcode
@@ -93,7 +93,7 @@ Set your development team in project settings, then build & run to a simulator o
 cd Primae
 xcodebuild test -project Primae.xcodeproj -scheme Primae \
   -destination "platform=iOS Simulator,name=iPad (A16)" \
-  -configuration Debug CODE_SIGNING_ALLOWED=NO
+  -configuration Debug-Study CODE_SIGNING_ALLOWED=NO
 ```
 
 ### Local type-check
@@ -104,9 +104,7 @@ unconditionally) and would have blocked every Swift commit; it was removed
 `scripts/typecheck_package.sh` (iOS 27 simulator target, `STUDY_BUILD` on).
 
 ### CI
-Every push to `main` runs:
-1. **iPad Simulator** build & test on `macos-26` / Xcode 26 (GitHub-hosted)
-2. **Physical iPad** build & test on a self-hosted MacBook runner
+Every push to `main` runs an **iPad Simulator** build & test on the hosted `xcode-27` image (Xcode 27, GitHub-hosted). The self-hosted MacBook device job was retired in c6731761; physical-iPad runs are a local act.
 
 See [`.github/workflows/`](.github/workflows/).
 

@@ -1444,9 +1444,14 @@ osVersion,deviceModel,observeLossesDuringSound,observeLossesWithoutSound,
 observeSoundSeconds,observeSoundDeliveredSeconds
 ```
 
-(As of protocol r11, 2026-10-21; the authoritative order is the header array in
-`ParentDashboardExporter.swift` — `phaseRowAppendedColumns` is the tail after
-`spatialDeviationRaw`.)
+(As of protocol r14, checked 2026-11-01 against `StudyProtocol.revision` = 14:
+62 columns, identical to the header array in `ParentDashboardExporter.swift`.
+r12-r14 added no columns — r12 only stopped deriving the `probe = "posttest"`
+tag for the final training free-writing, r13 and r14 change what the child
+hears and when a session runs, not what is exported. The last column change
+was r11's four observe-sound columns. The authoritative order is the header
+array in `ParentDashboardExporter.swift` — `phaseRowAppendedColumns` is the
+tail after `spatialDeviationRaw`.)
 
 New columns are always appended **last**, so existing consumers keep
 their column offsets. Legacy rows decode absent fields as nil and emit
@@ -1629,8 +1634,7 @@ of participant objects and has no enrolment block.
   `restart()`, `suspendForLifecycle()`, `resumeAfterLifecycle()`,
   `cancelPendingLifecycleWork()`.
 
-This file is annotated `STABLE & FRAGILE` in `CLAUDE.md` and
-`APP_REFERENCE.md`. Any change must be minimal and surgical (catch
+This file is annotated `STABLE & FRAGILE` in `CLAUDE.md`. Any change must be minimal and surgical (catch
 blocks, init/deinit structure are particularly load-bearing).
 
 ### 7.2 Audio triggering
@@ -1907,7 +1911,9 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 
 ### 10.3 What's tested
 
-(46 test files, 647 `@Test` declarations after rounds 3 and 4.)
+(As of 2026-11-01, CI ran 1388 tests in 153 suites at `a3260ca4`. CI is the
+source of truth for the count; the earlier "46 test files, 647 `@Test`
+figure was stale.)
 
 * All four Schreibmotorik dimensions (`WritingAssessmentTests`).
 * Letter scheduler weights, recency saturation, novelty tie-breaking

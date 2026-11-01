@@ -14,17 +14,33 @@
         </dict>
         <dict>
             <!--
-                File-timestamp APIs via FileManager: app-container writes
-                to Application Support (ProgressStore, CalibrationStore,
-                ParentDashboardStore, RawTraceStore) and Documents
-                (CalibrationSessionLogger). C617.1 = timestamps of files
-                inside the app's own container only.
+                File-timestamp APIs: URLResourceValues.contentModificationDate
+                on files in the app's own Application Support / export
+                directories (ExportFileRetention.swift:91-105 export
+                retention ordering; ParticipantArchiveStore.swift:225-232
+                archive listing). C617.1 = timestamps of files inside the
+                app's own container only.
             -->
             <key>NSPrivacyAccessedAPIType</key>
             <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
             <key>NSPrivacyAccessedAPITypeReasons</key>
             <array>
                 <string>C617.1</string>
+            </array>
+        </dict>
+        <dict>
+            <!--
+                System-boot-time APIs: CACurrentMediaTime() measures elapsed
+                time inside the app (TracingViewModel.swift:2500, 2548,
+                2634, 2664, 4190 letter active time; FreeWritePhaseRecorder.swift:87
+                free-write rhythm).
+                35F9.1 = measure elapsed time between events within the app.
+            -->
+            <key>NSPrivacyAccessedAPIType</key>
+            <string>NSPrivacyAccessedAPICategorySystemBootTime</string>
+            <key>NSPrivacyAccessedAPITypeReasons</key>
+            <array>
+                <string>35F9.1</string>
             </array>
         </dict>
     </array>

@@ -880,7 +880,7 @@ struct ResearchDashboardView: View {
 
     private func conditionLabel(_ c: ThesisCondition?) -> String {
         switch c {
-        case .threePhase: return "threePhase (4-Phasen)"
+        case .threePhase: return "threePhase (3 Phasen)"
         case .guidedOnly: return "guidedOnly"
         case .control:    return "control"
         case .none:       return "—"

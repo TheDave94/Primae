@@ -121,6 +121,13 @@ does and does not establish.
   Daten**, **Einstellungen**, **Datenexport**. There is no "Übersicht"
   tab — that's the casual app's dashboard, compiled out here. That's
   correct, not a defect.
+- **Guided Access on, for each session (per child, not once).** Before
+  handing the iPad to the child, enable Guided Access (iOS Settings,
+  Accessibility, Guided Access; triple-click the side or Home button
+  inside the app) so the child stays inside the app; end it after the
+  session when you take the iPad back. The app records the state on every
+  phase row (`guidedAccess` column). Why this and not a PIN:
+  `docs/DECISIONS.md`, "Parent-area gate" (2026-11-01).
 
 ---
 

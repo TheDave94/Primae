@@ -54,3 +54,11 @@ DECISIONS_DRAFT.md
 # write paid MP3s to ./audio_variants/ relative to the CWD. Untracked files
 # make the Xcode scheme provenance pre-action refuse the build (audit G3-12).
 audio_variants/
+
+# Signing material and credentials: defence in depth, never track these.
+*.p12
+*.pem
+*.key
+*.p8
+*.mobileprovision
+*.cer

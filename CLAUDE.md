@@ -109,7 +109,7 @@ Read `docs/LESSONS.md` before touching `AudioEngine.swift`,
 cd Primae
 xcodebuild test -project Primae.xcodeproj -scheme Primae \
   -destination "platform=iOS Simulator,name=iPad (A16)" \
-  -configuration Debug CODE_SIGNING_ALLOWED=NO
+  -configuration Debug-Study CODE_SIGNING_ALLOWED=NO
 ```
 
 ## Test Infrastructure
@@ -313,7 +313,7 @@ genuinely covered** (`ce5a6dea`, `4c9ff51f`); the 2026-09-17 list must
 not be read as current.
 
 > **Note:** `xcodebuild` is NOT available on claudebox (Linux). Only Swift syntax
-> checking works locally. Full build/test runs on hosted macos-26 GitHub Actions
+> checking works locally. Full build/test runs on the hosted xcode-27 GitHub Actions
 > runners. Always verify CI passes after pushing.
 > Physical-iPad testing is a deliberate LOCAL act on the Mac: it requires
 > `-allowProvisioningUpdates` and an unlocked, connected iPad. It is NOT automated
@@ -1072,7 +1072,7 @@ not be read as current.
    ```bash
    xcodebuild build -project Primae/Primae.xcodeproj -scheme Primae \
      -destination "platform=iOS Simulator,name=iPad (A16)" \
-     -configuration Debug CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
+     -configuration Debug-Study CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
      -derivedDataPath /tmp/DerivedData-Primae 2>&1 | tail -20
    ```
 
@@ -1080,7 +1080,7 @@ not be read as current.
    ```bash
    xcodebuild test -project Primae/Primae.xcodeproj -scheme Primae \
      -destination "platform=iOS Simulator,name=iPad (A16)" \
-     -configuration Debug CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
+     -configuration Debug-Study CODE_SIGNING_ALLOWED=NO ENABLE_DEBUG_DYLIB=NO \
      -derivedDataPath /tmp/DerivedData-Primae 2>&1 | tail -30
    ```
 

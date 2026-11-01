@@ -15,13 +15,13 @@ _**Correction (2026-09-03), itself now superseded (2026-09-14):** the 2026-09-03
 | Item | Owner action | Why it matters | Effort |
 |---|---|---|---|
 | **U5** Pencil 2 squeeze validation | iPad with Apple Pencil 2 — confirm squeeze + double-tap fire `replayAudio()` and don't double-fire with finger taps | Code is shipped; just needs verifying the gesture lands as intended on real hardware [2026-10-14: the squeeze is NOT wired and the double-tap uses a deprecated delegate method; in a study build `replayAudio()` returns at once, so neither gesture plays anything. See U5 below, audit R-096.] | **0–1 days on device** |
-| **U10** VoiceOver walkthrough | iPad with VoiceOver enabled — walk every screen, watch for skipped elements / misordered focus / Switch Control routing / Dynamic Type clipping | Required before submitting the thesis externally; the partial in-code audit shipped, but the device walkthrough is the load-bearing part | **2–3 hours on device** |
+| **U10** VoiceOver walkthrough | iPad with VoiceOver enabled — walk every screen, watch for skipped elements / misordered focus / Switch Control routing / Dynamic Type clipping | Required before submitting the thesis externally. [2026-11-01: the automated audit (2026-10-21) and #80 are done, see U10 below; what remains is human-only: what VoiceOver actually speaks and in what order, the gear long-press under VoiceOver, Switch Control and AssistiveTouch.] | **2–3 hours on device** |
 
 ### Engineering ball (in-loop sessions with me)
 
 | Item | What I need from you | Why it can't be autonomous |
 |---|---|---|
-| **D8** canvas redraw profile | iPad + Instruments time-profile of a high-velocity guided session | No measured evidence of a problem; pre-optimising could break a currently-correct redraw path |
+| ~~**D8** canvas redraw profile~~ **DONE 2026-10-21** | ~~iPad + Instruments time-profile of a high-velocity guided session~~ Measured: zero `TracingCanvasView.body` evaluations per touch event (see D8 below) | Nothing left to do; no optimisation needed |
 
 Everything in the **post-thesis** section (F1–F13) waits until the thesis ships.
 
@@ -181,7 +181,7 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 - Reward badges, daily-goal pill, settings additions, celebration overlay all carry combined-element labels + hints.
 - Sparkline view is `accessibilityHidden(true)`.
 
-**What's still needed (real iPad with VoiceOver enabled).**
+**What's still needed (real iPad with VoiceOver enabled).** [2026-11-01: the 2026-10-21 automated audit and #80 (see the two paragraphs below this list) settled the Dynamic Type clipping check and the "Weiter" focus-order question (moot in the study build). Only the human-only parts remain, flagged "Still needs a human" below: what VoiceOver actually speaks and in what order, the gear long-press under VoiceOver, Switch Control, and AssistiveTouch. The bullets are kept as the original checklist.]
 - Walk every screen in VoiceOver order. Watch for skipped elements, misordered focus, ambiguous labels.
 - Verify the order of focus in `SchuleWorldView` after a phase advance — does the "Weiter" button get focus before the celebration is announced, or vice versa?
 - Switch Control routing — direct-phase dot taps need to be reachable via the switch.
@@ -214,10 +214,10 @@ Found by the 2026-08-19 reconciliation; none of these was previously tracked.
    pairing consecutive records — see the `D11#2` comments at both sites.
 3. **Export failure policy is implemented but undecided.** All three call sites are fail-loud
    and the destructive new-participant path is correctly gated behind a successful export.
-   Missing is the DECISIONS entry recording that as policy — see DEFER 23. Doc-only.
+   Missing is the DECISIONS entry recording that as policy. (A "DEFER 23" pointer here resolved to nothing and was removed 2026-11-01.) Doc-only.
 4. **Golden-file export test.** `ExporterArmStratificationTests` gives structural coverage and
    its header calls it "Golden coverage", but no checked-in CSV fixture exists. A byte-comparison
-   golden over a fixed snapshot is still absent. See DEFER 22.
+   golden over a fixed snapshot is still absent. (The "DEFER 22" pointer resolved to nothing and was removed 2026-11-01.)
 5. ~~**CoreML model is compiled at runtime.**~~ **CLOSED (`1d9ff92`, 2026-08-19).** The model
    moved to its own resource root (`PrimaeNative/MLResources/`) carrying `.process`, scoped
    away from the 87 identically-named `strokes.json` files under `Resources/`. Loader and test
@@ -522,7 +522,7 @@ The at-a-glance table at the top of this file is the authoritative version. Repe
 
 P6's pilot-blocking piece shipped 2026-09-14 (H5) and is off this list; its full-alphabet remainder moved to F13, §5, post-thesis.
 
-**D8 canvas redraw profile** is post-thesis polish — schedule once there's classroom-data evidence of a need (or an Instruments hint of a problem). **F1–F13** are post-thesis full features.
+**D8 canvas redraw profile** was measured 2026-10-21 (zero body re-evaluations per touch; nothing to optimise). **F1–F13** are post-thesis full features.
 
 ---
 

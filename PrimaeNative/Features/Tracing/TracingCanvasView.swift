@@ -936,7 +936,10 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
 
         // Pencil 2 double-tap maps to the same "replay audio" intent
         // as the squeeze so either gesture produces the same outcome.
-        func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+        // `pencilInteraction(_:didReceiveTap:)` replaces the deprecated
+        // `pencilInteractionDidTap(_:)` (iOS 17.5+; the deploy target is 27).
+        func pencilInteraction(_ interaction: UIPencilInteraction,
+                               didReceiveTap tap: UIPencilInteraction.Tap) {
             onPencilSqueeze?()
         }
     }

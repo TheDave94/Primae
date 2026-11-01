@@ -319,7 +319,11 @@ done
 # the shell's own 128+signal codes, which fires the EXIT trap.
 FORGE_HDR="$TMP/forge_auth.$$"
 GH_HDR="$TMP/gh_auth.$$"
-trap 'rm -f "$FORGE_HDR" "$GH_HDR" "$TMP/forge_cred_req.$$" "$TMP/forge_cred_out.$$" "$TMP/forge_cred_timeout.$$"' EXIT
+# Unpredictable, 0600 scratch files (mktemp) instead of fixed names in a
+# shared temp dir; removed by the EXIT trap below.
+CR_JSON=$(mktemp "$TMP/forge_verdict_checkruns.XXXXXX") || exit 1
+POST_JSON=$(mktemp "$TMP/forge_verdict_post.XXXXXX") || exit 1
+trap 'rm -f "$FORGE_HDR" "$GH_HDR" "$CR_JSON" "$POST_JSON" "$TMP/forge_cred_req.$$" "$TMP/forge_cred_out.$$" "$TMP/forge_cred_timeout.$$"' EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -403,10 +407,10 @@ while read -r BR SHA; do
 		log "$BR  $SHA8  skip: GitHub check-runs unreadable"
 		continue
 	fi
-	printf '%s' "$CR" > "$TMP/forge_verdict_checkruns.json"
+	printf '%s' "$CR" > "$CR_JSON"
 
 	# shellcheck disable=SC2046
-	set -- $(collapse "$TMP/forge_verdict_checkruns.json")
+	set -- $(collapse "$CR_JSON")
 	STATE=$1
 	TOTAL=$2
 	BAD=$3
@@ -442,7 +446,7 @@ while read -r BR SHA; do
 		continue
 	fi
 
-	HTTP=$(curl -sS -m "$NET_MAX" -o "$TMP/forge_verdict_post.json" -w '%{http_code}' \
+	HTTP=$(curl -sS -m "$NET_MAX" -o "$POST_JSON" -w '%{http_code}' \
 		-X POST "$FORGE_BASE/repos/$FORGE_REPO/statuses/$SHA" \
 		-H "@$FORGE_HDR" \
 		-H 'Content-Type: application/json' \
@@ -451,7 +455,7 @@ while read -r BR SHA; do
 	case "$HTTP" in
 		2??) log "$BR  $SHA8  POSTED  $STATE  \"$DESC\"" ;;
 		*)
-			log "$BR  $SHA8  FAILED  HTTP $HTTP $(head -c 200 "$TMP/forge_verdict_post.json" 2>/dev/null)"
+			log "$BR  $SHA8  FAILED  HTTP $HTTP $(head -c 200 "$POST_JSON" 2>/dev/null)"
 			FAILED=1 ;;
 	esac
 done <<EOF

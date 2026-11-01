@@ -156,8 +156,8 @@ line numbers — line numbers drift, names don't.
 
 ### 4.5 · Letter completion celebration
 
-- [ ] **System success chime** plays the moment the final phase completes.
-  - If broken: `PromptPlayer.swift:playSuccessChime` (`AudioServicesPlaySystemSound(1322)`).
+- [ ] ~~**System success chime** plays the moment the final phase completes.~~ **OBSOLETE since protocol r13 (2026-10-21, 2026-11-01 annotation):** r13 removed sound effects in every arm and `playSuccessChime` is a no-op in the study build (`StudyVoiceoverPromptPlayer`, `PromptPlayer.swift`; the underlying `PromptPlayer` still carries the old `AudioServicesPlaySystemSound(1322)` body), so nothing should play; hearing a chime is now the defect.
+  - ~~If broken: `PromptPlayer.swift:playSuccessChime` (`AudioServicesPlaySystemSound(1322)`).~~
 - [ ] **Voiceover** speaks "Super gemacht!" (regardless of star count).
 - [ ] **Celebration overlay** appears: brand-blue panel with 🎉 + "Geschafft!" + a star row showing N-of-4 filled stars + a paper-coloured **Weiter** sticker button.
 - [ ] **Tapping Weiter** loads the next recommended letter and lands you on its observe phase.

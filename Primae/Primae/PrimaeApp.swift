@@ -37,6 +37,9 @@ struct PrimaeApp: App {
         // tmp/ (R-062). Only here, never in a VM init: the test host runs
         // TestApp, and a sweep there would race tests that write exports.
         ExportFileRetention.sweepTemporaryExports()
+        // Keep every per-child store out of iCloud/iTunes backups (R-061):
+        // data leaves the iPad only through the proctor's manual export.
+        BackupExclusion.excludeLiveDataDirectory()
         #if !STUDY_BUILD
         // Pre-create the calibration session-log root so the app
         // appears in the Files app even before the first save lands.

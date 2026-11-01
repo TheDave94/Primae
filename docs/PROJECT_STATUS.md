@@ -1,5 +1,15 @@
 # Project Status — Stocktake 2026-05-24
 
+> **Historical snapshot (banner added 2026-11-01).** This is the 2026-05-24
+> stocktake, not current status. It is superseded by `docs/ROADMAP.md`
+> (open work) and `docs/DECISIONS.md` (decisions and evidence). Items below
+> that are now wrong: the phoneme recordings are shipped (H5, `92d399e`,
+> 2026-09-14); the self-hosted MacBook runner was retired (`c6731761`,
+> 2026-07-13); the Apple Pencil squeeze is not wired (only the deprecated
+> double-tap delegate is; ROADMAP U5, audit R-096); the D8 canvas redraw
+> profile has been measured (ROADMAP D8, 2026-10-21). The body is left
+> unchanged.
+
 Point-in-time audit of what's shipped, what's pending, and what's
 stale. Differs from `docs/ROADMAP.md` (forward planning, owner
 actions, effort estimates): this doc is the catch-up read after

@@ -63,6 +63,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 from pathlib import Path
@@ -222,6 +223,11 @@ OUTPUT_ROOT = Path("audio_variants")
 FAILED_REQUESTS: list[str] = []
 
 
+# ElevenLabs voice ids are short alphanumeric strings; anything else must not
+# reach the request URL.
+_VOICE_ID_RE = re.compile(r"[A-Za-z0-9]{8,64}")
+
+
 def synthesise(text: str, voice_id: str, settings: dict, out_path: Path) -> int:
     """POST to ElevenLabs TTS. Writes the MP3 to ``out_path`` unless the
     file already exists. Returns the number of characters billed (0 when
@@ -239,6 +245,8 @@ def synthesise(text: str, voice_id: str, settings: dict, out_path: Path) -> int:
     """
     if out_path.exists():
         return 0
+    if not _VOICE_ID_RE.fullmatch(voice_id):
+        raise ValueError(f"refusing unsafe voice_id {voice_id!r}")
     resp = requests.post(
         f"{BASE_URL}/text-to-speech/{voice_id}",
         headers={"xi-api-key": API_KEY, "Content-Type": "application/json"},
@@ -315,10 +323,13 @@ def list_german_voices() -> int:
         descriptive = v.get("descriptive") or "-"
         use_case = v.get("use_case") or "-"
         accent = entry.get("accent") or "-"
-        print(
-            f'    "{key}": "{v["voice_id"]}",'
-            f'  # {gender}, {descriptive}, {use_case}, accent={accent}'
+        # API-supplied text: emit via repr() so no quote or newline can break
+        # out of the pasted Python (the comment fields are repr'd too, so a
+        # newline cannot end the comment line).
+        comment = ", ".join(
+            [repr(gender), repr(descriptive), repr(use_case), f"accent={accent!r}"]
         )
+        print(f"    {key!r}: {str(v['voice_id'])!r},  # {comment}")
     print("}")
     print()
     print("Next: pick ~9 of these, replace the existing VOICE_IDS above,")

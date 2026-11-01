@@ -4115,6 +4115,14 @@ public final class TracingViewModel {
         cycleAudioConditionIfConfigured(toLetterNamed: letter.name)
         verifyEngineFollowsArm(at: "letter load")
         lastScheduledLetterPriority = 0   // only loadRecommendedLetter sets it, after this load
+        // A fading snapshot of the OUTGOING letter's ink must not follow
+        // the child onto the next letter (R-075): cancel its 5 s clear task
+        // and empty it now. The phase-transition path (observe -> guided)
+        // that deliberately keeps ink runs through `resetForPhaseTransition`,
+        // not here.
+        lingeringInkClearTask?.cancel()
+        lingeringInkClearTask = nil
+        lingeringInk = []
         phaseController.reset()
         // Cold-probe override (pretest / post-test / delayed), consumed
         // here so it never leaks into the NEXT letter load. Landing
