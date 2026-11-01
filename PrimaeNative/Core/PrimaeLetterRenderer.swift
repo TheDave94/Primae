@@ -26,6 +26,41 @@ public enum PrimaeLetterRenderer {
     /// Holds 59 letters × ~3 common cell sizes × 2 OT-feature variants.
     private static let cacheLimit = 360
 
+    /// `glyphPath` output, memoized (code analysis 2026-11-01, F3). The
+    /// canvas calls it inside its draw closure, once per cell per redraw,
+    /// and every touch sample redraws — it re-read and re-parsed the font
+    /// file each time. Keyed on every input of `renderGlyphPath`; the size
+    /// is kept exact (not rounded like `RectCacheKey`) so a hit returns
+    /// exactly the path a fresh build would.
+    private struct PathCacheKey: Hashable {
+        let letter:     String
+        let width:      CGFloat
+        let height:     CGFloat
+        let schriftArt: SchriftArt
+        let features:   [String]
+    }
+
+    private static var pathCache: [PathCacheKey: Path] = [:]
+
+    /// `makeFont` output, memoized. A `CTFont` is immutable, so a shared
+    /// instance draws exactly what a freshly loaded one does. Keyed on
+    /// every input of `makeFont`; failed loads are not cached.
+    private struct FontCacheKey: Hashable {
+        let fontName: String
+        let size:     CGFloat
+        let features: [String]
+    }
+
+    private static var fontCache: [FontCacheKey: CTFont] = [:]
+
+    /// How many times `makeFont` went to the font file (a cache miss).
+    /// A test seam: a cache hit must leave it unchanged.
+    static private(set) var fontLoadCount = 0
+
+    /// How many times `renderGlyphPath` built a path (a cache miss). The
+    /// same kind of test seam as `fontLoadCount`.
+    static private(set) var pathBuildCount = 0
+
     // MARK: - Public API
 
     /// Map a `(letter, schriftArt, variant)` triple to the OpenType
@@ -41,6 +76,8 @@ public enum PrimaeLetterRenderer {
 
     public static func clearCache() {
         rectCache.removeAll()
+        pathCache.removeAll()
+        fontCache.removeAll()
     }
 
     /// Output of `renderWord`: the whole word as one text run (so
@@ -161,8 +198,34 @@ public enum PrimaeLetterRenderer {
     public static func glyphPath(letter: String, size: CGSize,
                                  schriftArt: SchriftArt = .druckschrift,
                                  openTypeFeatures: [String] = []) -> Path? {
-        guard size.width > 0, size.height > 0, !letter.isEmpty,
-              !isRunningTests else { return nil }
+        guard !isRunningTests else { return nil }
+        return renderGlyphPath(letter: letter, size: size, schriftArt: schriftArt,
+                               openTypeFeatures: openTypeFeatures)
+    }
+
+    /// `glyphPath` without the test-host guard, memoized in `pathCache`.
+    /// Internal so the cache can be exercised by tests; production callers
+    /// go through `glyphPath`.
+    static func renderGlyphPath(letter: String, size: CGSize,
+                                schriftArt: SchriftArt = .druckschrift,
+                                openTypeFeatures: [String] = []) -> Path? {
+        guard size.width > 0, size.height > 0, !letter.isEmpty else { return nil }
+        let key = PathCacheKey(letter: letter, width: size.width, height: size.height,
+                               schriftArt: schriftArt, features: openTypeFeatures)
+        if let cached = pathCache[key] { return cached }
+        guard let path = buildGlyphPath(letter: letter, size: size, schriftArt: schriftArt,
+                                        openTypeFeatures: openTypeFeatures) else { return nil }
+        if pathCache.count >= cacheLimit { pathCache.removeAll(keepingCapacity: true) }
+        pathCache[key] = path
+        return path
+    }
+
+    /// The uncached glyph-path construction (unchanged from before the
+    /// cache was added).
+    private static func buildGlyphPath(letter: String, size: CGSize,
+                                       schriftArt: SchriftArt,
+                                       openTypeFeatures: [String]) -> Path? {
+        pathBuildCount += 1
         let probe: CGFloat = 800
         guard let font = makeFont(size: probe, fontName: schriftArt.fontFileName,
                                   openTypeFeatures: openTypeFeatures),
@@ -256,6 +319,19 @@ public enum PrimaeLetterRenderer {
 
     static func makeFont(size: CGFloat, fontName: String = "Primae-Regular",
                          openTypeFeatures: [String] = []) -> CTFont? {
+        let key = FontCacheKey(fontName: fontName, size: size, features: openTypeFeatures)
+        if let cached = fontCache[key] { return cached }
+        guard let font = loadFont(size: size, fontName: fontName,
+                                  openTypeFeatures: openTypeFeatures) else { return nil }
+        if fontCache.count >= cacheLimit { fontCache.removeAll(keepingCapacity: true) }
+        fontCache[key] = font
+        return font
+    }
+
+    /// The uncached font load behind `makeFont`.
+    private static func loadFont(size: CGFloat, fontName: String,
+                                 openTypeFeatures: [String]) -> CTFont? {
+        fontLoadCount += 1
         // Primae is OTF, Playwrite AT is variable TTF — probe both so
         // `schriftArt.fontFileName` can stay extension-agnostic.
         // Resolution goes through `PrimaeBundle` rather than `Bundle.module`,

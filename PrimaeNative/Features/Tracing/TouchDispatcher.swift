@@ -314,7 +314,18 @@ final class TouchDispatcher {
         fireMovementHaptics(prevStrokeIndex: prevStrokeIndex,
                             prevNextCheckpoint: prevNextCheckpoint)
 
-        updateAdaptivePlayback(canvasNormalized: canvasNormalized)
+        // A sample that completes the letter must not START the sound
+        // (code analysis 2026-11-01, F2): with the machine idle (the stall
+        // timeout had fired), the adaptive request below played the file at
+        // full level and the completion handler stopped it in the same turn,
+        // leaving a hard onset plus the fade tail as the letter ended. Not a
+        // reorder: completion advances the grid cursor (`strokeTracker` then
+        // aliases the next cell) and can run the phase transition, so the
+        // adaptive update must stay BEFORE it on every sample that does not
+        // finish the sequence — stroke-to-stroke and cell-to-cell are as before.
+        if !sampleFinishesSequence() {
+            updateAdaptivePlayback(canvasNormalized: canvasNormalized)
+        }
 
         handleStrokeCompletionIfReached()
 
@@ -341,10 +352,25 @@ final class TouchDispatcher {
 
     private func finishTouch(fromPencil: Bool?, cancelled: Bool) {
         guard let vm else { return }
+        // No touch session was begun (code analysis 2026-11-01, F1): a lift
+        // whose touch-down `beginTouch` rejected — observe, `.direct`, a
+        // blocked session, a scored freeWrite — or a second lift after the
+        // session already ended. The overlays deliver the end event anyway.
+        // It must not reach the audio: in observe the playback machine is
+        // `.idle` (the demonstration plays through `audio.play(fadeInSeconds:)`
+        // directly), so the idle branch below called `audio.stop()` and a
+        // child's tap silenced the observe sound in the sound arms only.
+        // Only the per-event stylus stamps are cleared, as before, so a
+        // stale Pencil stamp cannot mark the next finger move as the Pencil.
+        guard isSingleTouchInteractionActive else {
+            vm.pencilPressure = nil
+            vm.pencilAzimuth  = 0
+            return
+        }
         // A lift from the device that does not own the session (the Pencil
         // lifting while a resting finger is the tracked touch) must not end
         // the finger's stroke (review 2026-09-05).
-        if let fromPencil, isSingleTouchInteractionActive, fromPencil != sessionIsPencil { return }
+        if let fromPencil, fromPencil != sessionIsPencil { return }
         if cancelled && isSingleTouchInteractionActive {
             vm.countLifecycleEvent(\.strokesCancelled)
             // Remembered for the resume of an interruption, whichever of
@@ -622,6 +648,19 @@ final class TouchDispatcher {
         let shouldBeActive      = shouldPlayForStroke
                                   && smoothedVelocity >= playbackActivationVelocityThreshold
         vm.playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
+    }
+
+    /// Whether `handleStrokeCompletionIfReached` will, on this sample,
+    /// finish the whole sequence (and so stop the sound and advance the
+    /// phase). Read-only mirror of that function's guards; it must change
+    /// with them.
+    private func sampleFinishesSequence() -> Bool {
+        guard let vm else { return false }
+        if vm.studyMode, vm.phaseController.currentPhase == .freeWrite { return false }
+        guard vm.strokeTracker.definition?.strokes.isEmpty == false,
+              vm.strokeTracker.isComplete,
+              !vm.didCompleteCurrentLetter else { return false }
+        return vm.grid.activeCellIndex + 1 >= vm.grid.cells.count
     }
 
     /// Advance the grid cursor when the active cell completes; if the
