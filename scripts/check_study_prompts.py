@@ -55,6 +55,20 @@ def check(prompts: pathlib.Path) -> list:
         actual = hashlib.sha256(data).hexdigest()
         if actual != e["sha256"]:
             problems.append(f"{name}: sha256 {actual} != manifest {e['sha256']}")
+    # D5 (audit SURF-10): the sound effects beside the takes (tap, wrong tap,
+    # stroke tick) are bytes a child can hear too; pin them the same way. They
+    # are not part of the set id.
+    effects = {e["file"]: e["sha256"] for e in manifest.get("effects", [])}
+    if not effects:
+        problems.append("MANIFEST.json has no 'effects' list (the *.wav files are unpinned)")
+    for name in sorted({p.name for p in prompts.glob("*.wav")} - set(effects)):
+        problems.append(f"{name}: not in MANIFEST.json effects")
+    for name, sha in effects.items():
+        path = prompts / name
+        if not path.is_file():
+            problems.append(f"{name}: missing")
+        elif hashlib.sha256(path.read_bytes()).hexdigest() != sha:
+            problems.append(f"{name}: sha256 differs from MANIFEST.json effects")
     set_id = f"rec:{manifest['voice'].lower()}:{digest_all.hexdigest()[:12]}"
     if set_id != manifest["setId"]:
         problems.append(f"MANIFEST.json setId {manifest['setId']} != {set_id} "

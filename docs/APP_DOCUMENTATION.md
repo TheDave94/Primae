@@ -1465,7 +1465,7 @@ page.
 | `letter` | Per-letter slicing (alphabet effect, frequency analysis). |
 | `phase` | Which phase (observe / direct / guided / freeWrite) the session belonged to; needed for any GRR efficacy claim. |
 | `completed` | Selection criterion for "successful sessions". |
-| `score` | **NOT one instrument across phase rows** (found 2026-09-04, DECISIONS.md D12): `observe`/`direct` are always exactly `1.0` (completion markers, not measurements); `guided` is checkpoint-proximity coverage; `freeWrite` is `WritingAssessment.overallScore`, a weighted 4-dimension composite. Comparing `score` across phase types compares different quantities under one name — analyse per phase, never pooled. `PhaseSessionRecord.score`'s own doc comment carries the full breakdown. |
+| `score` | **NOT one instrument across phase rows** (found 2026-09-04, DECISIONS.md D12): `observe`/`direct` are always exactly `1.0` (completion markers, not measurements); `guided` is checkpoint-proximity coverage, which on a completed row is always `1.0` (a guided phase completes only when every checkpoint is reached; B-16, confirmed on the iPad 2026-11-02), so it varies only on abandoned rows; `freeWrite` is `WritingAssessment.overallScore`, a weighted 4-dimension composite. Comparing `score` across phase types compares different quantities under one name — analyse per phase, never pooled. `PhaseSessionRecord.score`'s own doc comment carries the full breakdown. |
 | `schedulerPriority` | Spaced-repetition scheduler's prediction at the time the letter was recommended; used as the IV in the scheduler-effectiveness Pearson r (per-arm proxy below — cross-arm proxy is invalid because `.control` uses `-completionCount` priorities, not Ebbinghaus). |
 | `condition` | Thesis A/B arm — required for between-arm comparisons. |
 | `recordedAt` | ISO-8601 wall-clock timestamp (D-3). Required for time-of-day and dated learning-curve analyses. Empty on legacy pre-D-3 rows. |
@@ -1572,7 +1572,9 @@ participant block) is `# participantId=<UUID>` so a
 researcher can align data across installs. When `enrolledAt` is set,
 a second `# enrolledAt=<ISO-8601>` header line documents the cutoff
 the exporter applies to discard pre-enrolment rows (D-7) and legacy
-rows missing `recordedAt` (D-8).
+rows missing `recordedAt` (D-8). From r16 that cutoff applies only to
+rows without an `enrolmentId` stamp; stamped rows are selected by
+membership (Appendix B, "Which rows a block holds").
 
 **The export the parent area offers is the combined one**
 (`primae_progress_ALL_<date>_<time>_all<N>.<csv|tsv|json>`;
@@ -2458,10 +2460,23 @@ Every CSV / TSV begins with comment lines starting `#`:
 | Header | Source | Meaning |
 |---|---|---|
 | `# participantId=<UUID>` | `ParticipantStore.participantId` | Per-install UUID, kept in `UserDefaults`: it survives app updates and relaunches but NOT a reinstall (no iCloud entitlement exists). A proctor can put a known id back by hand for a delayed session (`ParticipantStore.restoreParticipant`); "Nächstes Kind" starts a new one. |
-| `# enrolledAt=<ISO-8601>` | `ParticipantStore.enrolledAt` | First time the install opted into the thesis study. Only present when set. |
+| `# enrolledAt=<ISO-8601>` | `ParticipantStore.enrolledAt` | First time the install opted into the thesis study. Only present when set. Written WITH fractional seconds (see "Format conventions"). |
 | `# timezone=<IANA>` | `TimeZone.current.identifier` | Device timezone at export time. Useful for interpreting `recordedAt` columns. |
+| `# droppedPreEnrolmentRows=<n>` | `ParentDashboardExporter.droppedRowCount` | r16. Phase and duration rows held for this block that were NOT exported in it (written before the enrolment, or under another enrolment's id); `0` when none. Always present from r16. |
 
 Then a blank line, followed by five data sections. (In the combined export these headers and sections repeat per participant block; see §6.4.)
+
+**Which rows a block holds (r16).** From r16 every phase and duration row carries the id of the enrolment live when it was written (`enrolmentId`, JSON only; the CSV's `participantId` column names the block). A stamped row is exported in the block of that id and in no other, whatever its `recordedAt`, so a device clock corrected backwards after enrolment no longer drops the child's later rows (before r16 they were silently excluded). A row without the stamp — every row written before r16, or while no child was enrolled — keeps the old time rule: exported when `recordedAt >= enrolledAt` (rows without `recordedAt` dropped), or always when the block has no `enrolledAt`. The rows a block's rule excludes are counted in `# droppedPreEnrolmentRows=` (JSON: `droppedPreEnrolmentRows`). In the JSON a raw trace is kept when an exported phase row links to it (`rawTraceID`), else by the time rule.
+
+**Archive files that could not be loaded (r16).** The combined CSV / TSV starts, before the first participant block, with one line per participant-archive file the app could not load (set aside as undecodable now or on an earlier launch, or unreadable): `# setAside=<file name> participantId=<UUID>`, then a blank line. The id is read from the file name (empty if the name does not start with one), since the file's content is lost. Such a child appears in the enrolment block but has no participant block; this line says the data was lost, so the child must not be counted as a dropout. No line is written when every archive file loaded. The JSON export does not carry it.
+
+## Format conventions (all CSV / TSV / JSON exports)
+
+- **Timestamps** (`recordedAt` in every section, `# enrolledAt=`, the enrolment block's `enrolledAt`, and every JSON date) are ISO 8601 UTC **with fractional seconds**, e.g. `2026-10-26T07:33:20.250Z` (millisecond resolution). Before protocol r16 they had whole-second resolution, so rows recorded within one second tied. A reader must accept both forms: files exported before r16 carry `…20Z`. Python: `datetime.fromisoformat(s.replace("Z", "+00:00"))` accepts both on 3.11+.
+- **Not-a-number** is written `NaN` (as in the store file), never C's `nan`. Applies to every fixed-point numeric field (`score`, `schedulerPriority`, the recognition and dimension columns, `spatialDeviation*`, durations). Parse with `float(s)`, which accepts `NaN`.
+- **Undefined aggregates** are an empty CSV cell and JSON `null`, never `0`: `averageFreeWriteScore` is empty / `null` when the child has no scored freeWrite row, and `schedulerEffectivenessProxy` when fewer than two usable pairs exist or a variance is zero. A defined mean of exactly 0 is still `0.0000`. (Before r16 the JSON wrote `0` for both and the CSV wrote `0.0000` for `averageFreeWriteScore`.)
+- **Trailing newline.** The combined CSV / TSV ends with a single `\n` (after the enrolment block when present), so two exports can be concatenated without gluing the last row to the next file's first line. (Before r16 the last line was unterminated.)
+- **Calendar.** Dates written as `yyyy-MM-dd` (the `date` column, the file-name date) are always Gregorian, in the device's time zone, whatever calendar the device is set to. Before r16 the `date` column followed the device calendar (e.g. `2569-10-26` on a Buddhist-calendar device) while the file name did not.
 
 ## Section 1 — Per-letter aggregates
 
@@ -2484,7 +2499,7 @@ above §"Additional sections in the export" for why.
 
 | Column | Type | Source | Purpose |
 |---|---|---|---|
-| `date` | string | `SessionDurationRecord.dateString` | `yyyy-MM-dd` (device-local). |
+| `date` | string | `SessionDurationRecord.dateString` | `yyyy-MM-dd`, Gregorian, device time zone (r16: previously followed the device calendar). |
 | `recordedAt` | ISO-8601 / blank | `SessionDurationRecord.recordedAt` | D-9: time-of-day analysis. |
 | `durationSeconds` | float | `SessionDurationRecord.durationSeconds` | **Active** practice time. Pauses on background (D-1). |
 | `wallClockSeconds` | float / blank | `SessionDurationRecord.wallClockSeconds` | T4: total time including backgrounded intervals. |
@@ -2504,23 +2519,23 @@ above §"Additional sections in the export" for why.
 
 ## Section 3 — Per-phase records
 
-One row per phase × letter session, chronological order. Filtered by `enrolledAt` (D-7) and pre-D-3 nil-recordedAt rows are dropped when `enrolledAt` is set (D-8).
+One row per phase × letter session, chronological order. Selected by enrolment membership from r16 (see "Which rows a block holds"); unstamped rows are filtered by `enrolledAt` (D-7), and pre-D-3 nil-recordedAt rows are dropped when `enrolledAt` is set (D-8).
 
 | Column | Source | Purpose |
 |---|---|---|
 | `letter` | `PhaseSessionRecord.letter` | Per-letter slicing. |
 | `phase` | `PhaseSessionRecord.phase` | `observe` / `direct` / `guided` / `freeWrite`. |
 | `completed` | `PhaseSessionRecord.completed` | Selection criterion. |
-| `score` | `PhaseSessionRecord.score` | **NOT one instrument across phase rows** — see §6.4's `score` row for the full breakdown (observe/direct constant 1.0, guided coverage, freeWrite composite). Never pool across phase types. |
+| `score` | `PhaseSessionRecord.score` | **NOT one instrument across phase rows** — see §6.4's `score` row for the full breakdown (observe/direct constant 1.0, guided coverage, 1.0 on every completed row (B-16), freeWrite composite). Never pool across phase types. |
 | `schedulerPriority` | `PhaseSessionRecord.schedulerPriority` | Scheduler priority at letter selection. |
 | `condition` | `PhaseSessionRecord.condition` | A/B arm. |
 | `recordedAt` | `PhaseSessionRecord.recordedAt` | D-3: dated learning curves. |
 | `recognition_predicted` | `PhaseSessionRecord.recognitionPredicted` | CoreML top-1 letter (freeWrite rows since D-2). |
-| `recognition_confidence` | `PhaseSessionRecord.recognitionConfidence` | **Post**-calibration softmax. |
-| `recognition_confidence_raw` | `PhaseSessionRecord.recognitionConfidenceRaw` | T5: **pre**-calibration softmax. |
+| `recognition_confidence` | `PhaseSessionRecord.recognitionConfidence` | **Post**-calibration probability, 0–1. From r16 the calibrator is applied to the softmax of the model's class scores (`CoreMLLetterRecognizer.softmax`). Before r16 it was applied to the raw score clamped to [0,1], and since the shipped model's scores are 2–18 the column took only the values 1.00 and 0.85 (confusable penalty); r15-and-earlier values carry no information beyond that penalty. |
+| `recognition_confidence_raw` | `PhaseSessionRecord.recognitionConfidenceRaw` | T5: the **raw model score** of the top label, before softmax and calibration. Unbounded (2–18 on clean letters, near 0 or negative on scribbles): a model score, NOT a probability, in every revision. |
 | `recognition_correct` | `PhaseSessionRecord.recognitionCorrect` | Match expectation? |
-| `formAccuracy` | `PhaseSessionRecord.formAccuracy` | Schreibmotorik dim 1 (weight 0.40) — the clamped, rescaled transform of `frechetDistance`. Child-facing input, not the analysis outcome. |
-| `tempoConsistency` | `PhaseSessionRecord.tempoConsistency` | dim 2 (CV², weight 0.25). |
+| `formAccuracy` | `PhaseSessionRecord.formAccuracy` | Schreibmotorik dim 1 (weight 0.40): `1 − spatialDeviation / (3 × radius)`, clamped to 0–1. From r16 the distance and the radius share one unit, the canvas height on both axes, and the radius is `checkpointRadius × glyph height`, so the tolerance scales with the glyph height only (see "Scoring in r16" below). Child-facing input, not the analysis outcome. |
+| `tempoConsistency` | `PhaseSessionRecord.tempoConsistency` | dim 2 (weight 0.25): `1 − CV²` clamped to 0–1, higher = more even. From r16 the CV is of the WITHIN-STROKE speed over 0.1 s windows, and no window crosses a stroke boundary (pen lifts never count). Through r15 it was the CV of the inter-sample intervals with gaps ≥ 0.5 s dropped, which a 0.2–0.45 s lift drove to 0 and which did not see speed changes; r15-and-earlier values are not comparable. |
 | `pressureControl` | `PhaseSessionRecord.pressureControl` | dim 3 (force variance, weight 0.15). |
 | `rhythmScore` | `PhaseSessionRecord.rhythmScore` | dim 4 (active-time ratio, weight 0.20). |
 | `inputDevice` | `PhaseSessionRecord.inputDevice` | D-6: disambiguates `pressureControl == 1.0`. |
@@ -2547,6 +2562,13 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 > `observeSoundDeliveredSeconds`). `voiceId` holds, from r9, the recorded prompt set
 > (`rec:kiki:<12 hex>`; rows of r8 and earlier carry the device voice
 > identifier or nothing).
+>
+> **`finalizedBy`** is `child` (the session's own flow), `background`
+> (the app went to the background), `navigation` (the proctor moved on;
+> also every `completed: false` row) or, from r16, `export`: the proctor
+> started a research export while a finished free-writing production was
+> still held unscored by the open parent area, and the export screen
+> recorded it first (`TracingViewModel.finalizeHeldTrialForExport`).
 >
 > **The r11 observe-sound columns (record-only; `PhaseDelivery`).** They are
 > filled on `observe` rows only. They are empty on every other phase's row
@@ -2576,6 +2598,32 @@ One row per phase × letter session, chronological order. Filtered by `enrolledA
 > overlay and a `0` in `checkpointCoverage` means no checkpoint was
 > reached; rows that never measured the quantity are empty.
 
+**Scoring in r16 (freeWrite rows).** Rows of protocol revision 16 and
+later are scored differently from earlier ones; do not pool across the
+boundary without re-deriving from Section 3b.
+
+- *Unit.* `spatialDeviation`, `spatialDeviationRaw` and the radius behind
+  `formAccuracy` are in canvas HEIGHTS on both axes. Through r15 x was in
+  canvas widths and y in canvas heights, so on the ~1.73:1 study canvas a
+  vertical error weighed 1.73× a horizontal one. The production test
+  (`StrokeProcessScorer.isProduction`, 2 % of the extent) uses the same
+  unit: a horizontal mark now counts from ≈12.5 pt instead of ≈21.7 pt.
+- *Fit.* The r6 bounding-box fit is taken over the MATCHED strokes only
+  (match, fit, re-match). Extra strokes (a stray contact, a palm) no longer
+  move it; through r15 one 3 pt contact far from the letter multiplied
+  `spatialDeviation` 5–13×. The box is read off the drawn strokes
+  resampled at 1/120 of their height (≈2.5 pt), not off the raw samples,
+  and an axis sets the scale only when the reference spans at least a
+  quarter of its larger extent on it (`fitAxisMinShare`), so I's narrow,
+  jitter-sized width no longer drives its fit.
+- *Sampling.* Every drawn stroke is resampled to a fixed arc-length spacing
+  (1/40 of the reference height, ≈7 pt) before the Fréchet comparison, so
+  the value no longer follows the digitiser's sample count.
+- *Re-derivation from Section 3b:* divide both point axes by
+  `canvasSize.height`, multiply the reference's x by
+  `canvasSize.width / canvasSize.height`, then run
+  `StrokeProcessScorer.analyze`.
+
 **Analyse per letter.** A, F, I, L, M are not structurally comparable —
 M alone is a single stroke of 200 checkpoints. Do not pool
 `frechetDistance`, `checkpointCoverage`, or `phaseDurationSeconds`
@@ -2596,8 +2644,8 @@ re-derivable offline — see §6.4.2.
 ## Section 4 — Aggregate metrics (`metric,value`)
 
 - `phaseCompletionRate_<phase>` per LearningPhase.
-- `averageFreeWriteScore` (cross-arm).
-- `schedulerEffectivenessProxy` (cross-arm Pearson r — interpret with caution; `.control` priorities don't share scale with the other arms).
+- `averageFreeWriteScore` (cross-arm). Empty when no scored freeWrite row exists (r16).
+- `schedulerEffectivenessProxy` (cross-arm Pearson r — interpret with caution; `.control` priorities don't share scale with the other arms). Empty when undefined.
 - Per-arm: `averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>` (D-7 / D-10).
 - Per-AUDIO-arm: `averageFreeWriteScore_audio_<audioArm>` — the pilot's primary between-subjects IV, stratified alongside (not instead of) the pedagogical axis.
 - Schreibmotorik dimension means: `averageFormAccuracy`, `averageTempoConsistency`, `averagePressureControl`, `averageRhythmScore` (when ≥ 1 freeWrite session has dimensions).
@@ -2610,7 +2658,9 @@ Audio-axis twin: `letterByAudioArm,<letter>,<audioArm>,<sampleCount>,<averageSco
 
 ## JSON export
 
-Contains the full `DashboardSnapshot` plus a `thesisMetrics` block. Use it when you need raw `recognitionSamples`; CSV / TSV is the tabular surface.
+Contains the full `DashboardSnapshot` plus a `thesisMetrics` block. Use it when you need raw `recognitionSamples`; CSV / TSV is the tabular surface. In `thesisMetrics`, `averageFreeWriteScore` and `schedulerEffectivenessProxy` are `null` when undefined (r16; previously `0`). Dates follow the format conventions above (fractional-second ISO 8601 strings).
+
+The recognizer's `topThree` candidate list is not exported. In the app it is ordered by calibrated confidence (r16), while `recognition_predicted` stays the model's raw top-1; the two can name different letters when the confusable-letter penalty reorders a close pair.
 
 ---
 

@@ -61,11 +61,14 @@ struct WorldSwitcherRail: View {
             // alert the control presents, because the rail hid the button
             // in the same update cycle that set the alert — the alert
             // never appeared at all. Visibility is therefore driven by
-            // opacity + hit-testing, and `accessibilityHidden` keeps the
-            // hidden button out of the accessibility tree (so VoiceOver
-            // cannot reach an invisible control, and a UI test looking for
-            // "Nächstes Kind" is still a real assertion rather than one
-            // trivially satisfied by a permanently-present view).
+            // opacity + hit-testing. `accessibilityHidden` is applied too,
+            // but it does NOT take the hidden button out of the tree XCUITest
+            // sees: MEASURED on the iPad 2026-11-02 (UI-4), the hidden
+            // control reported `exists=true hittable=false`. So a UI test
+            // must assert that "Nächstes Kind" is HITTABLE (revealed), never
+            // merely that it exists (`XCUIElement.waitUntilHittable` in
+            // PrimaeUITests). Whether VoiceOver can reach the invisible
+            // button has not been measured on the device.
             NextParticipantControl(onReset: {
                 // Safe to unmount-by-hide now: the control stays in the
                 // tree (opacity/hit-testing only), so clearing this does

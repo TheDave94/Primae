@@ -113,28 +113,46 @@ final class AudioEngineTests: XCTestCase {
     // MARK: - Direct methods: stop() / play() / restart()
     #if DEBUG
 
+    // D1 (audit AUDIO-6): the stop / route / suspend tests below used to run
+    // against an engine that never played, so `isPlaying == false` held
+    // whether or not the code under test did anything (three mutations of
+    // stop(), route loss and suspend all survived). Each now STARTS REAL
+    // PLAYBACK first and asserts it as a precondition.
+    @MainActor private func startRealPlayback(_ engine: AudioEngine) {
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: playback started")
+    }
+
     @MainActor func testStop_setsIsPlayingFalse() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        startRealPlayback(engine)
         engine.stop()
+        await awaitObserverDelivery()   // past the fade-out ramp
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugShouldResumePlayback)
     }
 
     @MainActor func testStop_isIdempotent() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        startRealPlayback(engine)
         engine.stop()
         engine.stop()
+        await awaitObserverDelivery()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugShouldResumePlayback)
     }
 
+    /// `play()` opens with `guard currentFile != nil else { return }`: with no
+    /// file it is a no-op. (This test used to assert the opposite and was
+    /// stale since that guard went in.)
     @MainActor func testPlay_withNoFile_doesNotCrash() async throws {
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         engine.play()
-        // No file loaded — isPlaying stays false, but shouldResumePlayback must be set
         XCTAssertFalse(engine.isPlaying)
-        XCTAssertTrue(engine.debugShouldResumePlayback,
-                      "play() must set shouldResumePlayback=true even without a loaded file")
+        XCTAssertFalse(engine.debugShouldResumePlayback,
+                       "play() with no loaded file must be a no-op and set no resume intent")
     }
 
     @MainActor func testRestart_withNoFile_doesNotCrashAndSetsShouldResume() async throws {
@@ -275,7 +293,9 @@ final class AudioEngineTests: XCTestCase {
             object: nil,
             userInfo: userInfo
         )
-        drainMain()
+        // The observer is a `for await` sequence: a run-loop pump cannot
+        // deliver it (see `postInterruption`), so await it.
+        await awaitObserverDelivery()
         XCTAssertFalse(engine.debugInterruptionShouldResume,
                        "Missing option key must default to shouldResume=false")
     }
@@ -284,13 +304,19 @@ final class AudioEngineTests: XCTestCase {
     #endif
 
     @MainActor func testRouteChange_oldDeviceUnavailable_stopsPlayback() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: playback started")
         await postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertFalse(engine.isPlaying, "oldDeviceUnavailable must stop playback")
     }
 
     @MainActor func testRouteChange_oldDeviceUnavailable_isIdempotent() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: playback started")
         await postRouteChange(reason: .oldDeviceUnavailable)
         await postRouteChange(reason: .oldDeviceUnavailable)
         XCTAssertFalse(engine.isPlaying)
@@ -315,29 +341,36 @@ final class AudioEngineTests: XCTestCase {
     }
 
     @MainActor func testRouteChange_malformedUserInfo_isHarmless() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: playback started")
         // Missing reason key — guard in handleRouteChange must absorb this silently
         NotificationCenter.default.post(
             name: AVAudioSession.routeChangeNotification,
             object: nil,
             userInfo: [:]
         )
-        drainMain()
-        XCTAssertFalse(engine.isPlaying)
+        await awaitObserverDelivery()
+        XCTAssertTrue(engine.isPlaying, "a malformed route change must not disturb playback")
     }
 
     // MARK: - Lifecycle
     #if DEBUG
 
     @MainActor func testSuspendForLifecycle_stopsPlayback() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        startRealPlayback(engine)
         engine.suspendForLifecycle()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugAppIsForeground)
     }
 
     @MainActor func testSuspendForLifecycle_isIdempotent() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        startRealPlayback(engine)
         engine.suspendForLifecycle()
         engine.suspendForLifecycle()
         XCTAssertFalse(engine.isPlaying)
@@ -416,6 +449,10 @@ final class AudioEngineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 1.0)
     }
 
+    /// Pins FIXPLAN C3 (audit AUDIO-6): `resumeAfterLifecycle()` must cancel
+    /// pending lifecycle work BEFORE its `guard currentFile != nil`, so a
+    /// suspend/resume blip with no file loaded (the normal between-strokes
+    /// state) does not pause the engine 0.2 s later.
     @MainActor func testPendingSafeEnginePause_cancelledByResume() async throws {
         let localEngine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
         localEngine.suspendForLifecycle()

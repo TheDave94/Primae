@@ -81,6 +81,9 @@ import CoreGraphics
     func studyAdvanceIsDeterministic() {
         let vm = studyVM()
         vm.startParkedLetter()
+        // "A" is the LAST of I · F · A, where the study chevron now holds
+        // (STATE-5, fix 2026-11-02); step back to F so there is a next.
+        vm.previousLetter()
         let first = vm.currentLetterName
 
         vm.loadRecommendedLetter()

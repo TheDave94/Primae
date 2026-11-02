@@ -53,6 +53,7 @@ extension NewParticipantResetTests {
         await keepingIdentity {
             let rig = LifecycleRig()
             let childA = rig.vm.resetForNewParticipant()
+            ParticipantStore.markCurrentParticipantActive()   // a real child (r16 drops one with no activity, B2)
             _ = rig.vm.resetForNewParticipant()            // child C is live
             await observing(rig)
             #expect(rig.vm.animation.armedStrokes != nil, "precondition: C's observe is running")

@@ -10,5 +10,10 @@
     {"key": "phase_freewrite", "text": "Und jetzt ganz allein.", "sha256": "2a2dc834a76607e1cec828ed0635d82dc1b7f991b0289162d7b5267e28eea68d"},
     {"key": "retry_cue",       "text": "Probier's nochmal.",     "sha256": "91530988765fe37ba0f08bd48684e2176f6a114a4a1ba18cfccbc88307060be4"},
     {"key": "celebration",     "text": "Super gemacht!",         "sha256": "3104cbfeb78fee4b03a7762e916c0db68c2b5337ef877f7bfdb436a23c3fd040"}
+  ],
+  "effects": [
+    {"file": "tap.wav",         "sha256": "be9af71c96b65a525e802fcab557b5398acdc76d6f996a05f43f2d95bae694cd"},
+    {"file": "tap_wrong.wav",   "sha256": "0e85be854a39e3901420dbdb54a055028f660debf1609759265217e1427ad545"},
+    {"file": "tick_stroke.wav", "sha256": "4c987ef6dd341206e1c09e036bbdb15c9f13162861081c70a55bd22543a1fc19"}
   ]
 }

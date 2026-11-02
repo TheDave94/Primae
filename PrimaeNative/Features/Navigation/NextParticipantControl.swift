@@ -66,6 +66,24 @@ enum NextParticipantCopy {
     /// lose data".
     static let confirmMessage = "Die Daten des aktuellen Kindes werden unverändert archiviert und sind im Sammel-Export am Ende weiterhin enthalten. Anschließend werden Fortschritt, Sterne, Sessions und gespeicherte Schrift-Kalibrierungen gelöscht und ein neuer Teilnehmer mit neuer ID und neuer Studienarm-Zuordnung angelegt. Geräte-Einstellungen bleiben erhalten. Ein Neustart ist nicht nötig — das Gerät kann direkt dem nächsten Kind gegeben werden."
 
+    /// Names an assignment override that "Nächstes Kind" will discard
+    /// (fix 2026-11-02, B5(b), VERIFY-4): `startNewParticipant` clears every
+    /// override, so a proctor who set the arm or the letter group for the
+    /// NEXT child got a derived assignment with nothing saying so.
+    /// `overrides` is `TracingViewModel.pendingAssignmentOverrides`.
+    static func overrideDiscardedNotice(_ overrides: [String]) -> String? {
+        guard !overrides.isEmpty else { return nil }
+        return "Achtung: Die gesetzte Zuweisung (\(overrides.joined(separator: "; "))) gilt nur für das aktuelle Kind und wird verworfen. Das neue Kind erhält die aus seiner ID abgeleitete Zuweisung; eine Zuweisung für das neue Kind erst NACH dem Start setzen, bevor es schreibt."
+    }
+
+    /// The full confirm text: the comparison-run banner, the override
+    /// notice, then `confirmMessage`.
+    static func confirmText(banner: String?, overrides: [String]) -> String {
+        [banner, overrideDiscardedNotice(overrides), confirmMessage]
+            .compactMap { $0 }
+            .joined(separator: "\n\n")
+    }
+
     /// The title of the dashboard's confirmation alert (`.alert`
     /// presentation). The rail path shows only `readyMessage`, as a toast.
     static let readyTitle = "Neues Kind bereit"
@@ -165,8 +183,8 @@ struct NextParticipantControl<Label: View>: View {
     }
 
     private var confirmMessageText: String {
-        vm.comparisonRunBanner.map { "\($0)\n\n" + NextParticipantCopy.confirmMessage }
-            ?? NextParticipantCopy.confirmMessage
+        NextParticipantCopy.confirmText(banner: vm.comparisonRunBanner,
+                                        overrides: vm.pendingAssignmentOverrides)
     }
 
     var body: some View {

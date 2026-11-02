@@ -235,16 +235,18 @@ import CoreGraphics
     // MARK: - What counts as a production (r7 review, D1)
 
     /// A free-write contact. Canvas 1000 x 750, so 2% of the canvas
-    /// (`StrokeProcessScorer.scribbleExtent`) is 20 pt across, 15 pt down.
+    /// (`StrokeProcessScorer.scribbleExtent`) is 15 pt in either direction:
+    /// from protocol r16 both axes are measured in canvas HEIGHTS (audit
+    /// B-3; through r15 it was 20 pt across, 15 pt down).
     enum Contact: String, CaseIterable, Sendable {
         /// A palm or finger creeping 0.1 pt per sample for 40 samples
         /// (4 pt): under the kept-point filter this records 4 points.
         case creep
         /// Pen down, pen up.
         case tap
-        /// A deliberate horizontal mark of 19 pt: 1.9% of the width.
+        /// A deliberate horizontal mark of 14 pt: 1.87% of the height.
         case markJustUnder
-        /// A deliberate horizontal mark of 21 pt: 2.1% of the width.
+        /// A deliberate horizontal mark of 16 pt: 2.13% of the height.
         case markJustOver
         /// A deliberate vertical mark of 16 pt: 2.13% of the height.
         case verticalMarkJustOver
@@ -269,10 +271,10 @@ import CoreGraphics
                 return [(o, 0)]
             case .markJustUnder:
                 return SlowStrokeSamplingTests.constantSpeedSamples(
-                    [o, CGPoint(x: o.x + 19, y: o.y)], speed: 100, rate: 120)
+                    [o, CGPoint(x: o.x + 14, y: o.y)], speed: 100, rate: 120)
             case .markJustOver:
                 return SlowStrokeSamplingTests.constantSpeedSamples(
-                    [o, CGPoint(x: o.x + 21, y: o.y)], speed: 100, rate: 120)
+                    [o, CGPoint(x: o.x + 16, y: o.y)], speed: 100, rate: 120)
             case .verticalMarkJustOver:
                 return SlowStrokeSamplingTests.constantSpeedSamples(
                     [o, CGPoint(x: o.x, y: o.y + 16)], speed: 100, rate: 120)

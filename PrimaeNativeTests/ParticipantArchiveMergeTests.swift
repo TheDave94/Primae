@@ -181,7 +181,14 @@ extension NewParticipantResetTests {
             let archiveDir = dir.appendingPathComponent("ParticipantArchive", isDirectory: true)
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: dir) }
-            let dashboard = JSONParentDashboardStore(fileURL: dashboardURL)
+            // An isolated failure center (fix lane L1, 2026-11-02): the
+            // defer above removes `dir` while this store's last write may
+            // still be in flight, and on `.shared` that failed write was
+            // replayed into every later study VM in the process, blocking
+            // its session (measured: AudioArmRoutingTests went red with
+            // "ParentDashboardStore: The file “dashboard.json” doesn’t exist.").
+            let dashboard = JSONParentDashboardStore(fileURL: dashboardURL,
+                                                     failureCenter: PersistenceFailureCenter())
             let vm = TracingViewModel(.stub
                 .with(dashboardStore: dashboard)
                 .with(participantArchive: JSONParticipantArchiveStore(directoryURL: archiveDir))

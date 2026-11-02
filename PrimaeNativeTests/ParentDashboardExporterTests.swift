@@ -128,7 +128,7 @@ struct ParentDashboardExporterTests {
         ))
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
-        let isoTs = ISO8601DateFormatter().string(from: recordedAt)
+        let isoTs = ParentDashboardExporter.isoTimestamp(recordedAt)
         // Phase row format: letter,phase,completed,score,prio,condition,
         // recordedAt,recognition_predicted,recognition_confidence,
         // recognition_confidence_raw,recognition_correct,
@@ -222,7 +222,7 @@ struct ParentDashboardExporterTests {
         ))
         let csv = String(data: ParentDashboardExporter.csvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
-        let isoTs = ISO8601DateFormatter().string(from: recordedAt)
+        let isoTs = ParentDashboardExporter.isoTimestamp(recordedAt)
         #expect(csv.contains("C,guided,true,0.5000,0.0000,threePhase,\(isoTs),,,,,,,,,"),
                 "Expected blank recognition columns + populated recordedAt — found:\n\(csv)")
     }

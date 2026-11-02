@@ -117,16 +117,16 @@ struct ParentDashboardExporter {
             int(rec.probeAttempt),
             int(d?.observeRestarts), int(d?.strokesCancelled), int(d?.routeChanges), int(d?.interruptions),
             e?.outputRoute ?? "", d?.outputRouteAtEnd ?? "",
-            e?.outputVolume.map { String(format: "%.4f", $0) } ?? "",
-            e?.outputLatency.map { String(format: "%.6f", $0) } ?? "",
+            e?.outputVolume.map { ParentDashboardExporter.fmt4($0) } ?? "",
+            e?.outputLatency.map { ParentDashboardExporter.fmt6($0) } ?? "",
             bool(e?.otherAudioPlaying), bool(e?.secondaryAudioHint),
             d?.voiceId ?? "", bool(d?.recognizerAvailable),
             bool(e?.guidedAccess), bool(e?.idleTimerDisabled), bool(e?.lowPowerMode),
-            e?.thermalState ?? "", e?.batteryLevel.map { String(format: "%.4f", $0) } ?? "",
+            e?.thermalState ?? "", e?.batteryLevel.map { ParentDashboardExporter.fmt4($0) } ?? "",
         ] + buildFields(d?.build) + [
             int(d?.observeLossesDuringSound), int(d?.observeLossesWithoutSound),
-            d?.observeSoundSeconds.map { String(format: "%.3f", $0) } ?? "",
-            d?.observeSoundDeliveredSeconds.map { String(format: "%.3f", $0) } ?? "",
+            d?.observeSoundSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            d?.observeSoundDeliveredSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
         ]
     }
 
@@ -140,11 +140,11 @@ struct ParentDashboardExporter {
         let bool: (Bool?) -> String = { $0.map(String.init) ?? "" }
         return [
             e?.outputRoute ?? "",
-            e?.outputVolume.map { String(format: "%.4f", $0) } ?? "",
-            e?.outputLatency.map { String(format: "%.6f", $0) } ?? "",
+            e?.outputVolume.map { ParentDashboardExporter.fmt4($0) } ?? "",
+            e?.outputLatency.map { ParentDashboardExporter.fmt6($0) } ?? "",
             bool(e?.otherAudioPlaying), bool(e?.secondaryAudioHint),
             bool(e?.guidedAccess), bool(e?.idleTimerDisabled), bool(e?.lowPowerMode),
-            e?.thermalState ?? "", e?.batteryLevel.map { String(format: "%.4f", $0) } ?? "",
+            e?.thermalState ?? "", e?.batteryLevel.map { ParentDashboardExporter.fmt4($0) } ?? "",
         ]
     }
 
@@ -171,11 +171,14 @@ struct ParentDashboardExporter {
         // Enrolment timestamp lets consumers reproduce the
         // pre-enrollment filtering rule and audit skipped records.
         if let enrolledAt {
-            lines.append("# enrolledAt=\(ISO8601DateFormatter().string(from: enrolledAt))")
+            lines.append("# enrolledAt=\(ParentDashboardExporter.isoTimestamp(enrolledAt))")
         }
         // Timezone label for cross-timezone / DST-aware interpretation.
         lines.append("# timezone=\(TimeZone.current.identifier)")
-        let isoFormatter = ISO8601DateFormatter()
+        // The rows of this block the export did NOT attribute to this child
+        // (B3, protocol r16): written before the enrolment, or under
+        // another enrolment's id. Always present, 0 when none.
+        lines.append("# droppedPreEnrolmentRows=\(droppedRowCount(snapshot, participantId: participantId, enrolledAt: enrolledAt))")
         lines.append("")
 
         // Letter-aggregate columns:
@@ -194,21 +197,21 @@ struct ParentDashboardExporter {
         lines.append(["letter","sessionCount","trend","recognitionSamples","recognitionAvg","speedTrend","freeformCompletionCount","retrievalAccuracy"].joined(separator: sep))
         let sorted = snapshot.letterStats.values.sorted { $0.letter < $1.letter }
         for stat in sorted {
-            let tnd = String(format: "%.6f", stat.trend)
+            let tnd = ParentDashboardExporter.fmt6(stat.trend)
             let cnt = stat.accuracySamples.count
             let prog = progress[stat.letter]
             let acc = prog?.recognitionAccuracy ?? []
             let recCount = acc.count
             let recAvg = acc.isEmpty
-                ? "" : String(format: "%.4f", acc.reduce(0, +) / Double(acc.count))
+                ? "" : ParentDashboardExporter.fmt4(acc.reduce(0, +) / Double(acc.count))
             let speedField = (prog?.speedTrend ?? [])
-                .map { String(format: "%.4f", $0) }
+                .map { ParentDashboardExporter.fmt4($0) }
                 .joined(separator: ";")
             let freeformField = prog?.freeformCompletionCount.map { String($0) } ?? ""
             let retrievalField: String = {
                 guard let attempts = prog?.retrievalAttempts, !attempts.isEmpty else { return "" }
                 let acc = Double(attempts.filter { $0 }.count) / Double(attempts.count)
-                return String(format: "%.4f", acc)
+                return ParentDashboardExporter.fmt4(acc)
             }()
             lines.append(quotedRow([stat.letter, "\(cnt)", tnd, "\(recCount)", recAvg, speedField, freeformField, retrievalField], sep))
         }
@@ -225,13 +228,11 @@ struct ParentDashboardExporter {
         // Filtered on enrolment like the phase rows (review 2026-09-05: the
         // D11#1 filter never reached this block); stamped with the arm /
         // study flag / probe so a duration attributes without a join.
-        let enrolledDurations: [SessionDurationRecord] = {
-            guard let enrolledAt else { return snapshot.sessionDurations }
-            return snapshot.sessionDurations.filter { rec in
-                guard let ts = rec.recordedAt else { return false }
-                return ts >= enrolledAt
-            }
-        }()
+        // B3 (r16): membership, not wall clock — see `belongs`.
+        let enrolledDurations = snapshot.sessionDurations.filter { rec in
+            belongs(enrolmentId: rec.enrolmentId, recordedAt: rec.recordedAt,
+                    participantId: participantId, enrolledAt: enrolledAt)
+        }
         // R-123 (audit 2026-10-13): `participantId`, `rowId`, and the phase
         // rows' `trainedSubset` / `comparisonConfiguration` /
         // `protocolRevision`, appended in turn — every export re-emits every
@@ -240,11 +241,11 @@ struct ParentDashboardExporter {
         // `recordedAt` join. Empty on rows written before them.
         lines.append(["date","recordedAt","durationSeconds","wallClockSeconds","condition","inputDevice","letter","audioCondition","studyMode","probe","participantId","rowId","trainedSubset","comparisonConfiguration","protocolRevision"].joined(separator: sep))
         for rec in enrolledDurations.sorted(by: { $0.dateString < $1.dateString }) {
-            let recordedAtField = rec.recordedAt.map { isoFormatter.string(from: $0) } ?? ""
-            let wallField = rec.wallClockSeconds.map { String(format: "%.3f", $0) } ?? ""
+            let recordedAtField = rec.recordedAt.map { ParentDashboardExporter.isoTimestamp($0) } ?? ""
+            let wallField = rec.wallClockSeconds.map { ParentDashboardExporter.fmt3($0) } ?? ""
             let row: [String] = [
                 rec.dateString, recordedAtField,
-                String(format: "%.3f", rec.durationSeconds),
+                ParentDashboardExporter.fmt3(rec.durationSeconds),
                 wallField, rec.condition.rawValue,
                 rec.inputDevice ?? "",
                 rec.letter ?? "",
@@ -348,16 +349,11 @@ struct ParentDashboardExporter {
         // comparison — the exact attribution this filter exists to
         // prevent.
         let enrolledRecords: [PhaseSessionRecord] = {
-            let filtered: [PhaseSessionRecord] = {
-                guard let enrolledAt else { return snapshot.phaseSessionRecords }
-                // Also discard rows lacking `recordedAt` when an `enrolledAt`
-                // exists — they default to `.threePhase` and would silently
-                // inflate that arm.
-                return snapshot.phaseSessionRecords.filter { rec in
-                    guard let ts = rec.recordedAt else { return false }
-                    return ts >= enrolledAt
-                }
-            }()
+            // B3 (r16): membership, not wall clock — see `belongs`.
+            let filtered = snapshot.phaseSessionRecords.filter { rec in
+                belongs(enrolmentId: rec.enrolmentId, recordedAt: rec.recordedAt,
+                        participantId: participantId, enrolledAt: enrolledAt)
+            }
             // Tags the derived trained-letter post-test row (see
             // `withDerivedPostTestTags`) so `probe == "posttest"` finds
             // all five study letters' post-test rows in THIS export, not
@@ -378,17 +374,17 @@ struct ParentDashboardExporter {
             phaseSessionRecords: enrolledRecords
         )
         for rec in enrolledRecords {
-            let score = String(format: "%.4f", rec.score)
-            let prio  = String(format: "%.4f", rec.schedulerPriority)
-            let recordedAtField = rec.recordedAt.map { isoFormatter.string(from: $0) } ?? ""
+            let score = ParentDashboardExporter.fmt4(rec.score)
+            let prio  = ParentDashboardExporter.fmt4(rec.schedulerPriority)
+            let recordedAtField = rec.recordedAt.map { ParentDashboardExporter.isoTimestamp($0) } ?? ""
             let recLabel = rec.recognitionPredicted ?? ""
-            let recConf  = rec.recognitionConfidence.map { String(format: "%.4f", $0) } ?? ""
-            let recConfRaw = rec.recognitionConfidenceRaw.map { String(format: "%.4f", $0) } ?? ""
+            let recConf  = rec.recognitionConfidence.map { ParentDashboardExporter.fmt4($0) } ?? ""
+            let recConfRaw = rec.recognitionConfidenceRaw.map { ParentDashboardExporter.fmt4($0) } ?? ""
             let recRight = rec.recognitionCorrect.map { String($0) } ?? ""
-            let dimForm   = rec.formAccuracy.map     { String(format: "%.4f", $0) } ?? ""
-            let dimTempo  = rec.tempoConsistency.map { String(format: "%.4f", $0) } ?? ""
-            let dimPress  = rec.pressureControl.map  { String(format: "%.4f", $0) } ?? ""
-            let dimRhythm = rec.rhythmScore.map      { String(format: "%.4f", $0) } ?? ""
+            let dimForm   = rec.formAccuracy.map     { ParentDashboardExporter.fmt4($0) } ?? ""
+            let dimTempo  = rec.tempoConsistency.map { ParentDashboardExporter.fmt4($0) } ?? ""
+            let dimPress  = rec.pressureControl.map  { ParentDashboardExporter.fmt4($0) } ?? ""
+            let dimRhythm = rec.rhythmScore.map      { ParentDashboardExporter.fmt4($0) } ?? ""
             // Explicitly typed as [String] and split from `.joined` —
             // the combined array-literal-plus-chained-method-call
             // expression stopped type-checking in reasonable time once
@@ -404,14 +400,14 @@ struct ParentDashboardExporter {
                 rec.inputDevice ?? "",
                 rec.audioCondition.rawValue,
                 rec.trainedSubset ?? "",
-                rec.phaseDurationSeconds.map { String(format: "%.3f", $0) } ?? "",
+                rec.phaseDurationSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
                 // 6 dp: the distance lives in normalised 0–1 letter
                 // space, where meaningful between-child differences show
                 // up in the 3rd–4th decimal.
-                rec.frechetDistance.map { String(format: "%.6f", $0) } ?? "",
-                rec.checkpointCoverage.map { String(format: "%.4f", $0) } ?? "",
+                rec.frechetDistance.map { ParentDashboardExporter.fmt6($0) } ?? "",
+                rec.checkpointCoverage.map { ParentDashboardExporter.fmt4($0) } ?? "",
                 // Same 6 dp precision as frechetDistance, same space.
-                rec.spatialDeviation.map { String(format: "%.6f", $0) } ?? "",
+                rec.spatialDeviation.map { ParentDashboardExporter.fmt6($0) } ?? "",
                 rec.strokeCount.map(String.init) ?? "",
                 rec.strokeOrder ?? "",
                 rec.reversedStrokeCount.map(String.init) ?? "",
@@ -434,7 +430,7 @@ struct ParentDashboardExporter {
                 // The unnormalised secondary distance (r6, 2026-10-05),
                 // same 6 dp as spatialDeviation. Empty before r6 and for
                 // non-freeWrite rows.
-                rec.spatialDeviationRaw.map { String(format: "%.6f", $0) } ?? ""
+                rec.spatialDeviationRaw.map { ParentDashboardExporter.fmt6($0) } ?? ""
             ] + Self.phaseRowAppendedFields(rec, participantId: participantId)
             lines.append(quotedRow(row, sep))
         }
@@ -446,12 +442,15 @@ struct ParentDashboardExporter {
         // `direct`, lands in the export.
         for phase in LearningPhase.allCases.map(\.rawName) {
             if let rate = rates[phase] {
-                lines.append(["phaseCompletionRate_\(phase)", String(format: "%.4f", rate)].joined(separator: sep))
+                lines.append(["phaseCompletionRate_\(phase)", ParentDashboardExporter.fmt4(rate)].joined(separator: sep))
             }
         }
-        lines.append(["averageFreeWriteScore", String(format: "%.4f", enrolledSnapshot.averageFreeWriteScore)].joined(separator: sep))
+        // Empty when no scored freeWrite row exists (A15): 0.0000 was
+        // indistinguishable from a real mean of 0.
+        lines.append(["averageFreeWriteScore",
+                      enrolledSnapshot.averageFreeWriteScoreIfDefined.map { ParentDashboardExporter.fmt4($0) } ?? ""].joined(separator: sep))
         lines.append(["schedulerEffectivenessProxy",
-                      enrolledSnapshot.schedulerEffectivenessProxyIfDefined.map { String(format: "%.4f", $0) } ?? ""].joined(separator: sep))
+                      enrolledSnapshot.schedulerEffectivenessProxyIfDefined.map { ParentDashboardExporter.fmt4($0) } ?? ""].joined(separator: sep))
         // Per-condition aggregates so between-arm comparisons don't
         // have to back out cross-arm contamination. The proxy is
         // meaningful only inside an arm — `.control` uses a different
@@ -461,7 +460,7 @@ struct ParentDashboardExporter {
             let freeWrite = armRecords.filter(\.isScoredFreeWrite).map(\.score)
             if !freeWrite.isEmpty {
                 let avg = freeWrite.reduce(0, +) / Double(freeWrite.count)
-                lines.append(["averageFreeWriteScore_\(arm.rawValue)", String(format: "%.4f", avg)].joined(separator: sep))
+                lines.append(["averageFreeWriteScore_\(arm.rawValue)", ParentDashboardExporter.fmt4(avg)].joined(separator: sep))
             }
             // Per-arm proxy: same Pearson as `schedulerEffectivenessProxy`,
             // restricted to one condition. Skipped under 2 pairs.
@@ -495,7 +494,7 @@ struct ParentDashboardExporter {
                 let yVar = ys.reduce(0.0) { $0 + ($1 - yMean) * ($1 - yMean) }
                 if xVar > 0, yVar > 0 {
                     let r = num / (xVar * yVar).squareRoot()
-                    lines.append(["schedulerEffectivenessProxy_\(arm.rawValue)", String(format: "%.4f", r)].joined(separator: sep))
+                    lines.append(["schedulerEffectivenessProxy_\(arm.rawValue)", ParentDashboardExporter.fmt4(r)].joined(separator: sep))
                 }
             }
         }
@@ -518,7 +517,7 @@ struct ParentDashboardExporter {
             for (letter, group) in byLetter.sorted(by: { $0.key < $1.key }) {
                 let n = group.count
                 let avg = group.map(\.score).reduce(0, +) / Double(n)
-                lines.append(quotedRow(["letterByArm", letter, arm.rawValue, "\(n)", String(format: "%.4f", avg)], sep))
+                lines.append(quotedRow(["letterByArm", letter, arm.rawValue, "\(n)", ParentDashboardExporter.fmt4(avg)], sep))
             }
         }
         // Pilot audio axis — the PRIMARY between-subjects IV (the
@@ -531,7 +530,7 @@ struct ParentDashboardExporter {
             let freeWrite = armRecords.filter(\.isScoredFreeWrite).map(\.score)
             if !freeWrite.isEmpty {
                 let avg = freeWrite.reduce(0, +) / Double(freeWrite.count)
-                lines.append(["averageFreeWriteScore_audio_\(arm.rawValue)", String(format: "%.4f", avg)].joined(separator: sep))
+                lines.append(["averageFreeWriteScore_audio_\(arm.rawValue)", ParentDashboardExporter.fmt4(avg)].joined(separator: sep))
             }
         }
         // Per-letter accuracy split by audio arm — the audio-axis twin of
@@ -545,17 +544,17 @@ struct ParentDashboardExporter {
             for (letter, group) in byLetter.sorted(by: { $0.key < $1.key }) {
                 let n = group.count
                 let avg = group.map(\.score).reduce(0, +) / Double(n)
-                lines.append(quotedRow(["letterByAudioArm", letter, arm.rawValue, "\(n)", String(format: "%.4f", avg)], sep))
+                lines.append(quotedRow(["letterByAudioArm", letter, arm.rawValue, "\(n)", ParentDashboardExporter.fmt4(avg)], sep))
             }
         }
         // Aggregate Schreibmotorik dimensions across all completed
         // freeWrite sessions. Emitted only when at least one session
         // contributed.
         if let dims = enrolledSnapshot.averageWritingDimensions {
-            lines.append(["averageFormAccuracy", String(format: "%.4f", dims.form)].joined(separator: sep))
-            lines.append(["averageTempoConsistency", String(format: "%.4f", dims.tempo)].joined(separator: sep))
-            lines.append(["averagePressureControl", String(format: "%.4f", dims.pressure)].joined(separator: sep))
-            lines.append(["averageRhythmScore", String(format: "%.4f", dims.rhythm)].joined(separator: sep))
+            lines.append(["averageFormAccuracy", ParentDashboardExporter.fmt4(dims.form)].joined(separator: sep))
+            lines.append(["averageTempoConsistency", ParentDashboardExporter.fmt4(dims.tempo)].joined(separator: sep))
+            lines.append(["averagePressureControl", ParentDashboardExporter.fmt4(dims.pressure)].joined(separator: sep))
+            lines.append(["averageRhythmScore", ParentDashboardExporter.fmt4(dims.rhythm)].joined(separator: sep))
         }
         return lines.joined(separator: "\n").data(using: .utf8) ?? Data()
     }
@@ -577,6 +576,7 @@ struct ParentDashboardExporter {
     static func combinedDelimitedData(
         participants: [ParticipantExportSource],
         enrolments: [EnrolmentRecord] = [],
+        setAside: [ArchiveSetAside] = [],
         separator sep: String
     ) -> Data {
         let blocks = participants.map { p in
@@ -584,11 +584,27 @@ struct ParentDashboardExporter {
                                        progress: p.progress, enrolledAt: p.enrolledAt, separator: sep),
                    encoding: .utf8) ?? ""
         }
-        var out = blocks.joined(separator: Self.participantBlockSeparator)
+        // B4 (protocol r16): an archive file that could not be loaded is
+        // named at the top of the file, one `#` line each, so the child
+        // it held — present in the enrolment block, absent as a participant
+        // — reads as lost data, not as a dropout. Nothing is written when
+        // every archive file loaded, so such an export is unchanged.
+        var out = setAside.map { setAsideLine($0) + "\n" }.joined()
+        if !setAside.isEmpty { out += "\n" }
+        out += blocks.joined(separator: Self.participantBlockSeparator)
         if !enrolments.isEmpty {
             out += Self.enrolmentBlockSeparator + enrolmentBlock(enrolments, separator: sep)
         }
+        // A text file ends with a newline (A16, round-1 UI-6): concatenating
+        // two exports otherwise glues the last row to the next file's first.
+        out += "\n"
         return out.data(using: .utf8) ?? Data()
+    }
+
+    /// `# setAside=<file> participantId=<id>` (B4, r16); the id is empty
+    /// when the file name does not start with one.
+    static func setAsideLine(_ file: ArchiveSetAside) -> String {
+        "# setAside=\(file.fileName) participantId=\(file.participantId?.uuidString ?? "")"
     }
 
     /// Separator before the enrolment block — `#`-prefixed like the
@@ -608,7 +624,6 @@ struct ParentDashboardExporter {
     /// does not carry it: its top level is an array of participants, and
     /// adding a sibling would change that shape for every consumer.
     static func enrolmentBlock(_ enrolments: [EnrolmentRecord], separator sep: String) -> String {
-        let iso = ISO8601DateFormatter()
         // The device state and the build at enrolment (R-020, R-018),
         // appended after the original five columns; empty for an
         // enrolment logged before batch D.
@@ -617,7 +632,7 @@ struct ParentDashboardExporter {
                       + environmentColumns + buildColumns).joined(separator: sep)]
         for e in enrolments {
             let row = [e.participantId.uuidString,
-                       e.enrolledAt.map { iso.string(from: $0) } ?? "",
+                       e.enrolledAt.map { ParentDashboardExporter.isoTimestamp($0) } ?? "",
                        e.audioCondition.rawValue,
                        e.trainedSubset,
                        String(e.protocolRevision),
@@ -641,7 +656,7 @@ struct ParentDashboardExporter {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
+            encoder.dateEncodingStrategy = Self.isoDateEncodingStrategy
             // A NaN score (R-053) must not fail the whole export.
             encoder.nonConformingFloatEncodingStrategy = StoreCoding.encoder().nonConformingFloatEncodingStrategy
             let export = snapshotWithMetrics(from: snapshot, participantId: participantId,
@@ -659,7 +674,7 @@ struct ParentDashboardExporter {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = .iso8601
+            encoder.dateEncodingStrategy = Self.isoDateEncodingStrategy
             // A NaN score (R-053) must not fail the whole export.
             encoder.nonConformingFloatEncodingStrategy = StoreCoding.encoder().nonConformingFloatEncodingStrategy
             let exports = participants.map {
@@ -694,33 +709,63 @@ struct ParentDashboardExporter {
         // an iPad whose last child was never wiped — it is that other
         // child's ink under this participantId. Same-id restores keep
         // the original `enrolledAt`, so the archive stays complete.
+        // B3 (r16): rows by membership (`belongs`); a trace is kept when a
+        // kept row links to it, else by the time rule as before.
+        var filtered = snapshot
+        filtered.phaseSessionRecords = withDerivedPostTestTags(snapshot.phaseSessionRecords.filter { rec in
+            belongs(enrolmentId: rec.enrolmentId, recordedAt: rec.recordedAt,
+                    participantId: participantId, enrolledAt: enrolledAt)
+        })
+        filtered.sessionDurations = snapshot.sessionDurations.filter { rec in
+            belongs(enrolmentId: rec.enrolmentId, recordedAt: rec.recordedAt,
+                    participantId: participantId, enrolledAt: enrolledAt)
+        }
+        let linkedTraces = Set(filtered.phaseSessionRecords.compactMap(\.rawTraceID))
         let filteredTraces = enrolledAt.map { at in
-            rawTraces.filter { $0.recordedAt >= at }
+            rawTraces.filter { linkedTraces.contains($0.id) || $0.recordedAt >= at }
         } ?? rawTraces
-        let filtered: DashboardSnapshot = {
-            guard let enrolledAt else {
-                var s = snapshot
-                s.phaseSessionRecords = withDerivedPostTestTags(s.phaseSessionRecords)
-                return s
-            }
-            var s = snapshot
-            s.phaseSessionRecords = withDerivedPostTestTags(snapshot.phaseSessionRecords.filter { rec in
-                guard let ts = rec.recordedAt else { return false }
-                return ts >= enrolledAt
-            })
-            s.sessionDurations = snapshot.sessionDurations.filter { rec in
-                guard let ts = rec.recordedAt else { return false }
-                return ts >= enrolledAt
-            }
-            return s
-        }()
         return SnapshotWithMetrics(
             snapshot: filtered,
             participantId: participantId,
             progress: progress,
             rawTraces: filteredTraces,
-            enrolledAt: enrolledAt
+            enrolledAt: enrolledAt,
+            droppedPreEnrolmentRows: droppedRowCount(snapshot, participantId: participantId,
+                                                     enrolledAt: enrolledAt)
         )
+    }
+
+    /// Whether a row belongs to the export block of `participantId`
+    /// (B3, protocol r16). A row stamped with an enrolment id belongs to
+    /// that enrolment and no other, whatever the wall clock said when it
+    /// was written: a clock corrected backwards after enrolment used to
+    /// drop every later row of the child (round-1 DATA-1). A row without
+    /// the stamp (written before r16, or while no child was enrolled)
+    /// keeps the pre-r16 time rule: kept when the block has no
+    /// `enrolledAt`, else only when `recordedAt >= enrolledAt` (a row
+    /// lacking `recordedAt` would default to `.threePhase` and inflate
+    /// that arm, so it is dropped).
+    static func belongs(enrolmentId: UUID?, recordedAt: Date?,
+                        participantId: UUID, enrolledAt: Date?) -> Bool {
+        if let enrolmentId { return enrolmentId == participantId }
+        guard let enrolledAt else { return true }
+        guard let recordedAt else { return false }
+        return recordedAt >= enrolledAt
+    }
+
+    /// Phase and duration rows of `snapshot` that `belongs` excludes from
+    /// `participantId`'s block — the `# droppedPreEnrolmentRows=` count.
+    static func droppedRowCount(_ snapshot: DashboardSnapshot,
+                                participantId: UUID, enrolledAt: Date?) -> Int {
+        let phase = snapshot.phaseSessionRecords.filter {
+            !belongs(enrolmentId: $0.enrolmentId, recordedAt: $0.recordedAt,
+                     participantId: participantId, enrolledAt: enrolledAt)
+        }.count
+        let durations = snapshot.sessionDurations.filter {
+            !belongs(enrolmentId: $0.enrolmentId, recordedAt: $0.recordedAt,
+                     participantId: participantId, enrolledAt: enrolledAt)
+        }.count
+        return phase + durations
     }
 
     // MARK: Private types
@@ -739,14 +784,19 @@ struct ParentDashboardExporter {
         /// the ONLY export that carries them (the CSV stays derived-only).
         let rawTraces: [RawTrace]
         let thesisMetrics: ThesisMetrics
+        /// Rows not attributed to this child (B3, r16) — the CSV's
+        /// `# droppedPreEnrolmentRows=` line.
+        let droppedPreEnrolmentRows: Int
 
         init(snapshot: DashboardSnapshot,
              participantId: UUID,
              progress: [String: LetterProgress],
              rawTraces: [RawTrace],
-             enrolledAt: Date?) {
+             enrolledAt: Date?,
+             droppedPreEnrolmentRows: Int) {
             self.participantId = participantId.uuidString
             self.enrolledAt = enrolledAt
+            self.droppedPreEnrolmentRows = droppedPreEnrolmentRows
             letterStats = snapshot.letterStats
             sessionDurations = snapshot.sessionDurations
             phaseSessionRecords = snapshot.phaseSessionRecords
@@ -755,8 +805,8 @@ struct ParentDashboardExporter {
             let dims = snapshot.averageWritingDimensions
             thesisMetrics = ThesisMetrics(
                 phaseCompletionRates: snapshot.phaseCompletionRates,
-                averageFreeWriteScore: snapshot.averageFreeWriteScore,
-                schedulerEffectivenessProxy: snapshot.schedulerEffectivenessProxy,
+                averageFreeWriteScore: snapshot.averageFreeWriteScoreIfDefined,
+                schedulerEffectivenessProxy: snapshot.schedulerEffectivenessProxyIfDefined,
                 averageFormAccuracy: dims?.form,
                 averageTempoConsistency: dims?.tempo,
                 averagePressureControl: dims?.pressure,
@@ -766,14 +816,34 @@ struct ParentDashboardExporter {
 
         struct ThesisMetrics: Encodable {
             let phaseCompletionRates: [String: Double]
-            let averageFreeWriteScore: Double
-            let schedulerEffectivenessProxy: Double
+            /// nil (JSON null) when undefined, as the CSV's empty cell (A15).
+            let averageFreeWriteScore: Double?
+            let schedulerEffectivenessProxy: Double?
             /// Schreibmotorik dimensions averaged across all completed
             /// freeWrite sessions. nil when no freeWrite data exists yet.
             let averageFormAccuracy: Double?
             let averageTempoConsistency: Double?
             let averagePressureControl: Double?
             let averageRhythmScore: Double?
+
+            // Explicit nulls for the two aggregates that are undefined on
+            // purpose (A15). Synthesized Encodable omits a nil key, which
+            // reads as "field missing" rather than "no data".
+            private enum CodingKeys: String, CodingKey {
+                case phaseCompletionRates, averageFreeWriteScore, schedulerEffectivenessProxy
+                case averageFormAccuracy, averageTempoConsistency, averagePressureControl, averageRhythmScore
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var c = encoder.container(keyedBy: CodingKeys.self)
+                try c.encode(phaseCompletionRates, forKey: .phaseCompletionRates)
+                try c.encode(averageFreeWriteScore, forKey: .averageFreeWriteScore)           // Double? -> null
+                try c.encode(schedulerEffectivenessProxy, forKey: .schedulerEffectivenessProxy) // Double? -> null
+                try c.encodeIfPresent(averageFormAccuracy, forKey: .averageFormAccuracy)
+                try c.encodeIfPresent(averageTempoConsistency, forKey: .averageTempoConsistency)
+                try c.encodeIfPresent(averagePressureControl, forKey: .averagePressureControl)
+                try c.encodeIfPresent(averageRhythmScore, forKey: .averageRhythmScore)
+            }
         }
     }
 
@@ -833,6 +903,7 @@ struct ParentDashboardExporter {
     static func combinedExportFileURL(
         participants: [ParticipantExportSource],
         enrolments: [EnrolmentRecord] = [],
+        setAside: [ArchiveSetAside] = [],
         format: DashboardExportFormat,
         tempDirectory: URL = FileManager.default.temporaryDirectory
     ) throws(ExportError) -> URL {
@@ -844,10 +915,12 @@ struct ParentDashboardExporter {
         let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(distinctParticipantCount(participants))"
         switch format {
         case .csv:
-            data     = combinedDelimitedData(participants: participants, enrolments: enrolments, separator: ",")
+            data     = combinedDelimitedData(participants: participants, enrolments: enrolments,
+                                             setAside: setAside, separator: ",")
             filename = "primae_progress_ALL_\(tag).csv"
         case .tsv:
-            data     = combinedDelimitedData(participants: participants, enrolments: enrolments, separator: "\t")
+            data     = combinedDelimitedData(participants: participants, enrolments: enrolments,
+                                             setAside: setAside, separator: "\t")
             filename = "primae_progress_ALL_\(tag).tsv"
         case .json:
             data     = try combinedJSONData(participants: participants)
@@ -872,11 +945,12 @@ struct ParentDashboardExporter {
     static func combinedExportForSharing(
         participants: [ParticipantExportSource],
         enrolments: [EnrolmentRecord] = [],
+        setAside: [ArchiveSetAside] = [],
         format: DashboardExportFormat,
         locations: ExportFileRetention.Locations = .live
     ) throws(ExportError) -> URL {
         let url = try combinedExportFileURL(participants: participants, enrolments: enrolments,
-                                            format: format,
+                                            setAside: setAside, format: format,
                                             tempDirectory: locations.temporaryDirectory)
         do {
             try ExportFileRetention.retain(url, in: locations.retainDirectory)
@@ -888,6 +962,26 @@ struct ParentDashboardExporter {
     }
 
     // MARK: Private
+
+    /// Every exported timestamp, ISO 8601 UTC WITH fractional seconds
+    /// (`2026-10-26T07:33:20.200Z`): second resolution collapsed rows
+    /// recorded within one second into a tie (A16, round-1 DATA-4).
+    static func isoTimestamp(_ date: Date) -> String {
+        date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+    }
+
+    /// Fixed-point formatting that spells NaN `NaN`, as the store file does,
+    /// instead of C's `nan` (A16, round-1 DATA-5). All other values are
+    /// byte-identical to `String(format: "%.<n>f", v)`.
+    static func fmt3(_ v: Double) -> String { v.isNaN ? "NaN" : String(format: "%.3f", v) }
+    static func fmt4(_ v: Double) -> String { v.isNaN ? "NaN" : String(format: "%.4f", v) }
+    static func fmt6(_ v: Double) -> String { v.isNaN ? "NaN" : String(format: "%.6f", v) }
+
+    /// JSON date strategy matching `isoTimestamp`.
+    static let isoDateEncodingStrategy: JSONEncoder.DateEncodingStrategy = .custom { date, encoder in
+        var c = encoder.singleValueContainer()
+        try c.encode(ParentDashboardExporter.isoTimestamp(date))
+    }
 
     /// The `HHmmss` part of an export name, in the device's time zone.
     static func timeTag(_ date: Date = Date(), deviceCalendar: Calendar = .current) -> String {
@@ -905,8 +999,10 @@ struct ParentDashboardExporter {
         return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
     }
 
-    /// Gregorian + POSIX, keeping only the device's time zone.
-    private static func nameCalendar(_ deviceCalendar: Calendar) -> Calendar {
+    /// Gregorian + POSIX, keeping only the device's time zone. Shared with
+    /// `ParentDashboardStore`'s `date` column key (A14), so both name the
+    /// same instant with the same Gregorian day.
+    static func nameCalendar(_ deviceCalendar: Calendar) -> Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "en_US_POSIX")
         calendar.timeZone = deviceCalendar.timeZone

@@ -35,6 +35,11 @@ enum RowFinalization: String, Codable, CaseIterable {
     /// The proctor moved on (chevron, letter or probe load) while the
     /// letter was open; also every `completed: false` row.
     case navigation
+    /// The proctor exported the research data while a finished free-writing
+    /// production was still held unscored (the quiet window the parent area
+    /// suspends): the export screen closes it first, so the export carries
+    /// the trial (B22, protocol r16).
+    case export
 }
 
 // MARK: - Environment at one instant

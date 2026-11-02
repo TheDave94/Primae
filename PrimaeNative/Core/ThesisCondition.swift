@@ -170,6 +170,25 @@ enum ParticipantStore {
         UserDefaults.standard.object(forKey: enrolledAtKey) as? Date
     }
 
+    /// The participant id that has shown any activity on this device: a
+    /// touch, a probe start or an unpark (fix 2026-11-02, B2, protocol
+    /// r16). Stored as the id rather than a flag, so a new or restored id
+    /// starts with none without anything having to clear it, and it
+    /// survives a relaunch between enrolment and the next "Nächstes Kind".
+    private static let activityKey = "de.flamingistan.primae.participantActivity"
+
+    /// Whether the CURRENT participant has shown activity (see `activityKey`).
+    static var currentParticipantHadActivity: Bool {
+        UserDefaults.standard.string(forKey: activityKey) == participantId.uuidString
+    }
+
+    /// Marks the current participant as active. Idempotent.
+    static func markCurrentParticipantActive() {
+        let id = participantId.uuidString
+        guard UserDefaults.standard.string(forKey: activityKey) != id else { return }
+        UserDefaults.standard.set(id, forKey: activityKey)
+    }
+
     /// Spaced-retrieval counter key (per participant), READ FROM its
     /// owner rather than mirrored. Reset for a new participant so the
     /// retrieval cadence restarts; a divergence here would leave a fresh

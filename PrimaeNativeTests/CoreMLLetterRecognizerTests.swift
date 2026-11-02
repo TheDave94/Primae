@@ -119,14 +119,16 @@ import CoreGraphics
             calibrator: ConfidenceCalibrator(), historicalFormScores: strong)
         // The classifier's confidence is a Float; the calibrator works in
         // CGFloat — compare with a tolerance, not `==` (CI run 1656).
-        let unboosted = ConfidenceCalibrator().calibrate(rawConfidence: 0.5, predictedLetter: "H")
-        let boosted   = ConfidenceCalibrator().calibrate(rawConfidence: 0.4, predictedLetter: "A",
+        // r16 (DEV-2): the calibrator sees the softmax of the class scores.
+        let p = CoreMLLetterRecognizer.softmax(classifications)
+        let unboosted = ConfidenceCalibrator().calibrate(rawConfidence: p[0], predictedLetter: "H")
+        let boosted   = ConfidenceCalibrator().calibrate(rawConfidence: p[1], predictedLetter: "A",
                                                          historicalFormScores: strong)
         let top = r?.confidence ?? -1
         let a   = r?.topThree.first(where: { $0.letter == "A" })?.confidence ?? -1
         #expect(abs(top - unboosted) < 1e-6, "the wrong top prediction keeps its unboosted confidence: \(top) vs \(unboosted)")
         #expect(abs(a - boosted) < 1e-6, "the expected letter's candidate carries the boost: \(a) vs \(boosted)")
-        #expect(boosted > 0.4, "fixture must actually trigger the boost")
+        #expect(boosted > p[1], "fixture must actually trigger the boost")
     }
 
     @Test("isCorrect compares case-insensitively against expectedLetter")

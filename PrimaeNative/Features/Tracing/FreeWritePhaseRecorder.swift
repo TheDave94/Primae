@@ -166,19 +166,20 @@ final class FreeWritePhaseRecorder {
         }
         var perCell: [WritingAssessment] = []
         for cell in cellReferences {
-            var pts: [CGPoint] = []
+            var cellPoints: [CGPoint] = []
             var ts: [CFTimeInterval] = []
             var fs: [CGFloat] = []
             for i in points.indices where cell.frame.contains(points[i]) {
-                let p = points[i]
-                pts.append(CGPoint(
-                    x: (p.x - cell.frame.minX) / max(cell.frame.width, 1),
-                    y: (p.y - cell.frame.minY) / max(cell.frame.height, 1)
-                ))
+                cellPoints.append(points[i])
                 if i < timestamps.count { ts.append(timestamps[i]) }
                 if i < forces.count { fs.append(forces[i]) }
             }
-            guard pts.count >= 2 else { continue }
+            guard cellPoints.count >= 2 else { continue }
+            // Height units on both axes, as the single-cell path (r16, B-3).
+            let iso = StrokeProcessScorer.heightNormalised(points: cellPoints,
+                                                           reference: cell.reference,
+                                                           frame: cell.frame)
+            let pts = iso.points
             // Per-cell stroke boundaries aren't tracked separately from
             // the whole-session `strokeStartIndices` (frame-membership
             // filtering doesn't preserve them cleanly) — passed empty,
@@ -189,7 +190,7 @@ final class FreeWritePhaseRecorder {
             // single-cell path below carries the real
             // `strokeStartIndices`.
             perCell.append(FreeWriteScorer.score(
-                tracedPoints: pts, strokeStartIndices: [], reference: cell.reference,
+                tracedPoints: pts, strokeStartIndices: [], reference: iso.reference,
                 timestamps: ts, forces: fs,
                 sessionStart: sessionStart, sessionEnd: now))
         }
@@ -219,37 +220,38 @@ final class FreeWritePhaseRecorder {
                 cellFrame: CGRect? = nil,
                 now: CFTimeInterval = CACurrentMediaTime()) -> WritingAssessment {
         let frame = cellFrame ?? CGRect(origin: .zero, size: canvasSize)
-        let normalised = points.map { p in
-            CGPoint(x: (p.x - frame.minX) / max(frame.width, 1),
-                    y: (p.y - frame.minY) / max(frame.height, 1))
-        }
-        // `score` computes a stroke correspondence internally (for
-        // `formAccuracy`) and this line computes one again for
-        // `lastStrokeProcess` — the same analysis run twice, not once.
-        // Accepted deliberately: `FreeWriteScorer.score` is a general
-        // public API (tests and other callers use it standalone, with
-        // no separate correspondence step), and re-running an
-        // exhaustive search over a handful of strokes once per phase
-        // completion costs nothing worth a more complex shared-result
-        // API for. "One computation" in the design sense — one
-        // MECHANISM produces both the primary and the secondaries —
-        // holds; this is two calls to that one mechanism, not two
-        // mechanisms.
+        // Both axes in units of the frame's HEIGHT (r16, audit B-3): the
+        // per-axis normalisation that stood here weighted a vertical error
+        // 1.73x a horizontal one on the study canvas. The reference's x is
+        // rescaled to match; its radius is already in cell-height units.
+        let iso = StrokeProcessScorer.heightNormalised(points: points, reference: reference,
+                                                       frame: frame)
+        let normalised = iso.points
+        let isoReference = iso.reference
+        // ONE stroke analysis, shared (A19). It used to run twice (once inside
+        // `score` for `formAccuracy`, once here for `lastStrokeProcess`), and
+        // the assignment search cost 170 ms of main-actor time per call in
+        // Debug on a 60-stroke trace (round-1 B-12); the comment that stood
+        // here called it "nothing", and the measurement refuted that. The
+        // result is identical: `score(…, measures:)` reads the same
+        // `analyze` output the standalone `score` computes for itself.
+        let measures = StrokeProcessScorer.analyze(
+            points: normalised,
+            strokeStartIndices: strokeStartIndices,
+            reference: isoReference
+        )
         let assessment = FreeWriteScorer.score(
             tracedPoints: normalised,
             strokeStartIndices: strokeStartIndices,
-            reference: reference,
+            reference: isoReference,
             timestamps: timestamps,
             forces: forces,
             sessionStart: sessionStart,
-            sessionEnd: now
+            sessionEnd: now,
+            measures: measures
         )
         lastAssessment = assessment
-        lastStrokeProcess = StrokeProcessScorer.analyze(
-            points: normalised,
-            strokeStartIndices: strokeStartIndices,
-            reference: reference
-        )
+        lastStrokeProcess = measures
         return assessment
     }
 

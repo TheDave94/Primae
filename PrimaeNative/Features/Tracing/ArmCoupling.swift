@@ -38,9 +38,18 @@ enum ArmCoupling {
     }
 
     static func apply(_ p: Parameters, to audio: AudioControlling) {
-        audio.setAdaptivePlayback(speed: p.speed, horizontalBias: p.horizontalBias)
+        applyRateAndPan(p, to: audio)
         if let cents = p.spatialPitchCents {
             audio.setSpatialPitch(cents: cents)
         }
+    }
+
+    /// Rate and pan only. The pen's path writes the spatial pitch
+    /// separately, at most once per display frame (ruling B18, 2026-11-02:
+    /// a pitch write on every coalesced touch sample was the likely source
+    /// of the spatial arm's ~30 ms later onset, AUDIO-4); see
+    /// `TouchDispatcher.writeSpatialPitchPerFrame`.
+    static func applyRateAndPan(_ p: Parameters, to audio: AudioControlling) {
+        audio.setAdaptivePlayback(speed: p.speed, horizontalBias: p.horizontalBias)
     }
 }

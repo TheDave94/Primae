@@ -16,5 +16,16 @@
          skips the export-compliance prompt on every upload. -->
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
+    <!-- A26 (audit SURF-2): iPadOS 27 connects a second scene unless the
+         manifest says otherwise (measured). The generated manifest
+         (INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES) hard-codes
+         true and overrides both an INFOPLIST_KEY_ key and this file
+         (measured, Xcode 27.2), so the Study configurations turn the
+         generation OFF and the manifest lives here. -->
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
 </dict>
 </plist>

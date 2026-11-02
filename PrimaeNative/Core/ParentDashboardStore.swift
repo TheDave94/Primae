@@ -250,6 +250,13 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// What this phase actually delivered — route, interruptions, observe
     /// restarts, voice, build (R-020). Nil for every earlier record.
     var delivery: PhaseDelivery?
+    /// The enrolment (participant id) live when the STORE wrote this row
+    /// (B3, protocol r16). The export selects a child's rows by this id
+    /// rather than by `recordedAt >= enrolledAt`, so a backwards clock
+    /// correction after enrolment no longer drops the child's rows. Nil
+    /// for every earlier record, and for a row written while no child was
+    /// enrolled: those keep the time rule.
+    var enrolmentId: UUID?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
@@ -411,6 +418,8 @@ struct PhaseSessionRecord: Codable, Equatable {
         finalizedBy              = try? c.decode(String.self, forKey: .finalizedBy)
         probeAttempt             = try? c.decode(Int.self, forKey: .probeAttempt)
         delivery                 = try? c.decode(PhaseDelivery.self, forKey: .delivery)
+        // B3 (r16); nil for every earlier record, which keeps the time rule.
+        enrolmentId              = try? c.decode(UUID.self, forKey: .enrolmentId)
     }
 }
 
@@ -505,6 +514,9 @@ struct SessionDurationRecord: Codable, Equatable {
     var comparisonConfiguration: String?
     var protocolRevision: Int?
     var rowId: UUID?
+    /// The enrolment live when the store wrote this row (B3, r16) — see
+    /// `PhaseSessionRecord.enrolmentId`. Nil on earlier rows.
+    var enrolmentId: UUID?
 
     init(dateString: String, durationSeconds: TimeInterval,
          wallClockSeconds: TimeInterval? = nil,
@@ -518,7 +530,8 @@ struct SessionDurationRecord: Codable, Equatable {
          trainedSubset: String? = nil,
          comparisonConfiguration: String? = nil,
          protocolRevision: Int? = StudyProtocol.revision,
-         rowId: UUID? = nil) {
+         rowId: UUID? = nil,
+         enrolmentId: UUID? = nil) {
         self.dateString = dateString
         self.durationSeconds = durationSeconds
         self.wallClockSeconds = wallClockSeconds
@@ -533,6 +546,7 @@ struct SessionDurationRecord: Codable, Equatable {
         self.comparisonConfiguration = comparisonConfiguration
         self.protocolRevision = protocolRevision
         self.rowId = rowId
+        self.enrolmentId = enrolmentId
     }
 
     init(from decoder: Decoder) throws {
@@ -552,6 +566,8 @@ struct SessionDurationRecord: Codable, Equatable {
         comparisonConfiguration = try? c.decode(String.self, forKey: .comparisonConfiguration)
         protocolRevision = try? c.decode(Int.self, forKey: .protocolRevision)
         rowId = try? c.decode(UUID.self, forKey: .rowId)
+        // B3 (r16); nil on every earlier row, which keeps the time rule.
+        enrolmentId = try? c.decode(UUID.self, forKey: .enrolmentId)
     }
 }
 
@@ -671,7 +687,9 @@ struct DashboardSnapshot: Codable, Equatable {
                               referenceDate: Date = Date(),
                               calendar: Calendar = .current) -> [(date: Date, minutes: Double)] {
         let formatter = DateFormatter()
-        formatter.calendar = calendar
+        // Same Gregorian key `dayKey` writes (A14), not the device calendar.
+        formatter.calendar = ParentDashboardExporter.nameCalendar(calendar)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
         formatter.timeZone = calendar.timeZone
 
@@ -689,11 +707,16 @@ struct DashboardSnapshot: Codable, Equatable {
     }
 
     /// Mean overall score across all completed freeWrite phase sessions.
-    var averageFreeWriteScore: Double {
+    var averageFreeWriteScore: Double { averageFreeWriteScoreIfDefined ?? 0 }
+
+    /// nil when no scored freeWrite row exists; the exporter writes an empty
+    /// cell / JSON null rather than a `0.0000` that reads as a real mean of 0
+    /// (A15). `averageFreeWriteScore` stays non-optional for the UI.
+    var averageFreeWriteScoreIfDefined: Double? {
         let scores = phaseSessionRecords
             .filter(\.isScoredFreeWrite)
             .map { $0.score }
-        guard !scores.isEmpty else { return 0 }
+        guard !scores.isEmpty else { return nil }
         return scores.reduce(0, +) / Double(scores.count)
     }
 
@@ -938,10 +961,24 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     private let failureCenter: PersistenceFailureCenter
     private(set) var writeRefusal: String?
 
+    /// The enrolment every new row is stamped with (B3, protocol r16):
+    /// read when the row is written, nil while no child is enrolled. The
+    /// default stamps nothing, so a store a test builds keeps the time
+    /// rule; the app's store (`TracingDependencies`) passes
+    /// `liveEnrolmentId`.
+    private let enrolmentId: () -> UUID?
+
+    /// The device's enrolled participant, or nil when none is enrolled.
+    static let liveEnrolmentId: () -> UUID? = {
+        ParticipantStore.isEnrolled ? ParticipantStore.participantId : nil
+    }
+
     init(fileURL: URL? = nil, calendar: Calendar = .current,
-         failureCenter: PersistenceFailureCenter = .shared) {
+         failureCenter: PersistenceFailureCenter = .shared,
+         enrolmentId: @escaping () -> UUID? = { nil }) {
         self.calendar = calendar
         self.failureCenter = failureCenter
+        self.enrolmentId = enrolmentId
         if let url = fileURL {
             self.fileURL = url
         } else {
@@ -1060,7 +1097,8 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
                                        probe: probe,
                                        trainedSubset: trainedSubset,
                                        comparisonConfiguration: comparisonConfiguration,
-                                       rowId: UUID())
+                                       rowId: UUID(),
+                                       enrolmentId: enrolmentId())
             )
             if snapshot.sessionDurations.count > Self.sessionDurationsCap {
                 let evicted = snapshot.sessionDurations.count - Self.sessionDurationsCap
@@ -1087,7 +1125,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     /// Batch D (audit 2026-10-13): the one place a phase row is built. The
     /// row's identifier is minted here (R-123).
     func recordPhaseSession(letter: String, phase: String, completed: Bool, score: Double, schedulerPriority: Double, condition: ThesisCondition, audioCondition: PilotAudioCondition = .phoneme, assessment: WritingAssessment?, recognition: RecognitionSample?, inputDevice: String? = nil, rawTraceID: UUID? = nil, trainedSubset: String? = nil, phaseDurationSeconds: Double? = nil, frechetDistance: Double? = nil, checkpointCoverage: Double? = nil, spatialDeviation: Double? = nil, strokeCount: Int? = nil, strokeOrder: String? = nil, reversedStrokeCount: Int? = nil, studyMode: Bool? = nil, probe: String? = nil, comparisonConfiguration: String? = nil, spatialDeviationRaw: Double?, context: PhaseRowContext) {
-        let record = PhaseSessionRecord(
+        var record = PhaseSessionRecord(
             letter: LetterProgress.canonicalKey(letter),
             phase: phase,
             completed: completed,
@@ -1114,6 +1152,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             rowId: UUID(),
             context: context
         )
+        record.enrolmentId = enrolmentId()   // B3 (r16)
         let nonFinite = PhaseSessionRecord.nonFiniteMeasureNames(
             score: score, assessment: assessment, recognition: recognition,
             [("phaseDurationSeconds", phaseDurationSeconds), ("frechetDistance", frechetDistance),
@@ -1214,7 +1253,10 @@ let dashboardSchemaVersion = 1
 
 // MARK: - Helpers
 
+/// The `date` column key. Always Gregorian in the calendar's time zone, the
+/// same calendar the export file name uses (A14): a Buddhist or Japanese
+/// device calendar wrote `2569-…` here while the file name said `2026-…`.
 private func dayKey(for date: Date, calendar: Calendar) -> String {
-    let c = calendar.dateComponents([.year, .month, .day], from: date)
+    let c = ParentDashboardExporter.nameCalendar(calendar).dateComponents([.year, .month, .day], from: date)
     return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
 }

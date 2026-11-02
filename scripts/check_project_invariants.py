@@ -127,6 +127,9 @@ INFO_PLIST_EXPECTED = [
     ("ITSAppUsesNonExemptEncryption", "<false/>"),
 ]
 
+# Keys that appear in Info.plist only inside the nested scene manifest.
+INFO_PLIST_NESTED_KEYS = {"UIApplicationSceneManifest", "UIApplicationSupportsMultipleScenes"}
+
 # R-112 (audit 2026-10-13). One team, everywhere: a dead project-level team
 # (XMX37BH48B, no account on the build machine) already broke two targets
 # (b1ab17a, 51f29ac5) because only per-target overrides hid it.
@@ -149,6 +152,10 @@ def upgrade_marker_ok(markers: list) -> bool:
 # All four XCConfigurationLists default to the study configuration; "Release"
 # is the casual configuration, which cannot link (CLAUDE.md "Study builds").
 EXPECTED_DEFAULT_CONFIGURATION = "Release-Study"
+# A27 (audit SURF-3): the study configurations' identity and orientation set.
+EXPECTED_STUDY_BUNDLE_ID = "com.flamingistan.primae.study"
+EXPECTED_IPAD_ORIENTATIONS = ["UIInterfaceOrientationLandscapeLeft",
+                              "UIInterfaceOrientationLandscapeRight"]
 
 
 def check_info_plist() -> None:
@@ -165,7 +172,17 @@ def check_info_plist() -> None:
     # the key. It used to compare a bare count, which said "expected exactly
     # 3 keys, found 4" without saying which. Changing the plist's shape on
     # purpose is now one edit to INFO_PLIST_EXPECTED, in the same commit.
-    allowed = {k for k, _ in required}
+    # A26 (audit SURF-2): the nested scene manifest. The generated manifest
+    # hard-codes UIApplicationSupportsMultipleScenes = true and wins over
+    # both an INFOPLIST_KEY_ override and Info.plist (measured), so the Study
+    # configurations turn the generation off (checked below) and the manifest
+    # is set in Info.plist.
+    if not re.search(r"<key>UIApplicationSceneManifest</key>\s*<dict>\s*"
+                     r"<key>UIApplicationSupportsMultipleScenes</key>\s*<false/>\s*</dict>", text):
+        findings.append((INFO_PLIST,
+            "UIApplicationSceneManifest { UIApplicationSupportsMultipleScenes = false } "
+            "missing or altered (iPadOS 27 connects a second scene otherwise)"))
+    allowed = {k for k, _ in required} | INFO_PLIST_NESTED_KEYS
     present = re.findall(r"<key>([^<]*)</key>", text)
     for key in sorted(set(present) - allowed):
         findings.append((INFO_PLIST,
@@ -262,6 +279,20 @@ def check_pbxproj() -> None:
                 f"{forbidden} must not exist — this key lives in Info.plist "
                 f"only, not as an auto-generated build setting"))
 
+    # A27 (audit SURF-3). Keys that would expose study data or change the
+    # session's shape, forbidden in ANY configuration of the project.
+    for forbidden in ("INFOPLIST_KEY_UIFileSharingEnabled",
+                      "INFOPLIST_KEY_UIBackgroundModes"):
+        if forbidden in text:
+            findings.append((PBXPROJ,
+                f"{forbidden} must not exist — file sharing exposes the "
+                f"participant data in Files, and a background mode keeps the "
+                f"study app running behind a child's back"))
+    if re.search(r"INFOPLIST_KEY_UIApplicationSupportsMultipleScenes\s*=\s*YES", text):
+        findings.append((PBXPROJ,
+            "INFOPLIST_KEY_UIApplicationSupportsMultipleScenes = YES must not "
+            "exist — a second scene on the study iPad runs a second session UI"))
+
     study_blocks = [(name, body) for name, body in _BLOCK_RE.findall(text)
                      if _APP_MARKER in body]
     if len(study_blocks) != 2:
@@ -280,12 +311,26 @@ def check_pbxproj() -> None:
         if "INFOPLIST_KEY_UIRequiresFullScreen = YES;" not in body:
             findings.append((PBXPROJ,
                 f"{name} (app target) — UIRequiresFullScreen = YES is missing"))
+        if "INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;" not in body:
+            findings.append((PBXPROJ,
+                f"{name} (app target) — UIApplicationSceneManifest_Generation = NO "
+                f"is missing: the generated manifest hard-codes multiple scenes "
+                f"true and wins over Info.plist (audit SURF-2)"))
+        if f"PRODUCT_BUNDLE_IDENTIFIER = {EXPECTED_STUDY_BUNDLE_ID};" not in body:
+            findings.append((PBXPROJ,
+                f"{name} (app target) — PRODUCT_BUNDLE_IDENTIFIER is not "
+                f"{EXPECTED_STUDY_BUNDLE_ID} (a study build must never overwrite "
+                f"a casual install)"))
         orientations = re.search(
             r'INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "([^"]*)";', body)
         if not orientations:
             findings.append((PBXPROJ,
                 f"{name} (app target) — UISupportedInterfaceOrientations_iPad "
                 f"is missing"))
+        elif orientations.group(1).split() != EXPECTED_IPAD_ORIENTATIONS and "Portrait" not in orientations.group(1):
+            findings.append((PBXPROJ,
+                f'{name} (app target) — iPad orientations are '
+                f'"{orientations.group(1)}", expected exactly {EXPECTED_IPAD_ORIENTATIONS}'))
         elif "Portrait" in orientations.group(1):
             findings.append((PBXPROJ,
                 f'{name} (app target) — iPad orientations include Portrait '

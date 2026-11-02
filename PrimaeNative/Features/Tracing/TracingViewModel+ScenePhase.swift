@@ -35,12 +35,19 @@ extension TracingViewModel {
             appWillResignActive()
             return nil
         case .background:
+            // The synchronous half runs NOW, in the scene event's own turn
+            // (STATE-2): an `.active` handled before the flush Task starts
+            // used to be overtaken by it, leaving a foreground app
+            // interrupted. The generation captured here lets the Task skip
+            // what a return has made stale (STATE-1).
+            guard beginBackgroundTransition() else { return nil }
+            let generation = lifecycleGeneration
             // Under a background-task assertion (R-051): a plain Task does
             // NOT keep a suspending process alive, and the trial the flush
             // protects is the session's last.
             return BackgroundFlushAssertion.protect(named: "Primae store flush",
                                                     using: backgroundTasks) {
-                await self.appDidEnterBackground()
+                await self.finishBackgroundTransition(generation: generation)
             }
         @unknown default:
             appWillResignActive()

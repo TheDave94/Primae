@@ -39,10 +39,10 @@ TOKENS = [
     ("canvasPaper",          0xF8FAFC, 0x111827, 1.0),
     ("canvasGhost",          0x2563EB, 0x60A5FA, 1.0),
     ("canvasGhostSoft",      0x2563EB, 0x60A5FA, 0.35),
-    ("canvasInkStroke",      0x10B981, 0x34D399, 1.0),
+    ("canvasInkStroke",      0x059669, 0x34D399, 1.0),
     ("canvasInkStrokeDeep",  0x059669, 0x10B981, 1.0),
-    ("canvasGuide",          0xF59E0B, 0xFBBF24, 1.0),
-    ("canvasGuideSoft",      0xF59E0B, 0xFBBF24, 0.20),
+    ("canvasGuide",          0xD97706, 0xFBBF24, 1.0),
+    ("canvasGuideSoft",      0xD97706, 0xFBBF24, 0.20),
     ("canvasStartDot",       0x0F172A, 0xF8FAFC, 1.0),
     # Brand
     ("brand",                0x2563EB, 0x3B82F6, 1.0),

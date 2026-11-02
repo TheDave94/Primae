@@ -96,7 +96,10 @@ import Foundation
         let data = try ParentDashboardExporter.jsonData(from: snap, participantId: UUID(), progress: [:], enrolledAt: nil)
         struct Envelope: Decodable { let phaseSessionRecords: [PhaseSessionRecord] }
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom { d in
+            let s = try d.singleValueContainer().decode(String.self)
+            return try Date(s, strategy: Date.ISO8601FormatStyle(includingFractionalSeconds: true))
+        }
         let back = try decoder.decode(Envelope.self, from: data).phaseSessionRecords
         #expect(back.first?.finalizedBy == "navigation")
         #expect(back.first?.delivery == Self.delivery)

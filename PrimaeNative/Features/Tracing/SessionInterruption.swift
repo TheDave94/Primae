@@ -14,6 +14,10 @@ enum SessionInterruption: Hashable {
     case scene
     /// The proctor's parent area covers the child's screen.
     case parentArea
+    /// The headphones are gone in a session that requires them (r14 stop;
+    /// ruling B1, 2026-11-02, protocol r16): the letter freezes behind the
+    /// stop and a re-plug resumes it, an observe from its cue.
+    case headphones
 }
 
 /// Interruptions and resumptions, at their (low) frequency.

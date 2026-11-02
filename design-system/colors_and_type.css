@@ -64,9 +64,9 @@ html[data-theme="light"] { color-scheme: only light; }
   --canvas-paper:   #F8FAFC;  /* the writing canvas surface (slate-50) */
   --ghost:          #2563EB;  /* reference stroke blue (blue-600) */
   --ghost-soft:     rgba(37, 99, 235, 0.35);
-  --ink-stroke:     #10B981;  /* child's green ink (emerald-500) */
+  --ink-stroke:     #059669;  /* child's green ink (emerald-600, r16 contrast) */
   --ink-stroke-deep:#059669;  /* committed stroke (emerald-600) */
-  --guide:          #F59E0B;  /* observe-phase amber dot (amber-500) */
+  --guide:          #D97706;  /* observe-phase amber dot (amber-600, r16 contrast) */
   --guide-soft:     rgba(245, 158, 11, 0.20);
   --start-dot:      #0F172A;  /* numbered start dot — slate-900 */
 

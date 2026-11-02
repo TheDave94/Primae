@@ -178,11 +178,9 @@ private struct ExportCenterView: View {
 
     private func export(format: DashboardExportFormat) {
         do {
-            shareURL = try ParentDashboardExporter.combinedExportForSharing(
-                participants: vm.allParticipantExportSources,
-                enrolments: vm.enrolmentRecords,
-                format: format
-            )
+            // Records a held trial first (B22) and names archive files
+            // that could not be loaded (B4); r16.
+            shareURL = try vm.makeResearchExport(format: format)
         } catch {
             showError = true
         }

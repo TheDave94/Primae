@@ -25,7 +25,8 @@ struct WritingAssessment: Codable, Equatable {
     /// deviation (direction-minimised discrete Fréchet per matched pair,
     /// 2026-09-04); the Hausdorff form it replaced is retired.
     let formAccuracy: CGFloat
-    /// Speed consistency: 1 – normalised variance of inter-point intervals (0–1).
+    /// Speed consistency: 1 – normalised variance of windowed within-stroke
+    /// speed (0–1; r16 — before r16, of the inter-point intervals).
     let tempoConsistency: CGFloat
     /// Pressure control: 1 – normalised force variance if Apple Pencil; 1.0 for finger (0–1).
     let pressureControl: CGFloat
@@ -60,11 +61,38 @@ struct FreeWriteScorer {
         sessionStart: CFTimeInterval = 0,
         sessionEnd: CFTimeInterval = 0
     ) -> WritingAssessment {
+        score(tracedPoints: tracedPoints,
+              strokeStartIndices: strokeStartIndices,
+              reference: reference,
+              timestamps: timestamps,
+              forces: forces,
+              sessionStart: sessionStart,
+              sessionEnd: sessionEnd,
+              measures: StrokeProcessScorer.analyze(
+                  points: tracedPoints, strokeStartIndices: strokeStartIndices, reference: reference))
+    }
+
+    /// Same score, with the stroke analysis supplied by the caller. A caller
+    /// that also needs the `StrokeProcessMeasures` (the free-write recorder)
+    /// runs `StrokeProcessScorer.analyze` ONCE and passes the result here,
+    /// instead of paying for the stroke assignment twice on the main actor
+    /// (A19). `measures` must be `analyze` of the same points, strokes and
+    /// reference; `nil` means "analyze found nothing comparable".
+    static func score(
+        tracedPoints: [CGPoint],
+        strokeStartIndices: [Int] = [],
+        reference: LetterStrokes,
+        timestamps: [CFTimeInterval] = [],
+        forces: [CGFloat] = [],
+        sessionStart: CFTimeInterval = 0,
+        sessionEnd: CFTimeInterval = 0,
+        measures: StrokeProcessMeasures?
+    ) -> WritingAssessment {
         WritingAssessment(
-            formAccuracy:     formAccuracy(tracedPoints: tracedPoints,
-                                           strokeStartIndices: strokeStartIndices,
-                                           reference: reference),
-            tempoConsistency: tempoConsistency(timestamps: timestamps),
+            formAccuracy:     formAccuracy(measures: measures, reference: reference),
+            tempoConsistency: tempoConsistency(points: tracedPoints,
+                                               timestamps: timestamps,
+                                               strokeStartIndices: strokeStartIndices),
             pressureControl:  pressureControl(forces: forces),
             rhythmScore:      rhythmScore(timestamps: timestamps,
                                           sessionStart: sessionStart,
@@ -195,13 +223,15 @@ struct FreeWriteScorer {
     ///
     /// Same clamp convention as the historical Fréchet-based version
     /// (`checkpointRadius * 3.0`) for continuity in the UI's displayed
-    /// range.
-    private static func formAccuracy(tracedPoints: [CGPoint],
-                                     strokeStartIndices: [Int],
+    /// range. From r16 (audit B-2 / B-3) the distance and the radius share
+    /// ONE unit: the canvas height on both axes (the recorder's
+    /// `heightNormalised` frame, and the tracker's radius, which is
+    /// `checkpointRadius x glyph height` in cell-height units), so the
+    /// tolerance scales with the glyph's height only and is the same in
+    /// every direction.
+    private static func formAccuracy(measures: StrokeProcessMeasures?,
                                      reference: LetterStrokes) -> CGFloat {
-        guard let measures = StrokeProcessScorer.analyze(
-            points: tracedPoints, strokeStartIndices: strokeStartIndices, reference: reference
-        ) else { return 0 }
+        guard let measures else { return 0 }
         let distance = measures.spatialDeviation
         guard distance.isFinite, distance < .greatestFiniteMagnitude else { return 0 }
         let maxAcceptable = reference.checkpointRadius * 3.0
@@ -212,23 +242,55 @@ struct FreeWriteScorer {
 
     // MARK: - Dimension: Tempo consistency
 
-    private static func tempoConsistency(timestamps: [CFTimeInterval]) -> CGFloat {
-        guard timestamps.count >= 3 else { return 1.0 }
+    /// Length of one tempo window, seconds (r16).
+    static let tempoWindowSeconds: Double = 0.1
 
-        // Collect inter-point intervals, excluding gaps > 0.5 s (pen lifts between strokes).
-        var intervals: [Double] = []
-        for i in 1..<timestamps.count {
-            let dt = timestamps[i] - timestamps[i - 1]
-            if dt > 0 && dt < 0.5 { intervals.append(dt) }
+    /// Tempo (r16, audit B-8 / B-9): 1 − the normalised variance (squared
+    /// coefficient of variation) of the child's WITHIN-STROKE speed, each
+    /// speed taken over a window of `tempoWindowSeconds` (path length /
+    /// elapsed time), clamped to 0–1; higher = more even. Windows never
+    /// cross a `strokeStartIndices` boundary, so a pen lift does not count
+    /// at any length. Before r16 this was the variance of the raw
+    /// inter-sample INTERVALS with gaps of 0.5 s or more dropped: a quick
+    /// lift (0.2–0.45 s) was kept and drove tempo to 0 while a slower one
+    /// gave 1.0, and a 2.6x speed change inside a stroke left it at 1.0,
+    /// because the intervals measure the sampling clock, not the hand.
+    /// A trailing part-window of at least half the window length counts;
+    /// a shorter one is dropped. Fewer than two windows: 1.0 (no evidence
+    /// of unevenness), as before.
+    static func tempoConsistency(points: [CGPoint],
+                                 timestamps: [CFTimeInterval],
+                                 strokeStartIndices: [Int]) -> CGFloat {
+        let n = min(points.count, timestamps.count)
+        guard n >= 3 else { return 1.0 }
+        let breaks = ([0] + strokeStartIndices.filter { $0 > 0 && $0 < n }).sorted()
+        var speeds: [Double] = []
+        for (b, start) in breaks.enumerated() {
+            let end = b + 1 < breaks.count ? breaks[b + 1] : n
+            guard end - start >= 2 else { continue }
+            var distance = 0.0, elapsed = 0.0
+            for i in (start + 1)..<end {
+                let dt = timestamps[i] - timestamps[i - 1]
+                guard dt.isFinite, dt >= 0 else { continue }   // a clock step back is no interval
+                let d = Double(dist(points[i - 1], points[i]))
+                guard d.isFinite else { continue }
+                distance += d
+                elapsed += dt
+                if elapsed >= tempoWindowSeconds {
+                    speeds.append(distance / elapsed)
+                    distance = 0; elapsed = 0
+                }
+            }
+            if elapsed >= tempoWindowSeconds / 2 { speeds.append(distance / elapsed) }
         }
-        guard intervals.count >= 2 else { return 1.0 }
+        guard speeds.count >= 2 else { return 1.0 }
 
-        let mean = intervals.reduce(0, +) / Double(intervals.count)
+        let mean = speeds.reduce(0, +) / Double(speeds.count)
         guard mean > 0 else { return 1.0 }
-
-        let variance = intervals.reduce(0.0) { $0 + ($1 - mean) * ($1 - mean) }
-            / Double(intervals.count)
-        // Coefficient of variation squared — scale-free normalisation.
+        let variance = speeds.reduce(0.0) { $0 + ($1 - mean) * ($1 - mean) }
+            / Double(speeds.count)
+        // Coefficient of variation squared — scale-free, so the canvas unit
+        // the points are in does not matter.
         let normalised = variance / (mean * mean)
         return CGFloat(max(0, min(1, 1.0 - normalised)))
     }
@@ -262,7 +324,7 @@ struct FreeWriteScorer {
         var activeTime: CFTimeInterval = 0
         for i in 1..<timestamps.count {
             let dt = timestamps[i] - timestamps[i - 1]
-            // Same bounds as tempoConsistency: a non-monotonic or duplicated
+            // Same bounds as the pre-r16 tempoConsistency: a non-monotonic or duplicated
             // timestamp must not SUBTRACT active time (audit 2026-09-04).
             if dt > 0, dt < 0.5 { activeTime += dt }
         }

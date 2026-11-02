@@ -75,6 +75,8 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// any subsequent `play()` so a quick re-tap during a fade plays at
     /// full volume instead of resuming mid-ramp.
     private var fadeOutTask: Task<Void, Never>?
+    /// True only while a `stop()` fade-out is in flight (`fadeOutTask` also holds the fade-IN ramp).
+    private var isFadingOut = false
 
     /// Per-file loudness gain for `currentFile` (ruling AE-2, 2026-09-06;
     /// computed by AudioEngine+Loudness at load). "Full volume" for the
@@ -193,7 +195,8 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                         // ruling asked for (the ordering, not the symptom):
                         // the dependency is now impossible to re-break
                         // silently by reordering statements above it.
-                        self.handleInterruptionBegan(resumeIntent: self.isPlaying)
+                        // A sound already fading out has been stopped by its caller: no resume intent (C2, AUDIO-2).
+                        self.handleInterruptionBegan(resumeIntent: self.isPlaying && !self.isFadingOut)
                     } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
                         if self.canResumePlayback() { self.attemptResumePlayback() }
                     }
@@ -347,6 +350,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // volume snapshot mid-ramp.
         fadeOutTask?.cancel()
         fadeOutTask = nil
+        isFadingOut = false
         player.volume = fadeInSeconds > 0 ? 0 : loudnessGain
         shouldResumePlayback           = true
         interruptionResumeGateRequired = false
@@ -423,6 +427,7 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // stop sequence. ~60 Hz step rate is smooth without saturating the
         // main actor; minimum 4 steps so very-short fades still ramp.
         let duration = fadeOutSeconds
+        isFadingOut = true
         fadeOutTask = Task { [weak self] in
             guard let self else { return }
             let steps = max(4, Int(duration * 60))
@@ -455,9 +460,13 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         shouldResumePlayback           = false
         isPlaying                      = false
         interruptionResumeGateRequired = false
+        isFadingOut                    = false
         cancelPendingLifecycleWork()
         player.reset()
         player.stop()
+        // Flush the ~93 ms the time-pitch unit still holds: the volume below is applied after it,
+        // so that audio would otherwise play at full level after the fade (C1, AUDIO-1).
+        timePitch.reset()
         player.volume = restoreVolume
         currentFile = nil
     }
@@ -492,8 +501,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // unconditionally, before the guard, so a foreground transition is
         // always recorded regardless of what's currently loaded.
         appIsForeground = true
-        guard currentFile != nil else { shouldResumePlayback = false; return }
+        // Before the guard: with no file loaded the suspend's pending engine pause must die too (C3, AUDIO-6).
         cancelPendingLifecycleWork()
+        guard currentFile != nil else { shouldResumePlayback = false; return }
         startIfNeeded()
         if let file = currentFile, !player.isPlaying {
             player.scheduleFile(file, at: nil, completionHandler: nil)

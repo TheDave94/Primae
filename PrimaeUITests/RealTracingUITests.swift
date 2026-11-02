@@ -155,7 +155,9 @@ final class RealTracingUITests: XCTestCase {
         XCTAssertTrue(rail.waitForExistence(timeout: 15), "the rail must be present")
         rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
         let next = app.descendants(matching: .any)["Nächstes Kind"]
-        XCTAssertTrue(next.waitForExistence(timeout: 8), "a rail double-tap must reveal the enrolment control")
+        // Hittable, not merely present: the hidden control is in the
+        // accessibility tree (UI-4), so existence proved nothing.
+        XCTAssertTrue(next.waitUntilHittable(timeout: 8), "a rail double-tap must reveal the enrolment control")
         next.tap()
         let confirm = app.buttons["Neues Kind starten"]
         XCTAssertTrue(confirm.waitForExistence(timeout: 5), "the destructive confirm must appear")

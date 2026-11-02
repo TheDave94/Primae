@@ -3,9 +3,9 @@
 //
 // Protocol r14 (David, 2026-10-22): a sound-arm study session runs only
 // over headphones. Without them the session screen is the proctor-facing
-// stop, live with the route; the silent arm and the panning-off comparison
-// configuration are unaffected; automated tests waive it with a launch
-// argument.
+// stop, live with the route; the panning-off comparison configuration is
+// unaffected; automated tests waive it with a launch argument. Since r16
+// (ruling B6, 2026-11-02) the silent arm needs headphones too.
 
 import AVFoundation
 import Testing
@@ -64,10 +64,17 @@ import Testing
         #expect(vm.sessionBlockReason == HeadphoneRequirement.refusal, "headphones out: stopped again")
     }
 
-    @Test("the silent arm needs no headphones")
-    func silentArmIsNeverStopped() {
-        let vm = studyVM(arm: .silent, route: AVAudioSession.Port.builtInSpeaker.rawValue)
-        #expect(vm.sessionBlockReason == nil)
+    // Ruling B6 (2026-11-02, r16): headphones in EVERY arm. This test said
+    // the opposite until then ("the silent arm needs no headphones").
+    @Test("the silent arm needs headphones too, and runs over them")
+    func silentArmNeedsHeadphones() {
+        let speaker = studyVM(arm: .silent, route: AVAudioSession.Port.builtInSpeaker.rawValue)
+        #expect(speaker.sessionBlockReason == HeadphoneRequirement.refusal,
+                "silent arm on the loudspeaker: got \(String(describing: speaker.sessionBlockReason))")
+        let headphones = studyVM(arm: .silent, route: AVAudioSession.Port.headphones.rawValue)
+        #expect(headphones.sessionBlockReason == nil)
+        let panningOff = studyVM(arm: .silent, route: AVAudioSession.Port.builtInSpeaker.rawValue, panning: false)
+        #expect(panningOff.sessionBlockReason == nil, "panning off: built for a loudspeaker, every arm")
     }
 
     @Test("with panning off the sound arms are built for a loudspeaker")

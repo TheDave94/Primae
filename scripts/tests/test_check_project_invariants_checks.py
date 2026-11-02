@@ -91,6 +91,48 @@ class ProjectInvariantChecks(CheckerFixture):
         self.mutate(PBX, "\t\t\t\tPRODUCT_NAME", '\t\t\t\tINFOPLIST_KEY_UIAppFonts = "Primae-Light.otf";\n\t\t\t\tPRODUCT_NAME')
         self.assertFlags("UIAppFonts")
 
+    # A26/A27 (audit SURF-2/SURF-3), one mutation each.
+    def test_multiple_scenes_true_in_plist_is_caught(self) -> None:
+        self.mutate(INFO, "<key>UIApplicationSupportsMultipleScenes</key>\n        <false/>",
+                    "<key>UIApplicationSupportsMultipleScenes</key>\n        <true/>")
+        self.assertFlags("UIApplicationSceneManifest")
+
+    def test_scene_manifest_missing_from_plist_is_caught(self) -> None:
+        p = self.root / INFO
+        text = p.read_text()
+        start = text.index("<key>UIApplicationSceneManifest</key>")
+        end = text.index("</dict>", text.index("<false/>", start)) + len("</dict>")
+        p.write_text(text[:start] + text[end:])
+        self.assertFlags("UIApplicationSceneManifest")
+
+    def test_generated_scene_manifest_back_on_is_caught(self) -> None:
+        self.mutate(PBX, "INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;",
+                    "INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;")
+        self.assertFlags("SceneManifest_Generation")
+
+    def test_multiple_scenes_yes_build_setting_is_caught(self) -> None:
+        self.mutate(PBX, "\t\t\t\tPRODUCT_NAME",
+                    "\t\t\t\tINFOPLIST_KEY_UIApplicationSupportsMultipleScenes = YES;\n\t\t\t\tPRODUCT_NAME")
+        self.assertFlags("UIApplicationSupportsMultipleScenes")
+
+    def test_file_sharing_is_caught(self) -> None:
+        self.mutate(PBX, "\t\t\t\tPRODUCT_NAME", "\t\t\t\tINFOPLIST_KEY_UIFileSharingEnabled = YES;\n\t\t\t\tPRODUCT_NAME")
+        self.assertFlags("UIFileSharingEnabled")
+
+    def test_background_modes_are_caught(self) -> None:
+        self.mutate(PBX, "\t\t\t\tPRODUCT_NAME", "\t\t\t\tINFOPLIST_KEY_UIBackgroundModes = audio;\n\t\t\t\tPRODUCT_NAME")
+        self.assertFlags("UIBackgroundModes")
+
+    def test_dropping_a_landscape_orientation_is_caught(self) -> None:
+        self.mutate(PBX, ' UIInterfaceOrientationLandscapeRight";\n\t\t\t\tINFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone',
+                    '";\n\t\t\t\tINFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone')
+        self.assertFlags("orientations")
+
+    def test_wrong_study_bundle_id_is_caught(self) -> None:
+        self.mutate(PBX, "PRODUCT_BUNDLE_IDENTIFIER = com.flamingistan.primae.study;",
+                    "PRODUCT_BUNDLE_IDENTIFIER = com.flamingistan.primae.stud;")
+        self.assertFlags("PRODUCT_BUNDLE_IDENTIFIER")
+
     def test_stale_last_upgrade_check_is_caught(self) -> None:
         self.mutate(PBX, "LastUpgradeCheck = 2720;", "LastUpgradeCheck = 2640;")
         self.assertFlags("LastUpgradeCheck")

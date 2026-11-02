@@ -87,6 +87,10 @@ protocol EnrolmentLogging {
     /// Appends `record` durably. Appending the same id again (an
     /// idempotent retry) replaces rather than duplicates.
     func append(_ record: EnrolmentRecord)
+    /// Removes the record of `participantId`, in memory and on disk. Used
+    /// only for an enrolment with no activity at all, dropped at the next
+    /// enrolment (fix 2026-11-02, B2, protocol r16).
+    func remove(participantId: UUID)
     /// Every enrolment on this device, oldest `enrolledAt` first.
     var enrolments: [EnrolmentRecord] { get }
     /// Await every pending background write.
@@ -144,6 +148,26 @@ final class JSONEnrolmentLog: EnrolmentLogging {
             } catch {
                 storePersistenceLogger.error(
                     "EnrolmentLog disk write failed for \(record.participantId.uuidString, privacy: .private) at \(url.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
+                center.reportFailure(store: "EnrolmentLog", error: error)
+            }
+        }
+    }
+
+    func remove(participantId: UUID) {
+        enrolments.removeAll { $0.participantId == participantId }
+        let url = directoryURL.appendingPathComponent("\(participantId.uuidString).json")
+        let center = failureCenter
+        // Chained behind any pending write of the same record, so a write
+        // still in flight cannot recreate the file after the delete.
+        let previous = pendingSaves[participantId]
+        pendingSaves[participantId] = Task.detached(priority: .utility) {
+            await previous?.value
+            guard FileManager.default.fileExists(atPath: url.path) else { return }
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                storePersistenceLogger.error(
+                    "EnrolmentLog delete failed for \(participantId.uuidString, privacy: .private): \(error.localizedDescription, privacy: .private)")
                 center.reportFailure(store: "EnrolmentLog", error: error)
             }
         }

@@ -1123,7 +1123,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         let inner = SpyPrompts()
         let voiceover = StudyVoiceoverPromptPlayer(inner: inner)
         for key in PromptPlayer.PromptKey.allCases { voiceover.play(key, fallbackText: "") }
-        #expect(inner.keys == [.phaseObserve, .phaseDirect, .phaseGuided, .phaseFreeWrite, .celebration, .retryCue],
+        #expect(inner.keys == [.phaseObserve, .phaseGuided, .phaseFreeWrite, .celebration, .retryCue],
                 "the praise tiers, paper and retrieval phrases must stay unreachable: \(inner.keys)")
     }
 

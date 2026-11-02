@@ -411,7 +411,16 @@ enum StudyComparisonSettings {
     ///
     /// `defaults` is a seam for tests (a throwaway `UserDefaults(suiteName:)`
     /// instead of the device store); every production caller omits it.
-    static func resetToDefaults(in defaults: UserDefaults = .standard) {
+    ///
+    /// Returns whether the reset CHANGED the effective configuration (the
+    /// resolved values, not the stored keys: a key stored at its default
+    /// value changes nothing when removed). The researcher screen marks the
+    /// session as changed only when this is true (VERIFY-13, 2026-11-02):
+    /// before, tapping the reset on an untouched device blocked the
+    /// session until a relaunch, and dropped the trial in flight with it.
+    @discardableResult
+    static func resetToDefaults(in defaults: UserDefaults = .standard) -> Bool {
+        let before = configuration(in: defaults)
         for key in [observePassesKey, spokenFeedbackKey, allFiveLettersKey,
                     letterRepeatCountKey, cycleAllConditionsKey,
                     presentationSpacingKey, guidedDotsVisibleKey,
@@ -420,6 +429,7 @@ enum StudyComparisonSettings {
                     oncePerConditionKey] {
             defaults.removeObject(forKey: key)
         }
+        return configuration(in: defaults) != before
     }
 
     /// All twelve switches as `defaults` currently holds them, each with its

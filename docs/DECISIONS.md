@@ -1111,16 +1111,18 @@ Implications:
   automated one it should work without"); enrolment leaves the first
   trained letter parked (audit R-007).** The authoritative text is
   `StudyProtocol.history` (r14).
-  - **Headphones.** In the phoneme and spatial arms a study session runs
-    only while a headphone-class output is connected (wired, Bluetooth, USB:
+  - **Headphones.** In every arm (the silent arm from r16, B6) a study
+    session runs only while a headphone-class output is connected (wired, Bluetooth, USB:
     `HeadphoneRequirement.headphonePortTypes`). Without one,
     `studyPreconditionFailure` returns "Keine Kopfhörer verbunden …" and the
     session screen is the "Studie kann nicht starten" stop, live with the
     route: unplugging mid-letter stops the letter and refuses touches;
-    plugging back in resumes it where it was. An observe sound cut by the
-    unplug is not replayed (r11 records it). The silent arm, and the
-    panning-off comparison configuration (built for a loudspeaker), are
-    unaffected. This closes the open question the 2026-10-13 audit called
+    plugging back in resumes it where it was (r14; from r16 the unplug is
+    an interruption and re-plugging restarts the letter from its cue, B1).
+    An observe sound cut by the
+    unplug is not replayed (r11 records it). The panning-off comparison
+    configuration (built for a loudspeaker) is unaffected; the silent arm
+    was unaffected until r16. This closes the open question the 2026-10-13 audit called
     D7 ("blocking a sound-arm session on a non-headphone route was not
     implemented"); no `AudioEngine.swift` edit.
   - **The test waiver.** Automated tests run without headphones. The
@@ -1160,6 +1162,60 @@ Implications:
     `restoreRecordsTheLiveChildsInFlightLetterBeforeTheSeal`,
     `sealFailureDoesNotDuplicateAbandonmentRowOnRetryOrNextLoad`) and
     `AuditThirdPassTests.resetClosesTheOutgoingTrial`.
+
+- **Protocol revision 16 — bug-hunt rounds 2026-11-01/02, David's rulings of
+  2026-11-02.** The authoritative text is `StudyProtocol.history` (r16); the
+  findings, the fix plan and every ruling are in
+  `wt-primae-audit-notes/fix-2026-11-02/` (FIXPLAN.md, RULINGS.md, l1-l9.md).
+  - **Headphones in every arm (B6).** The r14 requirement now covers the
+    silent arm, so the spoken prompts reach all three arms through the same
+    transducer (round-1 PROTOCOL D-2: a second between-arm difference). The
+    proctor banner shows in every arm.
+  - **Unplug = interruption (B1).** Losing the headphones mid-letter is a
+    `.headphones` interruption: the letter freezes and re-plugging restarts it
+    from its instruction cue (D9 default), the same path as R-006. Under r14
+    the observe demonstration ran on behind the stop and "Jetzt du." played
+    (round-1 C-1/C-2, reproduced 4/4 on the iPad).
+  - **AudioEngine (bounded override, C1-C3).** David allowed a change to
+    `AudioEngine.swift` for exactly three defects: the full-level burst at the
+    end of every faded stop (`timePitch.reset()` before the volume restore),
+    resume intent captured during a stop fade (`isFadingOut`), and
+    `resumeAfterLifecycle` returning before it cancels pending work. Pinned by
+    `AudioEngineRenderPinTests` (device, mixer tap) and the re-enabled
+    `AudioEngineTests.testPendingSafeEnginePause_cancelledByResume`. The
+    file's DO-NOT-MODIFY status is otherwise unchanged.
+  - **Guided tracking (B7, B8, B9; StrokeTracker targeted by David).** One
+    sample consumes every following checkpoint within the radius; the radius
+    scales with glyph height only and the hit test is isotropic. A
+    path-length gate against scribbles was ruled, measured unworkable (the
+    winning "scribbles" on I are near-straight lines: any gate that cut them
+    rejected 25-45 % of wobbly child-like traces) and re-ruled: a straight
+    line through I's checkpoints counts as an I. Guided durations are not
+    comparable with r1-r15.
+  - **Scoring (B8, B11, B13, B15, B16).** Isotropic normalisation by canvas
+    height; bounding-box fit on matched strokes only, with an axis setting the
+    scale only when the letter spans at least a quarter of its larger extent
+    on it (David kept this extra rule: it removes I's jitter-driven fit; clean
+    I deviation 0.098 -> 0.021); arc-length resampling before Frechet (M's
+    rate spread rose 7 % -> 19 %, under the 20 % pin); tempo from within-stroke
+    windowed speed, lifts ignored; recogniser confidence through softmax.
+    The guided phase score of a completed row is always 1.0 (B-16): D12's
+    "guided = coverage" reading holds for abandoned rows only.
+  - **Analysis-plan rulings, no code (B12, B14, B18).** spatialDeviation is
+    pre-registered jointly with strokeCount (a missing stroke costs nothing);
+    Form, not the freeWrite composite, is the cross-arm outcome (the
+    composite has a 0.40 floor for finger input); the sound onset (~0.25 s,
+    spatial ~30 ms after phoneme, unchanged by per-frame pitch) is a constant
+    confound. Text for METHODOLOGY / the thesis is David's.
+  - **Allocation (B5).** uuid % 3 stays (plain randomisation); the Research
+    Dashboard shows the per-arm and per-subset tally the thesis
+    (`06-evaluation.typ:49`, "running counts") refers to.
+  - **Phantom enrolments (B2).** An outgoing child with no activity at all is
+    dropped from the enrolment log at the next "Nächstes Kind". A child who
+    sat down and did nothing is therefore not in the export.
+  - **Procedure (B21, B22).** Never restore an iPad backup onto the study
+    device; tap "Nächstes Kind" before exporting (the export also records a
+    finished held free-writing itself). Both in `docs/STUDY_DEVICE_DRYRUN.md`.
 
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,

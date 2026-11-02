@@ -62,15 +62,15 @@ extension Font {
     }
 }
 
-// MARK: - Private — PostScript-name resolution
+// MARK: - PostScript-name resolution (internal: pinned by FontNameResolutionTests)
 
-private func primaePostScriptName(for weight: Font.Weight, italic: Bool) -> String {
+func primaePostScriptName(for weight: Font.Weight, italic: Bool) -> String {
     let stem = "Primae"
     let cursive = italic ? "Cursive" : ""
     return weightSuffix(for: weight, stem: stem, cursiveSuffix: cursive)
 }
 
-private func primaeTextPostScriptName(for weight: Font.Weight, italic: Bool) -> String {
+func primaeTextPostScriptName(for weight: Font.Weight, italic: Bool) -> String {
     let stem = "PrimaeText"
     let cursive = italic ? "Cursive" : ""
     return weightSuffix(for: weight, stem: stem, cursiveSuffix: cursive)
@@ -79,22 +79,25 @@ private func primaeTextPostScriptName(for weight: Font.Weight, italic: Bool) -> 
 /// PostScript-name builder. Files are named e.g. `Primae-Light.otf`,
 /// `Primae-Cursive.otf` (regular cursive, no weight prefix),
 /// `PrimaeText-SemiboldCursive.otf`.
-private func weightSuffix(for weight: Font.Weight, stem: String, cursiveSuffix: String) -> String {
+func weightSuffix(for weight: Font.Weight, stem: String, cursiveSuffix: String) -> String {
     // No Medium / Heavy / Black face in the bundle — round to nearest.
     let weightToken: String
     switch weight {
     case .ultraLight, .thin, .light:
         weightToken = "Light"
     case .regular, .medium:
-        weightToken = cursiveSuffix.isEmpty ? "Regular" : ""  // "Primae-Cursive"
+        weightToken = ""  // "Primae" / "Primae-Cursive"
     case .semibold:
         weightToken = "Semibold"
     case .bold, .heavy, .black:
         weightToken = "Bold"
     default:
-        weightToken = "Regular"
+        weightToken = ""
     }
     let combined = weightToken + cursiveSuffix
-    if combined.isEmpty { return "\(stem)-Regular" }
+    // The regular upright face's PostScript name is the bare stem
+    // ("Primae", "PrimaeText"); "Primae-Regular" resolves to nothing and
+    // SwiftUI falls back to the system font (audit SURF-1).
+    if combined.isEmpty { return stem }
     return "\(stem)-\(combined)"
 }

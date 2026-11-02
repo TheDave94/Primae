@@ -86,10 +86,11 @@ struct TracingCanvasView: View {
                 // prior `vm.learningPhase != .freeWrite` check let the
                 // toggle re-add the ghost during `.direct` too,
                 // contradicting that. Suppressed during calibration
-                // where the fat blue paths obscure edits.
-                if (vm.showGhostForPhase
-                        || (vm.showGhost && (vm.learningPhase == .observe || vm.learningPhase == .guided))),
-                   !vm.isCalibrating,
+                // where the fat blue paths obscure edits. The decision is
+                // `CanvasDrawPlan.showsGhost`; this closure only replays it
+                // (VERIFY-11: it used to recompute it here and ignore the
+                // plan, so the plan's assertions tested nothing drawn).
+                if plan.showsGhost,
                    let rawStrokes = vm.gridCellStrokes(at: i),
                    !rawStrokes.strokes.isEmpty {
                     // Checkpoints are canvas-relative 0..1 (incl. the
@@ -760,7 +761,17 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         // Don't eat an in-progress 1-finger trace.
         pan.cancelsTouchesInView = false
         pan.delegate = context.coordinator
+        // Not in a study build (B10, 2026-11-02). The swipe it serves
+        // (cycling audio takes) is a no-op in a study session
+        // (`nextAudioVariant` returns when `studyMode`), and the recogniser
+        // is not inert: MEASURED on the iPad, with a palm resting on the
+        // canvas, a finger's moves did not reach this view until the pan
+        // began (the first ~20 pt of the stroke lost), and then arrived
+        // under a different `UITouch` than its touch-down. The palm-first
+        // trace failed guided with it installed and passed without it.
+        #if !STUDY_BUILD
         view.addGestureRecognizer(pan)
+        #endif
         return view
     }
 
@@ -804,7 +815,10 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         private let onTwoFingerSwipeUp: () -> Void
         private let onTwoFingerSwipeDown: () -> Void
 
-        private weak var trackedTouch: UITouch?
+        /// Which finger on THIS view is the child's pen (UI-1 / A20 / B10,
+        /// 2026-11-02). Keyed by the touch's object identity; every entry
+        /// is removed on its end or cancel.
+        private var arbiter = CanvasTouchArbiter<ObjectIdentifier>()
         private var twoFingerSwipeFired = false
 
         init(canvasSize: CGSize,
@@ -824,30 +838,74 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         }
 
         func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?, in view: UIView) {
-            let allTouches    = event?.allTouches ?? touches
-            let fingerTouches = allTouches.filter { $0.type != .pencil }
-            guard fingerTouches.count == 1, trackedTouch == nil else { return }
-            guard let t = fingerTouches.first else { return }
-            trackedTouch = t
-            onSingleTouchBegan(t.location(in: view), t.timestamp)
+            // Count only the fingers on THIS view (A20 / UI-1). The old
+            // `event.allTouches` held every touch in the window, so a thumb
+            // resting on the rail made the count 2 when the tracing finger
+            // landed and the whole trace was ignored.
+            let newFingers = touches.filter { $0.type != .pencil }
+            guard !newFingers.isEmpty else { return }
+            let inView = (event?.touches(for: view) ?? touches).filter {
+                $0.type != .pencil && $0.phase != .ended && $0.phase != .cancelled
+            }
+            // Nothing else is down on this view: any entry still held is a
+            // touch whose end never reached us. Start clean.
+            if inView.count <= newFingers.count { arbiter.reset() }
+            for t in newFingers {
+                apply(arbiter.began(ObjectIdentifier(t),
+                                    at: .init(point: t.location(in: view), time: t.timestamp),
+                                    fingersInView: inView.count))
+            }
         }
 
         func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?, in view: UIView) {
-            guard let tracked = trackedTouch, touches.contains(tracked) else { return }
-            // Coalesced samples: the tracker advances at most one checkpoint
-            // per update, so a 200-checkpoint stroke needed 200 delivered
-            // events — a fast child could not complete M or O at 60 Hz
-            // (class two, 2026-09-05). Deliver every sample.
-            let samples = event?.coalescedTouches(for: tracked) ?? [tracked]
-            for s in samples {
-                onSingleTouchMoved(s.location(in: view), s.timestamp, canvasSize)
+            for t in touches where t.type != .pencil {
+                let id = ObjectIdentifier(t)
+                // Coalesced samples: the tracker advances at most one checkpoint
+                // per update, so a 200-checkpoint stroke needed 200 delivered
+                // events — a fast child could not complete M or O at 60 Hz
+                // (class two, 2026-09-05). Deliver every sample.
+                let samples = (event?.coalescedTouches(for: t) ?? [t]).map {
+                    CanvasTouchArbiter<ObjectIdentifier>.Sample(point: $0.location(in: view), time: $0.timestamp)
+                }
+                let wasTracked = arbiter.tracked == id
+                let decision = arbiter.moved(id, samples: samples)
+                if wasTracked {
+                    for s in samples { onSingleTouchMoved(s.point, s.time, canvasSize) }
+                } else {
+                    apply(decision)
+                }
             }
         }
 
         func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?, cancelled: Bool = false) {
-            guard let tracked = trackedTouch, touches.contains(tracked) else { return }
-            trackedTouch = nil
-            if cancelled { onSingleTouchCancelled() } else { onSingleTouchEnded() }
+            for t in touches where t.type != .pencil {
+                guard arbiter.ended(ObjectIdentifier(t)) else { continue }
+                if cancelled { onSingleTouchCancelled() } else { onSingleTouchEnded() }
+            }
+        }
+
+        /// Replay an arbiter decision into the view model. A hand-over
+        /// (B10: the tracked touch is a resting palm, a second finger
+        /// moves) closes the palm's touch as a CANCEL, not a lift — a
+        /// cancel never arms the free-writing quiet window (R-024) — and
+        /// then begins the moving finger at its own touch-down, replaying
+        /// the samples it made before it was recognised as the pen.
+        private func apply(_ decision: CanvasTouchArbiter<ObjectIdentifier>.Decision) {
+            switch decision {
+            case .none:
+                return
+            case .begin(_, let replay):
+                deliver(replay)
+            case .handOver(_, _, let replay):
+                onSingleTouchCancelled()
+                deliver(replay)
+            }
+        }
+
+        private func deliver(_ replay: [CanvasTouchArbiter<ObjectIdentifier>.Sample]) {
+            guard let first = replay.first else { return }
+            onSingleTouchBegan(first.point, first.time)
+            for s in replay.dropFirst() { onSingleTouchMoved(s.point, s.time, canvasSize) }
         }
 
         @objc func handleTwoFingerPan(_ gesture: UIPanGestureRecognizer) {
@@ -882,6 +940,117 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
         ) -> Bool {
             true
         }
+    }
+}
+
+// MARK: - Which finger is the pen
+
+/// Decides which of the fingers on the canvas is the child's pen, in plain
+/// Swift so the rule is testable without a `UITouch` (which nothing outside
+/// UIKit can construct). The finger overlay's coordinator feeds it every
+/// touch on its own view and replays its decisions.
+///
+/// The rule (UI-1, 2026-11-02; B10 ruled by David the same day):
+/// - A finger that lands while it is the only finger on the canvas is the
+///   pen at once, exactly as before.
+/// - A finger that lands while another is already down is NOT the pen yet.
+///   It becomes the pen when it MOVES (its displacement from its own
+///   touch-down reaches `movingTravel`) while every other finger on the
+///   canvas, the current pen included, has stayed put (none has ever moved
+///   more than `stationaryTravel` from its touch-down). That is the
+///   palm-first case: the heel of the hand rests on the glass, is taken as
+///   the pen because it landed alone, and the tracing finger that follows
+///   used to be ignored for the whole stroke.
+/// - A pen that has moved (a real stroke) is never taken over, and two
+///   fingers moving together (a two-finger swipe) adopt neither.
+///
+/// On adoption the new pen's samples since its own touch-down are handed
+/// back for replay, so the stroke starts where the finger landed and no
+/// checkpoint passed before recognition is lost.
+struct CanvasTouchArbiter<ID: Hashable> {
+
+    struct Sample: Equatable {
+        var point: CGPoint
+        var time: CFTimeInterval
+    }
+
+    enum Decision: Equatable {
+        /// Nothing for the view model.
+        case none
+        /// `id` is now the pen; begin at `replay[0]`, move through the rest.
+        case begin(ID, replay: [Sample])
+        /// End the old pen's touch (as a cancel), then begin `to` as above.
+        case handOver(from: ID, to: ID, replay: [Sample])
+    }
+
+    /// A finger that has moved this far from its touch-down is moving.
+    static var movingTravel: CGFloat { 24 }
+    /// A finger that has never moved further than this is resting.
+    static var stationaryTravel: CGFloat { 10 }
+    /// Replay buffer cap per finger; the touch-down sample is always kept.
+    static var maxBufferedSamples: Int { 240 }
+
+    private struct Contact {
+        var origin: CGPoint
+        var travel: CGFloat = 0
+        var buffer: [Sample]
+    }
+
+    private(set) var tracked: ID?
+    private var contacts: [ID: Contact] = [:]
+
+    /// Forget every finger (none is down on the view any more).
+    mutating func reset() {
+        tracked = nil
+        contacts.removeAll()
+    }
+
+    /// `fingersInView` counts the fingers on THIS view only, the new one
+    /// included — never the window's (a thumb on the rail is not here).
+    mutating func began(_ id: ID, at sample: Sample, fingersInView: Int) -> Decision {
+        contacts[id] = Contact(origin: sample.point, buffer: [sample])
+        guard tracked == nil, fingersInView == 1 else { return .none }
+        tracked = id
+        contacts[id]?.buffer = []
+        return .begin(id, replay: [sample])
+    }
+
+    /// Record `samples` for `id`. For the current pen this only updates its
+    /// travel (the caller delivers the moves itself) and returns `.none`.
+    mutating func moved(_ id: ID, samples: [Sample]) -> Decision {
+        guard var contact = contacts[id] else { return .none }
+        for s in samples {
+            contact.travel = max(contact.travel,
+                                 hypot(s.point.x - contact.origin.x, s.point.y - contact.origin.y))
+        }
+        if id == tracked {
+            contacts[id] = contact
+            return .none
+        }
+        contact.buffer.append(contentsOf: samples)
+        if contact.buffer.count > Self.maxBufferedSamples {
+            contact.buffer.removeSubrange(1...(contact.buffer.count - Self.maxBufferedSamples))
+        }
+        contacts[id] = contact
+        guard contact.travel >= Self.movingTravel else { return .none }
+        let othersResting = contacts.allSatisfy { key, other in
+            key == id || other.travel <= Self.stationaryTravel
+        }
+        guard othersResting else { return .none }
+        let replay = contact.buffer
+        contacts[id]?.buffer = []
+        let previous = tracked
+        tracked = id
+        if let previous { return .handOver(from: previous, to: id, replay: replay) }
+        return .begin(id, replay: replay)
+    }
+
+    /// Forget `id`. True when it was the pen (the caller ends its stroke).
+    mutating func ended(_ id: ID) -> Bool {
+        contacts[id] = nil
+        guard tracked == id else { return false }
+        tracked = nil
+        return true
     }
 }
 

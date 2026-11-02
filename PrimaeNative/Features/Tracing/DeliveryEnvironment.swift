@@ -109,13 +109,17 @@ enum HeadphoneRequirement {
 
     static let refusal = "Keine Kopfhörer verbunden. In diesem Arm läuft die Sitzung nur mit Kopfhörern — bitte Kopfhörer anschließen, dann geht es an derselben Stelle weiter."
 
-    /// The block, or nil. Only the sound arms need headphones, and only
-    /// while their coupling drives pan: with the panning comparison switch
-    /// OFF the sessions are built for a loudspeaker (`StudyComparisonSettings
-    /// .panningEnabled`), so the requirement does not apply.
+    /// The block, or nil. EVERY arm needs headphones, the silent arm
+    /// included (ruling B6, 2026-11-02, protocol r16): the transducer is
+    /// part of the condition, so a silent child on the loudspeaker route
+    /// differed from the sound arms in more than sound (D-2). `arm` is kept
+    /// in the signature for the record and the callers; it no longer
+    /// exempts anything. With the panning comparison switch OFF the
+    /// sessions are built for a loudspeaker (`StudyComparisonSettings
+    /// .panningEnabled`), so the requirement does not apply to any arm.
     static func block(required: Bool, arm: PilotAudioCondition,
                       panningEnabled: Bool, outputPortType: String?) -> String? {
-        guard required, arm != .silent, panningEnabled, !isHeadphones(outputPortType) else { return nil }
+        guard required, panningEnabled, !isHeadphones(outputPortType) else { return nil }
         return refusal
     }
 }

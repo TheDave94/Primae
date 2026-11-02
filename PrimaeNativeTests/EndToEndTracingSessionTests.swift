@@ -200,6 +200,12 @@ fileprivate final class RecordingAudio: AudioControlling {
         let first = cps.first.map { CGPoint(x: $0.x * canvas.width, y: $0.y * canvas.height) } ?? .zero
         vm.beginTouch(at: first, t: t)
         for cp in cps {
+            // Stop at completion, as a child lifts: since protocol r16
+            // (audit B-1) one sample consumes every following checkpoint
+            // within the radius, so the letter completes before the last
+            // checkpoint is visited, and samples fed past completion are a
+            // pen still moving on a finished letter.
+            if vm.progress >= 1.0 { break }
             t += 0.01
             vm.updateTouch(at: CGPoint(x: cp.x * canvas.width, y: cp.y * canvas.height),
                            t: t, canvasSize: canvas)

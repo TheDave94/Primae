@@ -163,6 +163,11 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
 
     // MARK: - ON steps once per letter
 
+    /// A study session runs the set in the FIXED motor order (I · F · A for
+    /// the stub subset AFI), and the fixture's current letter "A" is the
+    /// LAST of it. A study chevron no longer wraps (STATE-5, fix
+    /// 2026-11-02), so the letter boundaries below are crossed BACKWARDS
+    /// (A → F → I); each is still exactly one new letter.
     @Test("with the switch ON the arm steps one per letter and wraps")
     func switchOnStepsOncePerLetter() {
         let vm = makeVM(cycle: true, arm: .phoneme, pool: studyPool())
@@ -174,7 +179,7 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
         var letters: [String] = [vm.currentLetterName]
         for step in 1...3 {
             let previous = vm.currentLetterName
-            vm.nextLetter()
+            if step < 3 { vm.previousLetter() } else { vm.nextLetter() }   // A → F → I → F
             #expect(vm.currentLetterName != previous,
                     "precondition: step \(step) must actually change the letter, or the assertion below is vacuous")
             letters.append(vm.currentLetterName)
@@ -192,7 +197,7 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
         let vm = makeVM(cycle: true, arm: .spatial, pool: studyPool())
         #expect(vm.audioCondition == .spatial,
                 "the first letter consumed a cycle step instead of adopting the assigned arm")
-        vm.nextLetter()
+        vm.previousLetter()   // A is last in the study order (STATE-5)
         #expect(vm.audioCondition == .silent,
                 "the first boundary must be exactly ONE step from the assigned arm (spatial → silent), not two")
     }
@@ -214,7 +219,7 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
         #expect(vm.audioCondition == .phoneme,
                 "re-loading the current letter consumed an arm (probe / proctor re-entry path)")
 
-        vm.nextLetter()
+        vm.previousLetter()   // A is last in the study order (STATE-5)
         #expect(vm.audioCondition == .spatial,
                 "the first real boundary must be exactly ONE step — the two re-loads above consumed none")
     }
@@ -317,7 +322,7 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
         // that spelling here would make this a test of the fixture.
         #expect(audio.loadedFiles.contains { $0.hasSuffix("_phoneme1.mp3") },
                 "positive control: the phoneme arm must load its phoneme at launch: \(audio.loadedFiles)")
-        vm.nextLetter()
+        vm.previousLetter()   // A is last in the study order (STATE-5)
         #expect(vm.audioCondition == .spatial)
         #expect(audio.loadedFiles.contains(SpatialSonification.carrierToneFile),
                 "positive control: the spatial arm must load the carrier tone: \(audio.loadedFiles)")
@@ -325,7 +330,7 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
         // Captured BEFORE the step into the silent arm: the stop this test
         // is about happens AS PART of that step.
         let stopsBefore = audio.stopCount
-        vm.nextLetter()
+        vm.previousLetter()   // A is last in the study order (STATE-5)
         #expect(vm.audioCondition == .silent)
         #expect(audio.stopCount > stopsBefore,
                 "entering the silent arm did not stop the engine — its stop() is what clears the loaded file, so the previous arm's sound could still be played by the coupling")
@@ -367,7 +372,7 @@ fileprivate final class CapturingArmStore: ParentDashboardStoring {
 
         let outgoing = vm.currentLetterName
         let rowsBefore = store.rows.count
-        vm.nextLetter()
+        vm.previousLetter()   // A is last in the study order (STATE-5)
 
         let unloadRows = store.rows.dropFirst(rowsBefore).filter { $0.letter == outgoing }
         #expect(unloadRows.isEmpty == false,

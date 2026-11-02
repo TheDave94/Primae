@@ -101,7 +101,25 @@ final class StrokeTracker {
         progress[idx].complete = false
         isNearStroke = false
     }
-    func update(normalizedPoint p: CGPoint) {
+    /// Feed one pen sample.
+    ///
+    /// `aspectRatio` is width / height of the frame `p` and the checkpoints
+    /// are normalised in (the cell). Distances are measured in units of
+    /// that frame's HEIGHT, on both axes, so the hit test is isotropic in
+    /// points: before protocol r16 (audit B-3) both axes were normalised
+    /// separately, and on the ~1.73:1 study cell the tolerance was 1.73x
+    /// wider horizontally than vertically. The radius is in the same
+    /// height units (`cellDefinition(from:glyphRect:)`). 1.0 (the default)
+    /// is a square frame, i.e. the pre-r16 arithmetic.
+    ///
+    /// One sample consumes EVERY following checkpoint of the current
+    /// stroke that lies within the radius (r16, audit B-1). It used to
+    /// consume at most one, so a stroke whose checkpoints are closer
+    /// together than the pen's sample spacing (the 40-checkpoint crossbars
+    /// of A and F, ~2.8 pt apart) fell behind a brisk faithful trace and
+    /// never completed above ~300 pt/s at 120 Hz. The loop stops at the
+    /// end of the current stroke; the next stroke starts on a later sample.
+    func update(normalizedPoint p: CGPoint, aspectRatio: CGFloat = 1.0) {
         guard p.x.isFinite && p.y.isFinite else { return }
         guard (0...1).contains(p.x) && (0...1).contains(p.y) else { return }
         guard let definition else { return }
@@ -110,22 +128,62 @@ final class StrokeTracker {
         guard current < definition.strokes.count else { return }
 
         let stroke = definition.strokes[current]
-        let checkpointIndex = self.progress[current].nextCheckpoint
-        guard checkpointIndex < stroke.checkpoints.count else { return }
+        guard self.progress[current].nextCheckpoint < stroke.checkpoints.count else { return }
 
-        let cp = stroke.checkpoints[checkpointIndex]
-        let dx = p.x - cp.x
-        let dy = p.y - cp.y
-        let dist = hypot(dx, dy)
-
+        let xScale: CGFloat = (aspectRatio.isFinite && aspectRatio > 0) ? aspectRatio : 1.0
         let threshold = definition.checkpointRadius * radiusMultiplier
-        isNearStroke = dist <= threshold * soundGateRadiusFactor
-        if dist <= threshold {
+        var isFirstCheckpoint = true
+        while self.progress[current].nextCheckpoint < stroke.checkpoints.count {
+            let cp = stroke.checkpoints[self.progress[current].nextCheckpoint]
+            let dx = (p.x - cp.x) * xScale
+            let dy = p.y - cp.y
+            let dist = hypot(dx, dy)
+
+            // The sound gate reads the checkpoint that was next when the
+            // sample arrived, exactly as before the loop.
+            if isFirstCheckpoint {
+                isNearStroke = dist <= threshold * soundGateRadiusFactor
+                isFirstCheckpoint = false
+            }
+            guard dist <= threshold else { return }
+
             self.progress[current].nextCheckpoint += 1
             if self.progress[current].nextCheckpoint >= stroke.checkpoints.count {
                 self.progress[current].complete = true
                 onStrokeCompleted?(current)
+                return
             }
         }
+    }
+
+    /// The tracker definition for one cell: glyph-bbox-relative strokes
+    /// (the JSON shape) mapped through `glyphRect` (the glyph's ink rect
+    /// as a fraction of the cell) into cell-fraction coordinates.
+    ///
+    /// The radius scales by the glyph's HEIGHT only, so it is in units of
+    /// the cell height — the unit `update(normalizedPoint:aspectRatio:)`
+    /// measures in (protocol r16, audit B-2). It used to scale by
+    /// `sqrt(width * height)`, so a narrow glyph got a small tolerance:
+    /// on the A16 study cell I's was 15 x 8 pt against M's 37 x 21 pt.
+    /// Every Regular letter now gets `checkpointRadius x glyph height`
+    /// (about 30 pt on the A16 cell), the same in both directions.
+    static func cellDefinition(from source: LetterStrokes,
+                               glyphRect gr: CGRect) -> LetterStrokes {
+        let mappedStrokes = source.strokes.map { def in
+            StrokeDefinition(
+                id: def.id,
+                checkpoints: def.checkpoints.map { cp in
+                    Checkpoint(
+                        x: gr.minX + cp.x * gr.width,
+                        y: gr.minY + cp.y * gr.height
+                    )
+                }
+            )
+        }
+        return LetterStrokes(
+            letter: source.letter,
+            checkpointRadius: source.checkpointRadius * gr.height,
+            strokes: mappedStrokes
+        )
     }
 }

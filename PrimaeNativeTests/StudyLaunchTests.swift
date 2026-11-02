@@ -169,7 +169,14 @@ struct StudyLaunchTests {
         deps.observeCueFallbackSeconds = 0.05
         let vm = TracingViewModel(deps)
         #expect(vm.launchParked)
-        vm.nextLetter()
+        // A second letter to navigate to: a study chevron no longer wraps
+        // (STATE-5, fix 2026-11-02), so on the stub's one-letter pool it
+        // holds. F precedes A in the study order, hence the left chevron.
+        let a = vm.letters[0]
+        vm.letters.append(LetterAsset(id: "F", name: "F", baseLetter: "F", letterCase: .upper,
+                                      audioFiles: a.audioFiles, strokes: a.strokes,
+                                      phonemeAudioFiles: a.phonemeAudioFiles))
+        vm.previousLetter()
         #expect(!vm.launchParked)
         let clock = ContinuousClock()
         let deadline = clock.now + .seconds(300)

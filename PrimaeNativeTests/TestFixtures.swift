@@ -119,10 +119,16 @@ final class StubResourceProvider: LetterResourceProviding {
         let letterDir = dir.appendingPathComponent("Letters/Regular/A", isDirectory: true)
         try? FileManager.default.createDirectory(at: letterDir, withIntermediateDirectories: true)
 
-        // Single horizontal stroke matching the test drag path
+        // Single horizontal stroke matching the test drag path.
+        // Radius 0.3, not the former 0.5: since protocol r16 (audit B-1)
+        // one sample consumes EVERY following checkpoint within the
+        // radius, and 0.5 let a single sample anywhere near the middle
+        // reach x = 0.98 and complete the letter, so no test could hold a
+        // pen mid-stroke. 0.3 still reaches the first checkpoint from the
+        // drag helpers' start points.
         let strokes: [String: Any] = [
             "letter": "A",
-            "checkpointRadius": 0.5,
+            "checkpointRadius": 0.3,
             "strokes": [
                 [
                     "id": 1,
@@ -238,6 +244,9 @@ final class StubEnrolmentLog: EnrolmentLogging {
     func append(_ record: EnrolmentRecord) {
         enrolments.removeAll { $0.participantId == record.participantId }
         enrolments.append(record)
+    }
+    func remove(participantId: UUID) {
+        enrolments.removeAll { $0.participantId == participantId }
     }
 }
 

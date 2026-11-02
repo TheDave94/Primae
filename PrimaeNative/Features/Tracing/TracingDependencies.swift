@@ -292,7 +292,9 @@ struct TracingDependencies {
         adaptationPolicy: (any AdaptationPolicy)? = nil,
         repo: LetterRepository = LetterRepository(),
         streakStore: StreakStoring = JSONStreakStore(),
-        dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(),
+        // Rows are stamped with the enrolled child's id (B3, r16).
+        dashboardStore: ParentDashboardStoring = JSONParentDashboardStore(
+            enrolmentId: JSONParentDashboardStore.liveEnrolmentId),
         rawTraceStore: RawTraceStoring = JSONRawTraceStore(),
         participantArchive: ParticipantArchiving = JSONParticipantArchiveStore(),
         enrolmentLog: EnrolmentLogging = JSONEnrolmentLog(),

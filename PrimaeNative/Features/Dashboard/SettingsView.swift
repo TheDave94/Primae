@@ -76,6 +76,19 @@ struct SettingsView: View {
         // find, not easier.
         @Bindable var vm = vm
         return Form {
+            // Hidden on the study build (VERIFY-12, 2026-11-02), by the rule
+            // the rows below already follow: "a control that can no longer
+            // do anything shouldn't still invite a tap". Each is inert there:
+            // Schriftart and Buchstabenreihenfolge are snapped back by the
+            // view model in study mode; "Letzten Strich zuerst" is read only
+            // when `!studyMode`; the Erinnerungstest scheduler is bypassed;
+            // Lautwert is forced (the phoneme arm always plays phonemes);
+            // the Geisterbuchstabe toggle cannot add a ghost the phase does
+            // not already draw (`CanvasDrawPlan.showsGhost`); the study app
+            // pins the light appearance; "Schreiben auf Papier" is
+            // `!studyMode`. A proctor reading "Lautwert wiedergeben: aus" as
+            // "the phoneme arm hears letter names" was the risk.
+            #if !STUDY_BUILD
             Section("Schriftart") {
                 ForEach(SchriftArt.allCases.filter { $0 == .druckschrift || $0 == .schreibschrift }, id: \.self) { art in
                     schriftArtRow(art)
@@ -86,6 +99,7 @@ struct SettingsView: View {
                     orderingRow(strategy)
                 }
             }
+            #endif
             // Hidden on the study build (2026-09-17). The toggle is INERT
             // here: `vm.enableFreeformMode` is written by this row and read
             // by nothing else — `grep` finds only this line and the
@@ -103,6 +117,7 @@ struct SettingsView: View {
                 .accessibilityHint("Zeigt einen zusätzlichen Modus, in dem das Kind auf einem leeren Blatt schreiben und die KI den Buchstaben erkennen kann")
             }
             #endif
+            #if !STUDY_BUILD
             Section("Schreibrichtung") {
                 // Backward chaining for direct phase only: taps the
                 // last stroke first (Spooner 2014). Off by default.
@@ -132,6 +147,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
             }
+            #endif
             // Hidden on the study build (supervisor ruling, 2026-10-05):
             // the TTS rate is part of every spoken prompt, identical in all
             // arms, so it is fixed at `SpeechRate.standard` and is not a
@@ -155,6 +171,7 @@ struct SettingsView: View {
                 .accessibilityHint("Wie schnell die App spricht. Für jüngere Kinder \"Langsam\" wählen.")
             }
             #endif
+            #if !STUDY_BUILD
             Section("Anzeige") {
                 Toggle("Geisterbuchstabe anzeigen", isOn: $vm.showGhost)
                 .accessibilityHint("Zeigt einen halbtransparenten Buchstaben während des Nachfahrens")
@@ -175,9 +192,12 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
             }
+            #endif
             Section("Forschung") {
+                #if !STUDY_BUILD
                 Toggle("Schreiben auf Papier", isOn: $vm.enablePaperTransfer)
                 .accessibilityHint("Nach dem freien Schreiben wird das Kind gebeten, den Buchstaben auf Papier zu schreiben")
+                #endif
 
                 enrolmentControl
                 .accessibilityHint("Nur für Forschung aktivieren. Weist das Gerät stabil einer Studienbedingung zu; andernfalls erhält jedes Kind die volle Vier-Phasen-Lernabfolge. Änderung wird beim nächsten App-Start wirksam.")
@@ -201,7 +221,12 @@ struct SettingsView: View {
                             Text(arm.displayName).tag(ThesisCondition?.some(arm))
                         }
                     }
+                    // Locked after the live child's first letter, like the
+                    // two pickers below (`assignmentOverrideAllowed` covers
+                    // this override too).
+                    .disabled(!vm.assignmentOverrideAllowed)
                     .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einer bestimmten Studienbedingung zu, anstatt die automatische Zuweisung zu verwenden — für ausgewogene Stichproben.")
+                    .accessibilityIdentifier("thesis-condition-override-picker")
 
                     // Same researcher-override pattern for the AUDIO axis
                     // (phoneme / spatial / silent) — the two axes are
@@ -219,6 +244,13 @@ struct SettingsView: View {
                             Text(arm.displayName).tag(PilotAudioCondition?.some(arm))
                         }
                     }
+                    // Only before the live child's first letter (VERIFY-2/3,
+                    // 2026-11-02): an override set after the child has rows
+                    // would split that child across two arms or two subsets.
+                    // The launch refuses such an override anyway
+                    // (`assignmentOverrideAllowed`); disabling the picker
+                    // says so where the proctor is looking.
+                    .disabled(!vm.assignmentOverrideAllowed)
                     .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einem bestimmten Audio-Arm zu (Phonem, Raumklang oder Ohne Ton), anstatt die automatische Zuweisung zu verwenden. Änderung wird beim nächsten App-Start wirksam.")
                     // A STABLE identifier, because the UI test reached this
                     // control by its German title and stopped finding it on
@@ -243,7 +275,15 @@ struct SettingsView: View {
                             Text(subset.displayName).tag(TrainedLetterSubset?.some(subset))
                         }
                     }
+                    .disabled(!vm.assignmentOverrideAllowed)
+                    .accessibilityIdentifier("trained-subset-override-picker")
                     .accessibilityHint("Nur für Studienleitung. Legt fest, welche 3 der 5 Studienbuchstaben dieses Kind übt, anstatt die automatische Zuweisung zu verwenden — für ausgewogenes Counterbalancing. Änderung wird beim nächsten App-Start wirksam.")
+                    if !vm.assignmentOverrideAllowed {
+                        Text("Studienarm, Audio-Arm und trainierte Buchstaben: nur vor dem ersten Buchstaben änderbar.")
+                            .font(.caption)
+                            .foregroundStyle(Color.inkSoft)
+                            .accessibilityIdentifier("assignment-override-locked-note")
+                    }
                 }
 
                 // COMPARISON MODE (2026-09-17). Each row is one question a
@@ -395,7 +435,10 @@ struct SettingsView: View {
                     .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. Ohne Schwelle (Vorgabe seit dem 04.10.) folgt der Ton allein der Nähe — ein langsam nachfahrendes Kind hört den Buchstaben. Mit einer Schwelle bleibt der Ton unterhalb dieses Werts still, auch wenn der Finger auf dem Buchstaben liegt; 22 pt/s war der fest eingebaute Wert. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und — nur wenn eingestellt — Bewegung.")
 
                     Button("Vergleichsmodus zurücksetzen", role: .destructive) {
-                        StudyComparisonSettings.resetToDefaults()
+                        // Blocks the session only when a switch actually
+                        // moved (VERIFY-13): a reset on an untouched device
+                        // used to force a relaunch.
+                        let changed = StudyComparisonSettings.resetToDefaults()
                         comparisonObservePasses = StudyComparisonSettings.observePasses
                         comparisonSpokenFeedback = StudyComparisonSettings.spokenFeedbackInStudy
                         comparisonAllFiveLetters = StudyComparisonSettings.allFiveLetters
@@ -408,7 +451,7 @@ struct SettingsView: View {
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
                         comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
                         comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor
-                        vm.markComparisonSettingChanged()
+                        if changed { vm.markComparisonSettingChanged() }
                     }
 
                     Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung. Wird ein Schalter während einer laufenden Sitzung umgestellt, sperrt die App die Sitzung bis zum Neustart — die Meldung nennt dabei den Studienarm, obwohl nur eine Sitzungseinstellung geändert wurde; gemeint ist immer „bitte App neu starten“.")

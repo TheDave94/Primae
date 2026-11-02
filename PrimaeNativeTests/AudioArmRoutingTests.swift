@@ -388,8 +388,12 @@ fileprivate final class RecordingAudio: AudioControlling {
             await vm.playback.pendingTransition?.value
             #expect(audio.stopCount > 0 && !audio.isPlaying, "\(arm): a pause must stop the sound")
             // Move again: the sound resumes at once (file reloaded first).
+            // Short steps (to x = 230, not 350): since protocol r16 (audit
+            // B-1) one sample consumes every following checkpoint within
+            // the radius, and a drive to 350 completes the fixture letter,
+            // which ends the sound for a different reason.
             let playsBefore = audio.playCount
-            for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+            for _ in 0..<15 { t += 0.001; p.x += 2; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
             #expect(audio.playCount > playsBefore && audio.isPlaying, "\(arm): movement must resume the sound")
             #expect(audio.loadedFiles.count >= 2, "\(arm): the file is reloaded before the resumed play")
             counts[arm] = (audio.playCount, audio.stopCount)

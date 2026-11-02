@@ -152,17 +152,17 @@ struct StrokeProcessMeasuresTests {
         #expect(m.matchedReferenceOrder == [0, 1, nil],
                 "the stray third stroke has no reference counterpart and must be nil, not forced onto stroke 0 or 1")
         // The unmatched stray stroke must not enter the AVERAGE — only the
-        // two genuinely matched pairs contribute. Pinned on the
-        // unnormalised distance since protocol r6 (2026-10-05): the
-        // primary is measured after fitting the bounding box of ALL drawn
-        // strokes onto the reference's, and the stray stroke widens that
-        // box, so it moves the primary through the fit (by design, as
-        // ruled: "the drawn strokes' bounding box") — never through the
-        // average.
+        // two genuinely matched pairs contribute.
         #expect(m.spatialDeviationRaw < 0.01,
                 "an unmatched extra stroke must not inflate the matched-pair average, got \(m.spatialDeviationRaw)")
-        #expect(m.spatialDeviation > m.spatialDeviationRaw,
-                "r6: the stray stroke widens the drawn box, so the fitted legs no longer sit on the reference")
+        // Nor the r6 fit, from protocol r16 (audit B-5): the bounding box is
+        // taken over the MATCHED strokes only, so the primary is exactly the
+        // two legs' own. (r6-r15 fitted over every drawn stroke, and the
+        // stray widened the box.)
+        let legsOnly = try #require(StrokeProcessScorer.analyze(
+            points: vert + horiz, strokeStartIndices: [vert.count], reference: lStrokes))
+        #expect(abs(m.spatialDeviation - legsOnly.spatialDeviation) < 1e-9,
+                "r16: the unmatched stray must not move the fit: \(m.spatialDeviation) vs \(legsOnly.spatialDeviation)")
     }
 
     @Test("fewer traced strokes than the reference: the reference stroke with no match is simply absent from the pairing")

@@ -459,7 +459,11 @@ import CoreGraphics
             let vm = TracingViewModel(deps)
 
             let first = vm.resetForNewParticipant()
-            let dropout = vm.resetForNewParticipant()   // `first` recorded nothing
+            // `first` recorded nothing, but was active (a touch, a probe
+            // start or an unpark): a dropout, kept. One with no activity at
+            // all is dropped since r16 (B2, `inactiveEnrolmentIsDroppedAtNextChild`).
+            ParticipantStore.markCurrentParticipantActive()
+            let dropout = vm.resetForNewParticipant()
             await archive.flush()
 
             #expect(log.enrolments.map(\.participantId) == [first, dropout],

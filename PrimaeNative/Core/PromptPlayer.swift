@@ -64,9 +64,11 @@ final class NullPromptPlayer: PromptPlaying {
 /// like the others (protocol r9), so it reaches every arm alike.
 @MainActor
 final class StudyVoiceoverPromptPlayer: PromptPlaying {
-    /// The phrases a study child can hear, identical in every arm.
+    /// The phrases a study child can hear, identical in every arm. Exactly
+    /// the recorded set (`RecordedPromptSet.requiredKeys`): `.phaseDirect`
+    /// has no take and the direct phase is cut (D5), so it is not here.
     static let studySpokenKeys: Set<PromptPlayer.PromptKey> = [
-        .phaseObserve, .phaseDirect, .phaseGuided, .phaseFreeWrite,
+        .phaseObserve, .phaseGuided, .phaseFreeWrite,
         .retryCue, .celebration,
     ]
 

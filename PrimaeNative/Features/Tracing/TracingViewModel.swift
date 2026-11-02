@@ -417,10 +417,17 @@ public final class TracingViewModel {
 
     var canvasDrawPlan: CanvasDrawPlan {
         CanvasDrawPlan(
-            // The parent-facing display toggle AND the phase. freeWrite
-            // withdraws all scaffolding (Schmidt & Lee's guidance
-            // hypothesis); direct draws its own numbered overlay.
-            showsGhost: showGhost && showGhostForPhase,
+            // EXACTLY what the canvas draws, which now reads this field
+            // instead of deciding for itself (VERIFY-11, 2026-11-02): the
+            // phase default (observe/guided), plus the parent toggle in
+            // observe/guided only. freeWrite withdraws all scaffolding
+            // (Schmidt & Lee's guidance hypothesis); direct draws its own
+            // numbered overlay. The previous `showGhost && showGhostForPhase`
+            // was a value the canvas never read: with the toggle off it said
+            // "no ghost" while guided drew one.
+            showsGhost: (showGhostForPhase
+                         || (showGhost && (learningPhase == .observe || learningPhase == .guided)))
+                && !isCalibrating,
             showsStartDots: showCheckpoints && !isCalibrating,
             showsEndpointRing: showEndpointRing && !isCalibrating
         )
@@ -1553,6 +1560,15 @@ public final class TracingViewModel {
     /// existing record: the enrolment time and the enrolling build's
     /// protocol revision are kept, and no record is invented for a
     /// participant enrolled before the log existed.
+    ///
+    /// NOT once the child has rows (fix 2026-11-02, VERIFY-2/3): an override
+    /// set after the child's first row used to apply at this launch and
+    /// rewrite the record, so one child had rows in two arms (or a trained
+    /// letter became an "untrained" post-test control) and the enrolment
+    /// block named only the later assignment. Then the RECORDED assignment
+    /// is kept: applied to this session, written back over the override for
+    /// every later launch, and the proctor is told
+    /// (`assignmentOverrideRefusal`).
     private func syncEnrolmentRecordToAppliedAssignment() {
         guard studyMode, participantEnrolled else { return }
         let id = ParticipantStore.participantId
@@ -1560,6 +1576,10 @@ public final class TracingViewModel {
               record.audioCondition != audioCondition
                 || record.trainedSubset != trainedSubset.rawValue
         else { return }
+        guard assignmentOverrideAllowed else {
+            keepRecordedAssignment(record, for: id)
+            return
+        }
         enrolmentLog.append(EnrolmentRecord(
             participantId: id,
             enrolledAt: record.enrolledAt,
@@ -1572,6 +1592,37 @@ public final class TracingViewModel {
             voiceId: record.voiceId,
             environment: record.environment,
             build: record.build))
+    }
+
+    /// Whether an arm or subset override may still take effect for the live
+    /// child: only before their first phase row (fix 2026-11-02,
+    /// VERIFY-2/3). The live dashboard store holds exactly the live child's
+    /// rows (an enrolment seals and wipes it). Read by the Settings pickers
+    /// ("nur vor dem ersten Buchstaben") and by the launch check above.
+    var assignmentOverrideAllowed: Bool {
+        dashboardStore.snapshot.phaseSessionRecords.isEmpty
+    }
+
+    /// Set at launch when an override was refused because the live child
+    /// already had rows; the parent area shows it. German, proctor-facing.
+    private(set) var assignmentOverrideRefusal: String?
+
+    /// The launch half of the refusal: the session runs in the arm and
+    /// subset the child's enrolment record names, the overrides are written
+    /// back to that assignment (so the next launch agrees and the pickers
+    /// show it), and the record is left as it is.
+    private func keepRecordedAssignment(_ record: EnrolmentRecord, for id: UUID) {
+        let recordedSubset = TrainedLetterSubset(rawValue: record.trainedSubset)
+        pinAssignmentOverrides(arm: record.audioCondition, subset: recordedSubset, for: id)
+        let armChanged = record.audioCondition != audioCondition
+        let subsetChanged = recordedSubset.map { $0 != trainedSubset } ?? false
+        if armChanged { applyArm(record.audioCondition) }
+        if let recordedSubset, subsetChanged { trainedSubset = recordedSubset }
+        // The parked launch letter was chosen under the refused assignment.
+        if armChanged || subsetChanged { loadFirstTrainedLetter() }
+        assignmentOverrideRefusal =
+            "Zuweisung nicht übernommen: Dieses Kind hat schon Zeilen unter Arm „\(audioCondition.displayName)“ und Buchstaben „\(trainedSubset.rawValue)“. Eine Änderung von Arm oder Buchstaben gilt nur vor dem ersten Buchstaben eines Kindes — das Kind bleibt bei seiner Zuweisung."
+        lifecycleLogger.error("Assignment override refused at launch: the live participant already has rows; kept arm \(self.audioCondition.rawValue, privacy: .public), subset \(self.trainedSubset.rawValue, privacy: .public)")
     }
 
     /// Loads the launch/current participant's first trained letter,
@@ -1592,7 +1643,14 @@ public final class TracingViewModel {
     private func loadFirstTrainedLetter() {
         let first: LetterAsset?
         if studyMode {
-            first = visibleLetterNames.first.flatMap { name in
+            // The first letter the child has not finished, not simply the
+            // first (fix 2026-11-02, VERIFY-10, measured on the iPad): a
+            // relaunch mid-set (crash, jetsam, the relaunch a settings
+            // change asks for) parked on letter 1 although it was done,
+            // and one observe-pill tap trained it a second time under the
+            // same id. Falls back to the first letter when every one is
+            // finished (a finished set is held by R-033 anyway).
+            first = (firstUntrainedLetterInSet ?? visibleLetterNames.first).flatMap { name in
                 letters.first(where: { $0.name == name })
             }
         } else {
@@ -1604,6 +1662,18 @@ public final class TracingViewModel {
         // settled and would produce ~2 s of crackle. A study launch is
         // PARKED (see `launchParked`).
         load(letter: first, playPhaseCue: false, parked: studyMode)
+    }
+
+    /// The first letter of the child's trained set, in the fixed study
+    /// order (`visibleLetterNames`), with no completed TRAINING free-write
+    /// row in the live store — i.e. not yet finished by the live child (the
+    /// live store holds only their rows; probe rows do not count). Nil when
+    /// every letter is finished.
+    var firstUntrainedLetterInSet: String? {
+        let finished = Set(dashboardStore.snapshot.phaseSessionRecords
+            .filter { $0.probe == nil && $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
+            .map(\.letter))
+        return visibleLetterNames.first { !finished.contains($0) }
     }
 
     // MARK: - Toggles
@@ -2220,6 +2290,13 @@ public final class TracingViewModel {
         guard studyMode else {
             return "Nicht im Studienmodus"
         }
+        // No child enrolled (fix 2026-11-02, VERIFY H9): the probe was
+        // accepted and loaded although `beginTouch` then refused every trace,
+        // so the research screen reported success for a probe that could
+        // record nothing. Refused with the session's own enrolment text.
+        guard participantEnrolled else {
+            return studyPreconditionFailure ?? "Kein Teilnehmer eingeschrieben."
+        }
         if let studyLetterSourceFailure {
             return "Keine Buchstaben aus dem Bundle geladen (\(studyLetterSourceFailure))"
         }
@@ -2248,6 +2325,7 @@ public final class TracingViewModel {
             return reason
         }
         pendingProbeOverride = kind
+        noteParticipantActivity()
         loadLetter(name: letter)
         return nil
     }
@@ -2331,7 +2409,18 @@ public final class TracingViewModel {
         // hold must see that.
         closeOutgoingLetterBeforeNavigating()
         guard !awaitingNextParticipant else { return }
+        if loadTrainingResumeLetterAfterProbe(visible: visible) { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? -1
+        // No wrap in a study session (fix 2026-11-02, STATE-5): the set's
+        // end is reached by FINISHING its last letter, and the old modulo
+        // sent a proctor who skipped an unfinished last letter back to
+        // letter 1 — a second demonstration and arm exposure under the same
+        // id, the "silent wrap" the hold above was written to remove,
+        // through a different door.
+        if studyMode, currentIdx == visible.count - 1 {
+            toast(Self.lastLetterOfSetToast)
+            return
+        }
         let nextName = visible[(currentIdx + 1) % visible.count]
         guard let idx = letters.firstIndex(where: { $0.name == nextName }) else { return }
         letterIndex = idx
@@ -2350,12 +2439,43 @@ public final class TracingViewModel {
         // same participantId.
         closeOutgoingLetterBeforeNavigating()
         guard !awaitingNextParticipant else { return }
+        if loadTrainingResumeLetterAfterProbe(visible: visible) { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? 0
+        // The mirror of `nextLetter`'s clamp (STATE-5): no wrap from the
+        // first letter to the set's last, which would start training on
+        // the letter whose completion ends the set.
+        if studyMode, currentIdx == 0 {
+            toast(Self.firstLetterOfSetToast)
+            return
+        }
         let prevName = visible[(currentIdx - 1 + visible.count) % visible.count]
         guard let idx = letters.firstIndex(where: { $0.name == prevName }) else { return }
         letterIndex = idx
         load(letter: letters[idx])
         toast("Buchstabe: \(currentLetterName)")
+    }
+
+    /// Proctor toasts for a study chevron at either end of the set
+    /// (STATE-5). German; the hold message names the only way on.
+    static let lastLetterOfSetToast = "Letzter Buchstabe des Sets — kein Weiterblättern. Das Set endet, wenn dieser Buchstabe fertig ist."
+    static let firstLetterOfSetToast = "Erster Buchstabe des Sets — kein Zurückblättern."
+
+    /// After a cold probe, or from any letter outside the trained set, a
+    /// study chevron goes to the first trained letter the child has not
+    /// finished (fix 2026-11-02, STATE-4). It used to step from the probe
+    /// letter's position: when the last probe was on a trained letter
+    /// (R-032 allows a repeated pretest), the chevron skipped past it, the
+    /// skipped letter was never trained, and the set still ended on its
+    /// last letter with no warning. Returns true when it loaded a letter.
+    private func loadTrainingResumeLetterAfterProbe(visible: [String]) -> Bool {
+        guard studyMode,
+              currentProbe != nil || !visible.contains(currentLetterName),
+              let resume = firstUntrainedLetterInSet,
+              let idx = letters.firstIndex(where: { $0.name == resume }) else { return false }
+        letterIndex = idx
+        load(letter: letters[idx])
+        toast("Buchstabe: \(currentLetterName)")
+        return true
     }
 
     /// Restart the CURRENT letter from observe when the comparison switch
@@ -2464,7 +2584,18 @@ public final class TracingViewModel {
     // MARK: - Touch handling (forwarded to TouchDispatcher)
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+        noteParticipantActivity()
         touchDispatcher.beginTouch(at: p, t: t)
+    }
+
+    /// A touch, a probe start or an unpark makes the enrolled child an
+    /// enrolment worth keeping (fix 2026-11-02, B2, protocol r16): one
+    /// with none of these and no row is dropped from the enrolment log at
+    /// the next "Nächstes Kind". Nothing is marked while no child is
+    /// enrolled.
+    private func noteParticipantActivity() {
+        guard participantEnrolled else { return }
+        ParticipantStore.markCurrentParticipantActive()
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
@@ -2477,11 +2608,58 @@ public final class TracingViewModel {
 
     // MARK: - Lifecycle
 
+    /// Bumped by every `appDidBecomeActive` (STATE-1/STATE-2, fix
+    /// 2026-11-02). A background transition captures it when it begins;
+    /// if a return to the foreground happened since, the transition's late
+    /// work (the session half, the clean-suspend sentinel write) belongs
+    /// to a background that is already over and is skipped. Before this,
+    /// a return during the store flush had the flush's final
+    /// `markCleanSuspend()` overwrite `markActive()`, so a crash in the
+    /// foreground afterwards read as a clean exit (R-020).
+    @ObservationIgnored private(set) var lifecycleGeneration = 0
+
     public func appDidEnterBackground() async {
+        guard beginBackgroundTransition() else { return }
+        await finishBackgroundTransition(generation: lifecycleGeneration)
+    }
+
+    /// The synchronous half of a background transition: the scene
+    /// interruption and the foreground flag. `scenePhaseDidChange(.background)`
+    /// runs it in the same turn as the scene event, BEFORE the flush Task
+    /// exists, so an `.active` handled before that Task starts can no
+    /// longer be overtaken by it (STATE-2: the app was left in the
+    /// foreground interrupted, with no sound and the clock stopped).
+    /// Returns false when the app was already backgrounded (nothing to do).
+    @discardableResult
+    func beginBackgroundTransition() -> Bool {
         beginInterruption(.scene)   // R-005: background is an interruption too (no-op after .inactive)
-        guard playback.appIsForeground else { return }
+        guard playback.appIsForeground else { return false }
         playback.appIsForeground = false
         playback.cancelPending()
+        return true
+    }
+
+    /// The asynchronous half: closes the session (unless the app is back
+    /// in the foreground already) and drains the stores. `generation` is
+    /// `lifecycleGeneration` as it was when the transition began.
+    func finishBackgroundTransition(generation: Int) async {
+        // A return to the foreground before this ran resumed the session;
+        // closing it now would suspend a foreground app. The stores are
+        // still drained below.
+        if generation == lifecycleGeneration, !sceneIsActive {
+            closeSessionForBackground()
+        }
+        await flushStoresForBackground()
+        // Last: everything is on disk, so a launch that finds this marker
+        // knows the process ended cleanly (R-020, launch sentinel). Not
+        // after a return to the foreground during the flush (STATE-1):
+        // `markActive()` has written `running` and must stay the last word.
+        if generation == lifecycleGeneration {
+            launchSentinel.markCleanSuspend()
+        }
+    }
+
+    private func closeSessionForBackground() {
         // Study mode: a freeWrite production that is finished (pen up)
         // but not yet scored — quiet window pending, or recognizer in
         // flight — is scored and recorded now, before the stores drain
@@ -2493,7 +2671,19 @@ public final class TracingViewModel {
         // task it schedules may never run in a suspended app
         // (audit 2026-09-04).
         endTouch()
-        phaseTransitions.finalizeFinishedFreeWriteIfPending(finalizedBy: .background)
+        let finalized = phaseTransitions.finalizeFinishedFreeWriteIfPending(finalizedBy: .background)
+        // A session that needs a relaunch (a changed assignment or
+        // comparison setting, a failed write) cannot resume its letter
+        // after this background, so the trial in flight gets its
+        // `completed: false` row now, as a participant switch writes it
+        // (VERIFY-7, R-015's path). Any other background records nothing:
+        // a return resumes the letter — including a headphone block (r14),
+        // which a re-plug lifts without a relaunch. A participant switch
+        // recorded its letter before the switch already.
+        if !finalized, studyMode,
+           persistenceFailureMessage != nil || assignmentOverrideChanged || comparisonSettingChanged {
+            recordOutgoingInFlightLetter()
+        }
         // Stop the active-time timer so backgrounded time isn't
         // counted; the accumulator survives the round-trip.
         if let start = letterLoadTime {
@@ -2507,6 +2697,9 @@ public final class TracingViewModel {
         // Halt in-flight TTS so the voice doesn't keep talking.
         speech.stop()
         playback.resetPlayIntentClock()
+    }
+
+    private func flushStoresForBackground() async {
         // Drain disk writes synchronously: iOS's suspension grace
         // window otherwise raced the prior fire-and-forget Tasks and
         // could lose a letter completion seconds before backgrounding.
@@ -2526,15 +2719,17 @@ public final class TracingViewModel {
         await rawTraceStore.flush()
         await onboardingStore.flush()
         await enrolmentLog.flush()
-        // Last: everything is on disk, so a launch that finds this marker
-        // knows the process ended cleanly (R-020, launch sentinel).
-        launchSentinel.markCleanSuspend()
     }
 
     public func appDidBecomeActive() {
+        lifecycleGeneration &+= 1
         launchSentinel.markActive()
         // A route changed while suspended sends no notification (r14).
         currentOutputPortType = deliveryEnvironment.sample().outputRoute
+        // B1: a route changed while suspended starts or ends the headphone
+        // interruption BEFORE the scene's ends, so an unplug in the
+        // background never lets the session resume for a moment.
+        syncHeadphoneInterruption()
         sceneIsActive = true
         playback.appIsForeground = true
         audio.resumeAfterLifecycle()
@@ -2775,12 +2970,18 @@ public final class TracingViewModel {
             heldPhasePrompt = phase
             return
         }
+        // A blocked session speaks no instruction (r14; C-2: "Jetzt du."
+        // played on the loudspeaker behind the headphone stop). Dropped,
+        // not held: the block is not an interruption, so nothing would
+        // replay it at the right moment.
+        guard sessionBlockReason == nil else { return }
         let delay = SoundEnvelope.fadeOutSeconds
         phasePromptTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard let self, !Task.isCancelled else { return }
             self.phasePromptTask = nil
-            guard self.phaseController.currentPhase == phase else { return }
+            guard self.phaseController.currentPhase == phase,
+                  self.sessionBlockReason == nil else { return }
             self.speakPhaseEntryPrompt(phase)
         }
     }
@@ -2865,6 +3066,9 @@ public final class TracingViewModel {
         lifecycleCounters.outputRoute = outputPortType
         currentOutputPortType = outputPortType
         lifecycleLogger.info("Audio route changed to \(outputPortType ?? "none", privacy: .public) (output lost: \(outputLost, privacy: .public)) on \(self.currentLetterName, privacy: .public)")
+        // B1 (r16): the r14 headphone stop is an interruption. Last, so the
+        // loss bookkeeping below (r11) sees the observe sound still tracked.
+        defer { syncHeadphoneInterruption() }
         guard outputLost else {
             guard routeOutputWasLost,
                   RouteRecovery.isReplug(reasonRawValue: reasonRawValue,
@@ -2874,7 +3078,7 @@ public final class TracingViewModel {
             // same output is not a second recovery.
             clearLostRoute()
             routeRecoveries += 1
-            lifecycleLogger.notice("Audio output \(outputPortType ?? "none", privacy: .public) is back on \(self.currentLetterName, privacy: .public) in \(self.phaseController.currentPhase.rawName, privacy: .public) — nothing replayed; the pen sounds again on its next movement")
+            lifecycleLogger.notice("Audio output \(outputPortType ?? "none", privacy: .public) is back on \(self.currentLetterName, privacy: .public) in \(self.phaseController.currentPhase.rawName, privacy: .public) — a headphone interruption (B1, r16) ends now and resumes the letter; otherwise nothing is replayed and the pen sounds again on its next movement")
             return
         }
         routeOutputWasLost = true
@@ -2889,9 +3093,39 @@ public final class TracingViewModel {
         if phaseController.currentPhase == .observe, observeSoundTracksDot {
             lifecycleLogger.notice("Observe sound cut by the lost output \(previousOutputPortType ?? "unknown", privacy: .public) on \(self.currentLetterName, privacy: .public) — not replayed mid-observe")
         }
+        // A loss that blocks the session (r14's headphone stop) ends the
+        // stroke under the pen as a cancel (R-024), so its next movement
+        // cannot restart the arm's sound on the loudspeaker (AUDIO-5).
+        // (The headphone interruption, B1, cancels it too; this also covers
+        // a block that is not an interruption.)
+        if sessionBlockReason != nil, touchDispatcher.isSingleTouchInteractionActive {
+            cancelTouch()
+        }
         playback.cancelPending()
         playback.forceIdle()
         isPlaying = false
+    }
+
+    /// Ruling B1 (2026-11-02, protocol r16): r14 said unplugging "stops the
+    /// letter … plugging back in resumes it where it was", but the stop was
+    /// only a view swap: observe ran on behind it, completed, and "Jetzt
+    /// du." played on the loudspeaker (C-1/C-2). The headphone block is now
+    /// an interruption like an inactive scene (R-005/R-006): everything
+    /// freezes, and the re-plug that lifts the block ends it, so an observe
+    /// restarts from its cue and a held phase instruction is spoken then.
+    /// Driven by every route change and by the return to the foreground (a
+    /// route that changed while suspended sends no notification).
+    func syncHeadphoneInterruption() {
+        let blocked = studyMode && HeadphoneRequirement.block(required: requiresHeadphones,
+                                                              arm: audioCondition,
+                                                              panningEnabled: panningEnabled,
+                                                              outputPortType: currentOutputPortType) != nil
+        let interrupted = activeInterruptions.contains(.headphones)
+        if blocked, !interrupted {
+            beginInterruption(.headphones)
+        } else if !blocked, interrupted {
+            endInterruption(.headphones)
+        }
     }
 
     /// True when a route change reported the output LOST and no genuine
@@ -3000,6 +3234,10 @@ public final class TracingViewModel {
     /// resets it (`settleEngineForArm`, protocol r7); before r7 a phoneme
     /// child after a spatial child played shifted (audit D2).
     private func startObservePhaseAudio(startingAt firstPoint: CGPoint?) {
+        // A blocked session starts no arm sound (r14; C-1: the observe
+        // sound started on the loudspeaker behind the headphone stop).
+        // What the letter itself does behind the stop is unchanged.
+        guard sessionBlockReason == nil else { return }
         guard letters.indices.contains(letterIndex) else { return }
         guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
         let p = firstPoint.map(canvasNormalizedPoint(forCellPoint:)) ?? CGPoint(x: 0.5, y: 0.5)
@@ -3645,11 +3883,12 @@ public final class TracingViewModel {
             // runs the same control.
             return "Kein Teilnehmer eingeschrieben. In der Seitenleiste doppelt tippen und „Nächstes Kind“ wählen (auch im Forschungsbereich möglich), damit Arm und Buchstaben zugewiesen werden — sonst laufen alle Kinder unter denselben Voreinstellungen."
         }
-        // A sound arm runs over headphones only (r14, David 2026-10-22).
-        // Live with the route: unplugging mid-letter brings this screen up
-        // and touches are refused; plugging back in lifts it and the letter
-        // carries on where it was. An observe sound cut by the unplug is
-        // not replayed (r11 records the loss).
+        // Every arm runs over headphones only (r14, David 2026-10-22; the
+        // silent arm too since r16, ruling B6). Live with the route:
+        // unplugging mid-letter brings this screen up and interrupts the
+        // session (`syncHeadphoneInterruption`, ruling B1, r16); plugging
+        // back in lifts it and the letter resumes where it was, an observe
+        // from its cue (r11 still records the loss).
         if let block = HeadphoneRequirement.block(required: requiresHeadphones,
                                                   arm: audioCondition,
                                                   panningEnabled: panningEnabled,
@@ -4074,6 +4313,13 @@ public final class TracingViewModel {
         return idx == visible.count - 1
     }
 
+    /// Whether the pass just finished is the letter's LAST under the
+    /// comparison switch `letterRepeatCount` (always true at the default
+    /// of 1). The end-of-set branch needs it (fix 2026-11-02, STATE-6): it
+    /// ran before the repeat, so the celebration and the hold fired on
+    /// pass 1 of the last letter and the celebration again after pass 2.
+    var isFinalPassOfLetter: Bool { letterPasses >= letterRepeatCount }
+
     /// Start the parked launch letter for real (full `load`, which arms
     /// everything the observe phase needs). No-op unless parked.
     func startParkedLetter() {
@@ -4083,6 +4329,7 @@ public final class TracingViewModel {
         // observe pill would otherwise start a second training pass under
         // the same id. Cold probes load through their own path.
         guard !awaitingNextParticipant else { return }
+        noteParticipantActivity()
         launchParked = false
         load(letter: letters[letterIndex])
     }
@@ -4456,23 +4703,11 @@ public final class TracingViewModel {
                 schriftArt: schriftArt,
                 openTypeFeatures: PrimaeLetterRenderer.openTypeFeatures(
                     for: cellLetter, schriftArt: schriftArt, variant: showingVariant)) {
-                let mappedStrokes = cellSource.strokes.map { def in
-                    StrokeDefinition(
-                        id: def.id,
-                        checkpoints: def.checkpoints.map { cp in
-                            Checkpoint(
-                                x: gr.minX + cp.x * gr.width,
-                                y: gr.minY + cp.y * gr.height
-                            )
-                        }
-                    )
-                }
-                cell.tracker.load(LetterStrokes(
-                    letter: cellSource.letter,
-                    checkpointRadius: cellSource.checkpointRadius
-                        * sqrt(gr.width * gr.height),
-                    strokes: mappedStrokes
-                ))
+                // Radius by glyph HEIGHT only, in cell-height units (r16,
+                // audit B-2); TouchDispatcher passes the cell aspect so the
+                // hit test measures in the same unit on both axes.
+                cell.tracker.load(StrokeTracker.cellDefinition(from: cellSource,
+                                                               glyphRect: gr))
             } else {
                 cell.tracker.load(cellSource)
             }
@@ -4538,6 +4773,9 @@ public final class TracingViewModel {
         case unknownID
         /// The live child could not be sealed; nothing changed (R-050).
         case sealFailed(String)
+        /// No enrolment record, and the child's rows name more than one
+        /// arm or subset; nothing changed (DATA-6). Carries the proctor text.
+        case assignmentConflict(String)
     }
 
     /// "Teilnehmer wiederherstellen": installs an existing participant's
@@ -4566,17 +4804,149 @@ public final class TracingViewModel {
     /// re-set it by hand. The enrolment record holds the applied
     /// assignment (`syncEnrolmentRecordToAppliedAssignment`), so an axis
     /// that differs from the UUID derivation is pinned as an override. A
-    /// child with no record (enrolled before the log existed) keeps the
-    /// UUID derivation, as before.
-    private func reapplyRecordedAssignment(for id: UUID) {
-        guard let record = enrolmentLog.enrolments.last(where: { $0.participantId == id }) else { return }
-        if record.audioCondition != PilotAudioCondition.assign(participantId: id) {
-            ParticipantStore.audioConditionOverride = record.audioCondition
+    /// child with no record keeps the UUID derivation only when nothing
+    /// else on the device says otherwise (`recordedAssignment(for:)`).
+    private func reapplyRecordedAssignment(_ assignment: RecordedAssignment, for id: UUID) {
+        pinAssignmentOverrides(arm: assignment.arm, subset: assignment.subset, for: id)
+    }
+
+    /// Writes the researcher overrides so the next launch applies `arm` and
+    /// `subset` for participant `id`: an axis that differs from the UUID
+    /// derivation is pinned, one that matches it (or is unknown, nil) is
+    /// left to the derivation. Shared by the restore (R-016) and the launch
+    /// refusal of an override set after the child had rows (A7).
+    private func pinAssignmentOverrides(arm: PilotAudioCondition?, subset: TrainedLetterSubset?, for id: UUID) {
+        if let arm {
+            ParticipantStore.audioConditionOverride =
+                arm != PilotAudioCondition.assign(participantId: id) ? arm : nil
         }
-        if let subset = TrainedLetterSubset(rawValue: record.trainedSubset),
-           subset != TrainedLetterSubset.assign(participantId: id) {
-            ParticipantStore.trainedSubsetOverride = subset
+        if let subset {
+            ParticipantStore.trainedSubsetOverride =
+                subset != TrainedLetterSubset.assign(participantId: id) ? subset : nil
         }
+    }
+
+    /// The arm and subset a restored child was RECORDED with; nil on an
+    /// axis means "nothing recorded, keep the UUID derivation".
+    struct RecordedAssignment: Equatable {
+        let arm: PilotAudioCondition?
+        let subset: TrainedLetterSubset?
+    }
+
+    /// Where a restore takes the child's assignment from (fix 2026-11-02,
+    /// DATA-6). The enrolment record first, as before (R-016). When the
+    /// record is gone — a file quarantined as undecodable, or a child
+    /// enrolled before the log existed — the child's own rows still name
+    /// the arm and subset they trained under (the sealed archive blocks of
+    /// this id, plus the live rows when the id is the one on the device),
+    /// and those win over the UUID derivation: under the documented
+    /// "enrol, override, relaunch" procedure the derivation is exactly what
+    /// the child did NOT train in, and the delayed test ran in a different
+    /// arm. Comparison-run rows are not read (an arm cycle varies the arm
+    /// by design), nor are row subsets that name no assignment subset
+    /// (`AFILM` under `allFiveLetters`). When the pilot rows disagree with
+    /// each other there is no single assignment to restore, and the restore
+    /// is refused with a proctor message instead of guessing.
+    func recordedAssignment(for id: UUID) -> Result<RecordedAssignment, AssignmentConflict> {
+        if let record = enrolmentLog.enrolments.last(where: { $0.participantId == id }) {
+            return .success(RecordedAssignment(arm: record.audioCondition,
+                                               subset: TrainedLetterSubset(rawValue: record.trainedSubset)))
+        }
+        var rows = participantArchive.archivedParticipants
+            .filter { $0.participantId == id }
+            .flatMap(\.snapshot.phaseSessionRecords)
+        if participantEnrolled, id == ParticipantStore.participantId {
+            rows += dashboardStore.snapshot.phaseSessionRecords
+        }
+        let pilotRows = rows.filter { $0.comparisonConfiguration == nil }
+        let arms = Set(pilotRows.map(\.audioCondition))
+        let subsets = Set(pilotRows.compactMap { $0.trainedSubset.flatMap(TrainedLetterSubset.init(rawValue:)) })
+        guard arms.count <= 1, subsets.count <= 1 else {
+            let armList = arms.map(\.displayName).sorted().joined(separator: ", ")
+            let subsetList = subsets.map(\.rawValue).sorted().joined(separator: ", ")
+            return .failure(AssignmentConflict(message:
+                "Teilnehmer nicht wiederhergestellt: Für dieses Kind fehlt der Einschreibe-Eintrag, und seine archivierten Zeilen nennen mehr als einen Arm bzw. mehr als eine Buchstabengruppe (Arme: \(armList); Buchstaben: \(subsetList)). Welche Zuweisung gilt, ist nicht eindeutig — es wurde nichts geändert. Bitte mit der Studienleitung klären."))
+        }
+        return .success(RecordedAssignment(arm: arms.first, subset: subsets.first))
+    }
+
+    /// A restore refused because the child's rows name more than one arm or
+    /// subset (DATA-6); `message` is the German proctor text.
+    nonisolated struct AssignmentConflict: Error, Equatable {
+        let message: String
+    }
+
+    /// Drops the outgoing child's enrolment record when that child showed
+    /// no activity at all — no touch, no probe start, no unpark, no row or
+    /// session duration, and no sealed block of the same id (a restored
+    /// child keeps the record its rows were trained under). David's ruling
+    /// 2026-11-02 (B2(b), protocol r16): such a record is a phantom (a
+    /// double tap, an enrolment straight after enrolment) and counted as a
+    /// dropout by arm. Accepted cost: a real child who was enrolled and
+    /// touched nothing leaves no trace. Called after the seal, before the
+    /// wipe, under the OUTGOING id.
+    private func dropOutgoingEnrolmentIfInactive() {
+        let outgoingId = ParticipantStore.participantId
+        guard !ParticipantStore.currentParticipantHadActivity,
+              !Self.participantDidAnything(dashboardStore.snapshot),
+              !participantArchive.archivedParticipants.contains(where: { $0.participantId == outgoingId })
+        else { return }
+        guard enrolmentLog.enrolments.contains(where: { $0.participantId == outgoingId }) else { return }
+        enrolmentLog.remove(participantId: outgoingId)
+        lifecycleLogger.info("Enrolment of an inactive participant dropped at the next enrolment (B2).")
+    }
+
+    /// Per-arm and per-subset count of CHILDREN on this device (fix
+    /// 2026-11-02, B5(b)): every sealed child and every logged enrolment,
+    /// once per id, with the assignment each was recorded under
+    /// (`recordedAssignment(for:)`: the enrolment record, else the child's
+    /// pilot rows). The live child without either falls back to the
+    /// assignment applied now. A child whose rows disagree counts as
+    /// unknown on both axes.
+    struct AssignmentTally: Equatable {
+        var children = 0
+        var arms: [PilotAudioCondition: Int] = [:]
+        var subsets: [String: Int] = [:]
+        var unknownArm = 0
+        var unknownSubset = 0
+    }
+
+    var assignmentTally: AssignmentTally {
+        var tally = AssignmentTally()
+        let liveId = participantEnrolled ? ParticipantStore.participantId : nil
+        for id in knownParticipantIDs {
+            tally.children += 1
+            var arm: PilotAudioCondition?
+            var subset: String?
+            if case .success(let recorded) = recordedAssignment(for: id) {
+                arm = recorded.arm
+                subset = recorded.subset?.rawValue
+                if id == liveId {
+                    arm = arm ?? audioCondition
+                    subset = subset ?? trainedSubset.rawValue
+                }
+            }
+            if let arm { tally.arms[arm, default: 0] += 1 } else { tally.unknownArm += 1 }
+            if let subset { tally.subsets[subset, default: 0] += 1 } else { tally.unknownSubset += 1 }
+        }
+        return tally
+    }
+
+    /// The assignment overrides set on the device now, as proctor labels;
+    /// empty when none. "Nächstes Kind" discards them all, and the confirm
+    /// text names them (B5(b), VERIFY-4).
+    var pendingAssignmentOverrides: [String] {
+        var out: [String] = []
+        if let arm = ParticipantStore.audioConditionOverride {
+            out.append("Audio-Arm: \(arm.displayName)")
+        }
+        if let subset = ParticipantStore.trainedSubsetOverride {
+            out.append("Buchstaben: \(subset.displayName)")
+        }
+        // "Studienarm überschreiben" (`conditionOverride`) is not named:
+        // a study session pins the pedagogical flow to `.threePhase`
+        // (`init`), so that override assigns nothing to any study child.
+        return out
     }
 
     /// Every participant this device has a record of: each sealed child,
@@ -4597,6 +4967,14 @@ public final class TracingViewModel {
         // but wrong UUID — re-deriving a random arm and subset and filing
         // the delayed rows under somebody else.
         guard knownParticipantIDs.contains(restored) else { return .unknownID }
+        // Which arm and subset the restored child gets is decided FIRST,
+        // while nothing has been sealed or switched: an ambiguous
+        // assignment refuses the restore and changes nothing (DATA-6).
+        let assignment: RecordedAssignment
+        switch recordedAssignment(for: restored) {
+        case .success(let recorded): assignment = recorded
+        case .failure(let conflict): return .assignmentConflict(conflict.message)
+        }
         // The live child's in-flight letter, under the live id, before
         // anything seals or switches (R-015, r15) — see
         // `recordOutgoingInFlightLetter`.
@@ -4607,8 +4985,9 @@ public final class TracingViewModel {
             }
             wipeLiveParticipantState()
         }
+        silenceOutgoingChildsVoice()
         _ = ParticipantStore.restoreParticipant(uuidString: restored.uuidString)
-        reapplyRecordedAssignment(for: restored)
+        reapplyRecordedAssignment(assignment, for: restored)
         participantEnrolled = ParticipantStore.isEnrolled
         refreshProgressMirror()
         markParticipantRestored()   // block tracing until the relaunch
@@ -4724,6 +5103,8 @@ public final class TracingViewModel {
         // outgoing id, so the seal below contains it (R-015, r15).
         recordOutgoingInFlightLetter()
         guard sealOutgoingParticipant() else { return ParticipantStore.participantId }
+        dropOutgoingEnrolmentIfInactive()
+        silenceOutgoingChildsVoice()
         wipeLiveParticipantState()
         let newID = ParticipantStore.startNewParticipant()  // new UUID + arms + enrolment
         // …and TELL this view model, or `studyPreconditionFailure` keeps
@@ -4787,6 +5168,21 @@ public final class TracingViewModel {
     private func recordOutgoingInFlightLetter() {
         if touchDispatcher.isSingleTouchInteractionActive { endTouch() }
         phaseTransitions.recordUnloadOfCurrentLetter(touchStillActive: false)
+    }
+
+    /// Ends whatever the OUTGOING child is still being told (fix 2026-11-02,
+    /// PROTOCOL C-3 / VERIFY-1, measured on the iPad). The rail's "Nächstes
+    /// Kind" never runs `beginInterruption`, the only other place the prompt
+    /// pipeline is stopped, so a recorded instruction still playing went on,
+    /// and a "Probier's nochmal" queued behind it (`PromptPlayer`'s queued
+    /// retry) played to the INCOMING child on the parked screen. Called by
+    /// both hand-overs after the outgoing child is sealed (a failed seal
+    /// changes nothing, the child's prompt included) and after their
+    /// in-flight letter is recorded, so nothing that recording queued
+    /// survives either.
+    private func silenceOutgoingChildsVoice() {
+        prompts.stop()
+        speech.stop()
     }
 
     /// Closes the outgoing child's in-flight trial and wipes every
@@ -5476,10 +5872,26 @@ extension TracingViewModel {
     /// Probe rows of `kind` already recorded for `letter` for this
     /// participant (R-032). One free-writing row per started probe —
     /// finished or left — so the count is the attempts made so far.
+    ///
+    /// Counts the child's SEALED sessions too (fix 2026-11-02, DATA-7): a
+    /// restore wipes the live store, so a post-test redone on the delayed
+    /// day was exported as attempt 1 a second time, in a second block, and
+    /// the repeat warning stayed silent. Archived blocks of the live id are
+    /// added, except one sealed under the live enrolment instant — that is
+    /// the live session itself (a seal that landed before a crash, R-050's
+    /// idempotent case), whose rows the live store still holds.
     func priorProbeAttempts(letter: String, kind: StudyProbe) -> Int {
-        dashboardStore.snapshot.phaseSessionRecords.filter {
-            $0.probe == kind.rawValue && $0.letter == letter && $0.phase == LearningPhase.freeWrite.rawName
-        }.count
+        func attempts(_ records: [PhaseSessionRecord]) -> Int {
+            records.filter {
+                $0.probe == kind.rawValue && $0.letter == letter && $0.phase == LearningPhase.freeWrite.rawName
+            }.count
+        }
+        let id = ParticipantStore.participantId
+        let liveEnrolledAt = ParticipantStore.enrolledAt
+        let sealed = participantArchive.archivedParticipants
+            .filter { $0.participantId == id && $0.enrolledAt != liveEnrolledAt }
+            .reduce(0) { $0 + attempts($1.snapshot.phaseSessionRecords) }
+        return attempts(dashboardStore.snapshot.phaseSessionRecords) + sealed
     }
 
     /// Load the recognizer model now, not on the first child's first

@@ -36,7 +36,7 @@ env:
   # scripts/check_test_count.sh enforces after each PrimaeNativeTests run.
   # A FLOOR below the current count (measured at R-109, see the commit message), not an expectation: raise
   # it when the suite grows for good; an honest removal does not need a CI edit.
-  PRIMAE_MIN_SWIFT_TESTING_TESTS: "1000"
+  PRIMAE_MIN_SWIFT_TESTING_TESTS: "1350"
 
 # R-110: least privilege. Every job only checks out the repo and uploads
 # artefacts (upload-artifact uses the runtime token, not GITHUB_TOKEN), so
@@ -944,6 +944,18 @@ jobs:
               rc=1
             else
               echo "ok    study UIRequiresFullScreen = $study_full_screen"
+            fi
+            # A26 (audit SURF-2): iPadOS 27 connects a second scene unless the
+            # manifest says otherwise (measured). The generated manifest must
+            # carry UIApplicationSupportsMultipleScenes = false.
+            study_multi=$(/usr/libexec/PlistBuddy -c "Print :UIApplicationSceneManifest:UIApplicationSupportsMultipleScenes" "$STUDY/Info.plist" 2>/dev/null || true)
+            if [ "$study_multi" != "false" ]; then
+              echo "FAIL  study UIApplicationSupportsMultipleScenes is '$study_multi', expected false."
+              echo "      A second scene on the study iPad would run a second session UI"
+              echo "      against the same participant's state."
+              rc=1
+            else
+              echo "ok    study UIApplicationSupportsMultipleScenes = $study_multi"
             fi
           fi
 

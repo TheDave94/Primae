@@ -41,13 +41,19 @@ struct LetterClassification: Equatable, Sendable {
 
 /// Outcome of a single recognition call.
 struct RecognitionResult: Equatable, Sendable {
-    /// Top-1 label returned by the model.
+    /// Top-1 label returned by the model (RAW rank: after calibration
+    /// `topThree` is re-sorted by calibrated confidence, so `topThree[0]`
+    /// can differ from this label).
     let predictedLetter: String
-    /// Calibrated confidence (0–1) for the top label.
+    /// Calibrated confidence (0–1) for the top label: from r16 the
+    /// calibrator is applied to the softmax PROBABILITY of the model's
+    /// class scores (`CoreMLLetterRecognizer.softmax`).
     let confidence: CGFloat
-    /// Pre-calibration softmax confidence so the thesis can report
-    /// the calibrator's effect. Optional so stubbed results stay
-    /// unaffected.
+    /// The RAW model score of the top label, before softmax and
+    /// calibration: an unbounded class score (2-18 on clean letters,
+    /// negative possible on scribbles), NOT a probability. Kept raw so
+    /// the model's own output stays analysable. Optional so stubbed
+    /// results stay unaffected.
     let rawConfidence: CGFloat?
     /// Top-3 labels with calibrated confidences, descending.
     let topThree: [TopCandidate]
@@ -369,21 +375,39 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
                   LetterMatch.matches(predicted: candidate, expected: expected) else { return [] }
             return historicalFormScores
         }
+        // The shipped model emits unbounded class SCORES (2-18 on ideal
+        // traces, negative on scribbles; round-2 DEV-2), not probabilities,
+        // and the calibrator's [0,1] clamp turned every one above 1 into
+        // 1.0. A softmax over all the classes the model returned turns them
+        // into probabilities first (r16), so the calibrated confidence is a
+        // probability. `rawConfidence` stays the RAW model score.
+        let probabilities = softmax(classifications)
         let calibratedTopConfidence = calibrator.calibrate(
-            rawConfidence: CGFloat(top.confidence),
+            rawConfidence: probabilities[0],
             predictedLetter: rawTopLetter,
             historicalFormScores: history(for: rawTopLetter)
         )
-        let topThree: [RecognitionResult.TopCandidate] = classifications
-            .prefix(3)
-            .map { obs in
-                let conf = calibrator.calibrate(
-                    rawConfidence: CGFloat(obs.confidence),
-                    predictedLetter: obs.identifier,
-                    historicalFormScores: history(for: obs.identifier)
-                )
-                return .init(letter: obs.identifier, confidence: conf)
+        // Descending by CALIBRATED confidence (A17): the calibrator's
+        // confusable penalty / history boost can reorder a close pair, and
+        // the field is documented as descending. Ties keep model order.
+        // `predictedLetter` stays the RAW top-1.
+        var ranked: [(index: Int, candidate: RecognitionResult.TopCandidate)] = []
+        for (index, obs) in classifications.prefix(3).enumerated() {
+            let conf = calibrator.calibrate(
+                rawConfidence: probabilities[index],
+                predictedLetter: obs.identifier,
+                historicalFormScores: history(for: obs.identifier)
+            )
+            ranked.append((index, RecognitionResult.TopCandidate(letter: obs.identifier, confidence: conf)))
+        }
+        ranked.sort { (a: (index: Int, candidate: RecognitionResult.TopCandidate),
+                       b: (index: Int, candidate: RecognitionResult.TopCandidate)) -> Bool in
+            if a.candidate.confidence != b.candidate.confidence {
+                return a.candidate.confidence > b.candidate.confidence
             }
+            return a.index < b.index
+        }
+        let topThree: [RecognitionResult.TopCandidate] = ranked.map { $0.candidate }
 
         let isCorrect: Bool
         if let expected = expectedLetter {
@@ -399,6 +423,21 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
             topThree: topThree,
             isCorrect: isCorrect
         )
+    }
+
+    /// Softmax over every class score, in the classifications' order
+    /// (r16, DEV-2). Max-subtracted so a score of 18 cannot overflow; a
+    /// non-finite score counts as impossible (probability 0). If no score
+    /// is finite the result is uniform.
+    nonisolated static func softmax(_ classifications: [LetterClassification]) -> [CGFloat] {
+        let scores = classifications.map { Double($0.confidence) }
+        let finite = scores.filter(\.isFinite)
+        guard let maxScore = finite.max() else {
+            return Array(repeating: 1 / CGFloat(max(scores.count, 1)), count: scores.count)
+        }
+        let exps = scores.map { $0.isFinite ? exp($0 - maxScore) : 0 }
+        let sum = exps.reduce(0, +)
+        return exps.map { CGFloat($0 / sum) }
     }
 
     // MARK: - Image rendering

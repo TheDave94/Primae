@@ -430,7 +430,7 @@ final class PhaseTransitionCoordinator {
             vm.prompts.playSuccessChime()
             vm.prompts.play(.celebration,
                             fallbackText: ChildSpeechLibrary.celebration)
-        } else if vm.currentProbe == nil, vm.isLastLetterOfSet {
+        } else if vm.currentProbe == nil, vm.isLastLetterOfSet, vm.isFinalPassOfLetter {
             // THE END OF THE CHILD'S SET — the one study celebration
             // (2026-10-02, proctor's device run).
             //

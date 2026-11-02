@@ -49,6 +49,26 @@ class CheckStudyPrompts(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("retry_cue.mp3", r.stdout)
 
+    # D5 (audit SURF-10): the *.wav effects are pinned too.
+    def test_changed_wav_fails(self) -> None:
+        f = self.dir / "tap.wav"
+        f.write_bytes(f.read_bytes() + b"\x00")
+        r = self.run_check()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("tap.wav", r.stdout)
+
+    def test_extra_wav_fails(self) -> None:
+        (self.dir / "extra.wav").write_bytes(b"x")
+        r = self.run_check()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("extra.wav", r.stdout)
+
+    def test_missing_wav_fails(self) -> None:
+        (self.dir / "tick_stroke.wav").unlink()
+        r = self.run_check()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("tick_stroke.wav", r.stdout)
+
     def test_missing_file_fails(self) -> None:
         (self.dir / "celebration.mp3").unlink()
         r = self.run_check()

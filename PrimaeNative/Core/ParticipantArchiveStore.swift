@@ -79,12 +79,33 @@ protocol ParticipantArchiving {
     /// archived a moment ago is visible immediately even if its
     /// background write hasn't landed yet — see `flush()`.
     var archivedParticipants: [ArchivedParticipant] { get }
+    /// Every archive file that could not be loaded and so is missing from
+    /// `archivedParticipants` (B4, protocol r16): set aside now or on an
+    /// earlier launch, or unreadable. The export names each one, so a
+    /// child lost to a corrupt file does not read as a dropout.
+    var setAsideArchiveFiles: [ArchiveSetAside] { get }
     /// Await every pending background write. See ProgressStoring.flush().
     func flush() async
 }
 
 extension ParticipantArchiving {
     func flush() async {}
+    var setAsideArchiveFiles: [ArchiveSetAside] { [] }
+}
+
+/// One archive file missing from the export (B4, protocol r16), written as
+/// `# setAside=<fileName> participantId=<id>`.
+struct ArchiveSetAside: Equatable {
+    /// The file's current name in `ParticipantArchive/`.
+    let fileName: String
+    /// Read from the file name (`<participantId>_<archivedAt ms>…`), since
+    /// the content could not be; nil when the name does not start with one.
+    let participantId: UUID?
+
+    init(fileName: String) {
+        self.fileName = fileName
+        self.participantId = UUID(uuidString: String(fileName.prefix(36)))
+    }
 }
 
 /// Why a seal did not happen. Thrown by `archive(_:)`.
@@ -109,6 +130,9 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
 
     private let directoryURL: URL
     private(set) var archivedParticipants: [ArchivedParticipant]
+    /// See `ParticipantArchiving.setAsideArchiveFiles` (B4, r16). Read
+    /// once, at load, like the archive itself.
+    private(set) var setAsideArchiveFiles: [ArchiveSetAside]
 
     /// See `JSONProgressStore.failureCenter`.
     private let failureCenter: PersistenceFailureCenter
@@ -139,8 +163,11 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
         }
         try? FileManager.default.createDirectory(at: self.directoryURL, withIntermediateDirectories: true)
         Self.removeStaleStagingFiles(in: self.directoryURL, olderThan: Date())
-        self.archivedParticipants = Self.loadAll(from: self.directoryURL, center: failureCenter)
+        let loaded = Self.loadAll(from: self.directoryURL, center: failureCenter)
+        self.archivedParticipants = loaded.records
             .sorted { ($0.enrolledAt ?? .distantPast) < ($1.enrolledAt ?? .distantPast) }
+        self.setAsideArchiveFiles = loaded.setAside
+            .sorted { $0.fileName < $1.fileName }
     }
 
     func archive(_ record: ArchivedParticipant) throws {
@@ -242,10 +269,12 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
     /// MISSING from the next combined export, which the proctor must know
     /// before handing the export over.
     private static func loadAll(from directoryURL: URL,
-                                center: PersistenceFailureCenter) -> [ArchivedParticipant] {
+                                center: PersistenceFailureCenter)
+        -> (records: [ArchivedParticipant], setAside: [ArchiveSetAside]) {
         let files = (try? FileManager.default.contentsOfDirectory(
             at: directoryURL, includingPropertiesForKeys: nil)) ?? []
         var out: [ArchivedParticipant] = []
+        var setAside: [ArchiveSetAside] = []
         var setAsideEarlier = 0
         for url in files where url.pathExtension == "json" {
             // Already set aside on an earlier launch: not re-read, not
@@ -253,6 +282,7 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
             // the missing child on every launch, not only the first.
             if url.lastPathComponent.contains(StoreFileQuarantine.setAsideMarker) {
                 setAsideEarlier += 1
+                setAside.append(ArchiveSetAside(fileName: url.lastPathComponent))
                 continue
             }
             let data: Data
@@ -261,6 +291,7 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
             case .unreadable(let error):
                 center.reportNotice(store: "ParticipantArchiveStore",
                                     message: "\(url.lastPathComponent) could not be read (\(error.localizedDescription)) — that child is NOT in the export")
+                setAside.append(ArchiveSetAside(fileName: url.lastPathComponent))
                 continue
             case .data(let bytes): data = bytes
             }
@@ -275,6 +306,7 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
                 storePersistenceLogger.error(
                     "ParticipantArchiveStore: \(url.path, privacy: .private) exists but failed to decode — moved aside, excluded from the next export.")
                 let dest = StoreFileQuarantine.quarantine(url)
+                setAside.append(ArchiveSetAside(fileName: (dest ?? url).lastPathComponent))
                 center.reportNotice(store: "ParticipantArchiveStore",
                                     message: "\(url.lastPathComponent) was undecodable and \(dest.map { "moved aside to \($0.lastPathComponent)" } ?? "could NOT be moved aside") — that child is NOT in the export")
             }
@@ -283,6 +315,6 @@ final class JSONParticipantArchiveStore: ParticipantArchiving {
             center.reportNotice(store: "ParticipantArchiveStore",
                                 message: "\(setAsideEarlier) archive file(s) set aside earlier (\(StoreFileQuarantine.setAsideMarker)…) — those children are NOT in the export")
         }
-        return out
+        return (out, setAside)
     }
 }

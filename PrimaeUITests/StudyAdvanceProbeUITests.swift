@@ -497,7 +497,9 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
 
         let next = element(label: "Nächstes Kind", in: app)
-        XCTAssertTrue(next.waitForExistence(timeout: 5),
+        // Hittable, not merely present: the hidden control is in the
+        // accessibility tree (UI-4), so existence proved nothing.
+        XCTAssertTrue(next.waitUntilHittable(timeout: 5),
                       "the rail double-tap must reveal 'Nächstes Kind'")
         next.tap()
 

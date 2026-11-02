@@ -169,6 +169,16 @@ enum LetterTracer {
     /// `samples` in native screen points (see `screenTransform`).
     private static func synthesize(path samples: [(point: CGPoint, offset: TimeInterval)],
                                    name: String, file: StaticString, line: UInt) {
+        synthesize(paths: [samples], name: name, file: file, line: line)
+    }
+
+    /// Several simultaneous contacts in ONE synthesized record (each its own
+    /// finger; offsets share one clock), every path in native screen points.
+    /// Each path lifts 0.02 s after its last sample. Used to put a resting
+    /// thumb or palm on the glass while the letter is traced
+    /// (`RestingContactUITests`).
+    static func synthesize(paths: [[(point: CGPoint, offset: TimeInterval)]],
+                           name: String, file: StaticString = #filePath, line: UInt = #line) {
         guard let pathClass = NSClassFromString("XCPointerEventPath"),
               let recordClass = NSClassFromString("XCSynthesizedEventRecord") else {
             XCTFail("XCPointerEventPath / XCSynthesizedEventRecord not found in this XCTest", file: file, line: line)
@@ -189,13 +199,15 @@ enum LetterTracer {
             XCTFail("could not bind the touch synthesis shims", file: file, line: line)
             return
         }
-        let path = pathType.init(touchAt: samples[0].point, offset: samples[0].offset)
-        for sample in samples.dropFirst() {
-            path.move(to: sample.point, atOffset: sample.offset)
-        }
-        path.liftUp(atOffset: (samples.last?.offset ?? 0) + 0.02)
         let record = recordType.init(name: name, interfaceOrientation: 1)  // native screen space
-        record.add(path)
+        for samples in paths where !samples.isEmpty {
+            let path = pathType.init(touchAt: samples[0].point, offset: samples[0].offset)
+            for sample in samples.dropFirst() {
+                path.move(to: sample.point, atOffset: sample.offset)
+            }
+            path.liftUp(atOffset: (samples.last?.offset ?? 0) + 0.02)
+            record.add(path)
+        }
         do {
             try record.synthesize()
         } catch {
@@ -315,5 +327,57 @@ extension XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += ["-allowNonHeadphoneRoute"]
         return app
+    }
+}
+
+// MARK: - Hittable, not merely present
+
+extension XCUIElement {
+    /// Wait until the element is on screen AND can take a tap.
+    ///
+    /// `waitForExistence` is not enough for a control the app hides by
+    /// opacity: the rail's "Nächstes Kind" stays in the accessibility tree
+    /// while hidden (measured on the iPad, 2026-11-02, UI-4:
+    /// `exists=true hittable=false`), so an existence wait passed whether or
+    /// not the rail double-tap revealed anything, and the test failed later,
+    /// on the confirm, which blamed the wrong step.
+    func waitUntilHittable(timeout: TimeInterval) -> Bool {
+        let predicate = NSPredicate(format: "exists == true AND hittable == true")
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: self)
+        return XCTWaiter.wait(for: [expectation], timeout: timeout) == .completed
+    }
+}
+
+// MARK: - Enrolment through the rail, retried
+
+extension XCUIApplication {
+    /// Enrol the next child the way the proctor does: double-tap the rail,
+    /// tap "Nächstes Kind", confirm "Neues Kind starten". Up to three
+    /// attempts. Measured on the iPad, 2026-11-02: in 2 of 10 launches a
+    /// step was dropped (once the double-tap revealed nothing, once the
+    /// tap on the revealed, hittable "Nächstes Kind" opened no dialog).
+    /// Tests that use this are about what happens AFTER enrolment, so a
+    /// dropped step is retried here instead of failing them; the rail's own
+    /// tests (`StudyAdvanceProbeUITests`) still test the gesture unaided.
+    @MainActor
+    func enrolNextChildViaRail() -> Bool {
+        let rail = descendants(matching: .any)["Navigationsleiste"]
+        guard rail.waitForExistence(timeout: 15) else { return false }
+        let next = descendants(matching: .any)["Nächstes Kind"]
+        let confirm = descendants(matching: .any)
+            .matching(NSPredicate(format: "label == %@", "Neues Kind starten")).firstMatch
+        for _ in 0..<3 {
+            if !next.isHittable {
+                rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
+                guard next.waitUntilHittable(timeout: 8) else { continue }
+            }
+            Thread.sleep(forTimeInterval: 0.5)   // let the reveal settle
+            next.tap()
+            if confirm.waitForExistence(timeout: 5) {
+                confirm.tap()
+                return true
+            }
+        }
+        return false
     }
 }

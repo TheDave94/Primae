@@ -1151,7 +1151,7 @@ nm -jU /tmp/dd-pilot/Build/Products/Release-Study-iphoneos/Primae.app/Primae \
 produces a study build (2026-09-14).** This was NOT true before that date —
 it used to fail at link time on the missing `_primae_build_identity_study`
 symbol, because the package needed the flag and Xcode's UI had no channel to
-supply it. There is exactly one scheme that builds the study configurations, named `Primae` (a second shared scheme, `Primae-DeviceTests`, still names the unlinkable `Debug`/`Release` configurations and is not a way to build the pilot: audit R-104) — the OLD `Primae`
+supply it. There is exactly one scheme that builds the study configurations, named `Primae` (a second shared scheme, `Primae-DeviceTests`, uses `Debug-Study`/`Release-Study` and has a `PrimaeNativeTests` testable since r16 (L5): it is the way to run `AudioEngineTests` on the iPad, which the `Primae` scheme skips — `-only-testing:PrimaeNativeTests/AudioEngineTests` against a `Primae` build runs 0 tests and reports success. It is not a pilot-build path.) — the OLD `Primae`
 scheme (which built the casual Debug/Release configuration) was deleted, and
 `Primae-Study` was renamed to `Primae` to take its place; a leftover second
 scheme naming a distinction that no longer exists failed at link on a symbol

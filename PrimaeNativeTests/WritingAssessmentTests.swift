@@ -56,51 +56,57 @@ struct WritingAssessmentTests {
         #expect(b.tempoConsistency == 1.0)
     }
 
-    /// Uniform intervals → variance = 0 → CV² = 0 → score = 1.0.
-    @Test("tempoConsistency with uniform intervals is 1.0")
+    /// A vertical stroke of `count` samples, `step` apart in y, for the
+    /// tempo tests (r16: tempo reads the points as well as the clock).
+    private func verticalSamples(_ count: Int, step: CGFloat = 0.01) -> [CGPoint] {
+        (0..<count).map { CGPoint(x: 0.5, y: 0.2 + CGFloat($0) * step) }
+    }
+
+    /// Constant speed → every windowed speed equal → variance 0 → 1.0.
+    @Test("tempoConsistency at constant speed is 1.0")
     func tempo_uniform_isMax() {
-        // 10 evenly-spaced samples at 50 ms each.
-        let timestamps: [CFTimeInterval] = (0..<10).map { Double($0) * 0.05 }
+        // 20 evenly-spaced samples, 50 ms each.
+        let timestamps: [CFTimeInterval] = (0..<20).map { Double($0) * 0.05 }
         let assessment = FreeWriteScorer.score(
-            tracedPoints: verticalTrace, reference: verticalReference,
+            tracedPoints: verticalSamples(20), reference: verticalReference,
             timestamps: timestamps)
         #expect(abs(assessment.tempoConsistency - 1.0) < 1e-9)
     }
 
-    /// Widely-varying intervals drive variance up and the score below 1.
-    /// Assert a strict inequality rather than a magic threshold so the test
-    /// stays meaningful if the normalisation formula is tuned.
-    @Test("tempoConsistency with varying intervals drops below 1.0")
+    /// Alternating slow and fast stretches inside one stroke: the windowed
+    /// speed varies and the score drops below 1 (r16: speed, not interval).
+    @Test("tempoConsistency with a varying speed drops below 1.0")
     func tempo_varying_isBelowMax() {
-        // Alternating slow/fast samples: 50 ms, 200 ms, 50 ms, 200 ms, ...
+        // Same distance per sample, alternating 0.1 s and 0.3 s per sample.
         var t: CFTimeInterval = 0
         var timestamps: [CFTimeInterval] = [t]
-        for i in 0..<8 {
-            t += (i % 2 == 0) ? 0.05 : 0.20
+        for i in 0..<15 {
+            t += (i % 2 == 0) ? 0.1 : 0.3
             timestamps.append(t)
         }
         let assessment = FreeWriteScorer.score(
-            tracedPoints: verticalTrace, reference: verticalReference,
+            tracedPoints: verticalSamples(16), reference: verticalReference,
             timestamps: timestamps)
         #expect(assessment.tempoConsistency < 1.0)
         #expect(assessment.tempoConsistency >= 0.0)
     }
 
-    /// Gaps >=0.5 s are pen-lift periods and must not pollute the CV.
-    /// A run of uniform fast intervals with one long gap spliced in should
-    /// still score 1.0.
-    @Test("tempoConsistency ignores gaps >= 0.5 s (pen lifts)")
-    func tempo_longGapsExcluded() {
-        // Six uniform 50 ms steps, then a 2 s gap, then six more 50 ms steps.
-        var timestamps: [CFTimeInterval] = []
-        var t: CFTimeInterval = 0
-        for _ in 0..<6 { timestamps.append(t); t += 0.05 }
-        t += 2.0
-        for _ in 0..<6 { timestamps.append(t); t += 0.05 }
-        let assessment = FreeWriteScorer.score(
-            tracedPoints: verticalTrace, reference: verticalReference,
-            timestamps: timestamps)
-        #expect(abs(assessment.tempoConsistency - 1.0) < 1e-9)
+    /// A pen lift is the time across a `strokeStartIndices` boundary; it is
+    /// excluded at ANY length (r16, audit B-8: before, only lifts of 0.5 s
+    /// or more were, and a quick lift drove tempo to 0).
+    @Test("tempoConsistency ignores pen lifts of any length")
+    func tempo_liftsExcluded() {
+        for lift in [0.2, 2.0] {
+            var timestamps: [CFTimeInterval] = []
+            var t: CFTimeInterval = 0
+            for _ in 0..<10 { timestamps.append(t); t += 0.05 }
+            t += lift - 0.05
+            for _ in 0..<10 { timestamps.append(t); t += 0.05 }
+            let assessment = FreeWriteScorer.score(
+                tracedPoints: verticalSamples(20), strokeStartIndices: [10],
+                reference: verticalReference, timestamps: timestamps)
+            #expect(abs(assessment.tempoConsistency - 1.0) < 1e-9, "lift \(lift) s")
+        }
     }
 
     // MARK: - pressureControl

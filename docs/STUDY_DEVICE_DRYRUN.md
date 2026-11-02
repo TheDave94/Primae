@@ -89,12 +89,21 @@ does and does not establish.
 
 ## 0 · Before you start (once, not per run)
 
-- **Headphones connected.** Both the Phonem and the Raumklang arm need
-  them, and since protocol r14 the session does not run without them:
-  the canvas is replaced by "Studie kann nicht starten — Keine Kopfhörer
-  verbunden …" until they are plugged in, and the red "Keine Kopfhörer
-  verbunden" banner shows in the research tab. Ohne Ton doesn't need
-  them, but leave them in for all three runs so the three are comparable.
+- **Headphones connected, in every arm.** Since protocol r14 a sound-arm
+  session does not run without them, and since r16 (B6) neither does an
+  Ohne Ton session, so the spoken prompts reach all three arms the same
+  way: the canvas is replaced by "Studie kann nicht starten — Keine
+  Kopfhörer verbunden …" until they are plugged in, and the red "Keine
+  Kopfhörer verbunden" banner shows in the research tab. Unplugging
+  mid-letter freezes the letter; plugging back in restarts it from its
+  instruction (r16, B1).
+- **Never restore an iPad backup onto the study device** (r16, B21). The
+  participant id lives in the app's preferences, which iOS backs up,
+  while the progress files are excluded from backup: a restored backup
+  can bring back an id without its data.
+- **Device state, as measured 2026-11-02 (DEV-5):** language list with
+  English (US) first, region Austria, Reduce Motion ON. Record any change
+  to these with the run.
 - **Do Not Disturb on, no other audio app playing.** Turning the
   iPad's Do Not Disturb on and making sure nothing else is playing
   audio is still worth doing: another app's audio plays through every
@@ -421,6 +430,11 @@ That's the end of the session for this run.
 ---
 
 ## 6 · Confirming the data landed
+
+**Tap "Nächstes Kind" for the last child before exporting** (r16, B22).
+The export also records a finished-but-held free-writing of the current
+child by itself (`finalizedBy` `export`), but a letter left mid-phase is
+only recorded by "Nächstes Kind".
 
 Long-press the gear → **Datenexport** (third tab). Tap **"JSON
 exportieren"** (or CSV). A share sheet opens with the combined file for every child on

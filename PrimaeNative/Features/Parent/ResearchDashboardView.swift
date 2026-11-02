@@ -59,13 +59,15 @@ struct ResearchDashboardView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 participantHeader
-                // Sound-arm validity guard: stereo pan is void on the iPad
-                // speakers, and BOTH sound arms drive pan (thesis Ch.6:
-                // "the pan axis of both sound arms … otherwise degraded").
-                // Until 2026-09-04 only the spatial arm was warned; a
-                // speaker-run phoneme session was silently accepted.
-                // Researcher-facing only (parent-gated).
-                if vm.audioCondition != .silent && vm.panningEnabled && !headphonesConnected {
+                // Headphone guard, in EVERY arm (B6, 2026-11-02, r16): the
+                // session gate requires headphones in the silent arm too
+                // (same transducer for every child), so a silent-arm child
+                // stopped by it must get the same proctor banner. Until
+                // r16 this showed for the sound arms only (stereo pan is
+                // void on the iPad speakers). Researcher-facing only.
+                if Self.showsHeadphoneWarning(arm: vm.audioCondition,
+                                              panningEnabled: vm.panningEnabled,
+                                              headphonesConnected: headphonesConnected) {
                     headphoneWarning
                 }
                 // Another app's audio, in EVERY arm (R-018) — beside the
@@ -78,6 +80,14 @@ struct ResearchDashboardView: View {
                 // Parent area only — never a child-facing screen.
                 if let integrity = PersistenceFailureCenter.shared.integritySummary {
                     dataIntegritySection(integrity)
+                }
+                // An arm/subset override refused at launch because the
+                // child already had rows (VERIFY-2/3). Parent area only.
+                if let refusal = vm.assignmentOverrideRefusal {
+                    Label(refusal, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 schreibmotorikSection
                 recognitionSection
@@ -132,18 +142,38 @@ struct ResearchDashboardView: View {
         .background(Color.red.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
     }
 
+    /// Whether the "Keine Kopfhörer verbunden" banner shows: with panning
+    /// on and no headphone-class route, in every arm (B6, r16), matching
+    /// the session gate. `arm` is kept so the rule is stated in one place.
+    static func showsHeadphoneWarning(arm: PilotAudioCondition, panningEnabled: Bool,
+                                      headphonesConnected: Bool) -> Bool {
+        panningEnabled && !headphonesConnected
+    }
+
+    /// The banner's body text. The pan sentence applies to the sound arms
+    /// only; the silent arm is told why it needs headphones as well.
+    static func headphoneWarningText(arm: PilotAudioCondition, requiresHeadphones: Bool) -> String {
+        let armLine: String
+        switch arm {
+        case .spatial:
+            armLine = "Dieses Gerät ist dem Raumklang-Arm zugeordnet. Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos. "
+        case .phoneme:
+            armLine = "Dieses Gerät ist dem Phonem-Arm zugeordnet. Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos. "
+        case .silent:
+            armLine = "Dieses Gerät ist dem stillen Arm zugeordnet. Kopfhörer sind auch hier Pflicht, damit jedes Kind unter denselben Bedingungen (Kopfhörer auf) arbeitet. "
+        }
+        return armLine + (requiresHeadphones
+            ? "Die Sitzung läuft in diesem Arm erst, wenn Kopfhörer verbunden sind."
+            : "Testlauf: die Kopfhörerpflicht ist per Startargument aufgehoben, diese Daten sind keine Studiendaten.")
+    }
+
     private var headphoneWarning: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("Keine Kopfhörer verbunden", systemImage: "exclamationmark.triangle.fill")
                 .font(.body(FontSize.md, weight: .semibold))
                 .foregroundStyle(.red)
-            Text((vm.audioCondition == .spatial
-                  ? "Dieses Gerät ist dem Raumklang-Arm zugeordnet. "
-                  : "Dieses Gerät ist dem Phonem-Arm zugeordnet. ")
-                 + "Ohne Kopfhörer ist das Stereo-Panning (horizontale Stiftposition → links/rechts) über die iPad-Lautsprecher wirkungslos. "
-                 + (vm.requiresHeadphones
-                    ? "Die Sitzung läuft in diesem Arm erst, wenn Kopfhörer verbunden sind."
-                    : "Testlauf: die Kopfhörerpflicht ist per Startargument aufgehoben, diese Daten sind keine Studiendaten."))
+            Text(Self.headphoneWarningText(arm: vm.audioCondition,
+                                           requiresHeadphones: vm.requiresHeadphones))
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
         }
@@ -409,6 +439,8 @@ struct ResearchDashboardView: View {
                     restoreError = "Diese ID ist auf diesem Gerät weder archiviert noch eingeschrieben — bitte die ID des Kindes im Sammel-Export prüfen. Es wurde nichts geändert."
                 case .sealFailed(let message):
                     restoreError = message
+                case .assignmentConflict(let message):
+                    restoreError = message
                 }
             } label: {
                 Label("Teilnehmer wiederherstellen", systemImage: "person.crop.circle.badge.clock")
@@ -588,8 +620,12 @@ struct ResearchDashboardView: View {
 
     private var conditionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            assignmentTallyView
+            // These two count the LIVE child's phase sessions only
+            // (`dashboardSnapshot` is wiped at every "Nächstes Kind"); the
+            // subtitle used to claim all sessions (B5(b), 2026-11-02).
             sectionHeader(title: "Studienarm",
-                          subtitle: "Verteilung über alle Phasen-Sessions")
+                          subtitle: "Phasen-Sessions des aktuellen Kindes (nicht über alle Kinder)")
             let counts = Dictionary(grouping: vm.dashboardSnapshot.phaseSessionRecords,
                                      by: { $0.condition })
                 .mapValues(\.count)
@@ -612,7 +648,7 @@ struct ResearchDashboardView: View {
             // Audio axis (the pilot's primary between-subjects factor) —
             // counted separately; the two axes are orthogonal.
             sectionHeader(title: "Audio-Arm",
-                          subtitle: "Verteilung über alle Phasen-Sessions")
+                          subtitle: "Phasen-Sessions des aktuellen Kindes (nicht über alle Kinder)")
             let audioCounts = Dictionary(grouping: vm.dashboardSnapshot.phaseSessionRecords,
                                           by: { $0.audioCondition })
                 .mapValues(\.count)
@@ -632,6 +668,45 @@ struct ResearchDashboardView: View {
                 }
             }
         }
+    }
+
+    /// Children per audio arm and per letter group on this device (B5(b),
+    /// 2026-11-02): every sealed child and every logged enrolment, once
+    /// each (`TracingViewModel.assignmentTally`). Allocation is
+    /// `uuid % 3`, not balanced by construction; this is what lets the
+    /// proctor see the imbalance and steer with an override.
+    private var assignmentTallyView: some View {
+        let tally = vm.assignmentTally
+        return VStack(alignment: .leading, spacing: 6) {
+            sectionHeader(title: "Zuweisung je Kind",
+                          subtitle: "\(tally.children) Kinder auf diesem Gerät (Archiv + Einschreibungen), je Kind einmal gezählt")
+            ForEach(PilotAudioCondition.allCases, id: \.self) { arm in
+                tallyRow("\(arm.displayName) (\(arm.rawValue))", tally.arms[arm] ?? 0)
+            }
+            if tally.unknownArm > 0 {
+                tallyRow("Arm unbekannt", tally.unknownArm)
+            }
+            ForEach(tally.subsets.keys.sorted(), id: \.self) { subset in
+                tallyRow("Buchstaben \(subset)", tally.subsets[subset] ?? 0)
+            }
+            if tally.unknownSubset > 0 {
+                tallyRow("Buchstaben unbekannt", tally.unknownSubset)
+            }
+        }
+    }
+
+    private func tallyRow(_ label: String, _ count: Int) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            Text("\(count) Kinder")
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(Color.inkSoft)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color(.secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Post-test (H6)

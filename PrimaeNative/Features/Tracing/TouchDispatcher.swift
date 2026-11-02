@@ -116,6 +116,10 @@ final class TouchDispatcher {
         // A study session that cannot deliver its stimulus does not
         // trace at all — see TracingViewModel.studyPreconditionFailure.
         guard vm.sessionBlockReason == nil             else { return }
+        // A suspended session (inactive scene, parent area open: R-005,
+        // R-026) takes no new stroke: its clock is stopped and nothing it
+        // writes or plays would be part of the session (STATE-7).
+        guard vm.activeInterruptions.isEmpty          else { return }
         guard vm.phaseController.isTouchEnabled       else { return }
         guard vm.phaseController.currentPhase != .direct else { return }  // handled by DirectPhaseDotsOverlay
         guard !isSingleTouchInteractionActive         else { return }
@@ -137,6 +141,12 @@ final class TouchDispatcher {
         isSingleTouchInteractionActive = true
         sessionIsPencil                = vm.lastTouchDownWasPencil
         vm.playback.resumeIntent       = true
+        // B17/B18: a fresh stroke starts a fresh rate history, and its
+        // first sample writes the pitch at once.
+        velocityHistory.removeAll(keepingCapacity: true)
+        lastCouplingParameters         = nil
+        lastPitchWriteAt               = nil
+        pendingPitchCents              = nil
         lastPoint                      = p
         lastTimestamp                  = t
         lastKeptPoint                  = p
@@ -284,22 +294,28 @@ final class TouchDispatcher {
                                        y: p.y / max(canvasSize.height, 1))
         // Cell-normalised coords feed the active cell's tracker, whose
         // checkpoints live in cell-local 0–1 space.
+        // `trackerAspect` (width / height of that frame) lets the tracker
+        // measure distance in height units on BOTH axes, so its hit test
+        // is isotropic in points (r16, audit B-3).
         let activeFrame = vm.grid.activeCell.frame
         let normalized: CGPoint
+        let trackerAspect: CGFloat
         if activeFrame.width > 0 && activeFrame.height > 0 {
             normalized = CGPoint(
                 x: (p.x - activeFrame.minX) / activeFrame.width,
                 y: (p.y - activeFrame.minY) / activeFrame.height
             )
+            trackerAspect = activeFrame.width / activeFrame.height
         } else {
             normalized = canvasNormalized
+            trackerAspect = max(canvasSize.width, 1) / max(canvasSize.height, 1)
         }
         let prevStrokeIndex    = vm.strokeTracker.currentStrokeIndex
         let prevNextCheckpoint = vm.strokeTracker.progress.indices.contains(prevStrokeIndex)
             ? vm.strokeTracker.progress[prevStrokeIndex].nextCheckpoint : 0
         let wasComplete        = vm.strokeTracker.isComplete
 
-        vm.strokeTracker.update(normalizedPoint: normalized)
+        vm.strokeTracker.update(normalizedPoint: normalized, aspectRatio: trackerAspect)
 
         let isNowComplete = vm.strokeTracker.isComplete
         if !wasComplete && isNowComplete, vm.feedbackIntensity > 0 {
@@ -409,6 +425,7 @@ final class TouchDispatcher {
         vm.pencilAzimuth               = 0
         vm.playback.resumeIntent       = false
         vm.playback.cancelPending()
+        settleCouplingAtLift(holdingSound: vm.playback.state == .active)   // B17/B18
         if vm.playback.state == .active {
             // The pen was sounding: keep it sounding through the lift hold
             // (`SoundEnvelope.liftHoldSeconds`), so a child moving to the
@@ -553,10 +570,86 @@ final class TouchDispatcher {
         }
     }
 
+    // MARK: - Lift tail rate (B17) and per-frame spatial pitch (B18)
+
+    /// Ruling B17 (2026-11-02, AUDIO-3): the sound held through the lift
+    /// (`SoundEnvelope.liftHoldSeconds` plus the fade) kept the rate of the
+    /// LAST sample, and a child's lift is often a flick — measured: 0.62×
+    /// while writing, 2.0× for the 1.4 s tail after a 30 ms flick, so the
+    /// phoneme arm heard its phone at double speed after the child had
+    /// finished. The tail now runs at the smoothed (EWMA) rate as it was
+    /// `liftFlickWindowSeconds` before the lift. A batch value: it spans a
+    /// flick (the measured one was 30 ms) and is short against a stroke.
+    static let liftFlickWindowSeconds: CFTimeInterval = 0.1
+    /// (touch time, smoothed velocity) per sample of the current stroke,
+    /// the last ~0.5 s only.
+    private var velocityHistory: [(t: CFTimeInterval, v: CGFloat)] = []
+    /// The coupling last applied on the touch path (rate, pan, pitch).
+    private var lastCouplingParameters: ArmCoupling.Parameters?
+
+    /// Ruling B18 (2026-11-02, AUDIO-4): the spatial pitch is written at
+    /// most once per display frame instead of on every coalesced touch
+    /// sample. Shorter than one 120 Hz frame (8.3 ms) and longer than the
+    /// spread of one frame's coalesced samples, which arrive in the same
+    /// run-loop turn. The first sample of a stroke always writes.
+    static let spatialPitchMinimumInterval: CFTimeInterval = 0.006
+    private var lastPitchWriteAt: CFTimeInterval?
+    /// A pitch a throttled sample did not write; flushed at the lift.
+    private var pendingPitchCents: Float?
+    /// Test seam: the clock the pitch throttle reads.
+    var pitchClock: () -> CFTimeInterval = { CACurrentMediaTime() }
+
+    private func writeSpatialPitchPerFrame(_ cents: Float, audio: AudioControlling) {
+        let now = pitchClock()
+        if let last = lastPitchWriteAt, now - last < Self.spatialPitchMinimumInterval {
+            pendingPitchCents = cents
+            return
+        }
+        audio.setSpatialPitch(cents: cents)
+        lastPitchWriteAt = now
+        pendingPitchCents = nil
+    }
+
+    /// The smoothed velocity before the lift's flick: the latest sample at
+    /// least `liftFlickWindowSeconds` older than the last one; for a stroke
+    /// shorter than that, its first sample.
+    private func preFlickVelocity() -> CGFloat? {
+        guard let last = velocityHistory.last else { return nil }
+        let cutoff = last.t - Self.liftFlickWindowSeconds
+        return velocityHistory.last(where: { $0.t <= cutoff })?.v ?? velocityHistory.first?.v
+    }
+
+    /// At the lift: freeze the held tail at the pre-flick rate (B17) and
+    /// write a pitch the throttle held back (B18); then forget the stroke.
+    private func settleCouplingAtLift(holdingSound: Bool) {
+        if holdingSound, let vm, let last = lastCouplingParameters {
+            if let v = preFlickVelocity() {
+                ArmCoupling.applyRateAndPan(
+                    ArmCoupling.Parameters(speed: Self.mapVelocityToSpeed(v),
+                                           horizontalBias: last.horizontalBias,
+                                           spatialPitchCents: nil),
+                    to: vm.audio)
+            }
+            if let cents = pendingPitchCents { vm.audio.setSpatialPitch(cents: cents) }
+        }
+        velocityHistory.removeAll(keepingCapacity: true)
+        lastCouplingParameters = nil
+        lastPitchWriteAt = nil
+        pendingPitchCents = nil
+    }
+
     /// Map smoothed velocity + canvas-x to audio time-stretch speed
     /// and stereo pan, then drive the playback state machine.
     private func updateAdaptivePlayback(canvasNormalized: CGPoint) {
         guard let vm else { return }
+        // A blocked session plays no arm sound (r14; AUDIO-5): a stroke
+        // still moving when the block came up (a headphone loss
+        // mid-stroke) used to re-activate the sound on the new route —
+        // the loudspeaker — on its very next movement.
+        if vm.sessionBlockReason != nil {
+            vm.playback.request(.idle, immediate: true)
+            return
+        }
         // Silent arm: no audio content (activeAudioFiles returns [] so no
         // file ever loaded) AND no coupling. Short-circuit BEFORE any
         // setAdaptivePlayback so the coupling drive never fires and no
@@ -608,13 +701,26 @@ final class TouchDispatcher {
         // are matched through — and which is on the DO-NOT list. The
         // phoneme arm never gets a pitch drive: the arms are matched on
         // rate + pan and differ in pitch-drive + sound identity (§2.6).
-        ArmCoupling.apply(
-            ArmCoupling.parameters(canvasNormalized: canvasNormalized,
-                                   velocity: smoothedVelocity,
-                                   azimuthBias: azimuthBias,
-                                   panningEnabled: vm.panningEnabled,
-                                   arm: vm.audioCondition),
-            to: vm.audio)
+        let coupling = ArmCoupling.parameters(canvasNormalized: canvasNormalized,
+                                              velocity: smoothedVelocity,
+                                              azimuthBias: azimuthBias,
+                                              panningEnabled: vm.panningEnabled,
+                                              arm: vm.audioCondition)
+        ArmCoupling.applyRateAndPan(coupling, to: vm.audio)
+        if let cents = coupling.spatialPitchCents {
+            writeSpatialPitchPerFrame(cents, audio: vm.audio)   // B18
+        }
+        lastCouplingParameters = coupling
+        // B17: the rate history the lift's tail is frozen from. Stamped
+        // with the touch clock of the sample before this one (this
+        // sample's own is stored after the update); one sample's offset
+        // is immaterial against the 0.1 s window.
+        if let stamp = lastTimestamp {
+            velocityHistory.append((stamp, smoothedVelocity))
+            if let first = velocityHistory.first, stamp - first.t > 0.5 {
+                velocityHistory.removeAll { stamp - $0.t > 0.5 }
+            }
+        }
 
         // No feedbackIntensity gate here: the letter sound is the
         // phonemic anchor for the glyph, not Schmidt & Lee guidance

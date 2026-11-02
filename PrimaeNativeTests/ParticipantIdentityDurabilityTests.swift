@@ -324,6 +324,7 @@ extension NewParticipantResetTests {
                                        audioCondition: otherArm,
                                        trainedSubset: otherSubset.rawValue,
                                        protocolRevision: StudyProtocol.revision))
+            ParticipantStore.markCurrentParticipantActive()   // a real child (r16 drops one with no activity, B2)
             _ = vm.resetForNewParticipant()   // child B
 
             #expect(vm.restoreParticipant(uuidString: childA.uuidString) == .restored(childA))

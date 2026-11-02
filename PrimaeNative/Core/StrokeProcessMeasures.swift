@@ -107,15 +107,16 @@ struct StrokeProcessMeasures: Equatable {
     /// used. Unmatched (extra/missing) strokes do NOT enter this
     /// average — their signal is `strokeCount`, not a distance penalty;
     /// see the file header.
-    /// UNIT: a fraction of the study canvas, normalised per axis to 0–1
-    /// (`RawTrace.canvasSize` records the rectangular point dimensions) —
-    /// the same 0–1 frame the recorder's points and the tracker's reference
-    /// share. It is NOT
-    /// normalised by letter size, so a narrow I and a wide M are on
-    /// different physical scales; the planned contrasts are within
-    /// letter (same device, orientation and letter per contrast), and a
-    /// pooled cross-letter analysis should normalise offline from
-    /// `RawTrace.referenceStrokes` (2026-09-05).
+    /// UNIT (from protocol r16, audit B-3): a fraction of the study
+    /// canvas HEIGHT, on both axes (`StrokeProcessScorer.heightNormalised`),
+    /// so a horizontal and a vertical error of the same size in points
+    /// count the same. Before r16 each axis was normalised separately
+    /// (x by the width, y by the height), which on the ~1.73:1 study canvas
+    /// weighted a vertical error 1.73x a horizontal one. The study letters
+    /// share one glyph height, so this unit is a fixed multiple of the
+    /// glyph height. Re-derive offline from `RawTrace` by dividing both
+    /// point axes by `canvasSize.height` and multiplying the reference's x
+    /// by `canvasSize.width / canvasSize.height`.
     let spatialDeviation: CGFloat
     /// SECONDARY (2026-10-05, protocol r6): the same stroke-correspondence
     /// distance WITHOUT the bounding-box fit — the pre-r6 primary, in the
@@ -172,6 +173,24 @@ enum StrokeProcessScorer {
         strokeStartIndices: [Int],
         reference: LetterStrokes
     ) -> StrokeProcessMeasures? {
+        // A non-finite sample (NaN / infinity) poisons every distance and
+        // the bounding-box fit (A18, round-1 B-13): drop such points, with
+        // the stroke starts remapped onto the kept points, and score what
+        // is left. Fewer than 2 finite points is not a production.
+        // Unreachable from UIKit today; a seam against a future input path.
+        if !points.allSatisfy({ $0.x.isFinite && $0.y.isFinite }) {
+            var kept: [CGPoint] = []
+            var keptBefore: [Int] = []          // keptBefore[i] = kept points among points[0..<i]
+            keptBefore.reserveCapacity(points.count + 1)
+            for p in points {
+                keptBefore.append(kept.count)
+                if p.x.isFinite && p.y.isFinite { kept.append(p) }
+            }
+            keptBefore.append(kept.count)
+            guard kept.count >= 2 else { return nil }
+            let starts = strokeStartIndices.filter { $0 >= 0 && $0 < points.count }.map { keptBefore[$0] }
+            return analyze(points: kept, strokeStartIndices: starts, reference: reference)
+        }
         guard !points.isEmpty, !reference.strokes.isEmpty else { return nil }
 
         // Positional, without matching what cannot be matched (2026-09-05):
@@ -190,11 +209,68 @@ enum StrokeProcessScorer {
         let traceStrokes = eligibleTrace.map { allTraceStrokes[$0] }
         let refStrokes = eligibleRef.map { allRefStrokes[$0] }
 
-        // PRIMARY (r6): the drawn strokes fitted onto the reference's box.
-        let fit = fitToReference(drawn: traceStrokes, reference: refStrokes)
-        let fittedStrokes = traceStrokes.map { $0.map(fit) }
-        guard let primary = correspondence(trace: fittedStrokes, reference: refStrokes),
-              let raw = correspondence(trace: traceStrokes, reference: refStrokes) else { return nil }
+        // Every trace stroke is resampled to ONE fixed arc-length spacing
+        // before any Fréchet comparison (r16, audit B-11), so the distance
+        // no longer depends on how densely the digitiser sampled the same
+        // path. The spacing is a fixed fraction of the reference's height
+        // (`traceSpacing`); the primary resamples AFTER the fit, in the
+        // reference's frame, so the r6 size invariance stays exact.
+        let spacing = traceSpacing(reference: refStrokes)
+        func spaced(_ strokes: [[CGPoint]]) -> [[CGPoint]] {
+            strokes.map { resampleBySpacing($0, spacing: spacing) }
+        }
+
+        // SECONDARY (r6): no fit, position and size count.
+        guard let raw = correspondence(trace: spaced(traceStrokes), reference: refStrokes) else { return nil }
+
+        // PRIMARY (r6, refined r16 / audit B-5): the drawn strokes fitted
+        // onto the reference's box, the box taken over the MATCHED strokes
+        // only (match -> fit -> re-match). Fitting over every stroke let one
+        // stray contact far from the letter inflate the drawn box and
+        // shrink the real letter 5-13x before the comparison.
+        func primaryCorrespondence(fitOn subset: [Int])
+            -> (deviation: CGFloat, matched: [Int?], reversed: Int)? {
+            let fit = fitToReference(drawn: fitBasis(subset.map { traceStrokes[$0] }), reference: refStrokes)
+            return correspondence(trace: spaced(traceStrokes.map { $0.map(fit) }), reference: refStrokes)
+        }
+        let allIndices = Array(traceStrokes.indices)
+        let primary: (deviation: CGFloat, matched: [Int?], reversed: Int)
+        if traceStrokes.count <= refStrokes.count {
+            // Every drawn stroke is matched (forced maximum cardinality), so
+            // the matched set IS the whole drawing: the r6 fit, unchanged.
+            guard let p = primaryCorrespondence(fitOn: allIndices) else { return nil }
+            primary = p
+        } else {
+            // More drawn strokes than reference strokes: some stay
+            // unmatched, and they must not move the fit. Two seeds for the
+            // first match — the fit over every stroke that is not itself a
+            // tap or scribble, and the unfitted (raw) pairing — each iterated
+            // to a fixed point (the fit is over exactly the strokes it
+            // matches). The cheaper fixed point wins, the same
+            // minimum-cost rule the assignment itself uses.
+            let substantial = allIndices.filter {
+                guard let box = boundingBox([traceStrokes[$0]]) else { return false }
+                return max(box.width, box.height) >= scribbleExtent
+            }
+            let rawMatched = allIndices.filter { raw.matched[$0] != nil }
+            var seeds: [[Int]] = [substantial.isEmpty ? allIndices : substantial]
+            if !rawMatched.isEmpty && rawMatched != seeds[0] { seeds.append(rawMatched) }
+            var best: (deviation: CGFloat, matched: [Int?], reversed: Int)?
+            for seed in seeds {
+                var fitSet = seed
+                var candidate: (deviation: CGFloat, matched: [Int?], reversed: Int)?
+                for _ in 0..<Self.refitIterations {
+                    guard let p = primaryCorrespondence(fitOn: fitSet) else { break }
+                    candidate = p
+                    let matchedSet = allIndices.filter { p.matched[$0] != nil }
+                    if matchedSet == fitSet || matchedSet.isEmpty { break }
+                    fitSet = matchedSet
+                }
+                if let c = candidate, best == nil || c.deviation < best!.deviation { best = c }
+            }
+            guard let b = best else { return nil }
+            primary = b
+        }
 
         // Expand back to the ORIGINAL positions on both sides.
         var matchedAll: [Int?] = Array(repeating: nil, count: allTraceStrokes.count)
@@ -216,8 +292,84 @@ enum StrokeProcessScorer {
     /// height) a drawing is a TAP OR SCRIBBLE, not a letter: it is moved
     /// onto the reference but NOT scaled up, so a dot cannot be inflated
     /// into a letter-sized shape that scores as letter-like. 2% of the
-    /// canvas (≈25 pt on the study iPad). Ruled 2026-10-05.
+    /// canvas. Ruled 2026-10-05. From r16 the unit is the canvas HEIGHT on
+    /// both axes (≈12.5 pt on the A16 study canvas; before r16 a horizontal
+    /// extent was measured in canvas widths, ≈21.7 pt).
     static let scribbleExtent: CGFloat = 0.02
+    /// Upper bound on match -> fit -> re-match rounds per seed (r16). Two
+    /// rounds reach the fixed point in every case measured; the bound only
+    /// stops a pathological drawing from oscillating.
+    static let refitIterations = 4
+    /// The fixed arc-length spacing every trace stroke is resampled to
+    /// before Fréchet (r16, audit B-11), as a fraction of the reference
+    /// strokes' height: 1/40, about 7 pt on the A16 study canvas.
+    static let traceSpacingFraction: CGFloat = 1.0 / 40.0
+
+    /// `traceSpacingFraction` of the reference's height (its width when the
+    /// reference is flat), never zero.
+    static func traceSpacing(reference: [[CGPoint]]) -> CGFloat {
+        guard let box = boundingBox(reference) else { return 1 }
+        let extent = box.height > degenerateExtent ? box.height : max(box.width, degenerateExtent)
+        return extent * traceSpacingFraction
+    }
+
+    /// The stroke resampled at one fixed arc-length spacing: as many points
+    /// as its length holds at `spacing` (at least two), evenly spread along
+    /// the polyline, endpoints kept. The point count follows the path's
+    /// length, not the number of digitiser samples on it.
+    static func resampleBySpacing(_ stroke: [CGPoint], spacing: CGFloat) -> [CGPoint] {
+        guard stroke.count >= 2, spacing > 0 else { return stroke }
+        var length: CGFloat = 0
+        for i in 1..<stroke.count { length += FreeWriteScorer.dist(stroke[i - 1], stroke[i]) }
+        guard length > 0, length.isFinite else { return stroke }
+        let count = max(2, Int((length / spacing).rounded()) + 1)
+        return FreeWriteScorer.resample(stroke, targetCount: count)
+    }
+
+    /// The arc-length spacing of `fitBasis`, as a fraction of the drawn
+    /// strokes' height: 1/120, about 2.5 pt. Finer than `traceSpacingFraction`
+    /// because the box's top and bottom often sit on a sharp apex (A, M),
+    /// which a coarse resample would cut by up to half a spacing.
+    static let fitBasisSpacingFraction: CGFloat = 1.0 / 120.0
+
+    /// The strokes the fit's bounding box is read from: the drawn strokes
+    /// resampled at a fixed arc-length spacing, taken relative to
+    /// THEIR OWN height (so the r6 size invariance stays exact). A box over
+    /// the raw samples grows with the number of noisy samples at its edge,
+    /// which made the fit, and through it the primary, follow the sample
+    /// rate (r16, audit B-11; narrow letters such as I most).
+    static func fitBasis(_ drawn: [[CGPoint]]) -> [[CGPoint]] {
+        guard let box = boundingBox(drawn) else { return drawn }
+        let extent = box.height > degenerateExtent ? box.height : max(box.width, degenerateExtent)
+        return drawn.map { resampleBySpacing($0, spacing: extent * fitBasisSpacingFraction) }
+    }
+
+    /// The frame-normalised points and the reference, both in units of the
+    /// frame's HEIGHT on both axes (r16, audit B-3), so one point of error
+    /// weighs the same horizontally and vertically. `points` are in the
+    /// frame's own coordinates (canvas points); the reference is in the
+    /// frame's per-axis 0–1 fractions, as the tracker and `RawTrace` keep
+    /// it, and only its x is rescaled by the frame's aspect (width/height).
+    /// The radius is left as it is: in the tracker's own cell-height units
+    /// (`StrokeTracker.cellDefinition`), which is this frame's unit too.
+    /// A zero frame passes the points through with aspect 1, as before.
+    static func heightNormalised(points: [CGPoint], reference: LetterStrokes,
+                                 frame: CGRect) -> (points: [CGPoint], reference: LetterStrokes) {
+        let w = max(frame.width, 1)
+        let h = max(frame.height, 1)
+        let aspect = w / h
+        let pts = points.map { CGPoint(x: ($0.x - frame.minX) / h, y: ($0.y - frame.minY) / h) }
+        let ref = LetterStrokes(
+            letter: reference.letter,
+            checkpointRadius: reference.checkpointRadius,
+            strokes: reference.strokes.map { s in
+                StrokeDefinition(id: s.id, checkpoints: s.checkpoints.map {
+                    Checkpoint(x: $0.x * aspect, y: $0.y)
+                })
+            })
+        return (pts, ref)
+    }
+
     /// Whether a free-write contact is a PRODUCTION — something the lift's
     /// 2.0 s quiet window advances on and the unload path scores and
     /// records as a completed trial (protocol r7). At least two recorded
@@ -228,15 +380,22 @@ enum StrokeProcessScorer {
     /// kept-point filter a palm or finger creeping a few points across the
     /// glass records several points; two points alone no longer tell a
     /// contact from a mark.
+    /// From r16 both sides are measured in canvas HEIGHTS, the unit the fit
+    /// now sees (`heightNormalised`), so the two still cannot disagree.
     static func isProduction(points: [CGPoint], canvasSize: CGSize) -> Bool {
         guard points.count >= 2, let box = boundingBox([points]) else { return false }
-        let width = box.width / max(canvasSize.width, 1)
+        let width = box.width / max(canvasSize.height, 1)
         let height = box.height / max(canvasSize.height, 1)
         return max(width, height) >= scribbleExtent
     }
     /// An extent at or below this is zero (a straight vertical or
     /// horizontal line, or a single point) — that axis cannot be fitted.
     static let degenerateExtent: CGFloat = 1e-6
+
+    /// The share of the reference's larger extent an axis must span to set
+    /// the fit scale (r16). 0.25: every study letter's narrow axis but I's
+    /// (about 0.07) clears it.
+    static let fitAxisMinShare: CGFloat = 0.25
 
     /// The translate + UNIFORM scale (aspect kept, no rotation) that fits
     /// the drawn strokes' bounding box onto the reference strokes' box
@@ -251,8 +410,16 @@ enum StrokeProcessScorer {
     static func fitToReference(drawn: [[CGPoint]], reference: [[CGPoint]]) -> (CGPoint) -> CGPoint {
         guard let d = boundingBox(drawn), let r = boundingBox(reference) else { return { $0 } }
         var ratios: [CGFloat] = []
-        if d.width > degenerateExtent && r.width > degenerateExtent { ratios.append(r.width / d.width) }
-        if d.height > degenerateExtent && r.height > degenerateExtent { ratios.append(r.height / d.height) }
+        // An axis votes only when the reference spans at least
+        // `fitAxisMinShare` of its larger extent on it (r16): the narrow
+        // axis of a near-1D glyph (I's 18 pt slant over 274 pt) is a few
+        // points wide, so pen jitter alone moved its ratio, and with it the
+        // whole fit, by tens of percent, and more at a higher sample rate.
+        let rMax = max(r.width, r.height)
+        if d.width > degenerateExtent && r.width > degenerateExtent
+            && r.width >= fitAxisMinShare * rMax { ratios.append(r.width / d.width) }
+        if d.height > degenerateExtent && r.height > degenerateExtent
+            && r.height >= fitAxisMinShare * rMax { ratios.append(r.height / d.height) }
         let isScribble = max(d.width, d.height) < scribbleExtent
         let scale = (isScribble ? nil : ratios.min()) ?? 1
         let dc = CGPoint(x: d.midX, y: d.midY)

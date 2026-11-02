@@ -248,8 +248,13 @@ import AVFoundation
         let audio = LocalMockAudioController()
         let vm = TracingViewModel(.stub.with(audio: audio))
         let size = CGSize(width: 320, height: 480)
+        // The move ends ON the fixture stroke near its start (40, 240):
+        // since protocol r16 (audit B-1) one sample consumes every
+        // following checkpoint within the radius, and from (140, 160) the
+        // single sample completed the fixture letter, so the completing
+        // sample (correctly) started no sound (measured: progress 1.0).
         vm.beginTouch(at: CGPoint(x: 10, y: 10), t: 1.0)
-        vm.updateTouch(at: CGPoint(x: 140, y: 160), t: 1.01, canvasSize: size)
+        vm.updateTouch(at: CGPoint(x: 40, y: 240), t: 1.01, canvasSize: size)
         try? await Task.sleep(for: .milliseconds(150))
         #expect(audio.setAdaptivePlaybackCount >= 1)
     }
@@ -292,19 +297,25 @@ import AVFoundation
         ])
         tracker.load(strokes)
         tracker.update(normalizedPoint: CGPoint(x: 0.25, y: 0.50))
-        #expect(tracker.progress[0].nextCheckpoint == 1)
+        // Both checkpoints lie within the radius, and since r16 (audit B-1)
+        // one sample consumes every following checkpoint within it.
+        #expect(tracker.progress[0].nextCheckpoint == 2)
         #expect(tracker.overallProgress > 0)
     }
 
     @Test func strokeTracker_tenUpdatesAlongY50_hitsFirstTenCheckpoints() {
+        // Radius 0.01 < the 0.02 spacing, and the samples sit ON the
+        // checkpoints, so each sample consumes exactly its own checkpoint
+        // (r16 consumes every following checkpoint within the radius; with
+        // the former 0.5 radius the first sample would take 38 of them).
         let tracker = StrokeTracker()
         let checkpoints = (0..<50).map { i in Checkpoint(x: CGFloat(i) * 0.02, y: 0.5) }
-        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.5, strokes: [
+        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.01, strokes: [
             .init(id: 1, checkpoints: checkpoints)
         ])
         tracker.load(strokes)
         for i in 0..<10 {
-            tracker.update(normalizedPoint: CGPoint(x: 0.25 + CGFloat(i) * 0.025, y: 0.50))
+            tracker.update(normalizedPoint: CGPoint(x: CGFloat(i) * 0.02, y: 0.50))
         }
         #expect(tracker.progress[0].nextCheckpoint == 10)
         #expect(abs(tracker.overallProgress - 10.0 / 50.0) < 0.001)
@@ -312,12 +323,15 @@ import AVFoundation
 
     @Test func strokeTracker_checkpointHit_enablesSound() {
         let tracker = StrokeTracker()
-        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.5, strokes: [
+        // Radius 0.3: the sample reaches the first checkpoint only. With
+        // the former 0.5 both lie within it, and since r16 (audit B-1) one
+        // sample consumes both, completing the (only) stroke.
+        let strokes = LetterStrokes(letter: "A", checkpointRadius: 0.3, strokes: [
             .init(id: 1, checkpoints: [.init(x: 0.0, y: 0.5), .init(x: 0.5, y: 0.5)])
         ])
         tracker.load(strokes)
         #expect(!tracker.soundEnabled, "Sound must be disabled before any checkpoint is hit")
-        tracker.update(normalizedPoint: CGPoint(x: 0.25, y: 0.50))
+        tracker.update(normalizedPoint: CGPoint(x: 0.1, y: 0.50))
         #expect(tracker.soundEnabled, "Sound must be enabled after the first checkpoint is hit")
     }
 
