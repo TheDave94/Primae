@@ -279,6 +279,15 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         signalTicker = nil
     }
 
+    /// Protocol r17: the live sonification node (`LiveSonificationAudio`)
+    /// renders into THIS graph's main mixer, beside the player, so it shares
+    /// the session, the route and the measurement tap. Graph wiring only;
+    /// called once, at construction (`SoundEnvelope.makeAudioEngine`).
+    func attachLiveSonificationNode(_ node: AVAudioNode, format: AVAudioFormat) {
+        engine.attach(node)
+        engine.connect(node, to: engine.mainMixerNode, format: format)
+    }
+
     // MARK: - AudioControlling
 
     func loadAudioFile(named fileName: String, autoplay: Bool = false) {

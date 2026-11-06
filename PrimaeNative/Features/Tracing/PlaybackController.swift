@@ -129,6 +129,16 @@ final class PlaybackController {
     /// Whether the last command this controller issued to the engine was
     /// a play (true) or a stop (false).
     private var audioIsRunning = false
+    /// The next `.stop` this controller issues fades over this long (a raised cosine) instead of the envelope's 0.4 s; consumed by it.
+    private var nextStopFadeSeconds: TimeInterval?
+
+    /// The letter's last stroke reached its end: idle at once, with the SHORT letter-end fade (ENV3). Nothing else changes.
+    func requestLetterEndIdle() {
+        nextStopFadeSeconds = SoundEnvelope.letterEndFadeSeconds
+        request(.idle, immediate: true)
+        nextStopFadeSeconds = nil
+    }
+
     func apply(_ cmd: PlaybackStateMachine.Command) {
         switch cmd {
         case .play:
@@ -167,7 +177,7 @@ final class PlaybackController {
             audioIsRunning = true
             onIsPlayingChanged(true)
         case .stop:
-            audio.stop()
+            if let s = nextStopFadeSeconds { nextStopFadeSeconds = nil; audio.stop(fadeOutSeconds: s) } else { audio.stop() }
             audioIsRunning = false
             onIsPlayingChanged(false)
         case .none:

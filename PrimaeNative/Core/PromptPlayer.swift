@@ -170,6 +170,9 @@ final class PromptPlayer: PromptPlaying {
     /// instead of cutting it (the synthesiser's hand-over did the same for
     /// the spoken line it replaces), and any later `play` or `stop` drops it.
     func play(_ key: PromptKey, fallbackText: String) {
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("prompt.play", "key=\(key.rawValue)")
+        #endif
         if key == .retryCue, active != nil {
             queuedRetry = (key, fallbackText)
             return

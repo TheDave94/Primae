@@ -115,7 +115,7 @@ final class AudioEngineRenderPinTests: XCTestCase {
 
     /// A real engine with a recorder on its main mixer.
     @MainActor func makeRig() throws -> (AudioEngine, AVAudioEngine, RenderPinRecorder) {
-        let engine = SoundEnvelope.makeAudioEngine()
+        let engine = SoundEnvelope.makeHostEngine()
         let av = try XCTUnwrap(Mirror(reflecting: engine).children.first { $0.label == "engine" }?.value as? AVAudioEngine,
                                "AudioEngine's stored AVAudioEngine must be reachable")
         let recorder = RenderPinRecorder()

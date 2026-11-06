@@ -83,6 +83,9 @@ final class EngineModelAudio: AudioControlling {
         loadedFile = nil
         if phaseAtCall() == .observe { stopsDuringObserve += 1 }
     }
+    /// ENV3: the fade each letter-end stop asked for (the stop itself is still an ordinary `.stop` event).
+    private(set) var letterEndStopFades: [TimeInterval] = []
+    func stop(fadeOutSeconds: TimeInterval) { letterEndStopFades.append(fadeOutSeconds); stop() }
     func restart() {}
     /// Probe closing-window labels, in order — `emitAudioSignalSummary` is
     /// a protocol requirement (`AudioControlling`), so the call reaches here.

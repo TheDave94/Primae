@@ -88,6 +88,15 @@ struct SchuleWorldView: View {
             }
             .padding(.vertical, 16)
 
+            // The study's end-of-session screen (2026-11-04). Below the
+            // toast so "Neues Kind bereit" is never covered; the rail is
+            // outside this view, so the proctor's double-tap still works.
+            if vm.sessionEndScreenPresented {
+                SessionEndScreenView(letters: vm.visibleLetterNames)
+                    .transition(.opacity)
+                    .zIndex(40)
+            }
+
             if let toast = vm.toastMessage {
                 VStack {
                     Text(toast)
@@ -105,6 +114,7 @@ struct SchuleWorldView: View {
                     Spacer()
                 }
                 .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
+                .zIndex(50)   // above the end-of-session screen (zIndex 40)
             }
 
             // LetterWheelPicker itself is compiled out of the study

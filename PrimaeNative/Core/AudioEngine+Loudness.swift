@@ -63,7 +63,12 @@ extension AudioEngine {
     /// or a slow onset drag a phone's measured level down by an amount
     /// that differs between fricatives and vowels — the very contrast
     /// the letter set spans (AE-2a).
-    static func fileRMS(at url: URL) -> Float? {
+    ///
+    /// `fromFrame` (R17D): frames before it are not measured. A phoneme file
+    /// with a recorded onset (`PhonemeOnsets`) is measured on its LOOP part
+    /// only: A's onset peaks +6.8 dB over the loop, so the whole-file steady
+    /// level would have turned the loop down by 5 dB (ONSET.md section 3).
+    static func fileRMS(at url: URL, fromFrame: Int = 0) -> Float? {
         guard let file = try? AVAudioFile(forReading: url),
               file.length > 0,
               let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat,
@@ -76,7 +81,7 @@ extension AudioEngine {
         let window = max(1, Int(buffer.format.sampleRate * loudnessWindowSeconds))
         // Mean square per window, channels pooled.
         var windows: [Double] = []
-        var start = 0
+        var start = max(0, min(fromFrame, frames - 1))
         while start < frames {
             let end = min(frames, start + window)
             var sum: Double = 0
@@ -102,7 +107,8 @@ extension AudioEngine {
     static func loudnessGain(forFileAt url: URL) -> Float {
         if let cached = loudnessGainCache[url] { return cached }
         let gain: Float
-        if let rms = fileRMS(at: url), rms > 0 {
+        let loopFrom = PhonemeOnsets.onset(forFileNamed: url.lastPathComponent)?.attackEndFrame ?? 0
+        if let rms = fileRMS(at: url, fromFrame: loopFrom), rms > 0 {
             let raw = loudnessTargetRMS / rms
             gain = min(loudnessGainRange.upperBound, max(loudnessGainRange.lowerBound, raw))
             if gain != raw {

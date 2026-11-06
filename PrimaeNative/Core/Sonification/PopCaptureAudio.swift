@@ -1,0 +1,56 @@
+// PopCaptureAudio.swift
+// PrimaeNative
+//
+// POPCAP: logs every arm-sound command on the capture clock and forwards it,
+// unchanged, to the real voice. Wraps whatever `SoundEnvelope.makeAudioEngine`
+// built (the r17 live voice, or the r16 `AudioEngine` in the reference
+// build), so one instrument serves both and neither engine file is edited.
+// DEBUG-only (`#if DEBUG || POPCAP`), and only when launched with
+// `-popCapture`: `wrap` returns the voice itself otherwise.
+
+#if DEBUG || POPCAP
+import Foundation
+
+@MainActor
+final class PopCaptureAudio: AudioControlling {
+    private let inner: AudioControlling
+    private let cap: PopCapture
+
+    private init(_ inner: AudioControlling, _ cap: PopCapture) { self.inner = inner; self.cap = cap }
+
+    static func wrap(_ voice: AudioControlling) -> AudioControlling {
+        guard let cap = PopCapture.armed else { return voice }
+        return PopCaptureAudio(voice, cap)
+    }
+
+    func loadAudioFile(named fileName: String, autoplay: Bool) {
+        cap.event("audio.load", "file=\(fileName) autoplay=\(autoplay)")
+        inner.loadAudioFile(named: fileName, autoplay: autoplay)
+    }
+    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
+        cap.event("audio.rate_pan", "rate=\(speed) pan=\(horizontalBias)")
+        inner.setAdaptivePlayback(speed: speed, horizontalBias: horizontalBias)
+    }
+    func setSpatialPitch(cents: Float) {
+        cap.event("audio.pitch", "cents=\(cents)")
+        inner.setSpatialPitch(cents: cents)
+    }
+    func play() { cap.event("audio.play", "fade=0"); inner.play() }
+    func play(fadeInSeconds: TimeInterval) { cap.event("audio.play", "fade=\(fadeInSeconds)"); inner.play(fadeInSeconds: fadeInSeconds) }
+    func stop() { cap.event("audio.stop"); inner.stop() }
+    func stop(fadeOutSeconds: TimeInterval) { cap.event("audio.stop", "fade=\(fadeOutSeconds)"); inner.stop(fadeOutSeconds: fadeOutSeconds) }
+    func restart() { cap.event("audio.restart"); inner.restart() }
+    func suspendForLifecycle() { cap.event("audio.suspend"); inner.suspendForLifecycle() }
+    func resumeAfterLifecycle() { cap.event("audio.resume"); inner.resumeAfterLifecycle() }
+    func cancelPendingLifecycleWork() { inner.cancelPendingLifecycleWork() }
+
+    func emitAudioSignalSummary(label: String) { inner.emitAudioSignalSummary(label: label) }
+    func startAudioSignalTicker(intervalSeconds: TimeInterval, label: @escaping @MainActor () -> String) {
+        inner.startAudioSignalTicker(intervalSeconds: intervalSeconds, label: label)
+    }
+    func stopAudioSignalTicker() { inner.stopAudioSignalTicker() }
+    var latestAudioSignalSummary: String? { inner.latestAudioSignalSummary }
+    var initializationError: String? { inner.initializationError }
+    var debugAudioStateSummary: String { inner.debugAudioStateSummary }
+}
+#endif

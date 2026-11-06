@@ -282,7 +282,8 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                         prompts: SpyPrompts? = nil,
                         gap: TimeInterval = 0.05,
                         cueEnd: TimeInterval = 0.05,
-                        withLetterI: Bool = false) -> TracingViewModel {
+                        withLetterI: Bool = false,
+                        sleeper: Sleeper? = nil) -> TracingViewModel {
         // Constructed here, not in the default arguments: a
         // default-value expression is type-checked nonisolated in this
         // target, and these doubles' inits are @MainActor-isolated —
@@ -318,6 +319,9 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         deps.audio = audio
         deps.speech = speech
         deps.makePromptPlayer = { _ in prompts }
+        if let sleeper {
+            deps.makePlaybackController = { a, cb in PlaybackController(audio: a, sleep: sleeper, onIsPlayingChanged: cb) }
+        }
         let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
         audio.phaseAtCall = { [weak vm] in vm?.phaseController.currentPhase }
@@ -658,6 +662,9 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         TouchDispatcher.mapVelocityToSpeed(CGFloat(AnimationGuideController.observeUnitsPerSecond) * canvas.width)
     }
 
+    /// The still dot's rate: the map's floor (0.8 under M3, R17D; 0.5 before).
+    private var slowest: Float { TouchDispatcher.mapVelocityToSpeed(0) }
+
     @Test("P4: the observe sound tracks the dot — starts still at the slowest rate at the dot's first point, rate follows the dot's speed, pan follows x; pitch follows y in the spatial arm only",
           arguments: [PilotAudioCondition.phoneme, .spatial])
     func observeSoundTracksTheDot(arm: PilotAudioCondition) async {
@@ -669,11 +676,11 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         // Starts still at the dot's first point, slowest rate: the start
         // call and the start hold's still frame agree on the point.
         if calls.count > 1 {
-            #expect(calls[0].speed == 0.5 && calls[1].speed == 0.5 && abs(calls[0].bias - calls[1].bias) < 0.001,
+            #expect(calls[0].speed == slowest && calls[1].speed == slowest && abs(calls[0].bias - calls[1].bias) < 0.001,
                     "\(arm): the observe sound did not start still at the dot's first point: \(calls.prefix(2))")
         }
         // While moving: the pen's mapping of the dot's speed.
-        let moving = calls.filter { $0.speed > 0.5 }
+        let moving = calls.filter { $0.speed > slowest }
         #expect(!moving.isEmpty && moving.allSatisfy { abs($0.speed - dotSpeed) < 0.02 },
                 "\(arm): the moving dot's rate is not the pen mapping of its speed (\(dotSpeed)): \(moving.map(\.speed).prefix(8))")
         // Pan follows x: I's stroke runs right to left, so the pan only
@@ -706,7 +713,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect((speeds.max() ?? 0) < dotSpeed + 0.02,
                 "a jump entered the velocity: max rate \(speeds.max() ?? 0) > the dot's \(dotSpeed)")
         // The dwell after each jump is still: slowest rate again.
-        #expect(speeds.filter { $0 == 0.5 }.count >= 3, "the still dot did not play at the slowest rate")
+        #expect(speeds.filter { $0 == slowest }.count >= 3, "the still dot did not play at the slowest rate")
     }
 
     // MARK: - P4: the presentation waits for the cue to END (2026-10-05)
@@ -1036,6 +1043,109 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(log.calls.contains(.seconds(SoundEnvelope.liftHoldSeconds)),
                 "the lift hold did not sleep 0.8 s: \(log.calls)")
         #expect(audio.events.filter { $0 == .stop }.count == 2, "stall and hold each stop: \(audio.events)")
+    }
+
+    // MARK: - ENV3 (2026-11-05): the child's own hold; the letter's last stroke fades at once
+
+    /// One stroke of 15 moves (the `write` pen) starting at `t`; returns the time of its last sample.
+    private func strokeAt(_ vm: TracingViewModel, _ t0: CFTimeInterval) -> CFTimeInterval {
+        var t = t0
+        var p = CGPoint(x: 50, y: 200)
+        vm.beginTouch(at: p, t: t)
+        for _ in 0..<15 { t += 0.001; p.x += 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+        return t
+    }
+
+    @Test("ENV3: the lift hold is the child's own — the first lift sleeps the seed 0.8 s, then the hold follows the child's gaps",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func theLiftHoldIsTheChildsOwn(arm: PilotAudioCondition) async {
+        let log = SleepLog()
+        let vm = makeVM(arm: arm, sleeper: { d in log.record(d) })
+        enter(.guided, vm)
+        var t: CFTimeInterval = 1000
+        var holds: [Double] = []
+        for _ in 0..<6 {
+            t = strokeAt(vm, t)
+            let before = log.calls.count
+            vm.endTouch()
+            await vm.playback.pendingTransition?.value      // the hold's sleeper runs inside the controller's task
+            let slept = log.calls.dropFirst(before).compactMap { d -> Double? in
+                let c = d.components; return Double(c.seconds) + Double(c.attoseconds) / 1e18
+            }
+            holds.append(slept.max() ?? -1)   // the hold is the longest sleep (a cancelled stall task may log after it)
+            t += 1.2                        // a slow child: 1.2 s between lift and next touch
+        }
+        #expect(abs(holds[0] - 0.8) < 1e-6, "the first lift is the seed: \(holds)")
+        // holds[5] is not asserted: by then the fixture letter's stroke can be the letter's last, which arms no hold (it fades).
+        #expect(holds[4] > 2.0,
+                "the hold never followed the child's 1.2 s gaps: \(holds)")
+        #expect(holds[4] > holds[0] + 1.0, "\(holds)")
+        #expect(vm.strokeTempo.measured == 5, "gaps measured: \(vm.strokeTempo.measured)")
+        #expect(vm.playback.idleDebounceSeconds > SoundEnvelope.stallSeconds, "the stall did not scale with the tempo")
+    }
+
+    @Test("ENV3: a new child starts again from the seed")
+    func aNewChildStartsFromTheSeed() {
+        let vm = makeVM(arm: .phoneme)
+        enter(.guided, vm)
+        var t: CFTimeInterval = 1000
+        for _ in 0..<6 { t = strokeAt(vm, t); vm.endTouch(); t += 1.2 }
+        #expect(vm.strokeTempo.holdSeconds > 1.5)
+        _ = vm.resetForNewParticipant()
+        #expect(vm.strokeTempo == StrokeTempo(), "the outgoing child's tempo survived the enrolment")
+        #expect(vm.playback.idleDebounceSeconds == SoundEnvelope.stallSeconds)
+    }
+
+    @Test("ENV3: cold probes neither feed nor read the tempo")
+    func probesDoNotFeedTheTempo() {
+        let vm = makeVM(arm: .phoneme)
+        enter(.pretest, vm)
+        var t: CFTimeInterval = 1000
+        for _ in 0..<4 { t = strokeAt(vm, t); vm.endTouch(); t += 1.2 }
+        #expect(vm.strokeTempo.measured == 0, "a probe stroke gap was measured")
+    }
+
+    /// Traces every checkpoint of every stroke of the loaded letter, lifting between strokes; returns after the last stroke's
+    /// final sample WITHOUT lifting. `onStrokeEnd` runs after each stroke's lift except the last.
+    private func traceWholeLetter(_ vm: TracingViewModel, from t0: CFTimeInterval, onStrokeEnd: () -> Void = {}) -> CFTimeInterval {
+        var t = t0
+        let frame = vm.grid.activeCell.frame
+        guard let def = vm.strokeTracker.definition else { return t }
+        for (i, stroke) in def.strokes.enumerated() {
+            let pts = stroke.checkpoints.map { CGPoint(x: frame.minX + $0.x * frame.width, y: frame.minY + $0.y * frame.height) }
+            vm.beginTouch(at: pts[0], t: t)
+            for q in pts.dropFirst() {
+                t += 0.02
+                vm.updateTouch(at: q, t: t, canvasSize: canvas)
+            }
+            if i < def.strokes.count - 1 { vm.endTouch(); onStrokeEnd(); t += 0.3 }
+        }
+        return t
+    }
+
+    @Test("ENV3: free-writing — the sound fades when the letter's last stroke reaches its end, stays off, and the lift arms no hold",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func theLastStrokeEndsTheSoundAtOnce(arm: PilotAudioCondition) {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio, withLetterI: true)
+        vm.loadLetter(name: "F")                        // three strokes (the fixture's A has one)
+        vm.phaseController.resume(at: .freeWrite)
+        var holdsBetweenStrokes = 0
+        let t = traceWholeLetter(vm, from: 1000) { if vm.playback.pendingTransition != nil { holdsBetweenStrokes += 1 } }
+        #expect(vm.strokeTracker.isComplete, "precondition: the trace completed the letter")
+        #expect(holdsBetweenStrokes == 2, "precondition: each lift between strokes armed the hold (pending idle): \(holdsBetweenStrokes)")
+        #expect(!audio.isPlaying, "the last stroke reached its end and the sound still plays: \(audio.events.suffix(6))")
+        #expect(vm.touchDispatcher.letterEndLatched)
+        // ENV3 (David: "fade immediately on end point of letters"): the letter-end stop is the SHORT fade, not the envelope's 0.4 s.
+        // Mutation: `requestLetterEndIdle` calling `request(.idle, immediate: true)` without the fade - RED.
+        #expect(audio.letterEndStopFades == [SoundEnvelope.letterEndFadeSeconds],
+                "the letter's end did not stop with the short fade: \(audio.letterEndStopFades) events \(audio.events.suffix(8))")
+        #expect(SoundEnvelope.letterEndFadeSeconds <= 0.08 && SoundEnvelope.letterEndFadeSeconds < SoundEnvelope.fadeOutSeconds / 4)
+        var p = CGPoint(x: 10, y: 10)
+        for _ in 0..<5 { p.x += 5; vm.updateTouch(at: p, t: t + 0.05, canvasSize: canvas) }
+        #expect(!audio.isPlaying, "the sound came back after the letter ended")
+        vm.endTouch()
+        #expect(vm.playback.pendingTransition == nil, "the lift after the last stroke armed a hold")
     }
 
     /// The device probe (`AudioSignalProbe`) closes a measurement window at

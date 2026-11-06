@@ -66,7 +66,7 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 - **Remotes**: `origin` is the Forgejo forge at `https://git.flamingistan.com/David/Primae.git` — that is where you push. The GitHub repo `TheDave94/Primae` is a **push mirror** of the forge, not the origin: branches and workflow files reach it automatically, with nobody pushing to GitHub directly. CI runs there, so `gh run list --repo TheDave94/Primae` is the right way to read results and the wrong way to imagine the data flows.
 - **Learning phases**: observe → direct → guided → freeWrite (managed by PhaseController)
 - **Stroke data**: JSON files in `Resources/Letters/{letter}/strokes.json` with normalized coordinates
-- **Audio**: Proximity-triggered playback via AudioEngine + StrokeTracker
+- **Audio**: Proximity-triggered playback driven by TouchDispatcher + StrokeTracker. From protocol r17 the sound is rendered by `LiveSonificationAudio` (TDPSOLA, `Core/Sonification/`), hosted by AudioEngine
 
 ## Proctor batch enrolment (one gesture, no relaunch, ONE export)
 
@@ -83,7 +83,7 @@ Note the rail is a **64pt vertical bar on the LEFT**, not a top bar: `mainShell`
 - `WerkstattWorldView.swift` — World 2: freeform writing
 - `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
 - `StrokeTracker.swift` — checkpoint proximity detection
-- `AudioEngine.swift` — ⚠️ STABLE AND FRAGILE — do NOT modify
+- `AudioEngine.swift` — ⚠️ STABLE AND FRAGILE — do NOT modify. From r17 it hosts `LiveSonificationAudio` (session, route, interruptions, measurement tap); its only r17 change is the `attachLiveSonificationNode` graph wiring (David's L3 ruling, 2026-11-02)
 - `SpeechSynthesizer.swift` — German system-voice TTS for child-facing verbal feedback outside the study's five fixed phrases (from protocol r9 those are RECORDED mp3s in `Resources/Prompts/`, played by `PromptPlayer.swift`, set checked by `RecordedPromptSet.swift` and `scripts/check_study_prompts.py`)
 - `LetterRepository.swift` — loads letters from bundle
 - `PrimaeLetterRenderer.swift` — renders letter glyphs using Primae font
@@ -1504,7 +1504,7 @@ python3 scripts/generate_letter_audio.py …
 **`.gitignore`** already covers `.env` and `.env.*` (excluding `.env.example`) — no change needed here.
 
 ## DO NOT
-- Do NOT modify `AudioEngine.swift` — it is stable and fragile
+- Do NOT modify `AudioEngine.swift` — it is stable and fragile (r16 C1-C3 and r17 graph wiring were the bounded exceptions David ruled)
 - Do NOT introduce new dependencies or frameworks
 - Do NOT change `.swiftLanguageMode(.v5)` in the test target
 - Do NOT change `.defaultIsolation(MainActor.self)` in the main target

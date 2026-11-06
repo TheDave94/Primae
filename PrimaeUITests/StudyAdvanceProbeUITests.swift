@@ -658,6 +658,17 @@ final class MeasuredAudioUITests: XCTestCase {
         XCTAssertTrue(gate.waitForNonExistence(timeout: 15),
                       "enrolling must clear the start-gate without any further tap")
 
+        // Since r14 (R-007) enrolment leaves the first trained letter
+        // PARKED: nothing plays, and the probe ticker is not started,
+        // until the proctor taps the observe pill (`startParkedLetter`).
+        // MEASURED 2026-11-02 on the iPad: without this tap the readout
+        // never appeared in 18 s, because there was nothing to measure.
+        // The test used to rely on the pre-r14 un-parked start.
+        let observePill = app.descendants(matching: .any)["Beobachtungsphase"]
+        XCTAssertTrue(observePill.waitUntilHittable(timeout: 10),
+                      "the parked first letter must offer the observe pill")
+        observePill.tap()
+
         // Sit through the demonstration, SAMPLING AS IT RUNS.
         //
         // MEASURED: polling only at the end saw `peak=0.0` and failed,

@@ -383,7 +383,8 @@ private func replug(_ vm: TracingViewModel) {
         for _ in 0..<60 { t += 1.0 / 120; p.x += 1; vm.updateTouch(at: p, t: t, canvasSize: rig.canvas) }    // 120 pt/s
         for _ in 0..<4 { t += 1.0 / 120; p.x += 12.5; vm.updateTouch(at: p, t: t, canvasSize: rig.canvas) }  // 1500 pt/s flick
         #expect(vm.playback.state == .active, "precondition: the stroke sounds")
-        #expect(rig.audio.rate > 1.5, "precondition: the flick drove the rate up (\(rig.audio.rate))")
+        // M3 (R17D): the flick sits at the 1.25 ceiling; 120 pt/s maps to 0.94, 0.31 below it.
+        #expect(rig.audio.rate > 1.2, "precondition: the flick drove the rate up (\(rig.audio.rate))")
         vm.endTouch()
         let expected = TouchDispatcher.mapVelocityToSpeed(120)
         #expect(abs(rig.audio.rate - expected) < 0.1,

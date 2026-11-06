@@ -275,10 +275,11 @@ For **each of the three trained letters** (the ones named on the
   - **Phonem:** the recorded prompt **"Schau genau hin."**, then —
     **1.0 s after the prompt ENDS** (3.0 s after it started if no end is
     reported) — the guide-dot animation starts and, together with it, the
-    letter's own recorded sound, **looping for the whole pass** and
+    letter's own recorded sound (from r17 its recorded onset once, then
+    the loop), **sounding for the whole pass** and
     stopping when the phase moves on. The sound follows the dot as it
     follows the pen: rate from the dot's speed (a still dot plays on at
-    the slowest rate), pan from its horizontal position.
+    the slowest rate, 0.8), pan from its horizontal position.
   - **Raumklang:** the same prompt and the same start, with the
     synthetic carrier tone following the dot: rate from its speed, pan
     from x, **pitch from its height (y)**. It is no longer a steady
@@ -320,9 +321,14 @@ For **each of the three trained letters** (the ones named on the
     the path (near the expected checkpoint); since r3 there is no speed
     threshold. It speeds up / slows down and (Raumklang only) changes
     pitch with your vertical position and pans with your horizontal
-    position. If you pause for 0.3 s it stops, and after a lift it is
-    held for 0.8 s (a pen put back down inside that hold keeps the sound,
-    r7), fading out over 0.4 s once it ends.
+    position. The sound starts at once when a stroke starts. If you
+    pause for 0.3 s it stops (up to 0.6 s for a slow writer), and after a
+    lift it is held (a pen put back down inside that hold keeps the
+    sound, r7), fading out over 0.4 s once it ends. From r17 the hold
+    adapts to the child: 0.8 s at the start of each child, then twice the
+    median of that child's last five lift-to-next-touch gaps, between
+    0.5 s and 2.5 s. When the letter's last stroke ends the sound fades
+    out at once (50 ms) and stays off until the next touch.
   - **Ohne Ton:** silent throughout, by design.
 - **No haptics anywhere in this phase, in any arm.** Under study mode
   the haptic engine is a silent no-op (same substitution as 4b), so
@@ -397,10 +403,17 @@ the LAST trained letter's FreeWrite is recorded in training
 - **No chime in any arm** (protocol r13, 2026-10-21; under r4-r12 Phonem
   and Raumklang played a short one). `StudyVoiceoverPromptPlayer` drops
   every sound effect, the stroke tick included.
-- **Nothing appears on screen, in any arm.** The celebration overlay is
-  queued, but a study build draws nothing for it: `SchuleWorldView`
-  renders `case .celebration` as `EmptyView()` under `STUDY_BUILD`
-  (`CompletionCelebrationOverlay` is compiled out).
+- **From r17 a visual end screen appears, identical in every arm** (no
+  sound of its own, no score, no star count): about 1.2 s after the last
+  letter's free-writing, the child's three letters pop in with green
+  checks under a star and falling confetti (`SessionEndScreenView`,
+  accessibility identifier `sessionEndScreen`; with Reduce Motion on, no
+  motion and no confetti). It shows once per child, only when every
+  letter of the set has a completed free-writing row, never after a cold
+  probe, and not after a partial session (a skipped letter). The
+  celebration overlay itself is still drawn as nothing (`SchuleWorldView`
+  renders `case .celebration` as `EmptyView()` under `STUDY_BUILD`). The
+  rail double-tap ("Nächstes Kind") works from the end screen.
 - **The chevron stops advancing** — the set is over
   (`nextLetter()`: `guard !awaitingNextParticipant else { return }`).
   That is the hand-over signal: enrol the next child with the rail

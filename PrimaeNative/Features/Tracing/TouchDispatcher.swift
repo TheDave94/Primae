@@ -109,6 +109,28 @@ final class TouchDispatcher {
     /// Touch timestamp of the last spoken retry cue; nil after a reset.
     private var lastRetryCueAt: CFTimeInterval?
 
+    // MARK: - Stroke envelope state (protocol r17, RULINGS 2026-11-05)
+
+    /// Touch time of the last lift of this letter's writing, for the lift-to-next-touch gap (`StrokeTempo`).
+    private var lastLiftAt: CFTimeInterval?
+    /// Whether that lift finished the letter: no hold, and its gap is not a transition between strokes.
+    private var lastLiftEndedLetter = false
+    /// Set when the letter's last stroke reached its end while the pen was down (free-writing): the sound has faded and stays off until the next touch.
+    private(set) var letterEndLatched = false
+
+    /// Records the gap since the previous lift into the child's tempo and applies the tempo's stall cutoff.
+    private func noteStrokeGap(at t: CFTimeInterval) {
+        guard let vm else { return }
+        defer { lastLiftAt = nil }
+        // Cold probes are fixed protocol and silent: they neither feed nor read the tempo.
+        if vm.currentProbe == nil, let lift = lastLiftAt, !lastLiftEndedLetter,
+           vm.phaseController.currentPhase == .guided || vm.phaseController.currentPhase == .freeWrite {
+            let gap = t - lift
+            if vm.strokeTempo.record(gap: gap) { vm.phaseDelivery.noteGap(gap); vm.phaseDelivery.setTempo(vm.strokeTempo) }
+        }
+        vm.playback.idleDebounceSeconds = vm.strokeTempo.stallSeconds
+    }
+
     // MARK: - Public API (forwarded from VM)
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
@@ -138,6 +160,8 @@ final class TouchDispatcher {
         // pre-task demonstration — see PreTaskDemonstration.
         vm.cancelPreTaskDemonstration()
 
+        noteStrokeGap(at: t)
+        letterEndLatched               = false
         isSingleTouchInteractionActive = true
         sessionIsPencil                = vm.lastTouchDownWasPencil
         vm.playback.resumeIntent       = true
@@ -344,6 +368,13 @@ final class TouchDispatcher {
         }
 
         handleStrokeCompletionIfReached()
+        // Free-writing has no completion path of its own (the quiet window ends it), but the tracker still knows when the
+        // letter's last stroke reached its end: the sound fades at once and stays off until the next touch (RULINGS 2026-11-05).
+        if vm.studyMode, vm.phaseController.currentPhase == .freeWrite, !letterEndLatched, vm.currentProbe == nil,
+           vm.strokeTracker.isComplete, vm.playback.state == .active {
+            letterEndLatched = true
+            vm.playback.requestLetterEndIdle()
+        }
 
         self.lastPoint     = p
         self.lastTimestamp = t
@@ -413,6 +444,8 @@ final class TouchDispatcher {
                                         force: tail.force,
                                         canvasSize: tail.canvasSize)
         }
+        lastLiftAt                     = lastTimestamp
+        lastLiftEndedLetter            = vm.strokeTracker.isComplete || vm.didCompleteCurrentLetter
         unkeptTail                     = nil
         lastKeptPoint                  = nil
         keptPointsInStroke             = 0
@@ -426,12 +459,16 @@ final class TouchDispatcher {
         vm.playback.resumeIntent       = false
         vm.playback.cancelPending()
         settleCouplingAtLift(holdingSound: vm.playback.state == .active)   // B17/B18
-        if vm.playback.state == .active {
-            // The pen was sounding: keep it sounding through the lift hold
-            // (`SoundEnvelope.liftHoldSeconds`), so a child moving to the
-            // next stroke does not hear the sound cut (2026-10-05). A
+        if vm.playback.state == .active, lastLiftEndedLetter {
+            // The letter's LAST stroke ended: fade at once, no hold (RULINGS 2026-11-05).
+            vm.playback.requestLetterEndIdle()
+            vm.playback.forceIdle()
+        } else if vm.playback.state == .active {
+            // The pen was sounding: keep it sounding through the lift hold, so a child moving to the
+            // next stroke does not hear the sound cut (2026-10-05). The hold is the child's own:
+            // `StrokeTempo.holdSeconds`, seeded with `SoundEnvelope.liftHoldSeconds` (0.8 s). A
             // re-touch inside the hold cancels the stop.
-            vm.playback.requestIdleAfterHold(SoundEnvelope.liftHoldSeconds)
+            vm.playback.requestIdleAfterHold(vm.strokeTempo.holdSeconds)
         } else {
             let cmd = vm.playback.transition(to: .idle)
             vm.playback.apply(cmd)
@@ -508,6 +545,9 @@ final class TouchDispatcher {
         smoothedVelocity               = 0
         freeWriteAutoAdvanceTask?.cancel()
         freeWriteAutoAdvanceTask = nil
+        lastLiftAt                     = nil
+        lastLiftEndedLetter            = false
+        letterEndLatched               = false
         cancelledStrokeAwaitsWindow    = false
     }
 
@@ -646,7 +686,7 @@ final class TouchDispatcher {
         // still moving when the block came up (a headphone loss
         // mid-stroke) used to re-activate the sound on the new route —
         // the loudspeaker — on its very next movement.
-        if vm.sessionBlockReason != nil {
+        if vm.sessionBlockReason != nil || letterEndLatched {
             vm.playback.request(.idle, immediate: true)
             return
         }
@@ -808,8 +848,8 @@ final class TouchDispatcher {
             vm.didCompleteCurrentLetter = true
             if vm.feedbackIntensity > 0 { vm.haptics.fire(.letterCompleted) }
             // Stop audio before phase teardown so the letter sound
-            // doesn't bleed into the next phase.
-            vm.playback.request(.idle, immediate: true)
+            // doesn't bleed into the next phase. The letter-end fade is short (ENV3).
+            vm.playback.requestLetterEndIdle()
             // Single funnel for phase transitions.
             vm.advanceLearningPhase()
         }
@@ -837,13 +877,22 @@ final class TouchDispatcher {
 
     // MARK: - Pure helpers
 
-    /// Map writing velocity to playback rate. Calibrated for iPad
-    /// finger writing: ~50 pt/s (careful) → 0.5x, ~800 pt/s (quick) →
-    /// 2.0x; linear interpolation between, clamped at the bounds.
+    /// Map writing velocity (pt/s) to playback rate: mapping M3 (R17D,
+    /// RULINGS 2026-11-06; RATE.md section 3a). Rate 1 sits at 150 pt/s
+    /// (2.9 cm/s on the study iPad), the range is 0.8x-1.25x: 50 pt/s and
+    /// below -> 0.8, 150 -> 1.0, 400 and above -> 1.25, piecewise linear
+    /// between. Both sound arms identically. r5-r16 mapped 50 -> 0.5,
+    /// 800 -> 2.0 (rate 1 at 300 pt/s, faster than the one measured adult
+    /// writer's median of 192 pt/s), so slower writing spent most of a
+    /// stroke at 0.5-0.7. 150 pt/s is a judgement between the scripted
+    /// 50-150 pt/s, the tracer's 200 and that adult's 192: the one value to
+    /// re-tune once child speed data exist. NaN stays NaN (the audio
+    /// setter refuses non-finite rates).
     static func mapVelocityToSpeed(_ v: CGFloat) -> Float {
-        let low: CGFloat = 50, high: CGFloat = 800
-        if v <= low  { return 0.5 }
-        if v >= high { return 2.0 }
-        return Float(0.5 + 1.5 * ((v - low) / (high - low)))
+        let low: CGFloat = 50, mid: CGFloat = 150, high: CGFloat = 400
+        if v <= low  { return 0.8 }
+        if v >= high { return 1.25 }
+        if v <= mid  { return Float(0.8 + 0.2 * ((v - low) / (mid - low))) }
+        return Float(1.0 + 0.25 * ((v - mid) / (high - mid)))
     }
 }

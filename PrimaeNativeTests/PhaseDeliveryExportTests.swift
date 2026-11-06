@@ -28,11 +28,11 @@ import Foundation
         atStart: environment, outputRouteAtEnd: "Speaker", voiceId: "com.apple.voice.premium.de-DE.Anna",
         recognizerAvailable: false, build: build,
         observeLossesDuringSound: 1, observeLossesWithoutSound: 2,
-        observeSoundSeconds: 4.25, observeSoundDeliveredSeconds: 1.5)
+        observeSoundSeconds: 4.25, observeSoundDeliveredSeconds: 1.5, soundEngine: "B")
 
     /// Every delivery column and the value the row above must export.
     static let expected: [(String, String)] = [
-        ("finalizedBy", "background"),
+        ("finalizedBy", "background"), ("soundEngine", "B"),
         ("observeRestarts", "1"), ("strokesCancelled", "2"), ("routeChanges", "3"), ("interruptions", "4"),
         ("outputRouteAtStart", "Headphones"), ("outputRouteAtEnd", "Speaker"),
         ("outputVolume", "0.5000"), ("outputLatency", "0.005000"),
@@ -76,10 +76,10 @@ import Foundation
         for (column, value) in Self.expected {
             #expect(block.value(column) == value, "\(column): \(String(describing: block.value(column))) ≠ \(value)")
         }
-        // r11's columns are the newest: they follow `deviceModel`, in order.
+        // r11's columns follow `deviceModel`, in order; r17's `soundEngine` and the ENV3 envelope columns are the newest, last.
         let r8End = try #require(block.header.firstIndex(of: "deviceModel"))
-        #expect(Array(block.header.dropFirst(r8End + 1)) == ParentDashboardExporter.observeSoundColumns,
-                "the r11 columns are not appended last, in order: \(block.header.suffix(6))")
+        #expect(Array(block.header.dropFirst(r8End + 1)) == ParentDashboardExporter.observeSoundColumns + ["soundEngine"] + ParentDashboardExporter.envelopeColumns,
+                "the r11 and r17 columns are not appended last, in order: \(block.header.suffix(6))")
         // Appended after the legacy columns, never between them.
         let legacyEnd = try #require(block.header.firstIndex(of: "spatialDeviationRaw"))
         for (column, _) in Self.expected {

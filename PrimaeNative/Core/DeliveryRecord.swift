@@ -194,12 +194,27 @@ struct PhaseDelivery: Codable, Equatable {
     /// the observe sound the child could hear. 0 where no sound ran.
     var observeSoundSeconds: Double?
     var observeSoundDeliveredSeconds: Double?
+    /// Protocol r17: which live sonification engine rendered the letter's arm
+    /// sound (`LiveSonificationKernel.engineStamp`, "TDPSOLA" since the A/B
+    /// ended, RULINGS 2026-11-03). Nil on rows before r17.
+    var soundEngine: String?
+    /// Protocol r17 (RULINGS 2026-11-05): the child's own envelope timing at the end of the phase. `liftHoldSeconds` is the
+    /// hold that kept the sound across a pen lift (`StrokeTempo`, seeded 0.8 s), `stallSeconds` the stall cutoff in force,
+    /// `strokeGaps` and `strokeGapMedianSeconds` the lift-to-next-touch gaps measured IN this phase (guided and free-writing
+    /// only; cold probes feed nothing). Written in every arm, the silent one included (the tempo is measured, the silent arm just has no sound).
+    var liftHoldSeconds: Double?
+    var stallSeconds: Double?
+    var strokeGaps: Int?
+    var strokeGapMedianSeconds: Double?
 
     init(observeRestarts: Int? = nil, strokesCancelled: Int? = nil, routeChanges: Int? = nil,
          interruptions: Int? = nil, atStart: EnvironmentStamp? = nil, outputRouteAtEnd: String? = nil,
          voiceId: String? = nil, recognizerAvailable: Bool? = nil, build: BuildStamp? = nil,
          observeLossesDuringSound: Int? = nil, observeLossesWithoutSound: Int? = nil,
-         observeSoundSeconds: Double? = nil, observeSoundDeliveredSeconds: Double? = nil) {
+         observeSoundSeconds: Double? = nil, observeSoundDeliveredSeconds: Double? = nil,
+         soundEngine: String? = nil,
+         liftHoldSeconds: Double? = nil, stallSeconds: Double? = nil,
+         strokeGaps: Int? = nil, strokeGapMedianSeconds: Double? = nil) {
         self.observeRestarts = observeRestarts
         self.strokesCancelled = strokesCancelled
         self.routeChanges = routeChanges
@@ -213,6 +228,11 @@ struct PhaseDelivery: Codable, Equatable {
         self.observeLossesWithoutSound = observeLossesWithoutSound
         self.observeSoundSeconds = DeliveryCoding.finite(observeSoundSeconds)
         self.observeSoundDeliveredSeconds = DeliveryCoding.finite(observeSoundDeliveredSeconds)
+        self.soundEngine = soundEngine
+        self.liftHoldSeconds = DeliveryCoding.finite(liftHoldSeconds)
+        self.stallSeconds = DeliveryCoding.finite(stallSeconds)
+        self.strokeGaps = strokeGaps
+        self.strokeGapMedianSeconds = DeliveryCoding.finite(strokeGapMedianSeconds)
     }
 
     init(from decoder: Decoder) throws {
@@ -230,6 +250,11 @@ struct PhaseDelivery: Codable, Equatable {
         observeLossesWithoutSound    = try? c.decode(Int.self, forKey: .observeLossesWithoutSound)
         observeSoundSeconds          = try? c.decode(Double.self, forKey: .observeSoundSeconds)
         observeSoundDeliveredSeconds = try? c.decode(Double.self, forKey: .observeSoundDeliveredSeconds)
+        soundEngine                  = try? c.decode(String.self, forKey: .soundEngine)
+        liftHoldSeconds              = try? c.decode(Double.self, forKey: .liftHoldSeconds)
+        stallSeconds                 = try? c.decode(Double.self, forKey: .stallSeconds)
+        strokeGaps                   = try? c.decode(Int.self, forKey: .strokeGaps)
+        strokeGapMedianSeconds       = try? c.decode(Double.self, forKey: .strokeGapMedianSeconds)
     }
 }
 

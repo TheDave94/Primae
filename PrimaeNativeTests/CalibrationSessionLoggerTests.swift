@@ -259,34 +259,50 @@ private struct CapturedSession: Decodable {
                 "a capture whose payload says A+combining-diaeresis is a different letter to every consumer downstream; got \(capture.letter.unicodeScalars.map { String(format: "U+%04X", $0.value) })")
     }
 
+    /// Hermetic: the logger writes under this test's OWN unique `documents` root, so neither a directory an earlier
+    /// (aborted) run left in the device's real `Documents/PrimaeNative/CalibrationSessions`, nor a concurrent writer, can
+    /// change the count. (Run 3 of POP2 failed here with "new entries were 0 of 1": the real root already held the letter
+    /// directory, so nothing new appeared. `stalePreexistingDirectoryDoesNotChangeTheResult` pins that.)
     @Test("the NFC and NFD spellings of one letter share ONE directory — not two siblings")
     func logPutsBothSpellingsInOneDirectory() async throws {
-        // The documented incident: sibling directories for one letter hid
-        // ä/ö/ü captures from the upload path. Asserted at the ROOT of the
-        // tree (the entry the filesystem actually created) rather than by
-        // probing the NFD path, so the result means the same thing whether
-        // or not the volume folds the two spellings together. The two
-        // saves are a second apart so their filenames cannot collide (see
-        // the same-second test below for what happens when they would).
+        try await bothSpellingsShareOneDirectory(plantStale: false)
+    }
+
+    @Test("a stale letter directory already in the real Documents root does not decide the NFC/NFD test")
+    func stalePreexistingDirectoryDoesNotChangeTheResult() async throws {
+        try await bothSpellingsShareOneDirectory(plantStale: true)
+    }
+
+    private func bothSpellingsShareOneDirectory(plantStale: Bool) async throws {
+        let fm = FileManager.default
         let nfd = Self.decomposedA
         let nfc = Self.precomposedA
-        let scratch = try beginScratch(letter: nfc)
-        defer { endScratch(scratch) }
-        let root = scratch.dir.deletingLastPathComponent()
+        // The real root, only to plant (and afterwards remove) a stale directory the way an aborted run leaves one.
+        let realLetter = try documents().appendingPathComponent("PrimaeNative/CalibrationSessions").appendingPathComponent(nfc)
+        let staleCreated = plantStale && !fm.fileExists(atPath: realLetter.path)
+        if staleCreated { try fm.createDirectory(at: realLetter, withIntermediateDirectories: true) }
+        defer { if staleCreated { try? fm.removeItem(at: realLetter) } }
+
+        let docs = fm.temporaryDirectory.appendingPathComponent("calib-nfc-nfd-\(UUID().uuidString)")
+        let root = docs.appendingPathComponent("PrimaeNative/CalibrationSessions")
+        try fm.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: docs) }
+        let dir = root.appendingPathComponent(nfc)
+        let rootEntries = Set(((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).map { Array($0.utf8) })
+        #expect(rootEntries.isEmpty)
 
         CalibrationSessionLogger.log(pre: prePair, post: postPair, letter: nfc,
-                                     schriftArt: .druckschrift, editCount: 1, tool: .skelett)
+                                     schriftArt: .druckschrift, editCount: 1, tool: .skelett, documents: docs)
         try await Task.sleep(nanoseconds: 1_050_000_000)
         CalibrationSessionLogger.log(pre: prePair, post: postPair, letter: nfd,
-                                     schriftArt: .druckschrift, editCount: 2, tool: .anker)
+                                     schriftArt: .druckschrift, editCount: 2, tool: .anker, documents: docs)
 
-        let written = newFiles(scratch)
+        let written = Set((try? fm.contentsOfDirectory(atPath: dir.path)) ?? [])
         #expect(written.count == 2,
                 "both saves — one spelled NFC, one NFD — belong to this one letter directory; got \(written)")
 
-        let entriesNow = Set(((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? [])
-            .map { Array($0.utf8) })
-        let newDirs = entriesNow.subtracting(scratch.rootEntries)
+        let entriesNow = Set(((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).map { Array($0.utf8) })
+        let newDirs = entriesNow.subtracting(rootEntries)
         #expect(newDirs.count == 1,
                 "the two spellings must not produce two sibling directories — that is the split that hid the ä/ö/ü captures in the 2026-05-22 batch; new entries were \(newDirs.count) of \(entriesNow.count)")
 

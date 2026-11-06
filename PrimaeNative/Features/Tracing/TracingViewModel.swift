@@ -957,6 +957,9 @@ public final class TracingViewModel {
     /// See `TracingDependencies.mediaClock`.
     @ObservationIgnored private let mediaClock: () -> TimeInterval
     var phaseDelivery = PhaseDeliveryTracker()
+    /// The child's own writing tempo (lift-to-touch gaps) and the hold/stall it sets: protocol r17, RULINGS 2026-11-05.
+    /// Per child: a new participant starts again from the seed (`wipeLiveParticipantState`).
+    var strokeTempo = StrokeTempo()
     /// Whether the recognizer model loaded (R-034): nil until the warm-up
     /// answers.
     private(set) var recognizerAvailable: Bool?
@@ -2584,6 +2587,9 @@ public final class TracingViewModel {
     // MARK: - Touch handling (forwarded to TouchDispatcher)
 
     func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("touch.began", "x=\(Int(p.x)) y=\(Int(p.y)) letter=\(currentLetterName) phase=\(learningPhase)")
+        #endif
         noteParticipantActivity()
         touchDispatcher.beginTouch(at: p, t: t)
     }
@@ -2599,6 +2605,9 @@ public final class TracingViewModel {
     }
 
     func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("touch.moved", "x=\(Int(p.x)) y=\(Int(p.y))")
+        #endif
         touchDispatcher.updateTouch(at: p, t: t, canvasSize: canvasSize)
     }
 
@@ -2758,6 +2767,9 @@ public final class TracingViewModel {
     }
 
     func endTouch(fromPencil: Bool? = nil) {
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("touch.ended", "letter=\(currentLetterName) phase=\(learningPhase)")
+        #endif
         touchDispatcher.endTouch(fromPencil: fromPencil)
     }
 
@@ -3284,7 +3296,7 @@ public final class TracingViewModel {
     /// (`ArmCoupling`): rate from the dot's velocity in pt/s, pan from x,
     /// pitch from y in the spatial arm only. A still dot (the 1.0 s start
     /// hold, a stroke's dwell, the pause after the pass) plays on at the
-    /// slowest rate (velocity 0 → 0.5) — no pause. A stroke-to-stroke jump
+    /// slowest rate (velocity 0 → 0.8 under M3, R17D) — no pause. A stroke-to-stroke jump
     /// is a pen lift, not motion: it never enters the velocity.
     func handleGuideFrame(_ frame: AnimationGuideController.Frame) {
         guard observeSoundTracksDot, studyMode,
@@ -4291,6 +4303,38 @@ public final class TracingViewModel {
         setCompletion.markSetComplete(for: ParticipantStore.participantId)
     }
 
+    /// The study's end-of-session screen is up (David, 2026-11-04). Set once
+    /// per child by `presentSessionEndScreenIfComplete`, cleared by any
+    /// letter load (a cold post-test probe opens a letter) and by
+    /// `resetForNewParticipant`. Visual only: nothing is spoken or sounded
+    /// for it, and it carries no score, so every arm sees the same thing.
+    private(set) var sessionEndScreenPresented = false
+    /// The screen has already been shown to the live child; it is not
+    /// shown twice. Cleared only when a new child begins.
+    private var sessionEndScreenShownToThisChild = false
+
+    /// Called by the final-phase pipeline right after the last letter's
+    /// training pass is recorded. Presents the end screen if, and only if,
+    /// the whole trained set is done (`SessionEndScreenDecision`).
+    func presentSessionEndScreenIfComplete(completingLetter: String) {
+        // The end screen goes with the set's hold: it shows only once the
+        // set has actually ended (`finishSetAwaitingNextParticipant`).
+        guard studyMode, awaitingNextParticipant else { return }
+        let finished = Set(dashboardStore.snapshot.phaseSessionRecords
+            .filter { $0.probe == nil && $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
+            .map(\.letter))
+        let decision = SessionEndScreenDecision(
+            setLetters: visibleLetterNames.map(LetterProgress.canonicalKey),
+            completedTrainingLetters: finished,
+            justCompleted: LetterProgress.canonicalKey(completingLetter),
+            isColdProbe: currentProbe != nil,
+            isFinalPassOfLetter: isFinalPassOfLetter,
+            alreadyPresented: sessionEndScreenShownToThisChild)
+        guard decision.shouldPresent else { return }
+        sessionEndScreenShownToThisChild = true
+        sessionEndScreenPresented = true
+    }
+
     /// True when the letter on screen is the last of the child's trained
     /// set, in the fixed study order. Read from `visibleLetterNames`, the
     /// same pool `nextLetter()` walks, so "last" cannot disagree with
@@ -4336,6 +4380,9 @@ public final class TracingViewModel {
 
     private func load(letter: LetterAsset, playPhaseCue: Bool = true, parked: Bool = false) {
         launchParked = parked
+        // Any letter load (a post-test probe, a proctor jump) ends the
+        // end-of-session screen; it is not shown again for this child.
+        sessionEndScreenPresented = false
         // Set in the observe branch below, acted on after the file reload
         // further down (P4 — see `claimWholeObserveSound` and
         // `armObservePresentationAfterCue`).
@@ -5192,6 +5239,9 @@ public final class TracingViewModel {
     /// from one child to another in the same way.
     private func wipeLiveParticipantState() {
         participantIdentityChanged = true
+        strokeTempo = StrokeTempo()
+        phaseDelivery.setTempo(strokeTempo)
+        playback.idleDebounceSeconds = strokeTempo.stallSeconds
         // Discard what is left of the outgoing child's trial: it was
         // already recorded under their id before the seal
         // (`recordOutgoingInFlightLetter`, R-015). A pending quiet-window
@@ -5231,6 +5281,8 @@ public final class TracingViewModel {
         // A new child's session begins; the previous one's "finished,
         // hand the device over" hold is over.
         awaitingNextParticipant = false
+        sessionEndScreenPresented = false
+        sessionEndScreenShownToThisChild = false
         dashboardStore.reset()          // PhaseSessionRecords, letterStats, durations
         progressStore.resetAll()        // all LetterProgress
         streakStore.reset()             // streak + stars
@@ -5799,11 +5851,15 @@ extension TracingViewModel {
     /// R-032, R-034).
     func phaseRowContext(for phase: LearningPhase, finalizedBy: RowFinalization) -> PhaseRowContext {
         reconcilePhaseDelivery()
+        phaseDelivery.setTempo(strokeTempo)
         let routeNow = phaseDelivery.openPhase == phase ? deliveryEnvironment.sample().outputRoute : nil
         var delivery = phaseDelivery.delivery(for: phase, counters: lifecycleCounters.settled(at: mediaClock()),
                                               outputRouteNow: routeNow) ?? PhaseDelivery()
         delivery.build = buildStamp
         delivery.voiceId = sessionVoiceId
+        // r17: one engine since the A/B ended (TDPSOLA, RULINGS 2026-11-03);
+        // the column stays so every r17 row names the engine that rendered it.
+        delivery.soundEngine = LiveSonificationKernel.engineStamp
         delivery.recognizerAvailable = recognizerAvailable
         return PhaseRowContext(finalizedBy: finalizedBy,
                                probeAttempt: currentProbe != nil ? currentProbeAttempt : nil,

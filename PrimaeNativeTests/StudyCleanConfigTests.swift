@@ -367,9 +367,12 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     ///
     /// What it asserts is what a STUDY build DELIVERS, per arm: the spoken
     /// phrase in every arm, no chime in any arm (r13), the hand-over
-    /// hold — and nothing drawn. The overlay queue holding `.celebration`
-    /// is NOT evidence that anything is shown: a study build renders it as
-    /// `EmptyView()` (see `noCelebrationViewInAStudyBuild`).
+    /// hold — and no celebration OVERLAY drawn. The overlay queue holding
+    /// `.celebration` is NOT evidence that anything is shown: a study build
+    /// renders it as `EmptyView()` (see `noCelebrationViewInAStudyBuild`).
+    /// Since 2026-11-04 the end of the set does show the separate end
+    /// screen (`SessionEndScreenView`), pinned in the extension at the foot
+    /// of this file.
     @Test("the end of the child's set: spoken in every arm, chimed in none (r13), nothing drawn",
           arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
     func endOfSet_celebratesOnceAndHandsTheDeviceBack(arm: PilotAudioCondition) async {
@@ -1017,5 +1020,125 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         let fw = store.phaseCalls.first { $0.phase == LearningPhase.freeWrite.rawName }
         #expect(fw?.completed == true, "\(String(describing: fw))")
         #expect(vm.isPhaseSessionComplete, "the letter session is closed so the quiet-window task cannot complete it a second time")
+    }
+}
+
+// MARK: - The end-of-session screen (David, 2026-11-04)
+
+/// The decision (`SessionEndScreenDecision`) is a value, so it is pinned
+/// directly; the VM tests below pin that the pipeline feeds it the right
+/// facts. The view itself cannot be observed from a unit test.
+extension StudyCleanConfigTests {
+
+    private func decision(set: [String] = ["A", "F", "I"],
+                          done: Set<String> = ["A", "F"],
+                          just: String = "I",
+                          probe: Bool = false,
+                          finalPass: Bool = true,
+                          shown: Bool = false) -> SessionEndScreenDecision {
+        SessionEndScreenDecision(setLetters: set, completedTrainingLetters: done,
+                                 justCompleted: just, isColdProbe: probe,
+                                 isFinalPassOfLetter: finalPass, alreadyPresented: shown)
+    }
+
+    @Test("end screen decision: shown when the third letter completes the set, and only then")
+    func endScreenDecision() {
+        #expect(decision().shouldPresent, "A and F done, I just finished: the set is complete")
+        #expect(!decision(done: ["A"]).shouldPresent, "F is missing: a partial session gets no end screen")
+        #expect(!decision(done: []).shouldPresent, "the first letter of three is not the end")
+        #expect(!decision(probe: true).shouldPresent, "a cold probe is not the training set")
+        #expect(!decision(finalPass: false).shouldPresent, "pass 1 of 2 of the last letter is not the end")
+        #expect(!decision(shown: true).shouldPresent, "shown once per child")
+        #expect(!decision(set: ["A"], done: [], just: "A").shouldPresent, "a one-letter pool has no end of set")
+        #expect(!decision(just: "Z").shouldPresent, "a letter outside the set cannot complete it")
+    }
+
+    /// The fixture deps with a REAL dashboard store in a temp dir: the stub
+    /// store's snapshot is always empty, and the decision reads the rows.
+    private func endScreenVM() -> TracingViewModel {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("end-screen-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let store = JSONParentDashboardStore(fileURL: dir.appendingPathComponent("dash.json"))
+        return TracingViewModel(multiLetterDeps().with(dashboardStore: store))
+    }
+
+    /// One training pass of `name`: observe -> guided -> freeWrite -> done.
+    private func finishTrainingLetter(_ vm: TracingViewModel, _ name: String) async {
+        vm.loadLetter(name: name)
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        vm.advanceLearningPhase()
+        await settle { vm.isPhaseSessionComplete }
+        await settle()
+    }
+
+    @Test("the third letter presents the end screen once; the first two and a letter change do not")
+    func endScreenAfterThirdLetterOnly() async {
+        let vm = endScreenVM()
+        let pool = vm.visibleLetterNames
+        #expect(pool.count == 3, "fixture: three letters, got \(pool)")
+        #expect(!vm.sessionEndScreenPresented)
+
+        await finishTrainingLetter(vm, pool[0])
+        #expect(!vm.sessionEndScreenPresented, "after letter 1 of 3")
+        await finishTrainingLetter(vm, pool[1])
+        #expect(!vm.sessionEndScreenPresented, "after letter 2 of 3")
+        await finishTrainingLetter(vm, pool[2])
+        #expect(vm.awaitingNextParticipant)
+        #expect(vm.sessionEndScreenPresented, "after letter 3 of 3 the screen must be up")
+
+        // A further advance of the finished session does not toggle it.
+        vm.advanceLearningPhase()
+        await settle()
+        #expect(vm.sessionEndScreenPresented)
+
+        // A letter load (post-test probe, proctor jump) ends it for good.
+        vm.loadLetter(name: pool[0])
+        #expect(!vm.sessionEndScreenPresented, "a letter change must not leave the end screen up")
+        await finishTrainingLetter(vm, pool[2])
+        #expect(!vm.sessionEndScreenPresented, "once per child: finishing the last letter again must not re-show it")
+    }
+
+    @Test("a partial session (last letter finished, one skipped) holds the set but shows no end screen")
+    func endScreenNotInAPartialSession() async {
+        let vm = endScreenVM()
+        let pool = vm.visibleLetterNames
+        await finishTrainingLetter(vm, pool[0])
+        await finishTrainingLetter(vm, pool[2])      // pool[1] skipped
+        #expect(vm.awaitingNextParticipant, "the set is still held (existing behaviour)")
+        #expect(!vm.sessionEndScreenPresented, "but the child did not complete all three letters")
+    }
+
+    @Test("a cold probe of the last letter shows no end screen; the next child starts without one")
+    func endScreenNotForProbeAndClearedForNextChild() async {
+        let vm = endScreenVM()
+        let pool = vm.visibleLetterNames
+        #expect(vm.startColdProbe(letter: pool[2], kind: .pretest) == nil)
+        vm.advanceLearningPhase()
+        await settle { vm.isPhaseSessionComplete }
+        #expect(vm.isPhaseSessionComplete, "precondition: the pretest completed")
+        #expect(!vm.sessionEndScreenPresented, "a pretest is not the end of the session")
+
+        for name in pool { await finishTrainingLetter(vm, name) }
+        #expect(vm.sessionEndScreenPresented)
+        vm.resetForNewParticipant()
+        #expect(!vm.sessionEndScreenPresented, "'Nächstes Kind' clears the screen")
+        // The next child's subset is derived from a fresh random id, so the
+        // fixture pool (A, F, I) shrinks to ONE letter for 3 in 10 ids. There
+        // is no seam to pin the id without touching protocol code, so enrol
+        // again until a real set remains (each enrolment is a new child; the
+        // chance of 40 misses in a row is 0.3^40). The half therefore ALWAYS
+        // runs, and fails loudly if it cannot.
+        var nextPool = vm.visibleLetterNames
+        var enrolments = 1
+        while nextPool.count < 2 && enrolments < 40 {
+            vm.resetForNewParticipant()
+            nextPool = vm.visibleLetterNames
+            enrolments += 1
+        }
+        #expect(nextPool.count > 1, "fixture: no child with a multi-letter pool in \(enrolments) enrolments")
+        for name in nextPool { await finishTrainingLetter(vm, name) }
+        #expect(vm.sessionEndScreenPresented, "the next child gets their own end screen")
     }
 }

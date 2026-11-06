@@ -1217,6 +1217,120 @@ Implications:
     device; tap "Nächstes Kind" before exporting (the export also records a
     finished held free-writing itself). Both in `docs/STUDY_DEVICE_DRYRUN.md`.
 
+- **Protocol revision 17 — live sonification engine, phoneme onsets, sound
+  envelope by stroke, end screen, A/Ä stroke direction (David's rulings of
+  2026-11-02 to 2026-11-06).** The authoritative child-facing text is
+  `StudyProtocol.history` (r17); the rulings are in
+  `wt-primae-audit-notes/latency-2026-11-02/RULINGS.md`, the measurements in
+  the files named per decision.
+  - **Engine (L1-L4, 2026-11-02; final 2026-11-03).** The arm sound is
+    rendered by a TD-PSOLA grain engine of our own (`Core/Sonification/`,
+    `LiveSonificationAudio`) in a node beside `AudioEngine`, replacing
+    `AVAudioPlayerNode` -> `AVAudioUnitTimePitch`. Why: first pen move ->
+    audible was 230 ms (phoneme) / 268 ms (spatial) in r16 (`LAT.md`); the
+    target was <= 70 ms. Measured on the study iPad, loudspeaker route,
+    Debug-Study: median 13.3-15.8 ms, max 18.3 ms, N = 8 per arm
+    (`env3/ENV3.md`, "Onset instrument"; headphone routes unmeasured). It
+    also removes the r16 spatial-after-phoneme onset confound (+35 ms). One
+    path for both arms (L2): the spatial carrier is the same recording
+    transposed per grain; a phoneme keeps its pitch at every rate (L1).
+    Selection: a blind listening trial (35 trials) found no difference by
+    ear, an in-app A/B against a second engine (BungeeLL) was preferred
+    "a bit" for TD-PSOLA, and the bench favoured or tied it on every axis
+    but two far inside their gates, at a third of the CPU
+    (`OPT-T.md`, `OPT-B.md`, `BAKEOFF.md`; David 2026-11-03). The second
+    engine, its switch and its tests are not shipped. I/O buffer 5 ms
+    (was 21.3 ms). `AudioEngine.swift` changed by one method,
+    `attachLiveSonificationNode` (graph wiring, L3; `R17-AudioEngine-diff.md`).
+    Every phase row stamps `soundEngine` ("TDPSOLA").
+  - **Transitions: no cuts or clicks (LOOPX, 2026-11-03).** A stroke begun
+    inside the 0.4 s stop fade used to cut the sound for ~5 ms; it now
+    crosses over (equal power, 20 ms), a switch of file fades in 20 ms (was
+    3 ms), and the onset ramp is 8 ms (`LOOPX.md`, `pop2/POP2.md`: the 8 ms
+    ramp is the shortest at which the carrier, the only clean tone, is below
+    its steady state on every onset; its benefit on a phoneme is
+    UNMEASURED by the meter, floor +-1 dB). A restart while the same sound
+    still sounds continues the voice instead of replaying the attack
+    (POP2 "resume, not crossover": a crossover of unrelated phase cancels,
+    A mean -2.3 dB, worst -7.4). Clicks that depended on the playback rate
+    were fixed inside TDPSOLA (David, "fix the clicks", 2026-11-03); the
+    loop wrap is checked by a level/brightness step meter, not a click
+    detector (`SEAM2.md`).
+  - **Sound envelope by stroke (2026-11-05, every sound arm and phase that
+    sounds).** The sound starts at once with the stroke and fades at once
+    when the letter's last stroke ends (raised cosine, 50 ms, the shortest
+    that stayed within ~2 dB of each sound's own roughness; `ENV3.md` 1c).
+    Between strokes the hold adapts to the child: hold = clamp(2.0 x median
+    of the last 5 lift-to-next-touch gaps, 0.5 s, 2.5 s), seeded at the old
+    0.8 s; the stall cutoff scales with it (0.3 s x hold/0.8 s, 0.3-0.6 s).
+    Why: David asked for it ("scaled based on the letter writing speed of
+    each child"). The constants come from a model simulation, not child data
+    (`env3/holdsim.txt`; no child gap data exists), so the new export
+    columns `liftHoldSeconds`, `stallSeconds`, `strokeGaps`,
+    `strokeGapMedianSeconds` are the data to re-tune from. A pitch jump over
+    300 cents while the sound is held glides over 40 ms (F's second stroke
+    in the spatial arm jumped +1041 cents; splatter -8.0 dB at 40 ms
+    against -0.1 dB with no glide, `env3/pitchstep-sweep.txt`). A's loop-wrap pulse (ratio 2.63/2.43/2.55
+    at rates 0.5/1/2) is reduced to 1.57/1.47/0.95 by a pitch-synchronous
+    pre-blend (`ENV3.md` 3). L is equalised like A, I and M (`scripts/equalise_phoneme_periods.sh`,
+    120 ms smoothing). Crackle in the phoneme sounds tracks the source
+    recording (A worst), not the engine: no code change (`ENV3.md` 4).
+  - **Phoneme onsets and the F loop (2026-11-05/06).** Each phoneme file
+    opens with the recording's own onset (A 422, I 96, L 132, M 153, F 179
+    ms), played once whenever the sound starts from silence, then the loop.
+    Why: David, "the onsets help, especially for F", and he asked for onsets
+    on all five (`onset/ONSET.md`). F's loop is L5 (4 s, equalised toward his
+    own F attack; "L5 is definitely best", `floop/FLOOP.md`); synthetic F
+    was rejected ("sounds like noise"), so F remains David's recording and
+    its quality is open. AE-2 loudness is measured on the loop part only.
+    New file sha256 first 16 hex: A 82662b128b859223, F 87f66b505d50c9ec,
+    I 14fcbd97b618663e, L fa54666a0a254a68, M ecd939f12b27bb67
+    (`r17d/R17D.md`).
+  - **Coupling map M3 and F unstretched (supervisor, under David's
+    delegation of 2026-11-06).** Pen speed -> rate: 0.8 at <= 50 pt/s, 1.0
+    at 150, 1.25 at >= 400, piecewise linear, both arms (r5-r16: 0.5 at 50,
+    2.0 at 800, rate 1 at 300 pt/s). Why: David heard 0.5x as bad for every
+    F loop and 1x as tied to too high a stroke speed; the lane's data put
+    98.4 % of scripted pen time at the 0.5 clamp (`rate/RATE.md`; scripted
+    touches, no child data). The unvoiced F plays at natural speed whatever
+    the pen speed (U1): the only variant with 0 % repeated frames, and noise
+    has no tempo. Within the phoneme arm F's sound therefore does not follow
+    pen speed. Accepted by ear 2026-11-06 ("Everything sounds good to me
+    now").
+  - **Observe dot unchanged at 0.36 units/s (supervisor, 2026-11-06).** The
+    R17D build had slowed it to 0.171 so the demonstration played at rate
+    1.0; that made every demonstration 2.1x longer, changing session time
+    and the 20 s dry-run window for no sound gain David could hear. Under
+    M3 the demonstration plays at about rate 1.17 (315 pt/s along vertical
+    strokes) (`r17e/R17E.md`). Supersedes "guide speed set so the
+    demonstration plays at rate 1.0".
+  - **A and Ä stroke direction (2026-11-04).** Stroke 0 of A (Regular,
+    Light and Schulschrift) and of Regular Ä now runs bottom-left to the
+    apex ("the stroke should not go down but up"); strokes 1 and 2 are
+    unchanged. For A this restores the pre-`caff3472` direction of stroke 0
+    (digest-identical, `uix/UIX.md` 1), superseding the 2026-10-01 apex-down
+    correction for that stroke only. G7 admits the change through three
+    allow-list entries dated 2026-11-06 (`scripts/g7_allowlist.json`); their
+    `candidateCommit` is a zero placeholder to replace with the squash sha.
+  - **Session end screen (2026-11-04, approved on the iPad).** After the
+    set's last letter a child-facing visual screen with a victory animation
+    (`SessionEndScreenView`): no new sound (the recorded "Super gemacht!"
+    stays), no score or star count, identical in every arm, shown once per
+    child and only when every letter has a completed free-writing row. No
+    export field (David: "it is just for the child"), hence no schema change
+    from the screen. `docs/STUDY_DEVICE_DRYRUN.md` no longer says nothing
+    is drawn at the end.
+  - **Record-only parts.** The r16 `mergedAtUTC` / `pullRequest` (2026-11-02
+    13:17, #90) are filled in; r17's are filled in by r18.
+  - **Pinned by** `LiveSonificationKernelTests`, `LiveSonificationAudioTests`,
+    `SonificationRealtimeTests`, `StrokeEnvelopeTests`, `PhonemeOnsetTests`
+    (incl. the dot pin), `SeamMeterTests`, `LoopX*` / `Pop*` regression
+    suites, `ProtocolMatrixTests`, `VelocityMappingTests`,
+    `StrokeGeometryGoldenTests`, `SessionEndScreenUITests`; mutation checks
+    per lane in the files above. Last full device run: 1594 tests in 201
+    suites passed (Release-Study and Debug-Study), AudioEngineTests 37 of
+    37 via `Primae-DeviceTests` (`r17e/R17E.md`).
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

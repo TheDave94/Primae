@@ -551,6 +551,10 @@ final class PhaseTransitionCoordinator {
                          accuracy: accuracy,
                          duration: duration,
                          phaseScores: scores)
+        // The end-of-session screen (2026-11-04), decided AFTER the rows
+        // are recorded so "every letter of the set is done" reads this
+        // letter's own freeWrite row too.
+        vm.presentSessionEndScreenIfComplete(completingLetter: vm.currentLetterName)
         // Comparison switch only: repeat the SAME letter when the
         // researcher has asked for more than one pass (the supervisor's
         // "Buchstabe dreimal?"). Placed AFTER the recording deliberately —

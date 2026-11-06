@@ -30,9 +30,10 @@ import AVFoundation
     @Test func mapVelocityToSpeedIsMonotonicAndBounded() {
         let sample: [CGFloat] = [0, 60, 120, 240, 500, 900, 1300, 3000]
         let mapped = sample.map(TouchDispatcher.mapVelocityToSpeed)
-        #expect(abs((mapped.first ?? 0) - Float(0.5)) < 0.0001)
-        #expect(abs((mapped.last ?? 0) - Float(2.0)) < 0.0001)
-        mapped.forEach { #expect($0 >= 0.5); #expect($0 <= 2.0) }
+        // M3 (R17D): 0.8 ... 1.25.
+        #expect(abs((mapped.first ?? 0) - Float(0.8)) < 0.0001)
+        #expect(abs((mapped.last ?? 0) - Float(1.25)) < 0.0001)
+        mapped.forEach { #expect($0 >= 0.8); #expect($0 <= 1.25) }
         for i in 1..<mapped.count { #expect(mapped[i] >= mapped[i-1]) }
     }
 

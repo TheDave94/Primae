@@ -98,7 +98,11 @@ struct ParentDashboardExporter {
         "outputRouteAtStart", "outputRouteAtEnd", "outputVolume", "outputLatency",
         "otherAudioPlaying", "secondaryAudioHint", "voiceId", "recognizerAvailable",
         "guidedAccess", "idleTimerDisabled", "lowPowerMode", "thermalState", "batteryLevel",
-    ] + buildColumns + observeSoundColumns
+    ] + buildColumns + observeSoundColumns + ["soundEngine"] + envelopeColumns
+
+    /// Protocol r17's per-child envelope timing columns (RULINGS 2026-11-05), after `soundEngine`: the hold and stall in force at the
+    /// end of the phase and the stroke gaps measured in it.
+    static let envelopeColumns: [String] = ["liftHoldSeconds", "stallSeconds", "strokeGaps", "strokeGapMedianSeconds"]
 
     /// Protocol r11's observe-sound columns, in order.
     static let observeSoundColumns: [String] = [
@@ -127,6 +131,11 @@ struct ParentDashboardExporter {
             int(d?.observeLossesDuringSound), int(d?.observeLossesWithoutSound),
             d?.observeSoundSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
             d?.observeSoundDeliveredSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            d?.soundEngine ?? "",
+            d?.liftHoldSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            d?.stallSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            int(d?.strokeGaps),
+            d?.strokeGapMedianSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
         ]
     }
 

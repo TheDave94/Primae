@@ -83,7 +83,8 @@ public enum CalibrationSessionLogger {
                     letter: String,
                     schriftArt: SchriftArt,
                     editCount: Int,
-                    tool: Tool) {
+                    tool: Tool,
+                    documents: URL? = nil) {
         // NFC-normalize the letter so the session-dir path is
         // consistent regardless of whether the caller passes NFD
         // (filesystem-native on some iOS paths) or NFC (Swift literals
@@ -101,7 +102,7 @@ public enum CalibrationSessionLogger {
         let postRounded = post.map { rounded($0) }
         guard preRounded != postRounded else { return }
 
-        guard let dir = sessionDir(letter: letterNFC) else {
+        guard let dir = sessionDir(letter: letterNFC, documents: documents) else {
             sessionLogger.warning("session dir unavailable; skipping")
             return
         }
@@ -156,7 +157,9 @@ public enum CalibrationSessionLogger {
         stroke.map { CodablePoint(x: Double($0.x), y: Double($0.y)) }
     }
 
-    private static func sessionDir(letter: String) -> URL? {
+    /// `documents` is a test seam (default nil = the app's Documents directory): a test that must not share the
+    /// device's real capture root, or depend on what an earlier run left in it, passes its own unique directory.
+    private static func sessionDir(letter: String, documents: URL? = nil) -> URL? {
         // Documents/ (not Application Support/) so the captures could be
         // pulled via the Files app / Finder USB. That exposure came from
         // the `UIFileSharingEnabled` + `LSSupportsOpeningDocumentsInPlace`
@@ -164,8 +167,8 @@ public enum CalibrationSessionLogger {
         // compiles the calibrator out). Restoring capture extraction means
         // re-adding those keys AND the matching row in
         // scripts/check_project_invariants.py's INFO_PLIST_EXPECTED table.
-        FileManager.default.urls(for: .documentDirectory,
-                                  in: .userDomainMask).first?
+        (documents ?? FileManager.default.urls(for: .documentDirectory,
+                                                in: .userDomainMask).first)?
             .appendingPathComponent("PrimaeNative/CalibrationSessions/\(letter)")
     }
 

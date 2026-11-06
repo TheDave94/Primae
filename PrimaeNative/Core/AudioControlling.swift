@@ -22,6 +22,8 @@ protocol AudioControlling: AnyObject {
     /// test double keeps its current behaviour without opting in.
     func play(fadeInSeconds: TimeInterval)
     func stop()
+    /// ENV3: stop with a SHORT raised-cosine fade (the letter's last stroke reached its end). Default: the ordinary `stop()`.
+    func stop(fadeOutSeconds: TimeInterval)
     func restart()
     func suspendForLifecycle()
     func resumeAfterLifecycle()
@@ -83,6 +85,9 @@ extension AudioControlling {
     /// (the only one with a volume ramp to drive) gets this, so adding the
     /// fade did not force a change on a single test double.
     func play(fadeInSeconds: TimeInterval) { play() }
+
+    /// Default letter-end stop: the ordinary stop (only the live voice implements the short fade).
+    func stop(fadeOutSeconds: TimeInterval) { stop() }
 
     /// TEST-ONLY: report measured output level for the window just ended,
     /// tagged with `label` (the phase). Default no-op so nothing but the

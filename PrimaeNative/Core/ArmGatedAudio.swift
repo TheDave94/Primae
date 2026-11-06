@@ -72,6 +72,7 @@ final class ArmGatedAudio: AudioControlling {
     func play() { live.play() }
     func play(fadeInSeconds: TimeInterval) { live.play(fadeInSeconds: fadeInSeconds) }
     func stop() { live.stop() }
+    func stop(fadeOutSeconds: TimeInterval) { live.stop(fadeOutSeconds: fadeOutSeconds) }
     func restart() { live.restart() }
     func suspendForLifecycle() { live.suspendForLifecycle() }
     func resumeAfterLifecycle() { live.resumeAfterLifecycle() }

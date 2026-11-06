@@ -78,6 +78,13 @@ final class AnimationGuideController {
     /// the move; this comment previously still cited the old 15 s. (Per-segment
     /// flooring at 1/240 s and a flat 1/60 s first segment drift the true ratio
     /// slightly above 1.25 for checkpoint-dense letters.)
+    ///
+    /// R17E (RULINGS 2026-11-06): the dot is unchanged from r16 (0.36
+    /// units/s; R17D's slower 0.171 made every demonstration 2.1x longer).
+    /// Under the coupling map M3 the demonstration plays at about rate 1.17
+    /// along the study iPad's vertical strokes (derived: 0.36 x 875 pt =
+    /// 315 pt/s, MEASURED in env3 PopCapture logs for I's stem; M3 gives
+    /// 1.165 there).
     static let observeUnitsPerSecond: TimeInterval = 0.9 * AnimationSpeed.slow.multiplier
 
     /// Live speed for `start`, defaulting to the production value above.

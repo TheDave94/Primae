@@ -45,6 +45,39 @@
       "candidateStrokeSha256": "256e4fe914c9eae21197f72544b8395a3a40ccb4ad6566005aa25c6993e8846e",
       "reason": "Deliberate top-down correction in caff3472: strokes 0 and 1 of A now start at the apex and run apex-down (previously foot-first). Verified by independent review 2026-10-13 against the current app: A runs apex-down, then the crossbar left-to-right. The commit message of caff3472 does not mention it.",
       "date": "2026-10-01"
+    },
+    {
+      "letter": "A",
+      "weight": "regular",
+      "stroke": 0,
+      "referenceCommit": "4ca16ee28439a7df4c3f1356a8847b0942889b1f",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "referenceStrokeSha256": "6b2c78d3a46e7dca510dd5e23665afa9f6fcbb33314d6596354cba1da8c4f161",
+      "candidateStrokeSha256": "b5ead4fee9bdffdaa07ad1c9abd289334b3080515af3a8b0fe464d453f906b66",
+      "reason": "Deliberate reversal approved by David (RULINGS.md 2026-11-04, 'the first stroke (left diagonal) goes UP, bottom-left to apex'; Ä follows A, 2026-11-04 evening). It restores the pre-caff3472 foot-first direction of stroke 0 (the candidate digest equals the referenceStrokeSha256 of the caff3472 entry above), superseding the 2026-10-01 apex-down correction. candidateCommit is a zero placeholder: this entry is committed in the same commit that carries the stroke, so its own sha cannot be named; replace it with the r17 squash sha at the next landing.",
+      "date": "2026-11-06"
+    },
+    {
+      "letter": "A",
+      "weight": "light",
+      "stroke": 0,
+      "referenceCommit": "4ca16ee28439a7df4c3f1356a8847b0942889b1f",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "referenceStrokeSha256": "1245d00eaf8339ff4b0e5ac70194321a1c3acbfa00c0492669c241c01c443412",
+      "candidateStrokeSha256": "e9ca17e1aab1176abad758a23f7c58594ba3ed0207e6a11d8da63f656542c57b",
+      "reason": "Deliberate reversal approved by David (RULINGS.md 2026-11-04, 'the first stroke (left diagonal) goes UP, bottom-left to apex'; Ä follows A, 2026-11-04 evening). It restores the pre-caff3472 foot-first direction of stroke 0 (the candidate digest equals the referenceStrokeSha256 of the caff3472 entry above), superseding the 2026-10-01 apex-down correction. candidateCommit is a zero placeholder: this entry is committed in the same commit that carries the stroke, so its own sha cannot be named; replace it with the r17 squash sha at the next landing.",
+      "date": "2026-11-06"
+    },
+    {
+      "letter": "Ä",
+      "weight": "regular",
+      "stroke": 0,
+      "referenceCommit": "4ca16ee28439a7df4c3f1356a8847b0942889b1f",
+      "candidateCommit": "0000000000000000000000000000000000000000",
+      "referenceStrokeSha256": "44bc039aec494dcbfde34a85d66e5d155f6e99c91a16445069a137e13da8f502",
+      "candidateStrokeSha256": "08fd47e487c21503db8b4c11be94fc6065a5936282703776d78ead30f545b846",
+      "reason": "Deliberate reversal approved by David (RULINGS.md 2026-11-04 evening: 'Ä stroke 0 reversed like A'): stroke 0 (the A-shaped left diagonal) now runs bottom-left to apex, like A. candidateCommit is a zero placeholder: this entry is committed in the same commit that carries the stroke, so its own sha cannot be named; replace it with the r17 squash sha at the next landing.",
+      "date": "2026-11-06"
     }
   ]
 }

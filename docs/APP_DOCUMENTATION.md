@@ -118,7 +118,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 | `OverlayQueueManager.swift` | 203 | Serialised FIFO of `CanvasOverlay` cases. Modal overlays carry nil duration (wait for explicit dismiss). `enqueueBeforeCelebration` interrupts an already-active celebration or paperTransfer to slot a late-arriving recognition badge ahead of it (C-4 + W-25). |
 | `AudioControlling.swift` | small | Protocol seam for the audio engine. |
 | `PlaybackStateMachine.swift` | small | Pure FSM idle ↔ active. |
-| `AudioEngine.swift` | 382 | ⚠️ **STABLE & FRAGILE** — do NOT modify. AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. |
+| `AudioEngine.swift` | 382 | ⚠️ **STABLE & FRAGILE** — do NOT modify. AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. From r17 the host of the live sonification voice (§7.1a); the child hears `Core/Sonification/`, not its player. |
 | `SpeechSynthesizer.swift` | 162 | German `AVSpeechSynthesizer` wrapper. `ChildSpeechLibrary` centralises every TTS phrase. |
 | `StrokeTracker.swift` | 96 | Checkpoint proximity tracker. Owns `progress[]` + `radiusMultiplier`. |
 | `HapticEngine.swift` | 156 | Protocol + `CoreHapticsEngine` + `UIKitHapticEngine` fallback + `NullHapticEngine` for tests. |
@@ -1441,15 +1441,26 @@ outputLatency,otherAudioPlaying,secondaryAudioHint,voiceId,recognizerAvailable,
 guidedAccess,idleTimerDisabled,lowPowerMode,thermalState,batteryLevel,
 launchId,previousRunAbnormal,appVersion,buildConfiguration,buildUUID,
 osVersion,deviceModel,observeLossesDuringSound,observeLossesWithoutSound,
-observeSoundSeconds,observeSoundDeliveredSeconds
+observeSoundSeconds,observeSoundDeliveredSeconds,soundEngine,liftHoldSeconds,
+stallSeconds,strokeGaps,strokeGapMedianSeconds
 ```
+
+(r17 appends `soundEngine`: the sound engine that rendered the row, `TDPSOLA` — a constant since the researcher
+A/B ended (2026-11-03); candidate builds from that A/B wrote `A` or `B`. Empty on rows written before r17.)
+
+(r17, RULINGS 2026-11-05, appends the child's own envelope timing after `soundEngine`: `liftHoldSeconds` and `stallSeconds`,
+the hold that keeps the sound going across a pen lift and the stall cutoff in force at the end of the phase
+(`StrokeTempo`: hold = clamp(2.0 x median of the child's last 5 lift-to-next-touch gaps, 0.5 s, 2.5 s), seeded 0.8 s; stall = 0.3 s x
+hold/0.8 s between 0.3 s and 0.6 s), and `strokeGaps` / `strokeGapMedianSeconds`, the gaps measured in that phase (guided and
+free-writing only; cold probes feed nothing). Written in every arm. Empty on rows written before this change.)
 
 (As of protocol r14, checked 2026-11-01 against `StudyProtocol.revision` = 14:
 62 columns, identical to the header array in `ParentDashboardExporter.swift`.
 r12-r14 added no columns — r12 only stopped deriving the `probe = "posttest"`
 tag for the final training free-writing, r13 and r14 change what the child
 hears and when a session runs, not what is exported. The last column change
-was r11's four observe-sound columns. The authoritative order is the header
+was r11's four observe-sound columns until r17, which appended five (`soundEngine`
+and the four envelope columns above), 67 in all. The authoritative order is the header
 array in `ParentDashboardExporter.swift` — `phaseRowAppendedColumns` is the
 tail after `spatialDeviationRaw`.)
 
@@ -1638,6 +1649,30 @@ of participant objects and has no enrolment block.
 
 This file is annotated `STABLE & FRAGILE` in `CLAUDE.md`. Any change must be minimal and surgical (catch
 blocks, init/deinit structure are particularly load-bearing).
+
+### 7.1a Live sonification voice (protocol r17)
+
+From r17 the sound a child hears while tracing is NOT the `AVAudioUnitTimePitch` player above. The app's
+`AudioControlling` is `LiveSonificationAudio` (`Core/Sonification/`), built by `SoundEnvelope.makeAudioEngine()`;
+`AudioEngine` stays the host: it owns the audio session, the route and interruption observers it already had,
+the measurement tap and the lifecycle engine pause. Its only r17 change is graph wiring:
+`attachLiveSonificationNode(_:format:)` attaches the voice's `AVAudioSourceNode` to its main mixer.
+
+* The source node renders `LiveSonificationKernel`, which plays pre-built TDPSOLA renderers, two per file (the
+  second is the voice a restart crosses over to). Commands from the main actor are lock-free atomics read at the
+  next I/O buffer; the render path allocates nothing (tested).
+* Renderers run at 44.1 kHz mono (the assets' rate); the main mixer converts to the hardware rate. Pan is the
+  node's `pan`; the loudness gain (`AudioEngine.loudnessGain`) is applied in the kernel.
+* Every gate-open restarts the file at its attack. From silence the voice starts at once; while something still
+  sounds (a stop fade, a held sound) the new voice crosses over from the old one with an equal-power curve over
+  `LiveSonificationKernel.crossfadeSeconds` (20 ms) instead of cutting it (lane LOOPX: the old 3 ms duck +
+  restart cut every stroke begun inside the 0.4 s fade). Switching to another file while one sounds fades it
+  with a quarter-cosine over `duckSeconds` (20 ms; was 3 ms linear). `stop()` fades over
+  `SoundEnvelope.fadeOutSeconds` (0.4 s), as r16. The mixer slews a `pan` change itself (~25 ms for a full swing,
+  measured on the iPad), so the pan needs no smoothing of its own.
+* Preferred I/O buffer: 5 ms (`SoundEnvelope.preferredIOBufferSeconds`).
+* One engine, TDPSOLA (ruled 2026-11-03 after an in-app A/B; the second engine, its switch and its tests are
+  removed). Every phase row stamps it in the export column `soundEngine`.
 
 ### 7.2 Audio triggering
 

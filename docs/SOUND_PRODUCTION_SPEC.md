@@ -125,7 +125,10 @@ The source files **must be mono**. Two independent lines of evidence agree:
    parity between the two arms. The signal chain is
    `player → AVAudioUnitTimePitch → mainMixerNode`
    (`AudioEngine.swift:84–87`), i.e. a single mono player feeding the
-   stretch/pitch unit then the mixer.
+   stretch/pitch unit then the mixer. (From protocol r17 the sound the child
+   hears is not that chain: `LiveSonificationAudio`'s `AVAudioSourceNode`
+   renders the file with TDPSOLA and feeds the same `mainMixerNode`; the pan
+   is the node's `pan`, and a mono source is still required.)
 
 > **Deliver mono. Do not deliver stereo and assume the engine will fold it.**
 
@@ -142,9 +145,13 @@ Every asset, phoneme or abstract, must satisfy all of these:
 - **Survives the three-parameter coupling.** During tracing the loop is
   driven through — CODE-CONFIRMED at `AudioEngine.setAdaptivePlayback`
   (`:177–182`) + `TouchDispatcher.updateAdaptivePlayback` (`:285–302`):
-  - **rate** — `timePitch.rate`, velocity → time-stretch, **clamped
-    0.5×–2.0×** (`minPlaybackRate`/`maxPlaybackRate`), formant-preserving
-    (`AVAudioUnitTimePitch`);
+  - **rate** — velocity → time-stretch. r5–r16: `timePitch.rate`,
+    **clamped 0.5×–2.0×** (`minPlaybackRate`/`maxPlaybackRate`),
+    formant-preserving (`AVAudioUnitTimePitch`). From r17 the map M3
+    (`TouchDispatcher.mapVelocityToSpeed`) gives **0.8× at ≤ 50 pt/s, 1.0× at
+    150 pt/s, 1.25× at ≥ 400 pt/s**, linear between, and the rate is applied
+    by TDPSOLA (a phoneme's pitch is held at every rate; the engine's own clamp stays
+    0.5×–2.0×). The unvoiced F phoneme is not time-stretched at all (U1);
   - **pan** — `player.pan`, canvas-x mapped to ±1 **plus** a pencil-azimuth
     term (`cos(azimuth)·0.2`), clamped ±1;
   - **pitch** — `pitchCents` → `timePitch.pitch`. Wired but **not yet driven
@@ -153,8 +160,8 @@ Every asset, phoneme or abstract, must satisfy all of these:
     (open)**. Design every asset to survive a pitch shift regardless.
 
   The asset must still sound clean and intelligible across the full
-  rate range and under pitch shift — no aliasing, no muddy artefacts at 0.5×,
-  no chipmunk at 2.0×.
+  rate range and under pitch shift — no aliasing, no muddy artefacts at the
+  slow end, no chipmunk at the fast end (r17: 0.8×–1.25×; r5–r16: 0.5×–2.0×).
 - **Consistent loudness.** Normalise every asset across **both** sets to one
   integrated-loudness target (recommend an LUFS target with a fixed true-peak
   ceiling) so no sound is incidentally louder/quieter — a loudness mismatch
@@ -194,6 +201,13 @@ letter name**:
 The five study recordings (`Letters/{A,F,I,L,M}/<L>_phoneme1.wav`) are
 David's own, one speaker for the whole set, each the letter's sound rather
 than its name, checked by ear (reported by David, 2026-10-21).
+From protocol r17 each file opens with the recording's own **onset**, played
+once whenever the sound starts from silence, followed by the **loop**: A, I,
+L, M and F are 2.374, 2.052, 2.089, 2.109 and 4.139 s (MEASURED `afinfo`,
+mono 44.1 kHz 16-bit, as before); the onsets are A 422, I 96, L 132, M 153 and
+F 179 ms, and `PhonemeOnsets.swift` declares each file's attack end, where
+the loop starts. F's loop is 4 s (was 2 s). The loudness target (AE-2) is
+measured on the loop part only.
 - ❌ "buh", "kuh", "tuh" — a consonant **plus a schwa vowel**. The schwa is a
   second speech sound; it contaminates the phoneme and (for stops) smuggles
   in a vowel the pilot is not coupling.
