@@ -60,4 +60,14 @@ enum SpatialSonification {
         let clamped = max(0.0, min(1.0, y))
         return Float(1200.0 - 2400.0 * clamped)
     }
+
+    /// R18DIM: the same mapping over a narrower span (`PitchCoupling`),
+    /// centred on 0: top = +span/2, bottom = -span/2. At 2400 this is the
+    /// function above, value for value.
+    static func pitchCents(forNormalizedY y: CGFloat, spanCents: Int) -> Float {
+        if spanCents == Int(centsSpan) { return pitchCents(forNormalizedY: y) }
+        let clamped = max(0.0, min(1.0, y))
+        let half = Double(spanCents) / 2
+        return Float(half - Double(spanCents) * clamped)
+    }
 }

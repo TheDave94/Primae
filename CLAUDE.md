@@ -183,7 +183,7 @@ NO branch coverage (swiftlang/swift#81730, open since 2025-05-23) — and the
 inert defect moved no line anyway, so line, function and diff-coverage were
 all green. `.timeLimit` is minutes-only, so it cannot police a sub-second
 hang. Swift Testing retries re-run the WHOLE target, not just the failures
-(FB20922425). And `PrimaeUITests` (9 tests) never runs in CI — Layer 3
+(FB20922425). And `PrimaeUITests` (38 test methods at `aab86e9d`) never runs in CI — Layer 3
 scopes the job to `PrimaeNativeTests`.
 
 **AND `PrimaeUITests` CAN RUN ON THE PHYSICAL iPAD — MEASURED 2026-09-21, and
@@ -499,7 +499,7 @@ not be read as current.
 > this machine cannot run `xcodebuild`/`xcrun devicectl test` locally, full
 > stop, the same way it cannot complete a signing touch prompt.** The
 > working pattern is and remains what CI and David's terminal already do:
-> **CI builds** (hosted `macos-26` runners), **David's terminal runs local
+> **CI builds** (hosted runners — `macos-26` when this was written, `xcode-27` since the 2026-10-01 pin), **David's terminal runs local
 > device tests and signs.** A future session hitting `permissionDenied` on
 > package resolution from a CC seat should stop at this paragraph rather
 > than re-running tonight's whole elimination sequence — cache state,
@@ -908,7 +908,7 @@ not be read as current.
 >   connection became invalid` (the XPC connection itself is refused) followed by
 >   `error: permissionDenied` on package resolution. Not a `-derivedDataPath`
 >   artifact — reproduces with Xcode's own default path.
-> - Only CI (hosted macos-26 runner) can build or test this project from a
+> - Only CI (hosted `macos-26` runner when this was written; `xcode-27` since the 2026-10-01 pin) can build or test this project from a
 >   sandboxed seat. Prepare the change, then hand off to a build-capable seat
 >   or David's terminal — don't spend a round trip re-discovering this.
 > - `gh run list` (and `gh api .../actions/runs`) also fails locally with a

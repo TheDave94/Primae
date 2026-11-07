@@ -11,6 +11,24 @@ protocol AudioControlling: AnyObject {
     /// engine default (0 cents). Default implementation is a no-op —
     /// only pitch-capable engines opt in (see AudioEngine+SpatialPitch).
     func setSpatialPitch(cents: Float)
+    /// R18 slice 4 (distance dimension): the live voice's output level in dB
+    /// (<= 0; 0 = r17) and low-pass cutoff in Hz (>= `StrokeTone.bypassHz` =
+    /// no filter = r17), both smoothed per buffer by the kernel. Written ONLY
+    /// when a Klang-Dimensionen switch is on. Requirements here, not
+    /// extension-only (the dispatch trap recorded below); no-op defaults.
+    func setStrokeLevel(gainDB: Float)
+    func setStrokeLowpass(cutoffHz: Float)
+    /// R18 slice 5 (direction dimension): true silences the voice (smoothed)
+    /// while the gate stays open, so the sound returns when the pen turns
+    /// forward again.
+    func setStrokeMute(_ muted: Bool)
+    /// R18 slice 6: linear output gain from the Pencil's force, 0...1 (1 = unchanged). Declared as a requirement
+    /// (see `setSpatialPitch`) so the live voice is reached dynamically; default is a no-op.
+    func setPressureGain(_ gain: Float)
+    /// R18DIM slice 7: amplitude roughness 0...1 (dysfluency). Requirement + extension no-op default, as `setSpatialPitch`.
+    func setRoughness(_ amount: Float)
+    /// Slice 8 try-out strengths, captured once by the view model; defaults reproduce the slice-7 render.
+    func setRoughnessTuning(depth: Float, frequencyHz: Float)
     func play()
     /// Play with a short linear fade-IN, so a demonstration does not start
     /// at full volume (2026-10-02, proctor's device run: "not stop too
@@ -80,6 +98,16 @@ extension AudioControlling {
     /// REQUIREMENT above (not extension-only) so conformers that do
     /// implement it — AudioEngine — are reached via dynamic dispatch.
     func setSpatialPitch(cents: Float) {}
+    func setStrokeLevel(gainDB: Float) {}
+    func setStrokeLowpass(cutoffHz: Float) {}
+    func setStrokeMute(_ muted: Bool) {}
+
+    /// No-op default (R18 slice 6): only the live voice scales its output.
+    func setPressureGain(_ gain: Float) {}
+
+    /// R18DIM slice 7: only the live voice renders roughness.
+    func setRoughness(_ amount: Float) {}
+    func setRoughnessTuning(depth: Float, frequencyHz: Float) {}
 
     /// Default fade-IN: just play. Every conformer except AudioEngine
     /// (the only one with a volume ramp to drive) gets this, so adding the

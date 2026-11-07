@@ -303,6 +303,33 @@ final class LiveSonificationAudio: AudioControlling {
         kernel.setPitchCents(max(-1200, min(1200, cents)))
     }
 
+    func setStrokeLevel(gainDB: Float) {
+        guard gainDB.isFinite else { return }
+        kernel.setStrokeLevel(gainDB: gainDB)
+    }
+
+    func setStrokeLowpass(cutoffHz: Float) {
+        guard cutoffHz.isFinite else { return }
+        kernel.setStrokeLowpass(cutoffHz: cutoffHz)
+    }
+
+    func setStrokeMute(_ muted: Bool) { kernel.setStrokeMute(muted) }
+
+    func setPressureGain(_ gain: Float) {
+        guard gain.isFinite else { return }
+        kernel.setPressureGain(gain)
+    }
+
+    func setRoughness(_ amount: Float) {
+        guard amount.isFinite else { return }
+        kernel.setRoughness(amount)
+    }
+
+    func setRoughnessTuning(depth: Float, frequencyHz: Float) {
+        guard depth.isFinite, frequencyHz.isFinite else { return }
+        kernel.setRoughnessTuning(depth: depth, frequencyHz: frequencyHz)
+    }
+
     func play() { play(fadeInSeconds: 0) }
 
     /// R17D: a sound with a recorded onset starts like a stroke (no fade-in): its onset IS the sound's rise, and

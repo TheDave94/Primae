@@ -1092,6 +1092,26 @@ public final class TracingViewModel {
     private let dotsVisible: Bool
     /// Internal, not private: `TouchDispatcher` reads it on the touch path.
     let panningEnabled: Bool
+    /// r18 "Tempo folgt dem Stift": off holds the playback rate at 1.0 for
+    /// the pen AND the observe dot. Captured at init like `panningEnabled`.
+    let rateCoupling: Bool
+    /// R18DIM slice 2: pitch scope + span, captured at init (see `panningEnabled`).
+    let pitchCoupling: PitchCoupling
+    /// R18 slices 4+5: the Klang-Dimensionen switches, captured at init (read by `TouchDispatcher` and the observe dot).
+    let distanceToneEnabled: Bool
+    let directionMuteEnabled: Bool
+    let distanceToneFarLevelDB: Double
+    let distanceToneFarCutoffHz: Double
+    let directionMuteBackwardCosine: Double
+    /// R18 slice 6: Pencil force -> loudness (`StudyComparisonSettings.pressureLoudnessEnabled`, captured at init).
+    let pressureLoudnessEnabled: Bool
+    let pressureLoudnessRangeDB: Double
+    /// R18DIM slice 7: the dysfluency -> roughness switch, captured from `TracingDependencies` at init (read by `TouchDispatcher`).
+    let dysfluencyRoughness: Bool
+    let dysfluencyRoughnessDepth: Double
+    let dysfluencyRoughnessRateHz: Double
+    /// R18DIM slice 7: the observe dot's stop-start meter (the pen's lives in `TouchDispatcher`).
+    private var observeDysfluency = DysfluencyMeter()
     /// Captured from `TracingDependencies.presentationSpacingSeconds`
     /// (which reads `StudyComparisonSettings` by default) at init.
     private let presentationSpacing: TimeInterval
@@ -1310,6 +1330,20 @@ public final class TracingViewModel {
         // fixture can hand another suite a value (2026-10-16).
         self.dotsVisible              = deps.guidedDotsVisible
         self.panningEnabled           = deps.panningEnabled
+        self.rateCoupling             = deps.rateCoupling
+        self.pitchCoupling            = deps.pitchCoupling
+        self.distanceToneEnabled      = deps.distanceToneEnabled
+        self.directionMuteEnabled     = deps.directionMuteEnabled
+        self.distanceToneFarLevelDB   = deps.distanceToneFarLevelDB
+        self.distanceToneFarCutoffHz  = deps.distanceToneFarCutoffHz
+        self.directionMuteBackwardCosine = deps.directionMuteBackwardCosine
+        self.pressureLoudnessEnabled  = deps.pressureLoudnessEnabled
+        self.pressureLoudnessRangeDB  = deps.pressureLoudnessRangeDB
+        self.dysfluencyRoughness      = deps.dysfluencyRoughness
+        self.dysfluencyRoughnessDepth = deps.dysfluencyRoughnessDepth
+        self.dysfluencyRoughnessRateHz = deps.dysfluencyRoughnessRateHz
+        effectiveAudio.setRoughnessTuning(depth: Float(deps.dysfluencyRoughnessDepth),
+                                          frequencyHz: Float(deps.dysfluencyRoughnessRateHz))
         self.axisDemonstrationEnabled = deps.spatialAxisDemonstration
         self.enableRetrievalPrompts = deps.enableRetrievalPrompts
         self.enableBackwardChaining = deps.enableBackwardChaining
@@ -1451,6 +1485,7 @@ public final class TracingViewModel {
         // itself to every cell it builds, so no load path can miss it.
         self.touchDispatcher = td
         td.playbackActivationVelocityThreshold = CGFloat(deps.soundGateVelocityFloor)
+        td.soundGatingEnabled = deps.soundGatingEnabled
         grid.soundGateRadiusFactor = CGFloat(deps.soundGateRadiusFactor)
         let ptc = PhaseTransitionCoordinator()
         self.phaseTransitions = ptc
@@ -1474,7 +1509,21 @@ public final class TracingViewModel {
             spatialAxisDemonstration: axisDemonstrationEnabled,
             soundGateRadiusFactor: deps.soundGateRadiusFactor,
             soundGateVelocityFloor: deps.soundGateVelocityFloor,
-            oncePerCondition: deps.oncePerCondition
+            oncePerCondition: deps.oncePerCondition,
+            rateCoupling: rateCoupling,
+            pitchScope: deps.pitchCoupling.scope,
+            pitchRangeCents: deps.pitchCoupling.spanCents,
+            soundGatingEnabled: deps.soundGatingEnabled,
+            distanceToneEnabled: deps.distanceToneEnabled,
+            directionMuteEnabled: deps.directionMuteEnabled,
+            distanceToneFarLevelDB: deps.distanceToneFarLevelDB,
+            distanceToneFarCutoffHz: deps.distanceToneFarCutoffHz,
+            directionMuteBackwardCosine: deps.directionMuteBackwardCosine,
+            pressureLoudnessEnabled: pressureLoudnessEnabled,
+            pressureLoudnessRangeDB: deps.pressureLoudnessRangeDB,
+            dysfluencyRoughness: deps.dysfluencyRoughness,
+            dysfluencyRoughnessDepth: deps.dysfluencyRoughnessDepth,
+            dysfluencyRoughnessRateHz: deps.dysfluencyRoughnessRateHz
         ).nonDefaultStamp
         pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }
         pb.reloadBeforePlay   = { [weak self] in self?.reloadActiveAudioFile() }
@@ -1956,6 +2005,16 @@ public final class TracingViewModel {
         clearLostRoute()
         routeRecoveries = 0
         armAudio.enter(audioCondition)
+        // R18: the roughness tuning is a PUSH-ONCE value, unlike the per-stroke
+        // tone and pressure arguments, and `ArmGatedAudio` sends every call to
+        // the no-op engine while the arm is silent. A session launched in the
+        // silent arm therefore never delivered the proctor's depth/rate to the
+        // real engine, and opening the gate does not deliver it either: the
+        // child would run at the built-in defaults whatever the settings said.
+        // Re-pushed here, on every arm change and every new participant, which
+        // are the only two moments the gate opens.
+        armAudio.setRoughnessTuning(depth: Float(dysfluencyRoughnessDepth),
+                                    frequencyHz: Float(dysfluencyRoughnessRateHz))
         verifyEngineFollowsArm(at: "arm change")
     }
 
@@ -3252,10 +3311,14 @@ public final class TracingViewModel {
         guard sessionBlockReason == nil else { return }
         guard letters.indices.contains(letterIndex) else { return }
         guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
+        observeDysfluency.reset()
         let p = firstPoint.map(canvasNormalizedPoint(forCellPoint:)) ?? CGPoint(x: 0.5, y: 0.5)
         ArmCoupling.apply(
             ArmCoupling.parameters(canvasNormalized: p, velocity: 0,
-                                   panningEnabled: panningEnabled, arm: audioCondition),
+                                   panningEnabled: panningEnabled,
+                                   rateCouplingEnabled: rateCoupling, arm: audioCondition,
+                                   pitch: pitchCoupling,
+                                   strokeTone: firstPoint.flatMap { strokeToneParameters(cellPoint: $0, movement: nil) }),
             to: audio)
         audio.loadAudioFile(named: first, autoplay: false)
         audio.play(fadeInSeconds: observeAudioFadeInSeconds)
@@ -3304,6 +3367,7 @@ public final class TracingViewModel {
               audioCondition != .silent else { return }
         let point: CGPoint
         let velocity: CGFloat
+        var movement: CGVector?
         switch frame {
         case .still(let p):
             point = p
@@ -3315,13 +3379,25 @@ public final class TracingViewModel {
             let distance = hypot((to.x - from.x) * w, (to.y - from.y) * h)
             point = to
             velocity = seconds > 0 ? distance / CGFloat(seconds) : 0
+            movement = CGVector(dx: to.x - from.x, dy: to.y - from.y)
         case .jump:
             return
+        }
+        // R18DIM slice 7: the dot's own speed stream goes through the same meter the pen's does.
+        var rough: Float = 0
+        if dysfluencyRoughness {
+            let now = mediaClock()
+            if case .move(_, _, let seconds) = frame { observeDysfluency.add(t: now, distance: Double(velocity) * seconds) }
+            rough = observeDysfluency.roughness(at: now)
         }
         ArmCoupling.apply(
             ArmCoupling.parameters(canvasNormalized: canvasNormalizedPoint(forCellPoint: point),
                                    velocity: velocity,
-                                   panningEnabled: panningEnabled, arm: audioCondition),
+                                   panningEnabled: panningEnabled,
+                                   rateCouplingEnabled: rateCoupling, arm: audioCondition,
+                                   pitch: pitchCoupling,
+                                   strokeTone: strokeToneParameters(cellPoint: point, movement: movement),
+                                   dysfluency: rough, roughnessEnabled: dysfluencyRoughness),
             to: audio)
     }
 

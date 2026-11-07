@@ -1321,7 +1321,7 @@ Implications:
     from the screen. `docs/STUDY_DEVICE_DRYRUN.md` no longer says nothing
     is drawn at the end.
   - **Record-only parts.** The r16 `mergedAtUTC` / `pullRequest` (2026-11-02
-    13:17, #90) are filled in; r17's are filled in by r18.
+    13:17, #90) are filled in; r17's are filled in (2026-11-06 11:19, #91).
   - **Pinned by** `LiveSonificationKernelTests`, `LiveSonificationAudioTests`,
     `SonificationRealtimeTests`, `StrokeEnvelopeTests`, `PhonemeOnsetTests`
     (incl. the dot pin), `SeamMeterTests`, `LoopX*` / `Pop*` regression
@@ -1330,6 +1330,60 @@ Implications:
     per lane in the files above. Last full device run: 1594 tests in 201
     suites passed (Release-Study and Debug-Study), AudioEngineTests 37 of
     37 via `Primae-DeviceTests` (`r17e/R17E.md`).
+
+- **Protocol revision 18 — switchable sonification dimensions
+  (2026-11-07).** Fourteen new rows in the proctor comparison
+  section let David and the supervisors choose which properties of the
+  writing movement the sound carries; every row defaults to r17 behaviour, so
+  an install changes nothing until a switch is flipped. Why: the app
+  hard-wired speed -> rate, x -> pan, y -> pitch (spatial arm only) and
+  on-letter gating; distance from the stroke, direction along it, pen
+  pressure and dysfluency were not sonified at all, so the supervisors'
+  question — does the phoneme add anything over a sound that reacts to the
+  writing? — could not be explored on the device
+  (`wt-primae-audit-notes/r18dim/sonification-dimensions-spec.md`).
+  - **The eight switches** (German label as shipped; default): `rateCoupling`
+    "Tempo folgt dem Stift" (on); `pitchScope` "Höhe steuert Tonhöhe" (Nur
+    Raumklang; its third state "Beide Klang-Arme" pitch-shifts the phoneme
+    through TD-PSOLA); `pitchRangeCents` "Tonumfang der Höhe" (2 Oktaven =
+    2400 cents); `soundGatingEnabled` "Ton nur auf dem Buchstaben" (on);
+    `distanceToneEnabled` "Klang: Abstand vom Strich (dunkler, leiser)"
+    (off); `directionMuteEnabled` "Klang: Richtung am Strich (rückwärts
+    stumm)" (off); `pressureLoudnessEnabled` "Stiftdruck steuert die
+    Lautstärke (Apple Pencil)" (off); `dysfluencyRoughness` "Klang: Stocken →
+    Rauheit" (off).
+  - **The six strengths** (Stepper label; default): `distanceToneFarLevelDB`
+    "Abstand: Dämpfung am Rand" (-12 dB); `distanceToneFarCutoffHz` "Abstand:
+    Grenzfrequenz am Rand" (800 Hz); `directionMuteBackwardCosine` "Richtung:
+    Rückwärts-Schwelle" (-0.25); `pressureLoudnessRangeDB` "Stiftdruck:
+    Lautstärkeumfang" (18 dB); `dysfluencyRoughnessDepth` "Rauheit: Tiefe"
+    (0.8, shown as 80 %); `dysfluencyRoughnessRateHz` "Rauheit: Rate" (40 Hz).
+    **Frozen at these values as the defaults-when-on** (David 2026-11-07:
+    land with the current values rather than wait for the try-out; tuning
+    them after a try-out on the iPad is a later protocol revision).
+  - **Matching discipline.** Each switch drives both sound arms through the
+    same coupling function (`ArmCoupling.parameters`), so the phoneme-vs-
+    spatial contrast stays matched; only `pitchScope` can separate the arms
+    and defaults to the r17 spatial-only behaviour.
+  - **Stamp.** All fourteen new keys are appended to the existing
+    per-session/enrolment `nonDefaultStamp` (26 fields in total), so no
+    exported row can hide which dimensions were on; the export schema is
+    unchanged. `StudyProtocol.revision` is 18.
+  - **Verification.** Full `PrimaeNativeTests` on the physical iPad,
+    Release-Study, on the landed content (revision 18): 1668 tests in 211
+    suites passed (`r18dim/int/logs/l1-full-rel-r18.log`); `AudioEngineTests`
+    via `Primae-DeviceTests` on the iPad: 37 tests, 0 failures, on the same
+    code before the revision bump (`r18dim/int/logs/n6-audioengine.log`).
+    A review found one defect (a session launched in the silent arm never
+    delivered the roughness strengths to the engine), fixed with a device
+    regression test; three mutations the tests first missed (s7-3, s7-3b,
+    s7-8b) are now caught (`r18dim/int/REPORT.md`).
+  - **Not done.** PopCapture phoneme A on the device: the XCTest "Enable UI
+    Automation" sheet asks for the iPad passcode (the simulator fallback
+    passed). The six strengths were not tried on the iPad before freezing.
+    Review items N4 (the axis demonstration ignores the pitch switch), N8
+    and N10 (a reversed-then-stopped pen stays muted with the direction
+    switch on) are open for David (`r18dim/review/REVIEW.md`).
 
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,

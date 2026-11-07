@@ -313,14 +313,21 @@ import UIKit
         // At construction: the stored values reach the session.
         #expect(vm.showCheckpoints == false,
                 "guidedDotsVisible's default argument did not read the store — the start dots ignore the switch")
+        #expect(vm.rateCoupling == false,
+                "rateCoupling's default argument did not read the store — the rate ignores the switch")
         #expect(vm.panningEnabled == false,
                 "panningEnabled's default argument did not read the store — the pan axis ignores the switch")
         let stamp = vm.comparisonConfigurationStamp ?? ""
         let stamped = Set(stamp.split(separator: ";").map { String($0.split(separator: "=")[0]) })
         #expect(stamped == ["observePasses", "cycleAllConditions", "presentationSpacingSeconds",
                             "panningEnabled", "guidedDotsVisible", "spatialAxisDemonstration",
-                            "soundGateRadiusFactor", "soundGateVelocityFloor", "oncePerCondition"],
-                "the session did not resolve all nine omitted switches from the store: \(stamp)")
+                            "soundGateRadiusFactor", "soundGateVelocityFloor", "oncePerCondition", "rateCoupling",
+                            "pitchScope", "pitchRangeCents", "soundGatingEnabled",
+                            "distanceToneEnabled", "directionMuteEnabled", "distanceToneFarLevelDB",
+                            "distanceToneFarCutoffHz", "directionMuteBackwardCosine",
+                            "pressureLoudnessEnabled", "pressureLoudnessRangeDB",
+                            "dysfluencyRoughness", "dysfluencyRoughnessDepth", "dysfluencyRoughnessRateHz"],
+                "the session did not resolve every omitted switch from the store: \(stamp)")
         #expect(stamp.contains("spatialAxisDemonstration=true"),
                 "spatialAxisDemonstration's default argument did not read the store")
 
@@ -386,9 +393,11 @@ import UIKit
         #expect(c.cycleAllConditions == false)
         #expect(c.presentationSpacingSeconds == 0)
         #expect(c.panningEnabled)
+        #expect(c.rateCoupling)
         #expect(c.guidedDotsVisible)
         #expect(c.spatialAxisDemonstration == false)
         #expect(c.oncePerCondition == false)
+        #expect(c.soundGatingEnabled)
         #expect(c.soundGateRadiusFactor == StudyComparisonSettings.soundGateRadiusFactorDefault)
         #expect(c.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault)
         #expect(c == StudyComparisonConfiguration.defaults,

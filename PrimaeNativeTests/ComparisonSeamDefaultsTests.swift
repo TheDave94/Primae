@@ -55,6 +55,20 @@ final class ThrowawayDefaults {
         defaults.set(configuration.soundGateRadiusFactor, forKey: S.soundGateRadiusFactorKey)
         defaults.set(configuration.soundGateVelocityFloor, forKey: S.soundGateVelocityFloorKey)
         defaults.set(configuration.oncePerCondition, forKey: S.oncePerConditionKey)
+        defaults.set(configuration.rateCoupling, forKey: S.rateCouplingKey)
+        defaults.set(configuration.pitchScope.rawValue, forKey: S.pitchScopeKey)
+        defaults.set(configuration.pitchRangeCents, forKey: S.pitchRangeCentsKey)
+        defaults.set(configuration.soundGatingEnabled, forKey: S.soundGatingEnabledKey)
+        defaults.set(configuration.distanceToneEnabled, forKey: S.distanceToneEnabledKey)
+        defaults.set(configuration.directionMuteEnabled, forKey: S.directionMuteEnabledKey)
+        defaults.set(configuration.distanceToneFarLevelDB, forKey: S.distanceToneFarLevelDBKey)
+        defaults.set(configuration.distanceToneFarCutoffHz, forKey: S.distanceToneFarCutoffHzKey)
+        defaults.set(configuration.directionMuteBackwardCosine, forKey: S.directionMuteBackwardCosineKey)
+        defaults.set(configuration.pressureLoudnessEnabled, forKey: S.pressureLoudnessEnabledKey)
+        defaults.set(configuration.pressureLoudnessRangeDB, forKey: S.pressureLoudnessRangeDBKey)
+        defaults.set(configuration.dysfluencyRoughness, forKey: S.dysfluencyRoughnessKey)
+        defaults.set(configuration.dysfluencyRoughnessDepth, forKey: S.dysfluencyRoughnessDepthKey)
+        defaults.set(configuration.dysfluencyRoughnessRateHz, forKey: S.dysfluencyRoughnessRateHzKey)
     }
 }
 
@@ -74,7 +88,21 @@ extension StudyComparisonConfiguration {
             spatialAxisDemonstration: true,
             soundGateRadiusFactor: 6.0,
             soundGateVelocityFloor: 22,
-            oncePerCondition: true
+            oncePerCondition: true,
+            rateCoupling: false,
+            pitchScope: .both,
+            pitchRangeCents: 1200,
+            soundGatingEnabled: false,
+            distanceToneEnabled: true,
+            directionMuteEnabled: true,
+            distanceToneFarLevelDB: -18,
+            distanceToneFarCutoffHz: 1600,
+            directionMuteBackwardCosine: -0.5,
+            pressureLoudnessEnabled: true,
+            pressureLoudnessRangeDB: 24,
+            dysfluencyRoughness: true,
+            dysfluencyRoughnessDepth: 0.6,
+            dysfluencyRoughnessRateHz: 60
         )
     }
 }
@@ -201,12 +229,25 @@ extension TracingDependencies {
 
         #expect(deps.cycleAllConditions == written.cycleAllConditions)
         #expect(deps.oncePerCondition == written.oncePerCondition)
+        #expect(deps.soundGatingEnabled == written.soundGatingEnabled)
         #expect(deps.observePasses == written.observePasses)
         #expect(deps.soundGateRadiusFactor == written.soundGateRadiusFactor)
         #expect(deps.soundGateVelocityFloor == written.soundGateVelocityFloor)
         #expect(deps.presentationSpacingSeconds == written.presentationSpacingSeconds)
         #expect(deps.guidedDotsVisible == written.guidedDotsVisible)
         #expect(deps.panningEnabled == written.panningEnabled)
+        #expect(deps.rateCoupling == written.rateCoupling)
+        #expect(deps.pitchCoupling == PitchCoupling(scope: written.pitchScope, spanCents: written.pitchRangeCents))
+        #expect(deps.distanceToneEnabled == written.distanceToneEnabled)
+        #expect(deps.directionMuteEnabled == written.directionMuteEnabled)
+        #expect(deps.distanceToneFarLevelDB == written.distanceToneFarLevelDB)
+        #expect(deps.distanceToneFarCutoffHz == written.distanceToneFarCutoffHz)
+        #expect(deps.directionMuteBackwardCosine == written.directionMuteBackwardCosine)
+        #expect(deps.pressureLoudnessEnabled == written.pressureLoudnessEnabled)
+        #expect(deps.pressureLoudnessRangeDB == written.pressureLoudnessRangeDB)
+        #expect(deps.dysfluencyRoughness == written.dysfluencyRoughness)
+        #expect(deps.dysfluencyRoughnessDepth == written.dysfluencyRoughnessDepth)
+        #expect(deps.dysfluencyRoughnessRateHz == written.dysfluencyRoughnessRateHz)
         #expect(deps.spatialAxisDemonstration == written.spatialAxisDemonstration)
     }
 
@@ -216,12 +257,26 @@ extension TracingDependencies {
         var c = StudyComparisonConfiguration.defaults
         c.cycleAllConditions = deps.cycleAllConditions
         c.oncePerCondition = deps.oncePerCondition
+        c.soundGatingEnabled = deps.soundGatingEnabled
         c.observePasses = deps.observePasses
         c.soundGateRadiusFactor = deps.soundGateRadiusFactor
         c.soundGateVelocityFloor = deps.soundGateVelocityFloor
         c.presentationSpacingSeconds = deps.presentationSpacingSeconds
         c.guidedDotsVisible = deps.guidedDotsVisible
         c.panningEnabled = deps.panningEnabled
+        c.rateCoupling = deps.rateCoupling
+        c.pitchScope = deps.pitchCoupling.scope
+        c.pitchRangeCents = deps.pitchCoupling.spanCents
+        c.distanceToneEnabled = deps.distanceToneEnabled
+        c.directionMuteEnabled = deps.directionMuteEnabled
+        c.distanceToneFarLevelDB = deps.distanceToneFarLevelDB
+        c.distanceToneFarCutoffHz = deps.distanceToneFarCutoffHz
+        c.directionMuteBackwardCosine = deps.directionMuteBackwardCosine
+        c.pressureLoudnessEnabled = deps.pressureLoudnessEnabled
+        c.pressureLoudnessRangeDB = deps.pressureLoudnessRangeDB
+        c.dysfluencyRoughness = deps.dysfluencyRoughness
+        c.dysfluencyRoughnessDepth = deps.dysfluencyRoughnessDepth
+        c.dysfluencyRoughnessRateHz = deps.dysfluencyRoughnessRateHz
         c.spatialAxisDemonstration = deps.spatialAxisDemonstration
         return c
     }
@@ -239,6 +294,7 @@ extension TracingDependencies {
         let moves: [(String, (inout StudyComparisonConfiguration) -> Void)] = [
             ("cycleAllConditions",        { $0.cycleAllConditions = away.cycleAllConditions }),
             ("oncePerCondition",          { $0.oncePerCondition = away.oncePerCondition }),
+            ("soundGatingEnabled",        { $0.soundGatingEnabled = away.soundGatingEnabled }),
             ("observePasses",             { $0.observePasses = away.observePasses }),
             ("soundGateRadiusFactor",     { $0.soundGateRadiusFactor = away.soundGateRadiusFactor }),
             ("soundGateVelocityFloor",    { $0.soundGateVelocityFloor = away.soundGateVelocityFloor }),
@@ -246,6 +302,19 @@ extension TracingDependencies {
             ("guidedDotsVisible",         { $0.guidedDotsVisible = away.guidedDotsVisible }),
             ("panningEnabled",            { $0.panningEnabled = away.panningEnabled }),
             ("spatialAxisDemonstration",  { $0.spatialAxisDemonstration = away.spatialAxisDemonstration }),
+            ("rateCoupling",              { $0.rateCoupling = away.rateCoupling }),
+            ("pitchScope",                { $0.pitchScope = away.pitchScope }),
+            ("pitchRangeCents",           { $0.pitchRangeCents = away.pitchRangeCents }),
+            ("distanceToneEnabled",       { $0.distanceToneEnabled = away.distanceToneEnabled }),
+            ("directionMuteEnabled",      { $0.directionMuteEnabled = away.directionMuteEnabled }),
+            ("distanceToneFarLevelDB",    { $0.distanceToneFarLevelDB = away.distanceToneFarLevelDB }),
+            ("distanceToneFarCutoffHz",   { $0.distanceToneFarCutoffHz = away.distanceToneFarCutoffHz }),
+            ("directionMuteBackwardCosine", { $0.directionMuteBackwardCosine = away.directionMuteBackwardCosine }),
+            ("pressureLoudnessEnabled",   { $0.pressureLoudnessEnabled = away.pressureLoudnessEnabled }),
+            ("pressureLoudnessRangeDB",   { $0.pressureLoudnessRangeDB = away.pressureLoudnessRangeDB }),
+            ("dysfluencyRoughness",       { $0.dysfluencyRoughness = away.dysfluencyRoughness }),
+            ("dysfluencyRoughnessDepth",  { $0.dysfluencyRoughnessDepth = away.dysfluencyRoughnessDepth }),
+            ("dysfluencyRoughnessRateHz", { $0.dysfluencyRoughnessRateHz = away.dysfluencyRoughnessRateHz }),
         ]
         for (name, move) in moves {
             var written = StudyComparisonConfiguration.defaults
@@ -269,12 +338,25 @@ extension TracingDependencies {
 
         #expect(deps.cycleAllConditions == StudyComparisonSettings.cycleAllConditionsDefault)
         #expect(deps.oncePerCondition == StudyComparisonSettings.oncePerConditionDefault)
+        #expect(deps.soundGatingEnabled == StudyComparisonSettings.soundGatingEnabledDefault)
         #expect(deps.observePasses == StudyComparisonSettings.observePassesDefault)
         #expect(deps.soundGateRadiusFactor == StudyComparisonSettings.soundGateRadiusFactorDefault)
         #expect(deps.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault)
         #expect(deps.presentationSpacingSeconds == StudyComparisonSettings.presentationSpacingSecondsDefault)
         #expect(deps.guidedDotsVisible == StudyComparisonSettings.guidedDotsVisibleDefault)
         #expect(deps.panningEnabled == StudyComparisonSettings.panningEnabledDefault)
+        #expect(deps.rateCoupling == StudyComparisonSettings.rateCouplingDefault)
+        #expect(deps.pitchCoupling == .default)
+        #expect(deps.distanceToneEnabled == StudyComparisonSettings.distanceToneEnabledDefault)
+        #expect(deps.directionMuteEnabled == StudyComparisonSettings.directionMuteEnabledDefault)
+        #expect(deps.distanceToneFarLevelDB == StudyComparisonSettings.distanceToneFarLevelDBDefault)
+        #expect(deps.distanceToneFarCutoffHz == StudyComparisonSettings.distanceToneFarCutoffHzDefault)
+        #expect(deps.directionMuteBackwardCosine == StudyComparisonSettings.directionMuteBackwardCosineDefault)
+        #expect(deps.pressureLoudnessEnabled == StudyComparisonSettings.pressureLoudnessEnabledDefault)
+        #expect(deps.pressureLoudnessRangeDB == StudyComparisonSettings.pressureLoudnessRangeDBDefault)
+        #expect(deps.dysfluencyRoughness == StudyComparisonSettings.dysfluencyRoughnessDefault)
+        #expect(deps.dysfluencyRoughnessDepth == StudyComparisonSettings.dysfluencyRoughnessDepthDefault)
+        #expect(deps.dysfluencyRoughnessRateHz == StudyComparisonSettings.dysfluencyRoughnessRateHzDefault)
         #expect(deps.spatialAxisDemonstration == StudyComparisonSettings.spatialAxisDemonstrationDefault)
     }
 }

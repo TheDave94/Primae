@@ -24,7 +24,7 @@ The visual identity — paper not glass, blue ghost / green child ink / amber gu
 - **Three-phase pipeline per letter** — *observe* → *guided* → *freeWrite*
 - **Three child-facing worlds** — Schule (guided tracing), Werkstatt (freeform writing), Fortschritte (stars + streak)
 - **Verbal-only feedback** — German TTS speaks every prompt; no percentages or technical scores ever shown
-- **Real-time time-stretched audio** — letter pronunciation matches tracing speed (`AVAudioUnitTimePitch`)
+- **Real-time time-stretched audio** — letter pronunciation matches tracing speed (live TD-PSOLA since protocol r17, `LiveSonificationAudio`)
 - **Haptic feedback** — per-checkpoint ticks, escalating pattern at stroke / letter completion
 - **Adaptive difficulty** — checkpoint radius widens or tightens based on rolling accuracy
 - **Spaced-repetition scheduler** — Ebbinghaus-style recency decay + accuracy + novelty
@@ -60,11 +60,11 @@ The three phases implement **Gradual Release of Responsibility** (Pearson & Gall
 
 - **Swift 6.4** with strict concurrency and `@MainActor` default isolation
 - **SwiftUI** + UIKit overlays for pencil / finger touch handling
-- **AVAudioEngine** + `AVAudioUnitTimePitch` — velocity-driven time-stretching
+- **AVAudioEngine** hosting the TD-PSOLA live sonification (`Core/Sonification/`) — velocity-driven time-stretching (r17)
 - **AVSpeechSynthesizer** — German verbal feedback (`de-DE`, enhanced voice when available)
 - **CoreML** + Vision — on-device 40 × 40 grayscale CNN, 53 classes (A–Z, a–z, ß)
 - **CoreHaptics** — phase-aware haptic patterns
-- **Swift Testing** + a small core of XCTest — 1388 tests in 153 suites at a3260ca4 (2026-11-01; CI is the source of truth)
+- **Swift Testing** + a small core of XCTest — 1594 tests in 201 suites at aab86e9d (2026-11-06; full device run in Release-Study and Debug-Study; CI is the source of truth)
 - **Zero third-party dependencies**
 
 ## Gestures

@@ -113,6 +113,16 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let fadeRaised = Atomic<UInt32>(0)
     private let rateBits = Atomic<UInt32>(Float(1).bitPattern)
     private let centsBits = Atomic<UInt32>(Float(0).bitPattern)
+    /// R18 slices 4+5 (stroke tone): linear gain, low-pass cutoff in Hz, mute. Neutral = r17 (the stage below is skipped).
+    private let toneGainBits = Atomic<UInt32>(Float(1).bitPattern)
+    private let toneCutoffBits = Atomic<UInt32>(LiveSonificationKernel.toneBypassHz.bitPattern)
+    private let toneMute = Atomic<UInt32>(0)
+    /// R18 slice 6 (Pencil pressure -> loudness): linear gain on the whole output, 1 = r17 (no effect).
+    private let pressureGainBits = Atomic<UInt32>(Float(1).bitPattern)
+    /// R18DIM slice 7: target amplitude roughness 0...1 (dysfluency).
+    private let roughBits = Atomic<UInt32>(Float(0).bitPattern)
+    private let roughDepthTargetBits = Atomic<UInt32>(RoughnessTuning.maxDepth.bitPattern)
+    private let roughRateBits = Atomic<UInt32>(Float(RoughnessTuning.frequencyHz).bitPattern)
 
     // MARK: Status (render -> main, tests)
 
@@ -143,10 +153,29 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let scratch: UnsafeMutablePointer<Float>
     // The pitch the voices render with, and the stroke-start glide (ENV3).
     private var pitchApplied: Float = 0
+    // R18 slice 6: pressure gain ramp, from the last render call's value to this call's target (no zipper noise).
+    private var pressureGainNow: Float = 1
+    private var pressureGainFrom: Float = 1
+    /// `RoughnessTuning.smoothingCoefficient`, read once at construction: a lazy static would take its `swift_once` on the render thread.
+    private let roughSmoothing: Float = RoughnessTuning.smoothingCoefficient
     private var pitchPrevTarget: Float = 0
     private var glideFrom: Float = 0
     private var glidePos = 0
     private var glideLen = 0         // 0 = no glide running
+    // Stroke-tone stage state (render thread only).
+    private var toneGainApplied: Float = 1
+    private var toneCutoffApplied: Float = LiveSonificationKernel.toneBypassHz
+    private var toneLowpassState: Float = 0
+    /// Per-buffer approach to the target (0...1): about 12 ms time constant at 512 frames, so a mute is complete in ~100 ms
+    /// without a zipper step (the gain is also interpolated linearly across each buffer).
+    static let toneSmoothing: Float = 0.6
+    /// The low-pass cutoff that means "no filter" (`StrokeTone.bypassHz`).
+    static let toneBypassHz: Float = 20_000
+    // R18DIM slice 7: the roughness stage. `roughDepth` follows the target through a one-pole (RoughnessTuning.smoothSeconds),
+    // so a change of dysfluency never steps the gain; `roughPhase` is continuous across buffers. At depth 0 the stage is skipped
+    // entirely (the r17 output is byte-identical) and the phase restarts at 0, where the modulator's gain is exactly 1.
+    private var roughDepth: Float = 0
+    private var roughPhase: Float = 0
     static let glideSubBlock = 64
     #if DEBUG || POPCAP
     private let cap = PopCapture.armed   // POPCAP: render-thread event ring; nil unless -popCapture
@@ -222,6 +251,44 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         centsBits.store((cents.isFinite ? min(1200, max(-1200, cents)) : 0).bitPattern, ordering: .relaxed)
     }
 
+    /// R18: output level of the stroke-tone stage in dB (clamped to -60...0); smoothed per buffer on the render thread.
+    func setStrokeLevel(gainDB: Float) {
+        let db = gainDB.isFinite ? min(0, max(-60, gainDB)) : 0
+        toneGainBits.store(Float(pow(10.0, Double(db) / 20.0)).bitPattern, ordering: .relaxed)
+    }
+
+    /// R18: low-pass cutoff in Hz (clamped to 100...`toneBypassHz`; the top of the range is "no filter").
+    func setStrokeLowpass(cutoffHz: Float) {
+        let hz = cutoffHz.isFinite ? min(Self.toneBypassHz, max(100, cutoffHz)) : Self.toneBypassHz
+        toneCutoffBits.store(hz.bitPattern, ordering: .relaxed)
+    }
+
+    func setStrokeMute(_ muted: Bool) { toneMute.store(muted ? 1 : 0, ordering: .relaxed) }
+
+    var requestedToneGain: Float { Float(bitPattern: toneGainBits.load(ordering: .relaxed)) }
+    var requestedToneCutoff: Float { Float(bitPattern: toneCutoffBits.load(ordering: .relaxed)) }
+    var requestedToneMute: Bool { toneMute.load(ordering: .relaxed) != 0 }
+
+    /// R18 slice 6: linear output gain from the Pencil's force (1 = unchanged). Smoothed over each render call.
+    func setPressureGain(_ gain: Float) {
+        pressureGainBits.store((gain.isFinite ? min(1, max(0, gain)) : 1).bitPattern, ordering: .relaxed)
+    }
+    var requestedPressureGain: Float { Float(bitPattern: pressureGainBits.load(ordering: .relaxed)) }
+
+    /// R18DIM slice 7: amplitude roughness 0...1. 0 = off (the r17 sound, untouched).
+    func setRoughness(_ amount: Float) {
+        roughBits.store((amount.isFinite ? min(1, max(0, amount)) : 0).bitPattern, ordering: .relaxed)
+    }
+    var requestedRoughness: Float { Float(bitPattern: roughBits.load(ordering: .relaxed)) }
+    func setRoughnessTuning(depth: Float, frequencyHz: Float) {
+        roughDepthTargetBits.store((depth.isFinite ? min(1, max(0, depth)) : RoughnessTuning.maxDepth).bitPattern,
+                                   ordering: .relaxed)
+        let hz = frequencyHz.isFinite ? min(200, max(1, frequencyHz)) : Float(RoughnessTuning.frequencyHz)
+        roughRateBits.store(hz.bitPattern, ordering: .relaxed)
+    }
+    var requestedRoughnessDepth: Float { Float(bitPattern: roughDepthTargetBits.load(ordering: .relaxed)) }
+    var requestedRoughnessRateHz: Float { Float(bitPattern: roughRateBits.load(ordering: .relaxed)) }
+
     var isSounding: Bool { soundingBits.load(ordering: .relaxed) != 0 }
     var starts: UInt32 { startCount.load(ordering: .relaxed) }
     var gateRequested: Bool { wantOpen.load(ordering: .relaxed) != 0 }
@@ -275,14 +342,70 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
                 off += m
             }
         }
+        applyStrokeTone(into: out, frames: n)
         if restartPending && !(voices[0].active && voices[1].active) { begin() }
+        if any || roughDepth > 0 { applyRoughness(to: out, frames: n) }
         soundingBits.store(voices[0].active || voices[1].active ? 1 : 0, ordering: .relaxed)
         return !any
+    }
+
+    /// R18 slices 4+5: gain, one-pole low-pass and mute over the mixed voices of this chunk. Skipped (bit-exact r17) while the
+    /// request and the applied state are both neutral. Allocation-free; cutoff is approached in the log domain.
+    private func applyStrokeTone(into out: UnsafeMutablePointer<Float>, frames n: Int) {
+        let muted = toneMute.load(ordering: .relaxed) != 0
+        let gT = muted ? 0 : Float(bitPattern: toneGainBits.load(ordering: .relaxed))
+        let cT = Float(bitPattern: toneCutoffBits.load(ordering: .relaxed))
+        let top = Self.toneBypassHz
+        if gT == 1 && toneGainApplied == 1 && cT >= top && toneCutoffApplied >= top {
+            toneLowpassState = out[n - 1]
+            return
+        }
+        let g0 = toneGainApplied
+        var g1 = g0 + (gT - g0) * Self.toneSmoothing
+        if abs(gT - g1) < 1e-3 { g1 = gT }
+        var c1 = exp(log(toneCutoffApplied) + (log(cT) - log(toneCutoffApplied)) * Self.toneSmoothing)
+        if abs(cT - c1) < 1 { c1 = cT }
+        toneGainApplied = g1
+        toneCutoffApplied = c1
+        let filtered = c1 < top
+        let a = 1 - exp(-2 * Float.pi * c1 / Float(Self.sampleRate))
+        var z = toneLowpassState
+        var i = 0
+        let step = (g1 - g0) / Float(n)
+        while i < n {
+            var y = out[i]
+            if filtered { z += a * (y - z); y = z } else { z = y }
+            out[i] = y * (g0 + step * Float(i + 1))
+            i += 1
+        }
+        toneLowpassState = z
+    }
+
+    /// R18DIM slice 7: raised-cosine amplitude modulation, gain = 1 - depth * (0.5 - 0.5 cos(2 pi f t)), so the modulator sits at 1
+    /// at phase 0 and dips to 1 - depth once per period: a rasp (RoughnessTuning), not a tremolo. `depth` is one-pole smoothed
+    /// per sample toward the target, so there are no zipper steps and no clicks when dysfluency starts or stops.
+    private func applyRoughness(to out: UnsafeMutablePointer<Float>, frames n: Int) {
+        let target = Float(bitPattern: roughBits.load(ordering: .relaxed))
+            * Float(bitPattern: roughDepthTargetBits.load(ordering: .relaxed))
+        if target == 0 && roughDepth == 0 { return }
+        let a = roughSmoothing
+        let step = Float(bitPattern: roughRateBits.load(ordering: .relaxed)) / Float(Self.sampleRate)
+        var d = roughDepth, ph = roughPhase, i = 0
+        while i < n {
+            d += a * (target - d)
+            if target == 0 && d < 1e-5 { d = 0; ph = 0; break }
+            out[i] *= 1 - d * (0.5 - 0.5 * cos(2 * Float.pi * ph))
+            ph += step; if ph >= 1 { ph -= 1 }
+            i += 1
+        }
+        roughDepth = d; roughPhase = ph
     }
 
     /// Renders both voices into `out` at `pitchApplied`; true when either sounded.
     private func renderVoices(into out: UnsafeMutablePointer<Float>, frames n: Int) -> Bool {
         var any = false, v = 0
+        pressureGainFrom = pressureGainNow
+        pressureGainNow = Float(bitPattern: pressureGainBits.load(ordering: .relaxed))
         while v < 2 {
             if voices[v].active { any = true; renderVoice(v, adding: out, frames: n) }
             v += 1
@@ -444,7 +567,9 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
                 vc.shape = vc.shapePos >= len ? 0
                     : (vc.raisedFall ? 0.5 + 0.5 * cos(Float.pi * vc.shapePos / len) : cos(half * vc.shapePos / len))
             }
-            out[i] += scratch[i] * vc.env * vc.shape * vc.gain
+            let pg = pressureGainFrom == pressureGainNow ? pressureGainNow
+                : pressureGainFrom + (pressureGainNow - pressureGainFrom) * (Float(i + 1) / Float(n))
+            out[i] += scratch[i] * vc.env * vc.shape * vc.gain * pg
             if (vc.env == 0 && vc.envTarget == 0) || (vc.shapeDir < 0 && vc.shape == 0) {
                 renderers[2 * Int(slot) + v]!._withUnsafeGuaranteedRef { $0.setGate(false) }
                 #if DEBUG || POPCAP
@@ -456,4 +581,15 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         }
         voices[v] = vc
     }
+}
+
+/// R18DIM slice 7: the roughness stage's constants (re-tuned in the try-out session, slice 8).
+nonisolated enum RoughnessTuning {
+    /// Modulation rate: inside the 30-100 Hz band heard as roughness rather than as a rhythm or a tremolo.
+    static let frequencyHz: Double = 40
+    /// Gain dip at full roughness (0.8 = the sound falls to 20 % once per period).
+    static let maxDepth: Float = 0.8
+    /// Time constant of the depth smoothing.
+    static let smoothSeconds: Double = 0.03
+    static let smoothingCoefficient: Float = Float(1 - exp(-1 / (smoothSeconds * LiveSonificationKernel.sampleRate)))
 }

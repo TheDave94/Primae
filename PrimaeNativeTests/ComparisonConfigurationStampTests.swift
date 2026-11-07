@@ -95,7 +95,7 @@ private final class StampCapturingStore: ParentDashboardStoring {
     /// the rest of the parallel run is behaving. (`stub` pins the other
     /// eight too; these four are the ones this suite asserts on.)
     private let pinnedAtDefault = ["cycleAllConditions", "oncePerCondition",
-                                   "soundGateRadiusFactor", "soundGateVelocityFloor"]
+                                   "soundGateRadiusFactor", "soundGateVelocityFloor", "soundGatingEnabled"]
 
     private func studyVM(dashboardStore: ParentDashboardStoring? = nil,
                          oncePerCondition: Bool = false) -> TracingViewModel {
@@ -236,6 +236,8 @@ private final class StampCapturingStore: ParentDashboardStoring {
         stampAfterOneChange({ $0.panningEnabled = false }, expecting: "panningEnabled")
         stampAfterOneChange({ $0.guidedDotsVisible = false }, expecting: "guidedDotsVisible")
         stampAfterOneChange({ $0.spatialAxisDemonstration = true }, expecting: "spatialAxisDemonstration")
+        stampAfterOneChange({ $0.distanceToneEnabled = true }, expecting: "distanceToneEnabled")
+        stampAfterOneChange({ $0.directionMuteEnabled = true }, expecting: "directionMuteEnabled")
         stampAfterOneChange({ $0.soundGateRadiusFactor = 1.0 }, expecting: "soundGateRadiusFactor")
         // Flipped AWAY from the default on purpose, and this one MOVED:
         // 0.0 was the non-default when this line was written, then became
@@ -249,6 +251,18 @@ private final class StampCapturingStore: ParentDashboardStoring {
             { $0.soundGateVelocityFloor = $0.soundGateVelocityFloor == 0 ? 22 : 0 },
             expecting: "soundGateVelocityFloor")
         stampAfterOneChange({ $0.oncePerCondition = true }, expecting: "oncePerCondition")
+        stampAfterOneChange({ $0.rateCoupling = false }, expecting: "rateCoupling")
+        stampAfterOneChange({ $0.pitchScope = .both }, expecting: "pitchScope")
+        stampAfterOneChange({ $0.pitchRangeCents = 1200 }, expecting: "pitchRangeCents")
+        stampAfterOneChange({ $0.soundGatingEnabled = false }, expecting: "soundGatingEnabled")
+        stampAfterOneChange({ $0.distanceToneFarLevelDB = -18 }, expecting: "distanceToneFarLevelDB")
+        stampAfterOneChange({ $0.distanceToneFarCutoffHz = 1600 }, expecting: "distanceToneFarCutoffHz")
+        stampAfterOneChange({ $0.directionMuteBackwardCosine = -0.5 }, expecting: "directionMuteBackwardCosine")
+        stampAfterOneChange({ $0.pressureLoudnessEnabled = true }, expecting: "pressureLoudnessEnabled")
+        stampAfterOneChange({ $0.pressureLoudnessRangeDB = 24 }, expecting: "pressureLoudnessRangeDB")
+        stampAfterOneChange({ $0.dysfluencyRoughness = true }, expecting: "dysfluencyRoughness")
+        stampAfterOneChange({ $0.dysfluencyRoughnessDepth = 0.6 }, expecting: "dysfluencyRoughnessDepth")
+        stampAfterOneChange({ $0.dysfluencyRoughnessRateHz = 60 }, expecting: "dysfluencyRoughnessRateHz")
     }
 
     /// COMPLETENESS, enforced rather than promised. A switch added to the
@@ -258,13 +272,13 @@ private final class StampCapturingStore: ParentDashboardStoring {
     /// Stamp` says a future author has to remember; this test means they
     /// cannot forget, because `Mirror` reports the stored properties the
     /// compiler knows about and the stamp has to name every one of them.
-    @Test("the stamp names every stored switch, and the struct has twelve")
+    @Test("the stamp names every stored switch, and the struct has twenty-six")
     func stampNamesEveryStoredSwitch() {
         let all = StudyComparisonConfiguration(
             observePasses: 2,
             // Non-default by construction, same reason as above: this
             // literal must set EVERY field away from its default, or the
-            // completeness assertion below counts fewer than twelve.
+            // completeness assertion below counts fewer than the struct stores.
             spokenFeedbackInStudy: !StudyComparisonConfiguration.defaults.spokenFeedbackInStudy,
             allFiveLetters: true,
             letterRepeatCount: 3,
@@ -278,17 +292,35 @@ private final class StampCapturingStore: ParentDashboardStoring {
             // the default, so the literal this used to carry names the
             // default instead of a departure from it.
             soundGateVelocityFloor: 22.0,
-            oncePerCondition: true)
+            oncePerCondition: true,
+            rateCoupling: false,
+            pitchScope: .both,
+            pitchRangeCents: 1200,
+            soundGatingEnabled: false,
+            distanceToneEnabled: true,
+            directionMuteEnabled: true,
+            distanceToneFarLevelDB: -18,
+            distanceToneFarCutoffHz: 1600,
+            directionMuteBackwardCosine: -0.5,
+            pressureLoudnessEnabled: true,
+            pressureLoudnessRangeDB: 24,
+            dysfluencyRoughness: true,
+            dysfluencyRoughnessDepth: 0.6,
+            dysfluencyRoughnessRateHz: 60)
 
         let storedFields = Mirror(reflecting: all).children.compactMap(\.label)
-        #expect(storedFields.count == 12,
-                "the configuration struct now has \(storedFields.count) stored switches, not 12 — the twelve-switch claim in StudyComparisonSettings' header, and every count derived from it, has moved")
+        #expect(storedFields.count == 26,
+                "the configuration struct now has \(storedFields.count) stored switches, not 26 — the field count in StudyComparisonSettings, and every count derived from it, has moved")
 
         let entries = (all.nonDefaultStamp ?? "").split(separator: ";").map(String.init)
         #expect(entries.count == storedFields.count,
                 "a configuration with every switch moved produced \(entries.count) stamp entries for \(storedFields.count) stored switches — the missing one is invisible in the export, which is the defect this field exists to close")
 
-        let named = Set(entries.compactMap { $0.split(separator: "=").first.map(String.init) })
+        let namesInOrder = entries.compactMap { $0.split(separator: "=").first.map(String.init) }
+        #expect(namesInOrder == storedFields,
+                "the stamp lists \(namesInOrder) but the struct declares \(storedFields) in that order — declaration order IS the stamp's field order (StudyComparisonSettings), so a reorder of either side changes every exported stamp an analyst parses")
+
+        let named = Set(namesInOrder)
         #expect(named == Set(storedFields),
                 "the stamp names \(named.sorted()) but the struct stores \(storedFields.sorted()) — a switch whose stamp name differs from its property name cannot be read against StudyComparisonSettings without a lookup")
     }

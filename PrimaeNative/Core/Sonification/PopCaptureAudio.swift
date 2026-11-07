@@ -35,6 +35,21 @@ final class PopCaptureAudio: AudioControlling {
         cap.event("audio.pitch", "cents=\(cents)")
         inner.setSpatialPitch(cents: cents)
     }
+    func setStrokeLevel(gainDB: Float) { cap.event("audio.level", "db=\(gainDB)"); inner.setStrokeLevel(gainDB: gainDB) }
+    func setStrokeLowpass(cutoffHz: Float) { cap.event("audio.lowpass", "hz=\(cutoffHz)"); inner.setStrokeLowpass(cutoffHz: cutoffHz) }
+    func setStrokeMute(_ muted: Bool) { cap.event("audio.mute", "muted=\(muted)"); inner.setStrokeMute(muted) }
+    func setPressureGain(_ gain: Float) {
+        cap.event("audio.pressure_gain", "gain=\(gain)")
+        inner.setPressureGain(gain)
+    }
+    func setRoughness(_ amount: Float) {
+        cap.event("audio.roughness", "amount=\(amount)")
+        inner.setRoughness(amount)
+    }
+    func setRoughnessTuning(depth: Float, frequencyHz: Float) {
+        cap.event("audio.roughness_tuning", "depth=\(depth) hz=\(frequencyHz)")
+        inner.setRoughnessTuning(depth: depth, frequencyHz: frequencyHz)
+    }
     func play() { cap.event("audio.play", "fade=0"); inner.play() }
     func play(fadeInSeconds: TimeInterval) { cap.event("audio.play", "fade=\(fadeInSeconds)"); inner.play(fadeInSeconds: fadeInSeconds) }
     func stop() { cap.event("audio.stop"); inner.stop() }

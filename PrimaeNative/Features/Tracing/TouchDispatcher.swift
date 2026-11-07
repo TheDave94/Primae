@@ -75,6 +75,11 @@ final class TouchDispatcher {
     /// this value.
     var playbackActivationVelocityThreshold: CGFloat =
         CGFloat(StudyComparisonSettings.soundGateVelocityFloorDefault)
+    /// R18DIM-S3: whether the sound is gated to the letter. `true` (default,
+    /// protocol r17) = the proximity gate applies in guided tracing; `false`
+    /// = sound wherever the pen moves on the canvas. Written once by
+    /// `TracingViewModel.init` from `StudyComparisonSettings.soundGatingEnabled`.
+    var soundGatingEnabled: Bool = StudyComparisonSettings.soundGatingEnabledDefault
     /// Sub-pixel hysteresis so digitiser noise on a held finger doesn't
     /// accumulate spurious motion.
     var minimumTouchMoveDistance: CGFloat = 1.5
@@ -168,6 +173,7 @@ final class TouchDispatcher {
         // B17/B18: a fresh stroke starts a fresh rate history, and its
         // first sample writes the pitch at once.
         velocityHistory.removeAll(keepingCapacity: true)
+        dysfluencyMeter.reset()
         lastCouplingParameters         = nil
         lastPitchWriteAt               = nil
         pendingPitchCents              = nil
@@ -306,6 +312,7 @@ final class TouchDispatcher {
         if let lastTimestamp {
             let dt       = max(0.001, t - lastTimestamp)
             let velocity = distance / dt
+            if vm.dysfluencyRoughness { dysfluencyMeter.add(t: t, distance: Double(distance)) }   // R18DIM slice 7
             smoothedVelocity = smoothedVelocity == 0
                 ? velocity
                 : smoothedVelocity + velocitySmoothingAlpha * (velocity - smoothedVelocity)
@@ -364,7 +371,7 @@ final class TouchDispatcher {
         // adaptive update must stay BEFORE it on every sample that does not
         // finish the sequence — stroke-to-stroke and cell-to-cell are as before.
         if !sampleFinishesSequence() {
-            updateAdaptivePlayback(canvasNormalized: canvasNormalized)
+            updateAdaptivePlayback(canvasNormalized: canvasNormalized, cellPoint: normalized, cellAspect: trackerAspect)
         }
 
         handleStrokeCompletionIfReached()
@@ -626,6 +633,10 @@ final class TouchDispatcher {
     private var velocityHistory: [(t: CFTimeInterval, v: CGFloat)] = []
     /// The coupling last applied on the touch path (rate, pan, pitch).
     private var lastCouplingParameters: ArmCoupling.Parameters?
+    /// R18 slice 5: the pen's movement direction (cell fractions) for the direction dimension.
+    private var movementTracker = StrokeMovementTracker()
+    /// R18DIM slice 7: the pen's stop-start meter, fed from the raw (unsmoothed) per-sample displacement.
+    private var dysfluencyMeter = DysfluencyMeter()
 
     /// Ruling B18 (2026-11-02, AUDIO-4): the spatial pitch is written at
     /// most once per display frame instead of on every coalesced touch
@@ -665,7 +676,8 @@ final class TouchDispatcher {
         if holdingSound, let vm, let last = lastCouplingParameters {
             if let v = preFlickVelocity() {
                 ArmCoupling.applyRateAndPan(
-                    ArmCoupling.Parameters(speed: Self.mapVelocityToSpeed(v),
+                    ArmCoupling.Parameters(speed: ArmCoupling.speed(forVelocity: v,
+                                                                           rateCouplingEnabled: vm.rateCoupling),
                                            horizontalBias: last.horizontalBias,
                                            spatialPitchCents: nil),
                     to: vm.audio)
@@ -674,13 +686,14 @@ final class TouchDispatcher {
         }
         velocityHistory.removeAll(keepingCapacity: true)
         lastCouplingParameters = nil
+        movementTracker.reset()
         lastPitchWriteAt = nil
         pendingPitchCents = nil
     }
 
     /// Map smoothed velocity + canvas-x to audio time-stretch speed
     /// and stereo pan, then drive the playback state machine.
-    private func updateAdaptivePlayback(canvasNormalized: CGPoint) {
+    private func updateAdaptivePlayback(canvasNormalized: CGPoint, cellPoint: CGPoint, cellAspect: CGFloat) {
         guard let vm else { return }
         // A blocked session plays no arm sound (r14; AUDIO-5): a stroke
         // still moving when the block came up (a headphone loss
@@ -741,12 +754,29 @@ final class TouchDispatcher {
         // are matched through — and which is on the DO-NOT list. The
         // phoneme arm never gets a pitch drive: the arms are matched on
         // rate + pan and differ in pitch-drive + sound identity (§2.6).
+        // R18 slices 4+5: stroke tone, only when a switch is on (else nil: nothing computed, nothing written).
+        var strokeTone: StrokeTone?
+        if vm.distanceToneEnabled || vm.directionMuteEnabled {
+            let movement = movementTracker.movement(to: cellPoint, aspect: cellAspect,
+                                                    gateRadius: vm.strokeGateRadius())
+            strokeTone = vm.strokeToneParameters(cellPoint: cellPoint, movement: movement)
+        }
         let coupling = ArmCoupling.parameters(canvasNormalized: canvasNormalized,
                                               velocity: smoothedVelocity,
                                               azimuthBias: azimuthBias,
                                               panningEnabled: vm.panningEnabled,
-                                              arm: vm.audioCondition)
+                                              rateCouplingEnabled: vm.rateCoupling,
+                                              arm: vm.audioCondition,
+                                              pitch: vm.pitchCoupling,
+                                              strokeTone: strokeTone,
+                                              force: vm.pencilPressure,
+                                              pressureLoudnessEnabled: vm.pressureLoudnessEnabled,
+                                              pressureRangeDB: Float(vm.pressureLoudnessRangeDB),
+                                              dysfluency: lastTimestamp.map { dysfluencyMeter.roughness(at: $0) } ?? 0,
+                                              roughnessEnabled: vm.dysfluencyRoughness)
         ArmCoupling.applyRateAndPan(coupling, to: vm.audio)
+        ArmCoupling.applyStrokeTone(coupling, to: vm.audio)
+        ArmCoupling.applyPressureGain(coupling, to: vm.audio)
         if let cents = coupling.spatialPitchCents {
             writeSpatialPitchPerFrame(cents, audio: vm.audio)   // B18
         }
@@ -790,10 +820,20 @@ final class TouchDispatcher {
         // on the canvas (the out-of-bounds edge above still stops it).
         // Guided keeps the gate.
         let ungated             = vm.phaseController.currentPhase == .freeWrite
-        let shouldPlayForStroke = ungated || vm.strokeTracker.isNearStroke
+        let shouldPlayForStroke = Self.proximityAllowsSound(ungatedPhase: ungated,
+                                                            gatingEnabled: soundGatingEnabled,
+                                                            isNearStroke: vm.strokeTracker.isNearStroke)
         let shouldBeActive      = shouldPlayForStroke
                                   && smoothedVelocity >= playbackActivationVelocityThreshold
         vm.playback.request(shouldBeActive ? .active : .idle, immediate: shouldBeActive)
+    }
+
+    /// The place half of the activation test, as a value (R18DIM-S3).
+    /// Free-writing and a switched-off gate both let the sound follow the
+    /// pen anywhere; otherwise it must be near the letter.
+    static func proximityAllowsSound(ungatedPhase: Bool, gatingEnabled: Bool,
+                                     isNearStroke: Bool) -> Bool {
+        ungatedPhase || !gatingEnabled || isNearStroke
     }
 
     /// Whether `handleStrokeCompletionIfReached` will, on this sample,

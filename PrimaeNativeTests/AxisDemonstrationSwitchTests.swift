@@ -125,6 +125,7 @@ struct AxisDemonstrationSwitchTests {
          StudyComparisonSettings.presentationSpacingKey,
          StudyComparisonSettings.guidedDotsVisibleKey,
          StudyComparisonSettings.panningEnabledKey,
+         StudyComparisonSettings.rateCouplingKey,
          StudyComparisonSettings.spatialAxisDemonstrationKey]
     }
 

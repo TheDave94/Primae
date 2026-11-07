@@ -118,6 +118,8 @@ import Foundation
                 "the fixture inherited presentationSpacingSeconds from the store — an observe window would stretch while another test holds a non-zero value")
         #expect(deps.observePasses == StudyComparisonSettings.observePassesDefault,
                 "the fixture inherited observePasses from the store — a parallel test would hand it whichever pass count it was holding, and an observe-exit assertion would fail on a suite that never set it")
+        #expect(deps.soundGatingEnabled == StudyComparisonSettings.soundGatingEnabledDefault,
+                "the fixture inherited soundGatingEnabled from the store")
         #expect(deps.soundGateRadiusFactor == StudyComparisonSettings.soundGateRadiusFactorDefault,
                 "the fixture inherited soundGateRadiusFactor from the store")
         #expect(deps.soundGateVelocityFloor == StudyComparisonSettings.soundGateVelocityFloorDefault,
@@ -126,6 +128,17 @@ import Foundation
                 "the fixture inherited guidedDotsVisible from the store — a parallel test would draw or hide the start dots in another suite's canvas")
         #expect(deps.panningEnabled == StudyComparisonSettings.panningEnabledDefault,
                 "the fixture inherited panningEnabled from the store — a parallel test would silently switch the pan axis off in another suite")
+        #expect(deps.rateCoupling == StudyComparisonSettings.rateCouplingDefault,
+                "the fixture inherited rateCoupling from the store — a parallel test would silently flatten the rate in another suite")
+        #expect(!deps.distanceToneEnabled && !deps.directionMuteEnabled,
+                "the fixture inherited a Klang-Dimensionen switch from the store")
+        #expect(deps.pitchCoupling == .default)
+        #expect(deps.distanceToneFarLevelDB == StudyComparisonSettings.distanceToneFarLevelDBDefault)
+        #expect(deps.distanceToneFarCutoffHz == StudyComparisonSettings.distanceToneFarCutoffHzDefault)
+        #expect(deps.directionMuteBackwardCosine == StudyComparisonSettings.directionMuteBackwardCosineDefault)
+        #expect(!deps.pressureLoudnessEnabled && deps.pressureLoudnessRangeDB == StudyComparisonSettings.pressureLoudnessRangeDBDefault)
+        #expect(!deps.dysfluencyRoughness && deps.dysfluencyRoughnessDepth == StudyComparisonSettings.dysfluencyRoughnessDepthDefault
+                && deps.dysfluencyRoughnessRateHz == StudyComparisonSettings.dysfluencyRoughnessRateHzDefault)
         #expect(deps.spatialAxisDemonstration == StudyComparisonSettings.spatialAxisDemonstrationDefault,
                 "the fixture inherited spatialAxisDemonstration from the store — a parallel test would install a sweeping demonstration in another suite's session")
         #expect(deps.allFiveLetters == StudyComparisonSettings.allFiveLettersDefault,

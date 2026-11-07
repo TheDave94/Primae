@@ -1684,8 +1684,9 @@ the measurement tap and the lifecycle engine pause. Its only r17 change is graph
   re-loads since `stop()` clears `currentFile`.
 * On `updateTouch`: every frame computes
   `audio.setAdaptivePlayback(speed:, horizontalBias:)` where
-  `speed = mapVelocityToSpeed(smoothedVelocity)` (slow tracing → 0.5,
-  normal → 1.0, fast → 2.0) and `hBias = canvasNormalized.x * 2 - 1`
+  `speed = mapVelocityToSpeed(smoothedVelocity)` (map M3 from r17: 0.8 at
+  ≤ 50 pt/s, 1.0 at 150 pt/s, 1.25 at ≥ 400 pt/s, linear between; r5–r16
+  mapped 0.5–2.0) and `hBias = canvasNormalized.x * 2 - 1`
   for stereo panning.
 * On `endTouch`: `audio.stop()` and the playback state machine forces
   idle.
@@ -1948,9 +1949,11 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 
 ### 10.3 What's tested
 
-(As of 2026-11-01, CI ran 1388 tests in 153 suites at `a3260ca4`. CI is the
-source of truth for the count; the earlier "46 test files, 647 `@Test`
-figure was stale.)
+(As of protocol r17 (`aab86e9d`, 2026-11-06) the full device suite measured
+1594 tests in 201 suites in both Release-Study and Debug-Study
+(`r17e/logs`). CI is the source of truth for the CI count; the earlier
+2026-11-01 count (1388 tests in 153 suites at `a3260ca4`) and the
+"46 test files, 647 `@Test`" figure are both stale.)
 
 * All four Schreibmotorik dimensions (`WritingAssessmentTests`).
 * Letter scheduler weights, recency saturation, novelty tie-breaking

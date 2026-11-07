@@ -283,6 +283,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
                         gap: TimeInterval = 0.05,
                         cueEnd: TimeInterval = 0.05,
                         withLetterI: Bool = false,
+                        rateCoupling: Bool = true,
                         sleeper: Sleeper? = nil) -> TracingViewModel {
         // Constructed here, not in the default arguments: a
         // default-value expression is type-checked nonisolated in this
@@ -301,6 +302,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
             deps.trainedSubset = TrainedLetterSubset.allSubsets.first { !$0.letters.contains("A") }!
         }
         deps.spokenFeedbackInStudy = true
+        deps.rateCoupling = rateCoupling
         // Production: the presentation starts 1.0 s after the observe cue
         // ENDS, or 3.0 s after it starts if no end is reported. Most tests
         // inject small values so they assert the sequencing without waiting
@@ -701,6 +703,26 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         } else {
             #expect(audio.spatialPitches.isEmpty, "phoneme: the observe sound got a pitch drive: \(audio.spatialPitches.prefix(4))")
         }
+    }
+
+    /// r18 slice 1: with "Tempo folgt dem Stift" off the observe dot's sound
+    /// plays at rate 1.0 in both arms, still dot and moving dot alike.
+    @Test("r18: rate coupling off - the observe sound stays at rate 1.0 in both arms",
+          arguments: [PilotAudioCondition.phoneme, .spatial])
+    func observeRateIsOneWhenRateCouplingIsOff(arm: PilotAudioCondition) async {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: arm, audio: audio, withLetterI: true, rateCoupling: false)
+        vm.loadLetter(name: "I")
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(600)
+        while vm.learningPhase == .observe && clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        #expect(vm.learningPhase != .observe, "precondition: observe ended")
+        let speeds = audio.setAdaptiveCalls.map(\.speed)
+        #expect(speeds.count > 20, "\(arm): the observe sound was not tracked frame by frame: \(speeds.count) calls")
+        #expect(speeds.allSatisfy { $0 == 1.0 },
+                "\(arm): rate coupling is off but the observe rate moved: \(Set(speeds).sorted())")
     }
 
     @Test("P4: a stroke-to-stroke jump of the dot is not velocity — the rate never spikes on F's two jumps")

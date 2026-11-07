@@ -21,10 +21,24 @@ struct SettingsView: View {
     @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
     @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
     @State private var comparisonPanning: Bool = StudyComparisonSettings.panningEnabled
+    @State private var comparisonRateCoupling: Bool = StudyComparisonSettings.rateCoupling
+    @State private var comparisonDistanceTone: Bool = StudyComparisonSettings.distanceToneEnabled
+    @State private var comparisonDirectionMute: Bool = StudyComparisonSettings.directionMuteEnabled
+    @State private var comparisonDistanceLevel: Double = StudyComparisonSettings.distanceToneFarLevelDB
+    @State private var comparisonDistanceCutoff: Double = StudyComparisonSettings.distanceToneFarCutoffHz
+    @State private var comparisonDirectionCosine: Double = StudyComparisonSettings.directionMuteBackwardCosine
+    @State private var comparisonPressureLoudness: Bool = StudyComparisonSettings.pressureLoudnessEnabled
+    @State private var comparisonPressureRange: Double = StudyComparisonSettings.pressureLoudnessRangeDB
     @State private var comparisonAxisDemonstration: Bool = StudyComparisonSettings.spatialAxisDemonstration
+    @State private var comparisonDysfluencyRoughness: Bool = StudyComparisonSettings.dysfluencyRoughness
+    @State private var comparisonRoughnessDepth: Double = StudyComparisonSettings.dysfluencyRoughnessDepth
+    @State private var comparisonRoughnessRate: Double = StudyComparisonSettings.dysfluencyRoughnessRateHz
     @State private var comparisonTriggerRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactor
     @State private var comparisonTriggerVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloor
     @State private var comparisonOncePerCondition: Bool = StudyComparisonSettings.oncePerCondition
+    @State private var comparisonPitchScope: PitchScope = StudyComparisonSettings.pitchScope
+    @State private var comparisonPitchRange: Int = StudyComparisonSettings.pitchRangeCents
+    @State private var comparisonSoundGating: Bool = StudyComparisonSettings.soundGatingEnabled
     // `SpeechRate.effective()` decides, not a read of the stored key: in a
     // study build it ignores the stored value (fixed at 0.42).
     @State private var speechRate: Float = SpeechRate.effective()
@@ -368,6 +382,113 @@ struct SettingsView: View {
                         }))
                     .accessibilityHint("Ein ist die Vorgabe. Aus hält die Stereo-Ortung auf der Mitte, sodass die Sitzung auch über einen Lautsprecher funktioniert — die Anforderung \"Kopfhörer angeschlossen\" entfällt damit. Die Tonhöhen-Achse des Raumklang-Arms bleibt unverändert.")
 
+                    Toggle("Tempo folgt dem Stift", isOn: Binding(
+                        get: { comparisonRateCoupling },
+                        set: {
+                            comparisonRateCoupling = $0
+                            StudyComparisonSettings.rateCoupling = $0
+                            vm.markComparisonSettingChanged()
+                        }))
+                    .accessibilityHint("Ein ist die Vorgabe: der Ton wird schneller oder langsamer, je nach Stiftgeschwindigkeit (0,8 bis 1,25). Aus spielt den Ton in beiden Klang-Armen immer in natürlichem Tempo (1,0), beim Schreiben wie bei der Vorführung des Punktes. Ein Vergleichslauf, keine Pilotbedingung.")
+
+                    Picker("Höhe steuert Tonhöhe", selection: Binding(
+                        get: { comparisonPitchScope },
+                        set: {
+                            comparisonPitchScope = $0
+                            StudyComparisonSettings.pitchScope = $0
+                            vm.markComparisonSettingChanged()
+                        })) {
+                        Text("Nur Raumklang").tag(PitchScope.spatialOnly)
+                        Text("Aus").tag(PitchScope.off)
+                        Text("Beide Klang-Arme").tag(PitchScope.both)
+                    }
+                    .accessibilityHint("Nur Raumklang ist die Vorgabe: die Stifthöhe verändert die Tonhöhe nur im Raumklang-Arm. Aus: die Tonhöhe folgt dem Stift in keinem Arm (das Phonem bleibt auf seiner aufgenommenen Tonhöhe). Beide Klang-Arme verschiebt auch das Phonem in der Tonhöhe (TD-PSOLA), mit demselben Tonumfang. Die frühere Achsen-Vorführung (eigener Schalter) folgt diesem Schalter nicht. Ein Vergleichslauf, keine Pilotbedingung.")
+
+                    Picker("Tonumfang der Höhe", selection: Binding(
+                        get: { comparisonPitchRange },
+                        set: {
+                            comparisonPitchRange = $0
+                            StudyComparisonSettings.pitchRangeCents = $0
+                            vm.markComparisonSettingChanged()
+                        })) {
+                        Text("2 Oktaven").tag(2400)
+                        Text("1,5 Oktaven").tag(1800)
+                        Text("1 Oktave").tag(1200)
+                        Text("½ Oktave").tag(600)
+                    }
+                    .accessibilityHint("2 Oktaven (220 bis 880 Hz beim Raumklang) ist die Vorgabe. Ein kleinerer Umfang hält ein verschobenes Phonem besser erkennbar. Gilt für beide Arme.")
+
+                    Toggle("Klang: Abstand vom Strich (dunkler, leiser)", isOn: Binding(
+                        get: { comparisonDistanceTone },
+                        set: {
+                            comparisonDistanceTone = $0
+                            StudyComparisonSettings.distanceToneEnabled = $0
+                            vm.markComparisonSettingChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe. Ein macht den Ton in beiden Klang-Armen dunkler und leiser, je weiter der Stift (oder der Punkt in „Anschauen“) vom Strich des Buchstabens entfernt ist: am Rand des Tonbereichs um die darunter eingestellte Dämpfung und auf die darunter eingestellte Grenzfrequenz, auf dem Strich unverändert. Im freien Schreiben ohne Wirkung. Ein Vergleichslauf, keine Pilotbedingung.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonDistanceLevel },
+                        set: {
+                            comparisonDistanceLevel = $0
+                            StudyComparisonSettings.distanceToneFarLevelDB = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: -60...0, step: 3) {
+                        Text("Abstand: Dämpfung am Rand \(comparisonDistanceLevel, specifier: "%.0f") dB")
+                    }
+                    .accessibilityHint("Minus 12 dB ist die Vorgabe. Wirkt nur bei eingeschalteter Abstands-Klangdimension.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonDistanceCutoff },
+                        set: {
+                            comparisonDistanceCutoff = $0
+                            StudyComparisonSettings.distanceToneFarCutoffHz = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: 100...20000, step: 100) {
+                        Text("Abstand: Grenzfrequenz am Rand \(comparisonDistanceCutoff, specifier: "%.0f") Hz")
+                    }
+                    .accessibilityHint("800 Hz ist die Vorgabe; 20000 Hz lässt den Klang ungefiltert.")
+
+                    Toggle("Klang: Richtung am Strich (rückwärts stumm)", isOn: Binding(
+                        get: { comparisonDirectionMute },
+                        set: {
+                            comparisonDirectionMute = $0
+                            StudyComparisonSettings.directionMuteEnabled = $0
+                            vm.markComparisonSettingChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe. Ein macht den Ton in beiden Klang-Armen stumm, solange der Stift am Strich gegen dessen Schreibrichtung läuft; läuft er wieder vorwärts, kommt der Ton zurück. Im freien Schreiben ohne Wirkung. Ein Vergleichslauf, keine Pilotbedingung.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonDirectionCosine },
+                        set: {
+                            comparisonDirectionCosine = $0
+                            StudyComparisonSettings.directionMuteBackwardCosine = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: -1...1, step: 0.25) {
+                        Text("Richtung: Rückwärts-Schwelle \(comparisonDirectionCosine, specifier: "%.2f")")
+                    }
+                    .accessibilityHint("Kosinus-Schwelle; minus 0,25 ist die Vorgabe. Höhere Werte machen die Richtungs-Stummschaltung empfindlicher.")
+
+                    Toggle("Stiftdruck steuert die Lautstärke (Apple Pencil)", isOn: Binding(
+                        get: { comparisonPressureLoudness },
+                        set: {
+                            comparisonPressureLoudness = $0
+                            StudyComparisonSettings.pressureLoudnessEnabled = $0
+                            vm.markComparisonSettingChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe. Ein: Mit dem Apple Pencil wird der Ton bei leichtem Druck leiser und bei festem Druck lauter, in beiden Klang-Armen gleich. Ein Finger meldet keinen Druck und lässt die Lautstärke unverändert. Der Punkt in „Anschauen“ meldet ebenfalls keinen Druck und bleibt unverändert.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonPressureRange },
+                        set: {
+                            comparisonPressureRange = $0
+                            StudyComparisonSettings.pressureLoudnessRangeDB = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: 0...60, step: 3) {
+                        Text("Stiftdruck: Lautstärkeumfang \(comparisonPressureRange, specifier: "%.0f") dB")
+                    }
+                    .accessibilityHint("18 dB ist die Vorgabe: leichter Druck wird höchstens um diesen Wert abgesenkt; voller Druck bleibt unverändert.")
+
                     Toggle("Achsen-Vorführung (Raumklang, Glissando)", isOn: Binding(
                         get: { comparisonAxisDemonstration },
                         set: {
@@ -376,6 +497,37 @@ struct SettingsView: View {
                             vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint(ComparisonSwitchHints.axisDemonstration)
+
+                    Toggle("Klang: Stocken → Rauheit", isOn: Binding(
+                        get: { comparisonDysfluencyRoughness },
+                        set: {
+                            comparisonDysfluencyRoughness = $0
+                            StudyComparisonSettings.dysfluencyRoughness = $0
+                            vm.markComparisonSettingChanged()
+                        }))
+                    .accessibilityHint("Aus ist die Vorgabe. Ein macht den Ton rau, wenn der Stift stockt: wiederholtes Abbremsen und Neuansetzen innerhalb einer Sekunde. Gleichmäßiges Schreiben bleibt glatt. Gilt für beide Ton-Arme und für die Vorführung gleich. Ein Vergleichslauf, keine Pilotbedingung.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonRoughnessDepth },
+                        set: {
+                            comparisonRoughnessDepth = $0
+                            StudyComparisonSettings.dysfluencyRoughnessDepth = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: 0...1, step: 0.1) {
+                        Text("Rauheit: Tiefe \(Int((comparisonRoughnessDepth * 100).rounded())) %")
+                    }
+                    .accessibilityHint("80 % ist die Vorgabe: bei vollem Stocken fällt die Lautstärke einmal pro Periode auf 20 %.")
+
+                    Stepper(value: Binding(
+                        get: { comparisonRoughnessRate },
+                        set: {
+                            comparisonRoughnessRate = $0
+                            StudyComparisonSettings.dysfluencyRoughnessRateHz = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: 5...100, step: 5) {
+                        Text("Rauheit: Rate \(comparisonRoughnessRate, specifier: "%.0f") Hz")
+                    }
+                    .accessibilityHint("40 Hz ist die Vorgabe.")
 
                     Toggle("Vorführung nur einmal je Kondition", isOn: Binding(
                         get: { comparisonOncePerCondition },
@@ -434,6 +586,15 @@ struct SettingsView: View {
                     }
                     .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. Ohne Schwelle (Vorgabe seit dem 04.10.) folgt der Ton allein der Nähe — ein langsam nachfahrendes Kind hört den Buchstaben. Mit einer Schwelle bleibt der Ton unterhalb dieses Werts still, auch wenn der Finger auf dem Buchstaben liegt; 22 pt/s war der fest eingebaute Wert. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und — nur wenn eingestellt — Bewegung.")
 
+                    Toggle("Ton nur auf dem Buchstaben", isOn: Binding(
+                        get: { comparisonSoundGating },
+                        set: {
+                            comparisonSoundGating = $0
+                            StudyComparisonSettings.soundGatingEnabled = $0
+                            vm.markComparisonSettingChanged()
+                        }))
+                    .accessibilityHint("An (Vorgabe, Protokoll r17): Der Ton läuft beim geführten Nachfahren nur, solange der Finger nah am Buchstaben ist (Zeile „Nähe zum Buchstaben“). Aus: Der Ton folgt dem Stift überall auf der Zeichenfläche, in beiden Klangarmen gleich. Die Zeile „Nähe“ wirkt dann nicht; die Bewegungsschwelle gilt weiter.")
+
                     Button("Vergleichsmodus zurücksetzen", role: .destructive) {
                         // Blocks the session only when a switch actually
                         // moved (VERIFY-13): a reset on an untouched device
@@ -446,8 +607,22 @@ struct SettingsView: View {
                         comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
                         comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
                         comparisonPanning = StudyComparisonSettings.panningEnabled
+                        comparisonRateCoupling = StudyComparisonSettings.rateCoupling
+                        comparisonDistanceTone = StudyComparisonSettings.distanceToneEnabled
+                        comparisonDirectionMute = StudyComparisonSettings.directionMuteEnabled
+                        comparisonDistanceLevel = StudyComparisonSettings.distanceToneFarLevelDB
+                        comparisonDistanceCutoff = StudyComparisonSettings.distanceToneFarCutoffHz
+                        comparisonDirectionCosine = StudyComparisonSettings.directionMuteBackwardCosine
+                        comparisonPressureLoudness = StudyComparisonSettings.pressureLoudnessEnabled
+                        comparisonPressureRange = StudyComparisonSettings.pressureLoudnessRangeDB
                         comparisonAxisDemonstration = StudyComparisonSettings.spatialAxisDemonstration
+                        comparisonDysfluencyRoughness = StudyComparisonSettings.dysfluencyRoughness
+                        comparisonRoughnessDepth = StudyComparisonSettings.dysfluencyRoughnessDepth
+                        comparisonRoughnessRate = StudyComparisonSettings.dysfluencyRoughnessRateHz
                         comparisonOncePerCondition = StudyComparisonSettings.oncePerCondition
+                        comparisonPitchScope = StudyComparisonSettings.pitchScope
+                        comparisonPitchRange = StudyComparisonSettings.pitchRangeCents
+                        comparisonSoundGating = StudyComparisonSettings.soundGatingEnabled
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
                         comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
                         comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor

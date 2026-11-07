@@ -8,7 +8,7 @@
 > 2026-07-13); the Apple Pencil squeeze is not wired (only the deprecated
 > double-tap delegate is; ROADMAP U5, audit R-096); the D8 canvas redraw
 > profile has been measured (ROADMAP D8, 2026-10-21). The body is left
-> unchanged.
+> unchanged except the r17 audio note in §1.5.
 
 Point-in-time audit of what's shipped, what's pending, and what's
 stale. Differs from `docs/ROADMAP.md` (forward planning, owner
@@ -96,7 +96,7 @@ subfolders.
 The app is more complete and sophisticated than a "freeze-triage" frame suggested. The completeness is in the **generic letter-learning dimension**; the **thesis-specific dimension** (pilot arms, phoneme content, sound-off post-test) is the shallow end where the remaining work lands (tracked in `docs/ROADMAP.md` → *Pilot study*; decisions in `docs/DECISIONS.md`).
 
 **The core sonification mechanism already exists and is the thesis's mechanism.** This is the central census finding and it corrected an earlier mistaken belief that the audio was merely event-triggered playback. The reality:
-- `AudioEngine` (AVFoundation: `AVAudioEngine` + `AVAudioPlayerNode` + `AVAudioUnitTimePitch`) plays a **seamlessly looping** audio file with **real-time continuous parameter control**.
+- Through r16, `AudioEngine` (AVFoundation: `AVAudioEngine` + `AVAudioPlayerNode` + `AVAudioUnitTimePitch`) played a **seamlessly looping** audio file with **real-time continuous parameter control**.
 - `setAdaptivePlayback(speed:horizontalBias:)`, driven every touch-update by `TouchDispatcher`, maps **smoothed trace velocity → time-stretch rate** (0.5×–2.0×, pitch preserved; from protocol r17 the map is M3, 0.8×–1.25×, and the sound is rendered by `LiveSonificationAudio`/TDPSOLA, with `AudioEngine` as its host) and **canvas-x + pencil azimuth → stereo pan**.
 - During `guided`/`freeWrite` tracing, the child's writing movement continuously shapes the looping sound in real time. Code comment frames it correctly: "the letter sound is the phonemic anchor for the glyph, not Schmidt & Lee guidance feedback."
 - This **is** the thesis's "continuous, trace-coupled sound." David confirmed it is the intended core design principle from the beginning: a loopable sound whose playback speed couples to writing speed, plus a panning mapping. No rebuild needed — the hard part is done as designed.

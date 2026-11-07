@@ -184,6 +184,10 @@ struct TracingDependencies {
     /// init, a proctor cannot change it mid-session" property the other
     /// switches have is unchanged.
     var oncePerCondition: Bool
+    /// R18DIM-S3: whether the sound is gated to the letter —
+    /// `StudyComparisonSettings.soundGatingEnabled`, captured at
+    /// construction like the switches above; `stub` pins it to the default.
+    var soundGatingEnabled: Bool
     /// Passes the observe demonstration makes before the phase advances —
     /// `StudyComparisonSettings.observePasses`, captured at construction like
     /// the switches above.
@@ -212,11 +216,31 @@ struct TracingDependencies {
     /// `StudyComparisonSettings.panningEnabled`, captured at construction.
     /// Same reason as `guidedDotsVisible` above.
     var panningEnabled: Bool
+    /// `StudyComparisonSettings.rateCoupling` (r18), captured at construction.
+    var rateCoupling: Bool
+    /// R18DIM slice 2: which arms the pen height pitches, and over what span
+    /// (`StudyComparisonSettings.pitchScope` / `pitchRangeCents`), captured at
+    /// construction like `panningEnabled`. `stub` pins the r17 default.
+    var pitchCoupling: PitchCoupling
+    /// R18 slice 6: Pencil force -> loudness, `StudyComparisonSettings.pressureLoudnessEnabled`, captured at construction.
+    var pressureLoudnessEnabled: Bool
     /// Whether the pre-task demonstration sweeps pitch and pan across the
     /// canvas instead of holding the carrier steady —
     /// `StudyComparisonSettings.spatialAxisDemonstration`, captured at
     /// construction. Same reason as `guidedDotsVisible` above.
     var spatialAxisDemonstration: Bool
+    /// R18 slice 4/5 (Klang-Dimensionen): `StudyComparisonSettings.distanceToneEnabled`
+    /// / `.directionMuteEnabled`, captured at construction like the switches above.
+    var distanceToneEnabled: Bool
+    var directionMuteEnabled: Bool
+    var distanceToneFarLevelDB: Double
+    var distanceToneFarCutoffHz: Double
+    var directionMuteBackwardCosine: Double
+    var pressureLoudnessRangeDB: Double
+    /// R18DIM slice 7: `StudyComparisonSettings.dysfluencyRoughness`, captured at construction (same rule as above).
+    var dysfluencyRoughness: Bool
+    var dysfluencyRoughnessDepth: Double
+    var dysfluencyRoughnessRateHz: Double
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -363,6 +387,7 @@ struct TracingDependencies {
         presentationSpacingSeconds: TimeInterval? = nil,
         // Same capture-at-construction rule as `cycleAllConditions` above.
         oncePerCondition: Bool? = nil,
+        soundGatingEnabled: Bool? = nil,
         // Same capture-at-construction rule; `stub` pins it to the default so
         // no fixture ever reads the key. See the property's own note.
         observePasses: Int? = nil,
@@ -371,7 +396,19 @@ struct TracingDependencies {
         // pins all three so no fixture reads a key (2026-10-16).
         guidedDotsVisible: Bool? = nil,
         panningEnabled: Bool? = nil,
+        pitchCoupling: PitchCoupling? = nil,
+        pressureLoudnessEnabled: Bool? = nil,
+        pressureLoudnessRangeDB: Double? = nil,
         spatialAxisDemonstration: Bool? = nil,
+        rateCoupling: Bool? = nil,
+        distanceToneEnabled: Bool? = nil,
+        directionMuteEnabled: Bool? = nil,
+        distanceToneFarLevelDB: Double? = nil,
+        distanceToneFarCutoffHz: Double? = nil,
+        directionMuteBackwardCosine: Double? = nil,
+        dysfluencyRoughness: Bool? = nil,
+        dysfluencyRoughnessDepth: Double? = nil,
+        dysfluencyRoughnessRateHz: Double? = nil,
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -435,10 +472,24 @@ struct TracingDependencies {
         self.soundGateVelocityFloor = soundGateVelocityFloor ?? resolved().soundGateVelocityFloor
         self.presentationSpacingSeconds = presentationSpacingSeconds ?? resolved().presentationSpacingSeconds
         self.oncePerCondition = oncePerCondition ?? resolved().oncePerCondition
+        self.soundGatingEnabled = soundGatingEnabled ?? resolved().soundGatingEnabled
         self.observePasses = observePasses ?? resolved().observePasses
         self.guidedDotsVisible = guidedDotsVisible ?? resolved().guidedDotsVisible
         self.panningEnabled = panningEnabled ?? resolved().panningEnabled
+        self.rateCoupling = rateCoupling ?? resolved().rateCoupling
+        self.pitchCoupling = pitchCoupling ?? PitchCoupling(scope: resolved().pitchScope,
+                                                            spanCents: resolved().pitchRangeCents)
+        self.pressureLoudnessEnabled = pressureLoudnessEnabled ?? resolved().pressureLoudnessEnabled
+        self.pressureLoudnessRangeDB = pressureLoudnessRangeDB ?? resolved().pressureLoudnessRangeDB
         self.spatialAxisDemonstration = spatialAxisDemonstration ?? resolved().spatialAxisDemonstration
+        self.distanceToneEnabled = distanceToneEnabled ?? resolved().distanceToneEnabled
+        self.directionMuteEnabled = directionMuteEnabled ?? resolved().directionMuteEnabled
+        self.distanceToneFarLevelDB = distanceToneFarLevelDB ?? resolved().distanceToneFarLevelDB
+        self.distanceToneFarCutoffHz = distanceToneFarCutoffHz ?? resolved().distanceToneFarCutoffHz
+        self.directionMuteBackwardCosine = directionMuteBackwardCosine ?? resolved().directionMuteBackwardCosine
+        self.dysfluencyRoughness = dysfluencyRoughness ?? resolved().dysfluencyRoughness
+        self.dysfluencyRoughnessDepth = dysfluencyRoughnessDepth ?? resolved().dysfluencyRoughnessDepth
+        self.dysfluencyRoughnessRateHz = dysfluencyRoughnessRateHz ?? resolved().dysfluencyRoughnessRateHz
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

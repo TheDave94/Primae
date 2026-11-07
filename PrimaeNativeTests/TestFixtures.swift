@@ -50,6 +50,14 @@ final class EngineModelAudio: AudioControlling {
     private(set) var events: [Event] = []
     private(set) var setAdaptiveCalls: [(speed: Float, bias: Float)] = []
     private(set) var spatialPitches: [Float] = []
+    /// R18 slice 7: every `setRoughness` call, in order. The switch-off path
+    /// writes 0 on every coupled sample, so "all zero" and "never called"
+    /// are different facts.
+    private(set) var roughnessWrites: [Float] = []
+    /// R18 integration (review D1): every `setRoughnessTuning` call, in order.
+    /// The tuning is a push-once value, so "never delivered" and "delivered
+    /// at the built-in defaults" are different facts.
+    private(set) var roughnessTunings: [(depth: Float, frequencyHz: Float)] = []
     /// Mirrors the engine: a load stops the player and plays only on
     /// autoplay; `stop()` stops.
     private(set) var isPlaying = false
@@ -76,6 +84,8 @@ final class EngineModelAudio: AudioControlling {
         rate = speed; pan = horizontalBias
     }
     func setSpatialPitch(cents: Float) { spatialPitches.append(cents); pitchCents = cents }
+    func setRoughness(_ amount: Float) { roughnessWrites.append(amount) }
+    func setRoughnessTuning(depth: Float, frequencyHz: Float) { roughnessTunings.append((depth, frequencyHz)) }
     func play() { events.append(.play(fade: 0)); isPlaying = true; snapshotPlay() }
     func play(fadeInSeconds: TimeInterval) { events.append(.play(fade: fadeInSeconds)); isPlaying = true; snapshotPlay() }
     func stop() {
@@ -415,6 +425,9 @@ extension TracingDependencies {
             // demonstration. Tests that mean to exercise it say so at the
             // call site (`deps.oncePerCondition = true`).
             oncePerCondition:     false,
+            // R18DIM-S3: pinned for the same reason; a test that means to
+            // switch the gate off says so at the call site.
+            soundGatingEnabled:   StudyComparisonSettings.soundGatingEnabledDefault,
             // Pin the observe pass count, same reason as the switches above —
             // and this is the one that proved the rule (2026-10-16): a fixture
             // built while `StudyComparisonSwitchesTests` held the global at 2
@@ -432,7 +445,19 @@ extension TracingDependencies {
             // (`deps.panningEnabled = false`).
             guidedDotsVisible:    StudyComparisonSettings.guidedDotsVisibleDefault,
             panningEnabled:       StudyComparisonSettings.panningEnabledDefault,
+            pitchCoupling:        .default,
+            pressureLoudnessEnabled: StudyComparisonSettings.pressureLoudnessEnabledDefault,
+            pressureLoudnessRangeDB: StudyComparisonSettings.pressureLoudnessRangeDBDefault,
             spatialAxisDemonstration: StudyComparisonSettings.spatialAxisDemonstrationDefault,
+            rateCoupling:         StudyComparisonSettings.rateCouplingDefault,
+            distanceToneEnabled:  StudyComparisonSettings.distanceToneEnabledDefault,
+            directionMuteEnabled: StudyComparisonSettings.directionMuteEnabledDefault,
+            distanceToneFarLevelDB: StudyComparisonSettings.distanceToneFarLevelDBDefault,
+            distanceToneFarCutoffHz: StudyComparisonSettings.distanceToneFarCutoffHzDefault,
+            directionMuteBackwardCosine: StudyComparisonSettings.directionMuteBackwardCosineDefault,
+            dysfluencyRoughness:  StudyComparisonSettings.dysfluencyRoughnessDefault,
+            dysfluencyRoughnessDepth: StudyComparisonSettings.dysfluencyRoughnessDepthDefault,
+            dysfluencyRoughnessRateHz: StudyComparisonSettings.dysfluencyRoughnessRateHzDefault,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Batch D: a fixed environment, no sentinel file and a fixed

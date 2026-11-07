@@ -525,8 +525,8 @@ working as intended:
 | Same screen | "Spatial-Arm ohne Trägerton..." | Should never happen — the carrier file is bundled | Shows at all, on any run |
 | Same screen | "Phonem-Arm ohne Phonem-Aufnahmen für: ..." | Should never happen — all five recordings are bundled (H5 closed 2026-09-14) | Shows at all, on any run |
 | "Buchstaben nicht geladen — Bitte die App neu starten." | — | Should never happen on a correctly built artefact | Shows at all |
-| Red "Keine Kopfhörer verbunden" banner in Forschungs-Daten | — | Phonem or Raumklang run, headphones not plugged in | Shows with headphones plugged in, or in the Ohne Ton run |
-| Full-screen stop, "Studie kann nicht starten" | "Keine Kopfhörer verbunden. In diesem Arm läuft die Sitzung nur mit Kopfhörern …" | Phonem or Raumklang run, headphones not plugged in (r14); goes away the moment they are | Shows with headphones plugged in, or in the Ohne Ton run |
+| Red "Keine Kopfhörer verbunden" banner in Forschungs-Daten | — | Any run, headphones not plugged in (every arm since r16, B6) | Shows with headphones plugged in |
+| Full-screen stop, "Studie kann nicht starten" | "Keine Kopfhörer verbunden. In diesem Arm läuft die Sitzung nur mit Kopfhörern …" | Any run, headphones not plugged in (r14 sound arms; every arm since r16, B6); goes away the moment they are | Shows with headphones plugged in |
 
 Anything that blocks the canvas with **any other** message, or that
 lets a session start silently in a state that looks wrong (e.g. the

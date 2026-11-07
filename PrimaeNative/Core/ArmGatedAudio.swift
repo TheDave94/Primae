@@ -59,6 +59,12 @@ final class ArmGatedAudio: AudioControlling {
             engine.stop()
             engine.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
             engine.setSpatialPitch(cents: 0)
+            // R18: a new child / arm never inherits the previous stroke tone.
+            engine.setStrokeLevel(gainDB: 0)
+            engine.setStrokeLowpass(cutoffHz: StrokeTone.bypassHz)
+            engine.setStrokeMute(false)
+            engine.setPressureGain(1)
+            engine.setRoughness(0)
         }
         isSilenced = arm == .silent
     }
@@ -69,6 +75,12 @@ final class ArmGatedAudio: AudioControlling {
     func loadAudioFile(named fileName: String, autoplay: Bool) { live.loadAudioFile(named: fileName, autoplay: autoplay) }
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) { live.setAdaptivePlayback(speed: speed, horizontalBias: horizontalBias) }
     func setSpatialPitch(cents: Float) { live.setSpatialPitch(cents: cents) }
+    func setStrokeLevel(gainDB: Float) { live.setStrokeLevel(gainDB: gainDB) }
+    func setStrokeLowpass(cutoffHz: Float) { live.setStrokeLowpass(cutoffHz: cutoffHz) }
+    func setStrokeMute(_ muted: Bool) { live.setStrokeMute(muted) }
+    func setPressureGain(_ gain: Float) { live.setPressureGain(gain) }
+    func setRoughness(_ amount: Float) { live.setRoughness(amount) }
+    func setRoughnessTuning(depth: Float, frequencyHz: Float) { live.setRoughnessTuning(depth: depth, frequencyHz: frequencyHz) }
     func play() { live.play() }
     func play(fadeInSeconds: TimeInterval) { live.play(fadeInSeconds: fadeInSeconds) }
     func stop() { live.stop() }

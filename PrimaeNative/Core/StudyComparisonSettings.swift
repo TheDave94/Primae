@@ -165,6 +165,56 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: panningEnabledKey) }
     }
 
+    /// r18: whether playback rate follows the pen's (and the observe dot's)
+    /// speed. ON is the r17 behaviour and the default (M3 map, 0.8-1.25).
+    /// OFF holds the rate at 1.0 in both sound arms, pen and dot alike.
+    static let rateCouplingKey = prefix + "rateCoupling"
+    static let rateCouplingDefault: Bool = true
+    static var rateCoupling: Bool {
+        get { configuration(in: .standard).rateCoupling }
+        set { UserDefaults.standard.set(newValue, forKey: rateCouplingKey) }
+    }
+
+    /// R18 slice 4 (Klang-Dimensionen): distance from the reference stroke
+    /// darkens and quietens the sound (both sound arms, pen and observe dot).
+    /// OFF = protocol r17.
+    static let distanceToneEnabledKey = prefix + "distanceToneEnabled"
+    static let distanceToneEnabledDefault: Bool = false
+    static var distanceToneEnabled: Bool {
+        get { configuration(in: .standard).distanceToneEnabled }
+        set { UserDefaults.standard.set(newValue, forKey: distanceToneEnabledKey) }
+    }
+
+    /// R18 slice 8 try-out strengths; defaults are the lane's r17-neutral-when-off values.
+    static let distanceToneFarLevelDBKey = prefix + "distanceToneFarLevelDB"
+    static let distanceToneFarLevelDBDefault: Double = Double(StrokeTone.farLevelDB)
+    static var distanceToneFarLevelDB: Double {
+        get { configuration(in: .standard).distanceToneFarLevelDB }
+        set { UserDefaults.standard.set(newValue, forKey: distanceToneFarLevelDBKey) }
+    }
+    static let distanceToneFarCutoffHzKey = prefix + "distanceToneFarCutoffHz"
+    static let distanceToneFarCutoffHzDefault: Double = Double(StrokeTone.farCutoffHz)
+    static var distanceToneFarCutoffHz: Double {
+        get { configuration(in: .standard).distanceToneFarCutoffHz }
+        set { UserDefaults.standard.set(newValue, forKey: distanceToneFarCutoffHzKey) }
+    }
+
+    /// R18 slice 5: moving against the stroke's direction mutes the sound.
+    /// OFF = protocol r17.
+    static let directionMuteEnabledKey = prefix + "directionMuteEnabled"
+    static let directionMuteEnabledDefault: Bool = false
+    static var directionMuteEnabled: Bool {
+        get { configuration(in: .standard).directionMuteEnabled }
+        set { UserDefaults.standard.set(newValue, forKey: directionMuteEnabledKey) }
+    }
+
+    static let directionMuteBackwardCosineKey = prefix + "directionMuteBackwardCosine"
+    static let directionMuteBackwardCosineDefault: Double = Double(StrokeTone.backwardCosine)
+    static var directionMuteBackwardCosine: Double {
+        get { configuration(in: .standard).directionMuteBackwardCosine }
+        set { UserDefaults.standard.set(newValue, forKey: directionMuteBackwardCosineKey) }
+    }
+
     /// Whether the tracing phases draw the stroke start dots at all. The
     /// supervisor's "Punkte rausschmeißen" (throw the dots out) against
     /// "Punkte nur sehen?" (only see them) — the pair is drawn-vs-not,
@@ -228,6 +278,28 @@ enum StudyComparisonSettings {
     /// is the behaviour the device had before the switch existed: that is
     /// what makes adding one safe to an enrolled study device, and it keeps
     /// an untouched device identical to the one the 2026-09-17 review saw.
+    /// R18DIM slice 7 (Klang-Dimensionen): dysfluency of the pen (stop-start events, `DysfluencyMeter`) is rendered as amplitude
+    /// roughness of the arm sound, in both sound arms and in the observe dot alike. OFF = protocol r17.
+    static let dysfluencyRoughnessKey = prefix + "dysfluencyRoughness"
+    static let dysfluencyRoughnessDefault: Bool = false
+    static var dysfluencyRoughness: Bool {
+        get { configuration(in: .standard).dysfluencyRoughness }
+        set { UserDefaults.standard.set(newValue, forKey: dysfluencyRoughnessKey) }
+    }
+
+    static let dysfluencyRoughnessDepthKey = prefix + "dysfluencyRoughnessDepth"
+    static let dysfluencyRoughnessDepthDefault: Double = 0.8
+    static var dysfluencyRoughnessDepth: Double {
+        get { configuration(in: .standard).dysfluencyRoughnessDepth }
+        set { UserDefaults.standard.set(newValue, forKey: dysfluencyRoughnessDepthKey) }
+    }
+    static let dysfluencyRoughnessRateHzKey = prefix + "dysfluencyRoughnessRateHz"
+    static let dysfluencyRoughnessRateHzDefault: Double = RoughnessTuning.frequencyHz
+    static var dysfluencyRoughnessRateHz: Double {
+        get { configuration(in: .standard).dysfluencyRoughnessRateHz }
+        set { UserDefaults.standard.set(newValue, forKey: dysfluencyRoughnessRateHzKey) }
+    }
+
     static let spatialAxisDemonstrationKey = prefix + "spatialAxisDemonstration"
     static let spatialAxisDemonstrationDefault: Bool = false
     static var spatialAxisDemonstration: Bool {
@@ -406,6 +478,58 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: oncePerConditionKey) }
     }
 
+    /// R18DIM slice 2: which sound arms the pen's HEIGHT drives the pitch of.
+    /// `PitchScope.spatialOnly` is r17 (the default); `.off` plays the
+    /// carrier flat; `.both` also pitch-shifts the phoneme (TD-PSOLA).
+    /// Stored as the raw string; an unknown stored value reads as default.
+    static let pitchScopeKey = prefix + "pitchScope"
+    static let pitchScopeDefault: PitchScope = .spatialOnly
+    static var pitchScope: PitchScope {
+        get { configuration(in: .standard).pitchScope }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: pitchScopeKey) }
+    }
+
+    /// R18DIM slice 2: the shared pitch span in cents, both arms
+    /// (default 2400 = 220-880 Hz around the carrier; clamped 600...2400).
+    static let pitchRangeCentsKey = prefix + "pitchRangeCents"
+    static let pitchRangeCentsDefault: Int = PitchCoupling.defaultSpanCents
+    static var pitchRangeCents: Int {
+        get { configuration(in: .standard).pitchRangeCents }
+        set { UserDefaults.standard.set(newValue, forKey: pitchRangeCentsKey) }
+    }
+
+    /// R18DIM-S3: whether the sound is gated to the letter at all. ON (the
+    /// default, protocol r17) the arm's sound plays only while the pen is
+    /// within `soundGateRadiusFactor` x the checkpoint radius of the next
+    /// expected checkpoint (and above `soundGateVelocityFloor`) in guided
+    /// tracing. OFF the sound follows the pen wherever it moves on the
+    /// canvas, in both sound arms alike (the out-of-bounds edge still stops
+    /// it); the radius factor then has no effect, the velocity floor still
+    /// does. Free-writing is already ungated and the observe demonstration
+    /// is animation-driven, so neither changes.
+    static let soundGatingEnabledKey = prefix + "soundGatingEnabled"
+    static let soundGatingEnabledDefault: Bool = true
+    static var soundGatingEnabled: Bool {
+        get { configuration(in: .standard).soundGatingEnabled }
+        set { UserDefaults.standard.set(newValue, forKey: soundGatingEnabledKey) }
+    }
+
+    /// R18 slice 6 (Klang-Dimensionen): Pencil force -> loudness in BOTH sound arms (pen path only; the observe dot
+    /// has no force). OFF = r17. A finger reports no force and leaves the level unchanged either way.
+    static let pressureLoudnessEnabledKey = prefix + "pressureLoudnessEnabled"
+    static let pressureLoudnessEnabledDefault: Bool = false
+    static var pressureLoudnessEnabled: Bool {
+        get { configuration(in: .standard).pressureLoudnessEnabled }
+        set { UserDefaults.standard.set(newValue, forKey: pressureLoudnessEnabledKey) }
+    }
+
+    static let pressureLoudnessRangeDBKey = prefix + "pressureLoudnessRangeDB"
+    static let pressureLoudnessRangeDBDefault: Double = Double(ArmCoupling.PressureLoudness.rangeDB)
+    static var pressureLoudnessRangeDB: Double {
+        get { configuration(in: .standard).pressureLoudnessRangeDB }
+        set { UserDefaults.standard.set(newValue, forKey: pressureLoudnessRangeDBKey) }
+    }
+
     /// Restore every switch to the behaviour the app had before this file
     /// existed. Used by the researcher UI's reset row, and by tests.
     ///
@@ -426,13 +550,18 @@ enum StudyComparisonSettings {
                     presentationSpacingKey, guidedDotsVisibleKey,
                     panningEnabledKey, spatialAxisDemonstrationKey,
                     soundGateRadiusFactorKey, soundGateVelocityFloorKey,
-                    oncePerConditionKey] {
+                    oncePerConditionKey, rateCouplingKey,
+                    pitchScopeKey, pitchRangeCentsKey, soundGatingEnabledKey,
+                    distanceToneEnabledKey, directionMuteEnabledKey,
+                    distanceToneFarLevelDBKey, distanceToneFarCutoffHzKey, directionMuteBackwardCosineKey,
+                    pressureLoudnessEnabledKey, pressureLoudnessRangeDBKey,
+                    dysfluencyRoughnessKey, dysfluencyRoughnessDepthKey, dysfluencyRoughnessRateHzKey] {
             defaults.removeObject(forKey: key)
         }
         return configuration(in: defaults) != before
     }
 
-    /// All twelve switches as `defaults` currently holds them, each with its
+    /// Every stored switch as `defaults` currently holds it, each with its
     /// documented default for an unset key and its clamp for a stored one.
     ///
     /// THE ONE READ. Every getter above delegates here, so the device store
@@ -458,7 +587,28 @@ enum StudyComparisonSettings {
                                                         default: soundGateRadiusFactorDefault, in: defaults)),
             soundGateVelocityFloor: max(0, doubleValue(soundGateVelocityFloorKey,
                                                        default: soundGateVelocityFloorDefault, in: defaults)),
-            oncePerCondition: boolValue(oncePerConditionKey, default: oncePerConditionDefault, in: defaults)
+            oncePerCondition: boolValue(oncePerConditionKey, default: oncePerConditionDefault, in: defaults),
+            rateCoupling: boolValue(rateCouplingKey, default: rateCouplingDefault, in: defaults),
+            pitchScope: defaults.string(forKey: pitchScopeKey).flatMap(PitchScope.init(rawValue:)) ?? pitchScopeDefault,
+            pitchRangeCents: PitchCoupling.clampedSpan(intValue(pitchRangeCentsKey, default: pitchRangeCentsDefault, in: defaults)),
+            soundGatingEnabled: boolValue(soundGatingEnabledKey, default: soundGatingEnabledDefault, in: defaults),
+            distanceToneEnabled: boolValue(distanceToneEnabledKey, default: distanceToneEnabledDefault, in: defaults),
+            directionMuteEnabled: boolValue(directionMuteEnabledKey, default: directionMuteEnabledDefault, in: defaults),
+            distanceToneFarLevelDB: min(0, max(-60, doubleValue(distanceToneFarLevelDBKey,
+                                                                 default: distanceToneFarLevelDBDefault, in: defaults))),
+            distanceToneFarCutoffHz: min(Double(StrokeTone.bypassHz), max(100, doubleValue(distanceToneFarCutoffHzKey,
+                                                                 default: distanceToneFarCutoffHzDefault, in: defaults))),
+            directionMuteBackwardCosine: min(1, max(-1, doubleValue(directionMuteBackwardCosineKey,
+                                                                   default: directionMuteBackwardCosineDefault, in: defaults))),
+            pressureLoudnessEnabled: boolValue(pressureLoudnessEnabledKey,
+                                               default: pressureLoudnessEnabledDefault, in: defaults),
+            pressureLoudnessRangeDB: min(60, max(0, doubleValue(pressureLoudnessRangeDBKey,
+                                                               default: pressureLoudnessRangeDBDefault, in: defaults))),
+            dysfluencyRoughness: boolValue(dysfluencyRoughnessKey, default: dysfluencyRoughnessDefault, in: defaults),
+            dysfluencyRoughnessDepth: min(1, max(0, doubleValue(dysfluencyRoughnessDepthKey,
+                                                               default: dysfluencyRoughnessDepthDefault, in: defaults))),
+            dysfluencyRoughnessRateHz: min(200, max(1, doubleValue(dysfluencyRoughnessRateHzKey,
+                                                                  default: dysfluencyRoughnessRateHzDefault, in: defaults)))
         )
     }
 
@@ -485,7 +635,7 @@ enum StudyComparisonSettings {
 
 // MARK: - The configuration a session ran under, ON THE ROW
 
-/// The twelve comparison switches RESOLVED — the values one session
+/// The comparison switches RESOLVED — the values one session
 /// actually runs under, as opposed to the device's settings, which may
 /// have moved since that session finished.
 ///
@@ -537,8 +687,23 @@ struct StudyComparisonConfiguration: Equatable {
     var soundGateRadiusFactor: Double = StudyComparisonSettings.soundGateRadiusFactorDefault
     var soundGateVelocityFloor: Double = StudyComparisonSettings.soundGateVelocityFloorDefault
     var oncePerCondition: Bool = StudyComparisonSettings.oncePerConditionDefault
+    /// r18; appended last so every earlier stamp keeps its field order.
+    var rateCoupling: Bool = StudyComparisonSettings.rateCouplingDefault
+    var pitchScope: PitchScope = StudyComparisonSettings.pitchScopeDefault
+    var pitchRangeCents: Int = StudyComparisonSettings.pitchRangeCentsDefault
+    var soundGatingEnabled: Bool = StudyComparisonSettings.soundGatingEnabledDefault
+    var distanceToneEnabled: Bool = StudyComparisonSettings.distanceToneEnabledDefault
+    var directionMuteEnabled: Bool = StudyComparisonSettings.directionMuteEnabledDefault
+    var distanceToneFarLevelDB: Double = StudyComparisonSettings.distanceToneFarLevelDBDefault
+    var distanceToneFarCutoffHz: Double = StudyComparisonSettings.distanceToneFarCutoffHzDefault
+    var directionMuteBackwardCosine: Double = StudyComparisonSettings.directionMuteBackwardCosineDefault
+    var pressureLoudnessEnabled: Bool = StudyComparisonSettings.pressureLoudnessEnabledDefault
+    var pressureLoudnessRangeDB: Double = StudyComparisonSettings.pressureLoudnessRangeDBDefault
+    var dysfluencyRoughness: Bool = StudyComparisonSettings.dysfluencyRoughnessDefault
+    var dysfluencyRoughnessDepth: Double = StudyComparisonSettings.dysfluencyRoughnessDepthDefault
+    var dysfluencyRoughnessRateHz: Double = StudyComparisonSettings.dysfluencyRoughnessRateHzDefault
 
-    /// All twelve at their production defaults — the PILOT configuration,
+    /// Every field at its production default — the PILOT configuration,
     /// and the value a `PhaseSessionRecord` written before this type
     /// existed decodes as.
     static let defaults = StudyComparisonConfiguration()
@@ -594,6 +759,48 @@ struct StudyComparisonConfiguration: Equatable {
         }
         if oncePerCondition != Self.defaults.oncePerCondition {
             entries.append("oncePerCondition=\(oncePerCondition)")
+        }
+        if rateCoupling != Self.defaults.rateCoupling {
+            entries.append("rateCoupling=\(rateCoupling)")
+        }
+        if pitchScope != Self.defaults.pitchScope {
+            entries.append("pitchScope=\(pitchScope.rawValue)")
+        }
+        if pitchRangeCents != Self.defaults.pitchRangeCents {
+            entries.append("pitchRangeCents=\(pitchRangeCents)")
+        }
+        if soundGatingEnabled != Self.defaults.soundGatingEnabled {
+            entries.append("soundGatingEnabled=\(soundGatingEnabled)")
+        }
+        if distanceToneEnabled != Self.defaults.distanceToneEnabled {
+            entries.append("distanceToneEnabled=\(distanceToneEnabled)")
+        }
+        if directionMuteEnabled != Self.defaults.directionMuteEnabled {
+            entries.append("directionMuteEnabled=\(directionMuteEnabled)")
+        }
+        if distanceToneFarLevelDB != Self.defaults.distanceToneFarLevelDB {
+            entries.append("distanceToneFarLevelDB=\(distanceToneFarLevelDB)")
+        }
+        if distanceToneFarCutoffHz != Self.defaults.distanceToneFarCutoffHz {
+            entries.append("distanceToneFarCutoffHz=\(distanceToneFarCutoffHz)")
+        }
+        if directionMuteBackwardCosine != Self.defaults.directionMuteBackwardCosine {
+            entries.append("directionMuteBackwardCosine=\(directionMuteBackwardCosine)")
+        }
+        if pressureLoudnessEnabled != Self.defaults.pressureLoudnessEnabled {
+            entries.append("pressureLoudnessEnabled=\(pressureLoudnessEnabled)")
+        }
+        if pressureLoudnessRangeDB != Self.defaults.pressureLoudnessRangeDB {
+            entries.append("pressureLoudnessRangeDB=\(pressureLoudnessRangeDB)")
+        }
+        if dysfluencyRoughness != Self.defaults.dysfluencyRoughness {
+            entries.append("dysfluencyRoughness=\(dysfluencyRoughness)")
+        }
+        if dysfluencyRoughnessDepth != Self.defaults.dysfluencyRoughnessDepth {
+            entries.append("dysfluencyRoughnessDepth=\(dysfluencyRoughnessDepth)")
+        }
+        if dysfluencyRoughnessRateHz != Self.defaults.dysfluencyRoughnessRateHz {
+            entries.append("dysfluencyRoughnessRateHz=\(dysfluencyRoughnessRateHz)")
         }
         return entries.isEmpty ? nil : entries.joined(separator: ";")
     }

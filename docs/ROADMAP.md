@@ -2,7 +2,7 @@
 
 See `docs/BAKE_INVARIANTS.md` for permanent bake invariants — apply to every letter, every weight, every bake.
 
-_Single forward-looking work log. Last updated 2026-08-19 against `main` (commit `cb7291d`), after a full read-only reconciliation against code and git history. Only items still requiring work appear here — every shipped item has been removed. Shipped items live in commit history._
+_Single forward-looking work log. Last updated 2026-08-19 against `main` (commit `cb7291d`), after a full read-only reconciliation against code and git history. Only items still requiring work appear here — every shipped item has been removed. Shipped items live in commit history._ _[2026-11-06: the r17 LOOPX row was added; the 2026-08-19 reconciliation itself has not been re-run.]_
 
 _**Correction (2026-09-03), itself now superseded (2026-09-14):** the 2026-09-03 pass reverted H5 to outstanding after measuring no phoneme files on disk. That measurement was correct **at the time**; it no longer describes the current state — the 5 pilot study-letter recordings landed `92d399e` (2026-09-14) and H5 is closed (see §2 below). Left here so the correction history isn't silently erased, not as current fact._
 
@@ -16,6 +16,7 @@ _**Correction (2026-09-03), itself now superseded (2026-09-14):** the 2026-09-03
 |---|---|---|---|
 | **U5** Pencil 2 squeeze validation | iPad with Apple Pencil 2 — confirm squeeze + double-tap fire `replayAudio()` and don't double-fire with finger taps | Code is shipped; just needs verifying the gesture lands as intended on real hardware [2026-10-14: the squeeze is NOT wired and the double-tap uses a deprecated delegate method; in a study build `replayAudio()` returns at once, so neither gesture plays anything. See U5 below, audit R-096.] | **0–1 days on device** |
 | **r17 LOOPX** transitions | Listen to `listening.html` (lane LOOPX, before/after WAVs of every scenario), then trace on the iPad candidate: strokes started 0.4-1.1 s after a pause or a lift, both sound arms; run `PrimaeUITests` (passcode) | The pop at a stroke begun inside the stop fade is fixed by a crossover; a rate-dependent TDPSOLA artefact on A (rate != 1) and a rare antiphase dip on the carrier remain and are reported, not fixed (LOOPX.md) | **~30 min on device** |
+| **r18** switchable sonification dimensions | Try the eight switches and six strengths on the iPad with the supervisors | **Landed as protocol r18 (2026-11-07)** with the six strengths frozen at their pre-try-out values (David's call). Every switch defaults to r17 behaviour, so the pilot is unchanged; a try-out that moves a strength is a later protocol revision | **~1 session on device** |
 | **U10** VoiceOver walkthrough | iPad with VoiceOver enabled — walk every screen, watch for skipped elements / misordered focus / Switch Control routing / Dynamic Type clipping | Required before submitting the thesis externally. [2026-11-01: the automated audit (2026-10-21) and #80 are done, see U10 below; what remains is human-only: what VoiceOver actually speaks and in what order, the gear long-press under VoiceOver, Switch Control and AssistiveTouch.] | **2–3 hours on device** |
 
 ### Engineering ball (in-loop sessions with me)
