@@ -136,6 +136,51 @@ struct StrokeToneMappingTests {
         t.reset()
         #expect(t.movement(to: CGPoint(x: 0.3, y: 0.3), aspect: 1, gateRadius: g) == nil)
     }
+
+    /// R19 (review N10). The tracker is driven the way the touch path drives it: `penMoved` on a kept sample,
+    /// `movement` on every sample, with the stall cutoff (0.3 s here).
+    @Test("a pen that has stopped moving has no direction; one still moving keeps it")
+    func stoppedPenForgetsItsDirection() {
+        let g: CGFloat = 0.15, stall: TimeInterval = 0.3
+        var t = StrokeMovementTracker()
+        func sample(_ x: CGFloat, at time: CFTimeInterval, moved: Bool) -> CGVector? {
+            if moved { t.penMoved(at: time, stallSeconds: stall) }
+            return t.movement(to: CGPoint(x: x, y: 0.5), aspect: 1, gateRadius: g, at: time, stallSeconds: stall)
+        }
+        _ = sample(0.50, at: 0.00, moved: true)
+        let fwd = sample(0.54, at: 0.05, moved: true)
+        #expect(fwd != nil && fwd!.dx > 0)
+        let back = sample(0.50, at: 0.10, moved: true)
+        #expect(back != nil && back!.dx < 0)
+        // Held still: samples that moved nothing. Inside the stall cutoff the reversal is still the direction ...
+        #expect(sample(0.50, at: 0.30, moved: false) == back, "forgotten before the stall cutoff")
+        // ... from the cutoff on the pen has no direction.
+        #expect(sample(0.50, at: 0.41, moved: false) == nil, "a stopped pen kept its reversal")
+        #expect(sample(0.50, at: 0.90, moved: false) == nil)
+        // It starts again: the new direction is its own, never the stale reversal.
+        #expect(sample(0.5005, at: 1.00, moved: true) == nil, "a resumed pen read the stale direction")
+        let again = sample(0.54, at: 1.05, moved: true)
+        #expect(again != nil && again!.dx > 0, "the resumed pen's direction is not its own: \(String(describing: again))")
+    }
+
+    @Test("slow movement is not a stop: a kept sample inside every stall window keeps the direction")
+    func slowMovementKeepsItsDirection() {
+        let g: CGFloat = 0.15, stall: TimeInterval = 0.3
+        var t = StrokeMovementTracker()
+        t.penMoved(at: 0, stallSeconds: stall)
+        _ = t.movement(to: CGPoint(x: 0.5, y: 0.5), aspect: 1, gateRadius: g, at: 0, stallSeconds: stall)
+        t.penMoved(at: 0.05, stallSeconds: stall)
+        let back = t.movement(to: CGPoint(x: 0.46, y: 0.5), aspect: 1, gateRadius: g, at: 0.05, stallSeconds: stall)
+        #expect(back != nil && back!.dx < 0)
+        // 4 s at 0.25 s per kept sample, each far below one step (0.1 x gate): the reversal stays.
+        for i in 1...16 {
+            let time = 0.05 + 0.25 * Double(i)
+            t.penMoved(at: time, stallSeconds: stall)
+            let m = t.movement(to: CGPoint(x: 0.46 - 0.0005 * Double(i), y: 0.5), aspect: 1, gateRadius: g,
+                               at: time, stallSeconds: stall)
+            #expect(m == back, "slow reverse movement lost its direction at sample \(i)")
+        }
+    }
 }
 
 // MARK: - Seam B
@@ -347,5 +392,81 @@ struct StrokeToneTouchPathTests {
             drag(back, y: 200, x0: 350, dx: -10)
             #expect(backAudio.mutes.contains(true), "\(arm) backwards was never muted: \(backAudio.mutes)")
         }
+    }
+
+    // MARK: R19 (review N10): the mute belongs to a pen that is moving backwards
+
+    /// A fast reversal along the stroke (x 350 -> 200 at y 200, 1 ms per 10 pt sample), pen still down.
+    /// Returns the touch time of its last sample.
+    private func reverse(_ vm: TracingViewModel) -> CFTimeInterval {
+        let t0: CFTimeInterval = 1000
+        vm.beginTouch(at: CGPoint(x: 350, y: 200), t: t0)
+        var t = t0
+        var p = CGPoint(x: 350, y: 200)
+        for _ in 0..<15 { t += 0.001; p.x -= 10; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+        return t
+    }
+
+    @Test("direction on: a reversed pen that stops moving is no longer muted")
+    func reversedThenStoppedUnmutes() {
+        for arm in [PilotAudioCondition.phoneme, .spatial] {
+            let (vm, audio) = makeVM(distance: false, direction: true, arm: arm)
+            let t = reverse(vm)
+            #expect(audio.mutes.last == true, "\(arm): the reversal was not muted, the test measures nothing: \(audio.mutes)")
+            let stall = vm.strokeTempo.stallSeconds
+            // Held on the spot (a sample that moved nothing): inside the stall cutoff the reversal still counts ...
+            vm.updateTouch(at: CGPoint(x: 200, y: 200), t: t + stall * 0.5, canvasSize: canvas)
+            #expect(audio.mutes.last == true, "\(arm): unmuted before the pen had stopped: \(audio.mutes)")
+            // ... past it the pen has stopped, and a stopped pen is not backwards.
+            vm.updateTouch(at: CGPoint(x: 200, y: 200), t: t + stall + 0.05, canvasSize: canvas)
+            #expect(audio.mutes.last == false, "\(arm): a stopped pen stayed muted: \(audio.mutes)")
+            // Moving forward again is audible, and a new reversal mutes again.
+            var p = CGPoint(x: 200, y: 200)
+            var time = t + stall + 0.06
+            for _ in 0..<10 { time += 0.001; p.x += 10; vm.updateTouch(at: p, t: time, canvasSize: canvas) }
+            #expect(audio.mutes.last == false, "\(arm): forwards after the stop was muted: \(audio.mutes)")
+            let before = audio.mutes.count
+            for _ in 0..<10 { time += 0.001; p.x -= 10; vm.updateTouch(at: p, t: time, canvasSize: canvas) }
+            #expect(audio.mutes[before...].contains(true), "\(arm): a second reversal was never muted: \(audio.mutes)")
+        }
+    }
+
+    @Test("direction on: a reversed pen that keeps moving, slowly, stays muted")
+    func reversedAndMovingStaysMuted() {
+        for arm in [PilotAudioCondition.phoneme, .spatial] {
+            let (vm, audio) = makeVM(distance: false, direction: true, arm: arm)
+            var t = reverse(vm)
+            var p = CGPoint(x: 200, y: 200)
+            let before = audio.mutes.count
+            // 4 s at 2 pt per 0.2 s = 10 pt/s, each sample a kept move inside the stall cutoff.
+            for _ in 0..<20 { t += 0.2; p.x -= 2; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
+            let slow = Array(audio.mutes[before...])
+            #expect(slow.count == 20, "the slow samples did not reach the voice: \(slow.count)")
+            #expect(slow.allSatisfy { $0 }, "\(arm): a slow backwards pen was unmuted: \(slow)")
+        }
+    }
+
+    @Test("direction on: the lift after a reversal does not mute the tail")
+    func liftAfterReversalIsNotMuted() {
+        for arm in [PilotAudioCondition.phoneme, .spatial] {
+            let (vm, audio) = makeVM(distance: false, direction: true, arm: arm)
+            _ = reverse(vm)
+            #expect(audio.mutes.last == true, "\(arm): the reversal was not muted, the test measures nothing")
+            vm.endTouch()
+            #expect(audio.mutes.last == false, "\(arm): the lift tail stayed muted by a past reversal: \(audio.mutes)")
+        }
+    }
+
+    @Test("direction off: a reversal and a lift write no mute at all, distance alone never mutes")
+    func switchOffIsUnchanged() {
+        let (off, offAudio) = makeVM(distance: false, direction: false)
+        _ = reverse(off)
+        off.endTouch()
+        #expect(offAudio.rateCalls > 0, "the coupling did not run: the test measures nothing")
+        #expect(offAudio.mutes.isEmpty, "both switches off wrote a mute: \(offAudio.mutes)")
+        let (dist, distAudio) = makeVM(distance: true, direction: false)
+        _ = reverse(dist)
+        dist.endTouch()
+        #expect(!distAudio.mutes.isEmpty && !distAudio.mutes.contains(true), "distance alone muted: \(distAudio.mutes)")
     }
 }

@@ -402,7 +402,7 @@ struct SettingsView: View {
                         Text("Aus").tag(PitchScope.off)
                         Text("Beide Klang-Arme").tag(PitchScope.both)
                     }
-                    .accessibilityHint("Nur Raumklang ist die Vorgabe: die Stifthöhe verändert die Tonhöhe nur im Raumklang-Arm. Aus: die Tonhöhe folgt dem Stift in keinem Arm (das Phonem bleibt auf seiner aufgenommenen Tonhöhe). Beide Klang-Arme verschiebt auch das Phonem in der Tonhöhe (TD-PSOLA), mit demselben Tonumfang. Die frühere Achsen-Vorführung (eigener Schalter) folgt diesem Schalter nicht. Ein Vergleichslauf, keine Pilotbedingung.")
+                    .accessibilityHint("Nur Raumklang ist die Vorgabe: die Stifthöhe verändert die Tonhöhe nur im Raumklang-Arm. Aus: die Tonhöhe folgt dem Stift in keinem Arm (das Phonem bleibt auf seiner aufgenommenen Tonhöhe). Beide Klang-Arme verschiebt auch das Phonem in der Tonhöhe (TD-PSOLA), mit demselben Tonumfang. Die Achsen-Vorführung vor der Aufgabe (eigener Schalter, nur Raumklang) folgt diesem Schalter: bei Aus verändert sich ihre Tonhöhe nicht, sonst gilt derselbe Tonumfang. Ein Vergleichslauf, keine Pilotbedingung.")
 
                     Picker("Tonumfang der Höhe", selection: Binding(
                         get: { comparisonPitchRange },
@@ -745,5 +745,5 @@ struct SettingsView: View {
 /// them to the defaults they describe (R-017, audit 2026-10-13).
 enum ComparisonSwitchHints {
     static let spokenFeedback = "Ein ist die Vorgabe (seit 02.10.): jedes Kind hört dieselben gesprochenen Anweisungen, in jedem Arm gleich. Aus entfernt jede Sprachausgabe — eine so durchgeführte Sitzung ist ein Vergleichslauf."
-    static let axisDemonstration = "Aus ist die Vorgabe und die Spezifikation (Entscheidung vom 18.09.): Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung — dieselbe Art von Vorführung wie im Phonem-Arm. Ein stellt die frühere Vorführung wieder her: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten und die Ortung der Waagerechten. Eine so durchgeführte Sitzung ist ein Vergleichslauf."
+    static let axisDemonstration = "Aus ist die Vorgabe und die Spezifikation (Entscheidung vom 18.09.): Der Raumklang-Arm spielt vor der Aufgabe zwei Sekunden lang den Trägerklang mit fester Tonhöhe und mittiger Ortung — dieselbe Art von Vorführung wie im Phonem-Arm. Ein stellt die frühere Vorführung wieder her: Der Ton durchläuft einmal das ganze Feld, die Tonhöhe folgt der Senkrechten (nach dem Schalter „Höhe steuert Tonhöhe“) und die Ortung der Waagerechten. Eine so durchgeführte Sitzung ist ein Vergleichslauf."
 }

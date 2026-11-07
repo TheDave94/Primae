@@ -1949,9 +1949,9 @@ have explicit `.accessibilityLabel`. Adults can long-press the bottom
 
 ### 10.3 What's tested
 
-(As of protocol r17 (`aab86e9d`, 2026-11-06) the full device suite measured
-1594 tests in 201 suites in both Release-Study and Debug-Study
-(`r17e/logs`). CI is the source of truth for the CI count; the earlier
+(As of protocol r19 (2026-11-07) the full device suite measured
+1677 tests in 211 suites in Release-Study
+(`wt-primae-audit-notes/r19/logs/full-rel.log`). CI is the source of truth for the CI count; the earlier
 2026-11-01 count (1388 tests in 153 suites at `a3260ca4`) and the
 "46 test files, 647 `@Test`" figure are both stale.)
 

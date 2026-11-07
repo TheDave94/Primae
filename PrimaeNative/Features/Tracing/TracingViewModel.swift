@@ -2188,8 +2188,9 @@ public final class TracingViewModel {
                 // ON: the OLD axis demonstration, kept as a researcher
                 // affordance only — not the specified behaviour since the
                 // 2026-09-18 ruling. Pitch follows
-                // the sweep point's vertical leg, pan its horizontal one,
-                // one full top→bottom→top pass over the shared window.
+                // the sweep point's vertical leg (through `pitchCoupling`, R19),
+                // pan its horizontal one, one full top→bottom→top pass over
+                // the shared window.
                 preTaskDemoTask = Task { [weak self] in
                     guard let self, !Task.isCancelled else { return }
                     var previousElapsed: TimeInterval = 0
@@ -2202,8 +2203,14 @@ public final class TracingViewModel {
                         self.audio.setAdaptivePlayback(
                             speed: 1.0,
                             horizontalBias: Float(max(-1.0, min(1.0, sample.point.x * 2.0 - 1.0))))
-                        self.audio.setSpatialPitch(
-                            cents: SpatialSonification.pitchCents(forNormalizedY: sample.point.y))
+                        // R19 (review N4): the pitch leg follows the pitch switch exactly as the pen
+                        // and the observe dot do (`pitchCoupling`: scope and span). Nur Raumklang at
+                        // 2400 cents (the default) is `SpatialSonification.pitchCents(forNormalizedY:)`
+                        // value for value; Aus writes no pitch at all.
+                        if let cents = self.pitchCoupling.cents(forNormalizedY: sample.point.y,
+                                                                arm: self.audioCondition) {
+                            self.audio.setSpatialPitch(cents: cents)
+                        }
                     }
                     // Same guard shape as the OFF branch below and as the
                     // phoneme branch: a cancelled task means a fresher

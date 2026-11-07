@@ -119,13 +119,37 @@ struct StrokeContext: Equatable, Sendable {
 
 /// The pen's movement direction across samples: the displacement since the
 /// anchor once it is at least `minimumStepGateRadii` long, else the last one.
+///
+/// R19 (review N10): a pen that has STOPPED has no direction. "Stopped" is the
+/// pen's own still-pen test, read off the touch path: no sample moved it
+/// `minimumTouchMoveDistance` (1.5 pt, the jitter hysteresis) from the last kept
+/// point for `stallSeconds` (the child's stall cutoff, `StrokeTempo.stallSeconds`)
+/// of touch time. Then the last direction is forgotten, so a reversed pen that
+/// holds still stops reading as "backwards" and a pen that resumes starts from
+/// its new direction, not the stale one. No new constant: both numbers already
+/// decide when the pen counts as still. The caller passes neither (the defaults)
+/// to get the r18 tracker that never forgets.
 struct StrokeMovementTracker: Equatable, Sendable {
     private var anchor: CGPoint?
     private var last: CGVector?
+    private var lastMoveAt: CFTimeInterval?
 
-    mutating func reset() { anchor = nil; last = nil }
+    mutating func reset() { anchor = nil; last = nil; lastMoveAt = nil }
 
-    mutating func movement(to p: CGPoint, aspect: CGFloat, gateRadius: CGFloat) -> CGVector? {
+    /// The pen travelled (a kept sample) at touch time `t`.
+    mutating func penMoved(at t: CFTimeInterval, stallSeconds: TimeInterval) {
+        forgetIfStopped(at: t, stallSeconds: stallSeconds)
+        lastMoveAt = t
+    }
+
+    private mutating func forgetIfStopped(at t: CFTimeInterval, stallSeconds: TimeInterval) {
+        guard let m = lastMoveAt, t - m >= stallSeconds else { return }
+        anchor = nil; last = nil; lastMoveAt = nil
+    }
+
+    mutating func movement(to p: CGPoint, aspect: CGFloat, gateRadius: CGFloat,
+                           at t: CFTimeInterval = 0, stallSeconds: TimeInterval = .infinity) -> CGVector? {
+        forgetIfStopped(at: t, stallSeconds: stallSeconds)
         guard let a = anchor else { anchor = p; return nil }
         let k: CGFloat = (aspect.isFinite && aspect > 0) ? aspect : 1
         let dx = p.x - a.x, dy = p.y - a.y

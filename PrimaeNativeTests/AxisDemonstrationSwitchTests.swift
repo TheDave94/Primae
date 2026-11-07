@@ -291,6 +291,60 @@ struct AxisDemonstrationSwitchTests {
         }
     }
 
+    // MARK: - R19 (review N4): the sweep's pitch leg follows the pitch switch
+
+    /// What the sweep wrote, as the engine saw it: the pitch calls and the pan calls.
+    private func sweep(scope: PitchScope, span: Int) async -> (pitches: [Float], biases: [Float]) {
+        await withRestoredComparisonKeysAsync {
+            let audio = SweepRecordingAudio()
+            var deps = TracingDependencies.stub
+                .with(audioCondition: .spatial)
+                .with(audio: audio)
+                .with(studyMode: true)
+            deps.spatialAxisDemonstration = true
+            deps.pitchCoupling = PitchCoupling(scope: scope, spanCents: span)
+            let vm = TracingViewModel(deps)
+            audio.reset()
+            vm.armPreTaskDemonstration(for: asset(), duration: 0.1)
+            await waitUntil { audio.stopCount > 0 }
+            try? await Task.sleep(for: .milliseconds(50))
+            return (audio.pitches, audio.biases)
+        }
+    }
+
+    @Test("pitch switch Nur Raumklang at 2400 cents (the default): the sweep is r18's, value for value")
+    func sweepAtTheDefaultIsR18() async {
+        let expected = PreTaskDemonstration.axisSweep(duration: 0.1)
+            .map { SpatialSonification.pitchCents(forNormalizedY: $0.point.y) }
+        #expect(expected.count > 1 && expected.max()! > 1100 && expected.min()! < -1100, "the reference sweep is not a sweep")
+        let run = await sweep(scope: StudyComparisonSettings.pitchScopeDefault,
+                              span: StudyComparisonSettings.pitchRangeCentsDefault)
+        #expect(run.pitches == expected, "the default demonstration is not byte-identical to r18: \(run.pitches.count) vs \(expected.count) samples")
+        #expect(StudyComparisonSettings.pitchScopeDefault == .spatialOnly && StudyComparisonSettings.pitchRangeCentsDefault == 2400)
+    }
+
+    @Test("pitch switch Aus: the sweep still pans but writes no pitch")
+    func sweepWithPitchOffIsUnpitched() async {
+        let run = await sweep(scope: .off, span: 2400)
+        #expect(run.biases.count > 1, "the sweep did not run, the test measures nothing")
+        #expect(run.biases.max()! > 0.9 && run.biases.min()! < -0.9, "the pan leg did not sweep")
+        #expect(run.pitches.isEmpty, "Aus still pitched the demonstration: \(run.pitches.count) writes")
+    }
+
+    @Test("pitch switch Beide Klang-Arme and Nur Raumklang follow the stored range in the spatial arm")
+    func sweepFollowsTheRange() async {
+        for scope in [PitchScope.both, .spatialOnly] {
+            for span in [1800, 1200, 600] {
+                let expected = PreTaskDemonstration.axisSweep(duration: 0.1)
+                    .map { SpatialSonification.pitchCents(forNormalizedY: $0.point.y, spanCents: span) }
+                let run = await sweep(scope: scope, span: span)
+                #expect(run.pitches == expected, "\(scope) \(span): the sweep did not follow the range")
+                #expect(run.pitches.max()! > Float(span) / 2 - 100 && run.pitches.max()! <= Float(span) / 2)
+                #expect(run.pitches.min()! < -Float(span) / 2 + 100 && run.pitches.min()! >= -Float(span) / 2)
+            }
+        }
+    }
+
     // MARK: - The two branches are the same LENGTH
 
     /// Both settings must run the same demonstration window, because the

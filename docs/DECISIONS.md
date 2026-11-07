@@ -1385,6 +1385,67 @@ Implications:
     and N10 (a reversed-then-stopped pen stays muted with the direction
     switch on) are open for David (`r18dim/review/REVIEW.md`).
 
+- **Protocol revision 19 — r18 review follow-ups N10 and N4 (2026-11-07).**
+  Two defects the r18 review left open for a decision
+  (`wt-primae-audit-notes/r18dim/review/REVIEW.md`, N4 and N10), both in
+  settings a proctor must switch on. Nothing changes at the defaults: the
+  comparison stamp of an untouched session is still empty and the r18
+  behaviour is reproduced value for value. Design notes:
+  `wt-primae-audit-notes/r19/REPORT.md`.
+  - **N10 — a reversed-then-stopped pen stayed muted.** With "Klang: Richtung
+    am Strich" on, `StrokeMovementTracker` kept the last movement while the
+    pen was stationary, so a child who reversed and then held still inside
+    the gate heard nothing, and a lift after a reversal played a muted tail.
+    Decided: "no movement, no direction". The tracker now forgets its
+    direction (and re-anchors) when no kept sample (>= 1.5 pt from the last
+    kept point, the existing jitter hysteresis) has arrived for the child's
+    stall cutoff (`StrokeTempo.stallSeconds`, 0.3-0.6 s), so a stopped pen is
+    not muted and a pen that resumes starts from its own new direction. **No
+    new constant**: both numbers already decide when the pen counts as still.
+    At the lift the mute is cleared when the last written tone was muted
+    (`settleCouplingAtLift`), so the tail is never muted by a past reversal.
+    A pen still moving backwards, however slowly, stays muted. Limit: a
+    finger held perfectly still sends no samples, so the engine's stall idle
+    (the same cutoff) ends the sound at the moment the tracker would unmute;
+    the unmute is audible for a pen that keeps sending samples (Apple Pencil
+    jitter) and for the lift tail. Whether there is sound at all is decided
+    exactly as before.
+  - **N4 — "Höhe steuert Tonhöhe" did not reach the axis demonstration.** The
+    researcher-only pre-task axis sweep (Achsen-Vorführung, off by default)
+    wrote `SpatialSonification.pitchCents(forNormalizedY:)` unconditionally,
+    so with the pitch switch on Aus it still swept pitch. Decided: route it
+    through `pitchCoupling.cents(forNormalizedY:arm:)`, the function the pen
+    and the observe dot use. Aus writes no pitch (the sweep still pans); a
+    smaller "Tonumfang der Höhe" narrows the sweep; at the default (Nur
+    Raumklang, 2400 cents) the call returns the r18 expression, asserted
+    sample for sample. **Clarification:** the axis demonstration exists only
+    in the spatial arm (the phoneme arm's pre-task demonstration is the plain
+    window and has no sweep), so "Beide Klang-Arme" adds nothing to it: it
+    uses the same range as the other scopes. No phoneme-arm sweep was added
+    (a new behaviour, not routing). The two Settings hints are corrected (the
+    pitch-scope hint no longer says the demonstration ignores the switch; the
+    axis-demonstration hint names the switch).
+  - **Stamp / record.** No new setting, no export change.
+    `StudyProtocol.revision` is 19; the r18 entry's merge metadata is filled
+    in (2026-11-07 17:10 UTC, #92).
+  - **Verification.** Full `PrimaeNativeTests` on the physical iPad,
+    Release-Study, on the landed content (revision 19): 1677 tests in 211
+    suites passed (`r19/logs/full-rel.log`); `AudioEngineTests` via `Primae-DeviceTests` on the
+    iPad: 37 tests, 0 failures
+    (`r19/logs/ae.log`). New tests (`StrokeToneTests`,
+    `AxisDemonstrationSwitchTests`): 34 tests in 4 suites failed with 2 issues before the fix
+    and passed after
+    (`r19/logs/a1-new-tests.log`, `a2-new-tests.log`). Mutation checks on
+    the device, each RED then restored, counts read from the logs (`r19/logs/m-*.log`):
+    N10 never forgets 18 tests in 2 suites failed, 5 issues; no unmute at the
+    lift 18/2, 2 issues; `penMoved` never called 18/2, 2 issues; N4
+    demonstration ignores `pitchCoupling` (the r18 write) 11 tests in 1
+    suite, 19 issues; scope ignored 11/1, 1 issue; span ignored 11/1, 18
+    issues; default not the r18 value 11/1, 13 issues.
+  - **Not done.** The audible N10 unmute was not heard on the iPad (the
+    tests pin the values written to the engine, not what a child hears).
+    A phoneme-arm axis sweep is not built.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

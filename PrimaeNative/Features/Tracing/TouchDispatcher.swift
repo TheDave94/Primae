@@ -305,6 +305,10 @@ final class TouchDispatcher {
             lastKeptPoint       = p
             unkeptTail          = nil
             keptPointsInStroke += 1
+            // R19 (N10): the pen travelled; a pen that did not for a stall cutoff has no direction.
+            if vm.directionMuteEnabled {
+                movementTracker.penMoved(at: t, stallSeconds: vm.strokeTempo.stallSeconds)
+            }
         } else if isWithinCanvasBounds {
             unkeptTail = (p, t, vm.pencilPressure ?? 0, canvasSize)
         }
@@ -371,7 +375,7 @@ final class TouchDispatcher {
         // adaptive update must stay BEFORE it on every sample that does not
         // finish the sequence — stroke-to-stroke and cell-to-cell are as before.
         if !sampleFinishesSequence() {
-            updateAdaptivePlayback(canvasNormalized: canvasNormalized, cellPoint: normalized, cellAspect: trackerAspect)
+            updateAdaptivePlayback(canvasNormalized: canvasNormalized, cellPoint: normalized, cellAspect: trackerAspect, at: t)
         }
 
         handleStrokeCompletionIfReached()
@@ -673,6 +677,9 @@ final class TouchDispatcher {
     /// At the lift: freeze the held tail at the pre-flick rate (B17) and
     /// write a pitch the throttle held back (B18); then forget the stroke.
     private func settleCouplingAtLift(holdingSound: Bool) {
+        // R19 (N10): the direction mute belongs to the movement it was measured on; the tail after a lift
+        // (and the sound the engine keeps) is never muted by a past reversal.
+        if let vm, lastCouplingParameters?.strokeTone?.muted == true { vm.audio.setStrokeMute(false) }
         if holdingSound, let vm, let last = lastCouplingParameters {
             if let v = preFlickVelocity() {
                 ArmCoupling.applyRateAndPan(
@@ -693,7 +700,8 @@ final class TouchDispatcher {
 
     /// Map smoothed velocity + canvas-x to audio time-stretch speed
     /// and stereo pan, then drive the playback state machine.
-    private func updateAdaptivePlayback(canvasNormalized: CGPoint, cellPoint: CGPoint, cellAspect: CGFloat) {
+    private func updateAdaptivePlayback(canvasNormalized: CGPoint, cellPoint: CGPoint, cellAspect: CGFloat,
+                                         at t: CFTimeInterval) {
         guard let vm else { return }
         // A blocked session plays no arm sound (r14; AUDIO-5): a stroke
         // still moving when the block came up (a headphone loss
@@ -758,7 +766,8 @@ final class TouchDispatcher {
         var strokeTone: StrokeTone?
         if vm.distanceToneEnabled || vm.directionMuteEnabled {
             let movement = movementTracker.movement(to: cellPoint, aspect: cellAspect,
-                                                    gateRadius: vm.strokeGateRadius())
+                                                    gateRadius: vm.strokeGateRadius(),
+                                                    at: t, stallSeconds: vm.strokeTempo.stallSeconds)
             strokeTone = vm.strokeToneParameters(cellPoint: cellPoint, movement: movement)
         }
         let coupling = ArmCoupling.parameters(canvasNormalized: canvasNormalized,
