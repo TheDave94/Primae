@@ -1539,14 +1539,24 @@ Implications:
     81 degrees off the stroke) (`b-hyst1.log`). (4) Not changed, by
     measurement: the roughness oscillator and smoothing, `AudioEngine.swift`,
     `StrokeTracker.swift`, every default.
-  - **Open, David's: one-pole or 2-pole for the distance dimension, and 6 or
-    12 ms.** A 2-pole (Butterworth TPT state-variable, -3.01 dB at the cutoff,
+  - **Decided 2026-11-08: one-pole and 6 ms stay; no protocol revision.**
+    David listened to the blind A/B below and could not hear a clear
+    difference, and asked for a decision from the data. The supervisor kept
+    the one-pole: if the study's own listener cannot tell the two apart, a
+    child will not either, so a switch would cost a protocol revision and buy
+    nothing audible. The one-pole is also the measured filter (no filter-open
+    click, 0.99x; no added carrier latency), while the 2-pole's firmer
+    darkening would likely push the phoneme's -20 dB onset point further than
+    the +15 ms the one-pole already adds with distance on (A5) — unmeasured,
+    and on the arm whose point is an intelligible phoneme. 6 ms stays because
+    it is the smallest tau within r17's letter-end splatter (above); 12 ms
+    only slows the mute. The 2-pole code stays in the kernel, unwired.
+    What was offered: a 2-pole (Butterworth TPT state-variable, -3.01 dB at the cutoff,
     11.8 dB/octave measured between 2x and 4x) exists in the kernel
     (`TPTLowpass`, `setStrokeLowpassSlope(.sixDB | .twelveDB)`, default
     `.sixDB`) and is NOT wired to any setting. Shipping it as a study switch
     needs a `StudyComparisonSettings` key, its stamp, a settings row and a
-    protocol revision (the `distanceToneFarCutoffHz` change set); that waits
-    for his listening choice. Page:
+    protocol revision (the `distanceToneFarCutoffHz` change set). Page:
     `wt-primae-audit-notes/r20/listening-r20.html` (sha16 eaf8f8331bd187c2;
     key `listening-r20-key.txt`): section 6 is the blind A/B (one-pole against
     2-pole), 1b hears the tau at 3 / 6 / 12 / 20 ms, 2-5 the click fixes, the
