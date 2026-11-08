@@ -32,6 +32,11 @@ struct StrokeTone: Equatable, Sendable {
     /// Pen travel (in gate radii) that makes a movement direction; shorter
     /// steps keep the previous direction (sample jitter is not a reversal).
     static let minimumStepGateRadii: CGFloat = 0.1
+    /// R20: hysteresis of the direction mute. The mute STARTS below `backwardCosine` (unchanged) and, once on, ENDS only above
+    /// `backwardCosine + releaseMarginCosine`: a pen whose heading hovers on the boundary no longer flips the sound on and off
+    /// at every sample (R20 A4, measured: 4-7 toggles/s with sub-point jitter on the boundary). The pure `make` defaults to 0
+    /// (no hysteresis); the pen's touch path passes this.
+    static let releaseMarginCosine: Float = 0.3
 
     var levelDB: Float = 0
     var lowpassHz: Float = bypassHz
@@ -44,7 +49,8 @@ struct StrokeTone: Equatable, Sendable {
     static func make(context: StrokeContext?, distanceEnabled: Bool, directionEnabled: Bool,
                      distanceFarLevelDB: Float = StrokeTone.farLevelDB,
                      distanceFarCutoffHz: Float = StrokeTone.farCutoffHz,
-                     directionBackwardCosine: Float = StrokeTone.backwardCosine) -> StrokeTone? {
+                     directionBackwardCosine: Float = StrokeTone.backwardCosine,
+                     wasMuted: Bool = false, releaseMarginCosine: Float = 0) -> StrokeTone? {
         guard distanceEnabled || directionEnabled else { return nil }
         guard let context else { return .neutral }
         var tone = StrokeTone()
@@ -56,7 +62,8 @@ struct StrokeTone: Equatable, Sendable {
                 : exp(log(bypassHz) + (log(distanceFarCutoffHz) - log(bypassHz)) * t)
         }
         if directionEnabled, context.normalizedDistance <= 1,
-           let c = context.directionCosine, c < directionBackwardCosine {
+           let c = context.directionCosine,
+           c < (wasMuted ? min(1, directionBackwardCosine + max(0, releaseMarginCosine)) : directionBackwardCosine) {
             tone.muted = true
         }
         return tone
@@ -165,7 +172,8 @@ extension TracingViewModel {
     /// The stroke tone for a point in cell fractions (nil when both switches
     /// are off). Free writing has no mask (r6) and no reference to be near:
     /// neutral there, as without reference geometry.
-    func strokeToneParameters(cellPoint p: CGPoint, movement: CGVector?) -> StrokeTone? {
+    func strokeToneParameters(cellPoint p: CGPoint, movement: CGVector?,
+                              wasMuted: Bool = false, releaseMarginCosine: Float = 0) -> StrokeTone? {
         guard distanceToneEnabled || directionMuteEnabled else { return nil }
         let tracker = strokeTracker
         let frame = grid.activeCell.frame
@@ -179,7 +187,8 @@ extension TracingViewModel {
                                directionEnabled: directionMuteEnabled,
                                distanceFarLevelDB: Float(distanceToneFarLevelDB),
                                distanceFarCutoffHz: Float(distanceToneFarCutoffHz),
-                               directionBackwardCosine: Float(directionMuteBackwardCosine))
+                               directionBackwardCosine: Float(directionMuteBackwardCosine),
+                               wasMuted: wasMuted, releaseMarginCosine: releaseMarginCosine)
     }
 
     /// The sound gate's radius in cell-height units (what `isNearStroke` tests).

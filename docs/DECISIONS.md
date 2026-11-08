@@ -1446,6 +1446,179 @@ Implications:
     tests pin the values written to the engine, not what a child hears).
     A phoneme-arm axis sweep is not built.
 
+- **Protocol revision 20 — the r18 audio stages measured on the iPad, and
+  smoother transitions (2026-11-08).** Lane R20 measured what the r18
+  sonification switches cost and how they move, on the study iPad, and
+  changed implementation details that the numbers showed were wrong. Nothing
+  changes at the defaults: with every switch off the render is the r17 render
+  bit for bit (pinned by the existing r18/r19 tests, all green) and the
+  comparison stamp of an untouched session is still empty. No switch,
+  strength or default-when-on value is added or changed. Full report:
+  `wt-primae-audit-notes/r20/REPORT.md` (the measurements and changes),
+  `r20/REPORT-FIN.md` (the onset question, the landing).
+  - **Why.** r18 shipped the stages with design numbers ("about 12 ms at 512
+    frames, mute complete in ~100 ms") that were never read off the output at
+    the I/O size the iPad really runs. Measured: 235.2 source frames per call
+    (the 44.1 kHz node behind the mixer's converter; 256 hardware frames at
+    48 kHz; `env3/raw/env3/*/rt.tsv`). All figures below are Release-Study on
+    the iPad, read from the rendered output (`R20StageSupport`, a second
+    kernel with every stage off as the sample-for-sample reference).
+  - **A1 cost: not a problem.** Per call (budget 5333 us), all stages on adds
+    1.7 us (r19) / 2.4 us (r20) to a 3.5 us kernel: 0.10-0.11 % of the budget
+    (mean and p99); the worst single call in any configuration is 55.1 us
+    (r19) / 44.4 us (r20), 1 %. The roughness `cos()` is +0.8 us (0.016 %):
+    no phasor table was built. r20's per-sample pressure curve costs +0.7 us
+    more than r19's per-call ramp (0.013 %), accepted
+    (`r20/logs/a-measure.log`, `b-all-measure.log`).
+  - **A2 time constants: they depended on the buffer.** r18/r19 smoothed once
+    per audio buffer, so tau changed with the buffer: tone gain / mute tau63
+    3.3 / **6.0** / 13.1 ms at 128 / 235.2 (the iPad) / 512 frames, mute
+    -60 dB at 21.4 / **39.4** / 85.8 ms; the code comment's 12 ms and 100 ms
+    are the 512-frame column. The iPad's real value was half of the stated
+    one. The pressure gain was smoothed only inside one call (tau63 3.3 ms,
+    99 % at 5.3 ms on the iPad), the cutoff 3.4 ms. r20: gain, mute and
+    pressure **6.0 ms at every size** (mute -60 dB at 41.5 ms), cutoff 12.1-
+    15.3 ms (12 ms target) (`a-measure.log`, `a-measure2.log`,
+    `b-all-measure.log`).
+  - **A3 clicks.** Against r17's own transitions on the same sounds (stop fade
+    +0.1 / -0.1 / +0.2 dB, letter-end raised cosine 50 ms +1.5 / +1.3 / +0.7
+    dB of high-frequency share, carrier / I / A): r19 opening the distance
+    filter (800 Hz -> 20 kHz) made the largest sample step **4.34x** the
+    sound's own on the carrier (I 0.73x, A 0.72x), because the filter
+    coefficient jumped at the call edge while the filtered state lagged;
+    r20 0.99x (reproduced offline 4.46x -> 0.99x). A pressure jump 1 -> -18 dB
+    splattered **+2.2 dB** (carrier; I -0.7, A -0.4) in r19, **+0.5 dB** in
+    r20. The mute steps, level steps, distance-far on, roughness start/stop/
+    steady and a pressure ramp at 120 Hz were all at or below the r17 fade
+    reference in r19 and stay within 0.1 dB (`a-measure.log`,
+    `a-measure2.log`, `b-all-measure.log`).
+  - **A4 direction-mute chatter** (real view model and dispatcher, synthetic
+    pen 150 pt/s at 120 Hz, heading at the -0.25 threshold = 104.5 degrees,
+    toggles of the mute written per second): r19 5.20 / 5.60 / 6.80 per second
+    at 0.3 / 0.7 / 1.5 pt of position jitter (23 flickers shorter than
+    100 ms at 0.3 pt); r20 0.20 / 1.20 / 3.60. With +-8 degrees of wobble at
+    0.7 pt: 4.20 -> 1.20. The jitter values are assumptions (Pencil ~0.3, a
+    finger ~0.7 or more); the grid is the evidence. A clean reversal is
+    unchanged: mute 150 ms after the reversal, unmute 83 ms after the turn,
+    identical for margin 0 and 0.3 (`a-measure.log`, `b-all-measure.log`,
+    `b-hyst1.log`).
+  - **A5 onset with each switch on** (the r17 instrument, N = 8, mixer tap;
+    +5.8 ms outputLatency = speaker): no stage adds measurable latency to
+    the carrier (10.0-15.0 ms at the mixer in every scenario, before and
+    after, inside the method's 2.5 ms resolution). Distance on moves the
+    phoneme arm's -20 dB point to 40.0 ms (control 22.5-25.0): the recorded
+    phoneme's first 70 ms are brighter than its vowel, so the 4 kHz low-pass
+    lowers them more; that is the sound's shape, the carrier does not move.
+    The "all on" phoneme row is an instrument artefact (the roughness
+    developed from the scheduler's jitter before the reference window) and
+    is skipped by the assertion (`a5-onset-base2.log`, `a5-onset-after.log`).
+  - **Decisions (implementation, targets unchanged).** (1) Smoothing in
+    seconds: tone gain and mute 6 ms, pressure gain 6 ms, per-sample one-pole
+    (the roughness depth already was, 30 ms); cutoff 12 ms in the log domain.
+    Rule: the smallest tau whose mute splatter stays at or below r17's own
+    letter-end fade on the same sound. Mute-on splatter, carrier / A, at tau
+    3 / 6 / 12 / 20 ms: +1.5 / +1.0, **+0.6 / -0.3**, +0.3 / +0.1, +0.2 / -0.1
+    dB (A's letter-end reference is +0.7: 3 ms fails). 6 ms is also what the
+    iPad already did at its buffer, so the gain and mute a child heard in
+    the r18 try-out do not change; 12 ms and 20 ms buy about 0.3 dB and delay the
+    mute to -60 dB at 83 ms and 138 ms (`b-sweep1.log`). The cutoff is 12 ms
+    because the 2-pole candidate opens 1.47x / 1.17x / **1.09x** / 1.07x at
+    tau 3 / 6 / 12 / 20 ms; the distance changes slowly, so a slower cutoff
+    costs nothing. (2) The filter coefficient is interpolated across each
+    call and is 1 (the signal itself) at and above the 20 kHz bypass
+    frequency, so opening the filter ends continuously. (3) Direction-mute
+    hysteresis, `StrokeTone.releaseMarginCosine = 0.3`: the mute starts below
+    -0.25 and, once on, ends only above +0.05 (the pen no longer moving
+    backwards at all). The state is the last tone the touch path wrote
+    (`lastCouplingParameters`, nil at the lift): no new state; pure
+    `StrokeTone.make` defaults to no hysteresis (the observe dot has none).
+    Toggles at 0.7 pt jitter for margins 0 / 0.2 / 0.3 / 0.4: 5.6 / 2.2 /
+    1.2 / 0.7 per second, clean-reversal latency unchanged at every margin;
+    0.3 is the largest margin that still releases only when the pen is not
+    moving backwards at all (0.4 would hold the mute through a pen already
+    81 degrees off the stroke) (`b-hyst1.log`). (4) Not changed, by
+    measurement: the roughness oscillator and smoothing, `AudioEngine.swift`,
+    `StrokeTracker.swift`, every default.
+  - **Open, David's: one-pole or 2-pole for the distance dimension, and 6 or
+    12 ms.** A 2-pole (Butterworth TPT state-variable, -3.01 dB at the cutoff,
+    11.8 dB/octave measured between 2x and 4x) exists in the kernel
+    (`TPTLowpass`, `setStrokeLowpassSlope(.sixDB | .twelveDB)`, default
+    `.sixDB`) and is NOT wired to any setting. Shipping it as a study switch
+    needs a `StudyComparisonSettings` key, its stamp, a settings row and a
+    protocol revision (the `distanceToneFarCutoffHz` change set); that waits
+    for his listening choice. Page:
+    `wt-primae-audit-notes/r20/listening-r20.html` (sha16 eaf8f8331bd187c2;
+    key `listening-r20-key.txt`): section 6 is the blind A/B (one-pole against
+    2-pole), 1b hears the tau at 3 / 6 / 12 / 20 ms, 2-5 the click fixes, the
+    pressure jump, the chatter with and without hysteresis, and the scripted
+    pen on the letter I in both arms through the real engine, r19 against r20.
+    The click fix, the pressure smoothing and the hysteresis are not a choice.
+  - **The phoneme arm's onset figure in r17 is stale (a correction, not a
+    change).** r17's text and entry give first move -> audible as a median of
+    13.3-15.8 ms at the speaker, both arms. For the phoneme arm that held until
+    R17D (2026-11-05/06) put each phoneme's recorded onset at the head of its
+    file; since then the same instrument
+    (`LiveSonificationOnsetDeviceTests`, the letter I, unchanged) reads 22.5-
+    27.5 ms at the mixer, 28.3-33.3 ms at the speaker: R17D's own first device
+    run, 2026-11-06 00:52, 22.5 / 28.3 (`r17d/logs/iter1-dbg-device.log`), the
+    same in r17e (`r17e/logs/unit-rel.log`), and on unmodified main in R20
+    A5 (`r20/logs/a5-onset-base2.log`). The spatial arm is unchanged (mixer
+    10.0-12.5, speaker 15.8-18.3 ms). **It is the recording, not the engine.**
+    Measured on the iPad per letter, with the pre-R17D file (loaded without
+    its onset, the same engine and view model) against the shipped file: the
+    engine's first non-zero sample reaches the mixer 10.5-12.5 ms (median)
+    after the first move in every one of the ten cells, before and after, but
+    the -20 dB point (the first 5 ms window at >= -20 dB re the sustained
+    level) moves from 10.0-12.5 ms to 25.0 (I), 27.5 (L), 25.0 (M), 25.0 (F)
+    and, for A, stays at 12.5 ms (A's rough start already sits at about -20
+    dB). Why: the recorded onsets start quieter than the sustained sound they
+    lead into (the letter I, in 10 ms steps from 10 ms after the first move:
+    -44 -19 -27 -16 -23 -16 dB re sustained, then 0 dB from 70 ms; time to
+    -6 dB 70 ms, was 15 ms), so the
+    level criterion is met 12.5-17.5 ms after the first sample (offline,
+    through the same kernel: I 12.5, L 17.5, M 12.5, F 12.5, A 0.0 ms; the
+    pre-R17D files 0.0 ms for all five). R17D's own notes predicted "up to
+    +16 ms, unmeasured on the device" (`onset/ONSET.md`, "Reading"); measured
+    +15 to +17.5 ms. Of the other changes R17D made, the exemption of the
+    onset from the AE-2 gain measure is a constant per file and the observe
+    start's dropped 120 ms fade-in is not on the stroke path, so neither enters
+    a stroke-start figure. In words for a reader of the r17 entry: the 13.3-
+    15.8 ms is the spatial arm's, and the phoneme arm's until R17D; for the
+    phoneme arm as shipped (r17, R17D onwards) read 28.3-33.3 ms to the
+    -20 dB point at the speaker, of which about 11 ms is the engine and the
+    sound's own quiet start the rest, with the sound audible from its first
+    sample. The L4 bound (<= 70 ms at the speaker) holds for every phoneme
+    (largest single reading 35.8 ms). No sound was changed.
+    Data: `r20/logs/fin-split.log` (device), `r20/fin/logs/offline.log`
+    (offline, `r20/fin/drv/`).
+  - **Stamp / record.** No new setting, no export change.
+    `StudyProtocol.revision` is 20; the r19 entry's merge metadata is filled
+    in (2026-11-07 19:18 UTC, #93).
+  - **Verification.** Full `PrimaeNativeTests` on the physical iPad,
+    Release-Study, on the landed content (revision 20): 1692 tests in 214 suites passed
+    (`r20/logs/fin-full2.log`); the 26 instrument and capture tests
+    (`R20StageMeasurementTests`, `R20OnsetDeviceTests`, `R20Capture*`,
+    `R20OfflineListening*`) skip in a plain run, opt-in with
+    `TEST_RUNNER_R20_INSTRUMENTS=1`; `AudioEngineTests` via
+    `Primae-DeviceTests` on the iPad: 37 tests, 0 failures (`r20/logs/fin-ae.log`). New
+    tests (`AudioStageSmoothingTests`, four suites: smoothing in seconds at 64
+    to 1024 frames, the 2-pole, the hysteresis, a settled stage equal to the
+    r17 render bit for bit): with the r18 suites 53 tests in 7 suites passed
+    (`r20/logs/b-reg2.log`). Mutation checks on the device, each RED then the
+    clone reset, counts read from the logs (`r20/logs/m-*.log`): gain back to
+    a per-call fraction 8 tests in 1 suite failed, 9 issues; pressure back to
+    a per-call fraction 8/1, 5; filter coefficient stepped at the call edge
+    8/1, 1; cutoff a per-call fraction 8/1, 5; no snap back to neutral 8/1,
+    1; hysteresis margin not passed by the touch path 3/1, 2; `wasMuted`
+    ignored 3/1, 4; 2-pole with the wrong Q 4/1, 3; slope switch ignored 4/1,
+    1. The iPad's container (10 enrolments, 9 archived children) was
+    identical, file for file by sha256, before and after every run.
+  - **Not done.** Nothing was listened to by David yet (the page above). No
+    CI or simulator run (no iPad simulator on this Mac; the device suite is
+    the measurement). The audible effect of the hysteresis and of the click
+    fixes was not heard by the lane, only measured. The phoneme arm's onset
+    is not changed, and r17's text is not edited.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

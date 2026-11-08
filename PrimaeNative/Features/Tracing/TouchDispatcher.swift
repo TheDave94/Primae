@@ -639,6 +639,9 @@ final class TouchDispatcher {
     private var lastCouplingParameters: ArmCoupling.Parameters?
     /// R18 slice 5: the pen's movement direction (cell fractions) for the direction dimension.
     private var movementTracker = StrokeMovementTracker()
+    /// R20: how far above the mute threshold the movement cosine must rise before a muted pen is audible again
+    /// (`StrokeTone.releaseMarginCosine`; a seam so the chatter sweep can vary it).
+    var directionReleaseMarginCosine: Float = StrokeTone.releaseMarginCosine
     /// R18DIM slice 7: the pen's stop-start meter, fed from the raw (unsmoothed) per-sample displacement.
     private var dysfluencyMeter = DysfluencyMeter()
 
@@ -768,7 +771,9 @@ final class TouchDispatcher {
             let movement = movementTracker.movement(to: cellPoint, aspect: cellAspect,
                                                     gateRadius: vm.strokeGateRadius(),
                                                     at: t, stallSeconds: vm.strokeTempo.stallSeconds)
-            strokeTone = vm.strokeToneParameters(cellPoint: cellPoint, movement: movement)
+            strokeTone = vm.strokeToneParameters(cellPoint: cellPoint, movement: movement,
+                                                 wasMuted: lastCouplingParameters?.strokeTone?.muted == true,
+                                                 releaseMarginCosine: directionReleaseMarginCosine)
         }
         let coupling = ArmCoupling.parameters(canvasNormalized: canvasNormalized,
                                               velocity: smoothedVelocity,

@@ -81,6 +81,29 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         static let production = Ramps(onsetSeconds: 0.008, crossfadeSeconds: 0.020, duckSeconds: 0.020, resumeSameSound: true,
                                       pitchGlideSeconds: ENV3Tuning.pitchGlideSeconds)
     }
+    /// R20 (2026-11-08): the r18 stages' smoothing in SECONDS. r18 approached its targets by a fixed fraction PER RENDER CALL, so its
+    /// time constant was a function of the I/O buffer (measured on the iPad, R20 A2: tone gain 6.0 ms at the real 235-frame call,
+    /// 13.1 ms at 512, 3.3 ms at 128; mute -60 dB after 39 / 86 / 21 ms; the cutoff approach likewise; the pressure gain finished in
+    /// ONE call, 5.3 ms at the iPad, 11.5 ms at 512). The gain, the mute and the pressure gain now follow their target with a
+    /// one-pole PER SAMPLE (`1 - exp(-1 / (seconds * sampleRate))`, as the roughness depth already did, 30 ms): the same exponential
+    /// at any call size, no steps at call edges. The cutoff is approached per call (`1 - exp(-frames / (seconds * sampleRate))`, in
+    /// the log domain) with the filter coefficient interpolated across the call.
+    struct StageSmoothing: Sendable, Equatable {
+        /// Level gain and mute (linear, interpolated across each call on top).
+        var toneGainSeconds: Double
+        /// Low-pass cutoff, approached in the log domain.
+        var toneCutoffSeconds: Double
+        /// The Pencil-pressure gain.
+        var pressureSeconds: Double
+        static let production = StageSmoothing(toneGainSeconds: StageTuning.toneGainSeconds,
+                                               toneCutoffSeconds: StageTuning.toneCutoffSeconds,
+                                               pressureSeconds: StageTuning.pressureSeconds)
+    }
+
+    /// The distance dimension's low-pass: the r18 one-pole (6 dB/octave) or a 2-pole state-variable (12 dB/octave, Butterworth),
+    /// R20's switchable candidate. Default: the one-pole.
+    enum LowpassSlope: UInt32, Sendable { case sixDB = 0, twelveDB = 1 }
+
     static let crossfadeSeconds = Ramps.production.crossfadeSeconds
     static let duckSeconds = Ramps.production.duckSeconds
     static let onsetSeconds = Ramps.production.onsetSeconds
@@ -89,6 +112,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     static let duckFrames = Float((duckSeconds * sampleRate).rounded())
 
     let ramps: Ramps
+    let smoothing: StageSmoothing
     private let crossFrames: Float
     private let duckLen: Float
     private let onsetFrames: Float
@@ -117,6 +141,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let toneGainBits = Atomic<UInt32>(Float(1).bitPattern)
     private let toneCutoffBits = Atomic<UInt32>(LiveSonificationKernel.toneBypassHz.bitPattern)
     private let toneMute = Atomic<UInt32>(0)
+    private let toneSlope = Atomic<UInt32>(LowpassSlope.sixDB.rawValue)
     /// R18 slice 6 (Pencil pressure -> loudness): linear gain on the whole output, 1 = r17 (no effect).
     private let pressureGainBits = Atomic<UInt32>(Float(1).bitPattern)
     /// R18DIM slice 7: target amplitude roughness 0...1 (dysfluency).
@@ -153,9 +178,15 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let scratch: UnsafeMutablePointer<Float>
     // The pitch the voices render with, and the stroke-start glide (ENV3).
     private var pitchApplied: Float = 0
-    // R18 slice 6: pressure gain ramp, from the last render call's value to this call's target (no zipper noise).
+    // R18 slice 6 / R20: the pressure gain the voices render with: it follows the target with `smoothing.pressureSeconds` and is
+    // interpolated linearly across each call, from the last call's value (no zipper noise).
     private var pressureGainNow: Float = 1
-    private var pressureGainFrom: Float = 1
+    /// R20: the per-sample coefficients of the gain and pressure one-poles, from `smoothing` at construction.
+    private let toneGainCoef: Float
+    private let pressureCoef: Float
+    /// R20: this call's per-sample pressure gain when it is still moving (`pressureMoving`), else `pressureGainNow` is constant.
+    private let pressureCurve: UnsafeMutablePointer<Float>
+    private var pressureMoving = false
     /// `RoughnessTuning.smoothingCoefficient`, read once at construction: a lazy static would take its `swift_once` on the render thread.
     private let roughSmoothing: Float = RoughnessTuning.smoothingCoefficient
     private var pitchPrevTarget: Float = 0
@@ -165,10 +196,13 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     // Stroke-tone stage state (render thread only).
     private var toneGainApplied: Float = 1
     private var toneCutoffApplied: Float = LiveSonificationKernel.toneBypassHz
+    /// The last sample the stage handed on (the one-pole's state, also the SVF's output); a filter entered from bypass or from the
+    /// other slope starts from it.
     private var toneLowpassState: Float = 0
-    /// Per-buffer approach to the target (0...1): about 12 ms time constant at 512 frames, so a mute is complete in ~100 ms
-    /// without a zipper step (the gain is also interpolated linearly across each buffer).
-    static let toneSmoothing: Float = 0.6
+    private var svf = TPTLowpass()
+    /// 1 while the SVF is wholly in the signal path, 0 while it is bypassed; ramped across a call when that changes.
+    private var svfMixApplied: Float = 0
+    private var svfWasActive = false
     /// The low-pass cutoff that means "no filter" (`StrokeTone.bypassHz`).
     static let toneBypassHz: Float = 20_000
     // R18DIM slice 7: the roughness stage. `roughDepth` follows the target through a one-pole (RoughnessTuning.smoothSeconds),
@@ -181,8 +215,13 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let cap = PopCapture.armed   // POPCAP: render-thread event ring; nil unless -popCapture
     #endif
 
-    init(ramps: Ramps = .production) {
+    init(ramps: Ramps = .production, smoothing: StageSmoothing = .production) {
         self.ramps = ramps
+        self.smoothing = smoothing
+        toneGainCoef = Float(1 - exp(-1 / (smoothing.toneGainSeconds * Self.sampleRate)))
+        pressureCoef = Float(1 - exp(-1 / (smoothing.pressureSeconds * Self.sampleRate)))
+        pressureCurve = .allocate(capacity: Self.chunkFrames)
+        pressureCurve.initialize(repeating: 1, count: Self.chunkFrames)
         crossFrames = Float((ramps.crossfadeSeconds * Self.sampleRate).rounded())
         duckLen = Float((ramps.duckSeconds * Self.sampleRate).rounded())
         onsetFrames = Float((ramps.onsetSeconds * Self.sampleRate).rounded())
@@ -199,7 +238,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         for i in 0..<(2 * Int(Self.capacity)) { renderers[i]?.release() }
         renderers.deallocate(); gains.deallocate()
         voices.deinitialize(count: 2); voices.deallocate()
-        scratch.deallocate()
+        scratch.deallocate(); pressureCurve.deallocate()
     }
 
     // MARK: Registration (main thread)
@@ -251,7 +290,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         centsBits.store((cents.isFinite ? min(1200, max(-1200, cents)) : 0).bitPattern, ordering: .relaxed)
     }
 
-    /// R18: output level of the stroke-tone stage in dB (clamped to -60...0); smoothed per buffer on the render thread.
+    /// R18: output level of the stroke-tone stage in dB (clamped to -60...0); smoothed on the render thread (`StageSmoothing`, seconds).
     func setStrokeLevel(gainDB: Float) {
         let db = gainDB.isFinite ? min(0, max(-60, gainDB)) : 0
         toneGainBits.store(Float(pow(10.0, Double(db) / 20.0)).bitPattern, ordering: .relaxed)
@@ -264,6 +303,10 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     }
 
     func setStrokeMute(_ muted: Bool) { toneMute.store(muted ? 1 : 0, ordering: .relaxed) }
+
+    /// R20: the low-pass' slope (default `.sixDB`, the r18 one-pole). Has no effect while the cutoff is `toneBypassHz`.
+    func setStrokeLowpassSlope(_ slope: LowpassSlope) { toneSlope.store(slope.rawValue, ordering: .relaxed) }
+    var requestedLowpassSlope: LowpassSlope { LowpassSlope(rawValue: toneSlope.load(ordering: .relaxed)) ?? .sixDB }
 
     var requestedToneGain: Float { Float(bitPattern: toneGainBits.load(ordering: .relaxed)) }
     var requestedToneCutoff: Float { Float(bitPattern: toneCutoffBits.load(ordering: .relaxed)) }
@@ -349,8 +392,20 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         return !any
     }
 
-    /// R18 slices 4+5: gain, one-pole low-pass and mute over the mixed voices of this chunk. Skipped (bit-exact r17) while the
-    /// request and the applied state are both neutral. Allocation-free; cutoff is approached in the log domain.
+    /// `1 - exp(-frames / (seconds * sampleRate))`: the fraction of the way to the target one call of `frames` covers.
+    @inline(__always) private func approach(_ frames: Int, seconds: Double) -> Float {
+        Float(1 - exp(-Double(frames) / (seconds * Self.sampleRate)))
+    }
+
+    /// The one-pole's coefficient for a cutoff; 1 (the signal itself) at and above the bypass frequency, so a filter opening to
+    /// "no filter" ends continuously instead of being switched out.
+    @inline(__always) private func onePoleCoefficient(_ hz: Float) -> Float {
+        hz >= Self.toneBypassHz ? 1 : 1 - exp(-2 * Float.pi * hz / Float(Self.sampleRate))
+    }
+
+    /// R18 slices 4+5: gain, low-pass and mute over the mixed voices of this chunk. Skipped (bit-exact r17) while the request and
+    /// the applied state are both neutral. Allocation-free; the cutoff is approached in the log domain. R20: the approach is in
+    /// seconds (`StageSmoothing`), and the filter coefficient is interpolated across the call like the gain.
     private func applyStrokeTone(into out: UnsafeMutablePointer<Float>, frames n: Int) {
         let muted = toneMute.load(ordering: .relaxed) != 0
         let gT = muted ? 0 : Float(bitPattern: toneGainBits.load(ordering: .relaxed))
@@ -358,27 +413,69 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         let top = Self.toneBypassHz
         if gT == 1 && toneGainApplied == 1 && cT >= top && toneCutoffApplied >= top {
             toneLowpassState = out[n - 1]
+            svfWasActive = false; svfMixApplied = 0
             return
         }
-        let g0 = toneGainApplied
-        var g1 = g0 + (gT - g0) * Self.toneSmoothing
-        if abs(gT - g1) < 1e-3 { g1 = gT }
-        var c1 = exp(log(toneCutoffApplied) + (log(cT) - log(toneCutoffApplied)) * Self.toneSmoothing)
+        let c0 = toneCutoffApplied
+        var c1 = exp(log(c0) + (log(cT) - log(c0)) * approach(n, seconds: smoothing.toneCutoffSeconds))
         if abs(cT - c1) < 1 { c1 = cT }
-        toneGainApplied = g1
         toneCutoffApplied = c1
-        let filtered = c1 < top
-        let a = 1 - exp(-2 * Float.pi * c1 / Float(Self.sampleRate))
+        if requestedLowpassSlope == .twelveDB {
+            applySVF(into: out, frames: n, gT: gT, c0: c0, c1: c1)
+            return
+        }
+        svfWasActive = false; svfMixApplied = 0
+        let a0 = onePoleCoefficient(c0), a1 = onePoleCoefficient(c1)
+        let filtered = a0 < 1 || a1 < 1
+        let da = (a1 - a0) / Float(n)
+        var a = a0
         var z = toneLowpassState
+        var g = toneGainApplied
+        let ag = toneGainCoef
         var i = 0
-        let step = (g1 - g0) / Float(n)
         while i < n {
             var y = out[i]
+            a += da
+            g += ag * (gT - g)
             if filtered { z += a * (y - z); y = z } else { z = y }
-            out[i] = y * (g0 + step * Float(i + 1))
+            out[i] = y * g
             i += 1
         }
         toneLowpassState = z
+        toneGainApplied = abs(gT - g) < 1e-3 ? gT : g
+    }
+
+    /// The 2-pole candidate: a topology-preserving (TPT) state-variable low-pass, Butterworth (k = sqrt 2), 12 dB/octave. `g`
+    /// (tan of the cutoff) is interpolated per sample, which TPT tolerates; entering and leaving bypass is a wet/dry ramp over
+    /// the call (at the top of the range the filter is nearly transparent, so the ramp is inaudible).
+    private func applySVF(into out: UnsafeMutablePointer<Float>, frames n: Int, gT: Float, c0: Float, c1: Float) {
+        let top = Self.toneBypassHz
+        let sr = Float(Self.sampleRate)
+        let wet0 = svfMixApplied, wet1: Float = c1 >= top ? 0 : 1
+        if !svfWasActive { svf = TPTLowpass(ic1: 0, ic2: toneLowpassState) }
+        svfWasActive = true
+        var gS = TPTLowpass.coefficient(cutoffHz: min(c0, top), sampleRate: sr)
+        let dg = (TPTLowpass.coefficient(cutoffHz: min(c1, top), sampleRate: sr) - gS) / Float(n)
+        var wet = wet0
+        let dw = (wet1 - wet0) / Float(n)
+        var f = svf
+        var g = toneGainApplied
+        let ag = toneGainCoef
+        var last: Float = 0
+        var i = 0
+        while i < n {
+            let x = out[i]
+            gS += dg; wet += dw
+            let y = x + wet * (f.tick(x, g: gS) - x)
+            last = y
+            g += ag * (gT - g)
+            out[i] = y * g
+            i += 1
+        }
+        toneGainApplied = abs(gT - g) < 1e-3 ? gT : g
+        svf = f; svfMixApplied = wet1
+        toneLowpassState = last
+        if wet1 == 0 { svfWasActive = false }
     }
 
     /// R18DIM slice 7: raised-cosine amplitude modulation, gain = 1 - depth * (0.5 - 0.5 cos(2 pi f t)), so the modulator sits at 1
@@ -404,8 +501,15 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     /// Renders both voices into `out` at `pitchApplied`; true when either sounded.
     private func renderVoices(into out: UnsafeMutablePointer<Float>, frames n: Int) -> Bool {
         var any = false, v = 0
-        pressureGainFrom = pressureGainNow
-        pressureGainNow = Float(bitPattern: pressureGainBits.load(ordering: .relaxed))
+        let pressureTarget = Float(bitPattern: pressureGainBits.load(ordering: .relaxed))
+        if pressureTarget == pressureGainNow {
+            pressureMoving = false
+        } else {
+            pressureMoving = true
+            var p = pressureGainNow, i = 0
+            while i < n { p += pressureCoef * (pressureTarget - p); pressureCurve[i] = p; i += 1 }
+            pressureGainNow = abs(pressureTarget - p) < 1e-4 ? pressureTarget : p
+        }
         while v < 2 {
             if voices[v].active { any = true; renderVoice(v, adding: out, frames: n) }
             v += 1
@@ -567,8 +671,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
                 vc.shape = vc.shapePos >= len ? 0
                     : (vc.raisedFall ? 0.5 + 0.5 * cos(Float.pi * vc.shapePos / len) : cos(half * vc.shapePos / len))
             }
-            let pg = pressureGainFrom == pressureGainNow ? pressureGainNow
-                : pressureGainFrom + (pressureGainNow - pressureGainFrom) * (Float(i + 1) / Float(n))
+            let pg = pressureMoving ? pressureCurve[i] : pressureGainNow
             out[i] += scratch[i] * vc.env * vc.shape * vc.gain * pg
             if (vc.env == 0 && vc.envTarget == 0) || (vc.shapeDir < 0 && vc.shape == 0) {
                 renderers[2 * Int(slot) + v]!._withUnsafeGuaranteedRef { $0.setGate(false) }
@@ -592,4 +695,35 @@ nonisolated enum RoughnessTuning {
     /// Time constant of the depth smoothing.
     static let smoothSeconds: Double = 0.03
     static let smoothingCoefficient: Float = Float(1 - exp(-1 / (smoothSeconds * LiveSonificationKernel.sampleRate)))
+}
+
+/// R20: the stage smoothing's time constants (`LiveSonificationKernel.StageSmoothing.production`); chosen from the sweep in R20 A3.
+nonisolated enum StageTuning {
+    static let toneGainSeconds: Double = 0.006
+    static let toneCutoffSeconds: Double = 0.012
+    static let pressureSeconds: Double = 0.006
+}
+
+/// R20: the 2-pole low-pass candidate for the distance dimension (12 dB/octave, Butterworth): Zavalishin's topology-preserving
+/// state-variable filter, stable for any cutoff below Nyquist and under per-sample modulation of `g`.
+nonisolated struct TPTLowpass {
+    var ic1: Float = 0
+    var ic2: Float = 0
+    static let k: Float = 1.41421356
+
+    /// `g = tan(pi f / sr)`.
+    @inline(__always) static func coefficient(cutoffHz: Float, sampleRate: Float) -> Float {
+        tan(Float.pi * min(cutoffHz, 0.4999 * sampleRate) / sampleRate)
+    }
+
+    /// One sample through the low-pass output.
+    @inline(__always) mutating func tick(_ x: Float, g: Float) -> Float {
+        let a1 = 1 / (1 + g * (g + Self.k)), a2 = g * a1, a3 = g * a2
+        let v3 = x - ic2
+        let v1 = a1 * ic1 + a2 * v3
+        let v2 = ic2 + a2 * ic1 + a3 * v3
+        ic1 = 2 * v1 - ic1
+        ic2 = 2 * v2 - ic2
+        return v2
+    }
 }

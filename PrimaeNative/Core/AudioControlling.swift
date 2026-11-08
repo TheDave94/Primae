@@ -13,7 +13,7 @@ protocol AudioControlling: AnyObject {
     func setSpatialPitch(cents: Float)
     /// R18 slice 4 (distance dimension): the live voice's output level in dB
     /// (<= 0; 0 = r17) and low-pass cutoff in Hz (>= `StrokeTone.bypassHz` =
-    /// no filter = r17), both smoothed per buffer by the kernel. Written ONLY
+    /// no filter = r17), both smoothed by the kernel (R20: time constants in seconds, `StageSmoothing`). Written ONLY
     /// when a Klang-Dimensionen switch is on. Requirements here, not
     /// extension-only (the dispatch trap recorded below); no-op defaults.
     func setStrokeLevel(gainDB: Float)
