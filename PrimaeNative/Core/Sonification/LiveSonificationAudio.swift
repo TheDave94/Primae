@@ -315,9 +315,6 @@ final class LiveSonificationAudio: AudioControlling {
 
     func setStrokeMute(_ muted: Bool) { kernel.setStrokeMute(muted) }
 
-    /// R20: the distance low-pass' slope, a candidate switch (not on `AudioControlling`: no study setting reaches it yet).
-    func setStrokeLowpassSlope(_ slope: LiveSonificationKernel.LowpassSlope) { kernel.setStrokeLowpassSlope(slope) }
-
     func setPressureGain(_ gain: Float) {
         guard gain.isFinite else { return }
         kernel.setPressureGain(gain)

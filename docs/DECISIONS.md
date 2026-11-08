@@ -1563,6 +1563,7 @@ Implications:
     pressure jump, the chatter with and without hysteresis, and the scripted
     pen on the letter I in both arms through the real engine, r19 against r20.
     The click fix, the pressure smoothing and the hysteresis are not a choice.
+    The filter part of this decision was superseded the same day by David's listening (r21, below); 6 ms stands.
   - **The phoneme arm's onset figure in r17 is stale (a correction, not a
     change).** r17's text and entry give first move -> audible as a median of
     13.3-15.8 ms at the speaker, both arms. For the phoneme arm that held until
@@ -1628,6 +1629,116 @@ Implications:
     the measurement). The audible effect of the hysteresis and of the click
     fixes was not heard by the lane, only measured. The phoneme arm's onset
     is not changed, and r17's text is not edited.
+
+- **Protocol revision 21 — the distance dimension's low-pass is the 2-pole
+  (David's choice by ear, 2026-11-08).** Nothing changes at the defaults: the
+  distance dimension is off by default, with every switch off the render is
+  the r17 render bit for bit (pinned) and the comparison stamp of an untouched
+  session is still empty. With "Klang: Abstand vom Strich (dunkler, leiser)"
+  on, the sound is darkened by a 2-pole, 12 dB/octave Butterworth low-pass
+  (Zavalishin TPT state-variable, `TPTLowpass`) in BOTH sound arms instead of
+  r18-r20's one-pole, 6 dB/octave, at the same cutoffs (20 kHz = no filter on
+  the stroke, 800 Hz at one gate radius and beyond, log-interpolated). It is
+  not a new setting: the one-pole and the unused slope switch
+  (`setStrokeLowpassSlope`, `LowpassSlope`) are removed, and while the cutoff
+  is at the 20 kHz top the filter is not run at all. No `StudyComparisonSettings`
+  key, stamp or settings row. Full report:
+  `wt-primae-audit-notes/r21/REPORT.md`.
+  - **Why.** The r20 lane built the 2-pole as an unwired candidate and put the
+    one-pole against it in a blind A/B (`r20/listening-r20.html`, section 6:
+    the carrier, the phoneme I and the rough A through the kernel, and two
+    captures of the scripted pen on the letter I through the real engine, one
+    per arm; key `listening-r20-key.txt`). The first listening (above) was
+    inconclusive and the supervisor kept the one-pole; later the same day,
+    listening to the same section again, David picked the 2-pole in all 5
+    rows. That is the
+    study's own listener choosing the firmer darkening, so it ships. The
+    supervisor's earlier worry (the 2-pole would push the phoneme's -20 dB
+    onset point further than the one-pole) was measured below instead of
+    assumed.
+  - **Edge step, measured on the iPad (Release-Study; the sound's own largest
+    sample-to-sample step as the unit; `r21/logs/m2-a3a2a1-final.log`).**
+    Opening 800 Hz -> no filter: carrier 1.09x (the one-pole 0.99x),
+    I 0.63x, A 0.81x. Closing no filter -> 800 Hz: carrier 1.01x, I 0.59x,
+    A 0.50x. Splatter against the sound's own HF share: opening +0.1 dB,
+    closing -0.3 dB (carrier); distance-far on +0.2 dB (r17's own letter-end
+    fade: +1.5 dB). The cutoff glide, fitted by replaying the 2-pole through
+    the engine's chunking (`R20.fitCutoffTau`): tau 12.00 ms, residual 0, at
+    128 / 235.2 / 256 / 512 / 1024 frames (`r21/logs/m4-a2-fit.log`; the old
+    one-pole inversion of `cutoffTrack` cannot read a 2-pole and is gone). Cost
+    per call (budget 5333 us), distance + the rest all on: 6.3 us mean, p99
+    6.54 us, 0.12 % of the budget (r20: 6.0 us); distance on alone (the "tone"
+    row, -12 dB + 800 Hz) 4.9 us (r20 4.5 us); worst single call 50.7 us, 1 %
+    (same log).
+  - **Onset (the supervisor's open question), phoneme and spatial arm: the
+    real view model, touch path and engine on the iPad, the letter I, guided
+    phase, a stroke at 150 pt/s, clock at the first move sample, first 5 ms
+    window >= -20 dB re steady at the mixer; medians, ms; `r21/logs/m1-onset-base2.log` (one-pole against 2-pole, same
+    run) and `r21/logs/m5-onset-final2.log` (the shipped 2-pole).**
+    Phoneme arm: dimension off 25.0 (both runs); pen 0.5 gate radius off the
+    stroke: one-pole 37.5, 2-pole 30.0 (m1) / 27.5 (m5); 0.8 gate radius:
+    one-pole 65.0 (speaker 70.8), 2-pole 67.5 (speaker 73.3) in both runs.
+    Spatial arm: 12.5 in every cell. The engine's first non-zero sample
+    reaches the mixer ~10-13 ms after the first move in every cell (medians
+    9.8-13.1),
+    so the filter adds no latency; the carrier is not delayed. The 2-pole is
+    not worse than the one-pole (better at 0.5, +2.5 ms = one resolution step
+    at 0.8): no stop.
+    **Level, not latency, and not new:** far from the stroke (0.8 gate
+    radius) the phoneme's -20 dB point is 65-68 ms with EITHER filter,
+    because the darkening removes most of the high-frequency energy of the
+    recorded phoneme's start (the letter I, 10 ms steps from 0 ms, re steady: -134 -54 -37 -37 -28 -36 -19 -5 dB at 0.8, against
+    -158 -44 -19 -26 -16 -24 -16 0 off; `env0-110ms` column of the logs), so
+    about its first 65 ms sit more than 20 dB below the rest of the sound. It
+    is the dimension doing its job, present since r18 (r20 A5 saw +15 ms at
+    half a radius), and it touches the L4 bound of 70 ms at the speaker at
+    0.8 gate radius with either filter (70.8 one-pole, 73.3 2-pole). The
+    child-facing text of the r21 entry says so. The bound holds in the
+    default state, on the stroke and half a radius off it (33.3-35.8 ms at the
+    speaker at 0.5 for the 2-pole). The onset instrument is a scratch test
+    (clone commit `bdf4796a`, `r21/clone`), not in the landing.
+  - **Tests.** `AudioStageSmoothingTests`: `TwoPoleLowpassTests` (renamed "R21
+    the distance low-pass is the 2-pole") now pins that the render at 800 Hz
+    IS the TPT Butterworth of the unfiltered sound (carrier and phoneme,
+    within 1e-5 of the peak), that it is darker than the old one-pole above
+    3 kHz and bounded, the Butterworth response, stability under a cutoff
+    jumping between 100 Hz and 20 kHz every call; `StageSmoothingSecondsTests`
+    adds closing without a step (carrier, I, A), the render at the 20 kHz top
+    with the level moving equal to the r17 render times the gain curve bit for
+    bit (the filter is not in the path) and the cutoff glide fitted through
+    the 2-pole. The r20 slope-switch tests and instrument renders of the
+    one-pole are removed; the opt-in R20 instruments stay opt-in.
+  - **Mutation checks on the device (Release-Study; clone reset after each;
+    counts read from `r21/logs/m-*.log`).** RED: the one-pole instead of the
+    2-pole 4 tests in 1 suite failed, 2 issues; the 2-pole replaced by a
+    pass-through while the cutoff is below the bypass 14 tests in 2 suites, 15
+    issues; the cutoff approach a per-call fraction 10/1, 7; the bypass branch's gain
+    not snapping back to 1 10/1, 1; the bypass branch's gain times 0.9999
+    10/1, 1; wrong Q (0.5 instead of sqrt 2 damping) 4/1, 3. GREEN, and why: the bypass skip removed 14 tests in 2 suites
+    passed: it is an optimisation, not behaviour (with the wet mix at 0 the filter
+    branch returns the sample untouched, bit for bit; the bit-exact pin
+    `noFilterAtTheTop` is what proves it); the wet mix stepped at the call edge, and the
+    filter's entry state not carried (two variants, 10 and 14 tests passed): these
+    change only the first call after the filter leaves the bypass, where the
+    cutoff is still ~20 kHz and the wet mix starts at 0, so the difference is
+    a few samples at a level below anything the closing-step measure (1.01x)
+    can see. Not killed, judged equivalent in effect.
+  - **Stamp / record.** No new setting, no export change.
+    `StudyProtocol.revision` is 21; the r20 entry's merge metadata is filled in
+    (2026-11-08 15:08 UTC, #94); the r21 entry's own metadata is for the
+    landing.
+  - **Verification.** Full `PrimaeNativeTests` on the physical iPad,
+    Release-Study: 1694 tests in 214 suites passed
+    (`r21/logs/full-rel.log`; XCTest part 47 tests, 24 skipped = the
+    simulator-only skips and the opt-in instruments, 0 failures);
+    `AudioEngineTests` via `Primae-DeviceTests` Debug-Study: 37 tests, 0
+    failures (`r21/logs/ae.log`). The iPad's container (10 enrolments, 9
+    archived children) was identical, file for file by sha256, before and
+    after the runs.
+  - **Not done.** The audible effect on a child was not tested (David heard the
+    two filters; the study has no listener of age 5-6 for it). No CI or simulator run.
+    The listening page's section 6 is kept as the record; its device
+    captures (the "svf12" files) came from the r20 build.
 
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,

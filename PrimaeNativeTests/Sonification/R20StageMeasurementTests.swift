@@ -134,14 +134,12 @@ final class R20StageMeasurementTests: XCTestCase {
             // cutoff 20 kHz -> 800 Hz and back
             do {
                 let p = pair({ _ in }, { $0.setStrokeLowpass(cutoffHz: 800) }, settle: 0, after: 0.5)
-                let trk = R20.cutoffTrack(on: p.on.y, off: p.off.y, starts: p.on.starts, from: p.n0)
-                let t = R20.tc(R20.cutoffProgress(trk, f0: 20000, f1: 800))
-                let first = trk.prefix(4).map { String(format: "%.0f", $0.hz) }.joined(separator: ",")
-                print("R20 TC \(pattern) cutoff 20k -> 800 Hz (down, log domain): tau63=\(fmt(t.tau63)) t90=\(fmt(t.t90)) t99=\(fmt(t.t99)) ms; first calls Hz=\(first)")
+                let down = R20.fitCutoffTau(on: p.on.y, off: p.off.y, starts: p.on.starts, targets: { p.on.starts[$0] >= p.n0 ? 800 : 20000 })
+                print(String(format: "R20 TC \(pattern) cutoff 20k -> 800 Hz (down, log domain, 2-pole): fitted tau=%.2f ms, residual %.2e", down.tauMs, down.residual))
                 let q = pair({ $0.setStrokeLowpass(cutoffHz: 800) }, { $0.setStrokeLowpass(cutoffHz: 20000) }, settle: 0.5, after: 0.5)
-                let trk2 = R20.cutoffTrack(on: q.on.y, off: q.off.y, starts: q.on.starts, from: q.n0)
-                let u = R20.tc(R20.cutoffProgress(trk2, f0: 800, f1: 20000))
-                print("R20 TC \(pattern) cutoff 800 -> 20k Hz (up): tau63=\(fmt(u.tau63)) t90=\(fmt(u.t90)) t99=\(fmt(u.t99)) ms")
+                let nUp = q.n0
+                let up = R20.fitCutoffTau(on: q.on.y, off: q.off.y, starts: q.on.starts, targets: { q.on.starts[$0] >= nUp ? 20000 : 800 })
+                print(String(format: "R20 TC \(pattern) cutoff 800 -> 20k Hz (up, 2-pole): fitted tau=%.2f ms, residual %.2e", up.tauMs, up.residual))
             }
             // pressure gain 1 -> -18 dB and back
             do {
@@ -251,12 +249,11 @@ final class R20StageMeasurementTests: XCTestCase {
             let src = try StudySources.load(name)
             let steady = R20.Driver(source: src); steady.run(1.5)
             for tau in [0.003, 0.006, 0.012, 0.020, 0.030] {
-                for slope in [LiveSonificationKernel.LowpassSlope.sixDB, .twelveDB] {
+                do {
                     func trans(_ before: (LiveSonificationKernel) -> Void, settle: Double, _ event: (LiveSonificationKernel) -> Void) -> ([Float], Int) {
                         let d = R20.Driver(source: src, make: {
                             LiveSonificationKernel(smoothing: .init(toneGainSeconds: tau, toneCutoffSeconds: tau, pressureSeconds: tau))
                         })
-                        d.kernel.setStrokeLowpassSlope(slope)
                         before(d.kernel)
                         d.run(0.4 + settle)
                         let n0 = d.count
@@ -273,8 +270,8 @@ final class R20StageMeasurementTests: XCTestCase {
                     for (label, before, settle, event) in cases {
                         let (y, n0) = trans(before, settle: settle, event)
                         let c = R20.click(y, steady: steady.y, at: n0, window: 0.040)
-                        print(String(format: "R20 SWEEP tau=%.0f ms slope=%@ src=%@ %@: splatter=%+.1f dB slope=%+.1f dB maxDelta=%.2fx", tau * 1000,
-                                     slope == .sixDB ? "6dB" : "12dB", name, label, c.splatterDB, c.slopeDB, c.deltaRatio))
+                        print(String(format: "R20 SWEEP tau=%.0f ms (2-pole) src=%@ %@: splatter=%+.1f dB slope=%+.1f dB maxDelta=%.2fx", tau * 1000,
+                                     name, label, c.splatterDB, c.slopeDB, c.deltaRatio))
                     }
                 }
             }

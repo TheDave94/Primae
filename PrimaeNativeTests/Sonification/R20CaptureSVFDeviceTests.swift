@@ -1,9 +1,8 @@
 // R20CaptureSVFDeviceTests.swift
 // PrimaeNativeTests: lane R20 (2026-11-08) DEVICE INSTRUMENT, SKIPS ON THE SIMULATOR
 //
-// The distance dimension through the 2-pole (12 dB/octave) low-pass candidate, same script as `R20CaptureDeviceTests` testCap_1:
-// listened to against the one-pole's file of the same build. Kept apart because it needs the R20 kernel API (the r19 baseline
-// build of the captures does not have it).
+// R20's listening renders that need the R20 kernel API (the r19 baseline build of the captures does not have it). The 2-pole
+// against one-pole renders of the r20 page (section 6) are gone with the one-pole: David chose the 2-pole in r21.
 
 import XCTest
 import Foundation
@@ -17,24 +16,7 @@ final class R20CaptureSVFDeviceTests: XCTestCase {
         if !r20InstrumentsEnabled { throw XCTSkip("listening captures: run with TEST_RUNNER_R20_INSTRUMENTS=1") }
     }
 
-    @MainActor func testCapSVF_distance_twoPole() async throws {
-        for a in [PilotAudioCondition.phoneme, .spatial] {
-            try await R20CaptureRig.capture(.distance, arm: a, tag: "svf12") { $0.setStrokeLowpassSlope(.twelveDB) }
-        }
-    }
-
     private func name(_ kind: String, _ src: String) -> String { "\(R20CaptureRig.variant)_off_\(kind)_\(src)" }
-
-    /// The distance low-pass, 800 Hz held from 0.5 s to 1.7 s then released, 2.6 s: the one-pole against the 2-pole (blind-labelled on the page).
-    func testOff_4_slopes() throws {
-        for s in ["spatial_carrier", "I_phoneme1", "A_phoneme1"] {
-            for (tag, slope) in [("sixdb", LiveSonificationKernel.LowpassSlope.sixDB), ("twelvedb", .twelveDB)] {
-                try R20Offline.write(try R20Offline.render(s, seconds: 2.6, events: [
-                    (0.0, { $0.setStrokeLowpassSlope(slope) }), (0.5, { $0.setStrokeLowpass(cutoffHz: 800) }), (1.7, { $0.setStrokeLowpass(cutoffHz: 20_000) })]),
-                                     name: name("slope_" + tag, s))
-            }
-        }
-    }
 
     /// The mute step with the smoothing time constant swept (gain tau 3 / 6 / 12 / 20 ms; 6 is chosen).
     func testOff_5_tauSweep() throws {

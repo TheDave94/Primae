@@ -100,10 +100,6 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
                                                pressureSeconds: StageTuning.pressureSeconds)
     }
 
-    /// The distance dimension's low-pass: the r18 one-pole (6 dB/octave) or a 2-pole state-variable (12 dB/octave, Butterworth),
-    /// R20's switchable candidate. Default: the one-pole.
-    enum LowpassSlope: UInt32, Sendable { case sixDB = 0, twelveDB = 1 }
-
     static let crossfadeSeconds = Ramps.production.crossfadeSeconds
     static let duckSeconds = Ramps.production.duckSeconds
     static let onsetSeconds = Ramps.production.onsetSeconds
@@ -141,7 +137,6 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let toneGainBits = Atomic<UInt32>(Float(1).bitPattern)
     private let toneCutoffBits = Atomic<UInt32>(LiveSonificationKernel.toneBypassHz.bitPattern)
     private let toneMute = Atomic<UInt32>(0)
-    private let toneSlope = Atomic<UInt32>(LowpassSlope.sixDB.rawValue)
     /// R18 slice 6 (Pencil pressure -> loudness): linear gain on the whole output, 1 = r17 (no effect).
     private let pressureGainBits = Atomic<UInt32>(Float(1).bitPattern)
     /// R18DIM slice 7: target amplitude roughness 0...1 (dysfluency).
@@ -196,11 +191,10 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     // Stroke-tone stage state (render thread only).
     private var toneGainApplied: Float = 1
     private var toneCutoffApplied: Float = LiveSonificationKernel.toneBypassHz
-    /// The last sample the stage handed on (the one-pole's state, also the SVF's output); a filter entered from bypass or from the
-    /// other slope starts from it.
+    /// The last sample the stage handed on (before the gain); a filter entered from bypass starts from it.
     private var toneLowpassState: Float = 0
     private var svf = TPTLowpass()
-    /// 1 while the SVF is wholly in the signal path, 0 while it is bypassed; ramped across a call when that changes.
+    /// 1 while the low-pass is wholly in the signal path, 0 while it is bypassed; ramped across a call when that changes.
     private var svfMixApplied: Float = 0
     private var svfWasActive = false
     /// The low-pass cutoff that means "no filter" (`StrokeTone.bypassHz`).
@@ -304,10 +298,6 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
 
     func setStrokeMute(_ muted: Bool) { toneMute.store(muted ? 1 : 0, ordering: .relaxed) }
 
-    /// R20: the low-pass' slope (default `.sixDB`, the r18 one-pole). Has no effect while the cutoff is `toneBypassHz`.
-    func setStrokeLowpassSlope(_ slope: LowpassSlope) { toneSlope.store(slope.rawValue, ordering: .relaxed) }
-    var requestedLowpassSlope: LowpassSlope { LowpassSlope(rawValue: toneSlope.load(ordering: .relaxed)) ?? .sixDB }
-
     var requestedToneGain: Float { Float(bitPattern: toneGainBits.load(ordering: .relaxed)) }
     var requestedToneCutoff: Float { Float(bitPattern: toneCutoffBits.load(ordering: .relaxed)) }
     var requestedToneMute: Bool { toneMute.load(ordering: .relaxed) != 0 }
@@ -397,12 +387,6 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         Float(1 - exp(-Double(frames) / (seconds * Self.sampleRate)))
     }
 
-    /// The one-pole's coefficient for a cutoff; 1 (the signal itself) at and above the bypass frequency, so a filter opening to
-    /// "no filter" ends continuously instead of being switched out.
-    @inline(__always) private func onePoleCoefficient(_ hz: Float) -> Float {
-        hz >= Self.toneBypassHz ? 1 : 1 - exp(-2 * Float.pi * hz / Float(Self.sampleRate))
-    }
-
     /// R18 slices 4+5: gain, low-pass and mute over the mixed voices of this chunk. Skipped (bit-exact r17) while the request and
     /// the applied state are both neutral. Allocation-free; the cutoff is approached in the log domain. R20: the approach is in
     /// seconds (`StageSmoothing`), and the filter coefficient is interpolated across the call like the gain.
@@ -420,35 +404,31 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         var c1 = exp(log(c0) + (log(cT) - log(c0)) * approach(n, seconds: smoothing.toneCutoffSeconds))
         if abs(cT - c1) < 1 { c1 = cT }
         toneCutoffApplied = c1
-        if requestedLowpassSlope == .twelveDB {
-            applySVF(into: out, frames: n, gT: gT, c0: c0, c1: c1)
+        if c0 >= top && c1 >= top {
+            // No filter: gain only, the samples untouched (the filter is not run at all while the cutoff is at the top).
+            svfWasActive = false; svfMixApplied = 0
+            var g = toneGainApplied
+            let ag = toneGainCoef
+            var last: Float = 0
+            var i = 0
+            while i < n {
+                last = out[i]
+                g += ag * (gT - g)
+                out[i] = last * g
+                i += 1
+            }
+            toneLowpassState = last
+            toneGainApplied = abs(gT - g) < 1e-3 ? gT : g
             return
         }
-        svfWasActive = false; svfMixApplied = 0
-        let a0 = onePoleCoefficient(c0), a1 = onePoleCoefficient(c1)
-        let filtered = a0 < 1 || a1 < 1
-        let da = (a1 - a0) / Float(n)
-        var a = a0
-        var z = toneLowpassState
-        var g = toneGainApplied
-        let ag = toneGainCoef
-        var i = 0
-        while i < n {
-            var y = out[i]
-            a += da
-            g += ag * (gT - g)
-            if filtered { z += a * (y - z); y = z } else { z = y }
-            out[i] = y * g
-            i += 1
-        }
-        toneLowpassState = z
-        toneGainApplied = abs(gT - g) < 1e-3 ? gT : g
+        applyLowpass(into: out, frames: n, gT: gT, c0: c0, c1: c1)
     }
 
-    /// The 2-pole candidate: a topology-preserving (TPT) state-variable low-pass, Butterworth (k = sqrt 2), 12 dB/octave. `g`
-    /// (tan of the cutoff) is interpolated per sample, which TPT tolerates; entering and leaving bypass is a wet/dry ramp over
-    /// the call (at the top of the range the filter is nearly transparent, so the ramp is inaudible).
-    private func applySVF(into out: UnsafeMutablePointer<Float>, frames n: Int, gT: Float, c0: Float, c1: Float) {
+    /// The distance dimension's low-pass (r21; David's blind A/B chose it over the one-pole of r18-r20): a topology-preserving (TPT)
+    /// state-variable low-pass, Butterworth (k = sqrt 2), 12 dB/octave. `g` (tan of the cutoff) is interpolated per sample, which
+    /// TPT tolerates; entering and leaving bypass is a wet/dry ramp over the call (at the top of the range the filter is nearly
+    /// transparent, so the ramp is inaudible).
+    private func applyLowpass(into out: UnsafeMutablePointer<Float>, frames n: Int, gT: Float, c0: Float, c1: Float) {
         let top = Self.toneBypassHz
         let sr = Float(Self.sampleRate)
         let wet0 = svfMixApplied, wet1: Float = c1 >= top ? 0 : 1
@@ -704,8 +684,8 @@ nonisolated enum StageTuning {
     static let pressureSeconds: Double = 0.006
 }
 
-/// R20: the 2-pole low-pass candidate for the distance dimension (12 dB/octave, Butterworth): Zavalishin's topology-preserving
-/// state-variable filter, stable for any cutoff below Nyquist and under per-sample modulation of `g`.
+/// The distance dimension's low-pass (R20 candidate, chosen by David in r21; 12 dB/octave, Butterworth): Zavalishin's
+/// topology-preserving state-variable filter, stable for any cutoff below Nyquist and under per-sample modulation of `g`.
 nonisolated struct TPTLowpass {
     var ic1: Float = 0
     var ic2: Float = 0

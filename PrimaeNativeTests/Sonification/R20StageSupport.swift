@@ -117,30 +117,61 @@ nonisolated enum R20 {
         return (out, m60)
     }
 
-    /// The one-pole low-pass' cutoff per render call, fitted from the output: with the unfiltered signal `x` (= `off`) and the
-    /// filtered `z` (= `on`, level stage neutral), z[i] - z[i-1] = a (x[i] - z[i-1]) with `a` constant over a call.
-    static func cutoffTrack(on: [Float], off: [Float], starts: [Int], from n0: Int)
-        -> [(ms: Double, hz: Double)] {
-        var out: [(Double, Double)] = []
-        for b in 0..<starts.count {
-            let s = starts[b], e = b + 1 < starts.count ? starts[b + 1] : on.count
-            guard s >= n0, s > 0 else { continue }
-            var num = 0.0, den = 0.0
-            for i in s..<e {
-                let d = Double(off[i]) - Double(on[i - 1])
-                num += (Double(on[i]) - Double(on[i - 1])) * d
-                den += d * d
+    /// The cutoff glide's time constant, fitted from the output (r21: the distance low-pass is the 2-pole, so the r20 per-call
+    /// one-pole inversion no longer reads it). Model: the unfiltered render `off` through a Butterworth TPT low-pass whose cutoff
+    /// approaches the target of each kernel chunk with `1 - exp(-chunk / (tau sr))` in the log domain, the coefficient interpolated
+    /// across the chunk, entering and leaving the 20 kHz bypass by a wet/dry ramp; the target is `targets(chunk index)`, the cutoff
+    /// starts at the bypass. The tau whose replay is closest to the rendered `on` (least squares over the whole render) is returned
+    /// with the residual `sqrt(sum (on - replay)^2 / sum on^2)`: a render that does not follow this glide has a residual that no tau removes.
+    static func fitCutoffTau(on: [Float], off: [Float], starts: [Int], targets: (Int) -> Float) -> (tauMs: Double, residual: Double) {
+        let top = LiveSonificationKernel.toneBypassHz
+        let sr32 = Float(sr)
+        func replayError(_ tau: Double) -> Double {
+            var cApplied = top, wetApplied: Float = 0, active = false
+            var f = TPTLowpass(), state: Float = 0
+            var sse = 0.0
+            for b in 0..<starts.count {
+                let s = starts[b], e = b + 1 < starts.count ? starts[b + 1] : on.count
+                let n = e - s
+                guard n > 0 else { continue }
+                let cT = targets(b)
+                let c0 = cApplied
+                var c1 = exp(log(c0) + (log(cT) - log(c0)) * Float(1 - exp(-Double(n) / (tau * sr))))
+                if abs(cT - c1) < 1 { c1 = cT }
+                cApplied = c1
+                if c0 >= top && c1 >= top {
+                    for i in s..<e { sse += Double((on[i] - off[i]) * (on[i] - off[i])) }
+                    state = off[e - 1]; active = false; wetApplied = 0
+                    continue
+                }
+                let wet0 = wetApplied, wet1: Float = c1 >= top ? 0 : 1
+                if !active { f = TPTLowpass(ic1: 0, ic2: state) }
+                active = true
+                var g = TPTLowpass.coefficient(cutoffHz: min(c0, top), sampleRate: sr32)
+                let dg = (TPTLowpass.coefficient(cutoffHz: min(c1, top), sampleRate: sr32) - g) / Float(n)
+                var wet = wet0
+                let dw = (wet1 - wet0) / Float(n)
+                var last: Float = 0
+                for i in s..<e {
+                    let x = off[i]
+                    g += dg; wet += dw
+                    let y = x + wet * (f.tick(x, g: g) - x)
+                    last = y
+                    sse += Double((on[i] - y) * (on[i] - y))
+                }
+                wetApplied = wet1; state = last
+                if wet1 == 0 { active = false }
             }
-            guard den > 1e-12 else { continue }
-            let a = min(0.999999, max(1e-9, num / den))
-            out.append((Double(s + (e - s) / 2 - n0) / sr * 1000, -log(1 - a) * sr / (2 * Double.pi)))
+            return sse
         }
-        return out
-    }
-
-    /// Progress of a log-domain cutoff track from `f0` to `f1`.
-    static func cutoffProgress(_ track: [(ms: Double, hz: Double)], f0: Double, f1: Double) -> [(ms: Double, p: Double)] {
-        track.map { ($0.ms, (log(f0) - log($0.hz)) / (log(f0) - log(f1))) }
+        var energy = 0.0
+        for v in on { energy += Double(v * v) }
+        var best = (tau: 1.0, err: Double.infinity)
+        var tau = 1.0
+        while tau <= 60 { let e = replayError(tau / 1000); if e < best.err { best = (tau, e) }; tau += 0.5 }
+        var fine = best.tau - 0.5
+        while fine <= best.tau + 0.5 { let e = replayError(fine / 1000); if e < best.err { best = (fine, e) }; fine += 0.02 }
+        return (best.tau, (best.err / max(energy, 1e-30)).squareRoot())
     }
 
     /// The roughness stage's depth per render call: 1 - on/off = d(i) h(i), h = 0.5 - 0.5 cos(2 pi ph), `ph` replayed

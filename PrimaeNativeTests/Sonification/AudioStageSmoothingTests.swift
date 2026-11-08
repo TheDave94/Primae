@@ -6,7 +6,8 @@
 //      (r18 measured on the iPad: 6.0 ms at the real 235-frame call, 13.1 ms at 512, 3.3 ms at 128);
 //   2. the cutoff approach is in seconds too, and OPENING the filter no longer steps the signal (r18: 4.3x the sound's own largest
 //      sample-to-sample step on the carrier at 800 Hz -> 20 kHz, because the coefficient jumped at a call edge);
-//   3. the 2-pole low-pass candidate (switchable, default off): response, stability, and that it is not the default;
+//   3. the distance dimension's low-pass is the 2-pole (r21, David's blind A/B): response, stability, that the render IS the TPT
+//      Butterworth and no longer the r18 one-pole, and that it is out of the path at the 20 kHz top;
 //   4. the direction mute's hysteresis: a pen on the boundary stops chattering, a clean reversal is as fast as before;
 //   5. every stage is bit-exact r17 once it is back at neutral.
 
@@ -64,30 +65,65 @@ import CoreGraphics
         #expect(abs(t - 6.0) < 0.5, "\(pattern): tau63 \(t) ms")
     }
 
-    @Test("cutoff: the log-domain approach has a 12 ms time constant at every call size (call-edge bias included)",
+    @Test("cutoff: the log-domain approach has a 12 ms time constant at every call size (fitted through the 2-pole, call edges modelled)",
           arguments: StageSmoothingSecondsTests.sizes)
     func cutoffTimeConstant(pattern: R20.Pattern) throws {
         let p = try Self.pair(pattern, event: { $0.setStrokeLowpass(cutoffHz: 800) })
-        let trk = R20.cutoffTrack(on: p.on.y, off: p.off.y, starts: p.on.starts, from: p.n0)
-        let t = try #require(R20.tc(R20.cutoffProgress(trk, f0: 20000, f1: 800)).tau63)
-        let callMs = pattern.seconds * 1000
-        #expect(t > 12 - 0.5 * callMs - 1.5 && t < 12 + 0.5 * callMs + 3, "\(pattern): tau63 \(t) ms")
+        let fit = R20.fitCutoffTau(on: p.on.y, off: p.off.y, starts: p.on.starts, targets: { p.on.starts[$0] >= p.n0 ? 800 : 20000 })
+        #expect(abs(fit.tauMs - 12) < 0.5, "\(pattern): fitted tau \(fit.tauMs) ms")
+        #expect(fit.residual < 1e-3, "\(pattern): the render does not follow the glide (residual \(fit.residual))")
     }
 
-    @Test("opening the low-pass (800 Hz -> 20 kHz) does not step the signal: the carrier's largest sample step stays within 1.15x its own",
-          arguments: [LiveSonificationKernel.LowpassSlope.sixDB, .twelveDB])
-    func openingDoesNotStep(slope: LiveSonificationKernel.LowpassSlope) throws {
+    @Test("opening the low-pass (800 Hz -> 20 kHz) does not step the signal: the carrier's largest sample step stays within 1.15x its own")
+    func openingDoesNotStep() throws {
         let src = try StudySources.load("spatial_carrier")
         let steady = R20.Driver(source: src); steady.run(1.5)
         let d = R20.Driver(source: src)
-        d.kernel.setStrokeLowpassSlope(slope)
         d.kernel.setStrokeLowpass(cutoffHz: 800)
         d.run(0.9)
         let n0 = d.count
         d.kernel.setStrokeLowpass(cutoffHz: 20000)
         d.run(0.6)
         let c = R20.click(d.y, steady: steady.y, at: n0, window: 0.040)
-        #expect(c.deltaRatio < 1.15, "\(slope): the opening stepped the signal \(c.deltaRatio)x (r18 one-pole: 4.34x)")
+        #expect(c.deltaRatio < 1.15, "the opening stepped the signal \(c.deltaRatio)x (r18 one-pole: 4.34x)")
+    }
+
+    @Test("closing the low-pass (20 kHz -> 800 Hz) does not step the signal either, on the carrier and on both phoneme sounds",
+          arguments: ["spatial_carrier", "I_phoneme1", "A_phoneme1"])
+    func closingDoesNotStep(name: String) throws {
+        let src = try StudySources.load(name)
+        let steady = R20.Driver(source: src); steady.run(1.5)
+        let d = R20.Driver(source: src)
+        d.run(0.4)
+        let n0 = d.count
+        d.kernel.setStrokeLowpass(cutoffHz: 800)
+        d.run(0.6)
+        let c = R20.click(d.y, steady: steady.y, at: n0, window: 0.040)
+        #expect(c.deltaRatio < 1.15, "\(name): the closing stepped the signal \(c.deltaRatio)x")
+    }
+
+    @Test("with the cutoff at the 20 kHz top and the level moving, the render is the r17 render times the gain curve, bit for bit: the filter is not in the path")
+    func noFilterAtTheTop() throws {
+        let src = try StudySources.load("spatial_carrier")
+        let ref = R20.Driver(source: src), d = R20.Driver(source: src)
+        ref.run(0.3); d.run(0.3)
+        let n0 = d.count
+        d.kernel.setStrokeLevel(gainDB: -12)
+        ref.run(0.03); d.run(0.03)
+        let coef = Float(1 - exp(-1 / (StageTuning.toneGainSeconds * R20.sr)))
+        let gT = Float(pow(10.0, -12.0 / 20))
+        var g: Float = 1
+        var wrong = 0
+        for i in n0..<d.count {
+            g += coef * (gT - g)
+            if d.y[i] != ref.y[i] * g { wrong += 1 }
+        }
+        #expect(wrong == 0, "\(wrong) of \(d.count - n0) samples differ from the r17 render times the gain")
+        // and back to 0 dB: the gain lands on exactly 1, so the render is the r17 render again, bit for bit
+        d.kernel.setStrokeLevel(gainDB: 0)
+        ref.run(0.6); d.run(0.6)
+        let from = Int(0.5 * R20.sr) + (d.count - Int(0.6 * R20.sr))
+        #expect(Array(d.y[from...]) == Array(ref.y[from...]), "the gain did not land on exactly 1")
     }
 
     @Test("a stage that is back at neutral is the r17 render, bit for bit")
@@ -116,7 +152,7 @@ extension R20.Pattern: CustomTestStringConvertible {
     var testDescription: String { description }
 }
 
-@Suite("R20 2-pole low-pass candidate") nonisolated struct TwoPoleLowpassTests {
+@Suite("R21 the distance low-pass is the 2-pole") nonisolated struct TwoPoleLowpassTests {
 
     /// Steady-state gain of a probe sine through the filter at `ratio` x the cutoff.
     static func gain(ratio: Double, cutoff: Double = 1000) -> Double {
@@ -143,44 +179,49 @@ extension R20.Pattern: CustomTestStringConvertible {
         #expect(abs(octave - 12) < 1.0, "slope \(octave) dB/octave")
     }
 
-    @Test("the one-pole stays the default: nothing is written, the render equals a kernel that never heard of the slope")
-    func defaultIsTheOnePole() throws {
-        let src = try StudySources.load("spatial_carrier")
-        let a = R20.Driver(source: src), b = R20.Driver(source: src)
-        #expect(a.kernel.requestedLowpassSlope == .sixDB)
-        b.kernel.setStrokeLowpassSlope(.sixDB)
-        for d in [a, b] { d.kernel.setStrokeLowpass(cutoffHz: 800); d.run(0.8) }
-        #expect(a.y == b.y)
+    @Test("the distance dimension's low-pass is the 2-pole: at 800 Hz the render is the TPT Butterworth of the unfiltered sound, in the carrier and the phoneme",
+          arguments: ["spatial_carrier", "I_phoneme1"])
+    func isTheTwoPole(name: String) throws {
+        let src = try StudySources.load(name)
+        let off = R20.Driver(source: src), d = R20.Driver(source: src)
+        d.kernel.setStrokeLowpass(cutoffHz: 800)
+        off.run(1.2); d.run(1.2)
+        var lp = TPTLowpass()
+        let g = TPTLowpass.coefficient(cutoffHz: 800, sampleRate: Float(R20.sr))
+        let ref = off.y.map { lp.tick($0, g: g) }
+        let from = Int(0.7 * R20.sr)
+        let peak = ref[from...].map(abs).max() ?? 1
+        let worst = zip(d.y[from...], ref[from...]).map { abs($0 - $1) }.max() ?? 0
+        #expect(peak > 0.005, "\(name) did not sound")
+        #expect(worst < 1e-5 * peak, "\(name): largest difference to the 2-pole \(worst) against a peak of \(peak)")
     }
 
-    @Test("12 dB/octave at 800 Hz is darker than the one-pole at 800 Hz, both are finite and bounded")
+    @Test("at 800 Hz it is darker than the r18 one-pole was at 800 Hz, and finite and bounded")
     func darkerAndStable() throws {
         let src = try StudySources.load("spatial_carrier")
-        func render(_ slope: LiveSonificationKernel.LowpassSlope) -> [Float] {
-            let d = R20.Driver(source: src)
-            d.kernel.setStrokeLowpassSlope(slope)
-            d.kernel.setStrokeLowpass(cutoffHz: 800)
-            d.run(1.0)
-            return Array(d.y[Int(0.5 * R20.sr)...])
-        }
-        let six = render(.sixDB), twelve = render(.twelveDB)
+        let off = R20.Driver(source: src), d = R20.Driver(source: src)
+        d.kernel.setStrokeLowpass(cutoffHz: 800)
+        off.run(1.0); d.run(1.0)
+        let from = Int(0.5 * R20.sr)
+        let a = Float(1 - exp(-2 * Double.pi * 800 / R20.sr))      // the r18 one-pole's coefficient
+        var z: Float = 0
+        let six = off.y.map { x -> Float in z += a * (x - z); return z }[from...]
+        let twelve = d.y[from...]
         let steady = R20.Driver(source: src); steady.run(1.0)
         let peak = steady.y.map(abs).max() ?? 1
         #expect(twelve.allSatisfy { $0.isFinite && abs($0) < 2 * peak })
-        let hp6 = PopMeter.highPass(six, sr: R20.sr, fc: 3000), hp12 = PopMeter.highPass(twelve, sr: R20.sr, fc: 3000)
+        let hp6 = PopMeter.highPass(Array(six), sr: R20.sr, fc: 3000), hp12 = PopMeter.highPass(Array(twelve), sr: R20.sr, fc: 3000)
         #expect(PopMeter.power(hp12, 0, hp12.count) < PopMeter.power(hp6, 0, hp6.count), "the 2-pole is not darker above 3 kHz")
     }
 
-    @Test("stable under a cutoff that jumps between 100 Hz and 20 kHz every call, and when the slope is switched while sounding")
+    @Test("stable under a cutoff that jumps between 100 Hz and 20 kHz every call")
     func abusive() throws {
         let src = try StudySources.load("spatial_carrier")
         let steady = R20.Driver(source: src); steady.run(1.5)
         let peak = steady.y.map(abs).max() ?? 1
         let d = R20.Driver(source: src)
-        d.kernel.setStrokeLowpassSlope(.twelveDB)
         for i in 0..<300 {
             d.kernel.setStrokeLowpass(cutoffHz: i % 2 == 0 ? 100 : 20_000)
-            if i % 50 == 25 { d.kernel.setStrokeLowpassSlope(i % 100 == 25 ? .sixDB : .twelveDB) }
             d.run(0.005)
         }
         #expect(d.y.allSatisfy { $0.isFinite && abs($0) < 3 * peak }, "peak \(d.y.map(abs).max() ?? 0) against \(peak)")
