@@ -180,10 +180,12 @@ final class LiveSonificationAudio: AudioControlling {
 
     /// The TDPSOLA renderer for `source` (pure DSP; any thread).
     /// R17D: a source with a recorded onset (`PhonemeOnsets`) loops from its declared attack end.
+    /// r22: the renderer gets the source's loudness gain, the gain the kernel plays it at, so the recorded onset is
+    /// kept under full scale at that gain (`TDPSOLAOnsetCeiling`).
     nonisolated static func makeRenderer(_ source: SonificationSource) -> TDPSOLA {
         TDPSOLA(source: source.samples, sampleRate: LiveSonificationKernel.sampleRate,
                 kind: source.kind, maxFramesPerRender: LiveSonificationKernel.chunkFrames,
-                tuning: .default, onset: source.onset)
+                tuning: .default, onset: source.onset, outputGain: source.gain)
     }
 
     /// Two renderers of `source` for one kernel slot (the second is the voice a
@@ -191,7 +193,8 @@ final class LiveSonificationAudio: AudioControlling {
     nonisolated static func makeRendererPair(_ source: SonificationSource) -> (TDPSOLA, TDPSOLA) {
         let a = makeRenderer(source)
         let b = TDPSOLA(source: source.samples, sampleRate: LiveSonificationKernel.sampleRate, kind: source.kind,
-                        maxFramesPerRender: LiveSonificationKernel.chunkFrames, analysis: a.analysis)
+                        maxFramesPerRender: LiveSonificationKernel.chunkFrames, analysis: a.analysis,
+                        outputGain: source.gain)
         return (a, b)
     }
 

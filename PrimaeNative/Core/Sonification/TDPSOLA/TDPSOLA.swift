@@ -164,18 +164,20 @@ nonisolated final class TDPSOLA: SonificationRenderer, @unchecked Sendable {
     }
 
     /// `onset` (R17D): the file's declared attack end (`PhonemeOnsets`); nil = the analysis' own -3 dB rule.
+    /// `outputGain` (r22): the loudness gain the kernel plays this renderer at (`SonificationSource.gain`); it sets
+    /// where the recorded onset's ceiling lies (`TDPSOLAOnsetCeiling`).
     convenience init(source: [Float], sampleRate: Double, kind: SourceKind, maxFramesPerRender: Int,
-                     tuning: TDPSOLATuning, onset: RecordedOnset? = nil) {
+                     tuning: TDPSOLATuning, onset: RecordedOnset? = nil, outputGain: Float = 1) {
         self.init(source: source, sampleRate: sampleRate, kind: kind, maxFramesPerRender: maxFramesPerRender,
                   analysis: TDPSOLAAnalysis.analyse(source, sampleRate: sampleRate, kind: kind,
                                                     unvoicedHopSeconds: tuning.unvoicedHopSeconds, onset: onset),
-                  tuning: tuning)
+                  tuning: tuning, outputGain: outputGain)
     }
 
     /// Reuses an analysis already computed for `source` (tests and the bench build many renderers per source).
     /// The unvoiced hop is the analysis's own; `tuning.unvoicedHopSeconds` is not consulted here.
     init(source: [Float], sampleRate: Double, kind: SourceKind, maxFramesPerRender: Int, analysis a: TDPSOLAAnalysis,
-         tuning: TDPSOLATuning = .default) {
+         tuning: TDPSOLATuning = .default, outputGain: Float = 1) {
         self.kind = kind
         self.tuning = tuning
         self.sampleRate = sampleRate
@@ -204,6 +206,12 @@ nonisolated final class TDPSOLA: SonificationRenderer, @unchecked Sendable {
             // into the limited copy (the lane's `ONSET_KEEP`).
             if a.recordedOnset != nil {
                 Self.keepRecordedOnset(&played, preTDQ, a, preBlend: preBlend)
+                // r22 (lane ONSET-CEILING): ... except where it would pass digital full scale at the gain the
+                // kernel plays it at. A's onset pulse (file -4.01 dBFS, gain +5.92 dB) reached +1.91 dBFS; the samples
+                // over -0.5 dBFS get one smooth local dip (2.41 dB, 9.4 ms), everything else stays as recorded.
+                played = TDPSOLAOnsetCeiling.limit(played, gain: outputGain, ceiling: TDPSOLAOnsetCeiling.ceiling,
+                                                   taper: TDPSOLAOnsetCeiling.taperFrames(sampleRate: sampleRate),
+                                                   in: 0..<Int(a.loopStart))
             }
         }
         count = source.count

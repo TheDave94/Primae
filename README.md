@@ -64,7 +64,7 @@ The three phases implement **Gradual Release of Responsibility** (Pearson & Gall
 - **AVSpeechSynthesizer** — German verbal feedback (`de-DE`, enhanced voice when available)
 - **CoreML** + Vision — on-device 40 × 40 grayscale CNN, 53 classes (A–Z, a–z, ß)
 - **CoreHaptics** — phase-aware haptic patterns
-- **Swift Testing** + a small core of XCTest — 1697 tests in 215 suites at protocol r21 (2026-11-10; full device run in Release-Study, `audit-2026-11-10/logs/full-rel-device.log`; CI is the source of truth)
+- **Swift Testing** + a small core of XCTest — 1705 tests in 216 suites at protocol r22 (2026-11-10; full device run in Release-Study, `audit-2026-11-10/logs/full-rel-device-r22.log`; CI is the source of truth)
 - **Zero third-party dependencies**
 
 ## Gestures

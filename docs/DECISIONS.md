@@ -1744,6 +1744,107 @@ Implications:
     The listening page's section 6 is kept as the record; its device
     captures (the "svf12" files) came from the r20 build.
 
+- **Protocol revision 22 — A's recorded onset is kept under digital full
+  scale at A's loudness gain (audit 2026-11-10, lane ONSET-CEILING).**
+  Phoneme arm, letter A only. One glottal pulse in A's recorded onset (file
+  samples 2671-2692, 60.6-61.0 ms into the file; about 44 ms after the sound
+  starts, since the renderer starts at the analysis onset, file sample 756)
+  peaks at -4.01 dBFS; A's AE-2 gain is +5.92 dB (1.9767, measured on the
+  loop part since R17D), so the renderer's output reached +1.91 dBFS, 10
+  samples over full scale, on every start from silence (a stroke after a real
+  stop, the observe demonstration), the same at every rate (the onset plays
+  at rate 1). The r17 captures on the study iPad show the same +1.91 dBFS at
+  the kernel and up to +0.09 dBFS on the main mixer after the constant-power
+  pan (`r17d/raw/r17d/*/kernel.wav`, `mixer.wav`). Whether the iPad's output
+  stage clipped those samples, and whether that was audible, was never
+  measured; the change removes the condition instead of measuring its
+  effect. The fix: at renderer init, after the onset is restored as recorded
+  (R17D, ONSET.md section 7.3), the samples of the onset (file start to the
+  loop start) whose value times the gain the kernel plays them at exceeds
+  -0.5 dBFS get one smooth local dip (`TDPSOLAOnsetCeiling`: flat at
+  ceiling / peak across the group of over-ceiling samples, raised-cosine
+  tapers of 4.3 ms = 190 samples each side). For A: 2.41 dB deep across file
+  samples 2671-2706, the dip spans 2481-2896 (416 samples, 9.4 ms); peak
+  after the change -0.500 dBFS. Everything else is bit-identical. Reports and
+  scripts: `wt-primae-audit-notes/audit-2026-11-10/onset-ceiling/REPORT.md`
+  (offline), `.../onset-ceiling/MUTATION-REPORT.md`,
+  `.../r22-device/REPORT.md` (the iPad).
+  - **Why this design and not another.** Lowering `loudnessTargetRMS` for
+    all files changes every stimulus in both arms by 2 dB and ends the
+    carrier's unity gain (AE-2); capping A's gain breaks the level match
+    between letters; scaling A's whole onset changes the onset-to-loop level
+    step over 0.4 s; a limiter in the real-time render path is new real-time
+    code for a defect fixed at init.
+  - **Is the file peak the whole problem? Measured offline, not assumed.**
+    Every study stimulus through the renderer sources (`swiftc -O` driver,
+    32 s each including the onset, 512-frame chunks) at rates 0.8, 1, 1.25,
+    the carrier also at 0, +-530 and +-1200 cents, times the file's gain:
+    before, only A passes full scale (10 samples at every rate, peak
+    +1.91 dBFS); F -1.48, I -10.04, L -10.88, M -11.07, carrier -12.00 dBFS,
+    0 samples over. Overlap-add at rates other than 1 pushes no other file
+    over. A's loop after the onset peaks -7.3 dBFS. After: 0 samples over
+    full scale or over -0.5 dBFS in all 30 renders; F, I, L, M and the
+    carrier renders are bit-identical (sha256); A differs only inside the
+    dip, by at most 2.41 dB (largest absolute change -10.4 dBFS after the
+    gain). The renderer at gain 1 (every other test builds its sources at
+    gain 1) is bit-identical to before, so no existing golden moves.
+  - **Design points settled by measurement.** Ceiling -0.5 dBFS at the
+    kernel output: at full pan the constant-power pan passes the kernel level
+    to one channel, so neither channel can exceed it; the distance
+    dimension's 2-pole low-pass (off by default) raises a peak by at most
+    0.033 dB over these renders (A at 12 kHz: -0.467 dBFS, under full scale;
+    before the change the same filter left 31 samples over full scale across
+    the renders). Taper one pitch period of A (233 Hz): 0.5, 1, 2 and 4
+    periods all bring the peak to -0.500 dBFS with less than 0.7 % of the
+    change's energy above 3 kHz; one period keeps the change short (9.4 ms)
+    while covering the pulse's own period on each side. The taper length was
+    set by this measurement, not by ear.
+  - **On the study iPad (2026-11-10).** The engine's own output, captured by
+    `PopCapture` during the scripted phoneme-arm session on A (Debug-Study
+    built with optimisation, the r17d recipe; loudspeaker route, 48 kHz,
+    5.33 ms buffer, no dropped sample in any ring): each of the nine A
+    onsets from silence peaks at -0.500 dBFS at the kernel output, 0 samples
+    over full scale and 0 over -0.5 dBFS in the whole capture; the r17
+    capture of the same script, read with the same script
+    (`r22-device/onset_level.py`), has +1.907 dBFS and 10 samples over full
+    scale at each of its seven A onsets. Main mixer: no sample at or over
+    full scale (peaks -2.35 / -2.66 dBFS; r17: +0.09 dBFS, 2 samples). The
+    two captures are separate runs of the script, so only "none over full
+    scale" and the kernel level are the finding, not the exact mixer peak.
+    In the F session the nine F onsets are unchanged (-4.051 dBFS in the
+    first 200 ms, before and after); its last onset is A's observe
+    demonstration, which the app reaches after F, and it moved from
+    +1.907 to -0.500 dBFS like the others.
+  - **Tests.** `OnsetCeilingTests` (new, 8 tests): the pure function (a pulse
+    over the ceiling comes out at it; the gain is applied; samples outside
+    the dip are bit-identical and the dip spans the group plus one taper each
+    side; the dip's gain moves by no more than a raised-cosine slope per
+    sample; under-ceiling input, a bad gain or a pulse outside the range are
+    returned unchanged; the constants), every study file at its REAL gain
+    stays at or under the ceiling at rates 0.8, 1, 1.25 (carrier +-530
+    cents), and A at its gain differs from A at gain 1 only inside file
+    samples 2481-2896, by at most 2.5 dB, the twin included. Full
+    `PrimaeNativeTests` on the study iPad, Release-Study with testability,
+    Xcode 27.2 (27B52): 1705 tests in 216 suites passed (1697 in 215 before
+    this change). Mutation checks on the iPad, suite filter, 8 tests in 1
+    suite in every run: the limit call removed, `makeRenderer` without the
+    gain, the twin without the gain, the taper replaced by a step, the margin
+    inverted, detection without the gain, detection outside the range and the
+    ceiling constant changed each turn the expected test RED. Widening the
+    limited range from the onset to the whole buffer stays GREEN: on today's
+    files no loop sample reaches the ceiling, so that bound changes nothing
+    and no test pins it. These runs were made on the tree before this entry,
+    the r22 history text and four code comments were finalised (the suite's
+    display name lost the word "DRAFT"); no test reads those texts.
+  - **By ear.** Not judged by ear before it landed. A Release-Study build
+    of this change was on the study iPad for a listening pass (phoneme arm,
+    pen-down from silence, the observe demonstration); David chose to land
+    on the measurements instead (2026-11-11: "Just land it, I'll tell you
+    if I find something when actually using the app"). What he reports
+    from use is recorded here when it comes.
+  - **Stamp / record.** No new setting, no export change.
+    `StudyProtocol.revision` is 22.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,
