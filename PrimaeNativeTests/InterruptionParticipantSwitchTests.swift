@@ -76,16 +76,25 @@ extension NewParticipantResetTests {
 
     /// Path-independent: the stub repository holds only "A", and whether
     /// the incoming child's first letter can load depends on the subset
-    /// their random id draws (4 of 10 contain A). Either way the
-    /// outgoing child's observe must not restart; the test repeats until
-    /// it has seen the no-load path, where only the participant switch
-    /// itself can clear the held observe (P(never) = 0.4^12).
+    /// their random id draws. Either way the outgoing child's observe
+    /// must not restart; the test repeats until it has seen the no-load
+    /// path, where only the participant switch itself can clear the held
+    /// observe.
+    ///
+    /// THE DRAW BOUND. Six of the ten subsets contain A (AFI AFL AFM AIL
+    /// AIM ALM), and `assign` gives those six 26 of the 256 byte values
+    /// each, so one draw loads A with p = 156/256 = 0.61. This comment
+    /// said "4 of 10 contain A, P(never) = 0.4^12"; the real figure for
+    /// 12 draws was 0.61^12 = 0.26 % per run, and the test failed that
+    /// way on CI (run 42821564298, iPad (A16) job, 2026-11-10: 12 draws,
+    /// all loaded A). 40 draws: 0.61^40 = 2.5e-9. The loop stops at the
+    /// first no-load draw, after 2.6 draws on average.
     @Test("'Nächstes Kind' under the parent area mid-observe: the outgoing child's observe never restarts")
     func nextChildUnderTheParentAreaRestartsNothingOfTheOutgoingChild() async {
         await keepingIdentity {
             let rig = LifecycleRig()
             var sawNoLoad = false
-            for _ in 0..<12 where !sawNoLoad {
+            for _ in 0..<40 where !sawNoLoad {
                 await observing(rig)
                 rig.vm.parentAreaDidOpen()
                 let cues = rig.prompts.count(.phaseObserve)
