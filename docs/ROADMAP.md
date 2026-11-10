@@ -264,6 +264,16 @@ matter to the outcome, that is a finding for the main study, not a pilot blocker
 
 ---
 
+### SDK27 — iOS 27 SDK deprecations outside `AudioEngine.swift` *(recorded by the audit of 2026-11-10; not started)*
+**Effort:** M · **Priority:** P3, after the pilot
+
+The CI build of `9c229769` (run 42504923240) prints 86 distinct warnings. The ones in shipped code that need a decision, not a rename:
+- `Core/Sonification/LiveSonificationAudio.swift:487` and `:505` use `AVAudioSession.InterruptionType` and `InterruptionOptions`, deprecated in iOS 27.0 in favour of `AVAudioSessionDidBecomeInactiveNotification` and `AVAudioSessionResumptionRecommendationNotification`. Moving changes how an interruption is detected and resumed, which protocol r16 (B1, C2) pins; it needs device runs and a ruling, like the `AudioEngine.swift` list under F11.
+- `Theme/FontRegistration.swift:84` uses `CTFontManagerRegisterFontsForURLs` (deprecated since iOS 13). The replacement reports errors through a handler; a wrong move degrades every child-facing glyph to the system font, so it waits for a build that is not the pilot's.
+- `installTap(onBus:bufferSize:format:block:)` (measurement taps) is deprecated in iOS 27.0.
+
+Fixed in the same audit, with no behaviour change: `ParentDashboardExporter.isoTimestamp` is `nonisolated` (it was called from the JSON encoder's non-isolated closure), `PopCapture`'s local `route()` is `@Sendable`, and the never-mutated `var`s and needless `try`s in the test target are gone. The remaining test-target warnings are Swift 6 isolation notes that the target's Swift 5 language mode (`Package.swift`, not to be changed) reports as warnings.
+
 ### D8 — Canvas redraw frequency profile
 **Effort:** S (profile only) — could expand to M if a real bottleneck surfaces · **Priority:** P3
 

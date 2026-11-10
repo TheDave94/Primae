@@ -975,7 +975,9 @@ struct ParentDashboardExporter {
     /// Every exported timestamp, ISO 8601 UTC WITH fractional seconds
     /// (`2026-10-26T07:33:20.200Z`): second resolution collapsed rows
     /// recorded within one second into a tie (A16, round-1 DATA-4).
-    static func isoTimestamp(_ date: Date) -> String {
+    /// `nonisolated`: a pure function, and `isoDateEncodingStrategy`'s
+    /// closure calls it from wherever the encoder runs.
+    nonisolated static func isoTimestamp(_ date: Date) -> String {
         date.formatted(Date.ISO8601FormatStyle(includingFractionalSeconds: true))
     }
 

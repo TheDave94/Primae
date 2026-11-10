@@ -78,7 +78,7 @@ struct StudyModeGuardTests {
 
     @Test("studyMode bypasses the override; off-mode preserves override-wins")
     func resolvedStrokes_respectsStudyMode() throws {
-        try withRestoredStudyMode {
+        withRestoredStudyMode {
             // Unique letter name so no other test (or stale cache) collides.
             let letter = "Z_\(UUID().uuidString.prefix(6))"
 

@@ -49,7 +49,7 @@ import Foundation
 
     @Test("R-032: a probe row carries its attempt index; a training row carries none")
     func attemptIndexOnTheRow() throws {
-        try withStore { store in
+        withStore { store in
             let vm = makeVM(store: store)
             #expect(vm.startColdProbe(letter: "A", kind: .pretest) == nil)
             #expect(vm.currentProbeAttempt == 1)

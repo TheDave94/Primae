@@ -64,6 +64,16 @@ class InlineMarkupTests(unittest.TestCase):
             render_checklist._inline("plain **bold** and `code`"),
             "plain <strong>bold</strong> and <code>code</code>")
 
+    def test_strikethrough_renders_and_nests_bold(self):
+        """`~~...~~` marks an obsolete checklist item (4.5, the success
+        chime). The old _inline printed the tildes (audit 2026-11-10)."""
+        self.assertEqual(
+            render_checklist._inline("~~**gone** item.~~ **kept**"),
+            "<s><strong>gone</strong> item.</s> <strong>kept</strong>")
+
+    def test_tildes_inside_backticks_stay_verbatim(self):
+        self.assertEqual(render_checklist._inline("`~~x~~`"), "<code>~~x~~</code>")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -67,7 +67,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
         let points = touchPoints
         let definition = realisticDefinition
         measure(metrics: [XCTClockMetric()]) {
-            var tracker = StrokeTracker()
+            let tracker = StrokeTracker()
             tracker.load(definition)
             for pt in points {
                 tracker.update(normalizedPoint: norm(pt))
@@ -81,7 +81,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
         let points = touchPoints
         let definition = realisticDefinition
         measure(metrics: [XCTCPUMetric()]) {
-            var tracker = StrokeTracker()
+            let tracker = StrokeTracker()
             tracker.load(definition)
             for pt in points {
                 tracker.update(normalizedPoint: norm(pt))
@@ -95,7 +95,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
         let definition = realisticDefinition
         let points = touchPoints
         measure(metrics: [XCTMemoryMetric()]) {
-            var tracker = StrokeTracker()
+            let tracker = StrokeTracker()
             for _ in 0..<20 {
                 tracker.load(definition)
                 for pt in points.prefix(50) {
@@ -109,7 +109,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
     // MARK: - Gate 4: overallProgress computation is O(1) — not re-scanning on each call
 
     @MainActor func testOverallProgress_isEfficient() async {
-        var tracker = StrokeTracker()
+        let tracker = StrokeTracker()
         tracker.load(realisticDefinition)
         // Drive partial progress
         for pt in touchPoints.prefix(100) {
@@ -150,7 +150,7 @@ final class StrokeTrackerRegressionGateTests: XCTestCase {
             return CGPoint(x: t * canvas.width, y: t * canvas.height)
         }
         measure(metrics: [XCTClockMetric()]) {
-            var tracker = StrokeTracker()
+            let tracker = StrokeTracker()
             tracker.load(dense)
             for pt in points {
                 tracker.update(normalizedPoint: norm(pt))

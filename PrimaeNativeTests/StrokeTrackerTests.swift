@@ -249,21 +249,21 @@ private func completeAll(_ tracker: StrokeTracker, _ def: LetterStrokes) {
         #expect(t.isComplete); #expect(abs(t.overallProgress - 1.0) < 1e-9)
     }
     @Test func radiusMultiplier_zero_onlyExactHitRegisters() {
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5,0.5)])]))
         t.radiusMultiplier = 0.0
         t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
         #expect(t.isComplete)
     }
     @Test func radiusMultiplier_zero_nearMissDoesNotRegister() {
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5,0.5)])]))
         t.radiusMultiplier = 0.0
         t.update(normalizedPoint: CGPoint(x: 0.5 + 1e-9, y: 0.5))
         #expect(!t.isComplete); #expect(!t.soundEnabled)
     }
     @Test func radiusMultiplier_switchFromZeroToOne_pendingCheckpointBecomesHittable() {
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5,0.5)])]))
         let insidePoint = CGPoint(x: 0.55, y: 0.5)
         t.radiusMultiplier = 0.0; t.update(normalizedPoint: insidePoint); #expect(!t.isComplete)
@@ -274,28 +274,28 @@ private func completeAll(_ tracker: StrokeTracker, _ def: LetterStrokes) {
         // the `isComplete` vacuous-truth fix, `isComplete` must be
         // `false` for empty stroke definitions regardless of the
         // radius multiplier — see `zeroStrokes_isNotCompleteWithoutInput`.
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: []))
         t.radiusMultiplier = 0.0
         t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
         #expect(!t.isComplete); #expect(!t.soundEnabled)
     }
     @Test func radiusMultiplier_negative_exactHitDoesNotRegister() {
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5,0.5)])]))
         t.radiusMultiplier = -0.3
         t.update(normalizedPoint: CGPoint(x: 0.5, y: 0.5))
         #expect(!t.isComplete)
     }
     @Test func radiusMultiplier_two_enlargedRadiusAcceptsPoint() {
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         t.load(letter(radius: 0.1, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5,0.5)])]))
         t.radiusMultiplier = 2.0
         t.update(normalizedPoint: CGPoint(x: 0.65, y: 0.5))
         #expect(t.isComplete)
     }
     @Test func radiusMultiplier_default_boundaryPointRegisters() {
-        var t = StrokeTracker()
+        let t = StrokeTracker()
         let radius: CGFloat = 0.1
         t.load(letter(radius: radius, strokes: [strokeDef(id: 1, checkpoints: [cp(0.5,0.5)])]))
         t.radiusMultiplier = 1.0

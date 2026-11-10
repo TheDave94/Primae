@@ -324,8 +324,8 @@
 <h3>4.5 · Letter completion celebration</h3>
 
 <ul>
-<li class="check"><input class="cb" type="checkbox" id="cb-46"><label for="cb-46"><strong>System success chime</strong> plays the moment the final phase completes.</label></li>
-<li class="sub">If broken: <code>PromptPlayer.swift:playSuccessChime</code> (<code>AudioServicesPlaySystemSound(1322)</code>).</li>
+<li class="check"><input class="cb" type="checkbox" id="cb-46"><label for="cb-46"><s><strong>System success chime</strong> plays the moment the final phase completes.</s> <strong>OBSOLETE since protocol r13 (2026-10-21, 2026-11-01 annotation):</strong> r13 removed sound effects in every arm and <code>playSuccessChime</code> is a no-op in the study build (<code>StudyVoiceoverPromptPlayer</code>, <code>PromptPlayer.swift</code>; the underlying <code>PromptPlayer</code> still carries the old <code>AudioServicesPlaySystemSound(1322)</code> body), so nothing should play; hearing a chime is now the defect.</label></li>
+<li class="sub"><s>If broken: <code>PromptPlayer.swift:playSuccessChime</code> (<code>AudioServicesPlaySystemSound(1322)</code>).</s></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-47"><label for="cb-47"><strong>Voiceover</strong> speaks "Super gemacht!" (regardless of star count).</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-48"><label for="cb-48"><strong>Celebration overlay</strong> appears: brand-blue panel with 🎉 + "Geschafft!" + a star row showing N-of-4 filled stars + a paper-coloured <strong>Weiter</strong> sticker button.</label></li>
 <li class="check"><input class="cb" type="checkbox" id="cb-49"><label for="cb-49"><strong>Tapping Weiter</strong> loads the next recommended letter and lands you on its observe phase.</label></li>

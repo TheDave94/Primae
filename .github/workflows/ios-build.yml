@@ -36,7 +36,8 @@ env:
   # scripts/check_test_count.sh enforces after each PrimaeNativeTests run.
   # A FLOOR below the current count (measured at R-109, see the commit message), not an expectation: raise
   # it when the suite grows for good; an honest removal does not need a CI edit.
-  PRIMAE_MIN_SWIFT_TESTING_TESTS: "1350"
+  # Raised 1350 -> 1600 on 2026-11-10: the suite ran 1694 tests at r21 (run 42504923240).
+  PRIMAE_MIN_SWIFT_TESTING_TESTS: "1600"
 
 # R-110: least privilege. Every job only checks out the repo and uploads
 # artefacts (upload-artifact uses the runtime token, not GITHUB_TOKEN), so

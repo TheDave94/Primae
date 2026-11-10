@@ -321,11 +321,7 @@ import CoreGraphics
             vm.loadLetter(name: "A")
             #expect(vm.learningPhase == .observe, "precondition: a fresh load lands in observe")
             // The observe sound starts after the cue fallback (0.05 s here).
-            let clock = ContinuousClock()
-            let deadline = clock.now + .seconds(300)
-            while audiblePlays(audio, since: mark).isEmpty && clock.now < deadline {
-                try? await Task.sleep(for: .milliseconds(20))
-            }
+            await pollMainActor(deadline: 300) { !audiblePlays(audio, since: mark).isEmpty }
             let plays = audiblePlays(audio, since: mark)
             #expect(!plays.isEmpty, "precondition: the phoneme observe sound started")
             #expect(plays.allSatisfy { $0.pitchCents == 0 },

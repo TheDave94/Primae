@@ -206,7 +206,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 * `Letters/<X>/strokes_schulschrift.json` — Schreibschrift script strokes for the demo letters.
 * `Letters/<X>/<X><n>.mp3` — recorded letter-name + phoneme audio variants.
 * `Fonts/Primae-*.otf` (12 weights) + `PlaywriteAT-Regular.ttf` + `PlaywriteAT-OFL.txt` (license).
-* `ML/GermanLetterRecognizer.mlpackage/` — CoreML model + manifest.
+* `GermanLetterRecognizer.mlpackage/` — CoreML model + manifest. It lives in `PrimaeNative/MLResources/`, beside `Resources/`, not inside it (corrected 2026-11-10; this line said `ML/`).
 * `letter_set.json` — `active_letters: ["A","F","I","K","L","M","O"]`. Referenced by no Swift, script, workflow or test (grep at `60e8b805`); the study letter set is `TrainedLetterSubset.studyLetters` (A F I L M), not this file (audit F2-09).
 
 #### `PrimaeNativeTests/`
@@ -2550,7 +2550,7 @@ above §"Additional sections in the export" for why.
 | `participantId` | UUID | the participant block's id | Dedupe/merge key with `rowId`; present on every row (protocol r8, R-123). |
 | `rowId` | UUID / blank | `SessionDurationRecord.rowId` | Row identifier. Blank on rows written before r8. |
 | `trainedSubset` | string / blank | `SessionDurationRecord.trainedSubset` | The session's trained letters. Blank before r8. |
-| `comparisonConfiguration` | string / blank | `SessionDurationRecord.comparisonConfiguration` | The comparison stamp (blank = pilot defaults). Blank before r8. |
+| `comparisonConfiguration` | string / blank | `SessionDurationRecord.comparisonConfiguration` | The comparison stamp (blank = pilot defaults). Blank before r8. Format: `name=value` pairs joined by `;`, one per setting that is NOT at its default, in the declaration order of `StudyComparisonConfiguration` (`Core/StudyComparisonSettings.swift`, `nonDefaultStamp`); the names are that struct's property names (26 since r18, e.g. `observePasses=2;pitchScope=both`). `docs/DECISIONS.md` r18 lists the switches and their defaults. |
 | `protocolRevision` | int / blank | `SessionDurationRecord.protocolRevision` | `StudyProtocol.revision` when the record was written. Blank before r8. |
 
 `condition == threePhase` does not imply four phases ran — the case label predates the `direct` phase.

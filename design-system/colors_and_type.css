@@ -67,7 +67,7 @@ html[data-theme="light"] { color-scheme: only light; }
   --ink-stroke:     #059669;  /* child's green ink (emerald-600, r16 contrast) */
   --ink-stroke-deep:#059669;  /* committed stroke (emerald-600) */
   --guide:          #D97706;  /* observe-phase amber dot (amber-600, r16 contrast) */
-  --guide-soft:     rgba(245, 158, 11, 0.20);
+  --guide-soft:     rgba(217, 119, 6, 0.20);  /* --guide at 20% (amber-600, r16) */
   --start-dot:      #0F172A;  /* numbered start dot — slate-900 */
 
   /* ----- Color: brand / world tints ----- */

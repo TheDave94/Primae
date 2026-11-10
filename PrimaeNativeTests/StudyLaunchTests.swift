@@ -148,11 +148,7 @@ struct StudyLaunchTests {
         vm.startParkedLetter()
         #expect(!vm.launchParked)
         // Option B: armed after the cue gap, not in the start's own turn.
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(300)
-        while vm.animation.armedStrokes == nil && clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await pollMainActor(deadline: 300) { vm.animation.armedStrokes != nil }
         #expect(vm.animation.armedStrokes != nil, "the start arms the observe animation")
         #expect(vm.animation.armedStrokes == vm.rawGlyphStrokes, "armed against the laid-out canvas")
         #expect(vm.debugLetterLoadTime != nil)
@@ -178,11 +174,7 @@ struct StudyLaunchTests {
                                       phonemeAudioFiles: a.phonemeAudioFiles))
         vm.previousLetter()
         #expect(!vm.launchParked)
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(300)
-        while vm.animation.armedStrokes == nil && clock.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await pollMainActor(deadline: 300) { vm.animation.armedStrokes != nil }
         #expect(vm.animation.armedStrokes != nil)
     }
 

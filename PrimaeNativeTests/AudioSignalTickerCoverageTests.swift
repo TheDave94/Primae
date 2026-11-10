@@ -199,7 +199,7 @@ fileprivate final class TickerCountingAudio: AudioControlling {
         var seen: Set<LearningPhase> = []
         var phase = vm.phaseController.currentPhase
         seen.insert(phase)
-        while let next = phase.next, vm.phaseController.advance(score: 1.0) {
+        while phase.next != nil, vm.phaseController.advance(score: 1.0) {
             phase = vm.phaseController.currentPhase
             seen.insert(phase)
             if seen.contains(.freeWrite) { break }

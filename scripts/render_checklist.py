@@ -40,7 +40,7 @@ OUT  = ROOT / "docs" / "testing_checklist.html"
 # ----- Inline-mark converters (run on plain-text fragments) -----
 
 def _inline(text: str) -> str:
-    """Bold / italic / inline-code / links. Run on already-escaped HTML."""
+    """Bold / italic / strikethrough / inline-code / links. Run on already-escaped HTML."""
     # Inline code FIRST, but shield its contents from the rules below: a code
     # span is verbatim, so a `**...**` inside backticks must NOT become
     # <strong>. Stash each span behind a sentinel that no rule matches, then
@@ -52,6 +52,9 @@ def _inline(text: str) -> str:
         return f"\x00{len(spans) - 1}\x00"
 
     text = re.sub(r"`([^`]+?)`", _stash, text)
+    # Strikethrough (~~...~~), before bold so `~~**a** b~~` nests. The
+    # checklist strikes obsolete items; unhandled, the tildes were printed.
+    text = re.sub(r"~~(.+?)~~", r"<s>\1</s>", text)
     # Bold (**...**)
     text = re.sub(r"\*\*([^*]+?)\*\*", r"<strong>\1</strong>", text)
     # Italic (*...* but not part of **) — naive but matches the doc.

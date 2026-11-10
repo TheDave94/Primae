@@ -262,6 +262,13 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
 
 @Suite @MainActor struct ProtocolMatrixTests {
 
+    /// Poll floor for waits on a whole observe pass. The pass is a 60 Hz
+    /// frame loop on the main actor, one turn per frame; the longest study
+    /// letter's pass is under 10 s, so under 600 frames. 3000 polls keep a
+    /// starved poll loop going for five times that many turns (audit
+    /// 2026-11-10, P-01; `MainActorPollSupport.swift`).
+    static let framePassPolls = 3000
+
     private let canvas = CGSize(width: 400, height: 400)
 
     /// A study VM, three-phase, the arm under test, spoken feedback ON
@@ -523,11 +530,9 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         // contended and a 200 ms window was not always enough for the
         // (0.05 s) start to run. `armedStrokes` is set synchronously by
         // `AnimationGuideController.start`, in the same turn as the play.
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(300)
-        while !audio.isPlaying && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(20))
-        }
+        // `pollMainActor` counts polls as well as seconds: a bare 300 s
+        // deadline failed here on CI (2026-11-08) with the start still queued.
+        await pollMainActor(deadline: 300) { audio.isPlaying }
         #expect(vm.animation.armedStrokes != nil,
                 "\(arm): the observe animation did not start after the cue gap")
         #expect(audio.isPlaying,
@@ -550,10 +555,8 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         // generous on purpose: the pass is a 60 Hz frame loop on the main
         // actor, which the parallel full suite slows many times over.
         try? await Task.sleep(for: .seconds(PreTaskDemonstration.duration + 0.3))
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(300)
-        while vm.learningPhase == .observe && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+        await pollMainActor(deadline: 300, every: .milliseconds(50), minimumPolls: Self.framePassPolls) {
+            vm.learningPhase != .observe
         }
         #expect(vm.learningPhase != .observe, "\(arm): observe never ended — the animation never completed its pass")
         // A stop that ENDS observe (the phase advancing) is recorded with
@@ -607,8 +610,13 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         // "Animating" = armed by `AnimationGuideController.start`, set in the
         // same turn as the observe play and cleared by `stop()` when observe
         // completes. Generous deadline: a contended main actor runs the
-        // 60 Hz pass far slower than a device.
-        while vm.learningPhase == .observe && clock.now - loaded < .seconds(600) {
+        // 60 Hz pass far slower than a device. The sample count is a second
+        // bound (see `pollMainActor`): starved, the deadline alone can pass
+        // while the pass's frames are still queued.
+        var samples = 0
+        while vm.learningPhase == .observe
+                && (clock.now - loaded < .seconds(600) || samples < Self.framePassPolls) {
+            samples += 1
             let animating = vm.animation.armedStrokes != nil
             if animating && animationStart == nil { animationStart = clock.now - loaded }
             if arm != .silent {
@@ -650,10 +658,8 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     private func observePass(arm: PilotAudioCondition, letter: String, audio: RecordingAudio) async -> TracingViewModel {
         let vm = makeVM(arm: arm, audio: audio, withLetterI: true)
         vm.loadLetter(name: letter)
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(600)
-        while vm.learningPhase == .observe && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+        await pollMainActor(deadline: 600, every: .milliseconds(50), minimumPolls: Self.framePassPolls) {
+            vm.learningPhase != .observe
         }
         return vm
     }
@@ -713,10 +719,8 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         let audio = RecordingAudio()
         let vm = makeVM(arm: arm, audio: audio, withLetterI: true, rateCoupling: false)
         vm.loadLetter(name: "I")
-        let clock = ContinuousClock()
-        let deadline = clock.now + .seconds(600)
-        while vm.learningPhase == .observe && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(50))
+        await pollMainActor(deadline: 600, every: .milliseconds(50), minimumPolls: Self.framePassPolls) {
+            vm.learningPhase != .observe
         }
         #expect(vm.learningPhase != .observe, "precondition: observe ended")
         let speeds = audio.setAdaptiveCalls.map(\.speed)
@@ -754,10 +758,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(vm.animation.armedStrokes == nil, "\(arm): started before the cue ended")
         for _ in 0..<cuesSpoken(prompts) { speech.end(ChildSpeechLibrary.phaseEntry(.observe)) }
         let ended = clock.now
-        let deadline = ended + .seconds(600)
-        while vm.animation.armedStrokes == nil && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await pollMainActor(deadline: 600, every: .milliseconds(10)) { vm.animation.armedStrokes != nil }
         #expect(vm.animation.armedStrokes != nil, "\(arm): the cue's end did not start the presentation (fallback is 3600 s)")
         #expect(clock.now - ended >= .milliseconds(150), "\(arm): started too soon after the cue's end")
     }
@@ -770,10 +771,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         let clock = ContinuousClock()
         let loaded = clock.now
         vm.loadLetter(name: "I")
-        let deadline = loaded + .seconds(600)
-        while vm.animation.armedStrokes == nil && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await pollMainActor(deadline: 600, every: .milliseconds(10)) { vm.animation.armedStrokes != nil }
         #expect(vm.animation.armedStrokes != nil, "\(arm): the fallback never started the presentation")
         #expect(clock.now - loaded >= .milliseconds(250), "\(arm): started before the fallback")
     }
@@ -819,10 +817,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         try? await Task.sleep(for: .milliseconds(500))
         #expect(vm.animation.armedStrokes == nil, "a stale cue end or another utterance started the presentation")
         speech.end(ChildSpeechLibrary.phaseEntry(.observe))       // this load's cue
-        let clock = ContinuousClock(); let deadline = clock.now + .seconds(600)
-        while vm.animation.armedStrokes == nil && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await pollMainActor(deadline: 600, every: .milliseconds(10)) { vm.animation.armedStrokes != nil }
         #expect(vm.animation.armedStrokes != nil, "this load's cue end did not start the presentation")
         #expect(vm.currentLetterName == "I")
     }
@@ -910,10 +905,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         #expect(audio.playCount == 1, "precondition: the pen sounds")
         c.requestIdleAfterHold(SoundEnvelope.liftHoldSeconds) // lift
         c.request(.active, immediate: true)                  // re-touch inside the hold
-        let clock = ContinuousClock(); let deadline = clock.now + .seconds(600)
-        while log.holdsReturned == 0 && clock.now < deadline {
-            try? await Task.sleep(for: .milliseconds(10))
-        }
+        await pollMainActor(deadline: 600, every: .milliseconds(10)) { log.holdsReturned != 0 }
         // The sleeper runs off the main actor; the rest of the hold's body
         // (the cancellation check, the stop) is queued back onto it. One
         // more main-actor sleep lets that queued job run first.

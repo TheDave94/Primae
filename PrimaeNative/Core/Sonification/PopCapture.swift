@@ -263,7 +263,7 @@ nonisolated final class PopCapture: @unchecked Sendable {
 
     private func observeSession() {
         let nc = NotificationCenter.default
-        func route() -> String {
+        @Sendable func route() -> String {
             AVAudioSession.sharedInstance().currentRoute.outputs.map { "\($0.portType.rawValue):\($0.portName)" }.joined(separator: ",")
         }
         nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil) { [self] n in

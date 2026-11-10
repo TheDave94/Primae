@@ -182,7 +182,7 @@ extension NewParticipantResetTests {
     /// under A); key the archive by id — RED (A-training missing).
     @Test("restoring a participant seals the live child and keeps every earlier seal")
     func restoreSealsTheLiveChildAndKeepsEarlierSeals() async throws {
-        try await withRestoredIdentity {
+        await withRestoredIdentity {
             let dashboardURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("\(UUID().uuidString).json")
             let archiveDir = FileManager.default.temporaryDirectory
