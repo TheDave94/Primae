@@ -1117,10 +1117,13 @@ Implications:
     `studyPreconditionFailure` returns "Keine Kopfhörer verbunden …" and the
     session screen is the "Studie kann nicht starten" stop, live with the
     route: unplugging mid-letter stops the letter and refuses touches;
-    plugging back in resumes it where it was (r14; from r16 the unplug is
-    an interruption and re-plugging restarts the letter from its cue, B1).
-    An observe sound cut by the
-    unplug is not replayed (r11 records it). The panning-off comparison
+    plugging back in resumed it where it was, and an observe sound cut by
+    the unplug was not replayed (r14 and r15; r11 records the cut). From
+    r16 the unplug is an interruption (B1): a cut observe phase restarts
+    from its instruction cue, with the animation and the arm's sound from
+    the start (`TracingViewModel.restartInterruptedObserve`, counted in
+    `observeRestarts`); guided and free writing resume where they were,
+    with the stroke in progress cancelled. The panning-off comparison
     configuration (built for a loudspeaker) is unaffected; the silent arm
     was unaffected until r16. This closes the open question the 2026-10-13 audit called
     D7 ("blocking a sound-arm session on a non-headphone route was not
@@ -1172,8 +1175,9 @@ Implications:
     transducer (round-1 PROTOCOL D-2: a second between-arm difference). The
     proctor banner shows in every arm.
   - **Unplug = interruption (B1).** Losing the headphones mid-letter is a
-    `.headphones` interruption: the letter freezes and re-plugging restarts it
-    from its instruction cue (D9 default), the same path as R-006. Under r14
+    `.headphones` interruption: the letter freezes; on re-plugging a cut
+    observe phase restarts from its instruction cue (D9 default), the same
+    path as R-006, and guided or free writing resume where they were. Under r14
     the observe demonstration ran on behind the stop and "Jetzt du." played
     (round-1 C-1/C-2, reproduced 4/4 on the iPad).
   - **AudioEngine (bounded override, C1-C3).** David allowed a change to

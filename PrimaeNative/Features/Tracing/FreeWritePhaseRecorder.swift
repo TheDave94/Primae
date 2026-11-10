@@ -222,7 +222,8 @@ final class FreeWritePhaseRecorder {
         let frame = cellFrame ?? CGRect(origin: .zero, size: canvasSize)
         // Both axes in units of the frame's HEIGHT (r16, audit B-3): the
         // per-axis normalisation that stood here weighted a vertical error
-        // 1.73x a horizontal one on the study canvas. The reference's x is
+        // by the canvas aspect ratio against a horizontal one (1.45x on the
+        // study iPad's 1270 x 874 pt canvas). The reference's x is
         // rescaled to match; its radius is already in cell-height units.
         let iso = StrokeProcessScorer.heightNormalised(points: points, reference: reference,
                                                        frame: frame)

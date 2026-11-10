@@ -2642,10 +2642,13 @@ boundary without re-deriving from Section 3b.
 
 - *Unit.* `spatialDeviation`, `spatialDeviationRaw` and the radius behind
   `formAccuracy` are in canvas HEIGHTS on both axes. Through r15 x was in
-  canvas widths and y in canvas heights, so on the ~1.73:1 study canvas a
-  vertical error weighed 1.73× a horizontal one. The production test
+  canvas widths and y in canvas heights, so a vertical error weighed the
+  canvas aspect ratio times a horizontal one: 1.45× on the study iPad
+  (canvas 1270 × 874 pt in its exported traces), 1.73× on the
+  1084 × 626 pt A16 cell the tests use. The production test
   (`StrokeProcessScorer.isProduction`, 2 % of the extent) uses the same
-  unit: a horizontal mark now counts from ≈12.5 pt instead of ≈21.7 pt.
+  unit: on the study iPad a horizontal mark now counts from ≈17.5 pt
+  instead of ≈25.4 pt (A16 cell: ≈12.5 pt instead of ≈21.7 pt).
 - *Fit.* The r6 bounding-box fit is taken over the MATCHED strokes only
   (match, fit, re-match). Extra strokes (a stray contact, a palm) no longer
   move it; through r15 one 3 pt contact far from the letter multiplied

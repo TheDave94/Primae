@@ -111,8 +111,10 @@ struct StrokeProcessMeasures: Equatable {
     /// canvas HEIGHT, on both axes (`StrokeProcessScorer.heightNormalised`),
     /// so a horizontal and a vertical error of the same size in points
     /// count the same. Before r16 each axis was normalised separately
-    /// (x by the width, y by the height), which on the ~1.73:1 study canvas
-    /// weighted a vertical error 1.73x a horizontal one. The study letters
+    /// (x by the width, y by the height), which weighted a vertical error
+    /// by the canvas aspect ratio against a horizontal one: 1.45x on the
+    /// study iPad (1270 x 874 pt in its exported traces), 1.73x on the
+    /// 1084 x 626 pt A16 cell the tests use. The study letters
     /// share one glyph height, so this unit is a fixed multiple of the
     /// glyph height. Re-derive offline from `RawTrace` by dividing both
     /// point axes by `canvasSize.height` and multiplying the reference's x
@@ -293,8 +295,9 @@ enum StrokeProcessScorer {
     /// onto the reference but NOT scaled up, so a dot cannot be inflated
     /// into a letter-sized shape that scores as letter-like. 2% of the
     /// canvas. Ruled 2026-10-05. From r16 the unit is the canvas HEIGHT on
-    /// both axes (≈12.5 pt on the A16 study canvas; before r16 a horizontal
-    /// extent was measured in canvas widths, ≈21.7 pt).
+    /// both axes (≈17.5 pt on the study iPad's 1270 x 874 pt canvas, ≈12.5 pt
+    /// on the 1084 x 626 pt A16 test cell; before r16 a horizontal
+    /// extent was measured in canvas widths, ≈25.4 pt and ≈21.7 pt).
     static let scribbleExtent: CGFloat = 0.02
     /// Upper bound on match -> fit -> re-match rounds per seed (r16). Two
     /// rounds reach the fixed point in every case measured; the bound only

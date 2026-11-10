@@ -8,10 +8,11 @@
 //   - B-2: the radius scales by glyph HEIGHT only, so every study letter gets
 //     the same tolerance in points (I's used to be 2.5x stricter than M's).
 //   - B-3: the hit test is isotropic in points (it was 1.73x wider
-//     horizontally on the study cell).
+//     horizontally on the A16 cell used here; 1.45x on the study iPad's
+//     1270 x 874 pt canvas).
 //
 // Geometry is the real Regular corpus mapped through the real font's glyph
-// rect (`renderGlyphPath`, the guard-free path builder) on the A16 study
+// rect (`renderGlyphPath`, the guard-free path builder) on the A16
 // cell, through the production mapper `StrokeTracker.cellDefinition`, and
 // fed to the tracker the way TouchDispatcher feeds it (cell-fraction point
 // plus the cell's aspect ratio). Nothing here touches global state.

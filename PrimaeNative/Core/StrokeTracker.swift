@@ -107,8 +107,10 @@ final class StrokeTracker {
     /// are normalised in (the cell). Distances are measured in units of
     /// that frame's HEIGHT, on both axes, so the hit test is isotropic in
     /// points: before protocol r16 (audit B-3) both axes were normalised
-    /// separately, and on the ~1.73:1 study cell the tolerance was 1.73x
-    /// wider horizontally than vertically. The radius is in the same
+    /// separately, so the tolerance was wider horizontally than vertically
+    /// by the cell's aspect ratio: 1.45x on the study iPad (canvas
+    /// 1270 x 874 pt in its exported traces), 1.73x on the 1084 x 626 pt
+    /// A16 cell the tests use. The radius is in the same
     /// height units (`cellDefinition(from:glyphRect:)`). 1.0 (the default)
     /// is a square frame, i.e. the pre-r16 arithmetic.
     ///
