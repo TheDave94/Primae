@@ -102,6 +102,10 @@ public struct MainAppView: View {
         // own tinted band via `WorldPalette.background(for:)`.
         .background(Color.paperDeep.ignoresSafeArea())
         .ignoresSafeArea()
+        // Protocol r23 (design audit finding 11): no clock, date or
+        // battery on the child's screen. The shell already ignores the
+        // safe areas, so nothing moves.
+        .statusBarHidden(TracingCanvasStyle.childScreenHidesStatusBar)
         .fullScreenCover(isPresented: $showParentArea) {
             ParentAreaView()
                 .environment(vm)

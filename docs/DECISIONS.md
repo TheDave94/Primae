@@ -1845,6 +1845,40 @@ Implications:
   - **Stamp / record.** No new setting, no export change.
     `StudyProtocol.revision` is 22.
 
+- **Protocol revision 23 — the tracing screen's guide marks are easier to
+  see (design audit 2026-11-10, findings 4, 6, 7, 10, 11).** Every arm and
+  every phase identically: what the child sees changes, nothing the child
+  hears or does, so the contrast between the arms is untouched.
+  - **What changed.** Ghost line light blue #93C5FD solid (5.0 to 1 on the
+    glyph; was 1.17). Start dots opaque with a 3 pt paper outline and a
+    white tick on a finished stroke (done, active and pending now differ in
+    form; were green, blue, grey at 75 %, 2.0 to 3.0 to 1 on the glyph). The
+    ink keeps its colour and widths and gets a 3 pt paper casing per side
+    (edge 8.6 to 1 on the glyph; the ink alone was 2.40). Phase dots 12 pt,
+    brand blue (5.17 on white; was 3.62), pending ring #64748B 2 pt (4.76;
+    was 1.74), no pulse under Reduce Motion. Status bar hidden on the
+    child's screen. Values: `TracingCanvasStyle.swift`, pinned by
+    `TracingCanvasStyleTests`.
+  - **How it was chosen.** For each finding, two candidates and the current
+    screen were rendered in the running app on the study iPad (a scratch
+    build with launch-argument switches, never landed) and laid out as
+    A / B / C crops of the same state on the r23 design canvas
+    (https://claude.ai/artifact/CDC9uj3JTJ489DxF61hB23; shots in
+    `wt-primae-audit-notes/audit-2026-11-10/design-round/shots/candidates`).
+    David delegated the pick (2026-11-11: "I rely on you to take the right
+    decision on the rest"); the seat took candidate B throughout. The
+    rejected options: a paper-coloured dotted ghost line (reads as gaps in
+    the letter), a single start dot (drops the order of the strokes still
+    to come), a lighter ink over the glyph only (the ink would change colour
+    between guided tracing and free writing).
+  - **Not changed.** Glyph, paper, red endpoint ring, observe guide dot,
+    chevrons (44 pt: the proctor's control on the child's screen; a study
+    session advances on its own, and a larger target invites accidental
+    taps). Audit findings 1 and 2 concern the `direct` phase, which no study
+    session runs since D5.
+  - **Stamp / record.** No new setting, no export change.
+    `StudyProtocol.revision` is 23.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

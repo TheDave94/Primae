@@ -158,7 +158,8 @@ import CoreGraphics
     // MARK: The instrument
 
     /// Counts the pixels `PhaseDotIndicator` paints in `primaryBlue`
-    /// (0.22, 0.54, 0.87 → 56, 138, 222).
+    /// (`TracingCanvasStyle.phaseDotFillHex`, #2563EB → 37, 99, 235 since
+    /// protocol r23; r22 was 56, 138, 222).
     ///
     /// WHY A RASTER. `dot(for:)` is `private`, its decisions are booleans
     /// inside a `@ViewBuilder`, and SwiftUI vends no accessibility elements
@@ -196,9 +197,10 @@ import CoreGraphics
 
         var count = 0
         for i in stride(from: 0, to: buffer.count, by: 4) where buffer[i + 3] > 200 {
-            if abs(Int(buffer[i]) - 56) < 40,
-               abs(Int(buffer[i + 1]) - 138) < 40,
-               abs(Int(buffer[i + 2]) - 222) < 40 { count += 1 }
+            let hex = TracingCanvasStyle.phaseDotFillHex
+            if abs(Int(buffer[i]) - Int((hex >> 16) & 0xFF)) < 40,
+               abs(Int(buffer[i + 1]) - Int((hex >> 8) & 0xFF)) < 40,
+               abs(Int(buffer[i + 2]) - Int(hex & 0xFF)) < 40 { count += 1 }
         }
         return count
     }

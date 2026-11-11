@@ -104,8 +104,9 @@ struct TracingCanvasView: View {
                                     y: oy + cp.y * cellSize.height)
                         }
                         let ghostPath = smoothPath(through: pts)
-                        context.stroke(ghostPath, with: .color(.canvasGhost.opacity(0.35)),
-                                       style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                        context.stroke(ghostPath, with: .color(Color(hex: TracingCanvasStyle.ghostHex)),
+                                       style: StrokeStyle(lineWidth: TracingCanvasStyle.ghostLineWidth,
+                                                          lineCap: .round, lineJoin: .round))
                     }
                 }
 
@@ -121,11 +122,20 @@ struct TracingCanvasView: View {
                         let screenX = ox + first.x * cellSize.width
                         let screenY = oy + first.y * cellSize.height
                         let pt = CGPoint(x: screenX, y: screenY)
-                        let r: CGFloat = isActive ? 18 : 14
-                        let dotRect = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
-                        let dot = Path(ellipseIn: dotRect)
-                        let color: Color = isComplete ? .green : (isActive ? .blue : .gray)
-                        context.fill(dot, with: .color(color.opacity(0.75)))
+                        let style = TracingCanvasStyle.startDot(isComplete: isComplete, isActive: isActive)
+                        func circle(_ r: CGFloat) -> Path {
+                            Path(ellipseIn: CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2))
+                        }
+                        context.fill(circle(style.radius + style.outlineWidth), with: .color(.canvasPaper))
+                        context.fill(circle(style.radius), with: .color(Color(hex: style.fillHex)))
+                        if style.showsTick {
+                            var tick = Path()
+                            tick.move(to: CGPoint(x: pt.x - 6, y: pt.y + 0.5))
+                            tick.addLine(to: CGPoint(x: pt.x - 1.5, y: pt.y + 5))
+                            tick.addLine(to: CGPoint(x: pt.x + 6.5, y: pt.y - 4.5))
+                            context.stroke(tick, with: .color(.white),
+                                           style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                        }
                     }
                 }
                 // ^ the ring below is a SIBLING of the dots block, not a
@@ -180,8 +190,7 @@ struct TracingCanvasView: View {
                 if retainedInk.count > 1 {
                     var path = Path()
                     path.addLines(retainedInk)
-                    context.stroke(path, with: .color(.canvasInkStroke.opacity(0.9)),
-                                   style: StrokeStyle(lineWidth: 12, lineCap: .round, lineJoin: .round))
+                    Self.strokeInk(path, in: &context, color: .canvasInkStroke.opacity(0.9), width: 12)
                 }
 
                 // Active ink — only drawn on the active cell pass so
@@ -191,8 +200,7 @@ struct TracingCanvasView: View {
                     var path = Path()
                     path.addLines(vm.activePath)
                     let inkWidth = InkStyle.width(forPressure: vm.pencilPressure)
-                    context.stroke(path, with: .color(.canvasInkStroke),
-                                   style: StrokeStyle(lineWidth: inkWidth, lineCap: .round, lineJoin: .round))
+                    Self.strokeInk(path, in: &context, color: .canvasInkStroke, width: inkWidth)
                 }
 
                 // Lingering ink — snapshot of the just-completed trace
@@ -220,16 +228,14 @@ struct TracingCanvasView: View {
                         guard endIdx - startIdx > 1 else { continue }
                         inked.addLines(Array(pts[startIdx..<endIdx]))
                     }
-                    context.stroke(inked, with: .color(.canvasInkStroke),
-                                   style: StrokeStyle(lineWidth: InkStyle.width(forPressure: nil),
-                                                      lineCap: .round, lineJoin: .round))
+                    Self.strokeInk(inked, in: &context, color: .canvasInkStroke,
+                                   width: InkStyle.width(forPressure: nil))
                 }
 
                 if isActiveCell, vm.lingeringInk.count > 1 {
                     var path = Path()
                     path.addLines(vm.lingeringInk)
-                    context.stroke(path, with: .color(.canvasInkStroke.opacity(0.85)),
-                                   style: StrokeStyle(lineWidth: 14, lineCap: .round, lineJoin: .round))
+                    Self.strokeInk(path, in: &context, color: .canvasInkStroke.opacity(0.85), width: 14)
                 }
 
                 // Animation guide dot — active cell only; suppressed
@@ -512,6 +518,18 @@ struct TracingCanvasView: View {
             path.addCurve(to: p2, control1: c1, control2: c2)
         }
         return path
+    }
+
+    /// The child's ink over a paper-coloured casing (protocol r23,
+    /// `TracingCanvasStyle.inkCasingPerSide`): the casing gives the stroke
+    /// an edge against the dark glyph and is invisible on the paper.
+    private static func strokeInk(_ path: Path, in context: inout GraphicsContext,
+                                  color: Color, width: CGFloat) {
+        context.stroke(path, with: .color(.canvasPaper),
+                       style: StrokeStyle(lineWidth: width + 2 * TracingCanvasStyle.inkCasingPerSide,
+                                          lineCap: .round, lineJoin: .round))
+        context.stroke(path, with: .color(color),
+                       style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
     }
 }
 

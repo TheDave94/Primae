@@ -14,9 +14,11 @@ struct PhaseDotIndicator: View {
     /// there would show three permanently-empty placeholders.
     var activePhases: [LearningPhase] = LearningPhase.allCases
 
-    private let dotSize: CGFloat = 10
-    private let primaryBlue = Color(red: 0.22, green: 0.54, blue: 0.87)
+    // Protocol r23 (design audit finding 7): TracingCanvasStyle.
+    private let dotSize: CGFloat = TracingCanvasStyle.phaseDotSize
+    private let primaryBlue = Color(hex: TracingCanvasStyle.phaseDotFillHex)
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
     var body: some View {
@@ -26,6 +28,8 @@ struct PhaseDotIndicator: View {
             }
         }
         .onAppear {
+            // Reduce Motion: the current dot stays enlarged, without the pulse.
+            if reduceMotion { pulse = true; return }
             withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
                 pulse = true
             }
@@ -52,7 +56,8 @@ struct PhaseDotIndicator: View {
                     .scaleEffect(isCurrent ? (pulse ? 1.18 : 1.0) : 1.0)
             } else {
                 Circle()
-                    .strokeBorder(Color.gray.opacity(0.55), lineWidth: 1.5)
+                    .strokeBorder(Color(hex: TracingCanvasStyle.phaseDotPendingHex),
+                                  lineWidth: TracingCanvasStyle.phaseDotPendingLineWidth)
                     .frame(width: dotSize, height: dotSize)
             }
         }

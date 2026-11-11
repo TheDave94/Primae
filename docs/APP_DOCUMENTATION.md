@@ -91,114 +91,114 @@ The library target has no `App` struct of its own — Previews and
 
 #### `Theme/`
 SwiftUI port of the Primae design tokens (see [`design-system/`](../design-system/) at the repo root for the source-of-truth CSS).
-| File | Lines | Role |
-|------|------:|------|
-| `Colors.swift` | 138 | `Color` extension where every named token resolves through the host app's Asset Catalog (`Primae/Primae/Assets.xcassets/Colors/<name>.colorset/`). Each colorset has explicit light + dark variants, so iOS / SwiftUI flip per trait collection without invoking any Swift closure. Replaces an earlier `UIColor(dynamicProvider:)` design that crashed under Swift 6 strict concurrency on the SwiftUI AsyncRenderer thread (see `docs/LESSONS.md`). Re-run `scripts/gen_colorsets.py` to regenerate the colorsets after a design-system update. |
-| `Radii.swift` | 24 | `Radii.sm..xxl` + `pill` mirroring `--r-*`. |
-| `Fonts.swift` | 132 | `Font.display(_:weight:) / .body(_:weight:) / .cursive(_:)` helpers + `FontSize.xs..glyph` (13–220 pt). PostScript-name resolver picks the bundled Primae / PrimaeText face for a given SwiftUI weight. |
-| `FontRegistration.swift` | 116 | `PrimaeFonts.registerAll()` — registers every bundled OTF/TTF with CoreText at app launch via `CTFontManagerRegisterFontsForURLs`. The load-bearing path because the fonts ship in `Bundle.module`, not the main bundle (where `INFOPLIST_KEY_UIAppFonts` would search). |
-| `Appearance.swift` | 24 | Resolver mapping the `@AppStorage("primaeAppearance")` string ("system" / "light" / "dark") to SwiftUI's `ColorScheme?` so the host app applies it via `.preferredColorScheme(...)` at the WindowGroup root. The parent-area "Erscheinungsbild" picker writes to this key; flipping it re-renders against the asset-catalog colorsets. |
+| File | Role |
+|------|------|
+| `Colors.swift` | `Color` extension where every named token resolves through the host app's Asset Catalog (`Primae/Primae/Assets.xcassets/Colors/<name>.colorset/`). Each colorset has explicit light + dark variants, so iOS / SwiftUI flip per trait collection without invoking any Swift closure. Replaces an earlier `UIColor(dynamicProvider:)` design that crashed under Swift 6 strict concurrency on the SwiftUI AsyncRenderer thread (see `docs/LESSONS.md`). Re-run `scripts/gen_colorsets.py` to regenerate the colorsets after a design-system update. |
+| `Radii.swift` | `Radii.sm..xxl` + `pill` mirroring `--r-*`. |
+| `Fonts.swift` | `Font.display(_:weight:) / .body(_:weight:) / .cursive(_:)` helpers + `FontSize.xs..glyph` (13–220 pt). PostScript-name resolver picks the bundled Primae / PrimaeText face for a given SwiftUI weight. |
+| `FontRegistration.swift` | `PrimaeFonts.registerAll()` — registers every bundled OTF/TTF with CoreText at app launch via `CTFontManagerRegisterFontsForURLs`. The load-bearing path because the fonts ship in `Bundle.module`, not the main bundle (where `INFOPLIST_KEY_UIAppFonts` would search). |
+| `Appearance.swift` | Resolver mapping the `@AppStorage("primaeAppearance")` string ("system" / "light" / "dark") to SwiftUI's `ColorScheme?` so the host app applies it via `.preferredColorScheme(...)` at the WindowGroup root. The parent-area "Erscheinungsbild" picker writes to this key; flipping it re-renders against the asset-catalog colorsets. |
 
 #### `Components/`
-| File | Lines | Role |
-|------|------:|------|
-| `StickerButton.swift` | 60 | `StickerButtonStyle` ButtonStyle — pill capsule, 14×24 pt padding, white label, tint-coloured halo + ink drop shadow, scale + offset on press. Idiomatic SwiftUI port of `.btn-sticker*` from `design-system/ui_kits/ipad-app/styles.css`. Per-world variants via the `tint:` parameter (`.brand` / `.schule` / `.werkstatt` / `.fortschritte`). |
+| File | Role |
+|------|------|
+| `StickerButton.swift` | `StickerButtonStyle` ButtonStyle — pill capsule, 14×24 pt padding, white label, tint-coloured halo + ink drop shadow, scale + offset on press. Idiomatic SwiftUI port of `.btn-sticker*` from `design-system/ui_kits/ipad-app/styles.css`. Per-world variants via the `tint:` parameter (`.brand` / `.schule` / `.werkstatt` / `.fortschritte`). |
 
 #### `Core/` (data + algorithms; no SwiftUI)
-| File | Lines | Role |
-|------|------:|------|
-| `Models.swift` | 65 | `LetterAsset`, `LetterStrokes`, `StrokeDefinition`, `Checkpoint`. |
-| `AppWorld.swift` | 49 | Three-world enum (`schule`, `werkstatt`, `fortschritte`). |
-| `LearningPhase.swift` | 81 | Four cases, three run: `observe`, `direct` (kept for Codable, never active), `guided`, `freeWrite`. German display names. |
-| `LearningPhaseController.swift` | 175 | Pure-value-type FSM. Star thresholds per phase; ThesisCondition-aware `activePhases`. |
-| `LetterOrderingStrategy.swift` | 33 | `motorSimilarity`, `wordBuilding`, `alphabetical` — explicit ordering tables. |
-| `SchriftArt.swift` | 63 | Five script enum cases. Currently bundled: Druckschrift (Primae) + Schreibschrift (Playwrite AT). |
-| `WritingMode.swift` | small | `guided` vs `freeform`. |
-| `ThesisCondition.swift` | 97 | A/B condition + ParticipantStore with stable UUID assignment. |
-| `OverlayQueueManager.swift` | 203 | Serialised FIFO of `CanvasOverlay` cases. Modal overlays carry nil duration (wait for explicit dismiss). `enqueueBeforeCelebration` interrupts an already-active celebration or paperTransfer to slot a late-arriving recognition badge ahead of it (C-4 + W-25). |
-| `AudioControlling.swift` | small | Protocol seam for the audio engine. |
-| `PlaybackStateMachine.swift` | small | Pure FSM idle ↔ active. |
-| `AudioEngine.swift` | 382 | ⚠️ **STABLE & FRAGILE** — do NOT modify. AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. From r17 the host of the live sonification voice (§7.1a); the child hears `Core/Sonification/`, not its player. |
-| `SpeechSynthesizer.swift` | 162 | German `AVSpeechSynthesizer` wrapper. `ChildSpeechLibrary` centralises every TTS phrase. |
-| `StrokeTracker.swift` | 96 | Checkpoint proximity tracker. Owns `progress[]` + `radiusMultiplier`. |
-| `HapticEngine.swift` | 156 | Protocol + `CoreHapticsEngine` + `UIKitHapticEngine` fallback + `NullHapticEngine` for tests. |
-| `DifficultyAdaptation.swift` | 127 | `MovingAverageAdaptationPolicy` with hysteresis + `FixedAdaptationPolicy` for control arm. |
-| `ProgressStore.swift` | 400 | Per-letter progress JSON store. Carries phaseScores, speedTrend (cap 50, D-4), recognitionAccuracy + recognitionSamples (cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. Schema-versioned (W-17). |
-| `ParentDashboardStore.swift` | 497 | Session + phase-record JSON store. `PhaseSessionRecord` carries Schreibmotorik dimensions, session-aligned recognition (D-2), `recordedAt` timestamp (D-3), `inputDevice` (D-6). `SessionDurationRecord` also carries `recordedAt` (D-9). accuracySamples cap 200. Schema-versioned (W-17). |
-| `ParentDashboardExporter.swift` | 354 | CSV / TSV / JSON exporter. 15-column per-phase rows; per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`); `letterByArm` block (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
-| `StreakStore.swift` | 219 | Daily-streak JSON store + `RewardEvent` enum. `earnedRewards: Set<RewardEvent>` exposed on the protocol so the Fortschritte gallery can render achievement badges. Schema-versioned (W-17). |
-| `LocalNotificationScheduler.swift` | small | Daily reminder with quiet hours + streak-aware copy. Compiled out of the study build (`#if !STUDY_BUILD`, R-065, #49). |
-| `OnboardingCoordinator.swift` | 220 | 7-step state machine. U4 adds an `OnboardingVariant` enum (`.full` 7-step, `.short` 3-step) so the cohort can A/B compare onboarding length. The variant the child actually completed is locked into `OnboardingState.variantUsedRaw` on first complete (re-runs don't overwrite) so post-hoc analysis can correlate engagement metrics with the original variant. |
-| `LetterScheduler.swift` | 152 | Spaced-repetition prioritiser. Ebbinghaus-style decay. |
-| `RetrievalScheduler.swift` | 75 | P1 — every-Nth-letter cadence for retrieval-practice prompts (Roediger & Karpicke 2006). Persisted counter survives relaunch; minimum-prior-completions guard skips testing on never-seen letters. Drives `RetrievalPromptView` via `OverlayQueueManager.retrievalPrompt`. |
-| `LetterStars.swift` | small | phaseScores → 0…4 star count. |
-| `LetterRecognizer.swift` | 380 | `CoreMLLetterRecognizer` + `StubLetterRecognizer`. nonisolated, runs on `Task.detached`. D3 added a closure-injected classifier seam and the `LetterClassification` framework-agnostic intermediate type so tests can swap a deterministic stub without bundling a `.mlpackage`. |
-| `ConfidenceCalibrator.swift` | 119 | Confusable-pair penalty + history boost shim. |
-| `FreeWriteScorer.swift` | 372 | Discrete Fréchet, four-dimension `WritingAssessment`, Hausdorff form-accuracy. |
-| `FreeformWordList.swift` | small | Demo word library for freeform-word mode. |
-| `PrimaeLetterRenderer.swift` | small | OTF-based glyph render → UIImage. SchriftArt-aware. |
-| `LetterAnimationGuide.swift` | small | Per-stroke animation timing model. |
-| `CalibrationStore.swift` | small | Per-letter user-calibrated stroke persistence. |
+| File | Role |
+|------|------|
+| `Models.swift` | `LetterAsset`, `LetterStrokes`, `StrokeDefinition`, `Checkpoint`. |
+| `AppWorld.swift` | Three-world enum (`schule`, `werkstatt`, `fortschritte`). |
+| `LearningPhase.swift` | Four cases, three run: `observe`, `direct` (kept for Codable, never active), `guided`, `freeWrite`. German display names. |
+| `LearningPhaseController.swift` | Pure-value-type FSM. Star thresholds per phase; ThesisCondition-aware `activePhases`. |
+| `LetterOrderingStrategy.swift` | `motorSimilarity`, `wordBuilding`, `alphabetical` — explicit ordering tables. |
+| `SchriftArt.swift` | Five script enum cases. Currently bundled: Druckschrift (Primae) + Schreibschrift (Playwrite AT). |
+| `WritingMode.swift` | `guided` vs `freeform`. |
+| `ThesisCondition.swift` | A/B condition + ParticipantStore with stable UUID assignment. |
+| `OverlayQueueManager.swift` | Serialised FIFO of `CanvasOverlay` cases. Modal overlays carry nil duration (wait for explicit dismiss). `enqueueBeforeCelebration` interrupts an already-active celebration or paperTransfer to slot a late-arriving recognition badge ahead of it (C-4 + W-25). |
+| `AudioControlling.swift` | Protocol seam for the audio engine. |
+| `PlaybackStateMachine.swift` | Pure FSM idle ↔ active. |
+| `AudioEngine.swift` | ⚠️ **STABLE & FRAGILE** — do NOT modify. AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. From r17 the host of the live sonification voice (§7.1a); the child hears `Core/Sonification/`, not its player. |
+| `SpeechSynthesizer.swift` | German `AVSpeechSynthesizer` wrapper. `ChildSpeechLibrary` centralises every TTS phrase. |
+| `StrokeTracker.swift` | Checkpoint proximity tracker. Owns `progress[]` + `radiusMultiplier`. |
+| `HapticEngine.swift` | Protocol + `CoreHapticsEngine` + `UIKitHapticEngine` fallback + `NullHapticEngine` for tests. |
+| `DifficultyAdaptation.swift` | `MovingAverageAdaptationPolicy` with hysteresis + `FixedAdaptationPolicy` for control arm. |
+| `ProgressStore.swift` | Per-letter progress JSON store. Carries phaseScores, speedTrend (cap 50, D-4), recognitionAccuracy + recognitionSamples (cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. Schema-versioned (W-17). |
+| `ParentDashboardStore.swift` | Session + phase-record JSON store. `PhaseSessionRecord` carries Schreibmotorik dimensions, session-aligned recognition (D-2), `recordedAt` timestamp (D-3), `inputDevice` (D-6). `SessionDurationRecord` also carries `recordedAt` (D-9). accuracySamples cap 200. Schema-versioned (W-17). |
+| `ParentDashboardExporter.swift` | CSV / TSV / JSON exporter. 15-column per-phase rows; per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`); `letterByArm` block (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
+| `StreakStore.swift` | Daily-streak JSON store + `RewardEvent` enum. `earnedRewards: Set<RewardEvent>` exposed on the protocol so the Fortschritte gallery can render achievement badges. Schema-versioned (W-17). |
+| `LocalNotificationScheduler.swift` | Daily reminder with quiet hours + streak-aware copy. Compiled out of the study build (`#if !STUDY_BUILD`, R-065, #49). |
+| `OnboardingCoordinator.swift` | 7-step state machine. U4 adds an `OnboardingVariant` enum (`.full` 7-step, `.short` 3-step) so the cohort can A/B compare onboarding length. The variant the child actually completed is locked into `OnboardingState.variantUsedRaw` on first complete (re-runs don't overwrite) so post-hoc analysis can correlate engagement metrics with the original variant. |
+| `LetterScheduler.swift` | Spaced-repetition prioritiser. Ebbinghaus-style decay. |
+| `RetrievalScheduler.swift` | P1 — every-Nth-letter cadence for retrieval-practice prompts (Roediger & Karpicke 2006). Persisted counter survives relaunch; minimum-prior-completions guard skips testing on never-seen letters. Drives `RetrievalPromptView` via `OverlayQueueManager.retrievalPrompt`. |
+| `LetterStars.swift` | phaseScores → 0…4 star count. |
+| `LetterRecognizer.swift` | `CoreMLLetterRecognizer` + `StubLetterRecognizer`. nonisolated, runs on `Task.detached`. D3 added a closure-injected classifier seam and the `LetterClassification` framework-agnostic intermediate type so tests can swap a deterministic stub without bundling a `.mlpackage`. |
+| `ConfidenceCalibrator.swift` | Confusable-pair penalty + history boost shim. |
+| `FreeWriteScorer.swift` | Discrete Fréchet, four-dimension `WritingAssessment`, Hausdorff form-accuracy. |
+| `FreeformWordList.swift` | Demo word library for freeform-word mode. |
+| `PrimaeLetterRenderer.swift` | OTF-based glyph render → UIImage. SchriftArt-aware. |
+| `LetterAnimationGuide.swift` | Per-stroke animation timing model. |
+| `CalibrationStore.swift` | Per-letter user-calibrated stroke persistence. |
 
 #### `Features/Tracing/`
-| File | Lines | Role |
-|------|------:|------|
-| `TracingViewModel.swift` | 2086 | `@MainActor @Observable` central coordinator. Recognition orchestration + per-letter loading. Forwards `beginTouch`/`updateTouch`/`endTouch` to `TouchDispatcher` (D1b) and `advanceLearningPhase()` to `PhaseTransitionCoordinator` (D1c). External readers go through `allProgress` / `progress(for:)` (W-5); collaborators have internal access. `playback`, `touchDispatcher`, and `phaseTransitions` are non-optional `let`s wired through the W-16 two-phase init pattern. Tracks active practice time across background/foreground (D-1). Owns toggles for retrieval prompts (P1), backward chaining (P5), onboarding variant (U4), phoneme mode (P6). |
-| `TouchDispatcher.swift` | 365 | `@MainActor` reference type that owns the touch-session state (`isSingleTouchInteractionActive`, last point/timestamp, smoothed velocity, the three tunable knobs) and the `beginTouch`/`updateTouch`/`endTouch` flow plus 5 helpers (resyncCanvasSizeIfNeeded, updateGuidedAndFreeWriteSpeed, fireMovementHaptics, updateAdaptivePlayback, handleStrokeCompletionIfReached) and the static `mapVelocityToSpeed`. Communicates back to the VM via `weak var vm`. D1b — second VM-decomposition slice. |
-| `PhaseTransitionCoordinator.swift` | 280 | `@MainActor` reference type that owns the post-phase pipeline: `advance()` (score the active phase, queue post-freeWrite kpOverlay + paperTransfer, advance the phase controller, route to toast+speech or the completion pipeline), `recordSessionCompletion()` (private celebration + per-phase dashboard rows), and `commitCompletion(...)` (durable progress + streak + dashboard, cloud-sync push, difficulty-tier adaptation, completion HUD). Communicates back to the VM via `weak var vm`. D1c — third VM-decomposition slice. |
-| `RecognitionTokenTracker.swift` | 60 | Tiny `@MainActor` reference type that owns the UUID token marking the currently-authoritative recognition request. Replaces the duplicated issueToken/stillActive guards previously hand-rolled at three async dispatch sites (D1a, first VM-decomposition slice). |
-| `TracingDependencies.swift` | small | DI bundle. `.live` defaults; `.stub` swaps for tests. |
-| `TracingCanvasView.swift` | 697 | SwiftUI Canvas: glyph + ghost + ink + KP overlay. Pencil + finger UIKit overlays. |
-| `FreeformController.swift` | 113 | Owns freeform state (mode, sub-mode, target word, drawing buffers, recognition state, debounce task). |
-| `FreeWritePhaseRecorder.swift` | 213 | Owns the four freeWrite buffers + session timing + Schreibmotorik scoring. Two `assess` overloads: single-cell (with optional `cellFrame` for pencil layouts, C-5) and multi-cell `assess(cellReferences:)` that partitions points by frame and averages per-letter scores for word mode (W-26). |
-| `FreeformWritingView.swift` | ~720 | Blank-canvas writing UI. Verbal-only result popup (no metrics shown to children). |
-| `RecognitionFeedbackView.swift` | 140 | German verbal-only badge for freeWrite recognition. |
-| `CompletionCelebrationOverlay.swift` | small | Stars + "Weiter" button. |
-| `PaperTransferView.swift` | 95 | 3 s reference → 10 s write-on-paper → 3-emoji self-assessment. Speaks each prompt. |
-| `PhaseDotIndicator.swift` | small | Phase progress visuals. |
-| `LetterPickerBar.swift` / `LetterWheelPicker.swift` | small | Letter / word selection chrome. |
-| `StrokeCalibrationOverlay.swift` | 521 | DEBUG calibration UI with per-script persistence. |
-| `PlaybackController.swift` / `AnimationGuideController.swift` / `TransientMessagePresenter.swift` | small | Per-VM controllers built via factories. |
-| `InputModeDetector.swift` / `InputPreset.swift` | small | Finger / pencil hysteresis. |
-| `LetterCell.swift` / `SequenceGridController.swift` / `GridLayoutCalculator.swift` / `TracingSequence.swift` | small | Word-mode grid. |
+| File | Role |
+|------|------|
+| `TracingViewModel.swift` | `@MainActor @Observable` central coordinator. Recognition orchestration + per-letter loading. Forwards `beginTouch`/`updateTouch`/`endTouch` to `TouchDispatcher` (D1b) and `advanceLearningPhase()` to `PhaseTransitionCoordinator` (D1c). External readers go through `allProgress` / `progress(for:)` (W-5); collaborators have internal access. `playback`, `touchDispatcher`, and `phaseTransitions` are non-optional `let`s wired through the W-16 two-phase init pattern. Tracks active practice time across background/foreground (D-1). Owns toggles for retrieval prompts (P1), backward chaining (P5), onboarding variant (U4), phoneme mode (P6). |
+| `TouchDispatcher.swift` | `@MainActor` reference type that owns the touch-session state (`isSingleTouchInteractionActive`, last point/timestamp, smoothed velocity, the three tunable knobs) and the `beginTouch`/`updateTouch`/`endTouch` flow plus 5 helpers (resyncCanvasSizeIfNeeded, updateGuidedAndFreeWriteSpeed, fireMovementHaptics, updateAdaptivePlayback, handleStrokeCompletionIfReached) and the static `mapVelocityToSpeed`. Communicates back to the VM via `weak var vm`. D1b — second VM-decomposition slice. |
+| `PhaseTransitionCoordinator.swift` | `@MainActor` reference type that owns the post-phase pipeline: `advance()` (score the active phase, queue post-freeWrite kpOverlay + paperTransfer, advance the phase controller, route to toast+speech or the completion pipeline), `recordSessionCompletion()` (private celebration + per-phase dashboard rows), and `commitCompletion(...)` (durable progress + streak + dashboard, cloud-sync push, difficulty-tier adaptation, completion HUD). Communicates back to the VM via `weak var vm`. D1c — third VM-decomposition slice. |
+| `RecognitionTokenTracker.swift` | Tiny `@MainActor` reference type that owns the UUID token marking the currently-authoritative recognition request. Replaces the duplicated issueToken/stillActive guards previously hand-rolled at three async dispatch sites (D1a, first VM-decomposition slice). |
+| `TracingDependencies.swift` | DI bundle. `.live` defaults; `.stub` swaps for tests. |
+| `TracingCanvasView.swift` | SwiftUI Canvas: glyph + ghost + ink + KP overlay. Pencil + finger UIKit overlays. |
+| `FreeformController.swift` | Owns freeform state (mode, sub-mode, target word, drawing buffers, recognition state, debounce task). |
+| `FreeWritePhaseRecorder.swift` | Owns the four freeWrite buffers + session timing + Schreibmotorik scoring. Two `assess` overloads: single-cell (with optional `cellFrame` for pencil layouts, C-5) and multi-cell `assess(cellReferences:)` that partitions points by frame and averages per-letter scores for word mode (W-26). |
+| `FreeformWritingView.swift` | Blank-canvas writing UI. Verbal-only result popup (no metrics shown to children). |
+| `RecognitionFeedbackView.swift` | German verbal-only badge for freeWrite recognition. |
+| `CompletionCelebrationOverlay.swift` | Stars + "Weiter" button. |
+| `PaperTransferView.swift` | 3 s reference → 10 s write-on-paper → 3-emoji self-assessment. Speaks each prompt. |
+| `PhaseDotIndicator.swift` | Phase progress visuals. |
+| `LetterPickerBar.swift` / `LetterWheelPicker.swift` | Letter / word selection chrome. |
+| `StrokeCalibrationOverlay.swift` | DEBUG calibration UI with per-script persistence. |
+| `PlaybackController.swift` / `AnimationGuideController.swift` / `TransientMessagePresenter.swift` | Per-VM controllers built via factories. |
+| `InputModeDetector.swift` / `InputPreset.swift` | Finger / pencil hysteresis. |
+| `LetterCell.swift` / `SequenceGridController.swift` / `GridLayoutCalculator.swift` / `TracingSequence.swift` | Word-mode grid. |
 
 #### `Features/Library/`
-| File | Lines | Role |
-|------|------:|------|
-| `LetterRepository.swift` | 545 | Bundle scan + cache fallback + variant loader. |
-| `LetterCache.swift` | small | JSONLetterCache disk cache. |
+| File | Role |
+|------|------|
+| `LetterRepository.swift` | Bundle scan + cache fallback + variant loader. |
+| `LetterCache.swift` | JSONLetterCache disk cache. |
 
 #### `Features/Navigation/`
-| File | Lines | Role |
-|------|------:|------|
-| `MainAppView.swift` | 86 | Root host. `@AppStorage` persists active world. |
-| `WorldSwitcherRail.swift` | 162 | 64 pt rail with world buttons + 2 s long-press gear. |
-| `WorldPalette.swift` | small | Per-world palette. |
+| File | Role |
+|------|------|
+| `MainAppView.swift` | Root host. `@AppStorage` persists active world. |
+| `WorldSwitcherRail.swift` | 64 pt rail with world buttons + 2 s long-press gear. |
+| `WorldPalette.swift` | Per-world palette. |
 
 #### `Features/Worlds/`
-| File | Lines | Role |
-|------|------:|------|
-| `SchuleWorldView.swift` | ~280 | World 1. Hosts `TracingCanvasView` + queue-driven overlays. |
-| `WerkstattWorldView.swift` | 126 | World 2. Mode-card panel + `FreeformWritingView`. |
-| `FortschritteWorldView.swift` | 298 | World 3. Star + streak header, "Auszeichnungen" badge row (every `RewardEvent` rendered earned/unearned), letter gallery, fluency footer. |
+| File | Role |
+|------|------|
+| `SchuleWorldView.swift` | World 1. Hosts `TracingCanvasView` + queue-driven overlays. |
+| `WerkstattWorldView.swift` | World 2. Mode-card panel + `FreeformWritingView`. |
+| `FortschritteWorldView.swift` | World 3. Star + streak header, "Auszeichnungen" badge row (every `RewardEvent` rendered earned/unearned), letter gallery, fluency footer. |
 
 #### `Features/Onboarding/`
-| File | Lines | Role |
-|------|------:|------|
-| `OnboardingView.swift` | 569 | First-run flow with one animated demo per phase. |
+| File | Role |
+|------|------|
+| `OnboardingView.swift` | First-run flow with one animated demo per phase. |
 
 #### `Features/Parent/`
-| File | Lines | Role |
-|------|------:|------|
-| `ParentAreaView.swift` | 153 | Parental-gate host. NavigationSplitView with overview / research / settings / export. |
-| `ResearchDashboardView.swift` | 343 | Research-only metrics view. Schreibmotorik, KI predictions vs expected, condition arms, scheduler r, raw phase records. |
+| File | Role |
+|------|------|
+| `ParentAreaView.swift` | Parental-gate host. NavigationSplitView with overview / research / settings / export. |
+| `ResearchDashboardView.swift` | Research-only metrics view. Schreibmotorik, KI predictions vs expected, condition arms, scheduler r, raw phase records. |
 
 #### `Features/Dashboard/`
-| File | Lines | Role |
-|------|------:|------|
-| `ParentDashboardView.swift` | ~250 | Adult-grade overview. |
-| `PhaseRatesView.swift` / `PracticeTrendChart.swift` | small | Charts. |
-| `SettingsView.swift` | 111 | Schriftart / ordering / freeform / paper-transfer / Anzeige (Geisterbuchstabe) / study-enrolment / restart-onboarding. |
+| File | Role |
+|------|------|
+| `ParentDashboardView.swift` | Adult-grade overview. |
+| `PhaseRatesView.swift` / `PracticeTrendChart.swift` | Charts. |
+| `SettingsView.swift` | Schriftart / ordering / freeform / paper-transfer / Anzeige (Geisterbuchstabe) / study-enrolment / restart-onboarding. |
 
 #### `Resources/`
 * `Letters/<X>/strokes.json` — 26 uppercase + 26 lowercase + Ä Ö Ü ß = 59 letter folders. Every letter has a real baked `strokes.json` produced by `scripts/generate_strokes_auto.py` (see §13). Audio is still demo-scoped (see below).
