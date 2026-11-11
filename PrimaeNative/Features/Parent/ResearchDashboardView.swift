@@ -84,9 +84,8 @@ struct ResearchDashboardView: View {
                 // An arm/subset override refused at launch because the
                 // child already had rows (VERIFY-2/3). Parent area only.
                 if let refusal = vm.assignmentOverrideRefusal {
-                    Label(refusal, systemImage: "exclamationmark.triangle.fill")
+                    statusLabel(refusal, systemImage: "exclamationmark.triangle.fill", tint: .orange)
                         .font(.caption)
-                        .foregroundStyle(.orange)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 schreibmotorikSection
@@ -130,9 +129,8 @@ struct ResearchDashboardView: View {
 
     private func preflightWarning(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Andere Audio-Wiedergabe aktiv", systemImage: "speaker.wave.2.circle.fill")
+            statusLabel("Andere Audio-Wiedergabe aktiv", systemImage: "speaker.wave.2.circle.fill", tint: .red)
                 .font(.body(FontSize.md, weight: .semibold))
-                .foregroundStyle(.red)
             Text(text)
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
@@ -169,9 +167,8 @@ struct ResearchDashboardView: View {
 
     private var headphoneWarning: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Keine Kopfhörer verbunden", systemImage: "exclamationmark.triangle.fill")
+            statusLabel("Keine Kopfhörer verbunden", systemImage: "exclamationmark.triangle.fill", tint: .red)
                 .font(.body(FontSize.md, weight: .semibold))
-                .foregroundStyle(.red)
             Text(Self.headphoneWarningText(arm: vm.audioCondition,
                                            requiresHeadphones: vm.requiresHeadphones))
                 .font(.caption)
@@ -186,9 +183,8 @@ struct ResearchDashboardView: View {
 
     private func dataIntegritySection(_ summary: PersistenceIntegritySummary) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Label("Datenintegrität: \(summary.headline)", systemImage: "exclamationmark.octagon.fill")
+            statusLabel("Datenintegrität: \(summary.headline)", systemImage: "exclamationmark.octagon.fill", tint: .red)
                 .font(.body(FontSize.md, weight: .semibold))
-                .foregroundStyle(.red)
             Text("Vor dem Export prüfen. Beiseitegelegte Dateien (\u{201E}.undecodable-\u{201C}) liegen im App-Container unter Application Support/PrimaeNative und sind NICHT im Export enthalten — vor jeder Neuinstallation mit devicectl sichern.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
@@ -225,9 +221,8 @@ struct ResearchDashboardView: View {
             // Comparison switches persist across children (R-017): say so
             // on the card the proctor checks at every handoff.
             if let banner = vm.comparisonRunBanner {
-                Text(banner)
+                statusLabel(banner, systemImage: "exclamationmark.triangle.fill", tint: .red)
                     .font(.callout.weight(.bold))
-                    .foregroundStyle(.red)
                     .textSelection(.enabled)
             }
             Text("\(vm.audioCondition.displayName) · \(vm.thesisCondition.displayName)")
@@ -351,10 +346,17 @@ struct ResearchDashboardView: View {
                 if vm.playsRecordedPrompts {
                     Text("Aufgenommene Ansagen (in jeder Zeile als voiceId exportiert)")
                         .font(.body(FontSize.md, weight: .semibold))
-                    Text(vm.recordedPromptsDashboardText ?? "")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle((vm.recordedPromptsDashboardText ?? "").hasPrefix("Kiki") ? Color.inkSoft : Color.red)
-                        .textSelection(.enabled)
+                    if (vm.recordedPromptsDashboardText ?? "").hasPrefix("Kiki") {
+                        Text(vm.recordedPromptsDashboardText ?? "")
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(Color.inkSoft)
+                            .textSelection(.enabled)
+                    } else {
+                        statusLabel(vm.recordedPromptsDashboardText ?? "",
+                                    systemImage: "exclamationmark.triangle.fill", tint: .red)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
                 } else if vm.liveSpeechReachable {
                     Text("Sprachausgabe (festgelegt, in jeder Zeile exportiert)")
                         .font(.body(FontSize.md, weight: .semibold))
@@ -364,9 +366,8 @@ struct ResearchDashboardView: View {
                     // Recovery from a voice refusal without an uninstall (which
                     // would wipe the participant archive). Proctor area only.
                     if let fault = vm.speechVoiceFault {
-                        Text(fault)
+                        statusLabel(fault, systemImage: "exclamationmark.triangle.fill", tint: .red)
                             .font(.caption)
-                            .foregroundStyle(.red)
                     }
                     Button("Stimme neu festlegen") { showRepinVoiceConfirm = true }
                         .buttonStyle(.bordered)
@@ -389,9 +390,14 @@ struct ResearchDashboardView: View {
                         .foregroundStyle(Color.inkSoft)
                 }
                 // R-034: warmed at launch and at every enrolment.
-                Text(vm.recognizerStatusText)
-                    .font(.caption)
-                    .foregroundStyle(vm.recognizerAvailable == false ? Color.red : Color.inkSoft)
+                if vm.recognizerAvailable == false {
+                    statusLabel(vm.recognizerStatusText, systemImage: "exclamationmark.triangle.fill", tint: .red)
+                        .font(.caption)
+                } else {
+                    Text(vm.recognizerStatusText)
+                        .font(.caption)
+                        .foregroundStyle(Color.inkSoft)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
@@ -424,9 +430,8 @@ struct ResearchDashboardView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.characters)
             if let restoreError {
-                Label(restoreError, systemImage: "exclamationmark.triangle.fill")
+                statusLabel(restoreError, systemImage: "exclamationmark.triangle.fill", tint: .orange)
                     .font(.caption)
-                    .foregroundStyle(.orange)
             }
             Button {
                 switch vm.restoreParticipant(uuidString: restoreIDText) {
@@ -526,9 +531,10 @@ struct ResearchDashboardView: View {
             HStack {
                 Text("Phonem-Aufnahmen vorhanden")
                 Spacer()
-                Text("\(covered) von \(total)")
+                statusLabel("\(covered) von \(total)",
+                            systemImage: degrading.isEmpty ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                            tint: degrading.isEmpty ? .green : .orange)
                     .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(degrading.isEmpty ? .green : .orange)
             }
             .padding(12)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
@@ -541,9 +547,9 @@ struct ResearchDashboardView: View {
                     .foregroundStyle(Color.inkSoft)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("Fallen im Phonem-Arm auf Name-Audio zurück (keine Phonem-Aufnahme):")
+                    statusLabel("Fallen im Phonem-Arm auf Name-Audio zurück (keine Phonem-Aufnahme):",
+                                systemImage: "exclamationmark.triangle.fill", tint: .orange)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.orange)
                     Text(degrading.map(\.name).joined(separator: ", "))
                         .font(.system(.caption, design: .monospaced))
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -807,9 +813,10 @@ struct ResearchDashboardView: View {
             HStack {
                 Text("Effektivitäts-Proxy")
                 Spacer()
-                Text(String(format: "r = %+.3f", proxy))
+                statusLabel(String(format: "r = %+.3f", proxy),
+                            systemImage: proxy >= 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                            tint: proxy >= 0 ? .green : .orange)
                     .font(.callout.monospacedDigit())
-                    .foregroundStyle(proxy >= 0 ? .green : .orange)
             }
             .padding(12)
             .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
@@ -938,6 +945,19 @@ struct ResearchDashboardView: View {
     private func rowBackground(correct: Bool?) -> Color {
         guard let correct else { return Color.clear }
         return correct ? Color.green.opacity(0.10) : Color.orange.opacity(0.12)
+    }
+
+    /// A status line the proctor has to be able to READ: the icon carries
+    /// the colour, the words are ink. As text, system orange, green and red
+    /// on this screen's cards measure about 2 to 1 to 3.5 to 1 (design audit
+    /// 2026-11-10, finding 3), under the 4.5 to 1 a caption needs. The icon's
+    /// shape says warning or fine without the colour.
+    private func statusLabel(_ text: String, systemImage: String, tint: Color) -> some View {
+        Label {
+            Text(text).foregroundStyle(Color.ink)
+        } icon: {
+            Image(systemName: systemImage).foregroundStyle(tint)
+        }
     }
 
     private func emptyHint(_ message: String) -> some View {

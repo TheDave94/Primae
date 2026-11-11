@@ -93,9 +93,13 @@ struct ParentAreaView: View {
             Spacer()
             Text(StudyBuild.marker)
                 .font(.system(.caption2, design: .monospaced))
-                .opacity(0.85)
         }
-        .foregroundStyle(.white)
+        // Black, not white: on the study iPad the band measures #FB5357,
+        // white on it 3.2 to 1, black 6.5 to 1 (design audit 2026-11-10,
+        // finding 13). The band itself stays: it also sits behind this
+        // column's title and the clock, which are dark, so a darker red
+        // would fix this line and break those.
+        .foregroundStyle(.black)
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
