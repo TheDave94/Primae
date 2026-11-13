@@ -62,3 +62,7 @@ audio_variants/
 *.p8
 *.mobileprovision
 *.cer
+
+# .claude/handoffs/ - session scratch, never published: each HANDOFF-*.md quotes the
+# host it was written on (hostname, absolute paths). One `git add -A` would publish them.
+.claude/handoffs/
