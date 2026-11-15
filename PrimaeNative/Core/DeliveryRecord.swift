@@ -33,13 +33,19 @@ enum RowFinalization: String, Codable, CaseIterable {
     /// The app went to the background with the production pending.
     case background
     /// The proctor moved on (chevron, letter or probe load) while the
-    /// letter was open; also every `completed: false` row.
+    /// letter was open; also every `completed: false` row but a rejected
+    /// free-writing attempt (`attemptRejected`, r25).
     case navigation
     /// The proctor exported the research data while a finished free-writing
     /// production was still held unscored (the quiet window the parent area
     /// suspends): the export screen closes it first, so the export carries
     /// the trial (B22, protocol r16).
     case export
+    /// The r25 attempt check rejected this free-writing attempt as a
+    /// non-attempt (`FreeWriteAttemptCheck`) and the child was asked to try
+    /// again: the row keeps the rejected ink, its trace and its measures,
+    /// `completed: false`. Training passes only, never a cold probe.
+    case attemptRejected
 }
 
 // MARK: - Environment at one instant
@@ -267,11 +273,23 @@ struct PhaseRowContext: Equatable {
     /// participant (R-032); nil for a training row.
     var probeAttempt: Int?
     var delivery: PhaseDelivery?
+    /// Free-writing rows only (r25): the n-th attempt at this letter's
+    /// free writing in this pass, 1-based. A rejected attempt and the one
+    /// after it share a letter and differ here.
+    var freeWriteAttempt: Int?
+    /// Free-writing rows with ink only (r25): what `FreeWriteAttemptCheck`
+    /// found for THIS row's ink. Recorded on every such row, probes and
+    /// proctor-closed rows included; it gates only a child-finished
+    /// training attempt.
+    var attemptCheck: FreeWriteAttemptCheck.Result?
 
-    init(finalizedBy: RowFinalization? = nil, probeAttempt: Int? = nil, delivery: PhaseDelivery? = nil) {
+    init(finalizedBy: RowFinalization? = nil, probeAttempt: Int? = nil, delivery: PhaseDelivery? = nil,
+         freeWriteAttempt: Int? = nil, attemptCheck: FreeWriteAttemptCheck.Result? = nil) {
         self.finalizedBy = finalizedBy
         self.probeAttempt = probeAttempt
         self.delivery = delivery
+        self.freeWriteAttempt = freeWriteAttempt
+        self.attemptCheck = attemptCheck
     }
 }
 

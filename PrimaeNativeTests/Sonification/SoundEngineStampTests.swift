@@ -24,9 +24,9 @@ import Foundation
 
     @Test("the export column carries the stamp, last")
     func exportColumn() {
-        #expect(ParentDashboardExporter.phaseRowAppendedColumns.dropLast(ParentDashboardExporter.envelopeColumns.count).last == "soundEngine")
+        #expect(ParentDashboardExporter.phaseRowAppendedColumns.dropLast(ParentDashboardExporter.envelopeColumns.count + ParentDashboardExporter.attemptColumns.count).last == "soundEngine")
         let rec = PhaseSessionRecord(letter: "A", phase: "guided", completed: true, score: 1, schedulerPriority: 0,
                                      context: PhaseRowContext(delivery: PhaseDelivery(soundEngine: "TDPSOLA")))
-        #expect(ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID()).dropLast(ParentDashboardExporter.envelopeColumns.count).last == "TDPSOLA")
+        #expect(ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID()).dropLast(ParentDashboardExporter.envelopeColumns.count + ParentDashboardExporter.attemptColumns.count).last == "TDPSOLA")
     }
 }

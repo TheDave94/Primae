@@ -142,13 +142,13 @@ import Foundation
     // MARK: 3 export
 
     @Test func theEnvelopeColumnsAreAppendedLastAndCarryTheRowsValues() {
-        #expect(Array(ParentDashboardExporter.phaseRowAppendedColumns.suffix(5))
+        #expect(Array(ParentDashboardExporter.phaseRowAppendedColumns.dropLast(ParentDashboardExporter.attemptColumns.count).suffix(5))
                 == ["soundEngine", "liftHoldSeconds", "stallSeconds", "strokeGaps", "strokeGapMedianSeconds"])
         let d = PhaseDelivery(soundEngine: "TDPSOLA", liftHoldSeconds: 1.6, stallSeconds: 0.6, strokeGaps: 3, strokeGapMedianSeconds: 0.8)
         let rec = PhaseSessionRecord(letter: "F", phase: "guided", completed: true, score: 1, schedulerPriority: 0,
                                      context: PhaseRowContext(delivery: d))
         let f = ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID())
-        #expect(Array(f.suffix(5)) == ["TDPSOLA", "1.600", "0.600", "3", "0.800"])
+        #expect(Array(f.dropLast(ParentDashboardExporter.attemptColumns.count).suffix(5)) == ["TDPSOLA", "1.600", "0.600", "3", "0.800"])
         #expect(f.count == ParentDashboardExporter.phaseRowAppendedColumns.count)
     }
 

@@ -1901,6 +1901,78 @@ Implications:
     r23 guide marks, every sound, switch and default, the comparison
     stamp, the export. `StudyProtocol.revision` is 24.
 
+- **Protocol revision 25 — the free-writing attempt check (David's ruling
+  2026-11-15).** On the iPad the free-writing phase accepted any ink, a
+  scribble included. Ruling, verbatim: "Reject only non-attempts: empty
+  canvas, random scribble, or ink nowhere near the letter's shape, using the
+  per-stroke fit (geometry only, no recognizer veto). Same rule in all three
+  arms, at most 2 retries then it moves on, every attempt plus the attempt
+  count go into the export. … Wobbly but real letters always pass." Refined
+  the same evening: must pass wobble up to ~10 % of the glyph height, aspect
+  0.6–1.5, slant ±15°, any size and position, strokes somewhat out of place,
+  a stray mark, a multi-stroke letter in one stroke; must reject empty,
+  scribble, single line, circle, clearly wrong letter; stroke order and
+  direction are not checked in free writing (they stay enforced in observe /
+  direct / guided); after 2 retries move on with no failure message.
+  - **Scope.** Study TRAINING free writing that the child finishes (the
+    lift's quiet window), every arm identically. Never a cold probe (an
+    outcome measure) and never a production the proctor's navigation, the
+    backgrounding or the export closes.
+  - **The rule** (`FreeWriteAttemptCheck`). The ink is aligned to the letter:
+    rotation −15…+15° in 5° steps, then a bounding-box fit with x and y
+    scale allowed to differ by up to 1.6×, the box taken over the matched
+    strokes or all ink, whichever aligns better. Over ALL the ink, coverage
+    (reference within 1.5 checkpoint radii of ink) and precision (ink within
+    1.5 radii of the reference) must both reach 0.80, for an alignment whose
+    ink length is 0.5–3.5× the letter's; and the ink may have at most 9
+    sharp direction reversals (> 120°) beyond the letter's own. No
+    recognizer, no stroke order, no direction. The reference is the
+    canvas-mapped letter the tracker uses and the raw-trace export writes as
+    `referenceStrokes` (checkpoint radius 0.0478 on the 1270 × 874 canvas).
+  - **Calibration** (MEASURED on the Mac with the app's own code,
+    `wt-primae-audit-notes/attempt-check-2026-11-15/`, out7.txt): 9 real
+    adult traces and 122 distorted correct letters all pass (weakest 0.83: I
+    with a stray mark 0.2 of the letter's height); 76 of 79 non-attempts are
+    rejected (the three that pass: a slanted single line for I, an X for A, a
+    box for M); 31 of 40 wrong letters are rejected. **Known leniency:** a
+    wrong letter that contains the target passes (L for I, A for F, M for
+    A); L for I scores 0.8516 on the iPad against the 0.80 bar, matching the
+    Mac's 0.852. The real traces are adult traces; no child trace has been
+    checked yet.
+  - **What the child gets on a rejection.** The canvas clears and the child
+    hears the recorded "Probier's nochmal" (one of the five study phrases,
+    already used in every arm by the guided-phase off-path cue) with its
+    toast; no overlay, no badge, no score. The third attempt is accepted
+    whatever it is, silently.
+  - **Data.** Each rejected attempt is its own free-writing row —
+    `completed: false`, `finalizedBy: attemptRejected` — with its own raw
+    trace and measures, so no attempt's ink is lost (fixes audit 2026-11-15
+    B finding 2). Every free-writing row carries `freeWriteAttempt` (1-based)
+    and the check's `attemptCheckPassed`, `attemptCheckScore`,
+    `attemptCheckLengthRatio`, `attemptCheckExtraReversals`, appended last
+    after the r17 envelope columns; on probe and proctor-closed rows they are
+    passive. The capped third attempt is `completed: true` with
+    `attemptCheckPassed: false`. The dashboard's phase completion rate
+    ignores rejected attempts.
+  - **Design consequence, for the analysis.** Training trial counts now vary
+    between children (1–3 free-writing attempts per letter), and the number
+    of retries follows writing quality, so it can differ by arm. This
+    reverses the earlier rule "study sessions never retry" (it guarded
+    exactly this). The outcome blocks (pretest, post-test, delayed) are not
+    affected. The attempt count is exported so it can be reported per arm
+    (a fidelity / feasibility measure). It is NOT a covariate: it is
+    measured after randomisation and can be caused by the arm, so adjusting
+    for it would bias the arm contrast (EMA 2015 guideline on baseline
+    covariates; ICH E9(R1) treatment-policy estimand). The primary analysis
+    stays as ch. 6 specifies; the arm effect it estimates now includes any
+    effect of the arm on the number of attempts. The rule is the same in
+    every arm, but what a child gets (the number of attempts) can differ by
+    arm, so "only the audio differs" holds for what the app does, not for
+    the practice a child receives.
+  - **Not changed.** The scores (form score, raw distance, formAccuracy, …),
+    the probes, every sound and switch, the comparison stamp.
+    `StudyProtocol.revision` is 25.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

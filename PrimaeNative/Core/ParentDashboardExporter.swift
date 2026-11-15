@@ -98,7 +98,17 @@ struct ParentDashboardExporter {
         "outputRouteAtStart", "outputRouteAtEnd", "outputVolume", "outputLatency",
         "otherAudioPlaying", "secondaryAudioHint", "voiceId", "recognizerAvailable",
         "guidedAccess", "idleTimerDisabled", "lowPowerMode", "thermalState", "batteryLevel",
-    ] + buildColumns + observeSoundColumns + ["soundEngine"] + envelopeColumns
+    ] + buildColumns + observeSoundColumns + ["soundEngine"] + envelopeColumns + attemptColumns
+
+    /// Protocol r25's free-writing attempt-check columns, newest-last
+    /// (after the r17 envelope columns): the attempt number within the
+    /// pass and what `FreeWriteAttemptCheck` found for the row's ink.
+    /// Filled on free-writing rows only; empty on every other row and
+    /// before r25.
+    static let attemptColumns: [String] = [
+        "freeWriteAttempt", "attemptCheckPassed", "attemptCheckScore",
+        "attemptCheckLengthRatio", "attemptCheckExtraReversals",
+    ]
 
     /// Protocol r17's per-child envelope timing columns (RULINGS 2026-11-05), after `soundEngine`: the hold and stall in force at the
     /// end of the phase and the stroke gaps measured in it.
@@ -136,6 +146,10 @@ struct ParentDashboardExporter {
             d?.stallSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
             int(d?.strokeGaps),
             d?.strokeGapMedianSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            int(rec.freeWriteAttempt), bool(rec.attemptCheckPassed),
+            rec.attemptCheckScore.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            rec.attemptCheckLengthRatio.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            int(rec.attemptCheckExtraReversals),
         ]
     }
 

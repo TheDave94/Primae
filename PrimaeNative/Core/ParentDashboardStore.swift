@@ -247,6 +247,18 @@ struct PhaseSessionRecord: Codable, Equatable {
     /// visible only by its timestamp. Nil for training rows and every
     /// earlier record.
     var probeAttempt: Int?
+    /// Free-writing rows (r25): the attempt number within this pass,
+    /// 1-based. Nil on every other row and every earlier record.
+    var freeWriteAttempt: Int?
+    /// Free-writing rows with ink (r25): whether `FreeWriteAttemptCheck`
+    /// accepted this ink as an attempt, its shape score (min of coverage
+    /// and precision after alignment, 0-1), the aligned ink length over
+    /// the reference's, and the sharp reversals beyond the reference's.
+    /// Passive on probe and proctor-closed rows. Nil on earlier records.
+    var attemptCheckPassed: Bool?
+    var attemptCheckScore: Double?
+    var attemptCheckLengthRatio: Double?
+    var attemptCheckExtraReversals: Int?
     /// What this phase actually delivered — route, interruptions, observe
     /// restarts, voice, build (R-020). Nil for every earlier record.
     var delivery: PhaseDelivery?
@@ -324,6 +336,11 @@ struct PhaseSessionRecord: Codable, Equatable {
         self.rowId                   = rowId
         self.finalizedBy             = context?.finalizedBy?.rawValue
         self.probeAttempt            = context?.probeAttempt
+        self.freeWriteAttempt        = context?.freeWriteAttempt
+        self.attemptCheckPassed      = context?.attemptCheck?.passed
+        self.attemptCheckScore       = Self.finiteOrNil(context?.attemptCheck.map { Double($0.shapeScore) })
+        self.attemptCheckLengthRatio = Self.finiteOrNil(context?.attemptCheck?.lengthRatio.map { Double($0) })
+        self.attemptCheckExtraReversals = context?.attemptCheck?.extraReversals
         self.delivery                = context?.delivery
     }
 
@@ -417,6 +434,12 @@ struct PhaseSessionRecord: Codable, Equatable {
         rowId                    = try? c.decode(UUID.self, forKey: .rowId)
         finalizedBy              = try? c.decode(String.self, forKey: .finalizedBy)
         probeAttempt             = try? c.decode(Int.self, forKey: .probeAttempt)
+        // r25; nil for every earlier record.
+        freeWriteAttempt         = try? c.decode(Int.self, forKey: .freeWriteAttempt)
+        attemptCheckPassed       = try? c.decode(Bool.self, forKey: .attemptCheckPassed)
+        attemptCheckScore        = try? c.decode(Double.self, forKey: .attemptCheckScore)
+        attemptCheckLengthRatio  = try? c.decode(Double.self, forKey: .attemptCheckLengthRatio)
+        attemptCheckExtraReversals = try? c.decode(Int.self, forKey: .attemptCheckExtraReversals)
         delivery                 = try? c.decode(PhaseDelivery.self, forKey: .delivery)
         // B3 (r16); nil for every earlier record, which keeps the time rule.
         enrolmentId              = try? c.decode(UUID.self, forKey: .enrolmentId)
@@ -654,11 +677,15 @@ struct DashboardSnapshot: Codable, Equatable {
 
     /// Fraction of sessions that completed each phase (keyed by
     /// `LearningPhase.rawName`). Iterates `LearningPhase.allCases` so
-    /// every phase, including `direct`, lands in the export.
+    /// every phase, including `direct`, lands in the export. A free-writing
+    /// attempt the r25 attempt check rejected is not a session — the child
+    /// went on writing the same letter — so its row is not counted.
     var phaseCompletionRates: [String: Double] {
         var result: [String: Double] = [:]
         for phase in LearningPhase.allCases.map(\.rawName) {
-            let records = phaseSessionRecords.filter { $0.phase == phase }
+            let records = phaseSessionRecords.filter {
+                $0.phase == phase && $0.finalizedBy != RowFinalization.attemptRejected.rawValue
+            }
             guard !records.isEmpty else { continue }
             result[phase] = Double(records.filter { $0.completed }.count) / Double(records.count)
         }

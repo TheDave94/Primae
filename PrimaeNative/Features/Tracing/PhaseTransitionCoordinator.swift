@@ -269,7 +269,7 @@ final class PhaseTransitionCoordinator {
             spatialDeviationRaw: m.spatialDeviationRaw,
             // What the phase delivered and why the row exists (batch D):
             // a letter left mid-phase is closed by navigation.
-            context: vm.phaseRowContext(for: phase, finalizedBy: .navigation)
+            context: rowContext(for: phase, finalizedBy: .navigation, measurements: m)
         )
     }
 
@@ -285,6 +285,32 @@ final class PhaseTransitionCoordinator {
         var spatialDeviation: Double?
         var spatialDeviationRaw: Double?
         var strokeProcess: StrokeProcessMeasures?
+        /// r25: what the attempt check found for this ink (passive on
+        /// every row; gates only a child-finished training attempt).
+        var attemptCheck: FreeWriteAttemptCheck.Result?
+    }
+
+    /// The row context, with the attempt check attached to a free-writing
+    /// row that carries ink (r25).
+    private func rowContext(for phase: LearningPhase, finalizedBy: RowFinalization,
+                            measurements m: FreeWriteMeasurements) -> PhaseRowContext {
+        guard let vm else { return PhaseRowContext(finalizedBy: finalizedBy) }
+        var context = vm.phaseRowContext(for: phase, finalizedBy: finalizedBy)
+        if phase == .freeWrite { context.attemptCheck = m.attemptCheck }
+        return context
+    }
+
+    /// The r25 attempt check over the free-writing buffer as it is now.
+    /// Nil without ink, without a loaded reference, or on a multi-cell
+    /// grid (never a study session: `reapplyGridPreset` keeps those
+    /// single-cell).
+    func evaluateAttemptCheck() -> FreeWriteAttemptCheck.Result? {
+        guard let vm, vm.grid.cells.count <= 1, !vm.freeWriteRecorder.points.isEmpty,
+              let reference = vm.strokeTracker.definition else { return nil }
+        return FreeWriteAttemptCheck.evaluate(points: vm.freeWriteRecorder.points,
+                                              strokeStartIndices: vm.freeWriteRecorder.strokeStartIndices,
+                                              reference: reference,
+                                              frame: CGRect(origin: .zero, size: vm.canvasSize))
     }
 
     private func captureFreeWriteMeasurements(didFreeWrite: Bool) -> FreeWriteMeasurements {
@@ -330,6 +356,9 @@ final class PhaseTransitionCoordinator {
         // SECONDARY process outcomes (2026-09-03): stroke count/order/
         // direction — see StrokeProcessMeasures.
         m.strokeProcess = vm.lastFreeWriteStrokeProcess
+        // r25: the attempt check, from the same buffer, before the next
+        // load clears it.
+        m.attemptCheck = evaluateAttemptCheck()
         return m
     }
 
@@ -354,9 +383,69 @@ final class PhaseTransitionCoordinator {
         // sample is still recorded (passive data).
         if let r = result, !vm.studyMode, !r.isCorrect, r.confidence > 0.7 {
             requestFreeWriteRetry(result: r)
+        } else if shouldRejectAttempt(finalizedBy: finalizedBy) {
+            // r25 (David's ruling 2026-11-15): the study's one retry rule.
+            // A non-attempt — scribble, line, shape nowhere near the
+            // letter, clearly wrong letter — is recorded as its own row
+            // and the child is asked to try again, at most
+            // `FreeWriteAttemptCheck.maxRetries` times; the attempt after
+            // that is accepted whatever it is, with no failure message.
+            // Same rule in every arm; geometry only, so the recognizer
+            // (`result`) never decides it.
+            recordRejectedAttempt(score: score)
+            vm.freeWriteAttempt += 1
+            requestFreeWriteRetry(result: nil)
         } else {
             celebrateFreeWrite(score: score, result: result, finalizedBy: finalizedBy)
         }
+    }
+
+    /// Whether the r25 attempt check sends this production back. Study
+    /// TRAINING passes only, finished by the child (the lift's quiet
+    /// window): a cold probe is an outcome measure and is never retried,
+    /// and a production the proctor, the backgrounding or the export
+    /// closed is not the child's to repeat. Retries are capped.
+    private func shouldRejectAttempt(finalizedBy: RowFinalization) -> Bool {
+        guard let vm, vm.studyMode, finalizedBy == .child, vm.currentProbe == nil,
+              vm.freeWriteAttempt <= FreeWriteAttemptCheck.maxRetries,
+              let check = evaluateAttemptCheck() else { return false }
+        return !check.passed
+    }
+
+    /// The rejected attempt's own row (r25): free writing, `completed:
+    /// false`, finalised `.attemptRejected`, with its ink's measures, raw
+    /// trace, recognition reading and attempt check. Written BEFORE the
+    /// retry clears the buffer, so no attempt's ink is ever lost (audit
+    /// 2026-11-15 B, finding 2).
+    private func recordRejectedAttempt(score: CGFloat) {
+        guard let vm else { return }
+        let m = captureFreeWriteMeasurements(didFreeWrite: true)
+        vm.dashboardStore.recordPhaseSession(
+            letter: vm.currentLetterName,
+            phase: LearningPhase.freeWrite.rawName,
+            completed: false,
+            score: Double(score),
+            schedulerPriority: vm.lastScheduledLetterPriority,
+            condition: vm.thesisCondition,
+            audioCondition: vm.audioCondition,
+            assessment: m.assessment,
+            recognition: m.recognition,
+            inputDevice: traceInputDevice() ?? vm.detector.effectiveKind.rawValue,
+            rawTraceID: m.traceID,
+            trainedSubset: vm.effectiveTrainedSubset.rawValue,
+            phaseDurationSeconds: m.duration,
+            frechetDistance: nil,
+            checkpointCoverage: m.coverage,
+            spatialDeviation: m.spatialDeviation,
+            strokeCount: m.strokeProcess?.strokeCount,
+            strokeOrder: m.strokeProcess?.matchedReferenceOrderField,
+            reversedStrokeCount: m.strokeProcess?.reversedStrokeCount,
+            studyMode: vm.studyMode,
+            probe: vm.currentProbe?.rawValue,
+            comparisonConfiguration: vm.comparisonConfigurationStamp,
+            spatialDeviationRaw: m.spatialDeviationRaw,
+            context: rowContext(for: .freeWrite, finalizedBy: .attemptRejected, measurements: m)
+        )
     }
 
     private func celebrateFreeWrite(score: CGFloat,
@@ -386,21 +475,29 @@ final class PhaseTransitionCoordinator {
         recordSessionCompletion(finalizedBy: finalizedBy)
     }
 
-    private func requestFreeWriteRetry(result: RecognitionResult) {
+    private func requestFreeWriteRetry(result: RecognitionResult?) {
         guard let vm else { return }
         vm.didCompleteCurrentLetter = false   // a retry re-opens the production
-        // Visual badge stays so the child sees what the model thought.
+        // Visual badge (casual path only) so the child sees what the model
+        // thought; a study session shows no overlay at all (audit C2).
         // No letter-naming verbal mirror in Schule — that belongs in
         // Werkstatt. "Probier's nochmal" below is the audio retry cue.
-        if result.confidence >= 0.4 {
+        if !vm.studyMode, let result, result.confidence >= 0.4 {
             vm.overlayQueue.enqueue(.recognitionBadge(result))
         }
         // Reset freeWrite state so the next stroke starts clean.
+        vm.clearRecognitionForRetry()
+        vm.touchDispatcher.resetTouchState()
         vm.strokeTracker.reset()
         if vm.letters.indices.contains(vm.letterIndex) {
             vm.reloadStrokeCheckpoints(for: vm.letters[vm.letterIndex])
         }
+        // `clearAll` also drops the guided score the Schule world's
+        // transition card reads; a retry is still the same letter's
+        // free writing, so it is carried over.
+        let guidedScore = vm.freeWriteRecorder.lastGuidedScore
         vm.freeWriteRecorder.clearAll()
+        vm.freeWriteRecorder.lastGuidedScore = guidedScore
         vm.freeWriteRecorder.startSession()
         vm.activePath.removeAll(keepingCapacity: true)
         vm.toast("Probier's nochmal")
@@ -544,7 +641,7 @@ final class PhaseTransitionCoordinator {
                 spatialDeviationRaw: isFreeWrite ? m.spatialDeviationRaw : nil,
                 // Each phase's own delivery; every row of the letter shares
                 // what closed it (batch D).
-                context: vm.phaseRowContext(for: phase, finalizedBy: finalizedBy)
+                context: rowContext(for: phase, finalizedBy: finalizedBy, measurements: m)
             )
         }
         commitCompletion(letter: vm.currentLetterName,

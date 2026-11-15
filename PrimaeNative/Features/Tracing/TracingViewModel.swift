@@ -1037,6 +1037,12 @@ public final class TracingViewModel {
     /// (CACurrentMediaTime) — survives background cycles.
     var letterLoadedDate: Date?
     var didCompleteCurrentLetter         = false
+    /// The free-writing attempt in progress for this letter and pass,
+    /// 1-based (r25). Each rejection by `FreeWriteAttemptCheck` moves it
+    /// on; at `1 + FreeWriteAttemptCheck.maxRetries` the next production
+    /// is accepted regardless. Reset with the letter, its phases and a
+    /// letter reset.
+    var freeWriteAttempt                 = 1
     /// Captured at selection so `schedulerEffectivenessProxy` has a
     /// real correlation value.
     var lastScheduledLetterPriority: Double = 0
@@ -2252,6 +2258,7 @@ public final class TracingViewModel {
         playback.forceIdle()
         isPlaying = false
         didCompleteCurrentLetter = false
+        freeWriteAttempt = 1
         messages.clearCompletionState()
         stopGuideAnimation()
         toast("Zurückgesetzt")
@@ -3723,6 +3730,14 @@ public final class TracingViewModel {
         freeform.isRecognizing = false
     }
 
+    /// A free-writing retry (r25) starts a new attempt: the rejected
+    /// attempt's recognition reading belongs to ITS row, never to the
+    /// next one's.
+    func clearRecognitionForRetry() {
+        abortInFlightRecognition()
+        lastRecognitionResult = nil
+    }
+
     /// Record the paper-transfer self-assessment and advance the queue.
     func submitPaperTransfer(score: Double) {
         progressStore.recordPaperTransferScore(for: currentLetterName, score: score)
@@ -4163,6 +4178,7 @@ public final class TracingViewModel {
         // the guided *phase* is done, so reset here to keep the
         // freeWrite auto-advance gate working across guided→freeWrite.
         didCompleteCurrentLetter = false
+        freeWriteAttempt = 1
         // Preserve lastGuidedScore across clearAll — the guided→
         // freeWrite path sets it immediately before we get here, and
         // SchuleWorldView's "Nachspuren fertig" card needs it.
@@ -4573,6 +4589,7 @@ public final class TracingViewModel {
         progress                       = 0
         audioIndex                     = 0
         didCompleteCurrentLetter       = false
+        freeWriteAttempt               = 1
         letterLoadTime                 = CACurrentMediaTime()
         letterActiveTimeAccumulated    = 0
         letterLoadedDate               = Date()
@@ -5946,7 +5963,8 @@ extension TracingViewModel {
         delivery.recognizerAvailable = recognizerAvailable
         return PhaseRowContext(finalizedBy: finalizedBy,
                                probeAttempt: currentProbe != nil ? currentProbeAttempt : nil,
-                               delivery: delivery)
+                               delivery: delivery,
+                               freeWriteAttempt: phase == .freeWrite ? freeWriteAttempt : nil)
     }
 
     /// Bring the per-phase split up to the phase on screen (R-020). The

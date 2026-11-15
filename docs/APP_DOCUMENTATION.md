@@ -1442,7 +1442,9 @@ guidedAccess,idleTimerDisabled,lowPowerMode,thermalState,batteryLevel,
 launchId,previousRunAbnormal,appVersion,buildConfiguration,buildUUID,
 osVersion,deviceModel,observeLossesDuringSound,observeLossesWithoutSound,
 observeSoundSeconds,observeSoundDeliveredSeconds,soundEngine,liftHoldSeconds,
-stallSeconds,strokeGaps,strokeGapMedianSeconds
+stallSeconds,strokeGaps,strokeGapMedianSeconds,freeWriteAttempt,
+attemptCheckPassed,attemptCheckScore,attemptCheckLengthRatio,
+attemptCheckExtraReversals
 ```
 
 (r17 appends `soundEngine`: the sound engine that rendered the row, `TDPSOLA` — a constant since the researcher
@@ -1453,6 +1455,14 @@ the hold that keeps the sound going across a pen lift and the stall cutoff in fo
 (`StrokeTempo`: hold = clamp(2.0 x median of the child's last 5 lift-to-next-touch gaps, 0.5 s, 2.5 s), seeded 0.8 s; stall = 0.3 s x
 hold/0.8 s between 0.3 s and 0.6 s), and `strokeGaps` / `strokeGapMedianSeconds`, the gaps measured in that phase (guided and
 free-writing only; cold probes feed nothing). Written in every arm. Empty on rows written before this change.)
+
+(r25 appends the free-writing attempt check (`FreeWriteAttemptCheck`, docs/DECISIONS.md r25) after the envelope
+columns: `freeWriteAttempt`, the 1-based attempt at the letter's free writing in this pass, and what the check found for
+the row's ink: `attemptCheckPassed`, `attemptCheckScore` (min of coverage and precision after the alignment, 0-1),
+`attemptCheckLengthRatio` (aligned ink length / the letter's) and `attemptCheckExtraReversals`. Free-writing rows only;
+on cold-probe and proctor-closed rows the check is passive. A training attempt the check rejected is its own row,
+`completed` false and `finalizedBy` `attemptRejected`, with its own raw trace; `phaseCompletionRate_freeWrite` does not
+count it. Empty on every other row and on rows written before r25.)
 
 (As of protocol r14, checked 2026-11-01 against `StudyProtocol.revision` = 14:
 62 columns, identical to the header array in `ParentDashboardExporter.swift`.

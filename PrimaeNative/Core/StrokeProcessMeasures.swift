@@ -562,7 +562,7 @@ enum StrokeProcessScorer {
     /// points.count }`, sorted) — matched deliberately rather than
     /// re-derived, so a change to one doesn't silently diverge from the
     /// other.
-    private static func splitStrokes(points: [CGPoint], strokeStartIndices: [Int]) -> [[CGPoint]] {
+    static func splitStrokes(points: [CGPoint], strokeStartIndices: [Int]) -> [[CGPoint]] {
         guard !points.isEmpty else { return [] }
         let breaks = ([0] + strokeStartIndices.filter { $0 > 0 && $0 < points.count }).sorted()
         var result: [[CGPoint]] = []

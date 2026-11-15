@@ -274,7 +274,20 @@ public enum PrimaeLetterRenderer {
                                            schriftArt: SchriftArt = .druckschrift,
                                            openTypeFeatures: [String] = [],
                                            pad: CGFloat = 0.10) -> CGRect? {
-        guard !isRunningTests, !letter.isEmpty,
+        guard !isRunningTests else { return nil }
+        return computeNormalizedGlyphRect(for: letter, canvasSize: canvasSize, schriftArt: schriftArt,
+                                          openTypeFeatures: openTypeFeatures, pad: pad)
+    }
+
+    /// The guard-free body of `normalizedGlyphRect` (same split as
+    /// `glyphPath` / `renderGlyphPath`), so a test can build the tracker's
+    /// canvas-mapped reference exactly as the app does after layout
+    /// (protocol r25: the attempt check's tests).
+    static func computeNormalizedGlyphRect(for letter: String, canvasSize: CGSize,
+                                           schriftArt: SchriftArt = .druckschrift,
+                                           openTypeFeatures: [String] = [],
+                                           pad: CGFloat = 0.10) -> CGRect? {
+        guard !letter.isEmpty,
               canvasSize.width > 0, canvasSize.height > 0 else { return nil }
         let padBp = Int((pad * 1000).rounded())
         let key = RectCacheKey(letter: letter,
