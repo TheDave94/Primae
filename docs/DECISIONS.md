@@ -1879,6 +1879,28 @@ Implications:
   - **Stamp / record.** No new setting, no export change.
     `StudyProtocol.revision` is 23.
 
+- **Protocol revision 24 — the child's ink is no longer cut where two
+  strokes meet (audit 2026-11-15, finding A-1).** Every arm and every phase
+  identically: what the child sees changes, nothing the child hears or
+  does, so the contrast between the arms is untouched.
+  - **The defect.** r23 gave each ink stroke a 3 pt paper-coloured casing
+    and drew the strokes one by one, casing then ink. In free writing the
+    stroke being written is drawn before the finished strokes, so each
+    finished stroke's casing painted a 3 pt paper gap into the new stroke
+    wherever it reached an earlier one (A's crossbar, F's arms, L's foot,
+    M's corners). The gap closed when the pen lifted. It was in r23's code
+    from the start; r23's tests checked the style constants, not the
+    drawing, and the design canvas showed ink after the pen lifted.
+  - **What changed.** `TracingCanvasView` collects the cell's ink and
+    `drawInk` paints every casing before any ink, so a casing never covers
+    ink. Pinned by `InkLayerOrderTests`, which renders the real function
+    with a layout pass and samples the pixels inside the later stroke's
+    casing band (with controls for ink away from the crossing and for a
+    casing band alone); the old order turns it red.
+  - **Not changed.** Ink colour, widths and casing width, the glyph, the
+    r23 guide marks, every sound, switch and default, the comparison
+    stamp, the export. `StudyProtocol.revision` is 24.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

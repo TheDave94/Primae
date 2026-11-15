@@ -184,13 +184,22 @@ struct TracingCanvasView: View {
                     context.stroke(ring, with: .color(.red.opacity(0.85)), lineWidth: 5)
                 }
 
+                // All ink of this cell is COLLECTED here and drawn once,
+                // after the lingering block, by `drawInk`: every casing
+                // first, then every ink. Drawn stroke by stroke, a later
+                // stroke's paper casing covered the ink of an earlier one
+                // where they met (the live freeWrite stroke vanished at
+                // A's crossbar, F's arms, L's foot while the pen was
+                // down; audit 2026-11-15 A-1).
+                var inkLayers: [InkLayer] = []
+
                 // Retained ink from previously-completed cells stays
                 // visible after the cursor has moved on.
                 let retainedInk = vm.gridCells[i].activePath
                 if retainedInk.count > 1 {
                     var path = Path()
                     path.addLines(retainedInk)
-                    Self.strokeInk(path, in: &context, color: .canvasInkStroke.opacity(0.9), width: 12)
+                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.9), width: 12))
                 }
 
                 // Active ink — only drawn on the active cell pass so
@@ -200,7 +209,7 @@ struct TracingCanvasView: View {
                     var path = Path()
                     path.addLines(vm.activePath)
                     let inkWidth = InkStyle.width(forPressure: vm.pencilPressure)
-                    Self.strokeInk(path, in: &context, color: .canvasInkStroke, width: inkWidth)
+                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke, width: inkWidth))
                 }
 
                 // Lingering ink — snapshot of the just-completed trace
@@ -228,15 +237,16 @@ struct TracingCanvasView: View {
                         guard endIdx - startIdx > 1 else { continue }
                         inked.addLines(Array(pts[startIdx..<endIdx]))
                     }
-                    Self.strokeInk(inked, in: &context, color: .canvasInkStroke,
-                                   width: InkStyle.width(forPressure: nil))
+                    inkLayers.append(InkLayer(path: inked, color: .canvasInkStroke,
+                                              width: InkStyle.width(forPressure: nil)))
                 }
 
                 if isActiveCell, vm.lingeringInk.count > 1 {
                     var path = Path()
                     path.addLines(vm.lingeringInk)
-                    Self.strokeInk(path, in: &context, color: .canvasInkStroke.opacity(0.85), width: 14)
+                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.85), width: 14))
                 }
+                Self.drawInk(inkLayers, in: &context)
 
                 // Animation guide dot — active cell only; suppressed
                 // during calibration so it doesn't scan over edits.
@@ -520,16 +530,28 @@ struct TracingCanvasView: View {
         return path
     }
 
+    /// One stroke of the child's ink, as `drawInk` paints it.
+    struct InkLayer {
+        var path: Path
+        var color: Color
+        var width: CGFloat
+    }
+
     /// The child's ink over a paper-coloured casing (protocol r23,
     /// `TracingCanvasStyle.inkCasingPerSide`): the casing gives the stroke
     /// an edge against the dark glyph and is invisible on the paper.
-    private static func strokeInk(_ path: Path, in context: inout GraphicsContext,
-                                  color: Color, width: CGFloat) {
-        context.stroke(path, with: .color(.canvasPaper),
-                       style: StrokeStyle(lineWidth: width + 2 * TracingCanvasStyle.inkCasingPerSide,
-                                          lineCap: .round, lineJoin: .round))
-        context.stroke(path, with: .color(color),
-                       style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
+    /// Every casing is drawn before any ink, so a casing never covers ink,
+    /// whatever the order of `layers` (audit 2026-11-15 A-1).
+    static func drawInk(_ layers: [InkLayer], in context: inout GraphicsContext) {
+        for layer in layers {
+            context.stroke(layer.path, with: .color(.canvasPaper),
+                           style: StrokeStyle(lineWidth: layer.width + 2 * TracingCanvasStyle.inkCasingPerSide,
+                                              lineCap: .round, lineJoin: .round))
+        }
+        for layer in layers {
+            context.stroke(layer.path, with: .color(layer.color),
+                           style: StrokeStyle(lineWidth: layer.width, lineCap: .round, lineJoin: .round))
+        }
     }
 }
 
