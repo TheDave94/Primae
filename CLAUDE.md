@@ -307,8 +307,12 @@ do not re-derive 32. What still matters, by risk:
 `ChildFacingVerdictTests`, `ChildFacingCountsTests` and
 `starThresholdsExactValues`. The older claim here, two independently
 computed totals and no test, is history only. `SettingsView` (the proctor's
-arm configuration) is barely reached — exactly one code hit, a single
-`static let` — with its ~25 proctor `@State` properties untested.
+arm configuration) is reached by two code hits (re-measured 2026-11-16):
+`NewParticipantResetTests` reads `SettingsView.defaultsKey`, and
+`ComparisonControlDomainsTests` pins the Vergleichsmodus panel's option
+lists, ranges, steps and "(Vorgabe)" labels against the store through the
+extracted `ComparisonControlDomains`. Its 34 `@State` properties themselves
+are still untested.
 `StoreFileQuarantine` (data-loss prevention), `CalibrationSessionLogger`
 (corpus capture) and `LetterStars` / `PhaseDotIndicator` **are now
 genuinely covered** (`ce5a6dea`, `4c9ff51f`); the 2026-09-17 list must

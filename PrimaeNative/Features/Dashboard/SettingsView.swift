@@ -319,8 +319,9 @@ struct SettingsView: View {
                             StudyComparisonSettings.observePasses = $0
                             vm.markComparisonSettingChanged()
                         })) {
-                        Text("Einmal").tag(1)
-                        Text("Zweimal").tag(2)
+                        ForEach(ComparisonControlDomains.observePasses, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
                     .accessibilityHint("Wie oft die Anschauen-Animation läuft, bevor die Phase weitergeht. Einmal ist die Vorgabe; zweimal stellt das frühere Verhalten wieder her. Der Durchlauf ist in beiden Fällen langsamer als früher.")
 
@@ -349,9 +350,9 @@ struct SettingsView: View {
                             StudyComparisonSettings.letterRepeatCount = $0
                             vm.markComparisonSettingChanged()
                         })) {
-                        Text("1").tag(1)
-                        Text("2").tag(2)
-                        Text("3").tag(3)
+                        ForEach(ComparisonControlDomains.letterRepeatCount, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
                     .accessibilityHint("Wie oft der komplette Ablauf eines Buchstabens läuft, bevor die Studienleitung weiterschaltet. Nach jeder Wiederholung wird derselbe Buchstabe erneut vorgemacht und nachgefahren; jede Wiederholung wird als eigener Datensatz geschrieben. 1 ist die Vorgabe.")
 
@@ -398,9 +399,9 @@ struct SettingsView: View {
                             StudyComparisonSettings.pitchScope = $0
                             vm.markComparisonSettingChanged()
                         })) {
-                        Text("Beide Klang-Arme").tag(PitchScope.both)
-                        Text("Nur Raumklang").tag(PitchScope.spatialOnly)
-                        Text("Aus").tag(PitchScope.off)
+                        ForEach(ComparisonControlDomains.pitchScope, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
                     .accessibilityHint("Beide Klang-Arme ist die Vorgabe: die Stifthöhe verändert die Tonhöhe im Raumklang-Arm und im Phonem-Arm (TD-PSOLA; beim F wird das Rauschen heller oder dunkler), mit demselben Tonumfang. Nur Raumklang: das Phonem bleibt auf seiner aufgenommenen Tonhöhe (die Vorgabe bis Protokoll r25). Aus: die Tonhöhe folgt dem Stift in keinem Arm. Die Achsen-Vorführung vor der Aufgabe (eigener Schalter, nur Raumklang) folgt diesem Schalter: bei Aus verändert sich ihre Tonhöhe nicht, sonst gilt derselbe Tonumfang. Ein Vergleichslauf, keine Pilotbedingung.")
 
@@ -411,10 +412,9 @@ struct SettingsView: View {
                             StudyComparisonSettings.pitchRangeCents = $0
                             vm.markComparisonSettingChanged()
                         })) {
-                        Text("1 Oktave").tag(1200)
-                        Text("2 Oktaven").tag(2400)
-                        Text("1,5 Oktaven").tag(1800)
-                        Text("½ Oktave").tag(600)
+                        ForEach(ComparisonControlDomains.pitchRangeCents, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
                     .accessibilityHint("1 Oktave (±600 Cent, 311 bis 622 Hz beim Raumklang) ist die Vorgabe ab Protokoll r26. 2 Oktaven (220 bis 880 Hz) war die Vorgabe bis r25. Ein kleinerer Umfang hält ein verschobenes Phonem besser erkennbar. Gilt für beide Arme.")
 
@@ -433,7 +433,8 @@ struct SettingsView: View {
                             comparisonDistanceLevel = $0
                             StudyComparisonSettings.distanceToneFarLevelDB = $0
                             vm.markComparisonSettingChanged()
-                        }), in: -60...0, step: 3) {
+                        }), in: ComparisonControlDomains.distanceToneFarLevelDB.range,
+                           step: ComparisonControlDomains.distanceToneFarLevelDB.step) {
                         Text("Abstand: Dämpfung am Rand \(comparisonDistanceLevel, specifier: "%.0f") dB")
                     }
                     .accessibilityHint("Minus 12 dB ist die Vorgabe. Wirkt nur bei eingeschalteter Abstands-Klangdimension.")
@@ -444,7 +445,8 @@ struct SettingsView: View {
                             comparisonDistanceCutoff = $0
                             StudyComparisonSettings.distanceToneFarCutoffHz = $0
                             vm.markComparisonSettingChanged()
-                        }), in: 100...20000, step: 100) {
+                        }), in: ComparisonControlDomains.distanceToneFarCutoffHz.range,
+                           step: ComparisonControlDomains.distanceToneFarCutoffHz.step) {
                         Text("Abstand: Grenzfrequenz am Rand \(comparisonDistanceCutoff, specifier: "%.0f") Hz")
                     }
                     .accessibilityHint("800 Hz ist die Vorgabe; 20000 Hz lässt den Klang ungefiltert.")
@@ -464,7 +466,8 @@ struct SettingsView: View {
                             comparisonDirectionCosine = $0
                             StudyComparisonSettings.directionMuteBackwardCosine = $0
                             vm.markComparisonSettingChanged()
-                        }), in: -1...1, step: 0.25) {
+                        }), in: ComparisonControlDomains.directionMuteBackwardCosine.range,
+                           step: ComparisonControlDomains.directionMuteBackwardCosine.step) {
                         Text("Richtung: Rückwärts-Schwelle \(comparisonDirectionCosine, specifier: "%.2f")")
                     }
                     .accessibilityHint("Kosinus-Schwelle; minus 0,25 ist die Vorgabe. Höhere Werte machen die Richtungs-Stummschaltung empfindlicher.")
@@ -484,7 +487,8 @@ struct SettingsView: View {
                             comparisonPressureRange = $0
                             StudyComparisonSettings.pressureLoudnessRangeDB = $0
                             vm.markComparisonSettingChanged()
-                        }), in: 0...60, step: 3) {
+                        }), in: ComparisonControlDomains.pressureLoudnessRangeDB.range,
+                           step: ComparisonControlDomains.pressureLoudnessRangeDB.step) {
                         Text("Stiftdruck: Lautstärkeumfang \(comparisonPressureRange, specifier: "%.0f") dB")
                     }
                     .accessibilityHint("18 dB ist die Vorgabe: leichter Druck wird höchstens um diesen Wert abgesenkt; voller Druck bleibt unverändert.")
@@ -513,8 +517,9 @@ struct SettingsView: View {
                             comparisonRoughnessDepth = $0
                             StudyComparisonSettings.dysfluencyRoughnessDepth = $0
                             vm.markComparisonSettingChanged()
-                        }), in: 0...1, step: 0.1) {
-                        Text("Rauheit: Tiefe \(Int((comparisonRoughnessDepth * 100).rounded())) %")
+                        }), in: ComparisonControlDomains.dysfluencyRoughnessDepth.range,
+                           step: ComparisonControlDomains.dysfluencyRoughnessDepth.step) {
+                        Text("Rauheit: Tiefe \(ComparisonControlDomains.roughnessDepthPercent(comparisonRoughnessDepth)) %")
                     }
                     .accessibilityHint("80 % ist die Vorgabe: bei vollem Stocken fällt die Lautstärke einmal pro Periode auf 20 %.")
 
@@ -524,7 +529,8 @@ struct SettingsView: View {
                             comparisonRoughnessRate = $0
                             StudyComparisonSettings.dysfluencyRoughnessRateHz = $0
                             vm.markComparisonSettingChanged()
-                        }), in: 5...100, step: 5) {
+                        }), in: ComparisonControlDomains.dysfluencyRoughnessRateHz.range,
+                           step: ComparisonControlDomains.dysfluencyRoughnessRateHz.step) {
                         Text("Rauheit: Rate \(comparisonRoughnessRate, specifier: "%.0f") Hz")
                     }
                     .accessibilityHint("40 Hz ist die Vorgabe.")
@@ -544,7 +550,8 @@ struct SettingsView: View {
                             comparisonPresentationSpacing = $0
                             StudyComparisonSettings.presentationSpacingSeconds = $0
                             vm.markComparisonSettingChanged()
-                        }), in: 0...10, step: 0.5) {
+                        }), in: ComparisonControlDomains.presentationSpacingSeconds.range,
+                           step: ComparisonControlDomains.presentationSpacingSeconds.step) {
                         Text("Abstand zwischen Buchstaben: \(comparisonPresentationSpacing, specifier: "%.1f") s")
                     }
                     .accessibilityHint("Pause zwischen dem Ende eines Buchstabens und dem Beginn des nächsten. 0 ist die Vorgabe.")
@@ -564,11 +571,9 @@ struct SettingsView: View {
                             StudyComparisonSettings.soundGateRadiusFactor = $0
                             vm.markComparisonSettingChanged()
                         })) {
-                        Text("1× (nur auf dem Strich)").tag(1.0)
-                        Text("2×").tag(2.0)
-                        Text("3× (Vorgabe)").tag(3.0)
-                        Text("4×").tag(4.0)
-                        Text("6× (ganze Zelle)").tag(6.0)
+                        ForEach(ComparisonControlDomains.soundGateRadiusFactor, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
                     .accessibilityHint("Wie weit der Finger vom nächsten Prüfpunkt entfernt sein darf, damit der Ton des Arms überhaupt erlaubt ist — als Vielfaches des Trefferradius. 3× ist die Vorgabe und war der fest eingebaute Wert. Gemessen am 17.09.: Der Trefferradius eines Studienbuchstabens ist 0,1, der größte Abstand zweier Prüfpunkte ist 0,028 — entlang des Strichs liegt der Finger also bei jeder Einstellung mindestens 3,6-fach nah genug, und dieser Wert wirkt nur, wenn das Kind den Strich verlässt. Aus derselben Messung folgt, dass die zweite Zeile die ist, die im Alltag greift.")
 
@@ -579,10 +584,9 @@ struct SettingsView: View {
                             StudyComparisonSettings.soundGateVelocityFloor = $0
                             vm.markComparisonSettingChanged()
                         })) {
-                        Text("Ohne Bewegungsschwelle (Vorgabe)").tag(0.0)
-                        Text("22 pt/s").tag(22.0)
-                        Text("44 pt/s").tag(44.0)
-                        Text("66 pt/s").tag(66.0)
+                        ForEach(ComparisonControlDomains.soundGateVelocityFloor, id: \.value) { option in
+                            Text(option.label).tag(option.value)
+                        }
                     }
                     .accessibilityHint("Wie schnell sich der Finger bewegen muss, damit der Ton des Arms läuft. Ohne Schwelle (Vorgabe seit dem 04.10.) folgt der Ton allein der Nähe — ein langsam nachfahrendes Kind hört den Buchstaben. Mit einer Schwelle bleibt der Ton unterhalb dieses Werts still, auch wenn der Finger auf dem Buchstaben liegt; 22 pt/s war der fest eingebaute Wert. Beide Zeilen sind UND-verknüpft: Der Ton braucht Nähe und — nur wenn eingestellt — Bewegung.")
 
