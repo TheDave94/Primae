@@ -701,15 +701,20 @@ final class PhaseTransitionCoordinator {
         // NOT the same value as `rr.confidence` (see recordCompletion's
         // doc comment for the 2026-09-04 fix this replaces).
         let formAccuracy = vm.lastWritingAssessment.map { Double($0.formAccuracy) }
-        for l in lettersToRecord {
-            vm.progressStore.recordCompletion(for: l, accuracy: accuracy,
-                                              phaseScores: phaseScores, speed: speed,
-                                              recognitionResult: rr, formAccuracy: formAccuracy)
-        }
-        // Variant tracking is single-letter only.
-        if !isWordSequence, vm.showingVariant, vm.letters.indices.contains(vm.letterIndex),
-           let variantID = vm.letters[vm.letterIndex].variants?.first {
-            vm.progressStore.recordVariantUsed(for: letter, variantID: variantID)
+        // R-030: a cold probe is a measurement, not practice; it must not
+        // feed the child's learning progress. Probe-stamped research rows
+        // and session records are written elsewhere and are unaffected.
+        if vm.currentProbe == nil {
+            for l in lettersToRecord {
+                vm.progressStore.recordCompletion(for: l, accuracy: accuracy,
+                                                  phaseScores: phaseScores, speed: speed,
+                                                  recognitionResult: rr, formAccuracy: formAccuracy)
+            }
+            // Variant tracking is single-letter only.
+            if !isWordSequence, vm.showingVariant, vm.letters.indices.contains(vm.letterIndex),
+               let variantID = vm.letters[vm.letterIndex].variants?.first {
+                vm.progressStore.recordVariantUsed(for: letter, variantID: variantID)
+            }
         }
         // The store isn't @Observable; this mirror is the SwiftUI bridge.
         vm.refreshProgressMirror()

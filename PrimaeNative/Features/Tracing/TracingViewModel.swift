@@ -3736,6 +3736,10 @@ public final class TracingViewModel {
                        .formAccuracyHistory ?? [])
                       .map { CGFloat($0) }
         let token = recognitionTokens.issue()
+        // R-030: decided HERE, at launch; the probe may have ended by the
+        // time the recognizer returns. A probe's recognition sample must
+        // not feed the child's learning progress.
+        let isProbe = currentProbe != nil
         Task { [weak self, letterRecognizer] in
             let result = await letterRecognizer.recognize(
                 points: pts, strokeStartIndices: breaks,
@@ -3745,7 +3749,7 @@ public final class TracingViewModel {
             guard self.recognitionTokens.isStillActive(token) else { return }
             self.freeform.isRecognizing = false
             self.lastRecognitionResult = result
-            if let r = result {
+            if let r = result, !isProbe {
                 self.progressStore.recordRecognitionSample(
                     letter: expected, result: r)
                 self.refreshProgressMirror()
