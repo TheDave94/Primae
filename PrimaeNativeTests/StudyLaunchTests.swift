@@ -68,21 +68,6 @@ private final class StaleCache: LetterCacheStoring {
     func clear() {}
 }
 
-@MainActor
-private final class SpyAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var loadedFiles: [String] = []
-    private(set) var autoplayFlags: [Bool] = []
-    func loadAudioFile(named: String, autoplay: Bool) { loadedFiles.append(named); autoplayFlags.append(autoplay) }
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func play() {}
-    func stop() {}
-    func restart() {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-}
-
 private func staleLetter(_ id: String) -> LetterAsset {
     LetterAsset(id: id, name: id, audioFiles: [],
                 strokes: LetterStrokes(letter: id, checkpointRadius: 0.05,
@@ -130,7 +115,7 @@ struct StudyLaunchTests {
         // P4 Option B (2026-10-05): a study observe animation starts after
         // the observe instruction, not on the load — a short test gap.
         deps.observeCueFallbackSeconds = 0.05
-        let audio = SpyAudio()
+        let audio = EngineModelAudio()
         deps.audio = audio
         let vm = TracingViewModel(deps)
         #expect(vm.launchParked)

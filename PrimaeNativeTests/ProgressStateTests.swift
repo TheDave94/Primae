@@ -31,26 +31,13 @@ import Testing
 import CoreGraphics
 @testable import PrimaeNative
 
-@MainActor
-fileprivate final class MockProgressStateAudio: AudioControlling {
-    var initializationError: String? { nil }
-    func loadAudioFile(named: String, autoplay: Bool) {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func play() {}
-    func stop() {}
-    func restart() {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-}
-
 @Suite(.serialized) @MainActor struct ProgressStateTests {
 
-    fileprivate let audio: MockProgressStateAudio
+    fileprivate let audio: StubAudio
     fileprivate let vm: TracingViewModel
 
     init() {
-        audio = MockProgressStateAudio()
+        audio = StubAudio()
         vm = TracingViewModel(.stub.with(audio: audio))
     }
 

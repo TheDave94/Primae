@@ -233,7 +233,7 @@ nonisolated struct R20RNG {
 
 /// The pen on the real touch path (view model + dispatcher), driving the direction mute.
 @MainActor enum R20Pen {
-    @MainActor static func makeVM(audio: R20ToneAudio) -> TracingViewModel {
+    @MainActor static func makeVM(audio: EngineModelAudio) -> TracingViewModel {
         var deps = TracingDependencies.stub.with(audioCondition: .phoneme).with(audio: audio)
         deps.directionMuteEnabled = true
         let vm = TracingViewModel(deps)
@@ -249,7 +249,7 @@ nonisolated struct R20RNG {
     /// `sigma` pt. cos(104.48 deg) = -0.25, the mute threshold. Returns toggles/s, the ideal crossings/s, flickers (<100 ms).
     @MainActor static func chatter(base: Double, wobble: Double, sigma: Double, seconds: Double = 10, seed: UInt64 = 7, margin: Float? = nil)
         -> (toggles: Double, crossings: Double, flickers: Int, mutedFraction: Double, mutes: [Bool]) {
-        let audio = R20ToneAudio()
+        let audio = EngineModelAudio()
         let vm = makeVM(audio: audio)
         if let margin { vm.touchDispatcher.directionReleaseMarginCosine = margin }
         let canvas = CGSize(width: 400, height: 400)
@@ -270,7 +270,7 @@ nonisolated struct R20RNG {
             vm.updateTouch(at: p, t: t, canvasSize: canvas)
             ideal.append(cos(theta) < Double(StrokeTone.backwardCosine))
         }
-        let m = audio.mutes
+        let m = audio.strokeMutes
         var toggles = 0, flickers = 0, runStart = 0
         for i in 1..<m.count where m[i] != m[i - 1] {
             toggles += 1
@@ -285,7 +285,7 @@ nonisolated struct R20RNG {
 
     /// Forward 1 s, back 1 s, forward 1 s at 150 pt/s, 120 Hz, no jitter: ms from each reversal to the mute / the unmute.
     @MainActor static func reversalLatency(margin: Float) -> (mute: Double?, unmute: Double?) {
-        let audio = R20ToneAudio()
+        let audio = EngineModelAudio()
         let vm = makeVM(audio: audio)
         vm.touchDispatcher.directionReleaseMarginCosine = margin
         let canvas = CGSize(width: 400, height: 400)
@@ -300,9 +300,9 @@ nonisolated struct R20RNG {
             if i == 240 { dir = 1 }
             p.x += dir * 150 / 120
             t += 1 / 120
-            let before = audio.mutes.count
+            let before = audio.strokeMutes.count
             vm.updateTouch(at: p, t: t, canvasSize: canvas)
-            if audio.mutes.count > before, let m = audio.mutes.last {
+            if audio.strokeMutes.count > before, let m = audio.strokeMutes.last {
                 if m, muteAt == nil, i >= 120 { muteAt = (time - 1.0) * 1000 }
                 if !m, muteAt != nil, unmuteAt == nil, i >= 240 { unmuteAt = (time - 2.0) * 1000 }
             }
@@ -312,17 +312,3 @@ nonisolated struct R20RNG {
 
 }
 
-@MainActor
-final class R20ToneAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var mutes: [Bool] = []
-    func loadAudioFile(named: String, autoplay: Bool) {}
-    func play() {}
-    func stop() {}
-    func restart() {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func setStrokeMute(_ muted: Bool) { mutes.append(muted) }
-}

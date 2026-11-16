@@ -74,7 +74,10 @@ final class EngineModelAudio: AudioControlling {
     private(set) var pitchCents: Float = 0
     private(set) var plays: [PlaySnapshot] = []
 
+    /// Every load with its autoplay flag, in order (R-103).
+    private(set) var loads: [(file: String, autoplay: Bool)] = []
     func loadAudioFile(named: String, autoplay: Bool) {
+        loads.append((named, autoplay))
         events.append(.load(named)); isPlaying = autoplay
         loadedFile = named
         if autoplay { snapshotPlay() }
@@ -84,6 +87,17 @@ final class EngineModelAudio: AudioControlling {
         rate = speed; pan = horizontalBias
     }
     func setSpatialPitch(cents: Float) { spatialPitches.append(cents); pitchCents = cents }
+    /// R-103: recorded once here so the per-test spies that only logged these
+    /// writes can share this double. Each is the ordered list of values the
+    /// view model wrote (none of them is engine STATE this model reads back).
+    private(set) var strokeLevels: [Float] = []
+    private(set) var strokeCutoffs: [Float] = []
+    private(set) var strokeMutes: [Bool] = []
+    private(set) var pressureGains: [Float] = []
+    func setStrokeLevel(gainDB: Float) { strokeLevels.append(gainDB) }
+    func setStrokeLowpass(cutoffHz: Float) { strokeCutoffs.append(cutoffHz) }
+    func setStrokeMute(_ muted: Bool) { strokeMutes.append(muted) }
+    func setPressureGain(_ gain: Float) { pressureGains.append(gain) }
     func setRoughness(_ amount: Float) { roughnessWrites.append(amount) }
     func setRoughnessTuning(depth: Float, frequencyHz: Float) { roughnessTunings.append((depth, frequencyHz)) }
     func play() { events.append(.play(fade: 0)); isPlaying = true; snapshotPlay() }
@@ -110,6 +124,21 @@ final class EngineModelAudio: AudioControlling {
     }
 
     var playCount: Int { events.filter { if case .play = $0 { return true } else { return false } }.count }
+    var stopCount: Int { events.filter { $0 == .stop }.count }
+    /// Every `loadAudioFile` call's file / autoplay flag, in order (R-103).
+    var loadedFiles: [String] { loads.map(\.file) }
+    var autoplayFlags: [Bool] { loads.map(\.autoplay) }
+    var setAdaptiveCount: Int { setAdaptiveCalls.count }
+    /// Drop every recorded call (NOT the modelled engine state: file, rate,
+    /// pan, pitch stay, as they would on the engine). For tests that build a
+    /// view model, whose init primes a load, and want only what follows.
+    func reset() {
+        events = []; setAdaptiveCalls = []; spatialPitches = []
+        roughnessWrites = []; roughnessTunings = []; plays = []
+        strokeLevels = []; strokeCutoffs = []; strokeMutes = []; pressureGains = []
+        loads = []; letterEndStopFades = []; summaryLabels = []
+        stopsDuringObserve = 0; isPlaying = false
+    }
     var anyActivity: Bool { !events.isEmpty || !setAdaptiveCalls.isEmpty || !spatialPitches.isEmpty }
 }
 

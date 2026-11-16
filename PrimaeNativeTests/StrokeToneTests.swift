@@ -308,33 +308,13 @@ nonisolated struct StrokeToneKernelTests {
 
 // MARK: - Touch-path wiring (the "is it inert?" check)
 
-@MainActor
-fileprivate final class ToneRecordingAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var levels: [Float] = []
-    private(set) var cutoffs: [Float] = []
-    private(set) var mutes: [Bool] = []
-    private(set) var rateCalls = 0
-    func loadAudioFile(named: String, autoplay: Bool) {}
-    func play() {}
-    func stop() {}
-    func restart() {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) { rateCalls += 1 }
-    func setStrokeLevel(gainDB: Float) { levels.append(gainDB) }
-    func setStrokeLowpass(cutoffHz: Float) { cutoffs.append(cutoffHz) }
-    func setStrokeMute(_ muted: Bool) { mutes.append(muted) }
-}
-
 @Suite("R18 stroke tone on the pen's touch path", .serialized) @MainActor
 struct StrokeToneTouchPathTests {
     private let canvas = CGSize(width: 400, height: 400)
 
     private func makeVM(distance: Bool, direction: Bool, arm: PilotAudioCondition = .phoneme)
-        -> (TracingViewModel, ToneRecordingAudio) {
-        let audio = ToneRecordingAudio()
+        -> (TracingViewModel, EngineModelAudio) {
+        let audio = EngineModelAudio()
         var deps = TracingDependencies.stub.with(audioCondition: arm).with(audio: audio)
         deps.distanceToneEnabled = distance
         deps.directionMuteEnabled = direction
@@ -366,20 +346,20 @@ struct StrokeToneTouchPathTests {
     func offWritesNothing() {
         let (vm, audio) = makeVM(distance: false, direction: false)
         drag(vm, y: 200, x0: 50, dx: 10)
-        #expect(audio.rateCalls > 0, "the coupling did not run: the test measures nothing")
-        #expect(audio.levels.isEmpty && audio.cutoffs.isEmpty && audio.mutes.isEmpty)
+        #expect(audio.setAdaptiveCalls.count > 0, "the coupling did not run: the test measures nothing")
+        #expect(audio.strokeLevels.isEmpty && audio.strokeCutoffs.isEmpty && audio.strokeMutes.isEmpty)
     }
 
     @Test("distance on: on the stroke 0 dB / no filter, half a gate radius off it quieter and darker")
     func distanceReachesTheVoice() {
         let (on, onAudio) = makeVM(distance: true, direction: false)
         drag(on, y: 200, x0: 50, dx: 10)
-        #expect(!onAudio.levels.isEmpty && onAudio.levels.allSatisfy { abs($0) < 0.05 })
-        #expect(onAudio.cutoffs.allSatisfy { $0 >= StrokeTone.bypassHz - 1 })
+        #expect(!onAudio.strokeLevels.isEmpty && onAudio.strokeLevels.allSatisfy { abs($0) < 0.05 })
+        #expect(onAudio.strokeCutoffs.allSatisfy { $0 >= StrokeTone.bypassHz - 1 })
         let (off, offAudio) = makeVM(distance: true, direction: false)
         drag(off, y: 260, x0: 50, dx: 10)               // 0.15 = half of the 0.3 gate radius
-        #expect(!offAudio.levels.isEmpty && offAudio.levels.allSatisfy { $0 < -5 && $0 > -7 }, "\(offAudio.levels)")
-        #expect(offAudio.cutoffs.allSatisfy { $0 < 5000 && $0 > 3000 }, "\(offAudio.cutoffs)")
+        #expect(!offAudio.strokeLevels.isEmpty && offAudio.strokeLevels.allSatisfy { $0 < -5 && $0 > -7 }, "\(offAudio.strokeLevels)")
+        #expect(offAudio.strokeCutoffs.allSatisfy { $0 < 5000 && $0 > 3000 }, "\(offAudio.strokeCutoffs)")
     }
 
     @Test("direction on: tracing against the stroke mutes, with it does not; in both sound arms")
@@ -387,10 +367,10 @@ struct StrokeToneTouchPathTests {
         for arm in [PilotAudioCondition.phoneme, .spatial] {
             let (fwd, fwdAudio) = makeVM(distance: false, direction: true, arm: arm)
             drag(fwd, y: 200, x0: 50, dx: 10)
-            #expect(!fwdAudio.mutes.isEmpty && !fwdAudio.mutes.contains(true), "\(arm) forwards: \(fwdAudio.mutes)")
+            #expect(!fwdAudio.strokeMutes.isEmpty && !fwdAudio.strokeMutes.contains(true), "\(arm) forwards: \(fwdAudio.strokeMutes)")
             let (back, backAudio) = makeVM(distance: false, direction: true, arm: arm)
             drag(back, y: 200, x0: 350, dx: -10)
-            #expect(backAudio.mutes.contains(true), "\(arm) backwards was never muted: \(backAudio.mutes)")
+            #expect(backAudio.strokeMutes.contains(true), "\(arm) backwards was never muted: \(backAudio.strokeMutes)")
         }
     }
 
@@ -412,22 +392,22 @@ struct StrokeToneTouchPathTests {
         for arm in [PilotAudioCondition.phoneme, .spatial] {
             let (vm, audio) = makeVM(distance: false, direction: true, arm: arm)
             let t = reverse(vm)
-            #expect(audio.mutes.last == true, "\(arm): the reversal was not muted, the test measures nothing: \(audio.mutes)")
+            #expect(audio.strokeMutes.last == true, "\(arm): the reversal was not muted, the test measures nothing: \(audio.strokeMutes)")
             let stall = vm.strokeTempo.stallSeconds
             // Held on the spot (a sample that moved nothing): inside the stall cutoff the reversal still counts ...
             vm.updateTouch(at: CGPoint(x: 200, y: 200), t: t + stall * 0.5, canvasSize: canvas)
-            #expect(audio.mutes.last == true, "\(arm): unmuted before the pen had stopped: \(audio.mutes)")
+            #expect(audio.strokeMutes.last == true, "\(arm): unmuted before the pen had stopped: \(audio.strokeMutes)")
             // ... past it the pen has stopped, and a stopped pen is not backwards.
             vm.updateTouch(at: CGPoint(x: 200, y: 200), t: t + stall + 0.05, canvasSize: canvas)
-            #expect(audio.mutes.last == false, "\(arm): a stopped pen stayed muted: \(audio.mutes)")
+            #expect(audio.strokeMutes.last == false, "\(arm): a stopped pen stayed muted: \(audio.strokeMutes)")
             // Moving forward again is audible, and a new reversal mutes again.
             var p = CGPoint(x: 200, y: 200)
             var time = t + stall + 0.06
             for _ in 0..<10 { time += 0.001; p.x += 10; vm.updateTouch(at: p, t: time, canvasSize: canvas) }
-            #expect(audio.mutes.last == false, "\(arm): forwards after the stop was muted: \(audio.mutes)")
-            let before = audio.mutes.count
+            #expect(audio.strokeMutes.last == false, "\(arm): forwards after the stop was muted: \(audio.strokeMutes)")
+            let before = audio.strokeMutes.count
             for _ in 0..<10 { time += 0.001; p.x -= 10; vm.updateTouch(at: p, t: time, canvasSize: canvas) }
-            #expect(audio.mutes[before...].contains(true), "\(arm): a second reversal was never muted: \(audio.mutes)")
+            #expect(audio.strokeMutes[before...].contains(true), "\(arm): a second reversal was never muted: \(audio.strokeMutes)")
         }
     }
 
@@ -437,10 +417,10 @@ struct StrokeToneTouchPathTests {
             let (vm, audio) = makeVM(distance: false, direction: true, arm: arm)
             var t = reverse(vm)
             var p = CGPoint(x: 200, y: 200)
-            let before = audio.mutes.count
+            let before = audio.strokeMutes.count
             // 4 s at 2 pt per 0.2 s = 10 pt/s, each sample a kept move inside the stall cutoff.
             for _ in 0..<20 { t += 0.2; p.x -= 2; vm.updateTouch(at: p, t: t, canvasSize: canvas) }
-            let slow = Array(audio.mutes[before...])
+            let slow = Array(audio.strokeMutes[before...])
             #expect(slow.count == 20, "the slow samples did not reach the voice: \(slow.count)")
             #expect(slow.allSatisfy { $0 }, "\(arm): a slow backwards pen was unmuted: \(slow)")
         }
@@ -451,9 +431,9 @@ struct StrokeToneTouchPathTests {
         for arm in [PilotAudioCondition.phoneme, .spatial] {
             let (vm, audio) = makeVM(distance: false, direction: true, arm: arm)
             _ = reverse(vm)
-            #expect(audio.mutes.last == true, "\(arm): the reversal was not muted, the test measures nothing")
+            #expect(audio.strokeMutes.last == true, "\(arm): the reversal was not muted, the test measures nothing")
             vm.endTouch()
-            #expect(audio.mutes.last == false, "\(arm): the lift tail stayed muted by a past reversal: \(audio.mutes)")
+            #expect(audio.strokeMutes.last == false, "\(arm): the lift tail stayed muted by a past reversal: \(audio.strokeMutes)")
         }
     }
 
@@ -462,11 +442,11 @@ struct StrokeToneTouchPathTests {
         let (off, offAudio) = makeVM(distance: false, direction: false)
         _ = reverse(off)
         off.endTouch()
-        #expect(offAudio.rateCalls > 0, "the coupling did not run: the test measures nothing")
-        #expect(offAudio.mutes.isEmpty, "both switches off wrote a mute: \(offAudio.mutes)")
+        #expect(offAudio.setAdaptiveCalls.count > 0, "the coupling did not run: the test measures nothing")
+        #expect(offAudio.strokeMutes.isEmpty, "both switches off wrote a mute: \(offAudio.strokeMutes)")
         let (dist, distAudio) = makeVM(distance: true, direction: false)
         _ = reverse(dist)
         dist.endTouch()
-        #expect(!distAudio.mutes.isEmpty && !distAudio.mutes.contains(true), "distance alone muted: \(distAudio.mutes)")
+        #expect(!distAudio.strokeMutes.isEmpty && !distAudio.strokeMutes.contains(true), "distance alone muted: \(distAudio.strokeMutes)")
     }
 }

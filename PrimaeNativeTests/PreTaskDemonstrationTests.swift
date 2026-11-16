@@ -14,46 +14,6 @@ import Foundation
 import CoreGraphics
 @testable import PrimaeNative
 
-@MainActor
-fileprivate final class RecordingAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var loadedFiles: [String] = []
-    private(set) var autoplayFlags: [Bool] = []
-    private(set) var setAdaptiveCount = 0
-    private(set) var spatialPitches: [Float] = []
-    private(set) var stopCount = 0
-    var isPlaying = false
-    func loadAudioFile(named: String, autoplay: Bool) {
-        loadedFiles.append(named)
-        autoplayFlags.append(autoplay)
-        isPlaying = autoplay
-    }
-    func play()    { isPlaying = true }
-    func stop()    { stopCount += 1; isPlaying = false }
-    func restart() {}
-    func suspendForLifecycle()        { isPlaying = false }
-    func resumeAfterLifecycle()       {}
-    func cancelPendingLifecycleWork() {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) { setAdaptiveCount += 1 }
-    func setSpatialPitch(cents: Float) { spatialPitches.append(cents) }
-
-    /// Clear everything recorded so far. `TracingViewModel.init` itself
-    /// calls `load(letter:)` for its first (stub) letter, which does its
-    /// OWN unrelated `loadAudioFile(autoplay: false)` — the VM's normal
-    /// "ready to play on tap" priming, nothing to do with the pre-task
-    /// demonstration under test. Reset right after construction so every
-    /// assertion below reflects only what the explicit
-    /// `armPreTaskDemonstration` call under test actually did.
-    func reset() {
-        loadedFiles = []
-        autoplayFlags = []
-        setAdaptiveCount = 0
-        spatialPitches = []
-        stopCount = 0
-        isPlaying = false
-    }
-}
-
 // MARK: - Pure axis-sweep math
 
 @Suite struct PreTaskDemonstrationSweepTests {
@@ -131,7 +91,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test("non-study session: no demonstration for any arm")
     func nonStudy_noOp() async {
-        let audio = RecordingAudio()
+        let audio = EngineModelAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .phoneme).with(audio: audio).with(studyMode: false))
         audio.reset()
         vm.armPreTaskDemonstration(for: asset(), duration: 0.05)
@@ -142,7 +102,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test("silent arm: no audio added, even in a study session")
     func silentArm_addsNoAudio() async {
-        let audio = RecordingAudio()
+        let audio = EngineModelAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .silent).with(audio: audio).with(studyMode: true))
         audio.reset()
         vm.armPreTaskDemonstration(for: asset(), duration: 0.05)
@@ -153,7 +113,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test("phoneme arm: sound-letter exposure plays the letter's phoneme once, then stops")
     func phonemeArm_playsPhonemeOnce() async {
-        let audio = RecordingAudio()
+        let audio = EngineModelAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .phoneme).with(audio: audio).with(studyMode: true))
         audio.reset()
         vm.armPreTaskDemonstration(for: asset(), duration: 0.05)
@@ -178,7 +138,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test("spatial arm: the demonstration holds the carrier steady, then stops")
     func spatialArm_holdsCarrierAndStops() async {
-        let audio = RecordingAudio()
+        let audio = EngineModelAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .spatial).with(audio: audio).with(studyMode: true))
         audio.reset()
         vm.armPreTaskDemonstration(for: asset(), duration: 0.1)
@@ -204,7 +164,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test("cancelPreTaskDemonstration before the task runs suppresses it entirely")
     func cancelBeforeRun_suppressesDemo() async {
-        let audio = RecordingAudio()
+        let audio = EngineModelAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .phoneme).with(audio: audio).with(studyMode: true))
         audio.reset()
         vm.armPreTaskDemonstration(for: asset(), duration: 0.05)
@@ -216,7 +176,7 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     @Test("a real touch beginning cancels an in-flight demonstration")
     func realTouch_cancelsDemo() async {
-        let audio = RecordingAudio()
+        let audio = EngineModelAudio()
         let vm = TracingViewModel(.stub.with(audioCondition: .spatial).with(audio: audio).with(studyMode: true))
         audio.reset()
         vm.armPreTaskDemonstration(for: asset(), duration: 2.0)

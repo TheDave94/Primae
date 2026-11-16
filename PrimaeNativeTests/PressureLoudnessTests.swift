@@ -12,22 +12,6 @@ import Foundation
 import CoreGraphics
 @testable import PrimaeNative
 
-@MainActor
-fileprivate final class GainRecordingAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var gains: [Float] = []
-    private(set) var isPlaying = false
-    func loadAudioFile(named: String, autoplay: Bool) {}
-    func play() { isPlaying = true }
-    func stop() { isPlaying = false }
-    func restart() {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func setPressureGain(_ gain: Float) { gains.append(gain) }
-}
-
 @Suite("r18 slice 6: pencil pressure to loudness") @MainActor
 struct PressureLoudnessTests {
 
@@ -126,22 +110,22 @@ struct PressureLoudnessTests {
     func penPathReachesAudio() {
         var deps = TracingDependencies.stub.with(audioCondition: .phoneme)
         deps.pressureLoudnessEnabled = true
-        let a = GainRecordingAudio()
+        let a = EngineModelAudio()
         let pencilVM = TracingViewModel(deps.with(audio: a))
         drive(pencilVM, pencilForce: 0.4)
         let want = ArmCoupling.PressureLoudness.gain(forForce: 0.4, enabled: true)
-        #expect(!a.gains.isEmpty && a.gains.contains { abs($0 - want) < 1e-6 }, "gains \(a.gains)")
+        #expect(!a.pressureGains.isEmpty && a.pressureGains.contains { abs($0 - want) < 1e-6 }, "gains \(a.pressureGains)")
 
-        let b = GainRecordingAudio()
+        let b = EngineModelAudio()
         drive(TracingViewModel(deps.with(audio: b)), pencilForce: nil)
-        #expect(!b.gains.isEmpty && b.gains.allSatisfy { $0 == 1 }, "finger gains \(b.gains)")
+        #expect(!b.pressureGains.isEmpty && b.pressureGains.allSatisfy { $0 == 1 }, "finger gains \(b.pressureGains)")
     }
 
     @Test("pen path: switch off writes only unity even for a hard Pencil press")
     func penPathOffIsUnity() {
-        let a = GainRecordingAudio()
+        let a = EngineModelAudio()
         drive(TracingViewModel(TracingDependencies.stub.with(audioCondition: .spatial).with(audio: a)), pencilForce: 0.1)
-        #expect(a.gains.allSatisfy { $0 == 1 }, "gains \(a.gains)")
+        #expect(a.pressureGains.allSatisfy { $0 == 1 }, "gains \(a.pressureGains)")
     }
 
     // MARK: Seam C

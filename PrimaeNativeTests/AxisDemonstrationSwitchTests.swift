@@ -43,62 +43,6 @@ import Foundation
 import CoreGraphics
 @testable import PrimaeNative
 
-/// Records the three engine calls the spatial demonstration can make, so
-/// "steady window" and "scripted sweep" are distinguishable by COUNT and by
-/// RANGE rather than by inspection. `PreTaskDemonstrationTests`' own
-/// `RecordingAudio` is `fileprivate` to that file; this is the same shape,
-/// extended to keep the pan bias `setAdaptivePlayback` carries — the sweep
-/// drives both axes, and a test that recorded only pitch would pass for a
-/// sweep whose pan leg had been deleted.
-@MainActor
-private final class SweepRecordingAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var loadedFiles: [String] = []
-    private(set) var autoplayFlags: [Bool] = []
-    private(set) var speeds: [Float] = []
-    private(set) var biases: [Float] = []
-    private(set) var pitches: [Float] = []
-    private(set) var stopCount = 0
-    var isPlaying = false
-
-    func loadAudioFile(named: String, autoplay: Bool) {
-        loadedFiles.append(named)
-        autoplayFlags.append(autoplay)
-        isPlaying = autoplay
-    }
-    func play()    { isPlaying = true }
-    func stop()    { stopCount += 1; isPlaying = false }
-    func restart() {}
-    func suspendForLifecycle()        { isPlaying = false }
-    func resumeAfterLifecycle()       {}
-    func cancelPendingLifecycleWork() {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
-        speeds.append(speed)
-        biases.append(horizontalBias)
-    }
-    func setSpatialPitch(cents: Float) { pitches.append(cents) }
-
-    /// Drop everything recorded so far. `TracingViewModel.init` runs
-    /// `load(letter:)` for its first (stub) letter, which does its own
-    /// unrelated `loadAudioFile(autoplay: false)`. Reset right after
-    /// construction so each assertion below reflects only the explicit
-    /// `armPreTaskDemonstration` call under test.
-    func reset() {
-        loadedFiles = []
-        autoplayFlags = []
-        speeds = []
-        biases = []
-        pitches = []
-        stopCount = 0
-        isPlaying = false
-    }
-
-    /// The count assertions below are all "how many engine calls did the
-    /// demonstration make", and every one of them is a number a wrong
-    /// branch would change by an order of magnitude (1 versus ~40).
-    var callCount: Int { pitches.count }
-}
-
 /// `.serialized` because the STORAGE tests here (the default, the round-trip,
 /// the reset) legitimately write the GLOBAL, and Swift Testing would otherwise
 /// run them concurrently and let one test's write land inside another's read.
@@ -210,7 +154,7 @@ struct AxisDemonstrationSwitchTests {
     @Test("OFF: the carrier is held steady for the window, then stopped")
     func offPathHoldsTheCarrierSteady() async {
         await withRestoredComparisonKeysAsync {
-            let audio = SweepRecordingAudio()
+            let audio = EngineModelAudio()
             let vm = studySpatialVM(audio: audio, axisDemonstration: false)
             audio.reset()
 
@@ -220,12 +164,12 @@ struct AxisDemonstrationSwitchTests {
 
             #expect(audio.loadedFiles == [SpatialSonification.carrierToneFile],
                     "the carrier file is the arm's stimulus in both settings")
-            #expect(audio.callCount == 1,
-                    "the OFF path made \(audio.callCount) pitch calls — it must hold ONE steady value, not sweep")
-            #expect(audio.pitches == [0],
-                    "the OFF path must hold pitch at zero, got \(audio.pitches)")
-            #expect(audio.biases == [0],
-                    "the OFF path must hold pan at the centre, got \(audio.biases)")
+            #expect(audio.spatialPitches.count == 1,
+                    "the OFF path made \(audio.spatialPitches.count) pitch calls — it must hold ONE steady value, not sweep")
+            #expect(audio.spatialPitches == [0],
+                    "the OFF path must hold pitch at zero, got \(audio.spatialPitches)")
+            #expect(audio.setAdaptiveCalls.map(\.bias) == [0],
+                    "the OFF path must hold pan at the centre, got \(audio.setAdaptiveCalls.map(\.bias))")
             #expect(audio.stopCount == 1,
                     "loadAudioFile(autoplay: true) schedules LOOPING playback — the demonstration must stop the carrier when the window ends")
         }
@@ -246,7 +190,7 @@ struct AxisDemonstrationSwitchTests {
     @Test("ON: pitch and pan both sweep the full canvas, then the carrier stops")
     func onPathRunsTheScriptedSweep() async {
         await withRestoredComparisonKeysAsync {
-            let audio = SweepRecordingAudio()
+            let audio = EngineModelAudio()
             // The full ±1200 range below is the r18-r25 coupling (2400 cents); the r26
             // default's narrower octave is pinned by sweep(scope:span:) further down.
             let vm = studySpatialVM(audio: audio, axisDemonstration: true,
@@ -259,14 +203,14 @@ struct AxisDemonstrationSwitchTests {
 
             #expect(audio.loadedFiles == [SpatialSonification.carrierToneFile],
                     "the sweep must play the arm's own carrier file")
-            #expect(audio.callCount > 1,
-                    "the ON path made \(audio.callCount) pitch call(s) — the switch is inert and the steady window ran instead")
+            #expect(audio.spatialPitches.count > 1,
+                    "the ON path made \(audio.spatialPitches.count) pitch call(s) — the switch is inert and the steady window ran instead")
 
             // The vertical leg: `pitchCents` maps canvas top to +1200 and
             // bottom to −1200, and `axisSweep` crosses both. Asserting the
             // RANGE, not a particular sample, is what distinguishes a
             // sweep from any other sequence of pitches.
-            let pitches = audio.pitches
+            let pitches = audio.spatialPitches
             if let high = pitches.max(), let low = pitches.min() {
                 #expect(high > 1100,
                         "the sweep never reached the top of the canvas (max pitch \(high) cents, expected ~+1200)")
@@ -279,7 +223,7 @@ struct AxisDemonstrationSwitchTests {
             // The horizontal leg. Recorded separately from pitch because a
             // restored sweep that had lost its pan would still pass every
             // pitch assertion above.
-            let biases = audio.biases
+            let biases = audio.setAdaptiveCalls.map(\.bias)
             if let right = biases.max(), let left = biases.min() {
                 #expect(right > 0.9,
                         "the sweep never reached the right edge (max pan bias \(right), expected ~+1)")
@@ -299,7 +243,7 @@ struct AxisDemonstrationSwitchTests {
     /// What the sweep wrote, as the engine saw it: the pitch calls and the pan calls.
     private func sweep(scope: PitchScope, span: Int) async -> (pitches: [Float], biases: [Float]) {
         await withRestoredComparisonKeysAsync {
-            let audio = SweepRecordingAudio()
+            let audio = EngineModelAudio()
             var deps = TracingDependencies.stub
                 .with(audioCondition: .spatial)
                 .with(audio: audio)
@@ -311,7 +255,7 @@ struct AxisDemonstrationSwitchTests {
             vm.armPreTaskDemonstration(for: asset(), duration: 0.1)
             await waitUntil { audio.stopCount > 0 }
             try? await Task.sleep(for: .milliseconds(50))
-            return (audio.pitches, audio.biases)
+            return (audio.spatialPitches, audio.setAdaptiveCalls.map(\.bias))
         }
     }
 
@@ -384,7 +328,7 @@ struct AxisDemonstrationSwitchTests {
     @Test("ON: cancelling mid-sweep stops it within a sample or two")
     func onPathCancellationStopsTheSweep() async {
         await withRestoredComparisonKeysAsync {
-            let audio = SweepRecordingAudio()
+            let audio = EngineModelAudio()
             let vm = studySpatialVM(audio: audio, axisDemonstration: true)
             audio.reset()
 
@@ -392,8 +336,8 @@ struct AxisDemonstrationSwitchTests {
             // cancel part-way through rather than after it has finished.
             vm.armPreTaskDemonstration(for: asset(), duration: 2.0)
 
-            await waitUntil { audio.callCount >= 3 }
-            let atCancel = audio.callCount
+            await waitUntil { audio.spatialPitches.count >= 3 }
+            let atCancel = audio.spatialPitches.count
             #expect(atCancel >= 3, "precondition: the sweep must actually be running")
             #expect(atCancel < PreTaskDemonstration.sweepStepCount,
                     "precondition: the sweep finished before it could be cancelled — this test would then prove nothing")
@@ -406,10 +350,10 @@ struct AxisDemonstrationSwitchTests {
             // land in a few milliseconds and the count would jump to the
             // full step count. One sample of slack covers the check at the
             // top of the iteration the cancel landed in.
-            #expect(audio.callCount <= atCancel + 1,
-                    "the sweep kept running after cancelPreTaskDemonstration: \(audio.callCount) samples recorded, \(atCancel) at cancel time")
-            #expect(audio.callCount < PreTaskDemonstration.sweepStepCount,
-                    "a cancelled demonstration ran to completion (\(audio.callCount) of \(PreTaskDemonstration.sweepStepCount) samples)")
+            #expect(audio.spatialPitches.count <= atCancel + 1,
+                    "the sweep kept running after cancelPreTaskDemonstration: \(audio.spatialPitches.count) samples recorded, \(atCancel) at cancel time")
+            #expect(audio.spatialPitches.count < PreTaskDemonstration.sweepStepCount,
+                    "a cancelled demonstration ran to completion (\(audio.spatialPitches.count) of \(PreTaskDemonstration.sweepStepCount) samples)")
         }
     }
 
@@ -433,7 +377,7 @@ struct AxisDemonstrationSwitchTests {
     @Test("ON with no samples: nothing plays, rather than a silent skip")
     func emptySweepProducesNoAudio() async {
         await withRestoredComparisonKeysAsync {
-            let audio = SweepRecordingAudio()
+            let audio = EngineModelAudio()
             let vm = studySpatialVM(audio: audio, axisDemonstration: true)
             audio.reset()
 
@@ -454,7 +398,7 @@ struct AxisDemonstrationSwitchTests {
     /// `bothBranchesSpanTheWindow`.
     private func stopDelay(on: Bool, window: TimeInterval) async -> TimeInterval {
         await withRestoredComparisonKeysAsync {
-            let audio = SweepRecordingAudio()
+            let audio = EngineModelAudio()
             let vm = studySpatialVM(audio: audio, axisDemonstration: on)
             audio.reset()
             let armedAt = Date()
@@ -470,7 +414,7 @@ struct AxisDemonstrationSwitchTests {
     /// Until 2026-10-16 this wrote the key instead, which put a demonstration ON
     /// window in front of every fixture constructed concurrently anywhere in the
     /// run — the class CONVENTIONS 140 names.
-    private func studySpatialVM(audio: SweepRecordingAudio,
+    private func studySpatialVM(audio: EngineModelAudio,
                                axisDemonstration: Bool,
                                pitchCoupling: PitchCoupling? = nil) -> TracingViewModel {
         var deps = TracingDependencies.stub

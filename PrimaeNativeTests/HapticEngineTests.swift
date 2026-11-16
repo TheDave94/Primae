@@ -73,19 +73,6 @@ import QuartzCore
 
 // MARK: - TracingViewModel haptic integration tests
 
-@MainActor
-private final class TrackingMockAudio: AudioControlling {
-    var initializationError: String? { nil }
-    func loadAudioFile(named: String, autoplay: Bool) {}
-    func play() {}
-    func stop() {}
-    func restart() {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func suspendForLifecycle() {}
-    func resumeAfterLifecycle() {}
-    func cancelPendingLifecycleWork() {}
-}
-
 @Suite @MainActor struct TracingViewModelHapticTests {
 
     /// Every VM in this suite names its `studyMode` rather than inheriting
@@ -97,7 +84,7 @@ private final class TrackingMockAudio: AudioControlling {
     private func makeVM(studyMode: Bool, haptics: NullHapticEngine) -> TracingViewModel {
         TracingViewModel(
             .stub
-                .with(audio: TrackingMockAudio())
+                .with(audio: StubAudio())
                 .with(haptics: haptics)
                 .with(studyMode: studyMode)
                 .with(thesisCondition: .guidedOnly)

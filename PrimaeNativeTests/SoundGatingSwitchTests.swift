@@ -14,20 +14,6 @@ import Foundation
 import CoreGraphics
 @testable import PrimaeNative
 
-@MainActor
-private final class GateCountingAudio: AudioControlling {
-    var initializationError: String? { nil }
-    private(set) var playCount = 0
-    func loadAudioFile(named fileName: String, autoplay: Bool) {}
-    func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
-    func play()    { playCount += 1 }
-    func stop()    {}
-    func restart() {}
-    func suspendForLifecycle()        {}
-    func resumeAfterLifecycle()       {}
-    func cancelPendingLifecycleWork() {}
-}
-
 @Suite(.serialized) @MainActor
 struct SoundGatingSwitchTests {
 
@@ -100,7 +86,7 @@ struct SoundGatingSwitchTests {
     /// checkpoint and moves to 2x the hit radius, outside a 1x sound gate. With a 1x gate and
     /// the gate ON that is silent (r17); with the gate OFF the same gesture sounds.
     private func plays(gating: Bool, arm: PilotAudioCondition) -> Bool? {
-        let audio = GateCountingAudio()
+        let audio = EngineModelAudio()
         var deps = TracingDependencies.stub.with(audio: audio)
         deps.soundGateRadiusFactor = 1.0
         deps.soundGatingEnabled = gating
