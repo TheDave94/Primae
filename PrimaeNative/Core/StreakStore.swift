@@ -78,6 +78,8 @@ final class JSONStreakStore: StreakStoring {
     private let calendar: Calendar
     private var state: StreakState
     private var pendingSave: Task<Void, Never>?
+    /// Orders the background write against the wipe's synchronous one (B-21).
+    private let writeGate = StoreWriteGate()
 
     /// See `JSONProgressStore.failureCenter` / `.writeRefusal`.
     private let failureCenter: PersistenceFailureCenter
@@ -173,9 +175,10 @@ final class JSONStreakStore: StreakStoring {
         return newRewards
     }
 
+    /// On disk when this returns (B-21) — see `StoreWriteGate`.
     func reset() {
         state = StreakState()
-        persist()
+        persistNow()
     }
 
     // MARK: - Private
@@ -209,6 +212,24 @@ final class JSONStreakStore: StreakStoring {
         return calendar.date(from: comps)
     }
 
+    /// The wipe's write: on disk before this returns (B-21) — see
+    /// `JSONParentDashboardStore.persistNow` and `StoreWriteGate`.
+    private func persistNow() {
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("StreakStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
+            return
+        }
+        guard let data = StoreCoding.encode(state, store: "StreakStore", center: failureCenter) else { return }
+        pendingSave?.cancel()
+        do {
+            try writeGate.writeNow(data, to: fileURL)
+        } catch {
+            storePersistenceLogger.warning(
+                "StreakStore wipe write failed at \(self.fileURL.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            failureCenter.reportFailure(store: "StreakStore", error: error)
+        }
+    }
+
     private func persist() {
         // Encode on main, write off main — see ProgressStore.save().
         guard writeRefusal == nil else {
@@ -218,6 +239,7 @@ final class JSONStreakStore: StreakStoring {
         guard let data = StoreCoding.encode(state, store: "StreakStore", center: failureCenter) else { return }
         let url = fileURL
         let center = failureCenter
+        let gate = writeGate
         // Coalesce + order: see ProgressStore.save() for rationale.
         let previous = pendingSave
         previous?.cancel()
@@ -225,7 +247,7 @@ final class JSONStreakStore: StreakStoring {
             await previous?.value
             guard !Task.isCancelled else { return }
             do {
-                try data.write(to: url, options: .atomic)
+                try gate.writeUnlessCancelled(data, to: url)
             } catch {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(

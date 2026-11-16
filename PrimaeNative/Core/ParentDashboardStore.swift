@@ -426,7 +426,17 @@ struct PhaseSessionRecord: Codable, Equatable {
         // Added 2026-10-04 with `StudyProtocol`; nil for every record
         // written before it (revisions 1–3). Never defaulted to the
         // current revision on decode — that would re-stamp old rows.
-        protocolRevision         = try? c.decode(Int.self, forKey: .protocolRevision)
+        //
+        // ABSENT (or null) is the legitimate pre-r4 nil. PRESENT but
+        // undecodable (a string, a float, an overflowing integer) must NOT
+        // collapse into that nil: the exporter reads nil as revision 0 and
+        // would derive a post-test tag for what may be a post-r12 row
+        // (B-20, audit 2026-11-01). So it throws — the row is then dropped
+        // by `LossyArray`, counted in the `StoreDecodeTally`, the original
+        // file is preserved at load and the proctor is told, exactly like
+        // any other undecodable study row. A row whose revision cannot be
+        // read cannot be attributed to a protocol, so it is not kept as one.
+        protocolRevision         = try c.decodeIfPresent(Int.self, forKey: .protocolRevision)
         // Added 2026-10-05 (r6); nil for every earlier record.
         spatialDeviationRaw      = try? c.decode(Double.self, forKey: .spatialDeviationRaw)
         // Added by fix batch D (audit 2026-10-13); nil for every earlier
@@ -859,6 +869,10 @@ protocol ParentDashboardStoring {
                        probe: String?,
                        trainedSubset: String?,
                        comparisonConfiguration: String?)
+    /// Wipes the store. For the JSON store the empty state is on disk when
+    /// this returns (B-21): "Nächstes Kind" writes the new identity right
+    /// after the wipe, and a deferred write let a kill in between relaunch
+    /// the outgoing child's rows under the new id.
     func reset()
     /// Await any pending background write. See ProgressStoring.flush().
     func flush() async
@@ -983,6 +997,8 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
     private let calendar: Calendar
     private(set) var snapshot: DashboardSnapshot
     private var pendingSave: Task<Void, Never>?
+    /// Orders the background write against `reset()`'s synchronous one.
+    private let writeGate = StoreWriteGate()
 
     /// See `JSONProgressStore.failureCenter` / `.writeRefusal`.
     private let failureCenter: PersistenceFailureCenter
@@ -1205,10 +1221,30 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
 
     func reset() {
         snapshot = DashboardSnapshot()
-        persist()
+        persistNow()
     }
 
     // MARK: Private
+
+    /// The wipe's write: on disk before this returns (B-21). Whatever is
+    /// still queued is cancelled, and the gate makes a write already in
+    /// progress land BEFORE this one, so the file ends empty. The snapshot
+    /// is the empty one, so writing it on the main actor is cheap.
+    private func persistNow() {
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("ParentDashboardStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
+            return
+        }
+        guard let data = StoreCoding.encode(snapshot, store: "ParentDashboardStore", center: failureCenter) else { return }
+        pendingSave?.cancel()
+        do {
+            try writeGate.writeNow(data, to: fileURL)
+        } catch {
+            storePersistenceLogger.warning(
+                "ParentDashboardStore wipe write failed at \(self.fileURL.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            failureCenter.reportFailure(store: "ParentDashboardStore", error: error)
+        }
+    }
 
     private func persist() {
         // Encode on main, write off main. Caps keep the snapshot well
@@ -1226,6 +1262,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
         guard let data = StoreCoding.encode(snapshot, store: "ParentDashboardStore", center: failureCenter) else { return }
         let url = fileURL
         let center = failureCenter
+        let gate = writeGate
         // Coalesce + order: see ProgressStore.save() for rationale.
         let previous = pendingSave
         previous?.cancel()
@@ -1233,7 +1270,7 @@ final class JSONParentDashboardStore: ParentDashboardStoring {
             await previous?.value
             guard !Task.isCancelled else { return }
             do {
-                try data.write(to: url, options: .atomic)
+                try gate.writeUnlessCancelled(data, to: url)
             } catch {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 // This store carries the pilot's primary outcome rows;

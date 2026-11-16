@@ -128,6 +128,43 @@ nonisolated enum StoreCoding {
     }
 }
 
+/// Orders one store file's background writes against a synchronous one
+/// (B-21, audit 2026-11-01).
+///
+/// A participant store persists by encoding on the main actor and writing
+/// from a detached task, so a plain `reset()` returned BEFORE the empty
+/// state reached disk. "Nächstes Kind" wipes the stores and then writes the
+/// new identity, so a kill in between relaunched the OUTGOING child's rows
+/// under the NEW id. The wipe therefore writes through `writeNow`, which
+/// has landed on disk by the time `reset()` returns.
+///
+/// Both entry points take the same lock, and the background one checks its
+/// cancellation INSIDE it. A cancelled background write that has not begun
+/// can no longer start after `writeNow`; one already in progress finishes
+/// first and `writeNow` lands after it, so the file always ends as the
+/// synchronous write left it. (A plain cancel-then-write would not do:
+/// cancelling a task does not stop a write already past its own check.)
+nonisolated final class StoreWriteGate: @unchecked Sendable {
+    private let lock = NSLock()
+
+    /// The background path: writes `data` unless the calling task has been
+    /// cancelled. Returns whether it wrote.
+    @discardableResult
+    func writeUnlessCancelled(_ data: Data, to url: URL) throws -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard !Task.isCancelled else { return false }
+        try data.write(to: url, options: .atomic)
+        return true
+    }
+
+    /// The synchronous path: returns only once `data` is on disk (or
+    /// throws), after any background write that was already in progress.
+    func writeNow(_ data: Data, to url: URL) throws {
+        lock.lock(); defer { lock.unlock() }
+        try data.write(to: url, options: .atomic)
+    }
+}
+
 /// Counts elements an element-wise decode had to drop, so a load can
 /// surface the loss (R-055) instead of only logging it. Passed to the
 /// decoders through `userInfo[.storeDecodeTally]`.

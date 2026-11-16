@@ -5388,6 +5388,12 @@ public final class TracingViewModel {
         awaitingNextParticipant = false
         sessionEndScreenPresented = false
         sessionEndScreenShownToThisChild = false
+        // DURABLE BEFORE THE IDENTITY SWITCH (B-21, audit 2026-11-01). Each
+        // `reset` below has its empty state on disk when it returns, and
+        // both callers write the new identity only after this function — so
+        // a kill between the two can no longer relaunch the OUTGOING
+        // child's rows under the NEW id. (They used to queue a background
+        // write that had not landed yet.)
         dashboardStore.reset()          // PhaseSessionRecords, letterStats, durations
         progressStore.resetAll()        // all LetterProgress
         streakStore.reset()             // streak + stars

@@ -180,6 +180,8 @@ public final class JSONProgressStore: ProgressStoring {
     /// guaranteeing write order. Tests call `await flush()` to wait for
     /// all pending writes before re-opening the file.
     private var pendingSave: Task<Void, Never>?
+    /// Orders the background write against the wipe's synchronous one (B-21).
+    private let writeGate = StoreWriteGate()
 
     private struct Store: Codable {
         var letterProgress: [String: LetterProgress] = [:]
@@ -392,9 +394,10 @@ public final class JSONProgressStore: ProgressStoring {
         save()
     }
 
+    /// On disk when this returns (B-21) — see `StoreWriteGate`.
     func resetAll() {
         store = Store()
-        save()
+        persistNow()
     }
 
     var allProgress: [String: LetterProgress] {
@@ -416,6 +419,24 @@ public final class JSONProgressStore: ProgressStoring {
 
     // MARK: Persistence
 
+    /// The wipe's write: on disk before this returns (B-21) — see
+    /// `JSONParentDashboardStore.persistNow` and `StoreWriteGate`.
+    private func persistNow() {
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("ProgressStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
+            return
+        }
+        guard let data = StoreCoding.encode(store, store: "ProgressStore", center: failureCenter) else { return }
+        pendingSave?.cancel()
+        do {
+            try writeGate.writeNow(data, to: fileURL)
+        } catch {
+            storePersistenceLogger.warning(
+                "ProgressStore wipe write failed at \(self.fileURL.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            failureCenter.reportFailure(store: "ProgressStore", error: error)
+        }
+    }
+
     private func save() {
         // Encode on main, write off main. The bounded value-type
         // Store sidesteps Swift 6's restriction on calling a
@@ -428,6 +449,7 @@ public final class JSONProgressStore: ProgressStoring {
         guard let data = StoreCoding.encode(store, store: "ProgressStore", center: failureCenter) else { return }
         let url = fileURL
         let center = failureCenter
+        let gate = writeGate
         // Coalesce + serialise: each call cancels its predecessor
         // and awaits it before writing. Avoids unbounded chain
         // growth under rapid save() bursts and preserves write
@@ -438,7 +460,7 @@ public final class JSONProgressStore: ProgressStoring {
             await previous?.value
             guard !Task.isCancelled else { return }
             do {
-                try data.write(to: url, options: .atomic)
+                try gate.writeUnlessCancelled(data, to: url)
             } catch {
                 // A `try?`-and-log-only response here used to let the
                 // rest of the app carry on as if this write had

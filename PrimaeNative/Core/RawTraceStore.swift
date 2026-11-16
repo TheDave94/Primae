@@ -81,6 +81,8 @@ final class JSONRawTraceStore: RawTraceStoring {
     private let fileURL: URL
     private(set) var traces: [RawTrace]
     private var pendingSave: Task<Void, Never>?
+    /// Orders the background write against the wipe's synchronous one (B-21).
+    private let writeGate = StoreWriteGate()
 
     /// Hard ceiling — bounds the file if a device is reused without a
     /// reset. One freeWrite trial per letter, so ~500 is many sessions of
@@ -131,14 +133,33 @@ final class JSONRawTraceStore: RawTraceStoring {
         persist()
     }
 
+    /// On disk when this returns (B-21) — see `StoreWriteGate`.
     func reset() {
         traces = []
-        persist()
+        persistNow()
     }
 
     func flush() async { await pendingSave?.value }
 
     // MARK: Private
+
+    /// The wipe's write: on disk before this returns (B-21) — see
+    /// `JSONParentDashboardStore.persistNow` and `StoreWriteGate`.
+    private func persistNow() {
+        guard writeRefusal == nil else {
+            storePersistenceLogger.error("RawTraceStore write refused — the file on disk is kept: \(self.writeRefusal ?? "", privacy: .public)")
+            return
+        }
+        guard let data = StoreCoding.encode(traces, store: "RawTraceStore", center: failureCenter) else { return }
+        pendingSave?.cancel()
+        do {
+            try writeGate.writeNow(data, to: fileURL)
+        } catch {
+            storePersistenceLogger.warning(
+                "RawTraceStore wipe write failed at \(self.fileURL.path, privacy: .private): \((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public) \(error.localizedDescription, privacy: .private)")
+            failureCenter.reportFailure(store: "RawTraceStore", error: error)
+        }
+    }
 
     private func persist() {
         // Encode on main, write off main. See ParentDashboardStore.persist
@@ -150,13 +171,14 @@ final class JSONRawTraceStore: RawTraceStoring {
         guard let data = StoreCoding.encode(traces, store: "RawTraceStore", center: failureCenter) else { return }
         let url = fileURL
         let center = failureCenter
+        let gate = writeGate
         let previous = pendingSave
         previous?.cancel()
         pendingSave = Task.detached(priority: .utility) {
             await previous?.value
             guard !Task.isCancelled else { return }
             do {
-                try data.write(to: url, options: .atomic)
+                try gate.writeUnlessCancelled(data, to: url)
             } catch {
                 // Loud now (2026-09-14) — see PersistenceFailureCenter.
                 storePersistenceLogger.warning(
