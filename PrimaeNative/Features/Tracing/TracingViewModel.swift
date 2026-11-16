@@ -1790,6 +1790,13 @@ public final class TracingViewModel {
         // one child-facing surface where the measure is being produced.
         // Wording, not a number, is all that is left, so the state is
         // still announced and only its precision is withheld.
+        //
+        // Where the progress bar is hidden visually (`showsProgressFeedback`:
+        // the study freeWrite outcome trial) the spoken value must not carry
+        // the same signal either: "Fertig" there is a per-child,
+        // performance-contingent readout that sighted children do not get
+        // (audit R-090). The value is empty — constant in `progress`.
+        if !showsProgressFeedback { return "" }
         if studyMode { return progress >= 1 ? "Fertig" : "In Arbeit" }
         let pct = Int(max(0, min(1, progress)) * 100)
         if pct == 0   { return "Nicht begonnen" }

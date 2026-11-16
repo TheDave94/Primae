@@ -38,7 +38,7 @@ nonisolated enum TDPSOLAOnsetCeiling {
     static func taperFrames(sampleRate: Double) -> Int { max(1, Int((taperSeconds * sampleRate).rounded())) }
 
     /// `x` with every sample in `range` whose `|x| * gain` exceeds `ceiling` brought to the ceiling by a smooth local
-    /// gain dip (see the file header). Returns `x` itself when nothing in `range` exceeds the ceiling, or `gain` or
+    /// gain dip (see the file header); the dip, tapers included, never reaches a sample outside `range`. Returns `x` itself when nothing in `range` exceeds the ceiling, or `gain` or
     /// `ceiling` is not a positive finite number.
     static func limit(_ x: [Float], gain: Float, ceiling: Float, taper: Int, in range: Range<Int>) -> [Float] {
         guard gain.isFinite, gain > 0, ceiling.isFinite, ceiling > 0, !x.isEmpty else { return x }
@@ -62,7 +62,9 @@ nonisolated enum TDPSOLAOnsetCeiling {
         for grp in groups {
             // A hair under the exact ratio, so the Float product cannot round back over the ceiling.
             let floor = c / (grp.peak * g) * (1 - 1e-6)
-            for i in max(0, grp.first - t)...min(x.count - 1, grp.last + t) {
+            // Clamped to `range` (lo..<hi), not the buffer: a group near the range's end must not dip the samples
+            // beyond it (production passes the onset; what follows is the loop, which plays on every pass).
+            for i in max(lo, grp.first - t)...min(hi - 1, grp.last + t) {
                 let d = i < grp.first ? grp.first - i : (i > grp.last ? i - grp.last : 0)
                 let w = d == 0 ? 1 : 0.5 + 0.5 * cos(Double.pi * Double(d) / Double(t + 1))
                 let e = 1 - (1 - floor) * w

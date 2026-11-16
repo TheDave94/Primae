@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import PrimaeNative
 
 @MainActor
@@ -72,6 +73,35 @@ fileprivate final class LocalMockAudioController: AudioControlling {
     @Test func canvasValue_clampsAboveOne() {
         vm.progress = 1.5
         #expect(vm.accessibilityCanvasValue == "Fertig")
+    }
+    /// A study VM (`studyMode` injected through the dependencies, as `StudyCleanConfigTests` builds its own).
+    private func studyVM() -> TracingViewModel {
+        var deps = TracingDependencies.stub.with(audio: LocalMockAudioController())
+        deps.studyMode = true
+        return TracingViewModel(deps)
+    }
+    @Test func canvasValue_studyFreeWrite_isTheSameAtEveryProgress() {
+        // R-090: study freeWrite hides the progress bar and pill (`showsProgressFeedback`); VoiceOver must not
+        // announce "Fertig" there either, since that would be a performance-contingent signal on the outcome trial.
+        let v = studyVM()
+        v.phaseController.resume(at: .freeWrite)
+        #expect(!v.showsProgressFeedback, "precondition: the progress feedback is hidden on this trial")
+        var values = Set<String>()
+        for p: CGFloat in [0, 0.01, 0.5, 0.999, 1, 1.5] {
+            v.progress = p
+            values.insert(v.accessibilityCanvasValue)
+        }
+        #expect(values.count == 1, "the spoken value varies with progress on a hidden-feedback trial: \(values)")
+        #expect(!values.contains("Fertig") && !values.contains("In Arbeit"), "\(values)")
+    }
+    @Test func canvasValue_studyGuided_keepsTheWordingNotNumbers() {
+        let v = studyVM()
+        v.phaseController.resume(at: .guided)
+        #expect(v.showsProgressFeedback, "precondition: the progress feedback is shown while tracing")
+        v.progress = 0.5
+        #expect(v.accessibilityCanvasValue == "In Arbeit")
+        v.progress = 1
+        #expect(v.accessibilityCanvasValue == "Fertig")
     }
     @Test func replayAudio_reloadsCurrentFileWithAutoplay() {
         // replayAudio reloads the current letter's audio with

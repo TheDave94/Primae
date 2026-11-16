@@ -41,6 +41,9 @@ func pollMainActor(deadline seconds: Double,
     var polls = 0
     while !condition() && (clock.now < deadline || polls < minimumPolls) {
         try? await Task.sleep(for: interval)
+        // A cancelled task's sleep throws at once and never yields, so without this the loop would spin on the
+        // main actor until the deadline (300 to 600 s). Give up instead; the caller's own check reports it.
+        if Task.isCancelled { break }
         polls += 1
     }
     return condition()

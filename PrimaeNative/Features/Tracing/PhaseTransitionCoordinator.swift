@@ -377,10 +377,12 @@ final class PhaseTransitionCoordinator {
         // `result!` in the branch the Bool guarded — safe, but the flag
         // was the only reason a force-unwrap was needed at all.
         //
-        // Study sessions never retry: the recognizer forcing extra
-        // freeWrite attempts would manipulate the time-to-complete
-        // outcome and vary trial counts between children. The recognition
-        // sample is still recorded (passive data).
+        // In a study session the RECOGNIZER never forces a retry: that
+        // would manipulate the time-to-complete outcome and vary trial
+        // counts between children. The recognition sample is still
+        // recorded (passive data). The one retry a study session has is
+        // the r25 geometry attempt check below (at most
+        // `FreeWriteAttemptCheck.maxRetries`, i.e. 2).
         if let r = result, !vm.studyMode, !r.isCorrect, r.confidence > 0.7 {
             requestFreeWriteRetry(result: r)
         } else if shouldRejectAttempt(finalizedBy: finalizedBy) {

@@ -89,6 +89,37 @@ nonisolated struct OnsetCeilingTests {
         #expect(TDPSOLAOnsetCeiling.limit(loud, gain: .nan, ceiling: Self.ceiling, taper: 190, in: 0..<loud.count) == loud)
     }
 
+    @Test("the dip stops at the range: a pulse near either end leaves every sample outside it bit-identical (audit F5)")
+    func dipIsClampedToTheRange() {
+        let t = 190
+        // Upper edge: the pulse at 1950...1954 sits 46 samples before the range ends at 2000; the unclamped tail
+        // would run on to 2144, into what production calls the loop.
+        let x = Self.pulse(at: 1950, width: 5)
+        let y = TDPSOLAOnsetCeiling.limit(x, gain: 1, ceiling: Self.ceiling, taper: t, in: 0..<2000)
+        let worst = y[0..<2000].map { abs($0) }.max() ?? 0
+        #expect(worst <= Self.ceiling, "the pulse inside the range is not limited: peak \(worst)")
+        let changed = (0..<x.count).filter { x[$0].bitPattern != y[$0].bitPattern }
+        #expect(changed.first == 1950 - t, "the dip's head moved: \(changed.first ?? -1)")
+        #expect((changed.last ?? .max) <= 1999, "the dip reached \(changed.last ?? -1), past the range's end (1999)")
+        // Lower edge: the same on the other side (pulse at 2000...2004, range from 1900).
+        let z = Self.pulse(at: 2000, width: 5)
+        let w = TDPSOLAOnsetCeiling.limit(z, gain: 1, ceiling: Self.ceiling, taper: t, in: 1900..<z.count)
+        let changedLow = (0..<z.count).filter { z[$0].bitPattern != w[$0].bitPattern }
+        #expect(changedLow.first == 1900, "the dip reached \(changedLow.first ?? -1), before the range's start (1900)")
+        #expect(changedLow.last == 2004 + t, "the dip's tail moved: \(changedLow.last ?? -1)")
+    }
+
+    @Test("a dip that lies wholly inside the range is the same whatever the range's bounds (the clamp changes nothing there)")
+    func insideTheRangeTheBoundsDoNotMatter() {
+        let x = Self.pulse(at: 2000, width: 5)   // dip 1810...2194
+        let full = TDPSOLAOnsetCeiling.limit(x, gain: 1, ceiling: Self.ceiling, taper: 190, in: 0..<x.count)
+        #expect(full != x, "precondition: there is a dip")
+        for r in [0..<2500, 1810..<2195, 1000..<3000, -50..<(x.count + 50)] {
+            let y = TDPSOLAOnsetCeiling.limit(x, gain: 1, ceiling: Self.ceiling, taper: 190, in: r)
+            #expect(y.map(\.bitPattern) == full.map(\.bitPattern), "range \(r) changed the output")
+        }
+    }
+
     @Test("the shipped constants: -0.5 dBFS, a 4.3 ms taper (190 samples at 44.1 kHz)")
     func constantsPinned() {
         #expect(TDPSOLAOnsetCeiling.ceilingDBFS == -0.5)

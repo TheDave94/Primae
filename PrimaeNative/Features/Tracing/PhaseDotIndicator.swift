@@ -18,6 +18,8 @@ struct PhaseDotIndicator: View {
     private let dotSize: CGFloat = TracingCanvasStyle.phaseDotSize
     private let primaryBlue = Color(hex: TracingCanvasStyle.phaseDotFillHex)
 
+    private static let pulseAnimation = Animation.easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var pulse = false
 
@@ -30,8 +32,21 @@ struct PhaseDotIndicator: View {
         .onAppear {
             // Reduce Motion: the current dot stays enlarged, without the pulse.
             if reduceMotion { pulse = true; return }
-            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+            withAnimation(Self.pulseAnimation) {
                 pulse = true
+            }
+        }
+        // Reduce Motion can change while the indicator is on screen (Settings,
+        // Control Centre): `onAppear` alone read it once.
+        .onChange(of: reduceMotion) { _, reduced in
+            if reduced {
+                // A mutation with no animation replaces the running
+                // repeat-forever one: the dot settles enlarged and stops.
+                withAnimation(nil) { pulse = true }
+            } else {
+                // `pulse` is true while reduced, so the pulse resumes from the
+                // enlarged end of the same 1.0...1.18 range.
+                withAnimation(Self.pulseAnimation) { pulse = false }
             }
         }
         .accessibilityElement(children: .combine)
