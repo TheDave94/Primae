@@ -225,8 +225,8 @@ fileprivate final class RecordingAudio: AudioControlling {
 
     /// The spatial arm must drive pitch from pen Y on the per-tick path.
     /// Canvas is 400×400; a horizontal drag at y=100 (normalized 0.25)
-    /// must emit +600 cents on every tick (220–880 Hz linear-in-cents,
-    /// top = high, carrier at 440 Hz).
+    /// must emit the study coupling's cents for that height on every tick
+    /// (r26 default: one octave, +300 cents; top = high, carrier at 440 Hz).
     @Test("spatial arm: a touch drives pitch from pen Y")
     func spatial_touchDrivesPitch() {
         let audio = RecordingAudio()
@@ -234,22 +234,42 @@ fileprivate final class RecordingAudio: AudioControlling {
         driveTouch(vm, y: 100)
         #expect(!audio.spatialPitches.isEmpty,
                 "spatial arm must drive setSpatialPitch on the touch path")
-        #expect(audio.spatialPitches.allSatisfy { abs($0 - 600) < 0.001 },
-                "y=0.25 must map to +600 cents — got \(audio.spatialPitches)")
+        let expected = SpatialSonification.pitchCents(forNormalizedY: 0.25,
+                                                      spanCents: vm.pitchCoupling.spanCents)
+        #expect(expected > 0, "precondition: y=0.25 maps above the carrier (\(expected))")
+        #expect(audio.spatialPitches.allSatisfy { abs($0 - expected) < 0.001 },
+                "y=0.25 must map to \(expected) cents — got \(audio.spatialPitches)")
     }
 
-    /// Matching discipline (reframed): the phoneme arm is matched on
-    /// rate + pan but must NEVER drive pitch — pitch-drive is the spatial
-    /// arm's treatment, and a stray pitch call would contaminate the
-    /// phoneme arm's stimulus.
-    @Test("phoneme arm: a touch never drives pitch")
+    /// Matching discipline under Nur Raumklang (the r18-r25 scope): the
+    /// phoneme arm is matched on rate + pan but must NEVER drive pitch.
+    /// Since r26 the study default pitches both sound arms; this pins that
+    /// the scope switch, not the arm, is what withholds it.
+    @Test("phoneme arm under Nur Raumklang: a touch never drives pitch")
     func phoneme_neverDrivesPitch() {
         let audio = RecordingAudio()
-        let vm = TracingViewModel(.stub.with(audioCondition: .phoneme).with(audio: audio))
+        var deps = TracingDependencies.stub.with(audioCondition: .phoneme).with(audio: audio)
+        deps.pitchCoupling = PitchCoupling(scope: .spatialOnly, spanCents: 2400)
+        let vm = TracingViewModel(deps)
         driveTouch(vm)
         #expect(audio.setAdaptiveCount > 0)                 // coupling ran…
         #expect(audio.spatialPitches.isEmpty,               // …but no pitch
                 "phoneme arm must not drive pitch — got \(audio.spatialPitches)")
+    }
+
+    /// r26: at the study default the phoneme arm's touch drives the same
+    /// cents from pen Y as the spatial arm's.
+    @Test("r26 phoneme arm at the study default: a touch drives pitch from pen Y")
+    func phoneme_atStudyDefaultDrivesPitch() {
+        let audio = RecordingAudio()
+        let vm = TracingViewModel(.stub.with(audioCondition: .phoneme).with(audio: audio))
+        #expect(vm.pitchCoupling.scope == .both, "precondition: the stub carries the r26 default")
+        driveTouch(vm, y: 100)
+        let expected = SpatialSonification.pitchCents(forNormalizedY: 0.25,
+                                                      spanCents: vm.pitchCoupling.spanCents)
+        #expect(!audio.spatialPitches.isEmpty
+                && audio.spatialPitches.allSatisfy { abs($0 - expected) < 0.001 },
+                "phoneme arm at r26 must pitch y=0.25 to \(expected) cents — got \(audio.spatialPitches)")
     }
 
     @Test("silent arm: a touch never drives pitch either")

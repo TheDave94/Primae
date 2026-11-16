@@ -90,7 +90,7 @@ import CoreGraphics
         return rig
     }
 
-    @Test("s2: the observe dot drives phoneme pitch with scope both, and none at the default")
+    @Test("s2: the observe dot drives phoneme pitch with scope both, and none with Nur Raumklang")
     func observeCallSiteCarriesPitchScope() async {
         let both = await observing { $0.pitchCoupling = PitchCoupling(scope: .both) }
         #expect(both.vm.learningPhase == .observe, "precondition: still in observe")
@@ -111,11 +111,12 @@ import CoreGraphics
         #expect(added.first.map { abs($0 - expected) < 1 } ?? false,
                 "cell y=0.25 must map to \(expected) cents, got \(added)")
 
-        let dflt = await observing()
+        // r26 made `.both` the study default, so the negative case names its scope.
+        let dflt = await observing { $0.pitchCoupling = PitchCoupling(scope: .spatialOnly) }
         let before = dflt.audio.spatialPitches.count
         dflt.vm.handleGuideFrame(.still(CGPoint(x: 0.5, y: 0.25)))
         #expect(dflt.audio.spatialPitches.count == before,
-                "the default spatial-only scope pitched the phoneme arm's dot: \(Array(dflt.audio.spatialPitches[before...]))")
+                "the spatial-only scope pitched the phoneme arm's dot: \(Array(dflt.audio.spatialPitches[before...]))")
     }
 
     // MARK: - s7: roughness wiring, pen and observe

@@ -445,7 +445,10 @@ extension TracingDependencies {
             // (`deps.panningEnabled = false`).
             guidedDotsVisible:    StudyComparisonSettings.guidedDotsVisibleDefault,
             panningEnabled:       StudyComparisonSettings.panningEnabledDefault,
-            pitchCoupling:        .default,
+            // The study's defaults (r26: both arms, 1200 cents), like every switch above --
+            // NOT `PitchCoupling.default`, which is the fixed r17 reference.
+            pitchCoupling:        PitchCoupling(scope: StudyComparisonSettings.pitchScopeDefault,
+                                                spanCents: StudyComparisonSettings.pitchRangeCentsDefault),
             pressureLoudnessEnabled: StudyComparisonSettings.pressureLoudnessEnabledDefault,
             pressureLoudnessRangeDB: StudyComparisonSettings.pressureLoudnessRangeDBDefault,
             spatialAxisDemonstration: StudyComparisonSettings.spatialAxisDemonstrationDefault,

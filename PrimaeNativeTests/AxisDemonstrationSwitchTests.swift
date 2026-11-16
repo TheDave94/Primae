@@ -247,7 +247,10 @@ struct AxisDemonstrationSwitchTests {
     func onPathRunsTheScriptedSweep() async {
         await withRestoredComparisonKeysAsync {
             let audio = SweepRecordingAudio()
-            let vm = studySpatialVM(audio: audio, axisDemonstration: true)
+            // The full ±1200 range below is the r18-r25 coupling (2400 cents); the r26
+            // default's narrower octave is pinned by sweep(scope:span:) further down.
+            let vm = studySpatialVM(audio: audio, axisDemonstration: true,
+                                    pitchCoupling: PitchCoupling(scope: .spatialOnly, spanCents: 2400))
             audio.reset()
 
             vm.armPreTaskDemonstration(for: asset(), duration: 0.1)
@@ -312,15 +315,13 @@ struct AxisDemonstrationSwitchTests {
         }
     }
 
-    @Test("pitch switch Nur Raumklang at 2400 cents (the default): the sweep is r18's, value for value")
+    @Test("pitch switch Nur Raumklang at 2400 cents (the r18-r25 default): the sweep is r18's, value for value")
     func sweepAtTheDefaultIsR18() async {
         let expected = PreTaskDemonstration.axisSweep(duration: 0.1)
             .map { SpatialSonification.pitchCents(forNormalizedY: $0.point.y) }
         #expect(expected.count > 1 && expected.max()! > 1100 && expected.min()! < -1100, "the reference sweep is not a sweep")
-        let run = await sweep(scope: StudyComparisonSettings.pitchScopeDefault,
-                              span: StudyComparisonSettings.pitchRangeCentsDefault)
-        #expect(run.pitches == expected, "the default demonstration is not byte-identical to r18: \(run.pitches.count) vs \(expected.count) samples")
-        #expect(StudyComparisonSettings.pitchScopeDefault == .spatialOnly && StudyComparisonSettings.pitchRangeCentsDefault == 2400)
+        let run = await sweep(scope: .spatialOnly, span: 2400)
+        #expect(run.pitches == expected, "the Nur Raumklang 2400 demonstration is not byte-identical to r18: \(run.pitches.count) vs \(expected.count) samples")
     }
 
     @Test("pitch switch Aus: the sweep still pans but writes no pitch")
@@ -470,12 +471,14 @@ struct AxisDemonstrationSwitchTests {
     /// window in front of every fixture constructed concurrently anywhere in the
     /// run — the class CONVENTIONS 140 names.
     private func studySpatialVM(audio: SweepRecordingAudio,
-                               axisDemonstration: Bool) -> TracingViewModel {
+                               axisDemonstration: Bool,
+                               pitchCoupling: PitchCoupling? = nil) -> TracingViewModel {
         var deps = TracingDependencies.stub
             .with(audioCondition: .spatial)
             .with(audio: audio)
             .with(studyMode: true)
         deps.spatialAxisDemonstration = axisDemonstration
+        if let pitchCoupling { deps.pitchCoupling = pitchCoupling }
         return TracingViewModel(deps)
     }
 

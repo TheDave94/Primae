@@ -673,7 +673,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     /// The still dot's rate: the map's floor (0.8 under M3, R17D; 0.5 before).
     private var slowest: Float { TouchDispatcher.mapVelocityToSpeed(0) }
 
-    @Test("P4: the observe sound tracks the dot — starts still at the slowest rate at the dot's first point, rate follows the dot's speed, pan follows x; pitch follows y in the spatial arm only",
+    @Test("P4: the observe sound tracks the dot — starts still at the slowest rate at the dot's first point, rate follows the dot's speed, pan follows x; pitch follows y in every arm the pitch switch drives (r26 default: both sound arms)",
           arguments: [PilotAudioCondition.phoneme, .spatial])
     func observeSoundTracksTheDot(arm: PilotAudioCondition) async {
         let audio = RecordingAudio()
@@ -701,13 +701,13 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
         } else {
             #expect(biases.allSatisfy { $0 == 0 }, "\(arm): panning is off but the pan moved")
         }
-        if arm == .spatial {
+        if vm.pitchCoupling.scope.applies(to: arm) {
             // Pitch follows y: I runs top to bottom, so the pitch only falls.
             let p = audio.spatialPitches
             #expect(p.count > 20 && zip(p, p.dropFirst()).allSatisfy { $1 <= $0 + 0.001 } && (p.first ?? 0) > (p.last ?? 0) + 100,
-                    "spatial: the carrier pitch did not follow the dot's y: \(p.first ?? 0) … \(p.last ?? 0) over \(p.count)")
+                    "\(arm): the pitch did not follow the dot's y: \(p.first ?? 0) … \(p.last ?? 0) over \(p.count)")
         } else {
-            #expect(audio.spatialPitches.isEmpty, "phoneme: the observe sound got a pitch drive: \(audio.spatialPitches.prefix(4))")
+            #expect(audio.spatialPitches.isEmpty, "\(arm): the observe sound got a pitch drive the switch does not ask for: \(audio.spatialPitches.prefix(4))")
         }
     }
 

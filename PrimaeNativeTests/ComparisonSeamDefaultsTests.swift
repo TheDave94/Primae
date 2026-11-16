@@ -90,8 +90,8 @@ extension StudyComparisonConfiguration {
             soundGateVelocityFloor: 22,
             oncePerCondition: true,
             rateCoupling: false,
-            pitchScope: .both,
-            pitchRangeCents: 1200,
+            pitchScope: .spatialOnly,   // r26: .both is the default
+            pitchRangeCents: 2400,      // r26: 1200 is the default
             soundGatingEnabled: false,
             distanceToneEnabled: true,
             directionMuteEnabled: true,
@@ -346,7 +346,8 @@ extension TracingDependencies {
         #expect(deps.guidedDotsVisible == StudyComparisonSettings.guidedDotsVisibleDefault)
         #expect(deps.panningEnabled == StudyComparisonSettings.panningEnabledDefault)
         #expect(deps.rateCoupling == StudyComparisonSettings.rateCouplingDefault)
-        #expect(deps.pitchCoupling == .default)
+        #expect(deps.pitchCoupling == PitchCoupling(scope: StudyComparisonSettings.pitchScopeDefault,
+                                                    spanCents: StudyComparisonSettings.pitchRangeCentsDefault))
         #expect(deps.distanceToneEnabled == StudyComparisonSettings.distanceToneEnabledDefault)
         #expect(deps.directionMuteEnabled == StudyComparisonSettings.directionMuteEnabledDefault)
         #expect(deps.distanceToneFarLevelDB == StudyComparisonSettings.distanceToneFarLevelDBDefault)

@@ -252,8 +252,9 @@ private final class StampCapturingStore: ParentDashboardStoring {
             expecting: "soundGateVelocityFloor")
         stampAfterOneChange({ $0.oncePerCondition = true }, expecting: "oncePerCondition")
         stampAfterOneChange({ $0.rateCoupling = false }, expecting: "rateCoupling")
-        stampAfterOneChange({ $0.pitchScope = .both }, expecting: "pitchScope")
-        stampAfterOneChange({ $0.pitchRangeCents = 1200 }, expecting: "pitchRangeCents")
+        // r26 moved the pitch defaults to .both / 1200; the r17-r25 values are the departure now.
+        stampAfterOneChange({ $0.pitchScope = .spatialOnly }, expecting: "pitchScope")
+        stampAfterOneChange({ $0.pitchRangeCents = 2400 }, expecting: "pitchRangeCents")
         stampAfterOneChange({ $0.soundGatingEnabled = false }, expecting: "soundGatingEnabled")
         stampAfterOneChange({ $0.distanceToneFarLevelDB = -18 }, expecting: "distanceToneFarLevelDB")
         stampAfterOneChange({ $0.distanceToneFarCutoffHz = 1600 }, expecting: "distanceToneFarCutoffHz")
@@ -294,8 +295,8 @@ private final class StampCapturingStore: ParentDashboardStoring {
             soundGateVelocityFloor: 22.0,
             oncePerCondition: true,
             rateCoupling: false,
-            pitchScope: .both,
-            pitchRangeCents: 1200,
+            pitchScope: .spatialOnly,   // r26: .both is the default
+            pitchRangeCents: 2400,      // r26: 1200 is the default
             soundGatingEnabled: false,
             distanceToneEnabled: true,
             directionMuteEnabled: true,

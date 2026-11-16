@@ -166,7 +166,9 @@ fileprivate final class RecordingAudio: AudioControlling {
         // PREVIOUS letter's touch coupling left the engine in), same as
         // the spatial arm's own one-time setup below.
         #expect(audio.setAdaptiveCount == 1)
-        #expect(audio.spatialPitches.isEmpty)
+        // r26: and the pitch once, to the recording's own (0), so a phoneme the previous
+        // letter's pen left pitched is not demonstrated shifted.
+        #expect(audio.spatialPitches == [0], "the phoneme demonstration did not reset the pitch: \(audio.spatialPitches)")
         // Let the short demo run to completion.
         await waitUntil { audio.stopCount > 0 }
         // One literal: a `+`-concatenated String is not a `Comment` (CI run 1636).

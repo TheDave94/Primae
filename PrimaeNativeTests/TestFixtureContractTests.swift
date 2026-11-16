@@ -132,7 +132,8 @@ import Foundation
                 "the fixture inherited rateCoupling from the store — a parallel test would silently flatten the rate in another suite")
         #expect(!deps.distanceToneEnabled && !deps.directionMuteEnabled,
                 "the fixture inherited a Klang-Dimensionen switch from the store")
-        #expect(deps.pitchCoupling == .default)
+        #expect(deps.pitchCoupling == PitchCoupling(scope: StudyComparisonSettings.pitchScopeDefault,
+                                                    spanCents: StudyComparisonSettings.pitchRangeCentsDefault))
         #expect(deps.distanceToneFarLevelDB == StudyComparisonSettings.distanceToneFarLevelDBDefault)
         #expect(deps.distanceToneFarCutoffHz == StudyComparisonSettings.distanceToneFarCutoffHzDefault)
         #expect(deps.directionMuteBackwardCosine == StudyComparisonSettings.directionMuteBackwardCosineDefault)

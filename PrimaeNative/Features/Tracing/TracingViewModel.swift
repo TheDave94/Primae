@@ -2112,6 +2112,11 @@ public final class TracingViewModel {
                 // whatever rate/pan the PREVIOUS letter's touch coupling
                 // left the engine in, from the second letter on.
                 self.audio.setAdaptivePlayback(speed: 1.0, horizontalBias: 0)
+                // r26: the pen's height now pitches the phoneme too (both arms by default), and the
+                // kernel keeps the last pitch, so the demonstration resets it to the recording's own
+                // pitch, as the spatial branch holds the carrier at 0. Before r26 the phoneme arm was
+                // never pitched and this wrote the 0 it already had.
+                self.audio.setSpatialPitch(cents: 0)
                 self.audio.loadAudioFile(named: first, autoplay: true)
                 try? await Task.sleep(for: .seconds(duration))
                 // loadAudioFile(autoplay: true) schedules LOOPING

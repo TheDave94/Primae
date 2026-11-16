@@ -479,20 +479,22 @@ enum StudyComparisonSettings {
     }
 
     /// R18DIM slice 2: which sound arms the pen's HEIGHT drives the pitch of.
-    /// `PitchScope.spatialOnly` is r17 (the default); `.off` plays the
-    /// carrier flat; `.both` also pitch-shifts the phoneme (TD-PSOLA).
+    /// `.both` is the default from protocol r26 (both sound arms follow the
+    /// pen's height, the phoneme through TD-PSOLA); `.spatialOnly` was the
+    /// default r17-r25; `.off` plays both arms at their recorded pitch.
     /// Stored as the raw string; an unknown stored value reads as default.
     static let pitchScopeKey = prefix + "pitchScope"
-    static let pitchScopeDefault: PitchScope = .spatialOnly
+    static let pitchScopeDefault: PitchScope = .both
     static var pitchScope: PitchScope {
         get { configuration(in: .standard).pitchScope }
         set { UserDefaults.standard.set(newValue.rawValue, forKey: pitchScopeKey) }
     }
 
-    /// R18DIM slice 2: the shared pitch span in cents, both arms
-    /// (default 2400 = 220-880 Hz around the carrier; clamped 600...2400).
+    /// R18DIM slice 2: the shared pitch span in cents, both arms; clamped
+    /// 600...2400. Default 1200 (one octave, +-600 cents) from protocol r26;
+    /// r17-r25 used `PitchCoupling.defaultSpanCents` (2400, 220-880 Hz).
     static let pitchRangeCentsKey = prefix + "pitchRangeCents"
-    static let pitchRangeCentsDefault: Int = PitchCoupling.defaultSpanCents
+    static let pitchRangeCentsDefault: Int = 1200
     static var pitchRangeCents: Int {
         get { configuration(in: .standard).pitchRangeCents }
         set { UserDefaults.standard.set(newValue, forKey: pitchRangeCentsKey) }

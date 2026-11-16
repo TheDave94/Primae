@@ -544,7 +544,9 @@ nonisolated final class TDPSOLA: SonificationRenderer, @unchecked Sendable {
         let spacing: Double
         let inc: Double
         if !isVoiced {
-            spacing = hop; inc = 1
+            // r26: an unvoiced grain is resampled by the pitch ratio, like the carrier's, so a
+            // height shift moves F's noise up or down (brightness). At 0 cents pf == 1: unchanged.
+            spacing = hop; inc = pf
         } else if isCarrier {
             spacing = last.period / pf; inc = pf
         } else {

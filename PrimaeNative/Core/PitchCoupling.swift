@@ -8,8 +8,11 @@
 // and the span, and both arms are driven through the same `ArmCoupling`
 // mapping, so the pen and the observe dot agree.
 //
-// DEFAULT = r17 EXACTLY: scope `.spatialOnly`, span 2400 cents (two octaves,
-// +-1200 around the source's own pitch = 220-880 Hz for the 440 Hz carrier).
+// The STRUCT's own defaults are r17 exactly: scope `.spatialOnly`, span 2400
+// cents (two octaves, +-1200 around the source's own pitch = 220-880 Hz for
+// the 440 Hz carrier). They are a fixed reference only. What a study session
+// uses comes from `StudyComparisonSettings` (`pitchScopeDefault`,
+// `pitchRangeCentsDefault`), which from protocol r26 is `.both` at 1200 cents.
 //
 // "Both arms" pitch-shifts the PHONEME through the live kernel's TD-PSOLA
 // path (`LiveSonificationKernel.setPitchCents`, 0.5x-2x, clamped to +-1200
@@ -43,6 +46,8 @@ struct PitchCoupling: Equatable {
     var scope: PitchScope = .spatialOnly
     var spanCents: Int = PitchCoupling.defaultSpanCents
 
+    /// The r17 reference (`.spatialOnly`, 2400), NOT the study's default; that is
+    /// `StudyComparisonSettings.pitchScopeDefault` / `pitchRangeCentsDefault`.
     static let `default` = PitchCoupling()
 
     static func clampedSpan(_ cents: Int) -> Int {

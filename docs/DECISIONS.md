@@ -1973,6 +1973,73 @@ Implications:
     the probes, every sound and switch, the comparison stamp.
     `StudyProtocol.revision` is 25.
 
+- **Protocol revision 26 — height pitches both sound arms, over one octave
+  (David's choice 2026-11-16).** David chose to pitch the phoneme as well as
+  the carrier ("Shift F's noise", range ±600), after listening to renders of
+  the real kernel (`wt-primae-audit-notes/r26-pitch-2026-11-15/wav`,
+  `wav-F-spectral`, SEQ and GLIDE files), and OK'd the implementation the
+  same night.
+  - **Defaults.** `StudyComparisonSettings.pitchScopeDefault` `.spatialOnly`
+    → `.both`; `pitchRangeCentsDefault` 2400 → 1200 (±600 cents). Both sound
+    arms go through the same `ArmCoupling` mapping, so at the same height
+    they get the same cents, for the pen and for the observe dot. The spatial
+    carrier's range narrows with it, 220–880 Hz → 311–622 Hz. `PitchCoupling`'s
+    own struct defaults stay the r17 values as a fixed reference; nothing in
+    the app uses them as the study's defaults.
+  - **F.** F's phoneme is unvoiced (no pitch marks), and TD-PSOLA played its
+    noise grains at `inc = 1` whatever the cents, so F did not change with
+    height at all, even with "Beide Klang-Arme" (measured in the r26
+    renders). Now the unvoiced branch resamples each grain by the pitch
+    ratio, `inc = pf`, as the carrier's branch already did
+    (`TDPSOLA.spawnNext`). The read stays inside the guarded source
+    (`guardFrames` 4096, clamped `read`). MEASURED on the renders:
+    zero-crossing rate −600 cents 7668 Hz (0.72×), 0 cents 10699 Hz,
+    +600 cents 12939 Hz (1.21×); RMS −1.7 dB on both sides; peak −2.2 / −4.0
+    dBFS. At 0 cents `pf == 1` exactly, so F is bit for bit r25 there
+    (`TDPSOLAIdentityTests` still pins it against the frozen r17 copy).
+  - **Disclosure: F's height cue is brightness, not pitch.** A fricative has
+    no pitch to shift; what the child hears is the noise moving up or down in
+    brightness. The voiced phonemes (A, I, L, M) and the carrier shift in
+    pitch. At +600 cents the resampled noise reaches close to the top of the
+    band and aliases a little; it is audible only as a slight harshness on
+    the upshift and was judged acceptable by ear.
+  - **Phoneme demonstration.** The kernel keeps its last pitch, and the
+    phoneme arm's pre-task demonstration did not reset it (it never had to:
+    before r26 the phoneme was never pitched). It now writes 0 before it
+    plays, as the spatial arm already holds the carrier at 0, so the
+    demonstration plays the recording's own pitch and never the previous
+    letter's last pen height.
+  - **Design consequence, for the analysis.** Both sound arms now carry the
+    same height→pitch mapping, so the phoneme–spatial contrast is the
+    sound's content (the letter's phoneme against a letter-unrelated
+    carrier), with the spatial mapping held equal between them; before r26
+    the mapping was part of the spatial arm only. The r18 matching note
+    ("only `pitchScope` can separate the arms") now holds at the default
+    with nothing separating them. The thesis text that says only the
+    spatial arm is pitched (ch. 1, 4, 6, 7) needs David's redlines in
+    master-thesis.
+  - **Comparison stamp (r18 semantics).** The stamp lists switches that
+    differ from the CURRENT defaults. An r26 row with an empty stamp ran
+    Beide / 1 Oktave; an r26 row stamped
+    `pitchScope=spatialOnly;pitchRangeCents=2400` ran the r25 pitch
+    behaviour; an r25 row with an empty stamp ran Nur Raumklang / 2 Oktaven.
+    Read the stamp together with `protocolRevision`, as the
+    `StudyProtocol.swift` header requires when a default moves.
+  - **Tests.** `PitchScopeTests` pins the r26 defaults, the shared cents in
+    both arms, F brighter/darker at ±600 within 3 dB and F at 0 cents
+    unchanged; the stamp, store, observe (P4), B18 and axis-sweep tests now
+    read the defaults instead of assuming the r25 values;
+    `PreTaskDemonstrationTests` pins the phoneme demonstration's pitch reset.
+    `TracingDependencies.stub` now carries the r26 pitch defaults like every
+    other study switch (not `PitchCoupling.default`, the r17 reference);
+    tests about carry-over and sweep mechanics pin the r18–r25 coupling
+    (`spatialOnly`, 2400 cents) explicitly, and `AudioArmRoutingTests` pins
+    that the phoneme arm's touch is pitched at the default and not under
+    Nur Raumklang.
+  - **Not changed.** The sounds themselves, rate, pan, gating, every other
+    switch and default, the probes, the scores, the export schema.
+    `StudyProtocol.revision` is 26.
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

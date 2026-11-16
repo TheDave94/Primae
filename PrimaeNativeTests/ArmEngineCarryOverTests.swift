@@ -56,6 +56,11 @@ import CoreGraphics
         deps.observeCueFallbackSeconds = 0.05
         deps.observeCueEndToPresentationSeconds = 0.05
         deps.audio = audio
+        // Carry-over MECHANICS, measured at the r18-r25 coupling (spatial arm only, 2400 cents):
+        // there the phoneme arm never sets a pitch of its own, so a shifted play can only be the
+        // spatial child's pitch left in the engine. Under r26 (both arms) the reset is pinned by
+        // PreTaskDemonstrationWiringTests' phoneme demo (setSpatialPitch(0) before load).
+        deps.pitchCoupling = PitchCoupling(scope: .spatialOnly, spanCents: 2400)
         let vm = TracingViewModel(deps)
         vm.canvasSize = canvas
         return vm

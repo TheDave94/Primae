@@ -412,7 +412,8 @@ private func replug(_ vm: TracingViewModel) {
         for _ in 0..<samples {
             t += 1.0 / 240; p.x += 2; p.y += 10
             rig.vm.updateTouch(at: p, t: t, canvasSize: rig.canvas)
-            expected.append(SpatialSonification.pitchCents(forNormalizedY: p.y / rig.canvas.height))
+            // The VM's own coupling (the study default's span; r26: 1200 cents).
+            expected.append(rig.vm.pitchCoupling.cents(forNormalizedY: p.y / rig.canvas.height, arm: .spatial)!)
         }
         return expected
     }

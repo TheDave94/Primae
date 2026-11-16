@@ -398,11 +398,11 @@ struct SettingsView: View {
                             StudyComparisonSettings.pitchScope = $0
                             vm.markComparisonSettingChanged()
                         })) {
+                        Text("Beide Klang-Arme").tag(PitchScope.both)
                         Text("Nur Raumklang").tag(PitchScope.spatialOnly)
                         Text("Aus").tag(PitchScope.off)
-                        Text("Beide Klang-Arme").tag(PitchScope.both)
                     }
-                    .accessibilityHint("Nur Raumklang ist die Vorgabe: die Stifthöhe verändert die Tonhöhe nur im Raumklang-Arm. Aus: die Tonhöhe folgt dem Stift in keinem Arm (das Phonem bleibt auf seiner aufgenommenen Tonhöhe). Beide Klang-Arme verschiebt auch das Phonem in der Tonhöhe (TD-PSOLA), mit demselben Tonumfang. Die Achsen-Vorführung vor der Aufgabe (eigener Schalter, nur Raumklang) folgt diesem Schalter: bei Aus verändert sich ihre Tonhöhe nicht, sonst gilt derselbe Tonumfang. Ein Vergleichslauf, keine Pilotbedingung.")
+                    .accessibilityHint("Beide Klang-Arme ist die Vorgabe: die Stifthöhe verändert die Tonhöhe im Raumklang-Arm und im Phonem-Arm (TD-PSOLA; beim F wird das Rauschen heller oder dunkler), mit demselben Tonumfang. Nur Raumklang: das Phonem bleibt auf seiner aufgenommenen Tonhöhe (die Vorgabe bis Protokoll r25). Aus: die Tonhöhe folgt dem Stift in keinem Arm. Die Achsen-Vorführung vor der Aufgabe (eigener Schalter, nur Raumklang) folgt diesem Schalter: bei Aus verändert sich ihre Tonhöhe nicht, sonst gilt derselbe Tonumfang. Ein Vergleichslauf, keine Pilotbedingung.")
 
                     Picker("Tonumfang der Höhe", selection: Binding(
                         get: { comparisonPitchRange },
@@ -411,12 +411,12 @@ struct SettingsView: View {
                             StudyComparisonSettings.pitchRangeCents = $0
                             vm.markComparisonSettingChanged()
                         })) {
+                        Text("1 Oktave").tag(1200)
                         Text("2 Oktaven").tag(2400)
                         Text("1,5 Oktaven").tag(1800)
-                        Text("1 Oktave").tag(1200)
                         Text("½ Oktave").tag(600)
                     }
-                    .accessibilityHint("2 Oktaven (220 bis 880 Hz beim Raumklang) ist die Vorgabe. Ein kleinerer Umfang hält ein verschobenes Phonem besser erkennbar. Gilt für beide Arme.")
+                    .accessibilityHint("1 Oktave (±600 Cent, 311 bis 622 Hz beim Raumklang) ist die Vorgabe ab Protokoll r26. 2 Oktaven (220 bis 880 Hz) war die Vorgabe bis r25. Ein kleinerer Umfang hält ein verschobenes Phonem besser erkennbar. Gilt für beide Arme.")
 
                     Toggle("Klang: Abstand vom Strich (dunkler, leiser)", isOn: Binding(
                         get: { comparisonDistanceTone },
