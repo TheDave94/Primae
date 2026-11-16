@@ -48,6 +48,9 @@ final class TouchDispatcher {
     /// sub-threshold jitter stays the one-sample contact it always was
     /// and never becomes a two-point "production".
     private var keptPointsInStroke = 0
+    /// R-077(a): true once a move sample reached this touch. A touch that never
+    /// moves (a tap) must not re-arm the lift hold of an earlier stroke's sound.
+    private var touchReceivedMove = false
     /// Exponentially-smoothed touch velocity. Drives audio time-stretch
     /// and the "should playback be active" gate.
     private(set) var smoothedVelocity: CGFloat = 0
@@ -187,6 +190,7 @@ final class TouchDispatcher {
         lastKeptPoint                  = p
         unkeptTail                     = nil
         keptPointsInStroke             = 1
+        touchReceivedMove              = false
         vm.activePath                  = [p]
         // New touch supersedes any lingering snapshot from the
         // previous phase — clear so the two paths don't overlay.
@@ -244,6 +248,7 @@ final class TouchDispatcher {
         guard let lastPoint                  else { return }
 
         resyncCanvasSizeIfNeeded(canvasSize)
+        touchReceivedMove = true
 
         let isWithinCanvasBounds =
             p.x >= 0 && p.y >= 0 && p.x <= canvasSize.width && p.y <= canvasSize.height
@@ -462,6 +467,7 @@ final class TouchDispatcher {
         }
         lastLiftAt                     = lastTimestamp
         lastLiftEndedLetter            = vm.strokeTracker.isComplete || vm.didCompleteCurrentLetter
+        let touchMoved                 = touchReceivedMove
         unkeptTail                     = nil
         lastKeptPoint                  = nil
         keptPointsInStroke             = 0
@@ -479,7 +485,7 @@ final class TouchDispatcher {
             // The letter's LAST stroke ended: fade at once, no hold (RULINGS 2026-11-05).
             vm.playback.requestLetterEndIdle()
             vm.playback.forceIdle()
-        } else if vm.playback.state == .active {
+        } else if vm.playback.state == .active, touchMoved {
             // The pen was sounding: keep it sounding through the lift hold, so a child moving to the
             // next stroke does not hear the sound cut (2026-10-05). The hold is the child's own:
             // `StrokeTempo.holdSeconds`, seeded with `SoundEnvelope.liftHoldSeconds` (0.8 s). A
