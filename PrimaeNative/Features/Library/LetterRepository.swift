@@ -33,13 +33,29 @@ public enum FontWeight: String, CaseIterable {
     }
 }
 
-private let fontWeightPreferenceKey = "de.flamingistan.primae.fontWeight"
+let fontWeightPreferenceKey = "de.flamingistan.primae.fontWeight"
 
-/// Current user-preferred weight. Defaults to `.regular` (the
-/// production-ready bake). `.light` is partial — letters whose Light
-/// strokes.json is missing fall back at load time.
-func currentFontWeight() -> FontWeight {
-    let raw = UserDefaults.standard.string(forKey: fontWeightPreferenceKey) ?? "regular"
+/// Current weight for stroke loading.
+///
+/// A STUDY BUILD ALWAYS RETURNS `.regular` (audit R-035). The thesis claim
+/// is that every child traces the identical frozen stimulus; the stored
+/// preference is a UserDefaults key nothing in the UI writes, but a
+/// leftover value or an `NSArgumentDomain` launch argument
+/// (`-de.flamingistan.primae.fontWeight light`) can set it, and the weight
+/// is stamped in no export row — a Light-geometry session would be
+/// indistinguishable from a Regular one in the data. So the stored value
+/// is ignored outright, not merely validated.
+///
+/// Outside a study build (the paused casual path) the stored preference is
+/// honoured: defaults to `.regular`, and `.light` is partial — letters
+/// whose Light strokes.json is missing fall back at load time.
+///
+/// `defaults` and `studyBuild` are SEAMS so a test can drive both branches
+/// without writing the global default (tests run in parallel).
+func currentFontWeight(defaults: UserDefaults = .standard,
+                       studyBuild: Bool = StudyBuild.isActive) -> FontWeight {
+    if studyBuild { return .regular }
+    let raw = defaults.string(forKey: fontWeightPreferenceKey) ?? "regular"
     return FontWeight(rawValue: raw) ?? .regular
 }
 

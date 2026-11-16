@@ -148,3 +148,34 @@ private final class TwoWeightProvider: LetterResourceProviding {
                 "the active weight changed WHICH letters exist: Regular=\(regular.sorted()) Light=\(light.sorted()). A partial weight must not remove letters.")
     }
 }
+
+/// R-035: a study build must show every child the Regular geometry, whatever
+/// the stored preference says. Driven through `currentFontWeight`'s seams
+/// (a throwaway `UserDefaults` suite and an explicit `studyBuild` flag) — no
+/// write to `UserDefaults.standard`, so it cannot disturb parallel suites.
+@Suite struct StudyFontWeightOverrideTests {
+
+    private func lightDefaults() -> UserDefaults {
+        let name = "StudyFontWeightOverrideTests-\(UUID().uuidString)"
+        let d = UserDefaults(suiteName: name)!
+        d.removePersistentDomain(forName: name)
+        d.set("light", forKey: fontWeightPreferenceKey)
+        return d
+    }
+
+    @Test("a study build resolves Regular even when the stored preference is light")
+    func studyBuildIgnoresStoredLight() {
+        #expect(currentFontWeight(defaults: lightDefaults(), studyBuild: true) == .regular)
+    }
+
+    @Test("outside a study build the stored preference is still honoured (control)")
+    func nonStudyHonoursStoredLight() {
+        #expect(currentFontWeight(defaults: lightDefaults(), studyBuild: false) == .light)
+    }
+
+    @Test("this build is a study build, so the default argument takes the override path")
+    func defaultArgumentIsTheStudyFlag() {
+        #expect(StudyBuild.isActive)
+        #expect(currentFontWeight(defaults: lightDefaults()) == .regular)
+    }
+}
