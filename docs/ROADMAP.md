@@ -285,6 +285,12 @@ The CI build of `9c229769` (run 42504923240) prints 86 distinct warnings. The on
 
 Fixed in the same audit, with no behaviour change: `ParentDashboardExporter.isoTimestamp` is `nonisolated` (it was called from the JSON encoder's non-isolated closure), `PopCapture`'s local `route()` is `@Sendable`, and the never-mutated `var`s and needless `try`s in the test target are gone. The remaining test-target warnings are Swift 6 isolation notes that the target's Swift 5 language mode (`Package.swift`, not to be changed) reports as warnings.
 
+### T1 — Test-instrument residuals *(recorded 2026-11-16, after #113/#114; not started)*
+**Effort:** S each · **Priority:** P3
+
+1. **`LiveSonificationOnsetDeviceTests.testTouchToOnsetPerArm` does not guard the output route.** It asserts the L4 bound (median touch → speaker onset ≤ 70 ms per arm) whatever `AVAudioSession.currentRoute` is; the route is printed (`route=`), never checked. The speaker figure adds the session's `outputLatency`, which on a Bluetooth A2DP route is far larger than on the built-in speaker, so the test can fail for the route, not the voice: relayed from the 2026-11-16 device run on AirPods, 193 ms (phoneme) / 180 ms (spatial). Fix: skip (`XCTSkip`, naming the route) unless the output port is the built-in speaker, so a red result means the bound, and a run on headphones reports a skip rather than a pass or a false failure.
+2. **`PhaseDotIndicator`'s Reduce Motion `onChange` (#114, F3) has no test.** `PhaseDotIndicatorTests` (`ChildFacingCountsTests.swift`) cover `dot(for:)`; the pulse stopping or resuming when Reduce Motion changes while the indicator is shown is view animation state, which nothing in either test target observes. Covering it means extracting the pulse decision into a value (the `CanvasDrawPlan` pattern, CLAUDE.md "Test Infrastructure" 3) and testing that.
+
 ### D8 — Canvas redraw frequency profile
 **Effort:** S (profile only) — could expand to M if a real bottleneck surfaces · **Priority:** P3
 
