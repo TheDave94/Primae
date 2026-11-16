@@ -2023,7 +2023,15 @@ public final class TracingViewModel {
         // outgoing one's recoveries are not the incoming one's.
         clearLostRoute()
         routeRecoveries = 0
+        let wasSilenced = armAudio.isSilenced
         armAudio.enter(audioCondition)
+        // R-078: `init` read the start-up error through the gate, which for a
+        // silent launch is `SilentAudio` (nil). The first moment a sound arm
+        // reaches the REAL engine is here, so report its error now.
+        if wasSilenced, !armAudio.isSilenced,
+           let audioError = armAudio.initializationError {
+            messages.show(toast: audioError)
+        }
         // R18: the roughness tuning is a PUSH-ONCE value, unlike the per-stroke
         // tone and pressure arguments, and `ArmGatedAudio` sends every call to
         // the no-op engine while the arm is silent. A session launched in the

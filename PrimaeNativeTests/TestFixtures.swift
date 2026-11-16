@@ -46,7 +46,8 @@ final class EngineModelAudio: AudioControlling {
         let pan: Float
         let pitchCents: Float
     }
-    var initializationError: String? { nil }
+    /// Settable so a test can model an engine whose start-up failed.
+    var initializationError: String? = nil
     private(set) var events: [Event] = []
     private(set) var setAdaptiveCalls: [(speed: Float, bias: Float)] = []
     private(set) var spatialPitches: [Float] = []
