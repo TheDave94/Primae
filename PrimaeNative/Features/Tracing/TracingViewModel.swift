@@ -2677,12 +2677,12 @@ public final class TracingViewModel {
 
     // MARK: - Touch handling (forwarded to TouchDispatcher)
 
-    func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+    func beginTouch(at p: CGPoint, t: CFTimeInterval, force: CGFloat? = nil) {
         #if DEBUG || POPCAP
         PopCapture.armed?.event("touch.began", "x=\(Int(p.x)) y=\(Int(p.y)) letter=\(currentLetterName) phase=\(learningPhase)")
         #endif
         noteParticipantActivity()
-        touchDispatcher.beginTouch(at: p, t: t)
+        touchDispatcher.beginTouch(at: p, t: t, force: force)
     }
 
     /// A touch, a probe start or an unpark makes the enrolled child an

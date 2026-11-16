@@ -437,11 +437,11 @@ struct TracingCanvasView: View {
             .overlay(
                 PencilAwareCanvasOverlay(
                     canvasSize: geo.size,
-                    onBegan:  { pt, t in
+                    onBegan:  { pt, t, force in
                         // Feed the detector first so the preset flips
                         // before any grid-preset-dependent work runs.
                         vm.pencilDidTouchDown()
-                        vm.beginTouch(at: pt, t: t)
+                        vm.beginTouch(at: pt, t: t, force: force)
                     },
                     onMoved:  { pt, t, pressure, azimuth, size in
                         vm.pencilPressure = pressure
@@ -1118,7 +1118,7 @@ struct CanvasTouchArbiter<ID: Hashable> {
 
 private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let canvasSize: CGSize
-    let onBegan:  (CGPoint, CFTimeInterval) -> Void
+    let onBegan:  (CGPoint, CFTimeInterval, CGFloat) -> Void
     let onMoved:  (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
     let onEnded:  () -> Void
     /// `touchesCancelled` — the system took the pencil touch (R-024).
@@ -1146,12 +1146,12 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UIPencilInteractionDelegate {
-        let onBegan: (CGPoint, CFTimeInterval) -> Void
+        let onBegan: (CGPoint, CFTimeInterval, CGFloat) -> Void
         let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
         let onEnded: () -> Void
         let onCancelled: () -> Void
         let onPencilSqueeze: (() -> Void)?
-        init(onBegan: @escaping (CGPoint, CFTimeInterval) -> Void,
+        init(onBegan: @escaping (CGPoint, CFTimeInterval, CGFloat) -> Void,
              onMoved: @escaping (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
              onEnded: @escaping () -> Void,
              onCancelled: @escaping () -> Void,
@@ -1208,7 +1208,9 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
             // specifically; never picked = never take a palm's word for
             // where the pencil is.
             guard let t = touches.first(where: { $0.type == .pencil }) else { return }
-            coordinator?.onBegan(t.location(in: self), t.timestamp)
+            // The touch-down sample's own force, normalised as the moves are (R-074).
+            coordinator?.onBegan(t.location(in: self), t.timestamp,
+                                 t.force / max(t.maximumPossibleForce, 1))
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {

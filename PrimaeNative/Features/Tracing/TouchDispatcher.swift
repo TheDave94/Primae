@@ -138,7 +138,12 @@ final class TouchDispatcher {
 
     // MARK: - Public API (forwarded from VM)
 
-    func beginTouch(at p: CGPoint, t: CFTimeInterval) {
+    /// `force` is the touch-down sample's own normalised force (Pencil), read from
+    /// the touch itself: `vm.pencilPressure` is only stamped by the first MOVE and
+    /// `finishTouch` clears it, so at pen-down it is nil (audit R-074). It feeds the
+    /// RECORDED sample only, never `vm.pencilPressure`, so the sound is unchanged.
+    /// Finger touches pass nil and record 0, as their later samples do.
+    func beginTouch(at p: CGPoint, t: CFTimeInterval, force: CGFloat? = nil) {
         guard let vm else { return }
         // A study session that cannot deliver its stimulus does not
         // trace at all — see TracingViewModel.studyPreconditionFailure.
@@ -195,7 +200,7 @@ final class TouchDispatcher {
             // trace began 1.5 pt into the stroke and the duration
             // excluded the pen-down→first-move interval (audit 2026-09-04).
             vm.freeWriteRecorder.record(point: p, timestamp: t,
-                                        force: vm.pencilPressure ?? 0,
+                                        force: force ?? 0,
                                         canvasSize: vm.canvasSize)
         }
         // FreeWrite fades real-time feedback (Schmidt & Lee 2005
