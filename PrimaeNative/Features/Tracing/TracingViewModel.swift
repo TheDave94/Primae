@@ -10,9 +10,10 @@ public final class TracingViewModel {
     // MARK: - Public observable state
 
     var showGhost           = false
-    /// True shows every bundled letter; false limits to the 7 demo
-    /// letters (A, F, I, K, L, M, O). Default true; flag remains for a
-    /// future "thesis demo" mode.
+    /// True shows every bundled letter; false limits a non-study session
+    /// to the 5 pilot stimulus letters (`TrainedLetterSubset.studyLetters`:
+    /// A, F, I, L, M). Default true and not flipped anywhere in the app;
+    /// a study session ignores it (`visibleLetterNames`).
     var showAllLetters      = true
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0

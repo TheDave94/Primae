@@ -745,7 +745,7 @@ Schreibmotorik-Initiative*. Cornelsen.
   ```swift
   struct WritingAssessment: Codable, Equatable {
       let formAccuracy: CGFloat       // discrete Fréchet
-      let tempoConsistency: CGFloat   // 1 − CV² of inter-point intervals
+      let tempoConsistency: CGFloat   // 1 − CV² of within-stroke speed (r16)
       let pressureControl: CGFloat    // 1 − variance of pencil force
       let rhythmScore: CGFloat        // active-time / total-time
 
@@ -762,8 +762,13 @@ Schreibmotorik-Initiative*. Cornelsen.
 * Each dimension's algorithm:
   - `formAccuracy` (line 204): discrete Fréchet distance vs reference
     polyline, normalised by `reference.checkpointRadius * 3.0`.
-  - `tempoConsistency` (line 221): CV² of inter-point timestamp deltas;
-    excludes gaps > 0.5 s as pen-lifts.
+  - `tempoConsistency` (`FreeWriteScorer.tempoConsistency`): from
+    protocol r16 (audit B-8 / B-9), `1 − CV²` of the WITHIN-STROKE speed
+    over 0.1 s windows (path length / elapsed time), clamped to 0–1;
+    windows never cross a stroke boundary, so a pen lift does not count
+    at any length. Through r15 it was the CV² of inter-sample timestamp
+    intervals with gaps ≥ 0.5 s dropped; those rows are not comparable
+    (see the column table, Appendix B).
   - `pressureControl` (line 244): 1 − normalised variance over non-zero
     pencil forces; finger touches (force 0) score 1.0 (no pressure
     data to fault).
@@ -1051,9 +1056,16 @@ discrete variant which is sufficient for digitised polylines. The
 flat-array vs 2D array choice is a cache-locality optimisation that
 doesn't change the algorithm's behaviour.
 
-#### 4.12.1 `frechetDistance` — the study's primary accuracy outcome
+#### 4.12.1 `frechetDistance` — raw discrete-Fréchet distance (historical primary outcome; exported column retired)
 
-The exported `frechetDistance` column is the **raw** discrete-Fréchet
+> **Current state:** the exported `frechetDistance` column is retired and
+> always empty; the live primary accuracy outcome is `spatialDeviation`
+> (see the column table, `StrokeProcessMeasures.swift` header). What
+> follows is the definition as it stood before the 2026-09-04
+> stroke-correspondence redefinition, kept as the record of how the raw
+> distance was computed.
+
+The exported `frechetDistance` column was the **raw** discrete-Fréchet
 distance for one freeWrite trial. It is the same number
 `formAccuracy` is derived from, recorded before that derivation
 throws information away. State it in the thesis exactly as follows.

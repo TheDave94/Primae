@@ -612,8 +612,16 @@ final class StudyAdvanceProbeUITests: XCTestCase {
 @MainActor
 final class MeasuredAudioUITests: XCTestCase {
 
-    override func setUp() {
+    override func setUpWithError() throws {
         continueAfterFailure = false
+        // Both tests read `audio-signal-probe-readout`, which `MainAppView`
+        // publishes only under `#if DEBUG`. A Release-Study build (the pilot
+        // artefact) has no such element, so the tests would fail for want
+        // of an instrument, not for a defect. This bundle inherits DEBUG
+        // from the project's Debug-Study configuration, as the app does.
+        #if !DEBUG
+        throw XCTSkip("audio-signal-probe-readout is compiled out of Release-Study (#if DEBUG in MainAppView)")
+        #endif
     }
 
     func testEnrollingThenObservingProducesMeasuredAudio() {
