@@ -2107,10 +2107,11 @@ public final class TracingViewModel {
                 pilotAudioLogger.fault("Pre-task demonstration SKIPPED: no phoneme file for \(letter.name, privacy: .public) — the session should have been refused.")
                 return
             }
-            // Past this branch's only failure path, so the condition's
-            // one demonstration is spent HERE and not on a letter whose
-            // phoneme file was missing.
-            demonstratedAudioConditions.insert(audioCondition)
+            // The condition's one demonstration is spent when the sound is
+            // DELIVERED (inside the task, below), not here (audit R-076):
+            // a task cancelled before it runs delivers nothing and must
+            // not use the condition up.
+            let armedCondition = audioCondition
             preTaskDemoTask = Task { [weak self] in
                 // `.cancel()` only flips this flag — it does NOT stop
                 // the closure from starting, so a task cancelled before
@@ -2131,6 +2132,7 @@ public final class TracingViewModel {
                 // never pitched and this wrote the 0 it already had.
                 self.audio.setSpatialPitch(cents: 0)
                 self.audio.loadAudioFile(named: first, autoplay: true)
+                self.demonstratedAudioConditions.insert(armedCondition)
                 try? await Task.sleep(for: .seconds(duration))
                 // loadAudioFile(autoplay: true) schedules LOOPING
                 // playback (AudioEngine.scheduleLooping) — without this
@@ -3336,13 +3338,14 @@ public final class TracingViewModel {
     /// neutral only because every arm change and every new participant
     /// resets it (`settleEngineForArm`, protocol r7); before r7 a phoneme
     /// child after a spatial child played shifted (audit D2).
-    private func startObservePhaseAudio(startingAt firstPoint: CGPoint?) {
+    @discardableResult
+    private func startObservePhaseAudio(startingAt firstPoint: CGPoint?) -> Bool {
         // A blocked session starts no arm sound (r14; C-1: the observe
         // sound started on the loudspeaker behind the headphone stop).
         // What the letter itself does behind the stop is unchanged.
-        guard sessionBlockReason == nil else { return }
-        guard letters.indices.contains(letterIndex) else { return }
-        guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return }
+        guard sessionBlockReason == nil else { return false }
+        guard letters.indices.contains(letterIndex) else { return false }
+        guard let first = activeAudioFiles(for: letters[letterIndex]).first else { return false }
         observeDysfluency.reset()
         let p = firstPoint.map(canvasNormalizedPoint(forCellPoint:)) ?? CGPoint(x: 0.5, y: 0.5)
         ArmCoupling.apply(
@@ -3358,6 +3361,7 @@ public final class TracingViewModel {
         // on the output now present: close the old interval, open anew.
         if observeSoundTracksDot { lifecycleCounters.startObserveSound(at: mediaClock()) }
         observeSoundTracksDot = true
+        return true
     }
 
     /// Whether the observe sound is playing and should follow the dot.
@@ -3461,7 +3465,9 @@ public final class TracingViewModel {
         // A pending demonstration from an earlier load must not stop this
         // sound at its 2 s mark.
         cancelPreTaskDemonstration()
-        demonstratedAudioConditions.insert(audioCondition)
+        // NOT recorded here (audit R-076): a claim is an intention. The
+        // ledger is written by `startPendingObservePresentation` once the
+        // sound has actually started.
         return true
     }
 
@@ -3535,9 +3541,11 @@ public final class TracingViewModel {
         guard !strokes.strokes.isEmpty else { return }
         animation.start(strokes: strokes)
         if let arm = pendingObserveSoundArm, arm == audioCondition {
-            startObservePhaseAudio(startingAt: strokes.strokes.first?.checkpoints.first.map {
+            let started = startObservePhaseAudio(startingAt: strokes.strokes.first?.checkpoints.first.map {
                 CGPoint(x: $0.x, y: $0.y)
             })
+            // R-076: the demonstration counts once it was delivered.
+            if started { demonstratedAudioConditions.insert(arm) }
         }
         pendingObserveSoundArm = nil
     }
