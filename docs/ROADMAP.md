@@ -201,7 +201,7 @@ If any of those fails on device, the fix is a tweak in `Coordinator.pencilIntera
 ## 4. TECHNICAL DEBT
 
 ### D11 — Measurement-layer correctness residuals
-**Effort:** S each · **Priority:** P1 for the two data-integrity items — both now CLOSED (#1, #2)
+**Effort:** S each · **Priority:** P1 for the two data-integrity items — all five now CLOSED
 
 Found by the 2026-08-19 reconciliation; none of these was previously tracked.
 
@@ -214,12 +214,23 @@ Found by the 2026-08-19 reconciliation; none of these was previously tracked.
    Both `ParentDashboardStore.schedulerEffectivenessProxy` and `ParentDashboardExporter`'s per-arm
    proxy now `.sorted { ($0.recordedAt ?? .distantPast) < ($1.recordedAt ?? .distantPast) }` before
    pairing consecutive records — see the `D11#2` comments at both sites.
-3. **Export failure policy is implemented but undecided.** All three call sites are fail-loud
-   and the destructive new-participant path is correctly gated behind a successful export.
-   Missing is the DECISIONS entry recording that as policy. (A "DEFER 23" pointer here resolved to nothing and was removed 2026-11-01.) Doc-only.
-4. **Golden-file export test.** `ExporterArmStratificationTests` gives structural coverage and
-   its header calls it "Golden coverage", but no checked-in CSV fixture exists. A byte-comparison
-   golden over a fixed snapshot is still absent. (The "DEFER 22" pointer resolved to nothing and was removed 2026-11-01.)
+3. ~~**Export failure policy is implemented but undecided.**~~ **CLOSED (2026-11-16).** The
+   policy is recorded in `docs/DECISIONS.md`, "Export failure policy": the research export fails
+   loud, the retained `Exports/` copy fails soft, and the destructive new-participant step is gated
+   on the seal (R-050), not on an export, since #22 removed the per-child export. The original
+   wording ("all three call sites", "gated behind a successful export") predates #22.
+4. ~~**Golden-file export test.**~~ **CLOSED (2026-11-16,
+   `ExporterGoldenFileTests.combinedCsvMatchesGoldenByteForByte`).** The real
+   `ParentDashboardExporter.combinedDelimitedData` runs over a fixed, literal-only snapshot
+   (`GoldenExportFixture`: three children covering every thesis and audio arm, a pre-enrolment
+   row, a rejected r25 attempt, a cold pretest probe row, an enrolment-only dropout, with
+   build/environment stamps) and is compared as raw bytes to `GoldenExportExpected.csv`, a
+   checked-in Swift literal (no resource, so it also runs on the iPad); a second test
+   (`goldenKeepsItsCoverage`) stops the golden being regenerated from a thinner fixture. The only
+   machine-dependent byte was the `# timezone=` header, now injected through a `timeZone:`
+   parameter (default `.current`, production output unchanged); no column is masked.
+   `ExporterArmStratificationTests`' structural coverage stays alongside it. (The "DEFER 22"
+   pointer resolved to nothing and was removed 2026-11-01.)
 5. ~~**CoreML model is compiled at runtime.**~~ **CLOSED (`1d9ff92`, 2026-08-19).** The model
    moved to its own resource root (`PrimaeNative/MLResources/`) carrying `.process`, scoped
    away from the 87 identically-named `strokes.json` files under `Resources/`. Loader and test

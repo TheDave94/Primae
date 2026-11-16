@@ -299,12 +299,14 @@ test target** (re-measured 2026-09-20). The 2026-09-17 sweep said 32;
 **`ce5a6dea` — "test: cover three zero-coverage files" — had already
 remediated three of those the same day the number was written down**, so
 do not re-derive 32. What still matters, by risk:
-**`SchuleWorldView` (the child-facing world — the screen the participant
-actually uses, including its score→verdict and star thresholds) and
-`WorldSwitcherRail` (child-visible counts) are referenced only in
-COMMENTS from either test target, never in code.** Two numbered star
-totals are computed independently in those two files, each with a comment
-claiming they agree, and neither is tested. `SettingsView` (the proctor's
+**`SchuleWorldView` and `WorldSwitcherRail` are no longer a gap
+(re-measured 2026-11-16).** The star total both show is ONE function,
+`LetterStars.total(for:)` (called at `SchuleWorldView` and
+`WorldSwitcherRail` since #21, `caff3472`), and the score→verdict is
+`FreeWriteFeedback(score:)`; both are pinned by
+`ChildFacingVerdictTests`, `ChildFacingCountsTests` and
+`starThresholdsExactValues`. The older claim here, two independently
+computed totals and no test, is history only. `SettingsView` (the proctor's
 arm configuration) is barely reached — exactly one code hit, a single
 `static let` — with its ~25 proctor `@State` properties untested.
 `StoreFileQuarantine` (data-loss prevention), `CalibrationSessionLogger`

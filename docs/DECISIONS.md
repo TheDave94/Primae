@@ -2131,6 +2131,35 @@ Six papers read in full (both sides):
 
 ---
 
+## Export failure policy (D11 item 3, recorded 2026-11-16; describes code already on main at `154c895a`, no behaviour change)
+
+ROADMAP D11 #3 asked for the policy to be written down. As built:
+
+- **The research export fails loud.** The study build has one export
+  path: the parent area's export buttons → `makeResearchExport` →
+  `ParentDashboardExporter.combinedExportForSharing`. Encoding and the
+  temp-file write throw `ExportError`; the parent area shows an error and
+  no share sheet. No partial file is offered. (The per-child dashboard
+  export, `ParentDashboardView`, is `#if !STUDY_BUILD` and not part of the
+  study.)
+- **The retained copy fails soft.** The copy kept under `Exports/` for
+  `devicectl` retrieval (R-062) is logged as a fault when it cannot be
+  written, and the share sheet still opens: the export itself succeeded,
+  the stores are intact, and blocking the share would lose the one copy
+  the proctor can take away now.
+- **The destructive step is gated on the SEAL, not on an export.** Since
+  #22 there is no per-child export. "Nächstes Kind" wipes the live stores
+  only after `sealOutgoingParticipant()` has confirmed the outgoing
+  child's archive on disk; if the seal cannot be confirmed, nothing is
+  wiped, the id is unchanged and `participantSealFailure` is set (audit
+  2026-10-13, R-050). A failed export therefore never costs data: every
+  child's rows stay in `ParticipantArchive/` and the export can be
+  retried.
+- ROADMAP D11 #3's wording ("all three call sites", "gated behind a
+  successful export") predates #22 and is superseded by the above.
+
+---
+
 ## Related separate workstreams (not the Primae freeze)
 
 **Listening study — a SEPARATE app David will build.** Not a Primae mode. Tests non-phoneme sounds; out of scope for the Primae freeze.

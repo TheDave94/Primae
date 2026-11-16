@@ -182,12 +182,18 @@ struct ParentDashboardExporter {
          b?.buildConfiguration ?? "", b?.buildUUID ?? "", b?.osVersion ?? "", b?.deviceModel ?? ""]
     }
 
+    /// `timeZone` only labels the `# timezone=` header line; every exported
+    /// instant is UTC. It exists so a golden-file test can pin that one
+    /// machine-dependent byte (D11 item 4) without mutating the process's
+    /// default zone. Production callers take the default, `.current`, so the
+    /// output is unchanged.
     private static func delimitedData(
         from snapshot: DashboardSnapshot,
         participantId: UUID,
         progress: [String: LetterProgress],
         enrolledAt: Date?,
-        separator sep: String
+        separator sep: String,
+        timeZone: TimeZone = .current
     ) -> Data {
         var lines: [String] = []
         lines.append("# participantId=\(participantId.uuidString)")
@@ -197,7 +203,7 @@ struct ParentDashboardExporter {
             lines.append("# enrolledAt=\(ParentDashboardExporter.isoTimestamp(enrolledAt))")
         }
         // Timezone label for cross-timezone / DST-aware interpretation.
-        lines.append("# timezone=\(TimeZone.current.identifier)")
+        lines.append("# timezone=\(timeZone.identifier)")
         // The rows of this block the export did NOT attribute to this child
         // (B3, protocol r16): written before the enrolment, or under
         // another enrolment's id. Always present, 0 when none.
@@ -600,11 +606,13 @@ struct ParentDashboardExporter {
         participants: [ParticipantExportSource],
         enrolments: [EnrolmentRecord] = [],
         setAside: [ArchiveSetAside] = [],
-        separator sep: String
+        separator sep: String,
+        timeZone: TimeZone = .current
     ) -> Data {
         let blocks = participants.map { p in
             String(data: delimitedData(from: p.snapshot, participantId: p.participantId,
-                                       progress: p.progress, enrolledAt: p.enrolledAt, separator: sep),
+                                       progress: p.progress, enrolledAt: p.enrolledAt, separator: sep,
+                                       timeZone: timeZone),
                    encoding: .utf8) ?? ""
         }
         // B4 (protocol r16): an archive file that could not be loaded is
