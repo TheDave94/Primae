@@ -9,6 +9,7 @@
 
 import Testing
 import CoreGraphics
+import SwiftUI
 import Foundation
 @testable import PrimaeNative
 
@@ -82,5 +83,92 @@ import Foundation
     @Test("the child's screen hides the status bar")
     func statusBarHidden() {
         #expect(TracingCanvasStyle.childScreenHidesStatusBar)
+    }
+}
+
+// MARK: - What the canvas is handed (T1.2, audit F2)
+//
+// The tests above pin `TracingCanvasStyle`'s constants. These pin the VALUES
+// the draw closure replays — `CanvasDrawPlan.ghost` and
+// `TracingCanvasView.inkDrawOps` — so a view that drew its own literal (a
+// hard-coded ghost opacity, a dropped casing) is no longer green.
+
+@MainActor
+@Suite struct CanvasDrawnStyleTests {
+
+    private func studyVM() -> TracingViewModel {
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        let vm = TracingViewModel(deps)
+        vm.canvasSize = CGSize(width: 400, height: 400)
+        return vm
+    }
+
+    @Test("the ghost line the canvas strokes is the solid r23 style, in every phase")
+    func ghostStrokeIsTheStyle() {
+        let vm = studyVM()
+        for phase in LearningPhase.allCases {
+            vm.phaseController.resume(at: phase)
+            #expect(vm.canvasDrawPlan.ghost.hex == TracingCanvasStyle.ghostHex, "\(phase)")
+            #expect(vm.canvasDrawPlan.ghost.width == TracingCanvasStyle.ghostLineWidth, "\(phase)")
+            #expect(vm.canvasDrawPlan.ghost.opacity == 1, "\(phase): solid, not r22's 35 % blue")
+        }
+    }
+
+    private func layers() -> [TracingCanvasView.InkLayer] {
+        var a = Path(); a.move(to: .zero); a.addLine(to: CGPoint(x: 10, y: 0))
+        var b = Path(); b.move(to: .zero); b.addLine(to: CGPoint(x: 0, y: 10))
+        return [.init(path: a, color: .black, width: 10), .init(path: b, color: .black, width: 14)]
+    }
+
+    @Test("the ink is drawn over a casing of its width plus the casing on each side, every casing first")
+    func inkIsCased() {
+        let ops = TracingCanvasView.inkDrawOps(layers())
+        #expect(ops.map(\.kind) == [.casing, .casing, .ink, .ink])
+        let side = TracingCanvasStyle.inkCasingPerSide
+        #expect(ops.map(\.width) == [10 + 2 * side, 14 + 2 * side, 10, 14])
+        #expect(ops.prefix(2).allSatisfy { $0.color == .canvasPaper }, "the casing is paper-coloured")
+    }
+
+    @Test("no layers, no strokes")
+    func noLayersNoOps() {
+        #expect(TracingCanvasView.inkDrawOps([]).isEmpty)
+    }
+}
+
+// MARK: - The phase dot's pulse (T1.2, audit F3)
+
+@Suite struct PhaseDotPulseTests {
+
+    @Test("on appear: the pulse starts animated unless Reduce Motion is on, then the dot settles enlarged")
+    func appearing() {
+        #expect(PhaseDotPulse.step(reduceMotion: false, appearing: true)
+                == .init(target: true, animated: true))
+        #expect(PhaseDotPulse.step(reduceMotion: true, appearing: true)
+                == .init(target: true, animated: false))
+    }
+
+    @Test("Reduce Motion switched on while shown: stop, settled enlarged; switched off: resume from enlarged")
+    func changingWhileShown() {
+        #expect(PhaseDotPulse.step(reduceMotion: true, appearing: false)
+                == .init(target: true, animated: false))
+        #expect(PhaseDotPulse.step(reduceMotion: false, appearing: false)
+                == .init(target: false, animated: true))
+    }
+
+    @Test("under Reduce Motion no step animates, appearing or not")
+    func reduceMotionNeverAnimates() {
+        for appearing in [true, false] {
+            #expect(!PhaseDotPulse.step(reduceMotion: true, appearing: appearing).animated)
+        }
+    }
+
+    @Test("only the current dot scales, and only while the pulse flag is set")
+    func scale() {
+        #expect(PhaseDotPulse.scale(isCurrent: true, pulse: true) == TracingCanvasStyle.phaseDotPulseScale)
+        #expect(PhaseDotPulse.scale(isCurrent: true, pulse: false) == TracingCanvasStyle.phaseDotRestScale)
+        #expect(PhaseDotPulse.scale(isCurrent: false, pulse: true) == TracingCanvasStyle.phaseDotRestScale)
+        #expect(PhaseDotPulse.scale(isCurrent: false, pulse: false) == TracingCanvasStyle.phaseDotRestScale)
+        #expect(TracingCanvasStyle.phaseDotPulseScale == 1.18 && TracingCanvasStyle.phaseDotRestScale == 1.0)
     }
 }

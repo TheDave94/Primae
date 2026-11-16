@@ -104,8 +104,9 @@ struct TracingCanvasView: View {
                                     y: oy + cp.y * cellSize.height)
                         }
                         let ghostPath = smoothPath(through: pts)
-                        context.stroke(ghostPath, with: .color(Color(hex: TracingCanvasStyle.ghostHex)),
-                                       style: StrokeStyle(lineWidth: TracingCanvasStyle.ghostLineWidth,
+                        context.stroke(ghostPath,
+                                       with: .color(Color(hex: plan.ghost.hex).opacity(plan.ghost.opacity)),
+                                       style: StrokeStyle(lineWidth: plan.ghost.width,
                                                           lineCap: .round, lineJoin: .round))
                     }
                 }
@@ -543,15 +544,34 @@ struct TracingCanvasView: View {
     /// Every casing is drawn before any ink, so a casing never covers ink,
     /// whatever the order of `layers` (audit 2026-11-15 A-1).
     static func drawInk(_ layers: [InkLayer], in context: inout GraphicsContext) {
-        for layer in layers {
-            context.stroke(layer.path, with: .color(.canvasPaper),
-                           style: StrokeStyle(lineWidth: layer.width + 2 * TracingCanvasStyle.inkCasingPerSide,
-                                              lineCap: .round, lineJoin: .round))
+        for op in inkDrawOps(layers) {
+            context.stroke(op.path, with: .color(op.color),
+                           style: StrokeStyle(lineWidth: op.width, lineCap: .round, lineJoin: .round))
         }
-        for layer in layers {
-            context.stroke(layer.path, with: .color(layer.color),
-                           style: StrokeStyle(lineWidth: layer.width, lineCap: .round, lineJoin: .round))
+    }
+
+    /// One `context.stroke` call `drawInk` issues.
+    struct InkDrawOp {
+        enum Kind: Equatable { case casing, ink }
+        var kind: Kind
+        var path: Path
+        var color: Color
+        var width: CGFloat
+    }
+
+    /// The calls `drawInk` replays, in order: every casing (paper colour,
+    /// the layer's width plus `inkCasingPerSide` on each side), then every
+    /// ink. A value, so a test can read the casing width and the order that
+    /// the `GraphicsContext` closure cannot show it.
+    static func inkDrawOps(_ layers: [InkLayer]) -> [InkDrawOp] {
+        let casings = layers.map {
+            InkDrawOp(kind: .casing, path: $0.path, color: .canvasPaper,
+                      width: $0.width + 2 * TracingCanvasStyle.inkCasingPerSide)
         }
+        let inks = layers.map {
+            InkDrawOp(kind: .ink, path: $0.path, color: $0.color, width: $0.width)
+        }
+        return casings + inks
     }
 }
 

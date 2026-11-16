@@ -12,7 +12,8 @@
 // SKIPS ON THE SIMULATOR (AVAudioEngine cannot run there), so it adds nothing
 // to CI's evidence: it is the device instrument the r17 onset figure comes
 // from, run on the iPad with the Primae scheme. It asserts the L4 bound
-// (<= 70 ms at the speaker, median per arm), so it can fail.
+// (<= 70 ms at the speaker, median per arm), so it can fail. It skips unless the
+// output route is the built-in speaker (T1.1): the bound does not hold on Bluetooth.
 
 import XCTest
 import Foundation
@@ -28,6 +29,24 @@ private nonisolated let onsetIsSim: Bool = {
     return false
     #endif
 }()
+
+/// The 70 ms bound is a SPEAKER figure (mixer onset + the session's
+/// `outputLatency`). On a Bluetooth route `outputLatency` alone is 100+ ms
+/// (AirPods, 2026-11-16: 193 ms phoneme / 180 ms spatial), so the test would
+/// fail for the route, not the voice. It runs only on the built-in speaker.
+nonisolated enum OnsetOutputRoute {
+    /// nil when every reported output is the built-in speaker; otherwise the
+    /// skip message, naming the port types. An EMPTY list is "not reported
+    /// yet" (the session may not be active before the first measurement), not
+    /// a headphone: the test checks again once the engine has run.
+    static func skipReason(outputPortTypes: [String]) -> String? {
+        let speaker = AVAudioSession.Port.builtInSpeaker.rawValue
+        guard outputPortTypes.allSatisfy({ $0 == speaker }) else {
+            return "the 70 ms touch -> speaker bound is a built-in-speaker figure; current output route is [\(outputPortTypes.joined(separator: ","))], not \(speaker)"
+        }
+        return nil
+    }
+}
 
 nonisolated final class OnsetRecorder: @unchecked Sendable {
     struct Seg { let host: Double; let cb: Double; let start: Int; let frames: Int }
@@ -170,13 +189,20 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
 
     @MainActor func testTouchToOnsetPerArm() async throws {
         let ses = AVAudioSession.sharedInstance()
+        // Before measuring anything: a run on headphones is a skip, not a pass or a false failure.
+        if let why = OnsetOutputRoute.skipReason(outputPortTypes: ses.currentRoute.outputs.map { $0.portType.rawValue }) {
+            throw XCTSkip(why)
+        }
         var failures: [String] = []
         let choice = LiveSonificationKernel.engineStamp
         do {
             for arm in [PilotAudioCondition.phoneme, .spatial] {
                 let o = try await measure(arm: arm).sorted()
                 let out = ses.outputLatency
-                let route = ses.currentRoute.outputs.map { $0.portType.rawValue }.joined(separator: ",")
+                let routePorts = ses.currentRoute.outputs.map { $0.portType.rawValue }
+                let route = routePorts.joined(separator: ",")
+                // The session is active now: re-check, in case the first look found no route yet.
+                if let why = OnsetOutputRoute.skipReason(outputPortTypes: routePorts) { throw XCTSkip(why) }
                 guard !o.isEmpty else { failures.append("\(choice) \(arm): no onset"); continue }
                 let med = o[o.count / 2]
                 print(String(format: "R17 ONSET engine=%@ arm=%@ N=%d mixer med=%.1f min=%.1f max=%.1f ms | outputLatency=%.1f ms io=%.2f ms sr=%.0f route=%@ | speaker med=%.1f max=%.1f ms",
@@ -188,5 +214,22 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
             }
         }
         XCTAssertTrue(failures.isEmpty, "touch -> speaker onset above the 70 ms bound: \(failures)")
+    }
+}
+
+/// The route guard's decision, as a plain function. Runs on the simulator too
+/// (it touches no engine), unlike the device instrument above.
+final class OnsetOutputRouteTests: XCTestCase {
+    func testOnlyTheBuiltInSpeakerRunsTheBound() {
+        let speaker = AVAudioSession.Port.builtInSpeaker.rawValue
+        XCTAssertNil(OnsetOutputRoute.skipReason(outputPortTypes: [speaker]))
+        XCTAssertNil(OnsetOutputRoute.skipReason(outputPortTypes: []), "no route reported yet is not a headphone")
+        for port in [AVAudioSession.Port.bluetoothA2DP, .bluetoothLE, .bluetoothHFP, .headphones, .airPlay, .usbAudio, .builtInReceiver] {
+            let why = OnsetOutputRoute.skipReason(outputPortTypes: [port.rawValue])
+            XCTAssertNotNil(why, "\(port.rawValue) must skip")
+            XCTAssertTrue(why?.contains(port.rawValue) ?? false, "the message names the route port type")
+        }
+        XCTAssertNotNil(OnsetOutputRoute.skipReason(outputPortTypes: [speaker, AVAudioSession.Port.bluetoothA2DP.rawValue]),
+                        "the speaker plus another output is not the speaker alone")
     }
 }

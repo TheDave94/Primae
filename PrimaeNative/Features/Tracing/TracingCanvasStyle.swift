@@ -24,6 +24,18 @@ nonisolated enum TracingCanvasStyle {
     static let ghostHex: UInt32 = 0x93C5FD
     static let ghostLineWidth: CGFloat = 6
 
+    /// How the ghost line is stroked, as ONE value the canvas is handed
+    /// (`TracingViewModel.CanvasDrawPlan.ghost`) and replays without a
+    /// literal of its own. `opacity` is 1: the line is solid (r22 drew it
+    /// at 35 % opacity).
+    struct GhostStroke: Equatable {
+        let hex: UInt32
+        let opacity: Double
+        let width: CGFloat
+    }
+
+    static let ghostStroke = GhostStroke(hex: ghostHex, opacity: 1, width: ghostLineWidth)
+
     // MARK: Ink (audit finding 10)
 
     /// A paper-coloured casing drawn under every ink stroke, this wide on
@@ -80,6 +92,11 @@ nonisolated enum TracingCanvasStyle {
     static let phaseDotFillHex: UInt32 = 0x2563EB
     static let phaseDotPendingHex: UInt32 = 0x64748B
     static let phaseDotPendingLineWidth: CGFloat = 2
+
+    /// Scale of the current phase dot at the small and the enlarged end of
+    /// its pulse (`PhaseDotPulse.scale`).
+    static let phaseDotRestScale: CGFloat = 1.0
+    static let phaseDotPulseScale: CGFloat = 1.18
 
     // MARK: Status bar (audit finding 11)
 

@@ -413,6 +413,10 @@ public final class TracingViewModel {
         var showsGhost: Bool
         var showsStartDots: Bool
         var showsEndpointRing: Bool
+        /// The ghost line's colour, opacity and width. A VALUE the closure
+        /// replays, not literals it holds: a `.canvasGhost.opacity(0.35)`
+        /// typed back into the view would not be this value.
+        var ghost: TracingCanvasStyle.GhostStroke
     }
 
     var canvasDrawPlan: CanvasDrawPlan {
@@ -429,7 +433,8 @@ public final class TracingViewModel {
                          || (showGhost && (learningPhase == .observe || learningPhase == .guided)))
                 && !isCalibrating,
             showsStartDots: showCheckpoints && !isCalibrating,
-            showsEndpointRing: showEndpointRing && !isCalibrating
+            showsEndpointRing: showEndpointRing && !isCalibrating,
+            ghost: TracingCanvasStyle.ghostStroke
         )
     }
 

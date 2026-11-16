@@ -6,6 +6,36 @@
 
 import SwiftUI
 
+/// The current phase dot's pulse, decided as plain values so the view only
+/// replays them (CLAUDE.md, Test Infrastructure 3). `onAppear` and
+/// `onChange(of: reduceMotion)` both ask `step`; the view owns no
+/// Reduce Motion decision of its own.
+nonisolated enum PhaseDotPulse {
+    /// What to do to the view's `pulse` flag: the value to set it to, and
+    /// whether the repeat-forever pulse animation drives the change.
+    struct Step: Equatable {
+        let target: Bool
+        let animated: Bool
+    }
+
+    /// `appearing`: the indicator just came on screen. Otherwise Reduce
+    /// Motion changed while it was shown.
+    /// - Reduce Motion on: the dot settles enlarged and does not pulse.
+    /// - Reduce Motion off, appearing: the pulse starts toward the enlarged end.
+    /// - Reduce Motion off, resuming: `pulse` is true while reduced, so the
+    ///   pulse resumes from the enlarged end by animating back to false.
+    static func step(reduceMotion: Bool, appearing: Bool) -> Step {
+        if reduceMotion { return Step(target: true, animated: false) }
+        return Step(target: appearing, animated: true)
+    }
+
+    /// Only the current phase dot is scaled, and only while `pulse` is set.
+    static func scale(isCurrent: Bool, pulse: Bool) -> CGFloat {
+        guard isCurrent, pulse else { return TracingCanvasStyle.phaseDotRestScale }
+        return TracingCanvasStyle.phaseDotPulseScale
+    }
+}
+
 struct PhaseDotIndicator: View {
     let phase: LearningPhase
     let scores: [LearningPhase: CGFloat]
@@ -31,22 +61,23 @@ struct PhaseDotIndicator: View {
         }
         .onAppear {
             // Reduce Motion: the current dot stays enlarged, without the pulse.
-            if reduceMotion { pulse = true; return }
-            withAnimation(Self.pulseAnimation) {
-                pulse = true
+            let step = PhaseDotPulse.step(reduceMotion: reduceMotion, appearing: true)
+            if step.animated {
+                withAnimation(Self.pulseAnimation) { pulse = step.target }
+            } else {
+                pulse = step.target
             }
         }
         // Reduce Motion can change while the indicator is on screen (Settings,
         // Control Centre): `onAppear` alone read it once.
         .onChange(of: reduceMotion) { _, reduced in
-            if reduced {
+            let step = PhaseDotPulse.step(reduceMotion: reduced, appearing: false)
+            if step.animated {
+                withAnimation(Self.pulseAnimation) { pulse = step.target }
+            } else {
                 // A mutation with no animation replaces the running
                 // repeat-forever one: the dot settles enlarged and stops.
-                withAnimation(nil) { pulse = true }
-            } else {
-                // `pulse` is true while reduced, so the pulse resumes from the
-                // enlarged end of the same 1.0...1.18 range.
-                withAnimation(Self.pulseAnimation) { pulse = false }
+                withAnimation(nil) { pulse = step.target }
             }
         }
         .accessibilityElement(children: .combine)
@@ -68,7 +99,7 @@ struct PhaseDotIndicator: View {
                 Circle()
                     .fill(primaryBlue)
                     .frame(width: dotSize, height: dotSize)
-                    .scaleEffect(isCurrent ? (pulse ? 1.18 : 1.0) : 1.0)
+                    .scaleEffect(PhaseDotPulse.scale(isCurrent: isCurrent, pulse: pulse))
             } else {
                 Circle()
                     .strokeBorder(Color(hex: TracingCanvasStyle.phaseDotPendingHex),
