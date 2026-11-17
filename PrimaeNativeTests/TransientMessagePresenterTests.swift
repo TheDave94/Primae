@@ -26,20 +26,35 @@ import Testing
                 "Toast should auto-clear after its sleeper resumes; got \(p.toastMessage ?? "nil")")
     }
 
-    @Test(.timeLimit(.minutes(1)))
+    // MEASURED 2026-11-17, full suite on the physical iPad: this test passed
+    // after 644.9 s. Every hop needs a main-actor turn, and in the full suite
+    // it queues behind the whole suite's main-actor work, so a 1-minute limit
+    // fired and restarted the runner. The limit only catches a real deadlock.
+    @Test(.timeLimit(.minutes(30)))
     func showToast_replacing_doesNotClobberFirstDuringReplacementSleep() async {
         // The guards inside the presenter keep the first toast's delayed clear
         // from nuking a later message scheduled during its sleep. The sleeps
         // are held by a gate (not a wall clock), released oldest-first, and
         // the gate ignores cancellation so the FIRST task really does resume
         // and reach the guards while "Second" is on screen.
+        //
+        // The sleeper is explicitly `@MainActor`, so a toast task's sleep
+        // never hops to the cooperative pool and back (R-106: in the full
+        // suite that hop was the suspect for a hang). The waits for the gate
+        // are bounded and name the stall instead of spinning forever.
         let gate = PresenterSleepGate()
-        let p = TransientMessagePresenter(sleep: { _ in await gate.sleep() })
+        let p = TransientMessagePresenter(sleep: { @MainActor _ in await gate.sleep() })
         p.show(toast: "First")
         let first = p.toastTask
-        while gate.parked < 1 { await Task.yield() }
+        guard await pollMainActor(deadline: 10, until: { gate.parked >= 1 }) else {
+            Issue.record("first sleeper never parked (gate.parked = \(gate.parked))")
+            return
+        }
         p.show(toast: "Second")
-        while gate.parked < 2 { await Task.yield() }
+        guard await pollMainActor(deadline: 10, until: { gate.parked >= 2 }) else {
+            Issue.record("second sleeper never parked (gate.parked = \(gate.parked))")
+            return
+        }
 
         gate.releaseOldest()          // First's timer elapses; Second's has not
         await first?.value
