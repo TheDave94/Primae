@@ -3482,7 +3482,37 @@ public final class TracingViewModel {
     /// Cancel a pending study observe presentation. Called on every fresh
     /// letter load (a new load re-derives everything the start would
     /// assume — its phase, its letter, its arm).
+    /// How many times a pending observe presentation has been torn down.
+    /// Read only by `debugObservePresentationState`, so a failure can say
+    /// whether the presentation we are still waiting for is the one the
+    /// test armed.
+    private var observePresentationCancelCount = 0
+
+    /// Why a pending observe presentation has or has not delivered, as one
+    /// line for a test failure message.
+    ///
+    /// Internal, for tests only, and it earned its place (2026-11-17, main
+    /// e7f0bb1e): the full `PrimaeNativeTests` target failed this suite's
+    /// positive control, and establishing the cause took three device runs
+    /// on the external state alone (`plays`, `phase`, `sessionBlockReason`).
+    /// With this line the next failure says in one shot whether the
+    /// presentation is still armed, whether its task was cancelled, which
+    /// arm and how many files it would start, and whether the arm gate is
+    /// closed — the difference between "the code is wrong" and "the suite
+    /// never gave it a turn".
+    internal var debugObservePresentationState: String {
+        let pending = pendingObservePresentation.map { "armed(gen \($0.generation))" } ?? "nil"
+        let task = observePresentationTask.map { $0.isCancelled ? "task(cancelled)" : "task(live)" } ?? "task(nil)"
+        let files = letters.indices.contains(letterIndex)
+            ? String(activeAudioFiles(for: letters[letterIndex]).count) : "no-letter"
+        let arm = pendingObserveSoundArm?.rawValue ?? "nil"
+        let silenced = (audio as? ArmGatedAudio)?.isSilenced.description ?? "n/a"
+        return "pending=\(pending) \(task) arm=\(arm) files=\(files) silenced=\(silenced) "
+            + "cancels=\(observePresentationCancelCount) gen=\(observePresentationGeneration)"
+    }
+
     private func cancelPendingObservePresentation() {
+        observePresentationCancelCount += 1
         observePresentationTask?.cancel()
         observePresentationTask = nil
         observeCueEndTask?.cancel()

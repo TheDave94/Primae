@@ -43,6 +43,42 @@ struct DemonstrationDeliveryTests {
                     phonemeAudioFiles: ["A_phoneme1.mp3"])
     }
 
+    /// Give the main actor a turn so a task another test needs can run.
+    ///
+    /// MEASURED 2026-11-17/18, physical iPad, full `PrimaeNativeTests`
+    /// target on main e7f0bb1e: this suite runs in parallel with 238
+    /// others and the main actor is saturated while they start — a
+    /// `Task.sleep(for: .milliseconds(10))` in THIS test took 201.5 s to
+    /// come back. Any assertion built on a wall-clock deadline ("0.05 s
+    /// has surely passed", "10 s is surely enough") therefore fails for a
+    /// reason that has nothing to do with the behaviour under test: with
+    /// that deadline expired the loop stopped yielding, and the armed
+    /// observe presentation (`pending=armed(gen 1) task(live) arm=phoneme
+    /// files=1 silenced=false`, measured) never got its turn.
+    ///
+    /// So the wait watches the EVENT and only ever yields the actor: no
+    /// timer, no deadline. 20 000 yields is a safety stop far above the
+    /// few turns this needs once the actor is free, and an exhausted wait
+    /// fails the expectation below with the state in the message rather
+    /// than reading as a slow machine.
+    private func waitForEvent(_ condition: () -> Bool,
+                              attempts: Int = 20_000) async {
+        var turn = 0
+        while !condition() && turn < attempts {
+            turn += 1
+            await Task.yield()
+        }
+    }
+
+    /// The state worth putting in a failure message: the same facts that
+    /// took three device runs to establish by hand.
+    private func state(_ vm: TracingViewModel, _ audio: DeliveryRecordingAudio) -> String {
+        "plays=\(audio.plays) autoplay=\(audio.autoplayLoads) "
+            + "phase=\(vm.learningPhase) parked=\(vm.launchParked) "
+            + "enrolled=\(vm.participantEnrolled) block=\(vm.sessionBlockReason ?? "nil") "
+            + "| \(vm.debugObservePresentationState)"
+    }
+
     private func makeVM(audio: DeliveryRecordingAudio, fallback: TimeInterval) -> TracingViewModel {
         var deps = TracingDependencies.stub
         deps.studyMode = true
@@ -75,10 +111,10 @@ struct DemonstrationDeliveryTests {
         #expect(audio.plays == 0, "precondition: the claimed sound has not started")
 
         vm.armPreTaskDemonstration(for: letterA(), duration: 0.05)
-        try? await Task.sleep(for: .milliseconds(120))
+        await waitForEvent { audio.autoplayLoads >= 1 }
 
         #expect(audio.autoplayLoads == 1,
-                "the claim alone spent the condition: the child would hear no demonstration")
+                "the claim alone spent the condition: the child would hear no demonstration — \(state(vm, audio))")
     }
 
     /// Positive control: once the sound HAS started, the condition is spent.
@@ -88,13 +124,22 @@ struct DemonstrationDeliveryTests {
         let vm = makeVM(audio: audio, fallback: 0.05)
         #expect(!vm.launchParked && vm.learningPhase == .observe,
                 "precondition: the letter was started in observe")
-        try? await Task.sleep(for: .milliseconds(300))
-        #expect(audio.plays >= 1, "precondition: the observe sound started")
+        // A blocked session starts no arm sound at all (`startObservePhaseAudio`
+        // guards on `sessionBlockReason`), so a block would look exactly like
+        // "the sound never came": name it here rather than blame the timing.
+        #expect(vm.sessionBlockReason == nil,
+                "precondition: the session is not blocked")
+        await waitForEvent { audio.plays >= 1 }
+        #expect(audio.plays >= 1,
+                "precondition: the observe sound started — \(state(vm, audio))")
 
         vm.armPreTaskDemonstration(for: letterA(), duration: 0.05)
-        try? await Task.sleep(for: .milliseconds(120))
+        // Negative expectation: give the demonstration every chance to
+        // arrive before asserting it did not. A fixed number of turns, not
+        // a duration, for the reason in `waitForEvent`.
+        await waitForEvent({ audio.autoplayLoads >= 1 }, attempts: 200)
 
         #expect(audio.autoplayLoads == 0,
-                "the condition was demonstrated by the observe sound; a second one is a repeat")
+                "the condition was demonstrated by the observe sound; a second one is a repeat — \(state(vm, audio))")
     }
 }
