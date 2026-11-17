@@ -49,9 +49,12 @@ final class AnimationGuideController {
     /// separately so `stop()` can cancel either phase cleanly.
     private var startTask: Task<Void, Never>?
     private let sleeper: Sleeper
+    private let now: MonotonicClock
 
-    init(sleeper: @escaping Sleeper = realSleeper) {
+    init(sleeper: @escaping Sleeper = realSleeper,
+         now: @escaping MonotonicClock = realMonotonicClock) {
         self.sleeper = sleeper
+        self.now = now
     }
 
     /// Begin the looping animation immediately for the supplied strokes.

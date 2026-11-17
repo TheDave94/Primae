@@ -84,6 +84,60 @@ import Testing
         c.stop()
     }
 
+    /// Thread-safe monotonic clock for the fake device in R-088.
+    private final class FakeClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: TimeInterval = 0
+        func advance(_ seconds: TimeInterval) {
+            lock.lock(); value += seconds; lock.unlock()
+        }
+        var now: TimeInterval { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    /// R-088: the guide is a stimulus, so its duration must be the one
+    /// the guide defines, not the sum of however long each frame's sleep
+    /// took on a loaded device. Simulate a device whose every frame
+    /// takes 0.2 s (12x the nominal 1/60 s tick) and check the elapsed
+    /// clock at the first `onCycleComplete` against the nominal cycle.
+    ///
+    /// Before the fix this reads ~12.6 s against a 2.52 s nominal: the
+    /// loop never consults a clock, so each of the 63 sleeps stretches
+    /// the cycle. After it, the cycle completes within one tick of the
+    /// nominal length because frames are DROPPED, not time stretched.
+    @Test func deliveredCycleDurationMatchesNominalUnderLoad() async {
+        let clock = FakeClock()
+        let frameLatency: TimeInterval = 0.2
+        let unitsPerSecond: TimeInterval = 0.8
+        let strokes = sampleStrokes()
+        let guide = LetterAnimationGuide.build(from: strokes,
+                                               unitsPerSecond: unitsPerSecond)
+        // 1.0 s pre-move hold + all steps + 0.5 s post-pass pause.
+        let nominal = 1.0 + guide.totalDuration + 0.5
+
+        var completions: [TimeInterval] = []
+        let c = AnimationGuideController(
+            sleeper: { _ in
+                clock.advance(frameLatency)
+                await Task.yield()
+            },
+            now: { clock.now }
+        )
+        c.unitsPerSecond = unitsPerSecond
+        c.onCycleComplete = { completions.append(clock.now) }
+        c.start(strokes: strokes)
+        for _ in 0..<2_000 {
+            if !completions.isEmpty { break }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        c.stop()
+
+        #expect(completions.count >= 1,
+                "the guide must finish a cycle; observed \(completions.count)")
+        guard let delivered = completions.first else { return }
+        #expect(delivered <= nominal + frameLatency + 0.01,
+                "delivered cycle \(delivered)s must stay within one loaded frame of nominal \(nominal)s")
+    }
+
     /// A second `start` must cancel the first loop, or two guide dots run
     /// (and `onCycleComplete` fires twice per cycle). Counted through the
     /// injected sleeper: every loop parks in exactly one sleep at a time,
