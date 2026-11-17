@@ -110,10 +110,16 @@ struct WorldSwitcherRail: View {
         // build so the bar is empty everywhere but the gear; and it must
         // go on the outer 64pt frame, since the VStack's own layout width
         // is only its widest child (the 48pt gear).
+        //
+        // Direct finger touch ONLY (audit R-043): the child's Apple Pencil
+        // is the tracing instrument, so an unrestricted double-tap let a
+        // pencil (or a pointer) reveal the enrolment control. The input
+        // kinds come from `NextChildGesturePolicy`, which is pinned by
+        // `NextChildGesturePolicyTests`.
         .background {
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
+                .onTapGesture(count: 2, inputKinds: NextChildGesturePolicy.inputKinds) { _ in
                     withAnimation(.easeOut(duration: 0.2)) { showNextChild.toggle() }
                 }
         }
@@ -265,5 +271,26 @@ struct WorldSwitcherRail: View {
         // U10 audit (2026-10-21, iPad): without this the gear is exposed as an
         // Image, so VoiceOver announces no control and no way to act on it.
         .accessibilityAddTraits(.isButton)
+    }
+}
+
+// MARK: - Next-child gesture input policy (audit R-043)
+
+/// Which input kinds may perform the rail's double-tap that reveals the
+/// proctor's "Nächstes Kind" control. A plain value so the decision is
+/// testable outside the view: the gesture modifier reads `inputKinds`, and
+/// `NextChildGesturePolicyTests` pins it.
+///
+/// Direct finger touch only. The Apple Pencil is the child's tracing
+/// instrument, so a pencil double-tap on the rail must never start the
+/// enrolment path; indirect touch and pointer input are refused too, since
+/// the proctor's gesture is a finger on the glass.
+enum NextChildGesturePolicy {
+    /// The input kinds handed to the rail's `onTapGesture(count: 2, inputKinds:)`.
+    static let inputKinds: GestureInputKinds = .directTouch
+
+    /// Whether an input of `kind` can perform the next-child gesture.
+    static func enablesEnrolment(_ kind: GestureInputKinds) -> Bool {
+        inputKinds.isSuperset(of: kind)
     }
 }
