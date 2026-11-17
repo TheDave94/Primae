@@ -389,10 +389,9 @@ struct ParentDashboardExporter {
             // just the two untrained ones the live app tags itself.
             return withDerivedPostTestTags(filtered)
         }()
-        // D11#1, second half (2026-09-04): the four HEADLINE aggregates
-        // further down (`phaseCompletionRate_*`, `averageFreeWriteScore`,
-        // `schedulerEffectivenessProxy`, `averageForm/Tempo/Pressure/
-        // Rhythm`) are computed properties of the snapshot and ran over
+        // D11#1, second half (2026-09-04): the HEADLINE aggregates
+        // further down (`averageForm/Tempo/Pressure/Rhythm`; the other
+        // three were removed by audit R-031) are computed properties of the snapshot and ran over
         // every record on disk — the filter above never reached them,
         // even after the ticket was marked closed. One filtered view,
         // built once, so they read exactly the rows the per-row block
@@ -466,20 +465,14 @@ struct ParentDashboardExporter {
         lines.append("")
 
         lines.append(["metric","value"].joined(separator: sep))
-        let rates = enrolledSnapshot.phaseCompletionRates
-        // Iterate LearningPhase.allCases so every phase, including
-        // `direct`, lands in the export.
-        for phase in LearningPhase.allCases.map(\.rawName) {
-            if let rate = rates[phase] {
-                lines.append(["phaseCompletionRate_\(phase)", ParentDashboardExporter.fmt4(rate)].joined(separator: sep))
-            }
-        }
-        // Empty when no scored freeWrite row exists (A15): 0.0000 was
-        // indistinguishable from a real mean of 0.
-        lines.append(["averageFreeWriteScore",
-                      enrolledSnapshot.averageFreeWriteScoreIfDefined.map { ParentDashboardExporter.fmt4($0) } ?? ""].joined(separator: sep))
-        lines.append(["schedulerEffectivenessProxy",
-                      enrolledSnapshot.schedulerEffectivenessProxyIfDefined.map { ParentDashboardExporter.fmt4($0) } ?? ""].joined(separator: sep))
+        // `phaseCompletionRate_*`, `averageFreeWriteScore` and
+        // `schedulerEffectivenessProxy` REMOVED (audit R-031): they were
+        // pooled over every enrolled row — across protocol revisions,
+        // cold-probe rows and comparison-mode rows alike — so the headline
+        // number mixed instruments the thesis analyses separately. Every
+        // input they read is still a per-row field above; analysis
+        // recomputes from the rows. Same pattern as the letter-row
+        // `averageAccuracy` removal (2026-09-16).
         // Per-condition aggregates so between-arm comparisons don't
         // have to back out cross-arm contamination. The proxy is
         // meaningful only inside an arm — `.control` uses a different
@@ -491,8 +484,8 @@ struct ParentDashboardExporter {
                 let avg = freeWrite.reduce(0, +) / Double(freeWrite.count)
                 lines.append(["averageFreeWriteScore_\(arm.rawValue)", ParentDashboardExporter.fmt4(avg)].joined(separator: sep))
             }
-            // Per-arm proxy: same Pearson as `schedulerEffectivenessProxy`,
-            // restricted to one condition. Skipped under 2 pairs.
+            // Per-arm proxy: same Pearson as the store's
+            // `schedulerEffectivenessProxy`, restricted to one condition. Skipped under 2 pairs.
             var pairs: [(priority: Double, delta: Double)] = []
             let lettersInArm = Set(armRecords.map(\.letter))
             for letter in lettersInArm {
@@ -843,9 +836,6 @@ struct ParentDashboardExporter {
             self.rawTraces = rawTraces
             let dims = snapshot.averageWritingDimensions
             thesisMetrics = ThesisMetrics(
-                phaseCompletionRates: snapshot.phaseCompletionRates,
-                averageFreeWriteScore: snapshot.averageFreeWriteScoreIfDefined,
-                schedulerEffectivenessProxy: snapshot.schedulerEffectivenessProxyIfDefined,
                 averageFormAccuracy: dims?.form,
                 averageTempoConsistency: dims?.tempo,
                 averagePressureControl: dims?.pressure,
@@ -853,11 +843,11 @@ struct ParentDashboardExporter {
             )
         }
 
+        /// `phaseCompletionRates`, `averageFreeWriteScore` and
+        /// `schedulerEffectivenessProxy` REMOVED (audit R-031) — pooled
+        /// over protocol revisions, probe and comparison rows; see the CSV
+        /// metric block. `phaseSessionRecords` carries every input.
         struct ThesisMetrics: nonisolated Encodable {
-            let phaseCompletionRates: [String: Double]
-            /// nil (JSON null) when undefined, as the CSV's empty cell (A15).
-            let averageFreeWriteScore: Double?
-            let schedulerEffectivenessProxy: Double?
             /// Schreibmotorik dimensions averaged across all completed
             /// freeWrite sessions. nil when no freeWrite data exists yet.
             let averageFormAccuracy: Double?
@@ -865,19 +855,12 @@ struct ParentDashboardExporter {
             let averagePressureControl: Double?
             let averageRhythmScore: Double?
 
-            // Explicit nulls for the two aggregates that are undefined on
-            // purpose (A15). Synthesized Encodable omits a nil key, which
-            // reads as "field missing" rather than "no data".
             private enum CodingKeys: String, CodingKey {
-                case phaseCompletionRates, averageFreeWriteScore, schedulerEffectivenessProxy
                 case averageFormAccuracy, averageTempoConsistency, averagePressureControl, averageRhythmScore
             }
 
             nonisolated func encode(to encoder: Encoder) throws {
                 var c = encoder.container(keyedBy: CodingKeys.self)
-                try c.encode(phaseCompletionRates, forKey: .phaseCompletionRates)
-                try c.encode(averageFreeWriteScore, forKey: .averageFreeWriteScore)           // Double? -> null
-                try c.encode(schedulerEffectivenessProxy, forKey: .schedulerEffectivenessProxy) // Double? -> null
                 try c.encodeIfPresent(averageFormAccuracy, forKey: .averageFormAccuracy)
                 try c.encodeIfPresent(averageTempoConsistency, forKey: .averageTempoConsistency)
                 try c.encodeIfPresent(averagePressureControl, forKey: .averagePressureControl)

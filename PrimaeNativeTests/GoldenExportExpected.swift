@@ -47,11 +47,6 @@ A,freeWrite,true,0.6000,0.3000,threePhase,2026-10-04T14:15:00.250Z,,,,,,,,,,phon
 M,freeWrite,true,0.2500,0.0000,threePhase,2026-10-04T14:13:22.250Z,,,,,,,,,finger,phoneme,AFI,3.000,,0.5000,0.375000,4,"0,1,2,3",0,true,pretest,,26,0.437500,00000000-0000-0000-0000-00000000D111,00000000-0000-0000-0000-0000000A0007,child,1,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,,,,
 
 metric,value
-phaseCompletionRate_observe,1.0000
-phaseCompletionRate_guided,1.0000
-phaseCompletionRate_freeWrite,1.0000
-averageFreeWriteScore,0.5125
-schedulerEffectivenessProxy,1.0000
 averageFreeWriteScore_threePhase,0.5125
 schedulerEffectivenessProxy_threePhase,1.0000
 letterByArm,letter,arm,sampleCount,averageScore
@@ -80,9 +75,6 @@ letter,phase,completed,score,schedulerPriority,condition,recordedAt,recognition_
 F,freeWrite,true,0.8125,0.4000,guidedOnly,2026-10-04T14:16:40.250Z,,,,,,,,,finger,spatial,FIL,,,,,,,,true,,,26,,00000000-0000-0000-0000-00000000D112,00000000-0000-0000-0000-0000000A0101,child,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,,,,
 
 metric,value
-phaseCompletionRate_freeWrite,1.0000
-averageFreeWriteScore,0.8125
-schedulerEffectivenessProxy,
 averageFreeWriteScore_guidedOnly,0.8125
 letterByArm,letter,arm,sampleCount,averageScore
 letterByArm,F,guidedOnly,1,0.8125
@@ -105,9 +97,6 @@ letter,phase,completed,score,schedulerPriority,condition,recordedAt,recognition_
 L,freeWrite,true,0.4375,0.2000,control,2026-10-04T14:18:20.250Z,,,,,,,,,finger,silent,AFILM,,,,,,,,true,,allFiveLetters,26,,00000000-0000-0000-0000-00000000D113,00000000-0000-0000-0000-0000000A0201,child,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,1,,,,
 
 metric,value
-phaseCompletionRate_freeWrite,1.0000
-averageFreeWriteScore,0.4375
-schedulerEffectivenessProxy,
 averageFreeWriteScore_control,0.4375
 letterByArm,letter,arm,sampleCount,averageScore
 letterByArm,L,control,1,0.4375

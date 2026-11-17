@@ -57,25 +57,24 @@ struct ExportHygieneTests {
         return snap
     }
 
-    @Test("A15: with no scored freeWrite the CSV cell is empty and the JSON value is null")
+    // The pooled `averageFreeWriteScore` / `schedulerEffectivenessProxy`
+    // export rows these A15 tests used to read were removed by audit R-031
+    // (`PooledHeadlineAggregatesAbsentTests`); A15 still governs the store's
+    // `…IfDefined` values the dashboard reads, and the per-arm export row.
+
+    @Test("A15: with no scored freeWrite the store's aggregates are undefined (nil), not 0")
     func undefinedAggregatesAreNullNotZero() throws {
-        let src = source(dropoutSnapshot())
-        let lines = csv([src]).components(separatedBy: "\n")
-        #expect(lines.contains("averageFreeWriteScore,"), "csv averageFreeWriteScore: \(lines.filter { $0.hasPrefix("averageFreeWriteScore") })")
-        #expect(lines.contains("schedulerEffectivenessProxy,"))
-        let json = try ParentDashboardExporter.combinedJSONData(participants: [src])
-        let obj = try #require(try JSONSerialization.jsonObject(with: json) as? [[String: Any]])
-        let metrics = try #require(obj.first?["thesisMetrics"] as? [String: Any])
-        #expect(metrics["averageFreeWriteScore"] is NSNull, "avg: \(String(describing: metrics["averageFreeWriteScore"]))")
-        #expect(metrics["schedulerEffectivenessProxy"] is NSNull, "proxy: \(String(describing: metrics["schedulerEffectivenessProxy"]))")
+        let snap = dropoutSnapshot()
+        #expect(snap.averageFreeWriteScoreIfDefined == nil)
+        #expect(snap.schedulerEffectivenessProxyIfDefined == nil)
     }
 
-    @Test("A15: a real mean of 0 is still written as 0.0000 (null is for undefined only)")
+    @Test("A15: a real mean of 0 is still 0, and the per-arm export row writes 0.0000")
     func realZeroStaysZero() throws {
         var snap = DashboardSnapshot()
         snap.phaseSessionRecords = [PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: true, score: 0, schedulerPriority: 0)]
         #expect(snap.averageFreeWriteScoreIfDefined == 0)
-        #expect(csv([source(snap)]).components(separatedBy: "\n").contains("averageFreeWriteScore,0.0000"))
+        #expect(csv([source(snap)]).components(separatedBy: "\n").contains("averageFreeWriteScore_threePhase,0.0000"))
     }
 
     // MARK: A16

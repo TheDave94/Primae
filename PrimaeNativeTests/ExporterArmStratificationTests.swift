@@ -2,7 +2,8 @@
 //
 // Audit finding 22: `letterByArm`, `letterByAudioArm`,
 // `averageFreeWriteScore_*`, `schedulerEffectivenessProxy_*` and
-// `phaseCompletionRate_*` had ZERO test coverage — a refactor could
+// `phaseCompletionRate_*` (the last removed from the export by audit
+// R-031) had ZERO test coverage — a refactor could
 // drop a whole row family and CI would stay green. The pre-existing
 // `ParentDashboardExporterTests` are `csv.contains(…)` spot-checks,
 // which is precisely how the gap survived: a substring probe passes
@@ -99,34 +100,11 @@ import Foundation
         lines.first { $0.hasPrefix("\(name),letter,") }?.components(separatedBy: ",")
     }
 
-    // MARK: - 1. phaseCompletionRate_*
-
-    @Test("phaseCompletionRate_ rows exist per observed phase, and only per observed phase")
-    func phaseCompletionRates() throws {
-        let m = metrics(csv())
-
-        let freeWrite = try #require(m["phaseCompletionRate_freeWrite"],
-            "freeWrite completion-rate row is missing from the metric section")
-        let guided = try #require(m["phaseCompletionRate_guided"],
-            "guided completion-rate row is missing from the metric section")
-
-        // 4 of 4 freeWrite records completed; 0 of 1 guided completed.
-        #expect(Double(freeWrite) == 1.0, "expected 1.0000, got \(freeWrite)")
-        #expect(Double(guided) == 0.0, "expected 0.0000, got \(guided)")
-
-        // Phases with no records must not emit a row at all — a defaulted
-        // 0.0 would read as "the child never completed observe".
-        #expect(m["phaseCompletionRate_observe"] == nil)
-        #expect(m["phaseCompletionRate_direct"] == nil)
-
-        // Well-formed: 4 decimal places, parseable, in [0,1].
-        for (k, v) in m where k.hasPrefix("phaseCompletionRate_") {
-            let d = try #require(Double(v), "\(k) value '\(v)' does not parse")
-            #expect((0...1).contains(d), "\(k) out of domain: \(d)")
-            #expect(v.split(separator: ".").last?.count == 4,
-                    "\(k) should carry 4 decimals, got '\(v)'")
-        }
-    }
+    // MARK: - 1. phaseCompletionRate_* — REMOVED (audit R-031)
+    //
+    // The pooled `phaseCompletionRate_*`, `averageFreeWriteScore` and
+    // `schedulerEffectivenessProxy` rows are gone from the export; their
+    // absence is pinned by `PooledHeadlineAggregatesAbsentTests`.
 
     // MARK: - 2. averageFreeWriteScore_<thesisArm>
 
@@ -147,9 +125,6 @@ import Foundation
         #expect(m["averageFreeWriteScore_control"] == nil,
                 "empty arm must be omitted, not emitted as 0")
 
-        // The unsuffixed global aggregate stays independent of the split.
-        let global = try #require(m["averageFreeWriteScore"])
-        #expect(Double(global) == 0.625, "(0.2+0.6+0.7+1.0)/4 = 0.625, got \(global)")
     }
 
     // MARK: - 3. averageFreeWriteScore_audio_<audioArm>
@@ -362,13 +337,14 @@ import Foundation
 
     // MARK: - 9. Pre-enrolment rows never reach the HEADLINE aggregates either
     //
-    // D11#1's second half (2026-09-04): `phaseCompletionRate_*`,
-    // `averageFreeWriteScore`, `schedulerEffectivenessProxy` and the four
-    // Schreibmotorik averages are computed properties of the snapshot and
+    // D11#1's second half (2026-09-04): the four Schreibmotorik averages
+    // (and, until audit R-031 removed them from the export,
+    // `phaseCompletionRate_*`, `averageFreeWriteScore` and
+    // `schedulerEffectivenessProxy`) are computed properties of the snapshot and
     // ran over every record on disk — the filter never reached them, even
     // after the ticket was marked closed.
 
-    @Test("a pre-enrolment record does not reach phaseCompletionRate, averageFreeWriteScore or the Schreibmotorik averages")
+    @Test("a pre-enrolment record does not reach the Schreibmotorik averages")
     func preEnrolmentRowsExcludedFromHeadlineAggregates() throws {
         let enrolledAt = Date(timeIntervalSince1970: 1_000_000)
         let enrolled = PhaseSessionRecord(
@@ -379,8 +355,7 @@ import Foundation
             assessment: WritingAssessment(formAccuracy: 1, tempoConsistency: 1,
                                           pressureControl: 1, rhythmScore: 1))
         // A pre-enrolment freeWrite row at 0.0 on every scale, and a
-        // pre-enrolment observe row — the only observe row in the
-        // snapshot, so its completion-rate key must not appear at all.
+        // pre-enrolment observe row.
         let strayFreeWrite = PhaseSessionRecord(
             letter: "B", phase: "freeWrite", completed: true,
             score: 0.0, schedulerPriority: 0.0,
@@ -401,10 +376,6 @@ import Foundation
             .split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let m = metrics(lines)
 
-        #expect(m["phaseCompletionRate_observe"] == nil,
-                "a phase completed only by pre-enrolment rows must not appear: \(m["phaseCompletionRate_observe"] ?? "nil")")
-        #expect(m["averageFreeWriteScore"].flatMap(Double.init) == 1.0,
-                "pre-enrolment freeWrite score 0.0 leaked into the headline average: \(m["averageFreeWriteScore"] ?? "nil")")
         #expect(m["averageFormAccuracy"].flatMap(Double.init) == 1.0,
                 "pre-enrolment form 0.0 leaked into averageFormAccuracy: \(m["averageFormAccuracy"] ?? "nil")")
         #expect(m["averageRhythmScore"].flatMap(Double.init) == 1.0,
@@ -501,7 +472,10 @@ import Foundation
         thin.phaseSessionRecords = [fw(0.2, 0.1, 1)]
         let thinLines = String(data: ParentDashboardExporter.csvData(
             from: thin, progress: [:], enrolledAt: nil), encoding: .utf8)!.components(separatedBy: "\n")
-        #expect(thinLines.contains("schedulerEffectivenessProxy,"), "undefined proxy must export as an empty cell")
+        // R-031: the pooled row is gone and the per-arm row is omitted when
+        // undefined, so no proxy row at all, never a fabricated 0.0000.
+        #expect(!thinLines.contains { $0.hasPrefix("schedulerEffectivenessProxy") },
+                "undefined proxy must not export a row")
         #expect(thin.schedulerEffectivenessProxyIfDefined == nil)
         // Zero variance (every pair at the same priority): undefined too,
         // per the docstring — the store returned 0 here (audit 2026-09-06).
@@ -511,7 +485,8 @@ import Foundation
                 "zero priority variance must be undefined, not 0: \(String(describing: flat.schedulerEffectivenessProxyIfDefined))")
         let flatLines = String(data: ParentDashboardExporter.csvData(
             from: flat, progress: [:], enrolledAt: nil), encoding: .utf8)!.components(separatedBy: "\n")
-        #expect(flatLines.contains("schedulerEffectivenessProxy,"), "zero-variance proxy must export as an empty cell")
+        #expect(!flatLines.contains { $0.hasPrefix("schedulerEffectivenessProxy") },
+                "zero-variance proxy must not export a row")
     }
 
 }
