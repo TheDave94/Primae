@@ -904,16 +904,17 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             // landed and the whole trace was ignored.
             let newFingers = touches.filter { $0.type != .pencil }
             guard !newFingers.isEmpty else { return }
-            let inView = (event?.touches(for: view) ?? touches).filter {
-                $0.type != .pencil && $0.phase != .ended && $0.phase != .cancelled
-            }
+            let inView = (event?.touches(for: view) ?? touches).map(Self.snapshot)
             // Nothing else is down on this view: any entry still held is a
             // touch whose end never reached us. Start clean.
-            if inView.count <= newFingers.count { arbiter.reset() }
+            if inView.filter({ !$0.isPencil && $0.isActive }).count <= newFingers.count { arbiter.reset() }
+            // A palm on the canvas does not count against the finger (R-042).
+            let pens = CanvasTouchArbiter<ObjectIdentifier>.penCandidateCount(inView)
             for t in newFingers {
                 apply(arbiter.began(ObjectIdentifier(t),
                                     at: .init(point: t.location(in: view), time: t.timestamp),
-                                    fingersInView: inView.count))
+                                    majorRadius: t.majorRadius,
+                                    fingersInView: pens))
             }
         }
 
@@ -928,8 +929,8 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
                     CanvasTouchArbiter<ObjectIdentifier>.Sample(point: $0.location(in: view), time: $0.timestamp)
                 }
                 let wasTracked = arbiter.tracked == id
-                let decision = arbiter.moved(id, samples: samples)
-                if wasTracked {
+                let decision = arbiter.moved(id, samples: samples, majorRadius: t.majorRadius)
+                if wasTracked, decision == .none {
                     for s in samples { onSingleTouchMoved(s.point, s.time, canvasSize) }
                 } else {
                     apply(decision)
@@ -954,12 +955,21 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
             switch decision {
             case .none:
                 return
+            case .reject:
+                // The pen grew into a palm (R-042): end its stroke as a
+                // cancel, like a hand-over, and deliver none of its samples.
+                onSingleTouchCancelled()
             case .begin(_, let replay):
                 deliver(replay)
             case .handOver(_, _, let replay):
                 onSingleTouchCancelled()
                 deliver(replay)
             }
+        }
+
+        private static func snapshot(_ t: UITouch) -> CanvasTouchArbiter<ObjectIdentifier>.Touch {
+            .init(id: ObjectIdentifier(t), isPencil: t.type == .pencil, majorRadius: t.majorRadius,
+                  isActive: t.phase != .ended && t.phase != .cancelled)
         }
 
         private func deliver(_ replay: [CanvasTouchArbiter<ObjectIdentifier>.Sample]) {
@@ -1024,10 +1034,28 @@ private struct UnifiedTouchOverlay: UIViewRepresentable {
 /// - A pen that has moved (a real stroke) is never taken over, and two
 ///   fingers moving together (a two-finger swipe) adopt neither.
 ///
+/// - A contact whose `majorRadius` exceeds `palmMajorRadius` is a palm
+///   (R-042), at touch-down or at any later move (a palm's contact grows as
+///   the hand settles), and stays one until it lifts. A palm is never the
+///   pen, does not count against a finger landing beside it (that finger is
+///   the pen at once), and does not block adoption by moving. A pen that
+///   becomes a palm is rejected: its stroke ends as a cancel and the next
+///   finger is acquired by the rules above.
+///
 /// On adoption the new pen's samples since its own touch-down are handed
 /// back for replay, so the stroke starts where the finger landed and no
 /// checkpoint passed before recognition is lost.
 struct CanvasTouchArbiter<ID: Hashable> {
+
+    /// One touch on the canvas view, as the coordinator sees it
+    /// (`event.touches(for: view)`), without UIKit types.
+    struct Touch: Equatable {
+        var id: ID
+        var isPencil: Bool
+        var majorRadius: CGFloat
+        /// Not `.ended` / `.cancelled`.
+        var isActive: Bool
+    }
 
     struct Sample: Equatable {
         var point: CGPoint
@@ -1041,6 +1069,22 @@ struct CanvasTouchArbiter<ID: Hashable> {
         case begin(ID, replay: [Sample])
         /// End the old pen's touch (as a cancel), then begin `to` as above.
         case handOver(from: ID, to: ID, replay: [Sample])
+        /// The pen `id` turned out to be a palm: end its stroke as a cancel.
+        case reject(ID)
+    }
+
+    /// A contact wider than this (`UITouch.majorRadius`, points) is a palm,
+    /// not a fingertip (R-042). A fingertip reports roughly 20 pt and a
+    /// 5-6-year-old's less; the heel of a hand reports well above 40. Not
+    /// yet measured on the study iPad.
+    static var palmMajorRadius: CGFloat { 40 }
+
+    static func isPalm(majorRadius: CGFloat) -> Bool { majorRadius > palmMajorRadius }
+
+    /// The contacts on the view that could be the pen: active fingers that
+    /// are not palms. A pencil is never counted (it has its own overlay).
+    static func penCandidateCount(_ touches: [Touch]) -> Int {
+        touches.filter { !$0.isPencil && $0.isActive && !isPalm(majorRadius: $0.majorRadius) }.count
     }
 
     /// A finger that has moved this far from its touch-down is moving.
@@ -1054,6 +1098,7 @@ struct CanvasTouchArbiter<ID: Hashable> {
         var origin: CGPoint
         var travel: CGFloat = 0
         var buffer: [Sample]
+        var isPalm = false
     }
 
     private(set) var tracked: ID?
@@ -1065,11 +1110,14 @@ struct CanvasTouchArbiter<ID: Hashable> {
         contacts.removeAll()
     }
 
-    /// `fingersInView` counts the fingers on THIS view only, the new one
-    /// included — never the window's (a thumb on the rail is not here).
-    mutating func began(_ id: ID, at sample: Sample, fingersInView: Int) -> Decision {
-        contacts[id] = Contact(origin: sample.point, buffer: [sample])
-        guard tracked == nil, fingersInView == 1 else { return .none }
+    /// `fingersInView` counts the pen candidates on THIS view only
+    /// (`penCandidateCount`), the new one included — never the window's (a
+    /// thumb on the rail is not here) and never a palm.
+    mutating func began(_ id: ID, at sample: Sample, majorRadius: CGFloat = 0,
+                        fingersInView: Int) -> Decision {
+        let palm = Self.isPalm(majorRadius: majorRadius)
+        contacts[id] = Contact(origin: sample.point, buffer: palm ? [] : [sample], isPalm: palm)
+        guard !palm, tracked == nil, fingersInView == 1 else { return .none }
         tracked = id
         contacts[id]?.buffer = []
         return .begin(id, replay: [sample])
@@ -1077,11 +1125,21 @@ struct CanvasTouchArbiter<ID: Hashable> {
 
     /// Record `samples` for `id`. For the current pen this only updates its
     /// travel (the caller delivers the moves itself) and returns `.none`.
-    mutating func moved(_ id: ID, samples: [Sample]) -> Decision {
+    /// A `majorRadius` above `palmMajorRadius` marks `id` a palm for good;
+    /// if it was the pen the result is `.reject` and nothing is the pen.
+    mutating func moved(_ id: ID, samples: [Sample], majorRadius: CGFloat = 0) -> Decision {
         guard var contact = contacts[id] else { return .none }
         for s in samples {
             contact.travel = max(contact.travel,
                                  hypot(s.point.x - contact.origin.x, s.point.y - contact.origin.y))
+        }
+        if Self.isPalm(majorRadius: majorRadius) { contact.isPalm = true }
+        if contact.isPalm {
+            contact.buffer = []
+            contacts[id] = contact
+            guard id == tracked else { return .none }
+            tracked = nil
+            return .reject(id)
         }
         if id == tracked {
             contacts[id] = contact
@@ -1094,7 +1152,7 @@ struct CanvasTouchArbiter<ID: Hashable> {
         contacts[id] = contact
         guard contact.travel >= Self.movingTravel else { return .none }
         let othersResting = contacts.allSatisfy { key, other in
-            key == id || other.travel <= Self.stationaryTravel
+            key == id || other.isPalm || other.travel <= Self.stationaryTravel
         }
         guard othersResting else { return .none }
         let replay = contact.buffer
