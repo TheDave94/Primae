@@ -227,7 +227,7 @@ private final class SetAsideArchive: ParticipantArchiving {
 struct ExportFinalizesHeldTrialTests {
 
     @Test("B22: exporting while the parent area holds a finished freeWrite records it first (finalizedBy export) and names set-aside files")
-    func exportRecordsHeldTrial() throws {
+    func exportRecordsHeldTrial() async throws {
         let dir = scratch("b22"); defer { try? FileManager.default.removeItem(at: dir) }
         let dash = JSONParentDashboardStore(fileURL: dir.appendingPathComponent("d.json"), failureCenter: PersistenceFailureCenter())
         let lost = ArchiveSetAside(fileName: "\(UUID().uuidString)_1.undecodable-2.json")
@@ -248,7 +248,7 @@ struct ExportFinalizesHeldTrialTests {
         let support = dir.appendingPathComponent("Application Support", isDirectory: true)
         let tmp = dir.appendingPathComponent("tmp", isDirectory: true)
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
-        let url = try vm.makeResearchExport(format: .csv, locations: .standard(applicationSupport: support, temporary: tmp))
+        let url = try await vm.makeResearchExport(format: .csv, locations: .standard(applicationSupport: support, temporary: tmp))
 
         let rows = dash.snapshot.phaseSessionRecords.filter { $0.phase == "freeWrite" }
         #expect(rows.count == 1, "the held trial has \(rows.count) freeWrite rows")

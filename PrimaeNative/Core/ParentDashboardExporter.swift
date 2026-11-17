@@ -684,36 +684,42 @@ struct ParentDashboardExporter {
                           progress: [String: LetterProgress] = [:],
                           rawTraces: [RawTrace] = [],
                           enrolledAt: Date? = ParticipantStore.enrolledAt) throws(ExportError) -> Data {
-        do {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
-            encoder.dateEncodingStrategy = Self.isoDateEncodingStrategy
-            // A NaN score (R-053) must not fail the whole export.
-            encoder.nonConformingFloatEncodingStrategy = StoreCoding.encoder().nonConformingFloatEncodingStrategy
-            let export = snapshotWithMetrics(from: snapshot, participantId: participantId,
-                                             progress: progress, rawTraces: rawTraces,
-                                             enrolledAt: enrolledAt)
-            return renamingRetiredFrechetKey(in: try encoder.encode(export))
-        } catch {
-            throw ExportError.encodingFailed(error.localizedDescription)
-        }
+        try encodedJSON(snapshotWithMetrics(from: snapshot, participantId: participantId,
+                                            progress: progress, rawTraces: rawTraces,
+                                            enrolledAt: enrolledAt))
     }
 
     /// Every participant's JSON export object, as one top-level array
     /// (2026-09-14) — the JSON counterpart of `combinedDelimitedData`.
     static func combinedJSONData(participants: [ParticipantExportSource]) throws(ExportError) -> Data {
+        try encodedJSON(combinedJSONExports(participants))
+    }
+
+    /// The combined JSON's top-level array, built on the main actor (the
+    /// row filter reads `DashboardSnapshot`'s main-actor members) and not
+    /// yet encoded. Encoding it is `encodedJSON`, which runs anywhere.
+    fileprivate static func combinedJSONExports(_ participants: [ParticipantExportSource]) -> [SnapshotWithMetrics] {
+        participants.map {
+            snapshotWithMetrics(from: $0.snapshot, participantId: $0.participantId,
+                                progress: $0.progress, rawTraces: $0.rawTraces,
+                                enrolledAt: $0.enrolledAt)
+        }
+    }
+
+    /// The one JSON encoding of an export value, behind both the per-child
+    /// and the combined JSON. `nonisolated` (R-086): at study scale it is
+    /// the slow part of the export (40 children: 8.3 s, 173 MB, measured
+    /// on the iPad), so `combinedExportForSharingOffMain` runs it off the
+    /// main actor. Same encoder settings and the same post-pass on every
+    /// path, so the bytes do not depend on where it runs.
+    nonisolated fileprivate static func encodedJSON<T: Encodable>(_ value: T) throws(ExportError) -> Data {
         do {
             let encoder = JSONEncoder()
             encoder.outputFormatting    = [.prettyPrinted, .sortedKeys]
             encoder.dateEncodingStrategy = Self.isoDateEncodingStrategy
             // A NaN score (R-053) must not fail the whole export.
             encoder.nonConformingFloatEncodingStrategy = StoreCoding.encoder().nonConformingFloatEncodingStrategy
-            let exports = participants.map {
-                snapshotWithMetrics(from: $0.snapshot, participantId: $0.participantId,
-                                    progress: $0.progress, rawTraces: $0.rawTraces,
-                                    enrolledAt: $0.enrolledAt)
-            }
-            return renamingRetiredFrechetKey(in: try encoder.encode(exports))
+            return renamingRetiredFrechetKey(in: try encoder.encode(value))
         } catch {
             throw ExportError.encodingFailed(error.localizedDescription)
         }
@@ -801,7 +807,9 @@ struct ParentDashboardExporter {
 
     // MARK: Private types
 
-    private struct SnapshotWithMetrics: Encodable {
+    // `nonisolated Encodable` (R-086): encoded off the main actor by
+    // `encodedJSON`; the init still runs on the main actor.
+    fileprivate struct SnapshotWithMetrics: nonisolated Encodable {
         let participantId: String
         /// Enrolment instant the row filter was applied against; nil when
         /// the install was never enrolled (then nothing was filtered).
@@ -845,7 +853,7 @@ struct ParentDashboardExporter {
             )
         }
 
-        struct ThesisMetrics: Encodable {
+        struct ThesisMetrics: nonisolated Encodable {
             let phaseCompletionRates: [String: Double]
             /// nil (JSON null) when undefined, as the CSV's empty cell (A15).
             let averageFreeWriteScore: Double?
@@ -865,7 +873,7 @@ struct ParentDashboardExporter {
                 case averageFormAccuracy, averageTempoConsistency, averagePressureControl, averageRhythmScore
             }
 
-            func encode(to encoder: Encoder) throws {
+            nonisolated func encode(to encoder: Encoder) throws {
                 var c = encoder.container(keyedBy: CodingKeys.self)
                 try c.encode(phaseCompletionRates, forKey: .phaseCompletionRates)
                 try c.encode(averageFreeWriteScore, forKey: .averageFreeWriteScore)           // Double? -> null
@@ -938,32 +946,9 @@ struct ParentDashboardExporter {
         format: DashboardExportFormat,
         tempDirectory: URL = FileManager.default.temporaryDirectory
     ) throws(ExportError) -> URL {
-        let data: Data
-        let filename: String
-        // Distinct participants, never the enrolments: N is the children
-        // with data (see `enrolmentBlock`), and a restored child's two
-        // blocks are one child (`distinctParticipantCount`).
-        let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(distinctParticipantCount(participants))"
-        switch format {
-        case .csv:
-            data     = combinedDelimitedData(participants: participants, enrolments: enrolments,
-                                             setAside: setAside, separator: ",")
-            filename = "primae_progress_ALL_\(tag).csv"
-        case .tsv:
-            data     = combinedDelimitedData(participants: participants, enrolments: enrolments,
-                                             setAside: setAside, separator: "\t")
-            filename = "primae_progress_ALL_\(tag).tsv"
-        case .json:
-            data     = try combinedJSONData(participants: participants)
-            filename = "primae_progress_ALL_\(tag).json"
-        }
-        let url = tempDirectory.appendingPathComponent(filename)
-        do {
-            try data.write(to: url, options: .atomic)
-        } catch {
-            throw ExportError.writeFailed(error.localizedDescription)
-        }
-        return url
+        try writePrepared(prepareCombinedExport(participants: participants, enrolments: enrolments,
+                                                setAside: setAside, format: format),
+                          to: tempDirectory)
     }
 
     /// The proctor's export action (R-062): the combined export in tmp/ for
@@ -983,13 +968,117 @@ struct ParentDashboardExporter {
         let url = try combinedExportFileURL(participants: participants, enrolments: enrolments,
                                             setAside: setAside, format: format,
                                             tempDirectory: locations.temporaryDirectory)
+        retainCopy(of: url, in: locations.retainDirectory)
+        return url
+    }
+
+    /// `combinedExportForSharing` with the slow half off the main actor
+    /// (R-086). What the export holds — which children, the filename, the
+    /// CSV/TSV text, the JSON value — is decided here on the main actor,
+    /// at the moment of the call, exactly as the synchronous path decides
+    /// it; only the JSON encoding, the tmp/ write and the retained copy
+    /// run in a detached task. The bytes are the synchronous path's.
+    /// Measured at 40 children on the iPad, the JSON encode alone held the
+    /// main actor for 8.3 s; the CSV/TSV text (0.2 s) is still built here.
+    static func combinedExportForSharingOffMain(
+        participants: [ParticipantExportSource],
+        enrolments: [EnrolmentRecord] = [],
+        setAside: [ArchiveSetAside] = [],
+        format: DashboardExportFormat,
+        locations: ExportFileRetention.Locations = .live
+    ) async throws(ExportError) -> URL {
+        let prepared = prepareCombinedExport(participants: participants, enrolments: enrolments,
+                                             setAside: setAside, format: format)
+        let result = await Task.detached(priority: .userInitiated) { () -> Result<URL, ExportError> in
+            do throws(ExportError) {
+                let url = try writePrepared(prepared, to: locations.temporaryDirectory)
+                retainCopy(of: url, in: locations.retainDirectory)
+                return .success(url)
+            } catch {
+                return .failure(error)
+            }
+        }.value
+        return try result.get()
+    }
+
+    /// A combined export whose content is fixed but not yet encoded or
+    /// written (R-086). Built on the main actor by `prepareCombinedExport`;
+    /// `Sendable`, so the encode and write can run anywhere.
+    nonisolated struct PreparedCombinedExport: Sendable {
+        /// `primae_progress_ALL_<date>_<time>_all<N>.<ext>`.
+        let filename: String
+        fileprivate let body: Body
+
+        fileprivate enum Body: Sendable {
+            /// CSV/TSV: the finished bytes.
+            case delimited(Data)
+            /// JSON: the value `encodedJSON` turns into bytes.
+            case json([SnapshotWithMetrics])
+        }
+    }
+
+    /// Everything about a combined export that reads app state: the
+    /// filename tag, the participant count, the CSV/TSV text, the JSON
+    /// value. Main actor.
+    static func prepareCombinedExport(
+        participants: [ParticipantExportSource],
+        enrolments: [EnrolmentRecord] = [],
+        setAside: [ArchiveSetAside] = [],
+        format: DashboardExportFormat
+    ) -> PreparedCombinedExport {
+        // Distinct participants, never the enrolments: N is the children
+        // with data (see `enrolmentBlock`), and a restored child's two
+        // blocks are one child (`distinctParticipantCount`).
+        let tag = "\(Self.dateTag())_\(Self.timeTag())_all\(distinctParticipantCount(participants))"
+        switch format {
+        case .csv:
+            return PreparedCombinedExport(
+                filename: "primae_progress_ALL_\(tag).csv",
+                body: .delimited(combinedDelimitedData(participants: participants, enrolments: enrolments,
+                                                       setAside: setAside, separator: ",")))
+        case .tsv:
+            return PreparedCombinedExport(
+                filename: "primae_progress_ALL_\(tag).tsv",
+                body: .delimited(combinedDelimitedData(participants: participants, enrolments: enrolments,
+                                                       setAside: setAside, separator: "\t")))
+        case .json:
+            return PreparedCombinedExport(
+                filename: "primae_progress_ALL_\(tag).json",
+                body: .json(combinedJSONExports(participants)))
+        }
+    }
+
+    /// The bytes of a prepared export. `nonisolated` (R-086).
+    nonisolated static func encodedBytes(_ prepared: PreparedCombinedExport) throws(ExportError) -> Data {
+        switch prepared.body {
+        case .delimited(let data): return data
+        case .json(let exports):   return try encodedJSON(exports)
+        }
+    }
+
+    /// Encodes `prepared` and writes it to `tempDirectory` under its
+    /// filename. `nonisolated` (R-086).
+    nonisolated static func writePrepared(_ prepared: PreparedCombinedExport,
+                                          to tempDirectory: URL) throws(ExportError) -> URL {
+        let data = try encodedBytes(prepared)
+        let url = tempDirectory.appendingPathComponent(prepared.filename)
         do {
-            try ExportFileRetention.retain(url, in: locations.retainDirectory)
+            try data.write(to: url, options: .atomic)
+        } catch {
+            throw ExportError.writeFailed(error.localizedDescription)
+        }
+        return url
+    }
+
+    /// The retained copy (R-062); a failure is logged, not thrown (see
+    /// `combinedExportForSharing`). `nonisolated` (R-086).
+    nonisolated static func retainCopy(of url: URL, in directory: URL) {
+        do {
+            try ExportFileRetention.retain(url, in: directory)
         } catch {
             storePersistenceLogger.fault(
                 "Export retained copy failed (\((error as NSError).domain, privacy: .public) \((error as NSError).code, privacy: .public)); the shared file is the only copy of this export.")
         }
-        return url
     }
 
     // MARK: Private
@@ -1011,7 +1100,7 @@ struct ParentDashboardExporter {
     static func fmt6(_ v: Double) -> String { v.isNaN ? "NaN" : String(format: "%.6f", v) }
 
     /// JSON date strategy matching `isoTimestamp`.
-    static let isoDateEncodingStrategy: JSONEncoder.DateEncodingStrategy = .custom { date, encoder in
+    nonisolated static let isoDateEncodingStrategy: JSONEncoder.DateEncodingStrategy = .custom { date, encoder in
         var c = encoder.singleValueContainer()
         try c.encode(ParentDashboardExporter.isoTimestamp(date))
     }
@@ -1056,7 +1145,7 @@ struct ParentDashboardExporter {
     /// outcome exports as "spatialDeviation". Kept in the same column
     /// position for the schema-stability reason the field is kept at
     /// all (`PhaseSessionRecord.frechetDistance`'s own doc comment).
-    static let retiredFrechetColumnName = "frechetDistance_RETIRED_alwaysEmpty"
+    nonisolated static let retiredFrechetColumnName = "frechetDistance_RETIRED_alwaysEmpty"
 
     /// Rewrites the JSON output's `frechetDistance` key to
     /// `retiredFrechetColumnName`, wherever it appears in the
@@ -1067,7 +1156,7 @@ struct ParentDashboardExporter {
     /// be affected by this. A pure `Data` -> `Data` transform; falls
     /// back to the untouched input on any parse failure rather than
     /// producing empty or malformed output.
-    private static func renamingRetiredFrechetKey(in data: Data) -> Data {
+    nonisolated private static func renamingRetiredFrechetKey(in data: Data) -> Data {
         guard let root = try? JSONSerialization.jsonObject(with: data) else { return data }
         func rewrite(_ value: Any) -> Any {
             if let dict = value as? [String: Any] {

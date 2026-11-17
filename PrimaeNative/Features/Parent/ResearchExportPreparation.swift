@@ -24,11 +24,13 @@ extension TracingViewModel {
     /// The combined research export the parent area shares: the held
     /// trial is recorded first (B22), then every participant, every
     /// enrolment, and a `# setAside=` line for each archive file that
-    /// could not be loaded (B4).
+    /// could not be loaded (B4). The held trial and the export's content
+    /// are fixed on the main actor before the first suspension; the JSON
+    /// encode and the file writes run off it (R-086).
     func makeResearchExport(format: DashboardExportFormat,
-                            locations: ExportFileRetention.Locations = .live) throws(ExportError) -> URL {
+                            locations: ExportFileRetention.Locations = .live) async throws(ExportError) -> URL {
         finalizeHeldTrialForExport()
-        return try ParentDashboardExporter.combinedExportForSharing(
+        return try await ParentDashboardExporter.combinedExportForSharingOffMain(
             participants: allParticipantExportSources,
             enrolments: enrolmentRecords,
             setAside: participantArchive.setAsideArchiveFiles,

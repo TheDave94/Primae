@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Data models
 
-struct PhaseSessionRecord: Codable, Equatable {
+struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
     let letter: String
     /// LearningPhase.rawName: "observe", "direct", "guided", or "freeWrite".
     let phase: String
@@ -467,7 +467,7 @@ extension PhaseSessionRecord {
     }
 }
 
-struct LetterAccuracyStat: Codable, Equatable {
+struct LetterAccuracyStat: nonisolated Encodable, Decodable, Equatable {
     let letter: String
     /// Per-session accuracy samples (0–1), chronological order.
     let accuracySamples: [Double]
@@ -510,7 +510,7 @@ struct LetterAccuracyStat: Codable, Equatable {
     }
 }
 
-struct SessionDurationRecord: Codable, Equatable {
+struct SessionDurationRecord: nonisolated Encodable, Decodable, Equatable {
     /// ISO-8601 date string "yyyy-MM-dd"
     let dateString: String
     /// Active practice time in seconds. Pauses while the app is
@@ -604,7 +604,7 @@ struct SessionDurationRecord: Codable, Equatable {
     }
 }
 
-struct DashboardSnapshot: Codable, Equatable {
+struct DashboardSnapshot: nonisolated Encodable, Decodable, Equatable {
     var letterStats: [String: LetterAccuracyStat] = [:]
     /// Transient (not encoded — DashboardSnapshot has explicit CodingKeys):
     /// set by `init(from:)` when the aggregate block was undecodable,

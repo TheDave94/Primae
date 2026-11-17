@@ -52,7 +52,7 @@ enum RowFinalization: String, Codable, CaseIterable {
 
 /// The device and audio state read at one instant — a phase's start, or an
 /// enrolment (R-020, R-018). Each field is nil when it could not be read.
-struct EnvironmentStamp: Codable, Equatable {
+struct EnvironmentStamp: nonisolated Encodable, Decodable, Equatable {
     /// `AVAudioSession.Port` raw value of the first output ("Headphones",
     /// "Speaker", "BluetoothA2DPOutput", …).
     var outputRoute: String?
@@ -114,7 +114,7 @@ struct EnvironmentStamp: Codable, Equatable {
 /// version string is the constant "1.0"/"1" in every configuration, so the
 /// build is identified by the executable's Mach-O UUID, which the linker
 /// makes unique per build.
-struct BuildStamp: Codable, Equatable {
+struct BuildStamp: nonisolated Encodable, Decodable, Equatable {
     /// One UUID per process launch (`LaunchSentinel`).
     var launchId: String?
     /// The PREVIOUS launch ended while the app was in the foreground — a
@@ -162,7 +162,7 @@ struct BuildStamp: Codable, Equatable {
 /// What one PHASE of a letter delivered (R-020). The counters are the
 /// phase's own share of the letter's `LifecycleCounters` (fix batch C,
 /// which kept them in memory only).
-struct PhaseDelivery: Codable, Equatable {
+struct PhaseDelivery: nonisolated Encodable, Decodable, Equatable {
     /// Observe restarted from the cue after an interruption (R-006).
     var observeRestarts: Int?
     /// Touches the system cancelled (R-024).

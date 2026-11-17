@@ -138,6 +138,7 @@ private struct ExportCenterView: View {
     @Environment(TracingViewModel.self) private var vm
     @State private var shareURL: URL?
     @State private var showError = false
+    @State private var exportInFlight = false
 
     var body: some View {
         Form {
@@ -181,12 +182,19 @@ private struct ExportCenterView: View {
     }
 
     private func export(format: DashboardExportFormat) {
-        do {
-            // Records a held trial first (B22) and names archive files
-            // that could not be loaded (B4); r16.
-            shareURL = try vm.makeResearchExport(format: format)
-        } catch {
-            showError = true
+        // One export at a time: the encode no longer blocks the screen
+        // (R-086), so a second tap could otherwise start a second export.
+        guard !exportInFlight else { return }
+        exportInFlight = true
+        Task {
+            defer { exportInFlight = false }
+            do {
+                // Records a held trial first (B22) and names archive files
+                // that could not be loaded (B4); r16.
+                shareURL = try await vm.makeResearchExport(format: format)
+            } catch {
+                showError = true
+            }
         }
     }
 }
