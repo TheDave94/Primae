@@ -322,24 +322,11 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
             return nil
         }
 
-        // A raw `.mlpackage` still has to be compiled at first use. That
-        // path is retained as a fallback, not as the expected route: it
-        // depends on runtime compilation of an uncompiled package, which
-        // is why `Package.swift` ships the model under `.process`.
-        let modelURL: URL? = {
-            for candidate in candidates {
-                if candidate.isCompiled { return candidate.url }
-                do {
-                    return try MLModel.compileModel(at: candidate.url)
-                } catch {
-                    recognizerLogger.warning("Failed to compile mlpackage at \(candidate.url.path): \(error.localizedDescription)")
-                    continue
-                }
-            }
-            return nil
-        }()
-
-        guard let url = modelURL else {
+        // The package ships a COMPILED `.mlmodelc` (`.process("MLResources")`
+        // in `Package.swift`), so a raw `.mlpackage` is no longer a shipping
+        // form and the former `MLModel.compileModel(at:)` fallback here was
+        // unreachable (R-098).
+        guard let url = candidates.first(where: { $0.isCompiled })?.url else {
             recognizerLogger.warning("GermanLetterRecognizer found but unusable — letter recognition disabled")
             return nil
         }
