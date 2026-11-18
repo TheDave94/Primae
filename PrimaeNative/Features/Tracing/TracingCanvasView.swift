@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 import UIKit
 import CoreText
 
@@ -718,12 +719,22 @@ private struct ProgressPill: View, Equatable {
 /// functional "tap me next" cue for non-reading children. The 35%
 /// scale range is small enough that the parent area is unaffected.
 /// `emphasis` expands the range to 1.0…1.55 after a wrong tap.
-private struct PulsingDot: View {
+///
+/// The timer is subscribed ONLY while the dot is the next target
+/// (audit R-083). A non-next dot used to keep a 30 Hz subscription alive
+/// forever just to write `scale = 1.0`; the subscription now lives in a
+/// child (`PulseDriver`) that is mounted only while `isNext`, so a dot
+/// that is not pulsing costs nothing per second.
+struct PulsingDot: View {
     let isNext: Bool
     let isTapped: Bool
     let emphasis: Bool
     let label: String
     let radius: CGFloat
+    /// Seam (R-083): where the 30 Hz ticks come from. Production uses the
+    /// real timer; a test injects a counting publisher to observe whether
+    /// anything is subscribed.
+    var tickSource: PulseTickSource = .live
 
     @State private var scale: CGFloat = 1.0
 
@@ -738,16 +749,53 @@ private struct PulsingDot: View {
                 .font(.system(size: radius * 0.85, weight: .bold))
                 .foregroundStyle(.white)
         }
-        .onReceive(
-            Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
-        ) { date in
-            guard isNext else { scale = 1.0; return }
-            // 1.2 s wall-clock sine cycle, direct state mutation.
-            let t = date.timeIntervalSinceReferenceDate
-            let phase = (sin(t * .pi / 0.6) + 1) / 2
-            let amplitude: CGFloat = emphasis ? 0.55 : 0.35
-            scale = 1.0 + amplitude * CGFloat(phase)
+        .background {
+            if isNext {
+                PulseDriver(source: tickSource, emphasis: emphasis, scale: $scale)
+            }
         }
+        .onChange(of: isNext) { _, nowNext in
+            if !nowNext { scale = 1.0 }
+        }
+    }
+}
+
+/// The 30 Hz tick publisher behind `PulsingDot`, injectable for tests.
+struct PulseTickSource {
+    let make: () -> AnyPublisher<Date, Never>
+
+    static let live = PulseTickSource {
+        Timer.publish(every: 1.0 / 30.0, on: .main, in: .common)
+            .autoconnect()
+            .eraseToAnyPublisher()
+    }
+}
+
+/// Holds the timer subscription. Mounted only while the dot is the next
+/// target, so unmounting it cancels the subscription.
+private struct PulseDriver: View {
+    let emphasis: Bool
+    @Binding var scale: CGFloat
+    /// One publisher per mount: `onReceive` is subscribed once on appear,
+    /// so building a new one on every body pass would only be discarded.
+    @State private var ticks: AnyPublisher<Date, Never>
+
+    init(source: PulseTickSource, emphasis: Bool, scale: Binding<CGFloat>) {
+        self.emphasis = emphasis
+        self._scale = scale
+        self._ticks = State(initialValue: source.make())
+    }
+
+    var body: some View {
+        Color.clear
+            .accessibilityHidden(true)
+            .onReceive(ticks) { date in
+                // 1.2 s wall-clock sine cycle, direct state mutation.
+                let t = date.timeIntervalSinceReferenceDate
+                let phase = (sin(t * .pi / 0.6) + 1) / 2
+                let amplitude: CGFloat = emphasis ? 0.55 : 0.35
+                scale = 1.0 + amplitude * CGFloat(phase)
+            }
     }
 }
 
