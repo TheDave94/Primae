@@ -28,11 +28,17 @@
 // SCOPE. One assertion per phoneme recording the production resolution
 // path actually serves — enumerated through `LetterRepository` (the
 // real provider, not a hand-copied list) exactly as the app enumerates
-// them, then resolved through `PrimaeBundle`. `spatial_carrier.wav` is
-// deliberately NOT asserted here: the r10 choice is about the phoneme
-// files (they were matched TO the carrier), and the spec records the
-// carrier's own format only as a *measurement* in the 2026-10-14
-// correction note. Pinning it would be inventing a choice nobody recorded.
+// them, then resolved through `PrimaeBundle`. The format pinned for each is
+// the spec's r10 sentence, quoted: "mono, 44.1 kHz, 16-bit PCM" (SOUND_PRODUCTION_SPEC
+// 2026-10-18 update), which names the carrier's format as the one the
+// phoneme files were matched to. R-115 (audit): the check read only channels
+// and rate, so a 24-bit or float re-export at mono 44.1 kHz would have passed;
+// it now reads the `fmt ` tag and bit depth too, and the carrier
+// (`Sonification/spatial_carrier.wav`, "1 channel, 44.1 kHz, 16-bit, 2.000 s"
+// in the same spec's 2026-10-14 correction) is held to the same four fields,
+// because that is the format the r10 sentence says the phoneme files share.
+// The bytes themselves are pinned elsewhere: the phoneme files' sha256 in
+// `PhonemeOnsetTests.fileSHA16`, the carrier's in `StimulusIntegrityTests`.
 
 import Testing
 import Foundation
@@ -44,12 +50,13 @@ import Foundation
 
     /// The three `fmt ` fields this suite reads, from one file.
     struct WAVFormat: Equatable, CustomStringConvertible {
+        let formatTag: Int          // 1 = integer PCM
         let channels: Int
         let sampleRate: Int
         let bitsPerSample: Int
 
         var description: String {
-            "\(channels) ch, \(sampleRate) Hz, \(bitsPerSample)-bit"
+            "tag \(formatTag), \(channels) ch, \(sampleRate) Hz, \(bitsPerSample)-bit"
         }
     }
 
@@ -98,7 +105,8 @@ import Foundation
             let body = offset + 8
             if id == "fmt " {
                 guard size >= 16, body + 16 <= data.count else { throw WAVError.tooShort(data.count) }
-                return WAVFormat(channels: try u16(body + 2),
+                return WAVFormat(formatTag: try u16(body),
+                                 channels: try u16(body + 2),
                                  sampleRate: try u32(body + 4),
                                  bitsPerSample: try u16(body + 14))
             }
@@ -182,10 +190,21 @@ import Foundation
 
     // MARK: - The contract
 
-    /// One assertion over every phoneme recording: mono and 44.1 kHz, the
+    /// The r10 format, field by field: "mono, 44.1 kHz, 16-bit PCM". One
+    /// function so the phoneme sweep and the carrier assert the same thing.
+    static func formatProblems(_ f: WAVFormat) -> [String] {
+        var out: [String] = []
+        if f.formatTag != 1 { out.append("fmt tag \(f.formatTag), the r10 format is integer PCM (1)") }
+        if f.channels != 1 { out.append("\(f.channels) channels, the r10 format is mono (1)") }
+        if f.sampleRate != 44100 { out.append("\(f.sampleRate) Hz, the r10 format is 44100 Hz") }
+        if f.bitsPerSample != 16 { out.append("\(f.bitsPerSample)-bit, the r10 format is 16-bit") }
+        return out
+    }
+
+    /// One assertion over every phoneme recording: mono, 44.1 kHz, 16-bit PCM, the
     /// r10 format (see the header). Failures are accumulated so EVERY offender
     /// is named in one message, not just the first.
-    @Test("every phoneme recording is mono at 44.1 kHz (the r10 format pin)")
+    @Test("every phoneme recording is mono, 44.1 kHz, 16-bit PCM (the r10 format pin)")
     func phonemeRecordingsMatchSpecFormat() throws {
         let recordings = try Self.phonemeRecordings()
 
@@ -208,11 +227,8 @@ import Foundation
             }
             do {
                 let format = try Self.wavFormat(at: url)
-                if format.channels != 1 {
-                    failures.append("\(recording.letter) → \(recording.relativePath): \(format.channels) channels, the r10 format is mono (1)")
-                }
-                if format.sampleRate != 44100 {
-                    failures.append("\(recording.letter) → \(recording.relativePath): \(format.sampleRate) Hz, the r10 format is 44100 Hz")
+                for problem in Self.formatProblems(format) {
+                    failures.append("\(recording.letter) → \(recording.relativePath): \(problem)")
                 }
             } catch {
                 failures.append("\(recording.letter) → \(recording.relativePath): unreadable — \(error)")
@@ -230,5 +246,19 @@ import Foundation
                 --- measured ---
                 \(measured.joined(separator: "\n"))
                 """)
+    }
+
+    /// The spatial arm's only sound, held to the same format as the phoneme
+    /// files it was the model for (see the header). Read through the same
+    /// resolution the engine uses, so a carrier that is not served fails here
+    /// by name instead of passing a sweep that never looked.
+    @Test("the spatial carrier is mono, 44.1 kHz, 16-bit PCM (the format the r10 phoneme files were matched to)")
+    func spatialCarrierMatchesSpecFormat() throws {
+        let url = try #require(PrimaeBundle.audioURL(for: SpatialSonification.carrierToneFile),
+                               "\(SpatialSonification.carrierToneFile) is not served by the bundle")
+        let format = try Self.wavFormat(at: url)
+        let problems = Self.formatProblems(format)
+        #expect(problems.isEmpty,
+                "spatial_carrier.wav is not in the r10 format: \(problems.joined(separator: "; ")) — measured \(format)")
     }
 }
