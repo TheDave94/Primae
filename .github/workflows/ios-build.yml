@@ -24,10 +24,28 @@ on:
   # verification had to be dispatched by hand a second time. `legacy` is
   # deliberately NOT added — it is not a branch this workflow should
   # spend runner time on.
+  #
+  # `test/**` added 2026-11-18, the SAME gap a third time, one prefix on
+  # again. MEASURED that day, `git ls-remote --heads origin` from the
+  # landing worktree: the only branches on the forge are `main`, `legacy`,
+  # `chore/ignore-handoffs` and `test/r074-pen-down-force-normalisation-signed`
+  # — landing branches are now named `test/...`. A push to one of those
+  # again triggered NOTHING, so the verification of a landing branch would
+  # have had to be dispatched by hand a third time. The pattern is the
+  # lesson: the list has been corrected once per rename (feat 2026-09-17,
+  # fix 2026-10-03, test 2026-11-18) because it names prefixes instead of
+  # matching what is actually pushed. When the next rename happens, read
+  # `git ls-remote --heads origin` BEFORE trusting a green board.
+  #
+  # `chore/**` is deliberately NOT added, for the same reason `legacy` is
+  # not: `chore/ignore-handoffs` is not a landing branch, and this workflow
+  # should not spend two macOS runners on it. If a `chore/` branch ever
+  # carries a change that must be verified, add it then — on evidence, not
+  # on speculation.
   push:
-    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**", "test/**"]
   pull_request:
-    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**", "test/**"]
   workflow_dispatch:
 
 env:
@@ -308,7 +326,30 @@ jobs:
     # 35 keeps D9's intent (a hard cap far under GitHub's 6-hour default)
     # and buys ~15 minutes over the worst observed. Do not lower it back
     # without re-measuring the whole job, not just the suite.
-    timeout-minutes: 35
+    #
+    # 35 -> 50 on 2026-11-18: the "worst observed" grew past the cap and
+    # the cap, not a test, is what turned main red. MEASURED, run
+    # 44202027515 (main, push, head 0eff852a), leg `iPad (A16)`, job
+    # 134458297276 — the job did ALL of its work and was then killed in
+    # the post-job cleanup:
+    #   ✔ Test run with 1808 tests in 239 suites passed after 888.424 seconds.
+    #   ** TEST SUCCEEDED **
+    #   check_test_count: ok — 1808 tests executed (floor 1600)
+    #   Artifact xcode-test-results-1 ... successfully uploaded  00:19:51
+    #   (annotation) The job has exceeded the maximum execution time of 35m0s
+    # Job start 23:44:55, TEST SUCCEEDED 00:19:19 — 34m24s of real work,
+    # 36 seconds of margin, killed at 35m03s. NO TEST HUNG and none is to
+    # be named here: every step reported ✓, the whole 1808-test suite
+    # passed, and the sibling `iPad Pro 13-inch (M5)` leg ran the same
+    # 1808 tests on the same commit in 24m29s. The A16 leg is the slow
+    # one (~1.4x), not a broken one.
+    # 50 is ~15 minutes over the 34m24s now observed — the same rule the
+    # 35 was chosen with in 2026-10-03, when the worst was 20.5m — and
+    # also covers the suite growth that made 35 tight: 1694 tests at the
+    # 42504923240 measurement, 1808 at this one. Do not lower it back
+    # without re-measuring the whole job on the A16 leg; the M5 leg and
+    # the suite time are both ~10 minutes short of the truth.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
@@ -428,7 +469,22 @@ jobs:
     # identical wall on the identical run (suite green after 246.890s,
     # killed at the cap in upload), so it is the same cap being too tight
     # twice, not two unrelated flakes.
-    timeout-minutes: 35
+    #
+    # 35 -> 50 on 2026-11-18 for that same reason, one cap for both jobs.
+    # This job runs on the same slow `iPad (A16)` simulator, and it hit
+    # the identical wall on the same day. MEASURED:
+    #   run 44095751337 — 35m17s, annotation "The job has exceeded the
+    #     maximum execution time of 35m0s": the suite had already
+    #     reported (it FAILED, DemonstrationDeliveryTests) and the kill
+    #     landed in teardown, so the cap hid nothing but also had nothing
+    #     left to give.
+    #   run 44109615568 — 33m25s, a real test failure (exit 65), 1m35s
+    #     from the cap: the margin this raise exists to restore.
+    #   run 44202027515 — green here in 25m50s, "Test run with 1808 tests
+    #     in 239 suites passed after 335.022 seconds".
+    # The 335s suite against a 25-35 minute job is the point: the spread
+    # is build time, not test time, so the cap must be sized on the job.
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 

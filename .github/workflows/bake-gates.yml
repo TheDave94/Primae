@@ -32,13 +32,22 @@ name: "Bake gates (G1/G3/G4/G6)"
 # pull request (a Copilot agent's, say) is still a real shape this gate should
 # answer to; it costs nothing to keep and the duplication is named below.
 #
+# The `push` BRANCH list mirrors ios-build.yml on purpose, so a landing
+# branch either runs both gates or neither. `test/**` added 2026-11-18
+# (MEASURED, `git ls-remote --heads origin`: landing branches are named
+# `test/...` now — see the long note in ios-build.yml for the three-time
+# history of this same gap). Without it a `test/...` push skipped this gate
+# exactly the way it skipped the build: silently, and with the board green.
+# `pull_request.branches` is NOT extended to match: it filters the PR BASE
+# branch, and every pull request here targets `main`.
+#
 # THE TWO `paths` LISTS MUST STAY IDENTICAL. GitHub Actions has no YAML
 # anchors and no way to share one list between two event types, so a path
 # added to one block and not the other silently narrows a trigger that still
 # reads as complete in the diff.
 on:
   push:
-    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**"]
+    branches: ["main", "ux/**", "roadmap-*", "feat/**", "fix/**", "test/**"]
     paths:
       - "PrimaeNative/Resources/Letters/Regular/**/strokes.json"
       - "PrimaeNative/Resources/Letters/Light/**/strokes.json"
