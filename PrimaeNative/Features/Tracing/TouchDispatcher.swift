@@ -146,6 +146,12 @@ final class TouchDispatcher {
     /// `finishTouch` clears it, so at pen-down it is nil (audit R-074). It feeds the
     /// RECORDED sample only, never `vm.pencilPressure`, so the sound is unchanged.
     /// Finger touches pass nil and record 0, as their later samples do.
+    ///
+    /// The value is the pen-down FIRST ESTIMATE, not a refined measurement: at
+    /// `touchesBegan` a Pencil touch's `estimatedProperties` contains `.force`,
+    /// and there is no `touchesEstimatedPropertiesUpdated` pass anywhere in the
+    /// app, so nothing corrects this sample later. Recorded as reported; it is
+    /// not a false zero (see `PenDownForce`).
     func beginTouch(at p: CGPoint, t: CFTimeInterval, force: CGFloat? = nil) {
         guard let vm else { return }
         // A study session that cannot deliver its stimulus does not

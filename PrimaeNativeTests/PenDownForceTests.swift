@@ -49,4 +49,21 @@ import CoreGraphics
         vm.beginTouch(at: CGPoint(x: 100, y: 100), t: 1000)
         #expect(vm.freeWriteRecorder.forces == [0])
     }
+
+    // The overlay's `touchesBegan` line is UIKit and cannot be driven from
+    // the test target, so the value it feeds is computed by `PenDownForce`,
+    // which can. These two pin the arithmetic and the no-data case.
+
+    @Test("the pen-down value is divided by the touch's own maximum force")
+    func penDownForceIsNormalisedByTheTouchMaximum() {
+        #expect(PenDownForce.normalised(force: 0.6, maximumPossibleForce: 1.0) == 0.6)
+        #expect(PenDownForce.normalised(force: 1.0, maximumPossibleForce: 4.0) == 0.25)
+    }
+
+    @Test("a touch reporting no maximum force normalises to 0, never NaN")
+    func penDownForceWithNoMaximumIsZero() {
+        let normalised = PenDownForce.normalised(force: 0, maximumPossibleForce: 0)
+        #expect(normalised == 0)
+        #expect(!normalised.isNaN)
+    }
 }

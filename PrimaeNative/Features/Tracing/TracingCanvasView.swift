@@ -1174,6 +1174,25 @@ struct CanvasTouchArbiter<ID: Hashable> {
 
 // MARK: - Apple Pencil overlay
 
+/// Normalises the Pencil touch-down force the way every later sample is
+/// normalised (`force / maximumPossibleForce`), for the pen-down sample the
+/// recorder keeps (audit R-074).
+///
+/// **The value is an estimate, not a measurement.** At `touchesBegan` a Pencil
+/// touch's `estimatedProperties` contains `.force`, so the pen-down force is
+/// the system's first estimate; the app has no
+/// `touchesEstimatedPropertiesUpdated` pass, so no later refinement reaches
+/// this sample. That is still the honest value to record — it is the force
+/// the child applied, as the digitiser first reported it — and it is not a
+/// zero they never applied. Finger touches carry no force data at all
+/// (`maximumPossibleForce` is 0), which normalises to 0 exactly as their
+/// later samples do.
+enum PenDownForce {
+    static func normalised(force: CGFloat, maximumPossibleForce: CGFloat) -> CGFloat {
+        force / max(maximumPossibleForce, 1)
+    }
+}
+
 private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let canvasSize: CGSize
     let onBegan:  (CGPoint, CFTimeInterval, CGFloat) -> Void
@@ -1268,7 +1287,8 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
             guard let t = touches.first(where: { $0.type == .pencil }) else { return }
             // The touch-down sample's own force, normalised as the moves are (R-074).
             coordinator?.onBegan(t.location(in: self), t.timestamp,
-                                 t.force / max(t.maximumPossibleForce, 1))
+                                 PenDownForce.normalised(force: t.force,
+                                                         maximumPossibleForce: t.maximumPossibleForce))
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
