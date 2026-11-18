@@ -585,7 +585,16 @@ private struct TracingCanvasAccessibility: ViewModifier {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(vm.accessibilityCanvasLabel)
             .accessibilityValue(vm.accessibilityCanvasValue)
-            .accessibilityHint("Ziehe mit einem Finger, um den Buchstaben nachzufahren. Nutze die Aktionen, um Buchstaben zu wechseln oder den Ton abzuspielen.")
+            .accessibilityHint("Doppeltippen und halten, dann mit einem Finger ziehen, um den Buchstaben nachzufahren. Nutze die Aktionen, um Buchstaben zu wechseln oder den Ton abzuspielen.")
+            // Audit R-091: without this the canvas is only an explorable
+            // element, so a VoiceOver user can hear it and use the actions
+            // below but cannot DRAW — the touch that traces never reaches
+            // the canvas overlays. As a direct-touch area a VoiceOver user
+            // can now double-tap and hold on the canvas to enter it, then
+            // drag a finger to trace the letter through the same
+            // `UnifiedTouchOverlay` path a sighted child uses.
+            .accessibilityDirectTouch(TracingDirectTouchPolicy.isDirectTouchArea,
+                                      options: TracingDirectTouchPolicy.options)
             .accessibilityActions {
                 Button("Buchstaben-Ton abspielen") { vm.replayAudio() }
                 Button("Nächster Buchstabe")      { vm.nextLetter() }
@@ -595,6 +604,39 @@ private struct TracingCanvasAccessibility: ViewModifier {
                 Button("Hilfslinien umschalten")  { vm.toggleGhost() }
             }
     }
+}
+
+// MARK: - VoiceOver direct-touch policy (audit R-091)
+
+/// How the tracing canvas exposes the VoiceOver direct-touch gesture.
+///
+/// Without it the canvas is only an explorable element: VoiceOver reads the
+/// label, the value and the six actions, and the drag that traces never
+/// reaches the canvas overlays — so a VoiceOver user cannot draw at all.
+/// As a direct-touch area, the user double-taps and holds on the canvas to
+/// enter it and then drags a finger to trace the letter.
+///
+/// A plain value rather than literals at the call site because the modifier's
+/// effect cannot be read back from a test (`CLAUDE.md`, "Test Infrastructure"
+/// item 3): `TracingCanvasAccessibility` hands both members straight to
+/// `.accessibilityDirectTouch(_:options:)`, so `TracingDirectTouchTests`
+/// pins exactly what the canvas asks for.
+enum TracingDirectTouchPolicy {
+    /// The canvas IS the direct-touch area.
+    static let isDirectTouchArea = true
+
+    /// `.requiresActivation` — exploring the screen must not leave ink: the
+    /// child activates the canvas (double-tap and hold) before their finger
+    /// draws. `.silentOnTouch` — VoiceOver stays quiet while the finger is
+    /// down, so element announcements do not talk over the child's own
+    /// tracing.
+    static let options: AccessibilityDirectTouchOptions = [.requiresActivation, .silentOnTouch]
+
+    /// Whether a VoiceOver user must activate the canvas before touching it.
+    static var requiresActivation: Bool { options.contains(.requiresActivation) }
+
+    /// Whether VoiceOver is silent while the finger is down.
+    static var isSilentOnTouch: Bool { options.contains(.silentOnTouch) }
 }
 
 // MARK: - Progress pill
