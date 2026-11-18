@@ -162,6 +162,7 @@ import Testing
         let nominalFrames = Int((guide.totalDuration * 60.0).rounded())
 
         var frames = 0
+        var framesAtFirstCycle: Int?
         var completions = 0
         let c = AnimationGuideController(
             sleeper: { _ in
@@ -172,7 +173,13 @@ import Testing
         )
         c.unitsPerSecond = unitsPerSecond
         c.onFrame = { _ in frames += 1 }
-        c.onCycleComplete = { completions += 1 }
+        c.onCycleComplete = {
+            completions += 1
+            // Snapshot at the FIRST cycle: the fake clock runs fast, so
+            // the loop may complete more than one before the poll below
+            // wakes, and a multi-cycle total could hide a thin cycle.
+            if framesAtFirstCycle == nil { framesAtFirstCycle = frames }
+        }
         c.start(strokes: strokes)
         for _ in 0..<2_000 {
             if completions > 0 { break }
@@ -180,12 +187,13 @@ import Testing
         }
         c.stop()
 
+        let delivered = framesAtFirstCycle ?? frames
         #expect(completions >= 1, "the guide must finish a cycle")
         // A receipt line: the audit trail wants the delivered rate, not
         // only the pass/fail (TESTING_CHECKLIST: read the number).
-        print("R-088 cadence: \(frames) frames for \(nominalFrames) nominal at \(frameLatency) s/tick")
-        #expect(frames >= Int(0.9 * Double(nominalFrames)),
-                "the loaded device delivered \(frames) frames for a nominal \(nominalFrames) (at 0.2 s/tick): the coupling signal was thinned, not just the rendering")
+        print("R-088 cadence: \(delivered) frames for \(nominalFrames) nominal at \(frameLatency) s/tick")
+        #expect(delivered >= Int(0.9 * Double(nominalFrames)),
+                "the loaded device delivered \(delivered) frames for a nominal \(nominalFrames) (at 0.2 s/tick): the coupling signal was thinned, not just the rendering")
     }
 
     /// A second `start` must cancel the first loop, or two guide dots run
