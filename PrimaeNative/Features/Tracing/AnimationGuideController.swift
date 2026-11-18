@@ -172,6 +172,9 @@ final class AnimationGuideController {
 
                 let elapsed = now() - cycleStart
                 if elapsed >= cycleDuration {
+                    // A stall long enough to skip the whole tail must still
+                    // deliver the end-of-pass still the listener expects.
+                    if !tailEmitted { self.onFrame?(.still(lastPointInCycle)) }
                     self.guidePoint = nil
                     if !Task.isCancelled { self.onCycleComplete?() }
                     cycleStart += cycleDuration
