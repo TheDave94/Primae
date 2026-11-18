@@ -181,6 +181,9 @@ import Testing
         c.stop()
 
         #expect(completions >= 1, "the guide must finish a cycle")
+        // A receipt line: the audit trail wants the delivered rate, not
+        // only the pass/fail (TESTING_CHECKLIST: read the number).
+        print("R-088 cadence: \(frames) frames for \(nominalFrames) nominal at \(frameLatency) s/tick")
         #expect(frames >= Int(0.9 * Double(nominalFrames)),
                 "the loaded device delivered \(frames) frames for a nominal \(nominalFrames) (at 0.2 s/tick): the coupling signal was thinned, not just the rendering")
     }
