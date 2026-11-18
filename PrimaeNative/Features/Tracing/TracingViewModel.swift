@@ -200,31 +200,40 @@ public final class TracingViewModel {
         // single-letter cells so checkpoints align with the rendered
         // word image instead of sitting ~5 % inside it.
         let cellPad: CGFloat = grid.wordRendering == nil ? 0.10 : 0.0
-        guard cellSize.width > 0, cellSize.height > 0,
-              let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                for: cellLetter, canvasSize: cellSize,
-                schriftArt: schriftArt,
-                openTypeFeatures: PrimaeLetterRenderer.openTypeFeatures(
-                    for: cellLetter, schriftArt: schriftArt, variant: showingVariant),
-                pad: cellPad) else {
-            return raw
-        }
-        let mapped = raw.strokes.map { def in
-            StrokeDefinition(
-                id: def.id,
-                checkpoints: def.checkpoints.map { cp in
-                    Checkpoint(
-                        x: gr.minX + cp.x * gr.width,
-                        y: gr.minY + cp.y * gr.height
-                    )
-                }
-            )
-        }
-        return LetterStrokes(letter: raw.letter,
-                             checkpointRadius: raw.checkpointRadius
-                                 * sqrt(gr.width * gr.height),
-                             strokes: mapped)
+        guard cellSize.width > 0, cellSize.height > 0 else { return raw }
+        return mappedStrokes(
+            raw, letter: cellLetter, cellSize: cellSize, pad: cellPad,
+            features: PrimaeLetterRenderer.openTypeFeatures(
+                for: cellLetter, schriftArt: schriftArt, variant: showingVariant))
     }
+
+    /// R-081: the one place bbox-relative strokes become cell-fraction
+    /// strokes for a cell, memoised by `strokeMappingCache`. Returns `raw`
+    /// unchanged when the glyph rect is unavailable (pre-layout).
+    private func mappedStrokes(_ raw: LetterStrokes, letter: String,
+                               cellSize: CGSize, pad: CGFloat,
+                               features: [String]) -> LetterStrokes {
+        let key = StrokeMappingCache.Key(letter: letter, schriftArt: schriftArt,
+                                         features: features, pad: pad, cellSize: cellSize)
+        let art = schriftArt
+        let provider = glyphRectProvider
+        return strokeMappingCache.strokes(for: raw, key: key) {
+            provider(letter, cellSize, art, features, pad)
+        }
+    }
+
+    /// Memoises the stroke mapping and the ghost's smoothed paths so the
+    /// canvas does not redo them every frame (audit R-081).
+    @ObservationIgnored let strokeMappingCache = StrokeMappingCache()
+
+    /// Glyph-rect lookup behind the mapping. Production asks the renderer;
+    /// a test injects the guard-free `computeNormalizedGlyphRect`, because
+    /// `normalizedGlyphRect` returns nil under the test host.
+    @ObservationIgnored var glyphRectProvider:
+        (String, CGSize, SchriftArt, [String], CGFloat) -> CGRect? = {
+            PrimaeLetterRenderer.normalizedGlyphRect(
+                for: $0, canvasSize: $1, schriftArt: $2, openTypeFeatures: $3, pad: $4)
+        }
 
     /// Letter at cell `index`. Canvas uses this for per-cell glyph
     /// rendering in word mode.
@@ -515,28 +524,9 @@ public final class TracingViewModel {
             bbox = resolvedStrokes(for: letter)
         }
         let cellSize = grid.activeCell.frame.size
-        guard cellSize.width > 0, cellSize.height > 0,
-              let gr = PrimaeLetterRenderer.normalizedGlyphRect(
-                for: currentLetterName, canvasSize: cellSize,
-                schriftArt: schriftArt,
-                openTypeFeatures: currentGlyphFeatures) else {
-            return bbox
-        }
-        let mapped = bbox.strokes.map { def in
-            StrokeDefinition(
-                id: def.id,
-                checkpoints: def.checkpoints.map { cp in
-                    Checkpoint(
-                        x: gr.minX + cp.x * gr.width,
-                        y: gr.minY + cp.y * gr.height
-                    )
-                }
-            )
-        }
-        return LetterStrokes(letter: bbox.letter,
-                             checkpointRadius: bbox.checkpointRadius
-                                 * sqrt(gr.width * gr.height),
-                             strokes: mapped)
+        guard cellSize.width > 0, cellSize.height > 0 else { return bbox }
+        return mappedStrokes(bbox, letter: currentLetterName, cellSize: cellSize,
+                             pad: 0.10, features: currentGlyphFeatures)
     }
 
     /// True when the current letter has a variant in the active
@@ -3909,21 +3899,7 @@ public final class TracingViewModel {
             strokeTracker.load(bboxStrokes)
             return
         }
-        let mapped = bboxStrokes.strokes.map { def in
-            StrokeDefinition(
-                id: def.id,
-                checkpoints: def.checkpoints.map { cp in
-                    Checkpoint(
-                        x: gr.minX + cp.x * gr.width,
-                        y: gr.minY + cp.y * gr.height
-                    )
-                }
-            )
-        }
-        strokeTracker.load(LetterStrokes(letter: bboxStrokes.letter,
-                                         checkpointRadius: bboxStrokes.checkpointRadius
-                                             * sqrt(gr.width * gr.height),
-                                         strokes: mapped))
+        strokeTracker.load(StrokeMapping.map(bboxStrokes, into: gr))
     }
 
     /// The study auto-advance, called by `SchuleWorldView` when a letter's

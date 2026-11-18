@@ -97,16 +97,14 @@ struct TracingCanvasView: View {
                     // Checkpoints are canvas-relative 0..1 (incl. the
                     // 10% glyph pad). Don't remap through
                     // normalizedGlyphRect — that would squeeze the
-                    // strokes inside the ghost.
-                    for stroke in rawStrokes.strokes {
-                        guard stroke.checkpoints.count >= 2 else { continue }
-                        let pts = stroke.checkpoints.map { cp in
-                            CGPoint(x: ox + cp.x * cellSize.width,
-                                    y: oy + cp.y * cellSize.height)
-                        }
-                        let ghostPath = smoothPath(through: pts)
+                    // strokes inside the ghost. The smoothed paths are
+                    // cached per cell (R-081): rebuilt only when the
+                    // strokes or the cell frame change, not every frame.
+                    let ghostColor = Color(hex: plan.ghost.hex).opacity(plan.ghost.opacity)
+                    for ghostPath in vm.strokeMappingCache.ghostPaths(
+                        cell: i, strokes: rawStrokes, frame: cellFrame) {
                         context.stroke(ghostPath,
-                                       with: .color(Color(hex: plan.ghost.hex).opacity(plan.ghost.opacity)),
+                                       with: .color(ghostColor),
                                        style: StrokeStyle(lineWidth: plan.ghost.width,
                                                           lineCap: .round, lineJoin: .round))
                     }
@@ -503,33 +501,6 @@ struct TracingCanvasView: View {
                 }
             )
         }
-    }
-
-    /// Catmull-Rom-to-Bezier smoothing. Replaces a polyline through the
-    /// supplied points with a `Path` whose segments are cubic Beziers,
-    /// so corners between adjacent samples round off instead of forming
-    /// visible kinks.
-    private func smoothPath(through pts: [CGPoint]) -> Path {
-        var path = Path()
-        guard let first = pts.first else { return path }
-        path.move(to: first)
-        guard pts.count >= 2 else { return path }
-        if pts.count == 2 {
-            path.addLine(to: pts[1])
-            return path
-        }
-        for i in 0..<(pts.count - 1) {
-            let p0 = i == 0 ? pts[0] : pts[i - 1]
-            let p1 = pts[i]
-            let p2 = pts[i + 1]
-            let p3 = i + 2 < pts.count ? pts[i + 2] : pts[i + 1]
-            let c1 = CGPoint(x: p1.x + (p2.x - p0.x) / 6.0,
-                             y: p1.y + (p2.y - p0.y) / 6.0)
-            let c2 = CGPoint(x: p2.x - (p3.x - p1.x) / 6.0,
-                             y: p2.y - (p3.y - p1.y) / 6.0)
-            path.addCurve(to: p2, control1: c1, control2: c2)
-        }
-        return path
     }
 
     /// One stroke of the child's ink, as `drawInk` paints it.
