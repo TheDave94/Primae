@@ -138,6 +138,53 @@ import Testing
                 "delivered cycle \(delivered)s must stay within one loaded frame of nominal \(nominal)s")
     }
 
+    /// R-088, second half: dropping frames must not THIN the signal the
+    /// sound couples to. The study observe sound is driven frame by frame
+    /// (`TracingViewModel.handleGuideFrame`), and P4's contract is a dot
+    /// tracked at the guide's own 60 Hz cadence (`ProtocolMatrixTests`
+    /// counts the engine calls). A device loaded enough that a 1/60 s
+    /// tick takes 0.2 s therefore has to deliver the frames it skipped on
+    /// the next tick, interpolated at their own guide times — one frame
+    /// per 1/60 s of STIMULUS, not per tick.
+    ///
+    /// Same fake device as the duration test above (12x the tick). The
+    /// nominal frame count is `guide.totalDuration * 60`; before the
+    /// cadence fix this loop delivered one frame per 0.2 s tick (~5 of
+    /// ~61), which is how the full-suite run at f8cb49f1 turned
+    /// `ProtocolMatrixTests` P4 red: fewer than 20 calls in a pass.
+    @Test func couplingCadenceSurvivesAFrameDroppingDevice() async {
+        let clock = FakeClock()
+        let frameLatency: TimeInterval = 0.2
+        let unitsPerSecond: TimeInterval = 0.8
+        let strokes = sampleStrokes()
+        let guide = LetterAnimationGuide.build(from: strokes,
+                                               unitsPerSecond: unitsPerSecond)
+        let nominalFrames = Int((guide.totalDuration * 60.0).rounded())
+
+        var frames = 0
+        var completions = 0
+        let c = AnimationGuideController(
+            sleeper: { _ in
+                clock.advance(frameLatency)
+                await Task.yield()
+            },
+            now: { clock.now }
+        )
+        c.unitsPerSecond = unitsPerSecond
+        c.onFrame = { _ in frames += 1 }
+        c.onCycleComplete = { completions += 1 }
+        c.start(strokes: strokes)
+        for _ in 0..<2_000 {
+            if completions > 0 { break }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+        c.stop()
+
+        #expect(completions >= 1, "the guide must finish a cycle")
+        #expect(frames >= Int(0.9 * Double(nominalFrames)),
+                "the loaded device delivered \(frames) frames for a nominal \(nominalFrames) (at 0.2 s/tick): the coupling signal was thinned, not just the rendering")
+    }
+
     /// A second `start` must cancel the first loop, or two guide dots run
     /// (and `onCycleComplete` fires twice per cycle). Counted through the
     /// injected sleeper: every loop parks in exactly one sleep at a time,
