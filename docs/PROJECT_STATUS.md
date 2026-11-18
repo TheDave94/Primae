@@ -9,6 +9,12 @@
 > double-tap delegate is; ROADMAP U5, audit R-096); the D8 canvas redraw
 > profile has been measured (ROADMAP D8, 2026-10-21). The body is left
 > unchanged except the r17 audio note in §1.5.
+>
+> **Status-line pass 2026-11-18 (against `main` `6495b506`).** Audit R-074
+> is on `main` (`6495b506`, #134: `PenDownForce.normalised`, two new tests) and
+> has no line below. R-088 (#136), R-084 (#138), R-104 and R-091 (#137),
+> R-098 and R-085 (#139) are open PRs at that commit, not on `main`; no
+> line below is corrected for them. The body is otherwise still unchanged.
 
 Point-in-time audit of what's shipped, what's pending, and what's
 stale. Differs from `docs/ROADMAP.md` (forward planning, owner
