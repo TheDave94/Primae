@@ -163,6 +163,20 @@ final class AnimationGuideController {
             /// guide's own length; `seconds` is the guide time since the
             /// previous frame, so the coupled rate stays the guide's
             /// velocity even when one frame stands for several ticks.
+            ///
+            /// THE PAIR (`lastPoint`, `lastEventTime`) MUST DESCRIBE ONE
+            /// INSTANT. A listener divides `distance` by `seconds`
+            /// (`TracingViewModel.handleGuideFrame`), so a position that
+            /// is older than the time it is stamped with invents speed.
+            /// That is what happened until 2026-11-18: a still window's
+            /// transition was stamped with the tick that NOTICED it, so a
+            /// turn that owed more than the 60-frame cap (a stalled
+            /// simulator) put the still at the new stroke's start while
+            /// stamping it with a time already inside the new stroke —
+            /// and the next tick charged that gap to one tick's
+            /// `seconds`. CI run 44284705552: P4's "a jump is not
+            /// velocity" red on two simulators, 1.5x the guide's own
+            /// speed at half a tick of overshoot.
             @MainActor
             func emitFrame(at t: TimeInterval) {
                 guard let self else { return }
@@ -182,7 +196,12 @@ final class AnimationGuideController {
                         if w.previous != nil { self.onFrame?(.jump(to: w.step.point)) }
                         self.onFrame?(.still(w.step.point))
                         lastPoint = w.step.point
-                        lastEventTime = t
+                        // The dot is at this point for the WHOLE window,
+                        // so a transition noticed late is true as of the
+                        // window's END, not as of the tick that noticed
+                        // it. `min` keeps the ordinary case (t inside the
+                        // window) exactly as it was.
+                        lastEventTime = min(t, w.end)
                     }
                     lastStepIndex = index
                 }
@@ -200,9 +219,13 @@ final class AnimationGuideController {
                         self.guidePoint = to
                         self.onFrame?(.move(from: lastPoint, to: to,
                                             seconds: seconds))
-                        lastPoint = to
-                        lastEventTime = t
                     }
+                    // Either way the bookkeeping advances to (to, t). A
+                    // zero-length frame has no velocity to report, but
+                    // leaving the pair stale would make the NEXT frame
+                    // measure from a position the dot has already left.
+                    lastPoint = to
+                    lastEventTime = t
                 } else {
                     self.guidePoint = window.step.point
                 }
