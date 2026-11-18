@@ -14,7 +14,9 @@ public final class TracingViewModel {
     /// to the 5 pilot stimulus letters (`TrainedLetterSubset.studyLetters`:
     /// A, F, I, L, M). Default true and not flipped anywhere in the app;
     /// a study session ignores it (`visibleLetterNames`).
-    var showAllLetters      = true
+    var showAllLetters      = true {
+        didSet { visibleLetterNamesCache = nil }
+    }
     var pencilPressure: CGFloat? = nil
     var pencilAzimuth: CGFloat   = 0
     var showDebug           = false
@@ -57,6 +59,7 @@ public final class TracingViewModel {
     static let calibratorBottomInset: CGFloat = 180
     var letterOrdering: LetterOrderingStrategy = .motorSimilarity {
         didSet {
+            visibleLetterNamesCache = nil
             // Same pin as `schriftArt` below, same reason: init already
             // pins studyMode to `.motorSimilarity`, but that pin only
             // covers the ONE assignment at init — a live Settings write
@@ -690,6 +693,7 @@ public final class TracingViewModel {
 
     public internal(set) var studyMode: Bool = false {
         didSet {
+            visibleLetterNamesCache = nil
             UserDefaults.standard.set(studyMode,
                 forKey: StudyBuild.studyModeDefaultsKey)
         }
@@ -893,7 +897,9 @@ public final class TracingViewModel {
     /// stamped onto every recorded session for trained/untrained
     /// partitioning in analysis. Was `let` until 2026-09-14 — see
     /// `reapplyParticipantIdentity`.
-    private(set) var trainedSubset: TrainedLetterSubset
+    private(set) var trainedSubset: TrainedLetterSubset {
+        didSet { visibleLetterNamesCache = nil }
+    }
     private let onboardingStore: OnboardingStoring
     #if !STUDY_BUILD
     private let notificationScheduler: LocalNotificationScheduler
@@ -1022,7 +1028,9 @@ public final class TracingViewModel {
 
     // MARK: - Private playback / touch state
 
-    var letters: [LetterAsset]          = []
+    var letters: [LetterAsset]          = [] {
+        didSet { visibleLetterNamesCache = nil }
+    }
     /// Non-nil when a study session's bundle scan yielded no letters —
     /// the repository's cache/sample fallback is bypassed under
     /// `studyMode`, so this is the refusal's reason (see init).
@@ -4132,11 +4140,20 @@ public final class TracingViewModel {
         allFiveLetters ? .allFive : trainedSubset
     }
 
+    /// Cache for `visibleLetterNames` (R-085). The property rebuilds a
+    /// rank dictionary and re-sorts the whole pool on every read, and it
+    /// is read from SwiftUI bodies on every update — measured at 295
+    /// assets on device. Computed once per change instead; every input
+    /// (`letters`, `studyMode`, `showAllLetters`, `trainedSubset`,
+    /// `letterOrdering`) invalidates it in its own `didSet`.
+    @ObservationIgnored private var visibleLetterNamesCache: [String]?
+
     /// Visible letters, sorted by `letterOrdering`. `studyMode` pins the
     /// pool to the 5-letter UPPERCASE pilot stimulus set regardless of
     /// `showAllLetters`; outside study sessions the app stays
     /// full-alphabet (`showAllLetters` defaults true and is not flipped).
     var visibleLetterNames: [String] {
+        if let cached = visibleLetterNamesCache { return cached }
         let pool: [String]
         if studyMode {
             // Practice pool = the letters this session trains
@@ -4188,7 +4205,9 @@ public final class TracingViewModel {
         // repeated name. The over-collection itself is a separate defect
         // (295 assets where 87 files exist) and is NOT fixed here.
         var seen = Set<String>()
-        return ordered.filter { seen.insert($0).inserted }
+        let names = ordered.filter { seen.insert($0).inserted }
+        visibleLetterNamesCache = names
+        return names
     }
 
     var activeStrokeIndex: Int { strokeTracker.currentStrokeIndex }
