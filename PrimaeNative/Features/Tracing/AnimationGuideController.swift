@@ -114,6 +114,10 @@ final class AnimationGuideController {
             // loop slept a fixed 1/60 s per frame, which made the
             // delivered stimulus a function of device load: measured
             // 12.6 s delivered against a 2.52 s nominal at 0.2 s/tick.
+            // A skipped frame is not dropped silently: the next turn
+            // emits the frames the clock says are due, interpolated at
+            // their own guide times, so the demonstration keeps its
+            // length AND the observe sound keeps its ~60 updates/s.
             let tick: TimeInterval = 1.0 / 60.0
 
             // One cycle laid out on the cycle clock. Every step lasts
@@ -148,10 +152,61 @@ final class AnimationGuideController {
 
             var heldFirst = false
             var cycleStart: TimeInterval = 0
+            var nextFrameAt: TimeInterval = 0
             var lastStepIndex = -1
             var lastPoint = firstPoint
             var lastEventTime: TimeInterval = 0
             var tailEmitted = false
+
+            /// Emit the frame that belongs at cycle time `t`. The dot's
+            /// position comes from the clock, so the cycle keeps the
+            /// guide's own length; `seconds` is the guide time since the
+            /// previous frame, so the coupled rate stays the guide's
+            /// velocity even when one frame stands for several ticks.
+            @MainActor
+            func emitFrame(at t: TimeInterval) {
+                guard let self else { return }
+                var index = windows.count - 1
+                for (i, w) in windows.enumerated() where t < w.end {
+                    index = i
+                    break
+                }
+                if index > lastStepIndex {
+                    // Emit the transition events for every window between
+                    // the last sampled one and this one, so a dropped
+                    // frame never swallows a stroke's pen lift.
+                    for j in (lastStepIndex + 1)...index {
+                        let w = windows[j]
+                        guard !w.isMove else { continue }
+                        self.guidePoint = w.step.point
+                        if w.previous != nil { self.onFrame?(.jump(to: w.step.point)) }
+                        self.onFrame?(.still(w.step.point))
+                        lastPoint = w.step.point
+                        lastEventTime = t
+                    }
+                    lastStepIndex = index
+                }
+                let window = windows[index]
+                if window.isMove {
+                    let span = window.end - window.start
+                    let progress = CGFloat(min(1, max(0, (t - window.start)
+                        / (span > 0 ? span : 1))))
+                    let from = window.previous!.point
+                    let to = CGPoint(
+                        x: from.x + (window.step.point.x - from.x) * progress,
+                        y: from.y + (window.step.point.y - from.y) * progress)
+                    let seconds = t - lastEventTime
+                    if seconds > 0 {
+                        self.guidePoint = to
+                        self.onFrame?(.move(from: lastPoint, to: to,
+                                            seconds: seconds))
+                        lastPoint = to
+                        lastEventTime = t
+                    }
+                } else {
+                    self.guidePoint = window.step.point
+                }
+            }
 
             while !Task.isCancelled {
                 guard let self else { return }
@@ -168,73 +223,59 @@ final class AnimationGuideController {
                     heldFirst = true
                     if Task.isCancelled { break }
                     cycleStart = now()
+                    nextFrameAt = 0
                 }
 
                 let elapsed = now() - cycleStart
+
+                // Emit every frame the clock says is due — one per 1/60 s
+                // of STIMULUS, not one per tick. A loaded device therefore
+                // renders fewer turns without thinning the coupling signal
+                // the observe sound reads frame by frame (audit R-088: the
+                // full-suite run at f8cb49f1 delivered 21 frames where the
+                // guide owed 61, and P4's "calls.count > 20" went red).
+                // Bounded at one second's worth per turn so a long stall
+                // cannot flood the main actor.
+                var emitted = 0
+                while nextFrameAt <= elapsed, nextFrameAt < offset, emitted < 60 {
+                    emitFrame(at: nextFrameAt)
+                    nextFrameAt += tick
+                    emitted += 1
+                }
+                // Still behind after that: one wide frame carries the
+                // motion at the guide's own velocity rather than replaying
+                // it — a genuine frame drop, not a silent one.
+                if nextFrameAt <= elapsed, nextFrameAt < offset {
+                    emitFrame(at: min(elapsed, offset))
+                    nextFrameAt = elapsed + tick
+                }
+
+                if elapsed >= offset, !tailEmitted {
+                    // Post-pass pause: blank dot, one still at the end.
+                    self.guidePoint = nil
+                    self.onFrame?(.still(lastPointInCycle))
+                    tailEmitted = true
+                }
+
                 if elapsed >= cycleDuration {
                     // A stall long enough to skip the whole tail must still
                     // deliver the end-of-pass still the listener expects.
-                    if !tailEmitted { self.onFrame?(.still(lastPointInCycle)) }
-                    self.guidePoint = nil
-                    if !Task.isCancelled { self.onCycleComplete?() }
-                    cycleStart += cycleDuration
-                    // If the process stalled for a whole cycle, resync
-                    // rather than firing a burst of completions.
-                    if cycleStart < now() - cycleDuration { cycleStart = now() }
-                    lastStepIndex = -1
-                    lastPoint = firstPoint
-                    lastEventTime = 0
-                    tailEmitted = false
-                    continue
-                }
-
-                if elapsed >= offset {
-                    // Post-pass pause: blank dot, one still at the end.
                     if !tailEmitted {
                         self.guidePoint = nil
                         self.onFrame?(.still(lastPointInCycle))
                         tailEmitted = true
                     }
-                } else {
-                    var index = windows.count - 1
-                    for (i, w) in windows.enumerated() where elapsed < w.end {
-                        index = i
-                        break
-                    }
-                    let window = windows[index]
-                    if index > lastStepIndex {
-                        // Emit the transition events for every window between
-                        // the last sampled one and this one, so a dropped
-                        // frame never swallows a stroke's pen lift.
-                        for j in (lastStepIndex + 1)...index {
-                            let w = windows[j]
-                            guard !w.isMove else { continue }
-                            self.guidePoint = w.step.point
-                            if w.previous != nil { self.onFrame?(.jump(to: w.step.point)) }
-                            self.onFrame?(.still(w.step.point))
-                            lastPoint = w.step.point
-                            lastEventTime = elapsed
-                        }
-                        lastStepIndex = index
-                    }
-                    if window.isMove {
-                        let progress = CGFloat((elapsed - window.start)
-                            / (window.end - window.start))
-                        let from = window.previous!.point
-                        let to = CGPoint(
-                            x: from.x + (window.step.point.x - from.x) * progress,
-                            y: from.y + (window.step.point.y - from.y) * progress)
-                        let seconds = elapsed - lastEventTime
-                        if seconds > 0 {
-                            self.guidePoint = to
-                            self.onFrame?(.move(from: lastPoint, to: to,
-                                                seconds: seconds))
-                            lastPoint = to
-                            lastEventTime = elapsed
-                        }
-                    } else {
-                        self.guidePoint = window.step.point
-                    }
+                    if !Task.isCancelled { self.onCycleComplete?() }
+                    cycleStart += cycleDuration
+                    // If the process stalled for a whole cycle, resync
+                    // rather than firing a burst of completions.
+                    if cycleStart < now() - cycleDuration { cycleStart = now() }
+                    nextFrameAt = 0
+                    lastStepIndex = -1
+                    lastPoint = firstPoint
+                    lastEventTime = 0
+                    tailEmitted = false
+                    continue
                 }
                 try? await sleeper(.seconds(tick))
             }
