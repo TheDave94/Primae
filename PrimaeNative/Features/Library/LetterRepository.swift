@@ -419,7 +419,7 @@ private extension LetterRepository {
             let isStrokesFile = filename.hasSuffix("_strokes.json") || filename == "strokes.json"
             guard isStrokesFile else { return nil }
             guard let data   = try? Data(contentsOf: url),
-                  let strokes = try? decoder.decode(LetterStrokes.self, from: data) else {
+                  let strokes = Self.decodeBundledStrokes(data, with: decoder) else {
                 issues.append(.init(letter: url.lastPathComponent, message: "Invalid stroke JSON"))
                 return nil
             }
@@ -478,6 +478,36 @@ private extension LetterRepository {
         }.sorted { $0.name < $1.name }
 
         return (letters, issues)
+    }
+
+    /// AUDIT R-082. Decode a bundled `strokes.json` for the launch load.
+    ///
+    /// In a study build the calibrator's baked `skeleton` / `skeletonAdj` /
+    /// `bridgeEdges` are never read: their only reader
+    /// (`StrokeCalibrationOverlay.makeBakedSkeleton`) is compiled out under
+    /// `STUDY_BUILD`, and the view-model's glyph-relative mapping rebuilds
+    /// `LetterStrokes` without them. They are about a third of the shipped
+    /// stroke JSON (1.67 MB of 5.0 MB, Regular), so the launch load skips
+    /// them: `JSONDecoder` ignores keys the lean type does not name, and
+    /// the arrays are never materialised. A non-study build keeps the full
+    /// decode, because the calibrator needs them. (The wall-clock effect is
+    /// UNMEASURED — it needs the physical iPad.)
+    static func decodeBundledStrokes(_ data: Data, with decoder: JSONDecoder) -> LetterStrokes? {
+        #if STUDY_BUILD
+        guard let lean = try? decoder.decode(LeanLetterStrokes.self, from: data) else { return nil }
+        return LetterStrokes(letter: lean.letter,
+                             checkpointRadius: lean.checkpointRadius,
+                             strokes: lean.strokes)
+        #else
+        return try? decoder.decode(LetterStrokes.self, from: data)
+        #endif
+    }
+
+    /// `LetterStrokes` minus the calibrator payload; see `decodeBundledStrokes`.
+    private struct LeanLetterStrokes: Decodable {
+        let letter: String
+        let checkpointRadius: CGFloat
+        let strokes: [StrokeDefinition]
     }
 
     /// Split into letter-name vs phoneme populations.
