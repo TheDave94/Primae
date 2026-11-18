@@ -196,6 +196,169 @@ import Testing
                 "the loaded device delivered \(delivered) frames for a nominal \(nominalFrames) (at 0.2 s/tick): the coupling signal was thinned, not just the rendering")
     }
 
+    // MARK: - R-088 repair: the frames must describe one instant
+
+    /// Two strokes, so the guide has a pen lift: a still window at the
+    /// start of the second stroke, which is the window P4's "a jump is
+    /// not velocity" test watches on the real F.
+    private func twoStrokeStrokes() -> LetterStrokes {
+        LetterStrokes(
+            letter: "L",
+            checkpointRadius: 0.05,
+            strokes: [
+                StrokeDefinition(id: 1, checkpoints: [
+                    Checkpoint(x: 0.1, y: 0.5),
+                    Checkpoint(x: 0.9, y: 0.5),
+                ]),
+                StrokeDefinition(id: 2, checkpoints: [
+                    Checkpoint(x: 0.1, y: 0.2),
+                    Checkpoint(x: 0.1, y: 0.9),
+                ]),
+            ]
+        )
+    }
+
+    /// A device clock advanced ONLY by the guide's own sleeps, so the
+    /// stall below is a property of the script and not of the runner.
+    /// One tick per turn, except one turn that owes `stallTo` cycle
+    /// seconds — the shape of a loaded simulator's turn, which is the
+    /// only way `emitFrame` ever receives a time off the 1/60 grid.
+    private final class StallClock: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value: TimeInterval = 0
+        private var cycleOrigin: TimeInterval?
+        private var stalled = false
+        private let tick: TimeInterval
+        private let stallFrom: TimeInterval
+        private let stallTo: TimeInterval
+        init(tick: TimeInterval, stallFrom: TimeInterval, stallTo: TimeInterval) {
+            self.tick = tick
+            self.stallFrom = stallFrom
+            self.stallTo = stallTo
+        }
+        func advanceOnSleep() {
+            lock.lock(); defer { lock.unlock() }
+            // The 1.0 s start hold runs before the cycle clock exists;
+            // its last turn is the first sleep at `>= 1 - tick/2`.
+            if cycleOrigin == nil, value >= 1.0 - tick / 2 { cycleOrigin = value }
+            guard let origin = cycleOrigin else { value += tick; return }
+            if !stalled, value - origin >= stallFrom {
+                stalled = true
+                value = origin + stallTo
+            } else {
+                value += tick
+            }
+        }
+        var now: TimeInterval { lock.lock(); defer { lock.unlock() }; return value }
+    }
+
+    /// One `.move` as the coupling listener sees it: a straight-line
+    /// distance in cell units and the guide time it was charged to.
+    private struct EmittedMove {
+        let from: CGPoint
+        let to: CGPoint
+        let seconds: TimeInterval
+        var velocity: CGFloat {
+            guard seconds > 0 else { return 0 }
+            return hypot(to.x - from.x, to.y - from.y) / CGFloat(seconds)
+        }
+    }
+
+    private func scriptedFrames(strokes: LetterStrokes,
+                                unitsPerSecond: TimeInterval,
+                                stallFrom: TimeInterval,
+                                stallTo: TimeInterval) async -> [AnimationGuideController.Frame] {
+        let tick: TimeInterval = 1.0 / 60.0
+        let clock = StallClock(tick: tick, stallFrom: stallFrom, stallTo: stallTo)
+        var frames: [AnimationGuideController.Frame] = []
+        var completions = 0
+        let c = AnimationGuideController(
+            sleeper: { _ in
+                clock.advanceOnSleep()
+                await Task.yield()
+            },
+            now: { clock.now }
+        )
+        c.unitsPerSecond = unitsPerSecond
+        c.onFrame = { frames.append($0) }
+        c.onCycleComplete = { completions += 1 }
+        c.start(strokes: strokes)
+        // One turn per yield, and a cycle is ~280 turns: no wall clock.
+        for _ in 0..<20_000 {
+            if completions > 0 { break }
+            await Task.yield()
+        }
+        c.stop()
+        return frames
+    }
+
+    /// R-088 repair (2026-11-18). A stalled turn lands the guide's wide
+    /// catch-up frame just PAST the still window that follows a pen
+    /// lift. The still was reported on that turn, so the position
+    /// bookkeeping said "the dot is at the new stroke's start" while it
+    /// stamped that with a time already `overshoot` inside the new
+    /// stroke. The next turn then charged `overshoot` + one tick of
+    /// travel to one tick's `seconds`, and `TracingViewModel` divides
+    /// distance by seconds: the coupled rate spikes above the guide's
+    /// own speed.
+    ///
+    /// This is the mechanism behind CI run 44284705552, where P4's "a
+    /// stroke-to-stroke jump is not velocity" went red on both the A16
+    /// and the M5 simulator while the lane's unloaded run was green: the
+    /// wide frame only exists when a turn owes more than the loop's
+    /// 60-frame cap, which is a loaded device, not an idle one.
+    ///
+    /// `overshoot` is swept across one tick, including exactly ON the
+    /// window boundary (0), which is benign and must stay benign.
+    @Test func aStallPastAStillDoesNotInventVelocity() async {
+        let tick: TimeInterval = 1.0 / 60.0
+        let unitsPerSecond: TimeInterval = 0.36
+        let strokes = twoStrokeStrokes()
+        let guide = LetterAnimationGuide.build(from: strokes,
+                                               unitsPerSecond: unitsPerSecond)
+        // Step 0 is the pre-move still, step 1 the first stroke, step 2
+        // the still the pen lift opens, step 3 the second stroke.
+        let stillStart = guide.duration(for: guide.steps[0])
+            + guide.duration(for: guide.steps[1])
+        let stillEnd = stillStart + guide.duration(for: guide.steps[2])
+        let stallFrom = stillStart - 1.75
+        #expect(stillStart - stallFrom > 1.0,
+                "precondition: the turn must owe more than the 60-frame cap (1 s)")
+
+        for fraction in [0.0, 0.25, 0.5, 0.75] {
+            let overshoot = fraction * tick
+            let frames = await scriptedFrames(strokes: strokes,
+                                              unitsPerSecond: unitsPerSecond,
+                                              stallFrom: stallFrom,
+                                              stallTo: stillEnd + overshoot)
+            let moves = frames.compactMap { frame -> EmittedMove? in
+                if case let .move(from, to, seconds) = frame {
+                    return EmittedMove(from: from, to: to, seconds: seconds)
+                }
+                return nil
+            }
+            // The scenario has to be the one P4 measures: a pen lift,
+            // then motion on the new stroke. Without these the bound
+            // below could pass for the wrong reason.
+            let jumpAt = frames.firstIndex { frame in
+                if case .jump = frame { return true }
+                return false
+            }
+            #expect(jumpAt != nil, "precondition: the pen lift was not emitted")
+            let movedAfterJump = jumpAt.map { index in
+                frames[(index + 1)...].contains { frame in
+                    if case .move = frame { return true }
+                    return false
+                }
+            } ?? false
+            #expect(movedAfterJump, "precondition: no motion after the pen lift")
+            let worst = moves.map(\.velocity).max() ?? 0
+            print("R-088 stall repair: overshoot \(fraction) tick, worst \(worst) vs nominal \(unitsPerSecond) over \(moves.count) moves")
+            #expect(worst <= CGFloat(unitsPerSecond) * 1.02,
+                    "a stall landing \(fraction) of a tick past the pen lift's still reported \(worst) cell units/s for a guide that moves at \(unitsPerSecond)")
+        }
+    }
+
     /// A second `start` must cancel the first loop, or two guide dots run
     /// (and `onCycleComplete` fires twice per cycle). Counted through the
     /// injected sleeper: every loop parks in exactly one sleep at a time,
