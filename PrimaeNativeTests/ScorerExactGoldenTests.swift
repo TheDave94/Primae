@@ -129,10 +129,19 @@ struct ScorerExactGoldenTests {
 
     @Test("F1-01: an exact L drawn in ONE stroke scores Form 0 (segmentation dependence)")
     func letterLOneStroke() throws {
-        // raw = 0.85 (derived); dev snapshot.
+        // raw = 0.85 (derived); dev snapshot, r27 value (the shear fit lowers it
+        // from 0.84974219514042704, and it stays far above the 0.3 form cut).
+        // order: ONE drawn stroke against TWO reference strokes is paired with
+        // whichever reference stroke is cheaper UNDER THE FIT, and the merged L
+        // is about equally far (0.85) from the vertical (0) and the horizontal
+        // (1) one. Before r27 the vertical was cheaper ("0", dev 0.8497); with
+        // the +-15 degree shear in the fit the horizontal is (dev 0.8398), so
+        // the pairing is "1". The field is a consequence of the fit, not an
+        // independent claim about the letter: measured on the iPad
+        // (R105|L.oneStroke ... order=1), the one place it is pinned is here.
         try check("L.oneStroke", "L", { ScorerGoldenCases.merged($0, 0, 1) },
-                  Golden(dev: 0.84974219514042704, raw: 0.84999999999999998, strokeCount: 1,
-                         order: "0", reversed: 0, form: 0))
+                  Golden(dev: 0.8398469491012498, raw: 0.84999999999999998, strokeCount: 1,
+                         order: "1", reversed: 0, form: 0))
     }
 
     // MARK: A (three strokes)
@@ -184,20 +193,24 @@ struct ScorerExactGoldenTests {
                   Golden(dev: id.dev, raw: 0.5044055907699676, strokeCount: 1, order: "0", reversed: 0, form: id.form))
     }
 
-    @Test("F1-02: I with 6° extra slant (snapshot)")
+    @Test("F1-02: I with 6° extra slant (snapshot; r27: the shear fit takes the slant out)")
     func letterISlant() throws {
+        // r27: dev was 0.10648054788511097 / form 0.64506484038296352 before
+        // the ±15° shear joined the fit; a 6° rotation of a near-vertical
+        // stroke is within the shear's reach. raw has no fit and is unchanged.
         try check("I.rot6", "I", { ScorerGoldenCases.rotated($0, degrees: 6) },
-                  Golden(dev: 0.10648054788511097, raw: 0.05250316419688307, strokeCount: 1,
-                         order: "0", reversed: 0, form: 0.64506484038296352))
+                  Golden(dev: 0.001968290180251752, raw: 0.05250316419688307, strokeCount: 1,
+                         order: "0", reversed: 0, form: 0.99343903273249412))
     }
 
     // MARK: M (one 200-checkpoint stroke)
 
-    @Test("M: the reference traced exactly (snapshot)")
+    @Test("M: the reference traced exactly (snapshot; r27 shear fit)")
     func letterM() throws {
+        // r27: dev was 0.0046765675264210382 / form 0.9844114415785965 before the shear.
         try check("M.identity", "M", ScorerGoldenCases.identity,
-                  Golden(dev: 0.0046765675264210382, raw: 0.0044225747555717921, strokeCount: 1,
-                         order: "0", reversed: 0, form: 0.9844114415785965))
+                  Golden(dev: 0.0046133389810544042, raw: 0.0044225747555717921, strokeCount: 1,
+                         order: "0", reversed: 0, form: 0.98462220339648532))
     }
 
     @Test("F1-01: an exact M drawn in four strokes (lifts at its three vertices) scores Form 0 (snapshot)")
@@ -205,7 +218,8 @@ struct ScorerExactGoldenTests {
         // Split at checkpoints 49, 98 and 150: M's three interior y-extrema
         // in the Regular strokes.json.
         try check("M.split4", "M", { ScorerGoldenCases.split($0, at: [49, 98, 150]) },
-                  Golden(dev: 0.91106954446945454, raw: 0.91206194965035126, strokeCount: 4,
+                  // r27: dev was 0.91106954446945454 before the shear.
+                  Golden(dev: 0.90746929901341733, raw: 0.91206194965035126, strokeCount: 4,
                          order: "-,0,-,-", reversed: 0, form: 0))
     }
 }

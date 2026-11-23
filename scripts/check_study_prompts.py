@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""check_study_prompts.py - the five recorded study prompts are exactly the
+"""check_study_prompts.py - the seven recorded study prompts are exactly the
 reviewed ones (protocol r9, R-023).
 
-A study child hears five recorded phrases (voice Kiki). Their bytes ARE the
-instrument: a re-recorded take, a swapped file or a sixth mp3 changes what
+A study child hears seven recorded phrases (voice Kiki; r27 added two). Their bytes ARE the
+instrument: a re-recorded take, a swapped file or an eighth mp3 changes what
 the child hears without any Swift diff. This check fails when
 PrimaeNative/Resources/Prompts/*.mp3 is not exactly the set named in
 MANIFEST.json, byte for byte (sha256), or when the manifest's own set id

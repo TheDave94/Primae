@@ -3,13 +3,15 @@
   "elevenLabsVoiceId": "VDMfk0qKd9vRmRuG5nND",
   "model": "eleven_multilingual_v2",
   "settings": {"stability": 0.55, "similarity_boost": 0.80, "style": 0.10},
-  "setId": "rec:kiki:a889eab2b793",
+  "setId": "rec:kiki:b348d3f5d8c4",
   "files": [
     {"key": "phase_observe",   "text": "Schau genau hin.",       "sha256": "585055eb7a6659894f66dbb9496e703416511fd399cfe796649e14710240d277"},
     {"key": "phase_guided",    "text": "Jetzt du.",              "sha256": "e26d051a1c0130d3e6cb19bdc786184378846028a5e51e5fa1de2ef0d12c4a25"},
     {"key": "phase_freewrite", "text": "Und jetzt ganz allein.", "sha256": "2a2dc834a76607e1cec828ed0635d82dc1b7f991b0289162d7b5267e28eea68d"},
     {"key": "retry_cue",       "text": "Probier's nochmal.",     "sha256": "91530988765fe37ba0f08bd48684e2176f6a114a4a1ba18cfccbc88307060be4"},
-    {"key": "celebration",     "text": "Super gemacht!",         "sha256": "3104cbfeb78fee4b03a7762e916c0db68c2b5337ef877f7bfdb436a23c3fd040"}
+    {"key": "celebration",     "text": "Super gemacht!",         "sha256": "3104cbfeb78fee4b03a7762e916c0db68c2b5337ef877f7bfdb436a23c3fd040"},
+    {"key": "final_intro",     "text": "Jetzt schreibst du sie alle noch einmal.", "sha256": "c7d3845ea00ace1cd0cdb72d8e433acb02d294bfbf25250e6618432c618ec2c8"},
+    {"key": "final_glimpse",   "text": "Merk ihn dir gut.",      "sha256": "3e1b670ceacb9d9f60f64ef150c1d1bf4cd4b97975a89ba14b2171c4bfc9a843"}
   ],
   "effects": [
     {"file": "tap.wav",         "sha256": "be9af71c96b65a525e802fcab557b5398acdc76d6f996a05f43f2d95bae694cd"},

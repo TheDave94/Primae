@@ -5,6 +5,18 @@
 // (stroke count, order, direction), from ONE computation (2026-09-04,
 // superseding the 2026-09-03 Hausdorff-over-the-whole-trace design).
 //
+// REDEFINED AGAIN 2026-11-23 (protocol revision 27, DECISIONS r27, "Slant is
+// not an error"): the fit also applies a horizontal SHEAR to the drawn
+// strokes, x' = x + tan(theta) * (y - cy), cy the drawn strokes' bounding-
+// box centre y, theta the angle within +-15 degrees that minimises the
+// primary deviation (`bestShear`; the same rule for every letter). The
+// font's own letters lean about 4 degrees (I 3.8, F 3.9, L 3.6, measured on
+// the Regular strokes), a child draws them upright, and that is not an
+// error. Rotation is still NOT normalised: a stretch, a mirror and an
+// upside-down letter are still errors, and 15 degrees stops short of
+// forgiving a letter that falls over. The chosen theta is exported as
+// `spatialFitShearDegrees`; `spatialDeviationRaw` (no fit) is unchanged.
+//
 // REDEFINED 2026-10-05 (protocol revision 6, DECISIONS D8): the PRIMARY
 // distance is now computed AFTER a translate + UNIFORM-scale fit of the
 // drawn strokes' bounding box onto the reference's (aspect kept; rotation
@@ -151,6 +163,15 @@ struct StrokeProcessMeasures: Equatable {
     /// that specific matched pair), not a separate endpoint-distance
     /// heuristic pass.
     let reversedStrokeCount: Int
+    /// The horizontal shear the primary's fit applied, in DEGREES (r27):
+    /// the angle theta in [-15, +15] (found to 0.1 degree) that minimised
+    /// `spatialDeviation`, applied as x' = x + tan(theta) * (y - cy) to the
+    /// drawn strokes (y down, cy the fit strokes' bounding-box centre y),
+    /// so a positive theta moves the lower part of the drawing to the right
+    /// before the comparison. 0 when no shear lowered the deviation.
+    /// Declared last, with a default, so `StrokeProcessMeasures(...)`
+    /// without it still compiles (no shear).
+    var spatialFitShearDegrees: CGFloat = 0
 
     /// Comma-joined `matchedReferenceOrder` for CSV/JSON export — "-"
     /// for an unmatched (extra) traced stroke, same convention
@@ -169,11 +190,15 @@ enum StrokeProcessScorer {
     /// coordinate space — the same convention the rest of this scoring
     /// path uses. Since r6 the primary fits position and scale away
     /// (`fitToReference`); they still count in `spatialDeviationRaw`.
+    /// `shearLimitDegrees` is the r27 shear bound of the primary's fit
+    /// (default 15); 0 switches the shear off and reproduces the pre-r27
+    /// primary bit for bit — a seam for tests and for re-deriving old rows.
     /// `nil` when there's nothing comparable.
     static func analyze(
         points: [CGPoint],
         strokeStartIndices: [Int],
-        reference: LetterStrokes
+        reference: LetterStrokes,
+        shearLimitDegrees: CGFloat = StrokeProcessScorer.shearLimitDegrees
     ) -> StrokeProcessMeasures? {
         // A non-finite sample (NaN / infinity) poisons every distance and
         // the bounding-box fit (A18, round-1 B-13): drop such points, with
@@ -191,7 +216,8 @@ enum StrokeProcessScorer {
             keptBefore.append(kept.count)
             guard kept.count >= 2 else { return nil }
             let starts = strokeStartIndices.filter { $0 >= 0 && $0 < points.count }.map { keptBefore[$0] }
-            return analyze(points: kept, strokeStartIndices: starts, reference: reference)
+            return analyze(points: kept, strokeStartIndices: starts, reference: reference,
+                           shearLimitDegrees: shearLimitDegrees)
         }
         guard !points.isEmpty, !reference.strokes.isEmpty else { return nil }
 
@@ -225,23 +251,32 @@ enum StrokeProcessScorer {
         // SECONDARY (r6): no fit, position and size count.
         guard let raw = correspondence(trace: spaced(traceStrokes), reference: refStrokes) else { return nil }
 
-        // PRIMARY (r6, refined r16 / audit B-5): the drawn strokes fitted
-        // onto the reference's box, the box taken over the MATCHED strokes
-        // only (match -> fit -> re-match). Fitting over every stroke let one
-        // stray contact far from the letter inflate the drawn box and
-        // shrink the real letter 5-13x before the comparison.
-        func primaryCorrespondence(fitOn subset: [Int])
-            -> (deviation: CGFloat, matched: [Int?], reversed: Int)? {
-            let fit = fitToReference(drawn: fitBasis(subset.map { traceStrokes[$0] }), reference: refStrokes)
-            return correspondence(trace: spaced(traceStrokes.map { $0.map(fit) }), reference: refStrokes)
+        // PRIMARY (r6, refined r16 / audit B-5, shear added r27): the drawn
+        // strokes fitted onto the reference's box, the box taken over the
+        // MATCHED strokes only (match -> fit -> re-match). Fitting over
+        // every stroke let one stray contact far from the letter inflate
+        // the drawn box and shrink the real letter 5-13x before the
+        // comparison.
+        func primaryCorrespondence(fitOn subset: [Int], shearDegrees: CGFloat = 0) -> PrimaryFit? {
+            let basis = fitBasis(subset.map { traceStrokes[$0] })
+            let shear = shearTransform(of: basis, degrees: shearDegrees)
+            let fit = fitToReference(drawn: basis.map { $0.map(shear) }, reference: refStrokes)
+            guard let c = correspondence(trace: spaced(traceStrokes.map { $0.map { fit(shear($0)) } }),
+                                         reference: refStrokes) else { return nil }
+            return PrimaryFit(deviation: c.deviation, matched: c.matched, reversed: c.reversed,
+                              shearDegrees: shearDegrees)
         }
         let allIndices = Array(traceStrokes.indices)
-        let primary: (deviation: CGFloat, matched: [Int?], reversed: Int)
+        var primary: PrimaryFit
+        // The strokes the fit was taken over for `primary`: the shear is
+        // searched over the SAME set, so it never re-opens the matching.
+        let fitSet: [Int]
         if traceStrokes.count <= refStrokes.count {
             // Every drawn stroke is matched (forced maximum cardinality), so
             // the matched set IS the whole drawing: the r6 fit, unchanged.
             guard let p = primaryCorrespondence(fitOn: allIndices) else { return nil }
             primary = p
+            fitSet = allIndices
         } else {
             // More drawn strokes than reference strokes: some stay
             // unmatched, and they must not move the fit. Two seeds for the
@@ -257,21 +292,26 @@ enum StrokeProcessScorer {
             let rawMatched = allIndices.filter { raw.matched[$0] != nil }
             var seeds: [[Int]] = [substantial.isEmpty ? allIndices : substantial]
             if !rawMatched.isEmpty && rawMatched != seeds[0] { seeds.append(rawMatched) }
-            var best: (deviation: CGFloat, matched: [Int?], reversed: Int)?
+            var best: (fit: PrimaryFit, set: [Int])?
             for seed in seeds {
-                var fitSet = seed
-                var candidate: (deviation: CGFloat, matched: [Int?], reversed: Int)?
+                var current = seed
+                var candidate: (fit: PrimaryFit, set: [Int])?
                 for _ in 0..<Self.refitIterations {
-                    guard let p = primaryCorrespondence(fitOn: fitSet) else { break }
-                    candidate = p
+                    guard let p = primaryCorrespondence(fitOn: current) else { break }
+                    candidate = (p, current)
                     let matchedSet = allIndices.filter { p.matched[$0] != nil }
-                    if matchedSet == fitSet || matchedSet.isEmpty { break }
-                    fitSet = matchedSet
+                    if matchedSet == current || matchedSet.isEmpty { break }
+                    current = matchedSet
                 }
-                if let c = candidate, best == nil || c.deviation < best!.deviation { best = c }
+                if let c = candidate, best == nil || c.fit.deviation < best!.fit.deviation { best = c }
             }
             guard let b = best else { return nil }
-            primary = b
+            primary = b.fit
+            fitSet = b.set
+        }
+        // r27: the shear within +-15 degrees that minimises the deviation.
+        primary = bestShear(from: primary, limit: shearLimitDegrees) {
+            primaryCorrespondence(fitOn: fitSet, shearDegrees: $0)
         }
 
         // Expand back to the ORIGINAL positions on both sides.
@@ -286,8 +326,78 @@ enum StrokeProcessScorer {
             spatialDeviationRaw: raw.deviation,
             strokeCount: allTraceStrokes.count,
             matchedReferenceOrder: matchedAll,
-            reversedStrokeCount: primary.reversed
+            reversedStrokeCount: primary.reversed,
+            spatialFitShearDegrees: primary.shearDegrees
         )
+    }
+
+    /// One primary fit: the distance, the pairing, the reversals, and the
+    /// shear (degrees) the fit applied.
+    fileprivate struct PrimaryFit {
+        let deviation: CGFloat
+        let matched: [Int?]
+        let reversed: Int
+        let shearDegrees: CGFloat
+    }
+
+    /// The largest shear the primary fit may apply, either way (r27).
+    static let shearLimitDegrees: CGFloat = 15
+    /// The coarse grid the shear search starts from, and the bracket
+    /// half-width it then refines in.
+    static let shearCoarseStepDegrees: CGFloat = 5
+    /// The shear is found to within this many degrees (r27: <= 0.1).
+    static let shearToleranceDegrees: CGFloat = 0.1
+
+    /// x' = x + tan(theta) * (y - cy): `cy` is the bounding-box centre y of
+    /// `strokes` (the strokes the fit is taken over). theta = 0 is the
+    /// identity, bit for bit.
+    static func shearTransform(of strokes: [[CGPoint]], degrees: CGFloat) -> (CGPoint) -> CGPoint {
+        guard degrees != 0, let box = boundingBox(strokes) else { return { $0 } }
+        let k = tan(degrees * .pi / 180)
+        let cy = box.midY
+        return { CGPoint(x: $0.x + k * ($0.y - cy), y: $0.y) }
+    }
+
+    /// The shear theta in [-15, +15] degrees that minimises the primary
+    /// deviation, deterministic: `start` (theta 0) first, then a 5-degree
+    /// grid outward from 0 (a tie keeps the smaller |theta|), then a
+    /// golden-section search inside the 10-degree bracket around the best
+    /// grid point down to `shearToleranceDegrees`. The best of EVERY
+    /// evaluated angle is returned, so a refinement can never end worse
+    /// than the grid.
+    private static func bestShear(from start: PrimaryFit, limit: CGFloat,
+                                  evaluate: (CGFloat) -> PrimaryFit?) -> PrimaryFit {
+        var best = start
+        @discardableResult
+        func consider(_ degrees: CGFloat) -> CGFloat {
+            guard let c = evaluate(degrees), c.deviation.isFinite else { return .infinity }
+            if c.deviation < best.deviation { best = c }
+            return c.deviation
+        }
+        let step = shearCoarseStepDegrees
+        var multiple: CGFloat = 1
+        while multiple * step <= limit {
+            consider(-multiple * step)
+            consider(multiple * step)
+            multiple += 1
+        }
+        var lo = max(-limit, best.shearDegrees - step)
+        var hi = min(limit, best.shearDegrees + step)
+        let inverseGolden: CGFloat = 0.6180339887498949
+        var c = hi - inverseGolden * (hi - lo)
+        var d = lo + inverseGolden * (hi - lo)
+        var fc = consider(c)
+        var fd = consider(d)
+        while hi - lo > shearToleranceDegrees {
+            if fc < fd {
+                hi = d; d = c; fd = fc
+                c = hi - inverseGolden * (hi - lo); fc = consider(c)
+            } else {
+                lo = c; c = d; fc = fd
+                d = lo + inverseGolden * (hi - lo); fd = consider(d)
+            }
+        }
+        return best
     }
 
     /// Below this extent (canvas-normalised units, the larger of width and

@@ -300,6 +300,30 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(newValue, forKey: dysfluencyRoughnessRateHzKey) }
     }
 
+    // MARK: - The final test (protocol r27)
+
+    /// Seconds of the silent bubble pause between the last training letter
+    /// and the final test: 30-60, step 5, default 45 (David's design,
+    /// 2026-11-23). The clamp is the domain's, so a stored 5 or 500 cannot
+    /// run a session of that length.
+    static let pauseSecondsKey = prefix + "pauseSeconds"
+    static let pauseSecondsDefault: Double = 45
+    static let pauseSecondsRange: ClosedRange<Double> = 30...60
+    static var pauseSeconds: Double {
+        get { configuration(in: .standard).pauseSeconds }
+        set { UserDefaults.standard.set(newValue, forKey: pauseSecondsKey) }
+    }
+
+    /// Seconds the plain glyph is shown before each final-test letter is
+    /// hidden: 1.0-3.0, step 0.5, default 3.0.
+    static let glimpseSecondsKey = prefix + "glimpseSeconds"
+    static let glimpseSecondsDefault: Double = 3.0
+    static let glimpseSecondsRange: ClosedRange<Double> = 1.0...3.0
+    static var glimpseSeconds: Double {
+        get { configuration(in: .standard).glimpseSeconds }
+        set { UserDefaults.standard.set(newValue, forKey: glimpseSecondsKey) }
+    }
+
     static let spatialAxisDemonstrationKey = prefix + "spatialAxisDemonstration"
     static let spatialAxisDemonstrationDefault: Bool = false
     static var spatialAxisDemonstration: Bool {
@@ -557,7 +581,8 @@ enum StudyComparisonSettings {
                     distanceToneEnabledKey, directionMuteEnabledKey,
                     distanceToneFarLevelDBKey, distanceToneFarCutoffHzKey, directionMuteBackwardCosineKey,
                     pressureLoudnessEnabledKey, pressureLoudnessRangeDBKey,
-                    dysfluencyRoughnessKey, dysfluencyRoughnessDepthKey, dysfluencyRoughnessRateHzKey] {
+                    dysfluencyRoughnessKey, dysfluencyRoughnessDepthKey, dysfluencyRoughnessRateHzKey,
+                    pauseSecondsKey, glimpseSecondsKey] {
             defaults.removeObject(forKey: key)
         }
         return configuration(in: defaults) != before
@@ -610,7 +635,11 @@ enum StudyComparisonSettings {
             dysfluencyRoughnessDepth: min(1, max(0, doubleValue(dysfluencyRoughnessDepthKey,
                                                                default: dysfluencyRoughnessDepthDefault, in: defaults))),
             dysfluencyRoughnessRateHz: min(200, max(1, doubleValue(dysfluencyRoughnessRateHzKey,
-                                                                  default: dysfluencyRoughnessRateHzDefault, in: defaults)))
+                                                                  default: dysfluencyRoughnessRateHzDefault, in: defaults))),
+            pauseSeconds: min(pauseSecondsRange.upperBound, max(pauseSecondsRange.lowerBound,
+                doubleValue(pauseSecondsKey, default: pauseSecondsDefault, in: defaults))),
+            glimpseSeconds: min(glimpseSecondsRange.upperBound, max(glimpseSecondsRange.lowerBound,
+                doubleValue(glimpseSecondsKey, default: glimpseSecondsDefault, in: defaults)))
         )
     }
 
@@ -704,6 +733,9 @@ struct StudyComparisonConfiguration: Equatable {
     var dysfluencyRoughness: Bool = StudyComparisonSettings.dysfluencyRoughnessDefault
     var dysfluencyRoughnessDepth: Double = StudyComparisonSettings.dysfluencyRoughnessDepthDefault
     var dysfluencyRoughnessRateHz: Double = StudyComparisonSettings.dysfluencyRoughnessRateHzDefault
+    /// r27; appended last so every earlier stamp keeps its field order.
+    var pauseSeconds: Double = StudyComparisonSettings.pauseSecondsDefault
+    var glimpseSeconds: Double = StudyComparisonSettings.glimpseSecondsDefault
 
     /// Every field at its production default — the PILOT configuration,
     /// and the value a `PhaseSessionRecord` written before this type
@@ -803,6 +835,12 @@ struct StudyComparisonConfiguration: Equatable {
         }
         if dysfluencyRoughnessRateHz != Self.defaults.dysfluencyRoughnessRateHz {
             entries.append("dysfluencyRoughnessRateHz=\(dysfluencyRoughnessRateHz)")
+        }
+        if pauseSeconds != Self.defaults.pauseSeconds {
+            entries.append("pauseSeconds=\(pauseSeconds)")
+        }
+        if glimpseSeconds != Self.defaults.glimpseSeconds {
+            entries.append("glimpseSeconds=\(glimpseSeconds)")
         }
         return entries.isEmpty ? nil : entries.joined(separator: ";")
     }

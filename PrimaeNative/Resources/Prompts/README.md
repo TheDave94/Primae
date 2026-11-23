@@ -1,6 +1,6 @@
 # Prompts/
 
-The RECORDED study prompts (protocol r9, D15): exactly five mp3 takes, voice
+The RECORDED study prompts (protocol r9, D15): exactly seven mp3 takes (five from protocol r9, two added by r27 for the final test), voice
 "Kiki" (ElevenLabs `eleven_multilingual_v2`, stability 0.55 / similarity 0.80
 / style 0.10), mono 44.1 kHz. They are the only spoken audio of a study
 session; `PromptPlayer` plays them and a session refuses to start if one is
@@ -13,6 +13,16 @@ Filenames match `PromptPlayer.PromptKey.rawValue`:
 - `phase_freewrite.mp3`  - "Und jetzt ganz allein."
 - `retry_cue.mp3`        - "Probier's nochmal."
 - `celebration.mp3`      - "Super gemacht!"
+- `final_intro.mp3`      - "Jetzt schreibst du sie alle noch einmal." (r27, after the pause)
+- `final_glimpse.mp3`    - "Merk ihn dir gut." (r27, during each glimpse)
+
+**r27: the last two files are not recorded yet.** Their MANIFEST.json entries
+carry `PENDING-r27-recording` for the sha256 and the setId. Until David records
+them (`python3 scripts/generate_prompts.py --voice Kiki --prompt final_intro`,
+then `--prompt final_glimpse`; copy the Kiki mp3s here) and replaces the
+placeholders with the real digests and set id, a study session refuses to
+start and `scripts/check_study_prompts.py` fails. That is intended: no session
+runs on a set that is not the reviewed one.
 
 `MANIFEST.json` pins the bytes (sha256 per file) and the set id the app
 stamps on every row as `voiceId`. `scripts/check_study_prompts.py` (CI job

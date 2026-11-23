@@ -142,19 +142,24 @@ import Foundation
     // MARK: 3 export
 
     @Test func theEnvelopeColumnsAreAppendedLastAndCarryTheRowsValues() {
-        #expect(Array(ParentDashboardExporter.phaseRowAppendedColumns.dropLast(ParentDashboardExporter.attemptColumns.count).suffix(5))
+        #expect(Array(ParentDashboardExporter.phaseRowAppendedColumns.dropLast(ParentDashboardExporter.attemptColumns.count + ParentDashboardExporter.r27Columns.count + ParentDashboardExporter.finalTestColumns.count).suffix(5))
                 == ["soundEngine", "liftHoldSeconds", "stallSeconds", "strokeGaps", "strokeGapMedianSeconds"])
         let d = PhaseDelivery(soundEngine: "TDPSOLA", liftHoldSeconds: 1.6, stallSeconds: 0.6, strokeGaps: 3, strokeGapMedianSeconds: 0.8)
         let rec = PhaseSessionRecord(letter: "F", phase: "guided", completed: true, score: 1, schedulerPriority: 0,
                                      context: PhaseRowContext(delivery: d))
         let f = ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID())
-        #expect(Array(f.dropLast(ParentDashboardExporter.attemptColumns.count).suffix(5)) == ["TDPSOLA", "1.600", "0.600", "3", "0.800"])
+        #expect(Array(f.dropLast(ParentDashboardExporter.attemptColumns.count + ParentDashboardExporter.r27Columns.count + ParentDashboardExporter.finalTestColumns.count).suffix(5)) == ["TDPSOLA", "1.600", "0.600", "3", "0.800"])
         #expect(f.count == ParentDashboardExporter.phaseRowAppendedColumns.count)
     }
 
     @Test func aRowWithNoDeliveryLeavesTheEnvelopeCellsEmpty() {
         let rec = PhaseSessionRecord(letter: "F", phase: "guided", completed: true, score: 1, schedulerPriority: 0)
-        #expect(Array(ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID()).suffix(4)) == ["", "", "", ""])
+        let f = ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID())
+        // The four envelope cells sit before the attempt columns and r27's two
+        // (r27's last column, armSoundDelivered, is "true" on a non-probe row).
+        let beforeR27 = f.dropLast(ParentDashboardExporter.r27Columns.count + ParentDashboardExporter.finalTestColumns.count)
+        #expect(Array(beforeR27.dropLast(ParentDashboardExporter.attemptColumns.count).suffix(4)) == ["", "", "", ""])
+        #expect(Array(f.dropLast(ParentDashboardExporter.finalTestColumns.count).suffix(ParentDashboardExporter.r27Columns.count)) == ["", "true"])
     }
 
     @Test func theTrackerCountsAPhasesGapsAndKeepsTheChildsTempo() {

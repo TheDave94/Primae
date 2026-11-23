@@ -4,6 +4,12 @@
 // The `allFiveLetters` comparison switch, and the DATA-INTEGRITY defect it
 // hid (2026-09-17).
 //
+// r27 (2026-11-23): the switch is HELD OFF in the study build (its control left
+// SettingsView) because the final test is the trained letters only. The
+// tests that drove it ON now pin that ON changes nothing; the integrity
+// properties (rows stamp the session, never the assignment) are unchanged
+// and still pinned on the OFF path and on the exporter's derived tags.
+//
 // WHY THIS FILE EXISTS. `StudyComparisonSettings.allFiveLetters` widened
 // the practice pool to all five study letters and nothing else. Three
 // readers kept answering "which letters were trained?" from the
@@ -247,40 +253,37 @@ private final class RowCapturingStore: ParentDashboardStoring {
         #expect(vm.currentProbe == .posttest)
     }
 
-    /// Switch ON: every letter is TRAINED. Until r12 the post-test was
-    /// refused here ("no untrained letter, no post-test population").
-    /// From r12 (David 2026-10-21, "Cold probe for all") the post-test is
-    /// a cold probe of EVERY study letter, so it is accepted; the row's
-    /// `trainedSubset` "AFILM" still marks that no letter is untrained.
-    @Test("with the switch on the post-test is accepted for every letter (r12), and the row still says all five were trained")
-    func switchOnAcceptsThePostTestForEveryLetter() {
+    /// r27: the switch is HELD OFF in the study build (David, 2026-11-23:
+    /// the final test is the trained letters only, and a five-letter pool has
+    /// no "trained subset" to test). A `true` injected through the seam, or
+    /// written to the key, must change nothing: the session trains the
+    /// assignment, and an untrained letter's cold post-test stays an
+    /// untrained letter's.
+    @Test("r27: with the switch injected ON the session still trains the assignment (held off)")
+    func switchOnIsHeldOffInTheStudyBuild() {
         let vm = studyVM(allFiveLetters: true)
         withAllFiveLettersLoaded(vm)
 
-        for letter in TrainedLetterSubset.studyLetters {
-            let reason = vm.startColdProbe(letter: letter, kind: .posttest)
-            #expect(reason == nil, "\(letter) was refused for the post-test — r12 accepts every study letter. Got: \(reason ?? "nil")")
-            #expect(vm.currentProbe == .posttest)
-            #expect(vm.learningPhase == .freeWrite)
-        }
-        #expect(vm.effectiveTrainedSubset.rawValue == "AFILM")
+        #expect(StudyBuild.isActive, "precondition: this is a study build, where the switch is held off")
+        #expect(vm.effectiveTrainedSubset == vm.trainedSubset,
+                "the held-off switch widened the session's trained set to \(vm.effectiveTrainedSubset.rawValue)")
+        #expect(vm.effectiveTrainedSubset.rawValue == "AFI")
+        #expect(!vm.effectiveTrainedSubset.isAllFive)
+        // The cold post-test of a letter that was NOT trained is still permitted.
+        #expect(vm.startColdProbe(letter: "L", kind: .posttest) == nil)
     }
 
     /// The state the researcher UI branches on. It used to read the
     /// assignment axis, so the screen printed "Diese 2 Buchstaben hat das
     /// Kind NICHT geübt" and offered exactly those two trained letters.
-    @Test("the post-test population is empty under the switch and a real pair without it")
+    @Test("r27: the post-test population is the real untrained pair, with the switch off AND with it held off")
     func postTestPopulationFollowsTheSessionNotTheAssignment() {
         let off = studyVM(allFiveLetters: false)
         #expect(off.effectiveTrainedSubset.untrainedLetters == ["L", "M"])
 
         let on = studyVM(allFiveLetters: true)
-        #expect(on.effectiveTrainedSubset.untrainedLetters.isEmpty,
-                "the researcher UI's post-test section reads this — a non-empty set here re-offers trained letters as untrained")
-        // The assignment axis it used to read is still a 3-subset: that
-        // is exactly why the two must be read from different properties.
-        #expect(on.trainedSubset.untrainedLetters == ["L", "M"],
-                "precondition: the assignment axis is unchanged and would still name a fabricated pair")
+        #expect(on.effectiveTrainedSubset.untrainedLetters == ["L", "M"],
+                "the held-off switch emptied the post-test population: the researcher UI would offer no untrained letters")
     }
 
     // MARK: - 4. The row: what the export actually carries
@@ -288,9 +291,10 @@ private final class RowCapturingStore: ParentDashboardStoring {
     /// THE load-bearing test. Drives a real three-phase session through the
     /// coordinator and reads the `trainedSubset` argument off every
     /// `recordPhaseSession` call — i.e. the column, not a view-model
-    /// property that merely ought to reach it.
-    @Test("every row written under the switch names all five as trained")
-    func rowsUnderTheSwitchCarryAllFive() async throws {
+    /// property that merely ought to reach it. r27: with the switch held off,
+    /// a `true` seam must NOT put "AFILM" on a row.
+    @Test("r27: rows written with the switch injected ON still name the assigned three (held off)")
+    func rowsUnderTheHeldOffSwitchCarryTheAssignment() async throws {
         let store = RowCapturingStore()
         let vm = studyVM(allFiveLetters: true, dashboardStore: store)
         try await runFullSession(vm, store: store)
@@ -298,8 +302,8 @@ private final class RowCapturingStore: ParentDashboardStoring {
         #expect(store.calls.count == 3,
                 "expected 3 phase rows, got \(store.calls.count): \(store.calls.map(\.phase))")
         for call in store.calls {
-            #expect(call.trainedSubset == "AFILM",
-                    "the \(call.phase) row of an all-five session stamps '\(call.trainedSubset ?? "nil")' — anything 3-lettered makes the export assert the child was untrained on two letters it practised")
+            #expect(call.trainedSubset == "AFI",
+                    "the \(call.phase) row stamps '\(call.trainedSubset ?? "nil")' — a held-off switch reached the export")
         }
     }
 
@@ -326,22 +330,18 @@ private final class RowCapturingStore: ParentDashboardStoring {
         }
     }
 
-    /// The assignment axis survives the switch — it still decides the
-    /// counterbalancing and the researcher screen still shows it — while
-    /// the stamped value does not follow it. This pair is what makes an
-    /// all-five run tellable apart from a real 3-subset run.
-    @Test("under the switch the assignment and the stamped set differ")
-    func assignmentAndStampedSetDiverge() async throws {
+    /// The stamped set and the assignment axis are the same thing while the
+    /// switch is held off (r27); the pair `trainedSubset` / `effectiveTrainedSubset`
+    /// stays two properties so the switch can return after the thesis.
+    @Test("r27: under the held-off switch the assignment and the stamped set agree")
+    func assignmentAndStampedSetAgreeWhileHeldOff() async throws {
         let store = RowCapturingStore()
         let vm = studyVM(allFiveLetters: true, dashboardStore: store)
         try await runFullSession(vm, store: store)
 
-        #expect(vm.trainedSubset.rawValue == "AFI", "the assignment axis must not move with the switch")
-        #expect(vm.effectiveTrainedSubset.rawValue == "AFILM")
-        #expect(store.calls.allSatisfy { $0.trainedSubset == "AFILM" },
-                "a row followed the assignment axis instead of the session")
-        #expect(store.calls.allSatisfy { $0.trainedSubset != vm.trainedSubset.rawValue },
-                "the stamped value still equals the assignment — the defect is back")
+        #expect(vm.trainedSubset.rawValue == "AFI")
+        #expect(vm.effectiveTrainedSubset.rawValue == "AFI")
+        #expect(store.calls.allSatisfy { $0.trainedSubset == vm.trainedSubset.rawValue })
     }
 
     // MARK: - 5. The export's derived post-test tag

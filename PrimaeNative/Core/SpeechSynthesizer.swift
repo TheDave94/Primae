@@ -623,6 +623,12 @@ enum ChildSpeechLibrary {
     /// carries the gradation; audio is always a warm "Super gemacht!".
     static let celebration = "Super gemacht!"
 
+    /// The final test's two new recorded phrases (protocol r27). The texts
+    /// are what `RecordedPromptSet` pins in MANIFEST.json and what the
+    /// end-of-utterance report is matched by.
+    static let finalIntro = "Jetzt schreibst du sie alle noch einmal."
+    static let finalGlimpse = "Merk ihn dir gut."
+
     // MARK: - PromptPlayer mapping
 
     /// Map a learning phase to the PromptKey for its bundled MP3.

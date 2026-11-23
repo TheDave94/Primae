@@ -15,10 +15,11 @@ struct SettingsView: View {
     // behaviour, so an untouched device is unchanged.
     @State private var comparisonObservePasses: Int = StudyComparisonSettings.observePasses
     @State private var comparisonSpokenFeedback: Bool = StudyComparisonSettings.spokenFeedbackInStudy
-    @State private var comparisonAllFiveLetters: Bool = StudyComparisonSettings.allFiveLetters
     @State private var comparisonLetterRepeatCount: Int = StudyComparisonSettings.letterRepeatCount
     @State private var comparisonCycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions
     @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
+    @State private var finalTestPauseSeconds: Double = StudyComparisonSettings.pauseSeconds
+    @State private var finalTestGlimpseSeconds: Double = StudyComparisonSettings.glimpseSeconds
     @State private var comparisonGuidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisible
     @State private var comparisonPanning: Bool = StudyComparisonSettings.panningEnabled
     @State private var comparisonRateCoupling: Bool = StudyComparisonSettings.rateCoupling
@@ -49,6 +50,16 @@ struct SettingsView: View {
     /// `.preferredColorScheme`. Persisted under `primaeAppearance`.
     @AppStorage("primaeAppearance") private var appearance: String = "system"
 
+    /// The parent switches' positions, for the sub-settings that only matter
+    /// while their switch is on (`ComparisonSubSetting`).
+    private var parentSwitches: ComparisonParentSwitches {
+        ComparisonParentSwitches(distanceTone: comparisonDistanceTone,
+                                 directionMute: comparisonDirectionMute,
+                                 pressureLoudness: comparisonPressureLoudness,
+                                 dysfluencyRoughness: comparisonDysfluencyRoughness,
+                                 pitchScope: comparisonPitchScope)
+    }
+
     /// Internal, not private, so `NewParticipantResetTests` can read the key
     /// from its owner rather than re-declaring the literal (2026-09-17). It
     /// was a duplicated string there, which meant renaming the key here
@@ -67,7 +78,9 @@ struct SettingsView: View {
     @ViewBuilder
     private var enrolmentControl: some View {
         #if STUDY_BUILD
-        Label("Studienteilnahme: durch die Studien-Version festgelegt", systemImage: "lock.fill")
+        // Whether a child is enrolled, not "festgelegt": a fresh install has
+        // none (r27, audit 2026-11-23).
+        Label(ResearchStatus.settingsEnrolmentLine(enrolled: vm.participantEnrolled), systemImage: "lock.fill")
             .foregroundStyle(Color.inkSoft)
         #else
         Toggle("Studienteilnahme (A/B-Arm)", isOn: Binding(
@@ -214,33 +227,42 @@ struct SettingsView: View {
                 #endif
 
                 enrolmentControl
-                .accessibilityHint("Nur für Forschung aktivieren. Weist das Gerät stabil einer Studienbedingung zu; andernfalls erhält jedes Kind die volle Vier-Phasen-Lernabfolge. Änderung wird beim nächsten App-Start wirksam.")
+                .accessibilityHint(ComparisonSwitchHints.enrolment)
+                // The study version has no switch to change, so no relaunch caption.
+                #if !STUDY_BUILD
                 Text("Änderung wird beim nächsten App-Start wirksam.")
                     .font(.caption)
                     .foregroundStyle(Color.inkSoft)
+                #endif
                 if thesisEnrolled {
                     // Researcher override for exact small-cohort
                     // balancing (e.g. 8/8/8). "Automatisch" defers to
                     // `ThesisCondition.assign(participantId:)`.
-                    Picker("Studienarm überschreiben",
-                           selection: Binding(
-                            get: { conditionOverride },
-                            set: {
-                                conditionOverride = $0
-                                ParticipantStore.conditionOverride = $0
-                                vm.markAssignmentOverrideChanged()
-                            })) {
-                        Text("Automatisch").tag(ThesisCondition?.none)
-                        ForEach(ThesisCondition.allCases, id: \.self) { arm in
-                            Text(arm.displayName).tag(ThesisCondition?.some(arm))
+                    // Absent in the study build (r27, audit 2026-11-23): the
+                    // pedagogical arm is pinned to `.threePhase` there, so the
+                    // picker changed nothing and still blocked the session
+                    // until a relaunch.
+                    if ProctorControls.isShown(.studyArmOverride) {
+                        Picker("Studienarm überschreiben",
+                               selection: Binding(
+                                get: { conditionOverride },
+                                set: {
+                                    conditionOverride = $0
+                                    ParticipantStore.conditionOverride = $0
+                                    vm.markAssignmentOverrideChanged()
+                                })) {
+                            Text("Automatisch").tag(ThesisCondition?.none)
+                            ForEach(ThesisCondition.allCases, id: \.self) { arm in
+                                Text(arm.displayName).tag(ThesisCondition?.some(arm))
+                            }
                         }
+                        // Locked after the live child's first letter, like the
+                        // two pickers below (`assignmentOverrideAllowed` covers
+                        // this override too).
+                        .disabled(!vm.assignmentOverrideAllowed)
+                        .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einer bestimmten Studienbedingung zu, anstatt die automatische Zuweisung zu verwenden — für ausgewogene Stichproben.")
+                        .accessibilityIdentifier("thesis-condition-override-picker")
                     }
-                    // Locked after the live child's first letter, like the
-                    // two pickers below (`assignmentOverrideAllowed` covers
-                    // this override too).
-                    .disabled(!vm.assignmentOverrideAllowed)
-                    .accessibilityHint("Nur für Studienleitung. Ordnet das Gerät einer bestimmten Studienbedingung zu, anstatt die automatische Zuweisung zu verwenden — für ausgewogene Stichproben.")
-                    .accessibilityIdentifier("thesis-condition-override-picker")
 
                     // Same researcher-override pattern for the AUDIO axis
                     // (phoneme / spatial / silent) — the two axes are
@@ -274,8 +296,8 @@ struct SettingsView: View {
                     .accessibilityIdentifier("audio-arm-override-picker")
 
                     // Third axis: which 3 of the 5 study letters this
-                    // participant trains. Same override pattern; the
-                    // post-test covers all 5 regardless.
+                    // participant trains (and writes again in the final
+                    // test). Same override pattern.
                     Picker("Trainierte Buchstaben überschreiben",
                            selection: Binding(
                             get: { trainedSubsetOverride },
@@ -291,9 +313,9 @@ struct SettingsView: View {
                     }
                     .disabled(!vm.assignmentOverrideAllowed)
                     .accessibilityIdentifier("trained-subset-override-picker")
-                    .accessibilityHint("Nur für Studienleitung. Legt fest, welche 3 der 5 Studienbuchstaben dieses Kind übt, anstatt die automatische Zuweisung zu verwenden — für ausgewogenes Counterbalancing. Änderung wird beim nächsten App-Start wirksam.")
+                    .accessibilityHint(ComparisonSwitchHints.trainedSubsetOverride)
                     if !vm.assignmentOverrideAllowed {
-                        Text("Studienarm, Audio-Arm und trainierte Buchstaben: nur vor dem ersten Buchstaben änderbar.")
+                        Text(ResearchStatus.overrideLockedNote(includesStudyArm: ProctorControls.isShown(.studyArmOverride)))
                             .font(.caption)
                             .foregroundStyle(Color.inkSoft)
                             .accessibilityIdentifier("assignment-override-locked-note")
@@ -312,6 +334,12 @@ struct SettingsView: View {
                 // as normal but the configuration they were produced
                 // under is not the pre-specified one. The footer says so.
                 Section("Vergleichsmodus (Studienleitung)") {
+                    if !vm.comparisonSettingsAllowed {
+                        Text(ResearchStatus.comparisonLockedNote)
+                            .font(.caption)
+                            .foregroundStyle(Color.inkSoft)
+                            .accessibilityIdentifier("comparison-locked-note")
+                    }
                     Picker("Vorzeigen", selection: Binding(
                         get: { comparisonObservePasses },
                         set: {
@@ -333,15 +361,6 @@ struct SettingsView: View {
                             vm.markComparisonSettingChanged()
                         }))
                     .accessibilityHint(ComparisonSwitchHints.spokenFeedback)
-
-                    Toggle("Alle fünf Buchstaben üben", isOn: Binding(
-                        get: { comparisonAllFiveLetters },
-                        set: {
-                            comparisonAllFiveLetters = $0
-                            StudyComparisonSettings.allFiveLetters = $0
-                            vm.markComparisonSettingChanged()
-                        }))
-                    .accessibilityHint("Aus ist die Vorgabe: das Kind übt 3 der 5 Buchstaben, die anderen 2 bleiben für den Nachtest ungeübt. Ein lässt jedes Kind alle 5 üben — damit entfällt der Vergleich geübt/ungeübt. Die Daten eines solchen Durchlaufs sind ein Vergleichslauf: die Spalte „trainedSubset“ jeder Zeile steht dann auf „AFILM“ und die Spalte für ungeübt bleibt leer, statt eine 3er-Teilmenge zu behaupten. Ein Post-Test ist nicht möglich, weil es keinen ungeübten Buchstaben gibt.")
 
                     Picker("Wiederholungen je Buchstabe", selection: Binding(
                         get: { comparisonLetterRepeatCount },
@@ -372,7 +391,7 @@ struct SettingsView: View {
                             StudyComparisonSettings.guidedDotsVisible = $0
                             vm.markComparisonSettingChanged()
                         }))
-                    .accessibilityHint("Ein ist die Vorgabe: Anschauen und Nachspuren zeichnen an jedem Strichanfang einen Punkt. Aus zeichnet sie gar nicht mehr. Antippen war dort noch nie möglich — antippbare, nummerierte Punkte gibt es nur in der Richtung-lernen-Phase, und die sind von diesem Schalter nicht betroffen. Der Endpunkt-Ring am Buchstabenende bleibt in beiden Stellungen sichtbar.")
+                    .accessibilityHint(ComparisonSwitchHints.guidedDots)
 
                     Toggle("Panning (Stereo-Ortung)", isOn: Binding(
                         get: { comparisonPanning },
@@ -416,6 +435,9 @@ struct SettingsView: View {
                             Text(option.label).tag(option.value)
                         }
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.pitchRange.isEnabled(given: parentSwitches))
                     .accessibilityHint("1 Oktave (±600 Cent, 311 bis 622 Hz beim Raumklang) ist die Vorgabe ab Protokoll r26. 2 Oktaven (220 bis 880 Hz) war die Vorgabe bis r25. Ein kleinerer Umfang hält ein verschobenes Phonem besser erkennbar. Gilt für beide Arme.")
 
                     Toggle("Klang: Abstand vom Strich (dunkler, leiser)", isOn: Binding(
@@ -437,6 +459,9 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.distanceToneFarLevelDB.step) {
                         Text("Abstand: Dämpfung am Rand \(comparisonDistanceLevel, specifier: "%.0f") dB")
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.distanceLevel.isEnabled(given: parentSwitches))
                     .accessibilityHint("Minus 12 dB ist die Vorgabe. Wirkt nur bei eingeschalteter Abstands-Klangdimension.")
 
                     Stepper(value: Binding(
@@ -449,6 +474,9 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.distanceToneFarCutoffHz.step) {
                         Text("Abstand: Grenzfrequenz am Rand \(comparisonDistanceCutoff, specifier: "%.0f") Hz")
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.distanceCutoff.isEnabled(given: parentSwitches))
                     .accessibilityHint("800 Hz ist die Vorgabe; 20000 Hz lässt den Klang ungefiltert.")
 
                     Toggle("Klang: Richtung am Strich (rückwärts stumm)", isOn: Binding(
@@ -470,6 +498,9 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.directionMuteBackwardCosine.step) {
                         Text("Richtung: Rückwärts-Schwelle \(comparisonDirectionCosine, specifier: "%.2f")")
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.directionThreshold.isEnabled(given: parentSwitches))
                     .accessibilityHint("Kosinus-Schwelle; minus 0,25 ist die Vorgabe. Höhere Werte machen die Richtungs-Stummschaltung empfindlicher.")
 
                     Toggle("Stiftdruck steuert die Lautstärke (Apple Pencil)", isOn: Binding(
@@ -491,6 +522,9 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.pressureLoudnessRangeDB.step) {
                         Text("Stiftdruck: Lautstärkeumfang \(comparisonPressureRange, specifier: "%.0f") dB")
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.pressureRange.isEnabled(given: parentSwitches))
                     .accessibilityHint("18 dB ist die Vorgabe: leichter Druck wird höchstens um diesen Wert abgesenkt; voller Druck bleibt unverändert.")
 
                     Toggle("Achsen-Vorführung (Raumklang, Glissando)", isOn: Binding(
@@ -521,6 +555,9 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.dysfluencyRoughnessDepth.step) {
                         Text("Rauheit: Tiefe \(ComparisonControlDomains.roughnessDepthPercent(comparisonRoughnessDepth)) %")
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.roughnessDepth.isEnabled(given: parentSwitches))
                     .accessibilityHint("80 % ist die Vorgabe: bei vollem Stocken fällt die Lautstärke einmal pro Periode auf 20 %.")
 
                     Stepper(value: Binding(
@@ -533,6 +570,9 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.dysfluencyRoughnessRateHz.step) {
                         Text("Rauheit: Rate \(comparisonRoughnessRate, specifier: "%.0f") Hz")
                     }
+                    // Disabled while its parent switch is off; the stored value is still
+                    // stamped and exported unchanged (r27, audit 2026-11-23).
+                    .disabled(!ComparisonSubSetting.roughnessRate.isEnabled(given: parentSwitches))
                     .accessibilityHint("40 Hz ist die Vorgabe.")
 
                     Toggle("Vorführung nur einmal je Kondition", isOn: Binding(
@@ -542,7 +582,7 @@ struct SettingsView: View {
                             StudyComparisonSettings.oncePerCondition = $0
                             vm.markComparisonSettingChanged()
                         }))
-                    .accessibilityHint("Aus ist die Vorgabe: vor jedem Buchstaben läuft die Vorführung des Arms erneut — jede Spur beginnt mit derselben Darbietung. Ein lässt sie nur beim ersten Buchstaben einer Audio-Bedingung laufen; alle weiteren Buchstaben derselben Bedingung beginnen ohne Vorführung. Bei fester Kondition hört das Kind sie also genau einmal, vor dem ersten Buchstaben. Bei „Alle Konditionen durchlaufen“ bekommt jede Bedingung ihre eigene Vorführung, sodass bei fünf Buchstaben drei Vorführungen laufen und der vierte und fünfte leer ausgehen. Die Arme bleiben dabei untereinander gleich lang — alle verlieren die späteren Vorführungen gleichermaßen —, aber die Sitzung ist nicht mehr die, die der Trockenlauf beschreibt, und für den Raumklang-Arm wird die Tonhöhen-/Ortungszuordnung dadurch nur einmal gelegt statt vor jedem Buchstaben. Ein Vergleichslauf, keine Pilotbedingung. Der Zähler gilt je Kind: bei „Neuer Teilnehmer“ beginnt er von vorn.")
+                    .accessibilityHint(ComparisonSwitchHints.oncePerCondition)
 
                     Stepper(value: Binding(
                         get: { comparisonPresentationSpacing },
@@ -554,7 +594,7 @@ struct SettingsView: View {
                            step: ComparisonControlDomains.presentationSpacingSeconds.step) {
                         Text("Abstand zwischen Buchstaben: \(comparisonPresentationSpacing, specifier: "%.1f") s")
                     }
-                    .accessibilityHint("Pause zwischen dem Ende eines Buchstabens und dem Beginn des nächsten. 0 ist die Vorgabe.")
+                    .accessibilityHint(ComparisonSwitchHints.presentationSpacing)
 
                     // TRIGGER BOUNDARIES (2026-09-17). The supervisor's note
                     // was a noun phrase, so these two rows do double duty:
@@ -606,7 +646,6 @@ struct SettingsView: View {
                         let changed = StudyComparisonSettings.resetToDefaults()
                         comparisonObservePasses = StudyComparisonSettings.observePasses
                         comparisonSpokenFeedback = StudyComparisonSettings.spokenFeedbackInStudy
-                        comparisonAllFiveLetters = StudyComparisonSettings.allFiveLetters
                         comparisonLetterRepeatCount = StudyComparisonSettings.letterRepeatCount
                         comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
                         comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
@@ -628,13 +667,61 @@ struct SettingsView: View {
                         comparisonPitchRange = StudyComparisonSettings.pitchRangeCents
                         comparisonSoundGating = StudyComparisonSettings.soundGatingEnabled
                         comparisonPresentationSpacing = StudyComparisonSettings.presentationSpacingSeconds
+                        finalTestPauseSeconds = StudyComparisonSettings.pauseSeconds
+                        finalTestGlimpseSeconds = StudyComparisonSettings.glimpseSeconds
                         comparisonTriggerRadiusFactor = StudyComparisonSettings.soundGateRadiusFactor
                         comparisonTriggerVelocityFloor = StudyComparisonSettings.soundGateVelocityFloor
                         if changed { vm.markComparisonSettingChanged() }
                     }
 
-                    Text("Diese Schalter ändern die Sitzung, nicht den Studienarm. Eine Sitzung mit einem abweichenden Schalter ist ein Vergleichslauf und keine Pilotdaten. Alle Schalter werden beim Start der App gelesen und gelten für die ganze Sitzung. Wird ein Schalter während einer laufenden Sitzung umgestellt, sperrt die App die Sitzung bis zum Neustart — die Meldung nennt dabei den Studienarm, obwohl nur eine Sitzungseinstellung geändert wurde; gemeint ist immer „bitte App neu starten“.")
+                    Text(ComparisonSwitchHints.comparisonFooter)
                 }
+                // Locked after the child's first row, as the overrides are
+                // (docs/DECISIONS.md, r27); the reset button with them.
+                .disabled(!vm.comparisonSettingsAllowed)
+
+                // THE FINAL TEST (protocol r27): the two settings of the
+                // closing part of a session. Read once at app start like every
+                // comparison switch above; a non-default value is stamped.
+                Section("Abschlusstest") {
+                    if !vm.comparisonSettingsAllowed {
+                        Text(ResearchStatus.comparisonLockedNote)
+                            .font(.caption)
+                            .foregroundStyle(Color.inkSoft)
+                            .accessibilityIdentifier("final-test-locked-note")
+                    }
+                    Stepper(value: Binding(
+                        get: { finalTestPauseSeconds },
+                        set: {
+                            finalTestPauseSeconds = $0
+                            StudyComparisonSettings.pauseSeconds = $0
+                            vm.markComparisonSettingChanged()
+                        }), in: ComparisonControlDomains.pauseSeconds.range,
+                           step: ComparisonControlDomains.pauseSeconds.step) {
+                        Text("Pause: \(finalTestPauseSeconds, specifier: "%.0f") s")
+                    }
+                    .accessibilityHint("Dauer der stillen Blasen-Pause nach dem letzten Übungsbuchstaben, 30 bis 60 Sekunden. 45 ist die Vorgabe.")
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Zeigedauer des Buchstabens: \(finalTestGlimpseSeconds, specifier: "%.1f") s")
+                        Slider(value: Binding(
+                            get: { finalTestGlimpseSeconds },
+                            set: {
+                                finalTestGlimpseSeconds = $0
+                                StudyComparisonSettings.glimpseSeconds = $0
+                                vm.markComparisonSettingChanged()
+                            }), in: ComparisonControlDomains.glimpseSeconds.range,
+                            step: ComparisonControlDomains.glimpseSeconds.step)
+                    }
+                    .accessibilityElement(children: .combine)
+                    .accessibilityHint("Wie lange der Buchstabe im Abschlusstest sichtbar ist, bevor das Kind ihn aus dem Gedächtnis schreibt, 1 bis 3 Sekunden in Schritten von 0,5. 3 ist die Vorgabe.")
+
+                    Text("Nach dem dritten Übungsbuchstaben folgt die Pause, dann schreibt das Kind jeden geübten Buchstaben noch einmal, in derselben Reihenfolge wie im Training, ohne Ton und ohne Rückmeldung. Das Kind beendet jeden Buchstaben mit dem Haken.")
+                        .font(.caption)
+                        .foregroundStyle(Color.inkSoft)
+                }
+                // Pause and Zeigedauer are stamped comparison settings: same lock.
+                .disabled(!vm.comparisonSettingsAllowed)
             }
             // Hidden on STUDY_BUILD (2026-09-04): the overlay this
             // toggle targets is itself `#if !STUDY_BUILD`-gated out of

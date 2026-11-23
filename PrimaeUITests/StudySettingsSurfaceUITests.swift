@@ -112,13 +112,15 @@ final class StudySettingsSurfaceUITests: XCTestCase {
         let condition = app.descendants(matching: .any)["thesis-condition-override-picker"]
         let arm = app.descendants(matching: .any)["audio-arm-override-picker"]
         let subset = app.descendants(matching: .any)["trained-subset-override-picker"]
-        for _ in 0..<10 where !(condition.exists && arm.exists && subset.exists) {
+        for _ in 0..<10 where !(arm.exists && subset.exists) {
             app.swipeUp()
             Thread.sleep(forTimeInterval: 0.4)
         }
-        XCTAssertTrue(condition.exists && arm.exists && subset.exists,
-                      "all three override pickers must be on Einstellungen for an enrolled child")
-        XCTAssertFalse(condition.isEnabled, "the Studienarm override is still offered after the child's first letter")
+        XCTAssertTrue(arm.exists && subset.exists,
+                      "both override pickers must be on Einstellungen for an enrolled child")
+        // r27 (Lane C): the Studienarm override is gone from the study build
+        // (the arm is pinned, the picker changed nothing).
+        XCTAssertFalse(condition.exists, "the Studienarm override is offered in a study build")
         XCTAssertFalse(arm.isEnabled, "the audio-arm override is still offered after the child's first letter")
         XCTAssertFalse(subset.isEnabled, "the trained-subset override is still offered after the child's first letter")
         XCTAssertTrue(app.descendants(matching: .any)["assignment-override-locked-note"].exists,

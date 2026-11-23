@@ -1,5 +1,5 @@
 // RecordedPromptTests.swift
-// Protocol r9 (D15): the five phrases a study child hears are RECORDED
+// Protocol r9 (D15; seven from r27): the five phrases a study child hears are RECORDED
 // takes (voice Kiki). What these pin:
 //   - a recorded observe cue reports its end through the SAME handler a
 //     spoken one did (R-022), with the same end / cancelled semantics, so
@@ -269,10 +269,12 @@ struct CueReport: Equatable { let text: String; let cancelled: Bool }
 
 @Suite @MainActor struct RecordedPromptSetTests {
 
-    @Test("the five required keys are exactly the study's spoken phrases, in manifest order")
+    @Test("the seven required keys (r27: five + the two final-test phrases) are exactly the study's spoken phrases, in manifest order")
     func requiredKeys() {
         #expect(RecordedPromptSet.requiredKeys.map(\.rawValue)
-                == ["phase_observe", "phase_guided", "phase_freewrite", "retry_cue", "celebration"])
+                == ["phase_observe", "phase_guided", "phase_freewrite", "retry_cue", "celebration",
+                    "final_intro", "final_glimpse"])
+        #expect(RecordedPromptSet.requiredKeys.count == 7)
         for key in RecordedPromptSet.requiredKeys {
             #expect(StudyVoiceoverPromptPlayer.studySpokenKeys.contains(key), "\(key) is not passed in a study session")
         }
@@ -288,7 +290,7 @@ struct CueReport: Equatable { let text: String; let cancelled: Bool }
     }
 
     @Test("a missing or unreadable file gives no id; the id depends on the bytes")
-    func idNeedsAllFiveAndTheirBytes() {
+    func idNeedsAllSevenAndTheirBytes() {
         #expect(RecordedPromptSet.setId(locate: { $0 == .retryCue ? nil : PromptPlayer.locate($0) }) == nil)
         #expect(RecordedPromptSet.setId(read: { _ in nil }) == nil)
         let a = RecordedPromptSet.setId(read: { _ in Data([1]) })

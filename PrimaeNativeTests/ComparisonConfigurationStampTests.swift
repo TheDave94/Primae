@@ -264,6 +264,9 @@ private final class StampCapturingStore: ParentDashboardStoring {
         stampAfterOneChange({ $0.dysfluencyRoughness = true }, expecting: "dysfluencyRoughness")
         stampAfterOneChange({ $0.dysfluencyRoughnessDepth = 0.6 }, expecting: "dysfluencyRoughnessDepth")
         stampAfterOneChange({ $0.dysfluencyRoughnessRateHz = 60 }, expecting: "dysfluencyRoughnessRateHz")
+        // r27: the final test's two timings.
+        stampAfterOneChange({ $0.pauseSeconds = 60 }, expecting: "pauseSeconds")
+        stampAfterOneChange({ $0.glimpseSeconds = 1.5 }, expecting: "glimpseSeconds")
     }
 
     /// COMPLETENESS, enforced rather than promised. A switch added to the
@@ -273,7 +276,7 @@ private final class StampCapturingStore: ParentDashboardStoring {
     /// Stamp` says a future author has to remember; this test means they
     /// cannot forget, because `Mirror` reports the stored properties the
     /// compiler knows about and the stamp has to name every one of them.
-    @Test("the stamp names every stored switch, and the struct has twenty-six")
+    @Test("the stamp names every stored switch, and the struct has twenty-eight")
     func stampNamesEveryStoredSwitch() {
         let all = StudyComparisonConfiguration(
             observePasses: 2,
@@ -307,11 +310,13 @@ private final class StampCapturingStore: ParentDashboardStoring {
             pressureLoudnessRangeDB: 24,
             dysfluencyRoughness: true,
             dysfluencyRoughnessDepth: 0.6,
-            dysfluencyRoughnessRateHz: 60)
+            dysfluencyRoughnessRateHz: 60,
+            pauseSeconds: 60,           // r27: 45 is the default
+            glimpseSeconds: 1.5)        // r27: 3.0 is the default
 
         let storedFields = Mirror(reflecting: all).children.compactMap(\.label)
-        #expect(storedFields.count == 26,
-                "the configuration struct now has \(storedFields.count) stored switches, not 26 — the field count in StudyComparisonSettings, and every count derived from it, has moved")
+        #expect(storedFields.count == 28,
+                "the configuration struct now has \(storedFields.count) stored switches, not 28 — the field count in StudyComparisonSettings, and every count derived from it, has moved")
 
         let entries = (all.nonDefaultStamp ?? "").split(separator: ";").map(String.init)
         #expect(entries.count == storedFields.count,

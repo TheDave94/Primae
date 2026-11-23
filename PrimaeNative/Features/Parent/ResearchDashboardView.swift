@@ -91,9 +91,17 @@ struct ResearchDashboardView: View {
                 schreibmotorikSection
                 recognitionSection
                 conditionSection
+                // The proctor's probe buttons (pretest, post-test, delayed) are
+                // gone from the study build (protocol r27): the final test
+                // runs by itself at the end of the session, so the study
+                // build shows one read-only description of it.
+                #if STUDY_BUILD
+                finalTestSection
+                #else
                 if vm.studyMode {
                     postTestSection
                 }
+                #endif
                 schedulerSection
                 phaseRecordsSection
                 letterTableSection
@@ -218,6 +226,19 @@ struct ResearchDashboardView: View {
             Text("Teilnehmer \(String(shortID))")
                 .font(.system(.title2, design: .monospaced).weight(.bold))
                 .textSelection(.enabled)
+            // Read-only status (r27): the protocol revision this build writes,
+            // whether a child is enrolled, and a pending relaunch.
+            Text(ResearchStatus.protocolLine())
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(Color.inkSoft)
+            Text(ResearchStatus.enrolmentLine(enrolled: vm.participantEnrolled,
+                                              participantId: ParticipantStore.participantId))
+                .font(.caption)
+                .foregroundStyle(Color.inkSoft)
+            if let relaunch = ResearchStatus.relaunchLine(pending: vm.relaunchPending) {
+                statusLabel(relaunch, systemImage: "arrow.clockwise.circle.fill", tint: .orange)
+                    .font(.callout.weight(.bold))
+            }
             // Comparison switches persist across children (R-017): say so
             // on the card the proctor checks at every handoff.
             if let banner = vm.comparisonRunBanner {
@@ -266,7 +287,7 @@ struct ResearchDashboardView: View {
     private var studyDeviceSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(title: "Studien-Gerät vorbereiten",
-                          subtitle: "Studienmodus aktivieren und gespeicherte Kalibrierungen entfernen, damit jedes Kind exakt das gebündelte Stimulus-Set nachspurt")
+                          subtitle: "Studienmodus, Stimme und Teilnehmer — damit jedes Kind exakt das gebündelte Stimulus-Set nachspurt")
             // Writes the STORED value only — never `vm.studyMode` on the
             // live session. Most of what studyMode means is captured at
             // `TracingViewModel.init`: the null haptic/speech/prompt
@@ -419,9 +440,9 @@ struct ResearchDashboardView: View {
             .buttonStyle(.borderedProminent)
 
             Divider().padding(.vertical, 2)
-            Text("Teilnehmer wiederherstellen (Nachtest)")
+            Text("Teilnehmer wiederherstellen")
                 .font(.body(FontSize.md, weight: .semibold))
-            Text("Für den verzögerten Nachtest: die Teilnehmer-ID DIESES Kindes eingeben — aus der Zeile `# participantId=…` über seinem eigenen Block im Sammel-Export oder aus dem Einschreibungs-Block am Ende. Nicht einfach die erste Zeile der Datei: die gehört zum ältesten Kind. Nur IDs, die auf diesem Gerät archiviert oder eingeschrieben sind, werden angenommen. Das aktuelle Kind wird vorher archiviert. Studienarm und geübte Buchstaben werden so übernommen, wie sie bei der Einschreibung angewendet wurden — ein damals gesetzter Override eingeschlossen. Wirksam nach Neustart.")
+            Text("Ordnet das Gerät wieder einem bereits eingeschriebenen Kind zu: die Teilnehmer-ID DIESES Kindes eingeben — aus der Zeile `# participantId=…` über seinem eigenen Block im Sammel-Export oder aus dem Einschreibungs-Block am Ende. Nicht einfach die erste Zeile der Datei: die gehört zum ältesten Kind. Nur IDs, die auf diesem Gerät archiviert oder eingeschrieben sind, werden angenommen. Das aktuelle Kind wird vorher archiviert. Studienarm und geübte Buchstaben werden so übernommen, wie sie bei der Einschreibung angewendet wurden — ein damals gesetzter Override eingeschlossen. Wirksam nach Neustart.")
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
             TextField("Teilnehmer-ID (UUID)", text: $restoreIDText)
@@ -455,6 +476,9 @@ struct ResearchDashboardView: View {
             .buttonStyle(.bordered)
             .disabled(restoreIDText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
+            // Absent in the study build (r27, audit 2026-11-23): stored
+            // calibrations are ignored there, and "Nächstes Kind" wipes them.
+            if ProctorControls.isShown(.calibrationWipe) {
             Divider().padding(.vertical, 2)
             Button(role: .destructive) {
                 showClearCalibrationConfirm = true
@@ -472,6 +496,7 @@ struct ResearchDashboardView: View {
                 Button("Abbrechen", role: .cancel) {}
             } message: {
                 Text("Entfernt jede auf diesem Gerät gespeicherte Stroke-Kalibrierung für die aktive Schriftart. Das gebündelte Set übernimmt anschließend. Für Studien-Geräte vor dem Piloten empfohlen.")
+            }
             }
         }
         // "Neuer Teilnehmer" lives in `NextParticipantControl`: it seals,
@@ -568,7 +593,7 @@ struct ResearchDashboardView: View {
     private var schreibmotorikSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(title: "Schreibmotorik (Marquardt & Söhl, 2016)",
-                          subtitle: "Mittel über alle abgeschlossenen freeWrite-Sessions")
+                          subtitle: "Mittel über alle abgeschlossenen Übungs-freeWrite-Sessions (ohne Abschlusstest)")
             if let dims = vm.dashboardSnapshot.averageWritingDimensions {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 2), spacing: 10) {
                     metricTile(label: "Form (Fréchet)",
@@ -630,6 +655,8 @@ struct ResearchDashboardView: View {
             // These two count the LIVE child's phase sessions only
             // (`dashboardSnapshot` is wiped at every "Nächstes Kind"); the
             // subtitle used to claim all sessions (B5(b), 2026-11-02).
+            // Absent in the study build (r27): one arm, always threePhase.
+            if ProctorControls.isShown(.studyArmCounts) {
             sectionHeader(title: "Studienarm",
                           subtitle: "Phasen-Sessions des aktuellen Kindes (nicht über alle Kinder)")
             let counts = Dictionary(grouping: vm.dashboardSnapshot.phaseSessionRecords,
@@ -649,6 +676,7 @@ struct ResearchDashboardView: View {
                     .background(Color(.secondarySystemBackground),
                                 in: RoundedRectangle(cornerRadius: 8))
                 }
+            }
             }
 
             // Audio axis (the pilot's primary between-subjects factor) —
@@ -715,6 +743,26 @@ struct ResearchDashboardView: View {
                     in: RoundedRectangle(cornerRadius: 8))
     }
 
+    // MARK: - Final test (protocol r27)
+
+    /// The closing part of a session, described once and read-only. It
+    /// replaces the five probe buttons and their Vortest / Post-Test /
+    /// Nachtest texts: there is nothing for the proctor to start.
+    private var finalTestSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader(title: "Abschlusstest",
+                          subtitle: "Die drei geübten Buchstaben, in Trainingsreihenfolge, nach der Pause")
+            Text(ResearchStatus.finalTestDescription)
+                .font(.caption)
+                .foregroundStyle(Color.inkSoft)
+            Text(ResearchStatus.finalTestLine(pauseSeconds: vm.pauseSecondsSetting,
+                                              glimpseSeconds: vm.glimpseSecondsSetting)
+                 + " (in dieser Sitzung; Einstellungen → Abschlusstest)")
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+        }
+    }
+
     // MARK: - Post-test (H6)
 
     /// Reachability for the post-test on all five study letters (protocol
@@ -728,6 +776,7 @@ struct ResearchDashboardView: View {
     /// session trained all five (the `allFiveLetters` comparison switch),
     /// which the section below states instead of claiming a
     /// trained/untrained contrast.
+    #if !STUDY_BUILD
     private var untrainedForThisSession: Set<String> {
         vm.effectiveTrainedSubset.untrainedLetters
     }
@@ -770,6 +819,7 @@ struct ResearchDashboardView: View {
             probeButtons(kind: .delayed, letters: TrainedLetterSubset.studyLetters)
         }
     }
+    #endif
 
     private func startProbe(letter: String, kind: StudyProbe) {
         if let reason = vm.startColdProbe(letter: letter, kind: kind) {
@@ -782,6 +832,7 @@ struct ResearchDashboardView: View {
         }
     }
 
+    #if !STUDY_BUILD
     /// One button per letter for a cold probe of `kind`; each opens the
     /// letter directly in freeWrite and leaves the parent area.
     private func probeButtons(kind: StudyProbe, letters: [String]) -> some View {
@@ -802,10 +853,15 @@ struct ResearchDashboardView: View {
             }
         }
     }
+    #endif
 
     // MARK: - Scheduler
 
+    @ViewBuilder
     private var schedulerSection: some View {
+        // Absent in the study build (r27): the scheduler's proxy is never fed
+        // in a study session, and `r = +0.000` read as a green check.
+        if ProctorControls.isShown(.spacedRepetitionSection) {
         VStack(alignment: .leading, spacing: 12) {
             sectionHeader(title: "Spaced-Repetition-Effizienz",
                           subtitle: "Pearson-Korrelation Priorität ↔ Lernfortschritt")
@@ -824,6 +880,7 @@ struct ResearchDashboardView: View {
                 .font(.caption)
                 .foregroundStyle(Color.inkSoft)
         }
+        }
     }
 
     // MARK: - Per-phase records
@@ -837,11 +894,12 @@ struct ResearchDashboardView: View {
                 emptyHint("Noch keine Phasen-Sessions abgeschlossen.")
             } else {
                 VStack(spacing: 0) {
-                    headerRow(["Buchstabe", "Phase", "Wertung", "Form", "Tempo", "Druck", "Rhythmus"])
+                    headerRow(["Buchstabe", "Phase", "Probe", "Wertung", "Form", "Tempo", "Druck", "Rhythmus"])
                     ForEach(Array(recent.enumerated()), id: \.offset) { _, rec in
                         dataRow([
                             rec.letter,
                             rec.phase,
+                            PhaseRowPresentation.probeCell(rec),
                             String(format: "%.2f", rec.score),
                             rec.formAccuracy.map     { String(format: "%.2f", $0) } ?? "—",
                             rec.tempoConsistency.map { String(format: "%.2f", $0) } ?? "—",

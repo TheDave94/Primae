@@ -282,14 +282,23 @@ struct PhaseRowContext: Equatable {
     /// proctor-closed rows included; it gates only a child-finished
     /// training attempt.
     var attemptCheck: FreeWriteAttemptCheck.Result?
+    /// Free-writing rows with ink (r27): the horizontal shear, in degrees,
+    /// the primary `spatialDeviation`'s fit applied
+    /// (`StrokeProcessMeasures.spatialFitShearDegrees`).
+    var spatialFitShearDegrees: Double?
+    /// Free-writing rows of the r27 final test: the test's own timing.
+    var finalTest: FinalTestFacts?
 
     init(finalizedBy: RowFinalization? = nil, probeAttempt: Int? = nil, delivery: PhaseDelivery? = nil,
-         freeWriteAttempt: Int? = nil, attemptCheck: FreeWriteAttemptCheck.Result? = nil) {
+         freeWriteAttempt: Int? = nil, attemptCheck: FreeWriteAttemptCheck.Result? = nil,
+         spatialFitShearDegrees: Double? = nil, finalTest: FinalTestFacts? = nil) {
+        self.finalTest = finalTest
         self.finalizedBy = finalizedBy
         self.probeAttempt = probeAttempt
         self.delivery = delivery
         self.freeWriteAttempt = freeWriteAttempt
         self.attemptCheck = attemptCheck
+        self.spatialFitShearDegrees = spatialFitShearDegrees
     }
 }
 

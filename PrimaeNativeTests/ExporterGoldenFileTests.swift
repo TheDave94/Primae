@@ -73,10 +73,25 @@ import Foundation
         for column in ParentDashboardExporter.attemptColumns {
             #expect(golden.contains(column), "golden lost the r25 column \(column)")
         }
+        for column in ParentDashboardExporter.finalTestColumns {
+            #expect(golden.contains(column), "golden lost the r27 column \(column)")
+        }
         #expect(golden.contains(",attemptRejected,"), "golden has no rejected-attempt row")
         #expect(golden.contains(",pretest,"), "golden has no cold-probe row")
         #expect(golden.contains("# ==================== enrolments (not participants)"),
                 "golden has no enrolment block")
         #expect(golden.contains("# timezone=Europe/Vienna"), "golden is not in the pinned timezone")
+
+        // r27: the two appended columns and a value in each state, a quoted
+        // stroke order that begins with "-", and the probe row's absence from
+        // the means.
+        #expect(golden.contains("," + (ParentDashboardExporter.r27Columns + ParentDashboardExporter.finalTestColumns).joined(separator: ",") + "\n"),
+                "golden lost the r27 columns, last on the header (measures, then the final test's)")
+        #expect(golden.contains(",3.875,true,,,,,\n") && golden.contains(",-7.500,true,,,,,\n") && golden.contains(",15.000,true,,,,,\n"),
+                "golden has no row with a fitted shear")
+        #expect(golden.contains(",false,,,,,\n"), "golden has no row that delivered no arm sound (silent arm / probe)")
+        #expect(golden.contains(",\"-,0\","), "golden has no quoted stroke order that starts with a dash")
+        #expect(!lines.contains { $0.hasPrefix("letterByArm,M,") },
+                "golden's only M row is a cold probe: it must not have a per-letter training mean")
     }
 }

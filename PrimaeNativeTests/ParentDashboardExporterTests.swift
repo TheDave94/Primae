@@ -168,13 +168,15 @@ struct ParentDashboardExporterTests {
         #expect(fields[header.firstIndex(of: "probe")!] == "posttest")
         #expect(row.contains("\"0,2,1\""), "the comma-joined field must be quoted, RFC 4180")
 
-        // TSV: no tab in the field, so it stays unquoted and splits cleanly.
+        // TSV (r27, audit 2026-11-23): the field has no tab, but a comma is a
+        // decimal separator to a German-locale tool, so it is quoted here
+        // too; the row still splits on tabs into exactly the header's columns.
         let tsv = String(data: ParentDashboardExporter.tsvData(
             from: snap, progress: [:], enrolledAt: nil), encoding: .utf8)!
         let tsvRow = try #require(tsv.components(separatedBy: "\n").first { $0.hasPrefix("A\tfreeWrite\t") })
         let tsvFields = tsvRow.components(separatedBy: "\t")
         #expect(tsvFields.count == header.count)
-        #expect(tsvFields[header.firstIndex(of: "strokeOrder")!] == "0,2,1")
+        #expect(tsvFields[header.firstIndex(of: "strokeOrder")!] == "\"0,2,1\"")
     }
 
     /// Minimal RFC 4180 reader for one row: quoted fields may contain the

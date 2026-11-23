@@ -70,8 +70,17 @@ struct ParentDashboardExporter {
     /// for a crossbar-first A): unquoted, a multi-stroke letter's CSV row
     /// split into extra columns and shifted `reversedStrokeCount`,
     /// `studyMode` and `probe` right (audit 2026-09-04, class one).
+    /// A field with a COMMA is quoted in every format, tab-separated too
+    /// (r27, audit 2026-11-23): `strokeOrder` ("0,1") is the one such value,
+    /// and written bare into a TSV a German-locale tool reads it as the
+    /// decimal 0,1. Quoting marks it as text for any importer that honours
+    /// quotes; a spreadsheet that infers types regardless (Excel does) is a
+    /// limit this cannot lift. No other field is touched: a leading "-" or
+    /// "=" is not neutralised, because the file does not do that anywhere
+    /// and a negative number (`spatialFitShearDegrees`) is data.
     static func delimitedField(_ field: String, separator sep: String) -> String {
-        guard field.contains(sep) || field.contains("\"") || field.contains("\n") || field.contains("\r") else {
+        guard field.contains(sep) || field.contains(",") || field.contains("\"")
+                || field.contains("\n") || field.contains("\r") else {
             return field
         }
         return "\"" + field.replacingOccurrences(of: "\"", with: "\"\"") + "\""
@@ -98,7 +107,32 @@ struct ParentDashboardExporter {
         "outputRouteAtStart", "outputRouteAtEnd", "outputVolume", "outputLatency",
         "otherAudioPlaying", "secondaryAudioHint", "voiceId", "recognizerAvailable",
         "guidedAccess", "idleTimerDisabled", "lowPowerMode", "thermalState", "batteryLevel",
-    ] + buildColumns + observeSoundColumns + ["soundEngine"] + envelopeColumns + attemptColumns
+    ] + buildColumns + observeSoundColumns + ["soundEngine"] + envelopeColumns + attemptColumns + r27Columns + finalTestColumns
+
+    /// Protocol r27's columns, newest-last (after the r25 attempt columns):
+    /// the shear the primary `spatialDeviation`'s fit applied, in degrees
+    /// (`PhaseSessionRecord.spatialFitShearDegrees`; empty on a row with no
+    /// measured deviation and before r27), and whether the row's phase
+    /// delivered the arm's sound (`armSoundDelivered`).
+    static let r27Columns: [String] = ["spatialFitShearDegrees", "armSoundDelivered"]
+
+    /// Whether the phase this row records delivered its arm's sound.
+    /// `audioCondition` stays the ASSIGNED arm; this is what the child heard.
+    /// false in the silent arm. false on a cold-probe row recorded sound-off:
+    /// r1 and r12 onward (r12: every probe sound-off in every arm); a probe
+    /// row written under r2-r11 had the arm's sound (DECISIONS r12, "Data").
+    /// A probe row with no `protocolRevision` (r1-r3) cannot say which: empty.
+    /// True otherwise (observe, guided and free writing keep the arm's sound).
+    /// Derived from fields the row already carries, so the JSON consumer can
+    /// apply the same rule; `probe` is read AFTER `withDerivedPostTestTags`,
+    /// which tags a trained letter's final r1-r11 training free-writing as
+    /// "posttest" — a row that had sound, and is reported as such.
+    static func armSoundDelivered(_ rec: PhaseSessionRecord) -> Bool? {
+        if rec.audioCondition == .silent { return false }
+        guard rec.probe != nil else { return true }
+        guard let revision = rec.protocolRevision else { return nil }
+        return (2...11).contains(revision)
+    }
 
     /// Protocol r25's free-writing attempt-check columns, newest-last
     /// (after the r17 envelope columns): the attempt number within the
@@ -118,6 +152,16 @@ struct ParentDashboardExporter {
     static let observeSoundColumns: [String] = [
         "observeLossesDuringSound", "observeLossesWithoutSound",
         "observeSoundSeconds", "observeSoundDeliveredSeconds",
+    ]
+
+    /// Protocol r27's final-test columns, newest-last (after the r25
+    /// attempt columns): the glimpse planned and shown, the pause planned,
+    /// the latency from the glyph hiding to the first touch, and (lane B2) how
+    /// often an interruption cut the glimpse and restarted it. Filled on
+    /// final-test rows only; empty on every other row and before r27.
+    static let finalTestColumns: [String] = [
+        "glimpseSecondsPlanned", "glimpseSecondsShown", "pauseSecondsPlanned",
+        "glimpseHiddenToFirstTouchSeconds", "glimpseRestarts",
     ]
 
     /// The values for `phaseRowAppendedColumns`, in the same order.
@@ -150,6 +194,13 @@ struct ParentDashboardExporter {
             rec.attemptCheckScore.map { ParentDashboardExporter.fmt3($0) } ?? "",
             rec.attemptCheckLengthRatio.map { ParentDashboardExporter.fmt3($0) } ?? "",
             int(rec.attemptCheckExtraReversals),
+            rec.spatialFitShearDegrees.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            bool(armSoundDelivered(rec)),
+            rec.glimpseSecondsPlanned.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            rec.glimpseSecondsShown.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            rec.pauseSecondsPlanned.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            rec.glimpseHiddenToFirstTouchSeconds.map { ParentDashboardExporter.fmt3($0) } ?? "",
+            int(rec.glimpseRestarts),
         ]
     }
 
@@ -645,8 +696,9 @@ struct ParentDashboardExporter {
     /// and did nothing is visible HERE, as an enrolment with no
     /// participant block, and is not counted as a participant. That is
     /// the phantom-participant fix (#21) kept intact. The combined JSON
-    /// does not carry it: its top level is an array of participants, and
-    /// adding a sibling would change that shape for every consumer.
+    /// carries it as one extra LAST element of its top-level array (r27;
+    /// see `combinedJSONData`), which leaves that array's shape — a list of
+    /// participant objects — as it was.
     static func enrolmentBlock(_ enrolments: [EnrolmentRecord], separator sep: String) -> String {
         // The device state and the build at enrolment (R-020, R-018),
         // appended after the original five columns; empty for an
@@ -684,19 +736,38 @@ struct ParentDashboardExporter {
 
     /// Every participant's JSON export object, as one top-level array
     /// (2026-09-14) — the JSON counterpart of `combinedDelimitedData`.
-    static func combinedJSONData(participants: [ParticipantExportSource]) throws(ExportError) -> Data {
-        try encodedJSON(combinedJSONExports(participants))
+    ///
+    /// The enrolment block and the set-aside archive files, which the
+    /// CSV/TSV carry as trailing sections and `# setAside=` lines, ride the
+    /// JSON as ONE extra LAST element of the same top-level array (r27,
+    /// audit 2026-11-23; the JSON is the only format with raw traces, and
+    /// it used to lose a zero-row dropout's arm and subset). The array
+    /// stays an array of participant objects, so every consumer that reads
+    /// it by index or by `participantId` is unchanged; the extra element has
+    /// no `participantId` and carries an `enrolments` array, plus `setAside`
+    /// when an archive file could not be loaded. It is written only when
+    /// there is something to put in it, as the CSV's block is.
+    static func combinedJSONData(participants: [ParticipantExportSource],
+                                 enrolments: [EnrolmentRecord] = [],
+                                 setAside: [ArchiveSetAside] = []) throws(ExportError) -> Data {
+        try encodedJSON(combinedJSONExports(participants, enrolments: enrolments, setAside: setAside))
     }
 
     /// The combined JSON's top-level array, built on the main actor (the
     /// row filter reads `DashboardSnapshot`'s main-actor members) and not
     /// yet encoded. Encoding it is `encodedJSON`, which runs anywhere.
-    fileprivate static func combinedJSONExports(_ participants: [ParticipantExportSource]) -> [SnapshotWithMetrics] {
-        participants.map {
-            snapshotWithMetrics(from: $0.snapshot, participantId: $0.participantId,
-                                progress: $0.progress, rawTraces: $0.rawTraces,
-                                enrolledAt: $0.enrolledAt)
+    fileprivate static func combinedJSONExports(_ participants: [ParticipantExportSource],
+                                                enrolments: [EnrolmentRecord],
+                                                setAside: [ArchiveSetAside]) -> [CombinedJSONElement] {
+        var elements: [CombinedJSONElement] = participants.map {
+            .participant(snapshotWithMetrics(from: $0.snapshot, participantId: $0.participantId,
+                                             progress: $0.progress, rawTraces: $0.rawTraces,
+                                             enrolledAt: $0.enrolledAt))
         }
+        if !enrolments.isEmpty || !setAside.isEmpty {
+            elements.append(.enrolmentBlock(EnrolmentBlockJSON(enrolments: enrolments, setAside: setAside)))
+        }
+        return elements
     }
 
     /// The one JSON encoding of an export value, behind both the per-child
@@ -799,6 +870,77 @@ struct ParentDashboardExporter {
     }
 
     // MARK: Private types
+
+    /// One element of the combined JSON's top-level array: a participant,
+    /// or (last, when there is one) the enrolment block.
+    fileprivate enum CombinedJSONElement: nonisolated Encodable {
+        case participant(SnapshotWithMetrics)
+        case enrolmentBlock(EnrolmentBlockJSON)
+
+        nonisolated func encode(to encoder: Encoder) throws {
+            var c = encoder.singleValueContainer()
+            switch self {
+            case .participant(let p): try c.encode(p)
+            case .enrolmentBlock(let b): try c.encode(b)
+            }
+        }
+    }
+
+    /// The JSON twin of the CSV's trailing enrolment block and `# setAside=`
+    /// lines. Plain value fields (the records are copied here on the main
+    /// actor), so it encodes anywhere.
+    fileprivate struct EnrolmentBlockJSON: nonisolated Encodable {
+        let enrolments: [EnrolmentJSON]
+        /// Omitted when nothing was set aside, like the CSV lines.
+        let setAside: [SetAsideJSON]?
+
+        init(enrolments: [EnrolmentRecord], setAside: [ArchiveSetAside]) {
+            self.enrolments = enrolments.map(EnrolmentJSON.init)
+            self.setAside = setAside.isEmpty ? nil : setAside.map(SetAsideJSON.init)
+        }
+    }
+
+    /// One `EnrolmentRecord`, as the CSV block's row: the same fields, the
+    /// device state and the build as `{column: value}` objects (the CSV's
+    /// own column names; empty when the enrolment predates the stamp).
+    fileprivate struct EnrolmentJSON: nonisolated Encodable {
+        let participantId: String
+        let enrolledAt: Date?
+        let audioCondition: String
+        let trainedSubset: String
+        let protocolRevision: Int
+        let comparisonConfiguration: String?
+        let voiceId: String?
+        let environment: [String: String]
+        let build: [String: String]
+
+        init(_ e: EnrolmentRecord) {
+            participantId = e.participantId.uuidString
+            enrolledAt = e.enrolledAt
+            audioCondition = e.audioCondition.rawValue
+            trainedSubset = e.trainedSubset
+            protocolRevision = e.protocolRevision
+            comparisonConfiguration = e.comparisonConfiguration
+            voiceId = e.voiceId
+            environment = e.environment == nil ? [:]
+                : Dictionary(uniqueKeysWithValues: zip(ParentDashboardExporter.environmentColumns,
+                                                       ParentDashboardExporter.environmentFields(e.environment)))
+            build = e.build == nil ? [:]
+                : Dictionary(uniqueKeysWithValues: zip(ParentDashboardExporter.buildColumns,
+                                                       ParentDashboardExporter.buildFields(e.build)))
+        }
+    }
+
+    /// The `# setAside=<file> participantId=<id>` line, as an object.
+    fileprivate struct SetAsideJSON: nonisolated Encodable {
+        let fileName: String
+        let participantId: String?
+
+        init(_ a: ArchiveSetAside) {
+            fileName = a.fileName
+            participantId = a.participantId?.uuidString
+        }
+    }
 
     // `nonisolated Encodable` (R-086): encoded off the main actor by
     // `encodedJSON`; the init still runs on the main actor.
@@ -996,7 +1138,7 @@ struct ParentDashboardExporter {
             /// CSV/TSV: the finished bytes.
             case delimited(Data)
             /// JSON: the value `encodedJSON` turns into bytes.
-            case json([SnapshotWithMetrics])
+            case json([CombinedJSONElement])
         }
     }
 
@@ -1027,7 +1169,7 @@ struct ParentDashboardExporter {
         case .json:
             return PreparedCombinedExport(
                 filename: "primae_progress_ALL_\(tag).json",
-                body: .json(combinedJSONExports(participants)))
+                body: .json(combinedJSONExports(participants, enrolments: enrolments, setAside: setAside)))
         }
     }
 

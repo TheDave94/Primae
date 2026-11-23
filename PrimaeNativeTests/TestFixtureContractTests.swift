@@ -142,6 +142,9 @@ import Foundation
                 && deps.dysfluencyRoughnessRateHz == StudyComparisonSettings.dysfluencyRoughnessRateHzDefault)
         #expect(deps.spatialAxisDemonstration == StudyComparisonSettings.spatialAxisDemonstrationDefault,
                 "the fixture inherited spatialAxisDemonstration from the store — a parallel test would install a sweeping demonstration in another suite's session")
+        #expect(deps.pauseSeconds == StudyComparisonSettings.pauseSecondsDefault
+                && deps.glimpseSeconds == StudyComparisonSettings.glimpseSecondsDefault,
+                "the fixture inherited the final test's timings from the store — another suite's pause or glimpse would change length")
         #expect(deps.allFiveLetters == StudyComparisonSettings.allFiveLettersDefault,
                 "the fixture inherited allFiveLetters from the store — the letter pool would change shape under another suite")
         #expect(deps.letterRepeatCount == StudyComparisonSettings.letterRepeatCountDefault,
@@ -164,9 +167,10 @@ import Foundation
     ///
     /// It is asserted HERE, against the fixture's own `comparisonDefaults`
     /// seam, because telling a fall-through apart from a default takes a
-    /// NON-default value in the store. All three optional seams are covered:
-    /// `allFiveLetters`, `letterRepeatCount` and `spokenFeedbackInStudy` are the
-    /// ones the view model resolves itself when they are nil.
+    /// NON-default value in the store. `letterRepeatCount` and
+    /// `spokenFeedbackInStudy` are the seams the view model resolves itself
+    /// when they are nil. `allFiveLetters` is held off in the study build
+    /// (protocol r27), so its store value must NOT reach the trained subset.
     @Test("a nil seam still falls through to the store, which is what production relies on")
     func aNilSeamFallsThroughToTheDeviceKey() {
         let box = ThrowawayDefaults()
@@ -182,8 +186,8 @@ import Foundation
         let vm = TracingViewModel(deps)
         vm.canvasSize = CGSize(width: 400, height: 400)
 
-        #expect(vm.effectiveTrainedSubset.isAllFive,
-                "a nil all-five seam did not fall through to the store — production would ignore the supervisor's switch")
+        #expect(!vm.effectiveTrainedSubset.isAllFive,
+                "r27: the all-five switch is held off in the study build — a store value of ON must not widen the trained subset")
 
         vm.startParkedLetter()
         #expect(vm.repeatCurrentLetterIfConfigured(), "pass 2 of 3 must start")

@@ -2040,6 +2040,176 @@ Implications:
     switch and default, the probes, the scores, the export schema.
     `StudyProtocol.revision` is 26.
 
+- **Protocol revision 27 — one session: training, a silent pause, a final
+  test from memory (David's design, GO given 2026-11-23; David delegated
+  the remaining choices to the seat the same day, "make sure you can't
+  answer the open questions yourself from context and the thesis").**
+  - **Session.** Each child trains the three letters of its subset (pool
+    A F I L M, `TrainedLetterSubset`), in the study's order
+    (`.motorSimilarity`), each through observe → guided → freeWrite with its
+    arm's sound, as in r26. The training freeWrite is the child's "first
+    try": reported descriptively per arm, not used as a covariate (it is
+    measured after randomisation and can be caused by the arm; same
+    reasoning as r25's attempt count).
+  - **Pause.** After the third letter, a silent screen on which the child
+    taps bubbles. No sound, no letters. Length is a researcher setting,
+    30–60 s in 5 s steps, default 45 s.
+  - **Final test.** All arms, sound off, the three trained letters in the
+    SAME order as training. Per letter: the letter is shown as a plain glyph
+    (no animation, start dots, arrows, numbers or sound) for a researcher
+    setting of 1–3 s (slider, 0.5 s steps, default 3 s), then hidden; the
+    canvas is empty and the child writes from memory. No feedback, no retry.
+    The letter ends when the child taps a check button (an icon, no text),
+    as David's design says, and NOT on the 2 s quiet window the training
+    freeWrite uses: writing from memory invites longer pauses between
+    strokes, and a quiet window would cut a letter off mid-recall. The
+    writing time is the first-to-last-sample span in both, so the end
+    trigger does not enter it.
+  - **Spoken prompts (recorded, Kiki voice).** Once after the pause, before
+    the first test letter: "Jetzt schreibst du sie alle noch einmal." (new).
+    During each glimpse: "Merk ihn dir gut." (new). When the empty canvas
+    appears: "Und jetzt ganz allein." (existing). At the end of the test:
+    "Super gemacht!" (existing; it moves from the end of training to the end
+    of the test). The recorded set grows from five phrases to seven, so its
+    `setId` changes; David records the two new phrases with his ElevenLabs
+    key.
+  - **Why the same order.** It gives no arm an order advantage, and it
+    maximises the shortest lag between a letter's training and its test
+    (the last-trained letter waits for the pause plus two test letters).
+    Reverse order would test the last-trained letter from short-term memory;
+    random order adds variance with no benefit at n per arm this small.
+  - **Rejected (David).** Free recall (a 5–6-year-old cannot be asked to
+    recall "the letters you learned" without naming them); a picture cue
+    (adds a new visual association variable); a letter-name or phoneme cue
+    (it is the phoneme arm's own sound and would favour that arm).
+  - **Removed from the protocol.** The pretest, untrained letters, the
+    post-test of all five letters and the delayed test. The proctor's probe
+    buttons (pretest, post-test, delayed) leave the study build; the
+    `StudyProbe` cases stay so earlier rows still decode. `allFiveLetters`
+    leaves the settings screen and is held off in the study build (three
+    trained letters per child is the design). Ch. 2 already treats a missing
+    retention test as a limitation to be stated (02-background.typ:74);
+    that sentence now applies. Consequence for ch. 6: without a
+    pretest there is no ANCOVA covariate; the arm comparison is on the final
+    test alone. The ch. 6 analysis text is David's.
+  - **Measures.** The main question is HOW the letter is written. Primary:
+    `spatialDeviation` and the writing time (`measuredSpanSeconds`, first to
+    last sample) of each final-test letter, read together. Secondary:
+    stroke count, stroke order, reversals. New per final-test row: planned
+    and actual glimpse seconds, the pause length, and the latency from the
+    glimpse hiding to the first touch.
+  - **Interruptions during the pause, the intro and the glimpse (seat
+    ruling 2026-11-23, lane B2; derived from r8 and r16, not new policy).**
+    The final test obeys the interruption model the training does (r8: a
+    scene leaving `.active` suspends the session instead of finalising it;
+    r15/r16: unplugging the headphones is an interruption; the parent area
+    too). While ANY of them covers the session the stage's timer is stopped
+    and nothing advances. When the last one lifts: the PAUSE continues with
+    the time it had left (the time spent interrupted does not count); the
+    INTRO replays from the start of its prompt with a fresh fallback, as an
+    interrupted observe restarts from its cue (R-006); a GLIMPSE that was
+    showing restarts in FULL, with its prompt, so the child gets the planned
+    exposure, and `glimpseSecondsShown` is the last, uncut showing. The cut
+    is recorded: new final-test column `glimpseRestarts` (last column; 0
+    for an uncut glimpse, empty on every other row). A letter that opens
+    while the session is covered shows its glimpse when the cover lifts, and
+    that is not a restart. WRITING needs no new rule: it runs the
+    free-writing path (a stroke under the pen is cancelled and counted in
+    `strokesCancelled`; `.inactive` records nothing; `.background` closes a
+    finished production with `finalizedBy = background`, as in training).
+    One addition for the final test only: because it has no quiet window to
+    re-arm, a production whose last stroke was cut brings up the check
+    button on resume, or the letter would keep its ink and have no way to
+    end. The `interruptions` column still counts every cover of the letter on
+    screen; it cannot say in which stage. Not recorded: interruptions of the
+    pause and the intro have no row of their own (no letter is loaded then).
+    The set of covers is the study's existing one (scene, parent area,
+    headphones): the view model has no separate audio-session-interruption
+    source (`AudioEngine` handles the engine side only), so one that does not
+    also take the scene out of `.active` (UNMEASURED which ones do: an alarm,
+    Siri) does not freeze the stage timers. Adding that source would be a
+    change to the interruption model itself, not to the final test.
+  - **Slant is not an error (David, 2026-11-23: "the font letter for I is
+    slightly tilted but the children will most likely draw it vertical … I
+    don't want this to be punished").** Before r27 the fit was translate +
+    uniform scale only, so an upright I scored the font's lean as error.
+    MEASURED 2026-11-23 on the Regular strokes (the study build always loads
+    Regular, R-035), start → end of each stroke, in the glyph's own
+    proportions (the checkpoints are glyph-bbox-relative; bbox from
+    CoreText on `Primae-Regular.otf`, height 787 units, widths A 559, F 433,
+    I 120, L 410, M 724): the I leans 3.8°, the F and L verticals 3.9° and
+    3.6°. (Two earlier readings the same day, 23.5° and 32°, applied the
+    wrong aspect and are void.) From r27 the fit also applies a horizontal
+    shear, the one within ±15° that minimises the deviation, the same rule
+    for every letter. ±15° covers the font's 4° lean with room for a child's
+    own slant either way, and stops short of forgiving a letter that falls
+    over. Rotation is still NOT normalised, and a stretch, a mirror and an
+    upside-down letter are still errors. The reference the child sees does
+    not change. The fitted shear is exported as a new column;
+    `spatialDeviationRaw` (unfitted) stays.
+  - **Export fixes (audit 2026-11-23).** The per-arm summary means exclude
+    probe and final-test rows (`isScoredFreeWrite` had no probe filter, so a
+    pretest row was averaged into a training mean). `strokeOrder` is quoted,
+    so a German-locale spreadsheet does not read `0,1` as a decimal. The
+    combined JSON (the only format with raw traces) gains the enrolment
+    block. A final-test row records that no sound was delivered.
+  - **`spatialDeviation` across revisions.** It has meant three different
+    things (unfitted before r6; fitted, per-axis units r6–r15; canvas-height
+    units r16–r26) and r27 adds a fourth (with the shear fit). Rows from
+    different revisions are not pooled; read the value with
+    `protocolRevision`. RELAYED (2026-10-21): no session with a child has
+    been run yet, so every earlier row is dry-run data.
+  - **Settings screens (audit 2026-11-23).** Controls that do nothing in the
+    study build are removed (Studienarm override and counts,
+    Spaced-Repetition section, calibration-override wipe). The five probe
+    buttons become one read-only "Abschlusstest" section with the pause and
+    glimpse settings. The Vergleichsmodus switches lock after a child's
+    first row, as the overrides already do, and the enrolment record is
+    re-stamped after a relaunch. Sub-settings under a switch that is off
+    are disabled and not stamped. Texts that are wrong under r27 are
+    rewritten (three phases, three letters, no Vortest/Nachtest). The
+    research screen shows the protocol revision, the enrolment state and a
+    pending relaunch; the Schreibmotorik means and the phase table separate
+    test rows.
+  - **Not changed.** The arms, every sound and its mapping, the training
+    phases and their scoring, the comparison stamp's semantics.
+    `StudyProtocol.revision` is 27.
+  - **Tests (Lane B, final-test flow; written, not yet run).**
+    `FinalTestFlowTests.swift` pins, hermetically (the settings through the
+    dependency seams, a manual clock at the `finalTestSleep` seam, a fake
+    seven-take prompt set, a temp dashboard store): the decisions as plain
+    values (`FinalTestRules`: order, touch acceptance per stage, glyph and
+    scaffolding per stage, check button, quiet window, next index, subset
+    restriction of `StudyProbe.finalTest`); the bubble model
+    (`PauseBubbles`: pure function of index and age); the whole flow order
+    (third letter → pause, no celebration, no end screen, navigation held →
+    intro once → one glimpse per trained letter in training order → "Super
+    gemacht!" once → end screen → set held); the pause and the glimpse
+    lasting exactly their settings (asserted on the requested duration, over
+    30/45/60 s and 1/2/3 s); touches ignored during the glimpse (with the
+    control that the same touch is taken once writing); the check button
+    appearing only after ink and ending the letter, while the quiet window
+    does NOT (the one test that waits out 2 s); one row, no retry cue, no
+    praise; no arm sound in each of the three arms (engine play count unchanged
+    while writing); a final-test probe not refused for a missing arm recording
+    (control: the pretest is); the four export fields (measured shown time and
+    hide-to-touch latency distinct from the planned values) and their CSV
+    columns (last, empty on other rows); the settings' defaults, ranges,
+    clamping, stamp and reset; revision 27; the prompt set needing seven
+    takes in manifest order, and the refusal text naming both new files.
+    Old tests changed because r27 changes them legitimately: the end of
+    training starts the pause instead of celebrating (`StudyNavigationFixTests`,
+    four in `StudyCleanConfigTests`), the end-screen decision (rewritten), the
+    comparison-field counts (26 → 28: stamp, seam defaults, fixtures, control
+    domains), the voiceover whitelist, the exporter golden and the
+    column-order tests, `allFiveLetters` held off (`AllFiveLettersRowTruthTests`)
+    and the five → seven prompt counts. Until the two takes are recorded and
+    `MANIFEST.json` carries their real hashes, every test that verifies the
+    REAL bundled set fails by design (`RecordedPromptSetTests`,
+    `ResourceResolutionTests.studyPromptsAreBundled`, the voice-pin tests, and
+    any study fixture that drives touches with spoken feedback on the real
+    bundle).
+
 - **Provenance note on r9 builds from `bbd03b0e` (#62), 2026-10-21.** #62
   (2026-10-16 16:10 UTC) recovered a lost output by restarting playback,
   which the stall timer cut about 0.3 s later. That made a short,

@@ -296,7 +296,11 @@ final class PhaseTransitionCoordinator {
                             measurements m: FreeWriteMeasurements) -> PhaseRowContext {
         guard let vm else { return PhaseRowContext(finalizedBy: finalizedBy) }
         var context = vm.phaseRowContext(for: phase, finalizedBy: finalizedBy)
-        if phase == .freeWrite { context.attemptCheck = m.attemptCheck }
+        if phase == .freeWrite {
+            context.attemptCheck = m.attemptCheck
+            // r27: the shear the primary's fit applied (nil with no measure).
+            context.spatialFitShearDegrees = m.strokeProcess.map { Double($0.spatialFitShearDegrees) }
+        }
         return context
     }
 
@@ -521,7 +525,7 @@ final class PhaseTransitionCoordinator {
         // celebration and are skipped under studyMode on purpose. (This
         // used to say `prompts` is NullPromptPlayer there; since P3 a study
         // session's prompts are the real, recorded voiceover.) The study's
-        // one celebration is the end-of-set branch further down.
+        // one celebration is now at the end of the final test (r27).
         if !vm.studyMode {
             vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
             // Same chime + "Super gemacht!" regardless of star count so a
@@ -530,49 +534,22 @@ final class PhaseTransitionCoordinator {
             vm.prompts.play(.celebration,
                             fallbackText: ChildSpeechLibrary.celebration)
         } else if vm.currentProbe == nil, vm.isLastLetterOfSet, vm.isFinalPassOfLetter {
-            // THE END OF THE CHILD'S SET — the one study celebration
-            // (2026-10-02, proctor's device run).
+            // THE END OF THE CHILD'S TRAINING (protocol r27). The one study
+            // celebration, "Super gemacht!", used to play here and finish the
+            // set. It moves to the end of the FINAL TEST (`finishFinalTest`):
+            // after the last trained letter comes a silent bubble pause, then
+            // each trained letter once more from memory, and only then the
+            // celebration, the hold ("Nächstes Kind") and the end screen.
             //
             // TRAINING PASSES ONLY (protocol r7, audits C1-tvm-a-01 /
-            // C2-tvm-b-01 / B2-01 / H2-01). A cold probe — pretest,
-            // post-test, delayed — is not part of the set, but the pretest
-            // and the delayed test cover all five letters, so one of them is
-            // always the trained set's last letter. Without this check that
-            // probe spoke "Super gemacht!" in every arm and chimed in the
-            // sound arms (r4-r12) INSIDE the outcome block ("a cold probe gets no
-            // reward-class feedback", STUDY_DEVICE_DRYRUN §3), and latched
-            // `awaitingNextParticipant` before training had started, so the
-            // chevron that leads into training was dead for the session.
-            //
-            // Per-LATTER silence stays: the C1/C2 ruling suppressed
-            // celebrations because a per-letter reward gives every child
-            // the same number of them, so it cannot distinguish a good
-            // session from a bad one and only adds noise between trials.
-            // That argument does not touch the END of the set — there is
-            // exactly one, it is not a reward for performance, and a
-            // proctor running 30-40 children in a row needs an unambiguous
-            // "this child is finished, hand the device over" signal.
-            //
-            // What a STUDY build delivers: the spoken "Super gemacht!" in
-            // EVERY arm (spoken content is identical across arms, P3) and
-            // no chime in any arm (r13; `StudyVoiceoverPromptPlayer` drops
-            // every sound effect, so the call below is inert in a study). NOTHING IS DRAWN: the `.celebration` enqueued below is
-            // rendered as `EmptyView()` under STUDY_BUILD
-            // (`SchuleWorldView.queuedModalOverlay`), and
-            // `CompletionCelebrationOverlay` is compiled out — the CI
-            // identity scan asserts its absence from the study binary.
-            // The queue entry itself is harmless: nothing gates on
-            // `currentOverlay` being set, and the next child's first
-            // letter load clears it (`resetForNewParticipant` →
-            // `reapplyParticipantIdentity` → `loadFirstTrainedLetter` →
-            // `load(letter:)` → `overlayQueue.reset()`). The hand-over
-            // signal the proctor can rely on is the speech (r13: no chime in
-            // any arm) and the chevron no longer advancing
-            // (`finishSetAwaitingNextParticipant`).
-            vm.overlayQueue.enqueue(.celebration(stars: vm.phaseController.starsEarned))
-            vm.prompts.playSuccessChime()
-            vm.prompts.play(.celebration, fallbackText: ChildSpeechLibrary.celebration)
-            vm.finishSetAwaitingNextParticipant()
+            // C2-tvm-b-01 / B2-01 / H2-01): `currentProbe == nil` keeps a cold
+            // probe — and the final-test letters, which are probes — from
+            // starting the pause again. Per-LETTER silence stays (C1/C2: a
+            // per-letter reward cannot tell a good session from a bad one).
+            // Nothing is chimed, drawn or enqueued here any more: the pause is
+            // a state transition, the view and the timers belong to the view
+            // model (`beginFinalTestPause`).
+            vm.beginFinalTestPause()
         }
         let accuracy = Double(vm.phaseController.overallScore)
         let now = CACurrentMediaTime()
@@ -650,10 +627,9 @@ final class PhaseTransitionCoordinator {
                          accuracy: accuracy,
                          duration: duration,
                          phaseScores: scores)
-        // The end-of-session screen (2026-11-04), decided AFTER the rows
-        // are recorded so "every letter of the set is done" reads this
-        // letter's own freeWrite row too.
-        vm.presentSessionEndScreenIfComplete(completingLetter: vm.currentLetterName)
+        // The end-of-session screen (2026-11-04) now follows the FINAL TEST
+        // (r27): `finishFinalTest` decides it, after the last test letter's
+        // row is recorded.
         // Comparison switch only: repeat the SAME letter when the
         // researcher has asked for more than one pass (the supervisor's
         // "Buchstabe dreimal?"). Placed AFTER the recording deliberately —

@@ -326,7 +326,8 @@ import UIKit
                             "distanceToneEnabled", "directionMuteEnabled", "distanceToneFarLevelDB",
                             "distanceToneFarCutoffHz", "directionMuteBackwardCosine",
                             "pressureLoudnessEnabled", "pressureLoudnessRangeDB",
-                            "dysfluencyRoughness", "dysfluencyRoughnessDepth", "dysfluencyRoughnessRateHz"],
+                            "dysfluencyRoughness", "dysfluencyRoughnessDepth", "dysfluencyRoughnessRateHz",
+                            "pauseSeconds", "glimpseSeconds"],
                 "the session did not resolve every omitted switch from the store: \(stamp)")
         #expect(stamp.contains("spatialAxisDemonstration=true"),
                 "spatialAxisDemonstration's default argument did not read the store")

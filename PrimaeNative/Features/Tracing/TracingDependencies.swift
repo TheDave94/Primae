@@ -241,6 +241,12 @@ struct TracingDependencies {
     var dysfluencyRoughness: Bool
     var dysfluencyRoughnessDepth: Double
     var dysfluencyRoughnessRateHz: Double
+    /// r27: `StudyComparisonSettings.pauseSeconds` / `glimpseSeconds`, captured at construction (same rule as above).
+    var pauseSeconds: Double
+    var glimpseSeconds: Double
+    /// Sleeps the final test's pause and glimpse out. A seam so a test decides when they end
+    /// (the default really sleeps); `FinalTestClock`.
+    var finalTestSleep: @MainActor (TimeInterval) async -> Void
     /// Opt-in spaced-retrieval prompts before every Nth letter.
     var enableRetrievalPrompts: Bool
     /// Reverse direct-phase tap order (Spooner 2014).
@@ -284,7 +290,7 @@ struct TracingDependencies {
     /// can push rapid-tap tests past the wall-clock debounce.
     var makePromptPlayer: (SpeechSynthesizing) -> any PromptPlaying
 
-    /// Where the view model looks for the five recorded study prompts when
+    /// Where the view model looks for the seven recorded study prompts when
     /// it decides whether a session may start and what `voiceId` to stamp
     /// (r9, `RecordedPromptSet`). A seam so a test can take a file away.
     var promptLocator: @MainActor (PromptPlayer.PromptKey) -> URL?
@@ -409,6 +415,9 @@ struct TracingDependencies {
         dysfluencyRoughness: Bool? = nil,
         dysfluencyRoughnessDepth: Double? = nil,
         dysfluencyRoughnessRateHz: Double? = nil,
+        pauseSeconds: Double? = nil,
+        glimpseSeconds: Double? = nil,
+        finalTestSleep: @escaping @MainActor (TimeInterval) async -> Void = { try? await Task.sleep(for: .seconds($0)) },
         enableRetrievalPrompts: Bool = UserDefaults.standard.bool(
             forKey: "de.flamingistan.primae.enableRetrievalPrompts"
         ),
@@ -490,6 +499,9 @@ struct TracingDependencies {
         self.dysfluencyRoughness = dysfluencyRoughness ?? resolved().dysfluencyRoughness
         self.dysfluencyRoughnessDepth = dysfluencyRoughnessDepth ?? resolved().dysfluencyRoughnessDepth
         self.dysfluencyRoughnessRateHz = dysfluencyRoughnessRateHz ?? resolved().dysfluencyRoughnessRateHz
+        self.pauseSeconds = pauseSeconds ?? resolved().pauseSeconds
+        self.glimpseSeconds = glimpseSeconds ?? resolved().glimpseSeconds
+        self.finalTestSleep = finalTestSleep
         self.enableRetrievalPrompts = enableRetrievalPrompts
         self.enableBackwardChaining = enableBackwardChaining
         self.letterRecognizer = letterRecognizer

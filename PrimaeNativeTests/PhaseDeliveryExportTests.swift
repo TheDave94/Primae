@@ -76,11 +76,11 @@ import Foundation
         for (column, value) in Self.expected {
             #expect(block.value(column) == value, "\(column): \(String(describing: block.value(column))) ≠ \(value)")
         }
-        // r11's columns follow `deviceModel`, in order; r17's `soundEngine` and the ENV3 envelope columns are the newest, last.
+        // r11's columns follow `deviceModel`, in order; r17's `soundEngine` and the ENV3 envelope columns, r25's attempt columns, then r27's, are the newest, last.
         let r8End = try #require(block.header.firstIndex(of: "deviceModel"))
         #expect(Array(block.header.dropFirst(r8End + 1)) == ParentDashboardExporter.observeSoundColumns + ["soundEngine"] + ParentDashboardExporter.envelopeColumns
-                    + ParentDashboardExporter.attemptColumns,
-                "the r11 and r17 columns are not appended last, in order: \(block.header.suffix(6))")
+                    + ParentDashboardExporter.attemptColumns + ParentDashboardExporter.r27Columns + ParentDashboardExporter.finalTestColumns,
+                "the r11, r17, r25 and r27 columns are not appended last, in order: \(block.header.suffix(6))")
         // Appended after the legacy columns, never between them.
         let legacyEnd = try #require(block.header.firstIndex(of: "spatialDeviationRaw"))
         for (column, _) in Self.expected {

@@ -140,6 +140,15 @@ struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
     /// every record written before r6 (whose `spatialDeviation` IS this
     /// unnormalised measure — read `protocolRevision` before pooling).
     var spatialDeviationRaw: Double?
+    /// **The fit behind `spatialDeviation` (protocol r27).** The horizontal
+    /// shear, in DEGREES within [-15, +15], that the bounding-box fit
+    /// applied to the drawn strokes before the distance was measured: the
+    /// angle that minimised the deviation (`StrokeProcessMeasures
+    /// .spatialFitShearDegrees`), so a letter drawn upright is not charged
+    /// for the font's own ~4 degree lean. 0 means no shear helped. Nil on
+    /// every row that carries no measured deviation and on every row
+    /// written before r27 (whose `spatialDeviation` has no shear in it).
+    var spatialFitShearDegrees: Double?
     /// **Secondary accuracy outcome.** Fraction of the reference's
     /// checkpoints reached during the measured freeWrite phase (0–1),
     /// from `StrokeTracker.overallProgress`. Retained alongside the
@@ -269,6 +278,19 @@ struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
     /// for every earlier record, and for a row written while no child was
     /// enrolled: those keep the time rule.
     var enrolmentId: UUID?
+    /// r27 final-test rows: the glimpse the child was shown (planned and
+    /// measured seconds), the pause before the test (planned) and the
+    /// latency from the glyph hiding to the first touch. Nil on every other
+    /// row and every earlier record. Writing time stays
+    /// `phaseDurationSeconds` (first to last sample).
+    var glimpseSecondsPlanned: Double?
+    var glimpseSecondsShown: Double?
+    var pauseSecondsPlanned: Double?
+    var glimpseHiddenToFirstTouchSeconds: Double?
+    /// r27 (lane B2): how many times an interruption cut this final-test
+    /// letter's glimpse and it restarted in full (0 when none did). Nil on
+    /// every other row and every earlier record.
+    var glimpseRestarts: Int?
 
     init(letter: String, phase: String, completed: Bool, score: Double,
          schedulerPriority: Double, condition: ThesisCondition = .threePhase,
@@ -333,6 +355,7 @@ struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
         self.comparisonConfiguration = comparisonConfiguration
         self.protocolRevision        = protocolRevision
         self.spatialDeviationRaw     = finite(spatialDeviationRaw)
+        self.spatialFitShearDegrees  = Self.finiteOrNil(context?.spatialFitShearDegrees)
         self.rowId                   = rowId
         self.finalizedBy             = context?.finalizedBy?.rawValue
         self.probeAttempt            = context?.probeAttempt
@@ -342,6 +365,11 @@ struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
         self.attemptCheckLengthRatio = Self.finiteOrNil(context?.attemptCheck?.lengthRatio.map { Double($0) })
         self.attemptCheckExtraReversals = context?.attemptCheck?.extraReversals
         self.delivery                = context?.delivery
+        self.glimpseSecondsPlanned   = Self.finiteOrNil(context?.finalTest?.glimpseSecondsPlanned)
+        self.glimpseSecondsShown     = Self.finiteOrNil(context?.finalTest?.glimpseSecondsShown)
+        self.pauseSecondsPlanned     = Self.finiteOrNil(context?.finalTest?.pauseSecondsPlanned)
+        self.glimpseHiddenToFirstTouchSeconds = Self.finiteOrNil(context?.finalTest?.glimpseHiddenToFirstTouchSeconds)
+        self.glimpseRestarts         = context?.finalTest?.glimpseRestarts
     }
 
     private static func finiteOrNil(_ value: Double?) -> Double? {
@@ -439,6 +467,8 @@ struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
         protocolRevision         = try c.decodeIfPresent(Int.self, forKey: .protocolRevision)
         // Added 2026-10-05 (r6); nil for every earlier record.
         spatialDeviationRaw      = try? c.decode(Double.self, forKey: .spatialDeviationRaw)
+        // Added in r27; nil for every earlier record (no shear in its fit).
+        spatialFitShearDegrees   = try? c.decode(Double.self, forKey: .spatialFitShearDegrees)
         // Added by fix batch D (audit 2026-10-13); nil for every earlier
         // record, and a malformed value costs only itself.
         rowId                    = try? c.decode(UUID.self, forKey: .rowId)
@@ -453,6 +483,12 @@ struct PhaseSessionRecord: nonisolated Encodable, Decodable, Equatable {
         delivery                 = try? c.decode(PhaseDelivery.self, forKey: .delivery)
         // B3 (r16); nil for every earlier record, which keeps the time rule.
         enrolmentId              = try? c.decode(UUID.self, forKey: .enrolmentId)
+        // r27; nil for every earlier record and every non-final-test row.
+        glimpseSecondsPlanned    = try? c.decode(Double.self, forKey: .glimpseSecondsPlanned)
+        glimpseSecondsShown      = try? c.decode(Double.self, forKey: .glimpseSecondsShown)
+        pauseSecondsPlanned      = try? c.decode(Double.self, forKey: .pauseSecondsPlanned)
+        glimpseHiddenToFirstTouchSeconds = try? c.decode(Double.self, forKey: .glimpseHiddenToFirstTouchSeconds)
+        glimpseRestarts          = try? c.decode(Int.self, forKey: .glimpseRestarts)
     }
 }
 
@@ -462,8 +498,15 @@ extension PhaseSessionRecord {
     /// phase, see `LearningPhaseController.advance`) stays in the per-row
     /// CSV/JSON, but an aggregate skips it, so one such row cannot blank an
     /// arm's mean; with no finite row the aggregate reads as "no data".
+    ///
+    /// **A cold-probe row is not a training row (protocol r27).** `probe`
+    /// is non-nil on a pretest / post-test / delayed / final-test row, a
+    /// different instrument from the training freeWrite, so it never enters
+    /// a mean or the scheduler proxy. Every reader of this predicate is an
+    /// aggregate (the per-row CSV/JSON output does not use it), so the probe
+    /// row stays in the per-row export, tagged, and only the means skip it.
     var isScoredFreeWrite: Bool {
-        completed && phase == LearningPhase.freeWrite.rawName && score.isFinite
+        probe == nil && completed && phase == LearningPhase.freeWrite.rawName && score.isFinite
     }
 }
 
@@ -758,10 +801,11 @@ struct DashboardSnapshot: nonisolated Encodable, Decodable, Equatable {
     }
 
     /// Average of each Schreibmotorik dimension across completed
-    /// freeWrite sessions with dimension data, or nil if none exist.
+    /// training freeWrite sessions with dimension data (cold-probe rows are
+    /// a different instrument and are left out, r27), or nil if none exist.
     var averageWritingDimensions: (form: Double, tempo: Double, pressure: Double, rhythm: Double)? {
         let records = phaseSessionRecords
-            .filter { $0.phase == LearningPhase.freeWrite.rawName && $0.completed && $0.formAccuracy != nil }
+            .filter { $0.probe == nil && $0.phase == LearningPhase.freeWrite.rawName && $0.completed && $0.formAccuracy != nil }
         guard !records.isEmpty else { return nil }
         // Each dimension over ITS OWN present values: the decoder sets the
         // four independently, so a row missing one dimension used to add

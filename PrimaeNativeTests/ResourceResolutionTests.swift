@@ -319,13 +319,13 @@ import CryptoKit
 
     // MARK: - Spoken prompts
 
-    /// Protocol r9: the five recorded study prompts (voice Kiki) ARE the
+    /// Protocol r9: the recorded study prompts (five; seven from r27, voice Kiki) ARE the
     /// study voiceover. A session refuses to start without any one of them
-    /// (`RecordedPromptSet.refusal`), so a build that does not carry all five
+    /// (`RecordedPromptSet.refusal`), so a build that does not carry all of them
     /// is a build that cannot run — caught here, in the real bundle, rather
     /// than by a proctor with a child waiting. Resolves through the same
     /// layouts `PromptPlayer.locate` walks.
-    @Test("all five recorded study prompts resolve in the package bundle)")
+    @Test("all seven recorded study prompts resolve in the package bundle (RED until the r27 takes are recorded)")
     func studyPromptsAreBundled() {
         let missing = RecordedPromptSet.requiredKeys.filter {
             !Self.resolvesInPackageBundle(

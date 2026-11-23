@@ -366,18 +366,24 @@ fileprivate typealias Drawing = [[CGPoint]]
 
     // MARK: - 3. The export
 
-    @Test("the attempt columns are appended last and carry the row's values")
+    @Test("the attempt columns are appended (before r27's) and carry the row's values")
     func exportColumns() {
-        #expect(Array(ParentDashboardExporter.phaseRowAppendedColumns.suffix(5)) == ParentDashboardExporter.attemptColumns)
+        #expect(Array(ParentDashboardExporter.phaseRowAppendedColumns.dropLast(ParentDashboardExporter.r27Columns.count + ParentDashboardExporter.finalTestColumns.count).suffix(5))
+                == ParentDashboardExporter.attemptColumns)
         let check = FreeWriteAttemptCheck.Result(passed: false, shapeScore: 0.4125, lengthRatio: 7.5, extraReversals: 30)
         let rec = PhaseSessionRecord(letter: "A", phase: "freeWrite", completed: false, score: 0.1, schedulerPriority: 0,
                                      context: PhaseRowContext(finalizedBy: .attemptRejected, freeWriteAttempt: 2, attemptCheck: check))
         let f = ParentDashboardExporter.phaseRowAppendedFields(rec, participantId: UUID())
-        #expect(Array(f.suffix(5)) == ["2", "false", "0.412", "7.500", "30"])
+        #expect(Array(f.dropLast(ParentDashboardExporter.r27Columns.count + ParentDashboardExporter.finalTestColumns.count).suffix(5)) == ["2", "false", "0.412", "7.500", "30"])
         #expect(f.count == ParentDashboardExporter.phaseRowAppendedColumns.count)
         let empty = ParentDashboardExporter.phaseRowAppendedFields(
             PhaseSessionRecord(letter: "A", phase: "guided", completed: true, score: 1, schedulerPriority: 0), participantId: UUID())
-        #expect(Array(empty.suffix(5)) == ["", "", "", "", ""])
+        #expect(Array(empty.dropLast(ParentDashboardExporter.r27Columns.count + ParentDashboardExporter.finalTestColumns.count).suffix(5)) == ["", "", "", "", ""])
+        // r27's two columns follow: no shear on a row without a measured fit, and
+        // armSoundDelivered "true" on a non-probe row.
+        #expect(Array(empty.dropLast(ParentDashboardExporter.finalTestColumns.count).suffix(ParentDashboardExporter.r27Columns.count)) == ["", "true"])
+        // The r27 final-test columns come last, empty on a training row.
+        #expect(Array(empty.suffix(ParentDashboardExporter.finalTestColumns.count)).allSatisfy { $0.isEmpty })
     }
 }
 

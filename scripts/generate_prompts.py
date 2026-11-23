@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Generate pre-recorded ElevenLabs MP3s for the FIVE phrases a study
-child hears (protocol r9; see PROMPTS below).
+"""Generate pre-recorded ElevenLabs MP3s for the SEVEN phrases a study
+child hears (protocol r9 five; r27 adds two for the final test; see
+PROMPTS below).
 
 Why pre-recorded: the user flagged AVSpeechSynthesizer's quality as
 robotic, and the system TTS pipeline shares an AVAudioSession with
@@ -15,6 +16,7 @@ Output layout:
     audio_variants/<Voice>/prompts/
         phase_observe.mp3  phase_guided.mp3  phase_freewrite.mp3
         retry_cue.mp3  celebration.mp3
+        final_intro.mp3  final_glimpse.mp3
 
 A new take is a protocol change: update PrimaeNative/Resources/Prompts/
 MANIFEST.json by hand (scripts/check_study_prompts.py) and bump
@@ -31,6 +33,11 @@ listening, copy a chosen voice's `prompts/` dir into place:
 The runtime side reads from
 `PrimaeNative/Resources/Prompts/<key>.mp3` via the SPM resource
 bundle — `PromptPlayer.PromptKey.rawValue` is the filename stem.
+
+Only the two r27 phrases, in the Kiki voice (what the study set uses):
+
+    python3 scripts/generate_prompts.py --voice Kiki --prompt final_intro
+    python3 scripts/generate_prompts.py --voice Kiki --prompt final_glimpse
 
 Audition mode (``--prompt phase_freewrite``) generates only that
 prompt across every voice — useful for picking a voice without
@@ -87,7 +94,8 @@ VOICE_SETTINGS: dict = {
 # Filename stem ⇄ German phrase. Stems must match
 # `PromptPlayer.PromptKey.rawValue` (PrimaeNative/Core/PromptPlayer.swift).
 PROMPTS: dict[str, str] = {
-    # The study voiceover (DECISIONS D15, protocol r9): exactly these five.
+    # The study voiceover (DECISIONS D15, protocol r9; r27 adds the last
+    # two, the final test): exactly these seven.
     # Stems are PromptPlayer.PromptKey raw values; same text as the
     # audition script (voice Kiki). Nothing else is bundled.
     "phase_observe":   "Schau genau hin.",
@@ -95,6 +103,10 @@ PROMPTS: dict[str, str] = {
     "phase_freewrite": "Und jetzt ganz allein.",
     "retry_cue":       "Probier's nochmal.",
     "celebration":     "Super gemacht!",
+    # r27 (final test): once after the pause, before the first test letter;
+    # and during each glimpse of the plain glyph.
+    "final_intro":     "Jetzt schreibst du sie alle noch einmal.",
+    "final_glimpse":   "Merk ihn dir gut.",
 }
 
 OUTPUT_ROOT = Path("audio_variants")

@@ -1456,7 +1456,7 @@ osVersion,deviceModel,observeLossesDuringSound,observeLossesWithoutSound,
 observeSoundSeconds,observeSoundDeliveredSeconds,soundEngine,liftHoldSeconds,
 stallSeconds,strokeGaps,strokeGapMedianSeconds,freeWriteAttempt,
 attemptCheckPassed,attemptCheckScore,attemptCheckLengthRatio,
-attemptCheckExtraReversals
+attemptCheckExtraReversals,spatialFitShearDegrees,armSoundDelivered
 ```
 
 (r17 appends `soundEngine`: the sound engine that rendered the row, `TDPSOLA` — a constant since the researcher
@@ -1475,6 +1475,21 @@ the row's ink: `attemptCheckPassed`, `attemptCheckScore` (min of coverage and pr
 on cold-probe and proctor-closed rows the check is passive. A training attempt the check rejected is its own row,
 `completed` false and `finalizedBy` `attemptRejected`, with its own raw trace; `phaseCompletionRate_freeWrite` does not
 count it. Empty on every other row and on rows written before r25.)
+
+(r27 appends two columns after the attempt columns (`ParentDashboardExporter.r27Columns`):
+`spatialFitShearDegrees`, the horizontal shear in DEGREES (3 dp, within -15..+15, found to 0.1 degree) that the
+bounding-box fit applied to the drawn strokes before `spatialDeviation` was measured, `0.000` when no shear lowered the
+deviation (§"`spatialDeviation` across revisions" below; free-writing rows with a measured deviation only, empty on every
+other row and before r27); and `armSoundDelivered`, `true` / `false` / empty: whether the phase this row records delivered
+its arm's sound. `audioCondition` stays the ASSIGNED arm and is not changed by it. `false` in the silent arm, and on a
+cold-probe row recorded sound-off (protocol r1, and r12 onward: every probe is sound-off in every arm); `true` on a probe
+row recorded under r2-r11, which had the arm's sound in a sound arm (docs/DECISIONS.md r12, "Data"); empty on a probe row
+with no `protocolRevision` (r1-r3 cannot say); `true` on every other row of a sound arm. It is derived at export from the
+row's own `audioCondition`, `probe` and `protocolRevision` (`ParentDashboardExporter.armSoundDelivered`), after the
+export-time `posttest` tagging of r1-r11 final training free-writing, which it therefore reports as `true`; the JSON has
+the three inputs, not the column. A comma-bearing field, `strokeOrder` (`0,1`), is quoted in TSV as in CSV from r27, so a
+German-locale spreadsheet does not read it as a decimal; a spreadsheet that infers types regardless of quotes (Excel does)
+can still do so, and a leading `-` or `=` is not neutralised, because the file never did that and a negative angle is data.)
 
 (As of protocol r14, checked 2026-11-01 against `StudyProtocol.revision` = 14:
 62 columns, identical to the header array in `ParentDashboardExporter.swift`.
@@ -1624,7 +1639,16 @@ enrolledAt,audioCondition,trainedSubset,protocolRevision,
 comparisonConfiguration,voiceId`, then the device-state and build
 columns), so a child who was enrolled and stopped before any phase row is
 visible there and is not counted in `<N>`. The combined JSON is an array
-of participant objects and has no enrolment block.
+of participant objects; from r27 it carries the same information as ONE
+extra LAST element of that array (so a consumer that reads participants by
+`participantId` is unchanged: the extra element has none), written only when
+there is an enrolment or a set-aside file: `{"enrolments": [...], "setAside":
+[...]}`, each enrolment with `participantId`, `enrolledAt`, `audioCondition`,
+`trainedSubset`, `protocolRevision`, `comparisonConfiguration`, `voiceId` and
+`environment` / `build` objects keyed by the CSV block's own column names,
+`setAside` (omitted when empty) with `fileName` and `participantId`. The
+JSON is the only format with raw traces, so a zero-row child's arm and subset
+were lost from the one file an analyst re-derives from.
 
 ### 6.5 GDPR / DSGVO considerations
 
@@ -2528,7 +2552,7 @@ Then a blank line, followed by five data sections. (In the combined export these
 
 **Which rows a block holds (r16).** From r16 every phase and duration row carries the id of the enrolment live when it was written (`enrolmentId`, JSON only; the CSV's `participantId` column names the block). A stamped row is exported in the block of that id and in no other, whatever its `recordedAt`, so a device clock corrected backwards after enrolment no longer drops the child's later rows (before r16 they were silently excluded). A row without the stamp — every row written before r16, or while no child was enrolled — keeps the old time rule: exported when `recordedAt >= enrolledAt` (rows without `recordedAt` dropped), or always when the block has no `enrolledAt`. The rows a block's rule excludes are counted in `# droppedPreEnrolmentRows=` (JSON: `droppedPreEnrolmentRows`). In the JSON a raw trace is kept when an exported phase row links to it (`rawTraceID`), else by the time rule.
 
-**Archive files that could not be loaded (r16).** The combined CSV / TSV starts, before the first participant block, with one line per participant-archive file the app could not load (set aside as undecodable now or on an earlier launch, or unreadable): `# setAside=<file name> participantId=<UUID>`, then a blank line. The id is read from the file name (empty if the name does not start with one), since the file's content is lost. Such a child appears in the enrolment block but has no participant block; this line says the data was lost, so the child must not be counted as a dropout. No line is written when every archive file loaded. The JSON export does not carry it.
+**Archive files that could not be loaded (r16).** The combined CSV / TSV starts, before the first participant block, with one line per participant-archive file the app could not load (set aside as undecodable now or on an earlier launch, or unreadable): `# setAside=<file name> participantId=<UUID>`, then a blank line. The id is read from the file name (empty if the name does not start with one), since the file's content is lost. Such a child appears in the enrolment block but has no participant block; this line says the data was lost, so the child must not be counted as a dropout. No line is written when every archive file loaded. From r27 the combined JSON carries the same files as `setAside` in its last element (§6.4).
 
 ## Format conventions (all CSV / TSV / JSON exports)
 
@@ -2682,6 +2706,43 @@ boundary without re-deriving from Section 3b.
 - *Sampling.* Every drawn stroke is resampled to a fixed arc-length spacing
   (1/40 of the reference height, ≈7 pt) before the Fréchet comparison, so
   the value no longer follows the digitiser's sample count.
+- *Fit with a shear, r27.* `spatialDeviation` (not `spatialDeviationRaw`)
+  is measured after a translate, a UNIFORM scale AND a horizontal shear of
+  the drawn strokes, x' = x + tan(θ)·(y − cy), cy the fit strokes' bounding-box
+  centre y, in the same canvas-height frame. θ is the angle within ±15° that
+  minimises the deviation: a 5° grid outward from 0 (a tie keeps the
+  smaller |θ|), then a golden-section search inside the bracket around the
+  best grid point to 0.1°, over the same matched strokes the r16 fit uses.
+  The same rule for every letter. Why: the Regular font leans about 4°
+  (I 3.8°, F 3.9°, L 3.6°, start to end of the first stroke in the glyph's own
+  proportions; CoreText bbox of `Primae-Regular.otf`, height 787 units, widths
+  A 559, F 433, I 120, L 410, M 724), a child draws the I upright, and before
+  r27 that was charged as error (an upright I, F or L scored 0.02-0.03; now
+  below 0.0004). Rotation, stretch, mirror and upside-down are still NOT
+  normalised, and ±15° stops short of a letter that falls over: a letter
+  slanted 25° keeps most of its error (I 0.09, F 0.08, L 0.09-0.14 measured).
+  The reference the child sees does not change. θ is exported per row as
+  `spatialFitShearDegrees`. The stars read the same fitted value
+  (`FreeWriteScorer`'s form term, `max(0, 1 − spatialDeviation / (3 × radius))`),
+  so a child who draws upright now earns more form, as intended. The
+  attempt check (`FreeWriteAttemptCheck`) has its own alignment and is
+  unchanged. `StrokeProcessScorer.analyze(…, shearLimitDegrees: 0)` reproduces
+  the pre-r27 primary exactly.
+- *`spatialDeviation` across revisions.* The column has meant four
+  things under one name: unfitted before r6; fitted (translate + uniform
+  scale) with the axes normalised separately, r6-r15; the same fit in canvas
+  heights on both axes, matched strokes only, r16-r26; and from r27 that fit
+  plus the shear. Rows from different revisions are not pooled; read the
+  value with `protocolRevision`.
+- *Means exclude probe rows, r27.* `averageFreeWriteScore_<arm>`,
+  `averageFreeWriteScore_audio_<arm>`, `letterByArm`, `letterByAudioArm` and
+  the dashboard's mean and scheduler proxy read training free-writing rows
+  only (`PhaseSessionRecord.isScoredFreeWrite` now requires `probe == nil`);
+  a cold-probe row, the r27 final test included, stays in the per-row export
+  and never enters them. Before r27 a pretest row was averaged into its arm's
+  training mean. The Schreibmotorik dimension means
+  (`averageFormAccuracy` and its three siblings) still read every completed
+  free-writing row with a form value.
 - *Re-derivation from Section 3b:* divide both point axes by
   `canvasSize.height`, multiply the reference's x by
   `canvasSize.width / canvasSize.height`, then run

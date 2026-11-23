@@ -1,6 +1,6 @@
 """check_study_prompts.py must fail when the recorded study prompts drift.
 
-The five MP3s a study child hears are an instrument component (D15, r9):
+The seven MP3s a study child hears (five to r26) are an instrument component (D15, r9):
 the voice, the wording and the timing are fixed by these bytes. The checker
 is run against a throwaway copy of PrimaeNative/Resources/Prompts with ONE
 mutation each and must name it; the unmutated copy must pass (a checker

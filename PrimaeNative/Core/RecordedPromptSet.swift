@@ -1,12 +1,14 @@
 // RecordedPromptSet.swift
 // PrimaeNative
 //
-// The five recorded phrases a study child hears (protocol r9, D15):
+// The seven recorded phrases a study child hears (protocol r9, D15; r27 adds
+// the last two for the final test):
 // "Schau genau hin." / "Jetzt du." / "Und jetzt ganz allein." /
-// "Probier's nochmal." / "Super gemacht!", voice Kiki. Their bytes are
+// "Probier's nochmal." / "Super gemacht!" / "Jetzt schreibst du sie alle noch
+// einmal." / "Merk ihn dir gut.", voice Kiki. Their bytes are
 // pinned by `Resources/Prompts/MANIFEST.json` (CI: scripts/check_study_prompts.py).
 //
-// A study session that speaks needs ALL FIVE bundled; a missing one refuses
+// A study session that speaks needs ALL SEVEN bundled; a missing one refuses
 // the session (`refusal`) instead of falling back to the system voice, which
 // would say that line differently than it did for the children before.
 // Every exported row names the set that was played (`setId`).
@@ -19,6 +21,7 @@ enum RecordedPromptSet {
     /// MANIFEST.json "files").
     static let requiredKeys: [PromptPlayer.PromptKey] = [
         .phaseObserve, .phaseGuided, .phaseFreeWrite, .retryCue, .celebration,
+        .finalIntro, .finalGlimpse,
     ]
     /// Written into `setId`; must match MANIFEST.json "voice", lowercased.
     static let voiceName = "kiki"
@@ -30,7 +33,7 @@ enum RecordedPromptSet {
         requiredKeys.filter { locate($0) == nil }
     }
 
-    /// "rec:kiki:" + the first 12 hex of sha256 over the five files' bytes,
+    /// "rec:kiki:" + the first 12 hex of sha256 over the seven files' bytes,
     /// concatenated in `requiredKeys` order; nil when a file is missing or
     /// unreadable. This is the `voiceId` stamped on every row of a session
     /// that plays the recorded set.
@@ -47,9 +50,9 @@ enum RecordedPromptSet {
         return "rec:\(voiceName):\(hex.prefix(12))"
     }
 
-    /// What a session finds when it checks the five takes (once, at init).
+    /// What a session finds when it checks the seven takes (once, at init).
     enum Verdict: Equatable {
-        /// All five present and hashing to the manifest's set id.
+        /// All seven present and hashing to the manifest's set id.
         case ok(String)
         /// These takes are not bundled.
         case missing([PromptPlayer.PromptKey])
@@ -71,7 +74,7 @@ enum RecordedPromptSet {
         return json["setId"] as? String
     }
 
-    /// Present AND byte-identical to the reviewed set. Hashes five small
+    /// Present AND byte-identical to the reviewed set. Hashes seven small
     /// files; callers run it once and keep the verdict.
     static func verify(
         locate: @MainActor (PromptPlayer.PromptKey) -> URL? = PromptPlayer.locate,
@@ -109,6 +112,6 @@ enum RecordedPromptSet {
     static func refusal(missing keys: [PromptPlayer.PromptKey]) -> String? {
         guard !keys.isEmpty else { return nil }
         let names = keys.map { "\($0.rawValue).mp3" }.joined(separator: ", ")
-        return "Aufgenommene Anweisungen fehlen: \(names). Die Sitzung wird nicht gestartet — eine Ersatzstimme des Geräts würde diese Anweisung anders sprechen als bei den bisherigen Kindern. Die App mit den fünf Aufnahmen (Resources/Prompts) neu installieren."
+        return "Aufgenommene Anweisungen fehlen: \(names). Die Sitzung wird nicht gestartet — eine Ersatzstimme des Geräts würde diese Anweisung anders sprechen als bei den bisherigen Kindern. Die App mit den sieben Aufnahmen (Resources/Prompts) neu installieren."
     }
 }

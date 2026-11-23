@@ -69,6 +69,8 @@ final class ThrowawayDefaults {
         defaults.set(configuration.dysfluencyRoughness, forKey: S.dysfluencyRoughnessKey)
         defaults.set(configuration.dysfluencyRoughnessDepth, forKey: S.dysfluencyRoughnessDepthKey)
         defaults.set(configuration.dysfluencyRoughnessRateHz, forKey: S.dysfluencyRoughnessRateHzKey)
+        defaults.set(configuration.pauseSeconds, forKey: S.pauseSecondsKey)
+        defaults.set(configuration.glimpseSeconds, forKey: S.glimpseSecondsKey)
     }
 }
 
@@ -102,7 +104,9 @@ extension StudyComparisonConfiguration {
             pressureLoudnessRangeDB: 24,
             dysfluencyRoughness: true,
             dysfluencyRoughnessDepth: 0.6,
-            dysfluencyRoughnessRateHz: 60
+            dysfluencyRoughnessRateHz: 60,
+            pauseSeconds: 60,           // r27: 45 is the default
+            glimpseSeconds: 1.5         // r27: 3.0 is the default
         )
     }
 }
@@ -249,6 +253,8 @@ extension TracingDependencies {
         #expect(deps.dysfluencyRoughnessDepth == written.dysfluencyRoughnessDepth)
         #expect(deps.dysfluencyRoughnessRateHz == written.dysfluencyRoughnessRateHz)
         #expect(deps.spatialAxisDemonstration == written.spatialAxisDemonstration)
+        #expect(deps.pauseSeconds == written.pauseSeconds)
+        #expect(deps.glimpseSeconds == written.glimpseSeconds)
     }
 
     /// The nine switches `deps` resolved, as a configuration (the three
@@ -278,6 +284,8 @@ extension TracingDependencies {
         c.dysfluencyRoughnessDepth = deps.dysfluencyRoughnessDepth
         c.dysfluencyRoughnessRateHz = deps.dysfluencyRoughnessRateHz
         c.spatialAxisDemonstration = deps.spatialAxisDemonstration
+        c.pauseSeconds = deps.pauseSeconds
+        c.glimpseSeconds = deps.glimpseSeconds
         return c
     }
 
@@ -315,6 +323,8 @@ extension TracingDependencies {
             ("dysfluencyRoughness",       { $0.dysfluencyRoughness = away.dysfluencyRoughness }),
             ("dysfluencyRoughnessDepth",  { $0.dysfluencyRoughnessDepth = away.dysfluencyRoughnessDepth }),
             ("dysfluencyRoughnessRateHz", { $0.dysfluencyRoughnessRateHz = away.dysfluencyRoughnessRateHz }),
+            ("pauseSeconds",              { $0.pauseSeconds = away.pauseSeconds }),
+            ("glimpseSeconds",            { $0.glimpseSeconds = away.glimpseSeconds }),
         ]
         for (name, move) in moves {
             var written = StudyComparisonConfiguration.defaults
@@ -359,5 +369,7 @@ extension TracingDependencies {
         #expect(deps.dysfluencyRoughnessDepth == StudyComparisonSettings.dysfluencyRoughnessDepthDefault)
         #expect(deps.dysfluencyRoughnessRateHz == StudyComparisonSettings.dysfluencyRoughnessRateHzDefault)
         #expect(deps.spatialAxisDemonstration == StudyComparisonSettings.spatialAxisDemonstrationDefault)
+        #expect(deps.pauseSeconds == StudyComparisonSettings.pauseSecondsDefault)
+        #expect(deps.glimpseSeconds == StudyComparisonSettings.glimpseSecondsDefault)
     }
 }

@@ -109,6 +109,12 @@ import Foundation
             StepperProbe(name: "Abstand zwischen Buchstaben", domain: D.presentationSpacingSeconds,
                          defaultValue: S.presentationSpacingSecondsDefault,
                          key: S.presentationSpacingKey, read: { $0.presentationSpacingSeconds }),
+            StepperProbe(name: "Abschlusstest: Pause", domain: D.pauseSeconds,
+                         defaultValue: S.pauseSecondsDefault,
+                         key: S.pauseSecondsKey, read: { $0.pauseSeconds }),
+            StepperProbe(name: "Abschlusstest: Zeigen", domain: D.glimpseSeconds,
+                         defaultValue: S.glimpseSecondsDefault,
+                         key: S.glimpseSecondsKey, read: { $0.glimpseSeconds }),
         ]
     }
 

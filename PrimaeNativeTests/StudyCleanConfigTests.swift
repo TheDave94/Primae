@@ -373,9 +373,13 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     /// Since 2026-11-04 the end of the set does show the separate end
     /// screen (`SessionEndScreenView`), pinned in the extension at the foot
     /// of this file.
-    @Test("the end of the child's set: spoken in every arm, chimed in none (r13), nothing drawn",
+    /// RE-AIMED AT r27: the end of the TRAINING no longer speaks "Super
+    /// gemacht!" and no longer hands the device back; it starts the silent
+    /// pause. The celebration and the hand-over moved to the end of the final
+    /// test (`FinalTestFlowTests.theWholeFlowRunsInOrder`).
+    @Test("the end of the child's training starts the pause: nothing spoken, no chime, the set not yet handed back",
           arguments: [PilotAudioCondition.phoneme, .spatial, .silent])
-    func endOfSet_celebratesOnceAndHandsTheDeviceBack(arm: PilotAudioCondition) async {
+    func endOfTraining_startsThePauseAndSpeaksNothing(arm: PilotAudioCondition) async {
         let prompts = SpyPromptPlayer()
         var deps = multiLetterDeps(spyPrompts: prompts)
         deps.audioCondition = arm
@@ -393,8 +397,10 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         vm.advanceLearningPhase()
         await settle()
 
-        #expect(vm.awaitingNextParticipant,
-                "finishing the child's LAST letter must hand the device back to the proctor - this is the 'no end congratulations' report, and without it a proctor running 30-40 children has no signal that a child is finished")
+        #expect(vm.finalTestStage == .pause,
+                "finishing the child's LAST trained letter starts the final test's pause (r27); got \(vm.finalTestStage)")
+        #expect(!vm.awaitingNextParticipant,
+                "the device is handed back after the final test, not after training")
 
         // Nothing drawn: this suite compiles under STUDY_BUILD, where
         // `SchuleWorldView` renders the queued `.celebration` as
@@ -406,16 +412,16 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         // it (P3, David 2026-10-04: spoken content identical across arms).
         // r13: the chime is dropped in every arm.
         let expectedChimes = 0
-        #expect(prompts.celebrations == 1,
-                "\(arm): the end-of-set celebration is the one study moment carrying this spoken phrase; got \(prompts.celebrations) of them alongside \(prompts.keys)")
+        #expect(prompts.celebrations == 0,
+                "\(arm): r27 moved \"Super gemacht!\" to the end of the final test; training must not speak it. Got \(prompts.celebrations) among \(prompts.keys)")
         #expect(prompts.chimes == expectedChimes,
                 "\(arm): the end-of-set chime is dropped in every arm (r13); got \(prompts.chimes)")
 
-        // ...and it is a ONCE-per-set signal, not a per-letter reward.
+        // ...a completed letter session advanced again does not start a second pause.
         vm.advanceLearningPhase()
         await settle()
-        #expect(prompts.celebrations == 1,
-                "\(arm): a completed letter session must not be advanced again - the celebration is ONE per set, and it just fired \(prompts.celebrations) times")
+        #expect(vm.finalTestStage == .pause)
+        #expect(prompts.celebrations == 0)
         #expect(prompts.chimes == expectedChimes)
     }
 
@@ -552,7 +558,7 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         vm.advanceLearningPhase()
         vm.advanceLearningPhase()
         await settle { vm.isPhaseSessionComplete }
-        #expect(vm.awaitingNextParticipant, "precondition: the set ended")
+        #expect(vm.studyNavigationHeld && vm.finalTestStage == .pause, "precondition: training ended and the pause holds navigation")
         let rows = store.phaseCalls.count
 
         vm.previousLetter()
@@ -609,8 +615,8 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
 
         #expect(vm.currentLetterName == last && vm.learningPhase == .freeWrite && vm.isPhaseSessionComplete,
                 "\(chevron): the tap opened \(vm.currentLetterName) in \(vm.learningPhase) after the set's last letter")
-        #expect(vm.awaitingNextParticipant, "\(chevron): the end of the set did not fire")
-        #expect(prompts.celebrations == 1, "\(chevron): end-of-set phrase \(prompts.celebrations) times among \(prompts.keys)")
+        #expect(vm.finalTestStage == .pause, "\(chevron): the end of training did not fire (r27: it starts the pause)")
+        #expect(prompts.celebrations == 0, "\(chevron): \"Super gemacht!\" is no longer spoken at the end of training; got \(prompts.celebrations) among \(prompts.keys)")
         let fw = store.phaseCalls.filter { $0.phase == LearningPhase.freeWrite.rawName }
         #expect(fw.count == 1 && fw.first?.letter == last && fw.first?.completed == true,
                 "\(chevron): the finished free-write must be one completed row for \(last); got \(fw.map { ($0.letter, $0.completed) })")
@@ -1023,34 +1029,33 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     }
 }
 
-// MARK: - The end-of-session screen (David, 2026-11-04)
+// MARK: - The end-of-session screen (David, 2026-11-04; r27: after the final test)
 
 /// The decision (`SessionEndScreenDecision`) is a value, so it is pinned
-/// directly; the VM tests below pin that the pipeline feeds it the right
-/// facts. The view itself cannot be observed from a unit test.
+/// directly; `FinalTestFlowTests` pins that the pipeline feeds it the right
+/// facts and that the screen is up after the final test. The view itself
+/// cannot be observed from a unit test.
 extension StudyCleanConfigTests {
 
     private func decision(set: [String] = ["A", "F", "I"],
-                          done: Set<String> = ["A", "F"],
-                          just: String = "I",
-                          probe: Bool = false,
-                          finalPass: Bool = true,
+                          trained: Set<String> = ["A", "F", "I"],
+                          tested: Set<String> = ["A", "F", "I"],
+                          ended: Bool = true,
                           shown: Bool = false) -> SessionEndScreenDecision {
-        SessionEndScreenDecision(setLetters: set, completedTrainingLetters: done,
-                                 justCompleted: just, isColdProbe: probe,
-                                 isFinalPassOfLetter: finalPass, alreadyPresented: shown)
+        SessionEndScreenDecision(setLetters: set, completedTrainingLetters: trained,
+                                 completedFinalTestLetters: tested,
+                                 finalTestEnded: ended, alreadyPresented: shown)
     }
 
-    @Test("end screen decision: shown when the third letter completes the set, and only then")
+    @Test("end screen decision (r27): shown when the final test has ended on a fully trained and tested set, and only then")
     func endScreenDecision() {
-        #expect(decision().shouldPresent, "A and F done, I just finished: the set is complete")
-        #expect(!decision(done: ["A"]).shouldPresent, "F is missing: a partial session gets no end screen")
-        #expect(!decision(done: []).shouldPresent, "the first letter of three is not the end")
-        #expect(!decision(probe: true).shouldPresent, "a cold probe is not the training set")
-        #expect(!decision(finalPass: false).shouldPresent, "pass 1 of 2 of the last letter is not the end")
+        #expect(decision().shouldPresent, "all three trained and all three tested: the session is complete")
+        #expect(!decision(trained: ["A", "F"]).shouldPresent, "a letter was not trained: a partial session gets no end screen")
+        #expect(!decision(tested: ["A", "F"]).shouldPresent, "a letter was not tested: a partial session gets no end screen")
+        #expect(!decision(tested: []).shouldPresent, "no test row at all")
+        #expect(!decision(ended: false).shouldPresent, "the test has not ended: the third TRAINING letter is no longer the end (r27)")
         #expect(!decision(shown: true).shouldPresent, "shown once per child")
-        #expect(!decision(set: ["A"], done: [], just: "A").shouldPresent, "a one-letter pool has no end of set")
-        #expect(!decision(just: "Z").shouldPresent, "a letter outside the set cannot complete it")
+        #expect(!decision(set: ["A"], trained: ["A"], tested: ["A"]).shouldPresent, "a one-letter pool has no end of set")
     }
 
     /// The fixture deps with a REAL dashboard store in a temp dir: the stub
@@ -1073,72 +1078,39 @@ extension StudyCleanConfigTests {
         await settle()
     }
 
-    @Test("the third letter presents the end screen once; the first two and a letter change do not")
-    func endScreenAfterThirdLetterOnly() async {
+    @Test("the third training letter no longer presents the end screen: it starts the pause")
+    func noEndScreenAfterTheThirdTrainingLetter() async {
         let vm = endScreenVM()
         let pool = vm.visibleLetterNames
         #expect(pool.count == 3, "fixture: three letters, got \(pool)")
-        #expect(!vm.sessionEndScreenPresented)
-
-        await finishTrainingLetter(vm, pool[0])
-        #expect(!vm.sessionEndScreenPresented, "after letter 1 of 3")
-        await finishTrainingLetter(vm, pool[1])
-        #expect(!vm.sessionEndScreenPresented, "after letter 2 of 3")
-        await finishTrainingLetter(vm, pool[2])
-        #expect(vm.awaitingNextParticipant)
-        #expect(vm.sessionEndScreenPresented, "after letter 3 of 3 the screen must be up")
-
-        // A further advance of the finished session does not toggle it.
-        vm.advanceLearningPhase()
-        await settle()
-        #expect(vm.sessionEndScreenPresented)
-
-        // A letter load (post-test probe, proctor jump) ends it for good.
-        vm.loadLetter(name: pool[0])
-        #expect(!vm.sessionEndScreenPresented, "a letter change must not leave the end screen up")
-        await finishTrainingLetter(vm, pool[2])
-        #expect(!vm.sessionEndScreenPresented, "once per child: finishing the last letter again must not re-show it")
+        for name in pool { await finishTrainingLetter(vm, name) }
+        #expect(!vm.sessionEndScreenPresented, "r27: the screen follows the FINAL TEST")
+        #expect(vm.finalTestStage == .pause, "the third letter starts the pause; got \(vm.finalTestStage)")
     }
 
-    @Test("a partial session (last letter finished, one skipped) holds the set but shows no end screen")
+    @Test("a partial session (one letter skipped) shows no end screen")
     func endScreenNotInAPartialSession() async {
         let vm = endScreenVM()
         let pool = vm.visibleLetterNames
         await finishTrainingLetter(vm, pool[0])
         await finishTrainingLetter(vm, pool[2])      // pool[1] skipped
-        #expect(vm.awaitingNextParticipant, "the set is still held (existing behaviour)")
-        #expect(!vm.sessionEndScreenPresented, "but the child did not complete all three letters")
+        #expect(!vm.sessionEndScreenPresented, "the child did not complete all three letters")
     }
 
-    @Test("a cold probe of the last letter shows no end screen; the next child starts without one")
-    func endScreenNotForProbeAndClearedForNextChild() async {
+    @Test("a cold probe of the last letter does not start the pause; 'Nächstes Kind' drops the pause and the screen")
+    func probeStartsNoPauseAndTheNextChildClearsIt() async {
         let vm = endScreenVM()
         let pool = vm.visibleLetterNames
         #expect(vm.startColdProbe(letter: pool[2], kind: .pretest) == nil)
         vm.advanceLearningPhase()
         await settle { vm.isPhaseSessionComplete }
         #expect(vm.isPhaseSessionComplete, "precondition: the pretest completed")
-        #expect(!vm.sessionEndScreenPresented, "a pretest is not the end of the session")
+        #expect(vm.finalTestStage == .inactive, "a pretest is not the end of training")
 
         for name in pool { await finishTrainingLetter(vm, name) }
-        #expect(vm.sessionEndScreenPresented)
+        #expect(vm.finalTestStage == .pause)
         vm.resetForNewParticipant()
+        #expect(vm.finalTestStage == .inactive, "'Nächstes Kind' drops the pause")
         #expect(!vm.sessionEndScreenPresented, "'Nächstes Kind' clears the screen")
-        // The next child's subset is derived from a fresh random id, so the
-        // fixture pool (A, F, I) shrinks to ONE letter for 3 in 10 ids. There
-        // is no seam to pin the id without touching protocol code, so enrol
-        // again until a real set remains (each enrolment is a new child; the
-        // chance of 40 misses in a row is 0.3^40). The half therefore ALWAYS
-        // runs, and fails loudly if it cannot.
-        var nextPool = vm.visibleLetterNames
-        var enrolments = 1
-        while nextPool.count < 2 && enrolments < 40 {
-            vm.resetForNewParticipant()
-            nextPool = vm.visibleLetterNames
-            enrolments += 1
-        }
-        #expect(nextPool.count > 1, "fixture: no child with a multi-letter pool in \(enrolments) enrolments")
-        for name in nextPool { await finishTrainingLetter(vm, name) }
-        #expect(vm.sessionEndScreenPresented, "the next child gets their own end screen")
     }
 }

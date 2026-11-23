@@ -2,7 +2,7 @@
 // PrimaeNative
 //
 // Plays the bundled MP3 phrases the child hears during practice.
-// A study build plays ONLY recorded takes (protocol r9: the five phrases in
+// A study build plays ONLY recorded takes (protocol r9 five, r27 seven: the phrases in
 // Resources/Prompts, voice Kiki) and never substitutes the system voice for
 // a missing one. Dynamic per-letter phrases (recognition feedback) bypass
 // this and go through the synthesizer directly; none is reachable in a
@@ -70,6 +70,7 @@ final class StudyVoiceoverPromptPlayer: PromptPlaying {
     static let studySpokenKeys: Set<PromptPlayer.PromptKey> = [
         .phaseObserve, .phaseGuided, .phaseFreeWrite,
         .retryCue, .celebration,
+        .finalIntro, .finalGlimpse,
     ]
 
     private let inner: any PromptPlaying
@@ -112,6 +113,11 @@ final class PromptPlayer: PromptPlaying {
         case celebration = "celebration"
         /// "Probier's nochmal." — the off-path retry cue (protocol r9).
         case retryCue = "retry_cue"
+        /// "Jetzt schreibst du sie alle noch einmal." — once after the pause,
+        /// before the first final-test letter (protocol r27).
+        case finalIntro = "final_intro"
+        /// "Merk ihn dir gut." — during each final-test glimpse (r27).
+        case finalGlimpse = "final_glimpse"
     }
 
     private let speech: SpeechSynthesizing

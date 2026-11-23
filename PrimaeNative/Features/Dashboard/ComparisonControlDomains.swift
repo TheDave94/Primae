@@ -102,6 +102,10 @@ enum ComparisonControlDomains {
     static let dysfluencyRoughnessRateHz = ComparisonStepperDomain(range: 5...100, step: 5)
     /// "Abstand zwischen Buchstaben", seconds.
     static let presentationSpacingSeconds = ComparisonStepperDomain(range: 0...10, step: 0.5)
+    /// "Pause" before the final test, seconds (r27).
+    static let pauseSeconds = ComparisonStepperDomain(range: StudyComparisonSettings.pauseSecondsRange, step: 5)
+    /// "Zeigedauer" of the glyph in the final test, seconds (r27; a slider with a step).
+    static let glimpseSeconds = ComparisonStepperDomain(range: StudyComparisonSettings.glimpseSecondsRange, step: 0.5)
 
     // MARK: Labels
 

@@ -397,6 +397,9 @@ public final class TracingViewModel {
     /// since it would scan over the researcher's own edits.
     var phaseCue: PhaseCue? {
         guard !isCalibrating else { return nil }
+        // The final test shows the plain glyph and then an empty canvas; the
+        // turn cue only once the child may write (r27).
+        if finalTestStage != .inactive { return finalTestStage == .writing ? .act : nil }
         switch learningPhase {
         case .observe:              return .watch
         case .direct, .guided, .freeWrite: return .act
@@ -444,9 +447,9 @@ public final class TracingViewModel {
             // "no ghost" while guided drew one.
             showsGhost: (showGhostForPhase
                          || (showGhost && (learningPhase == .observe || learningPhase == .guided)))
-                && !isCalibrating,
-            showsStartDots: showCheckpoints && !isCalibrating,
-            showsEndpointRing: showEndpointRing && !isCalibrating,
+                && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
+            showsStartDots: showCheckpoints && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
+            showsEndpointRing: showEndpointRing && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
             ghost: TracingCanvasStyle.ghostStroke
         )
     }
@@ -910,6 +913,51 @@ public final class TracingViewModel {
     /// The 1-based attempt index of `currentProbe` for this letter and
     /// probe kind, for this participant (R-032); nil outside a probe.
     var currentProbeAttempt: Int?
+
+    // MARK: - The final test (protocol r27; logic in `TracingViewModel+FinalTest` below)
+
+    /// Where the child is in the closing part of the session. `.inactive`
+    /// until the last training letter is recorded.
+    private(set) var finalTestStage: FinalTestStage = .inactive
+    /// The test letters, frozen when the pause begins: the trained letters in
+    /// training order (`FinalTestRules.letters`).
+    private(set) var finalTestLetters: [String] = []
+    private(set) var finalTestIndex = 0
+    /// The child has put a stroke on the canvas of the current test letter
+    /// (shows the check button).
+    private(set) var finalTestHasInk = false
+    /// Pause, glimpse and intro timers; cancelled by every reset.
+    @ObservationIgnored private var finalTestTask: Task<Void, Never>?
+    @ObservationIgnored private var finalTestIntroTask: Task<Void, Never>?
+    /// Bumped by every stage change a timer owns, so a late timer is ignored.
+    @ObservationIgnored private var finalTestGeneration = 0
+    /// Monotonic clock readings of the current glimpse (`mediaClock`).
+    @ObservationIgnored private var glimpseShownAt: TimeInterval?
+    @ObservationIgnored private var glimpseHiddenAt: TimeInterval?
+    @ObservationIgnored private var glimpseShownSeconds: Double?
+    @ObservationIgnored private var glimpseToFirstTouch: Double?
+    /// Interruptions (r27, lane B2). The pause's timer and the elapsed time
+    /// are read from `mediaClock`; an interruption stops the timer and keeps
+    /// what is left of the pause. The intro and the glimpse have nothing to
+    /// keep: they restart from their start.
+    @ObservationIgnored private var finalTestPauseRemaining: TimeInterval = 0
+    @ObservationIgnored private var finalTestPauseStartedAt: TimeInterval?
+    /// The intro was cut (or never started) and replays from its start when
+    /// the cover lifts.
+    @ObservationIgnored private var finalTestIntroHeld = false
+    /// The glimpse is waiting for the cover to lift; `finalTestGlimpseCut` is
+    /// whether it had already been showing (a restart) or not yet (a delayed
+    /// start).
+    @ObservationIgnored private var finalTestGlimpseHeld = false
+    @ObservationIgnored private var finalTestGlimpseCut = false
+    /// Times the current test letter's glimpse was cut by an interruption and
+    /// restarted in full. Exported on the letter's row (`glimpseRestarts`).
+    private(set) var finalTestGlimpseRestarts = 0
+    /// The researcher settings in force (captured at init, like every
+    /// comparison switch) and the sleep seam.
+    @ObservationIgnored let pauseSecondsSetting: Double
+    @ObservationIgnored let glimpseSecondsSetting: Double
+    @ObservationIgnored private let finalTestSleep: @MainActor (TimeInterval) async -> Void
     /// In-flight pre-task sound-arm demonstration (see
     /// `PreTaskDemonstration` and `armPreTaskDemonstration`). Cancelled
     /// on every fresh letter load and the moment a real touch begins
@@ -982,7 +1030,7 @@ public final class TracingViewModel {
     /// `applyArmAuthority` can switch its sound EFFECTS with the arm while
     /// its spoken content stays the same in every arm.
     private let studyVoiceover: StudyVoiceoverPromptPlayer?
-    /// What the check of the five recorded takes found, once, at init (r9);
+    /// What the check of the seven recorded takes found, once, at init (r9);
     /// nil when the session plays no recorded phrase. Never recomputed:
     /// `studyPreconditionFailure` is read on every view update.
     private let recordedVerdict: RecordedPromptSet.Verdict?
@@ -1311,8 +1359,12 @@ public final class TracingViewModel {
         // Captured from the injection seam when a test supplies one, the
         // device's own key otherwise. Same once-per-VM capture as
         // `observePasses` above.
-        self.allFiveLetters         = deps.allFiveLetters
-            ?? StudyComparisonSettings.configuration(in: deps.comparisonDefaults).allFiveLetters
+        // Held OFF in the study build (protocol r27): three trained letters
+        // per child is the design, and the final test tests those three.
+        // The setting is still stored and read, so nothing decodes
+        // differently, but it does not reach the session.
+        self.allFiveLetters         = !StudyBuild.isActive && (deps.allFiveLetters
+            ?? StudyComparisonSettings.configuration(in: deps.comparisonDefaults).allFiveLetters)
         self.letterRepeatCount      = deps.letterRepeatCount.map { max(1, $0) }
             ?? StudyComparisonSettings.configuration(in: deps.comparisonDefaults).letterRepeatCount
         self.enablePaperTransfer    = deps.enablePaperTransfer
@@ -1327,6 +1379,9 @@ public final class TracingViewModel {
         self.launchSentinel         = deps.launchSentinel
         self.buildStamp             = deps.buildStamp
         self.mediaClock             = deps.mediaClock
+        self.pauseSecondsSetting    = deps.pauseSeconds
+        self.glimpseSecondsSetting  = deps.glimpseSeconds
+        self.finalTestSleep         = deps.finalTestSleep
         self.cyclesAudioConditions  = deps.cycleAllConditions
         self.demonstrationsOncePerCondition = deps.oncePerCondition
         // Through the seam, not `StudyComparisonSettings.observePasses`: same
@@ -1533,7 +1588,9 @@ public final class TracingViewModel {
             pressureLoudnessRangeDB: deps.pressureLoudnessRangeDB,
             dysfluencyRoughness: deps.dysfluencyRoughness,
             dysfluencyRoughnessDepth: deps.dysfluencyRoughnessDepth,
-            dysfluencyRoughnessRateHz: deps.dysfluencyRoughnessRateHz
+            dysfluencyRoughnessRateHz: deps.dysfluencyRoughnessRateHz,
+            pauseSeconds: deps.pauseSeconds,
+            glimpseSeconds: deps.glimpseSeconds
         ).nonDefaultStamp
         pb.onIsPlayingChanged = { [weak self] in self?.isPlaying = $0 }
         pb.reloadBeforePlay   = { [weak self] in self?.reloadActiveAudioFile() }
@@ -1634,14 +1691,23 @@ public final class TracingViewModel {
     private func syncEnrolmentRecordToAppliedAssignment() {
         guard studyMode, participantEnrolled else { return }
         let id = ParticipantStore.participantId
-        guard let record = enrolmentLog.enrolments.last(where: { $0.participantId == id }),
-              record.audioCondition != audioCondition
-                || record.trainedSubset != trainedSubset.rawValue
-        else { return }
-        guard assignmentOverrideAllowed else {
+        guard let record = enrolmentLog.enrolments.last(where: { $0.participantId == id }) else { return }
+        let assignmentDiffers = record.audioCondition != audioCondition
+            || record.trainedSubset != trainedSubset.rawValue
+        let stampDiffers = record.comparisonConfiguration != comparisonConfigurationStamp
+        guard assignmentDiffers || stampDiffers else { return }
+        if assignmentDiffers, !assignmentOverrideAllowed {
             keepRecordedAssignment(record, for: id)
             return
         }
+        // The comparison stamp: the configuration THIS launch runs is the one
+        // the child's rows will carry, and a switch moved since enrolment
+        // (that is what the relaunch was for) made the record's stale (r27,
+        // audit 2026-11-23). Only before the child's first row: afterwards
+        // the rows carry their own stamp and the record keeps the
+        // configuration the child was enrolled under.
+        let restamp = stampDiffers && assignmentOverrideAllowed
+        guard assignmentDiffers || restamp else { return }
         enrolmentLog.append(EnrolmentRecord(
             participantId: id,
             enrolledAt: record.enrolledAt,
@@ -1649,8 +1715,9 @@ public final class TracingViewModel {
             trainedSubset: trainedSubset.rawValue,
             protocolRevision: record.protocolRevision,
             // The enrolment-time stamps describe the enrolment, not the
-            // override, and are kept (batch D).
-            comparisonConfiguration: record.comparisonConfiguration,
+            // override, and are kept (batch D) — except the comparison
+            // stamp, re-stamped above while the child has no row.
+            comparisonConfiguration: restamp ? comparisonConfigurationStamp : record.comparisonConfiguration,
             voiceId: record.voiceId,
             environment: record.environment,
             build: record.build))
@@ -1663,6 +1730,16 @@ public final class TracingViewModel {
     /// ("nur vor dem ersten Buchstaben") and by the launch check above.
     var assignmentOverrideAllowed: Bool {
         dashboardStore.snapshot.phaseSessionRecords.isEmpty
+    }
+
+    /// Whether the Vergleichsmodus and Abschlusstest switches may still be
+    /// changed for the live child: only before their first phase row, by the
+    /// same predicate as the overrides (docs/DECISIONS.md, r27: "switches lock
+    /// after a child's first row, as the overrides already do"). With the
+    /// lock, the enrolment record's re-stamp before the first row is the
+    /// whole of it: after that row the running configuration cannot move.
+    var comparisonSettingsAllowed: Bool {
+        assignmentOverrideAllowed
     }
 
     /// Set at launch when an override was refused because the live child
@@ -2423,7 +2500,11 @@ public final class TracingViewModel {
         // silence, in an arm whose condition is sound. Refused instead,
         // by the same rule the session precondition applies to training
         // letters (C1-6: a fault, not a quiet skip).
-        if let reason = probeArmAudioMissingReason(for: asset) {
+        //
+        // NOT the final test (r27): it is silent in every arm, so no arm's
+        // recording is needed for it, and a missing take must not refuse a
+        // test that plays none.
+        if kind != .finalTest, let reason = probeArmAudioMissingReason(for: asset) {
             return reason
         }
         pendingProbeOverride = kind
@@ -2470,7 +2551,8 @@ public final class TracingViewModel {
     }
 
     var showsReferenceGlyph: Bool {
-        !(studyMode && learningPhase == .freeWrite)
+        if FinalTestRules.showsGlimpseGlyph(finalTestStage) { return true }
+        return !(studyMode && learningPhase == .freeWrite)
     }
 
     var allLetterNames: [String] { letters.map(\.name) }
@@ -2510,7 +2592,7 @@ public final class TracingViewModel {
         // last letter inside its quiet window is what ends the set, and the
         // hold must see that.
         closeOutgoingLetterBeforeNavigating()
-        guard !awaitingNextParticipant else { return }
+        guard !studyNavigationHeld else { return }
         if loadTrainingResumeLetterAfterProbe(visible: visible) { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? -1
         // No wrap in a study session (fix 2026-11-02, STATE-5): the set's
@@ -2540,7 +2622,7 @@ public final class TracingViewModel {
         // guided and free-write pass written as a second row set under the
         // same participantId.
         closeOutgoingLetterBeforeNavigating()
-        guard !awaitingNextParticipant else { return }
+        guard !studyNavigationHeld else { return }
         if loadTrainingResumeLetterAfterProbe(visible: visible) { return }
         let currentIdx = visible.firstIndex(of: currentLetterName) ?? 0
         // The mirror of `nextLetter`'s clamp (STATE-5): no wrap from the
@@ -2630,7 +2712,7 @@ public final class TracingViewModel {
         // Same hold as `nextLetter()` (protocol r7): reachable through the
         // canvas accessibility action, and it loads a trained letter.
         closeOutgoingLetterBeforeNavigating()
-        guard !awaitingNextParticipant else { return }
+        guard !studyNavigationHeld else { return }
         let randomName = visible[Int.random(in: 0..<visible.count)]
         guard let idx = letters.firstIndex(where: { $0.name == randomName }) else { return }
         letterIndex = idx
@@ -2934,6 +3016,8 @@ public final class TracingViewModel {
             cancelTouch()
         }
         quietWindowHeld = touchDispatcher.holdFreeWriteAutoAdvance() || quietWindowHeld
+        // r27: the final test's pause, intro and glimpse stop with the session.
+        holdFinalTestForInterruption()
         holdObserveForInterruption()
         holdPhasePromptForInterruption()
         if let start = letterLoadTime {
@@ -2958,6 +3042,11 @@ public final class TracingViewModel {
         guard activeInterruptions.remove(source) != nil,
               activeInterruptions.isEmpty else { return }
         lifecycleLogger.info("Session resumed on \(self.currentLetterName, privacy: .public) in \(self.phaseController.currentPhase.rawName, privacy: .public)")
+        // r27: the final test's stage continues BEFORE the guard below, which
+        // is about the letter on screen — in the pause the last TRAINING
+        // letter is on screen and is complete, and that must not stop the
+        // pause from resuming.
+        resumeFinalTestAfterInterruption()
         // A session that may not run (relaunch block, failed write) or a
         // closed letter resumes nothing — no clock, no quiet window, no
         // cue (review of batch C, item 1). A finished production left
@@ -3594,6 +3683,8 @@ public final class TracingViewModel {
     /// is ignored. Any other utterance is ignored by its text. A cancelled
     /// cue is counted down but starts nothing — the fallback covers it.
     private func cueUtteranceEnded(text: String, cancelled: Bool) {
+        // The final test's intro (r27): its end starts the first glimpse.
+        if text == ChildSpeechLibrary.finalIntro { finalTestIntroEnded(cancelled: cancelled); return }
         guard text == ChildSpeechLibrary.phaseEntry(.observe) else { return }
         pendingObserveCues = max(0, pendingObserveCues - 1)
         guard pendingObserveCues == 0, !cancelled,
@@ -3915,7 +4006,12 @@ public final class TracingViewModel {
     /// between two pretests, i.e. training a letter before that letter's
     /// own cold pretest.
     func advanceAfterCompletedStudyLetter() {
-        guard studyMode, currentProbe == nil else { return }
+        guard studyMode else { return }
+        // r27: a finished FINAL-TEST letter leads on to the next test letter
+        // (or the end), and the last TRAINING letter leads on to the pause —
+        // neither goes through the chevron's `nextLetter()`.
+        if currentProbe == .finalTest { advanceFinalTest(); return }
+        guard currentProbe == nil, finalTestStage == .inactive else { return }
         loadRecommendedLetter()
     }
 
@@ -4475,22 +4571,20 @@ public final class TracingViewModel {
     /// shown twice. Cleared only when a new child begins.
     private var sessionEndScreenShownToThisChild = false
 
-    /// Called by the final-phase pipeline right after the last letter's
-    /// training pass is recorded. Presents the end screen if, and only if,
-    /// the whole trained set is done (`SessionEndScreenDecision`).
+    /// Called by `finishFinalTest` once the last test letter is recorded.
+    /// Presents the end screen if, and only if, the whole trained set was
+    /// trained AND tested (`SessionEndScreenDecision`).
     func presentSessionEndScreenIfComplete(completingLetter: String) {
         // The end screen goes with the set's hold: it shows only once the
         // set has actually ended (`finishSetAwaitingNextParticipant`).
         guard studyMode, awaitingNextParticipant else { return }
-        let finished = Set(dashboardStore.snapshot.phaseSessionRecords
-            .filter { $0.probe == nil && $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
-            .map(\.letter))
+        let rows = dashboardStore.snapshot.phaseSessionRecords
+            .filter { $0.completed && $0.phase == LearningPhase.freeWrite.rawName }
         let decision = SessionEndScreenDecision(
             setLetters: visibleLetterNames.map(LetterProgress.canonicalKey),
-            completedTrainingLetters: finished,
-            justCompleted: LetterProgress.canonicalKey(completingLetter),
-            isColdProbe: currentProbe != nil,
-            isFinalPassOfLetter: isFinalPassOfLetter,
+            completedTrainingLetters: Set(rows.filter { $0.probe == nil }.map(\.letter)),
+            completedFinalTestLetters: Set(rows.filter { $0.probe == StudyProbe.finalTest.rawValue }.map(\.letter)),
+            finalTestEnded: currentProbe == .finalTest,
             alreadyPresented: sessionEndScreenShownToThisChild)
         guard decision.shouldPresent else { return }
         sessionEndScreenShownToThisChild = true
@@ -4534,7 +4628,7 @@ public final class TracingViewModel {
         // launch letter is the first trained letter, parked, and the
         // observe pill would otherwise start a second training pass under
         // the same id. Cold probes load through their own path.
-        guard !awaitingNextParticipant else { return }
+        guard !studyNavigationHeld else { return }
         noteParticipantActivity()
         launchParked = false
         load(letter: letters[letterIndex])
@@ -5264,8 +5358,11 @@ public final class TracingViewModel {
         if studyMode, participantIdentityChanged {
             return "Teilnehmer gewechselt — die App muss neu gestartet werden, damit Arm und Buchstaben des neuen Kindes gelten."
         }
-        if studyMode, assignmentOverrideChanged || comparisonSettingChanged {
-            return "Zuweisung geändert — die App muss neu gestartet werden, damit der gewählte Arm bzw. die gewählten Buchstaben gelten."
+        if studyMode, let message = RelaunchBlockCopy.message(assignmentChanged: assignmentOverrideChanged,
+                                                              comparisonChanged: comparisonSettingChanged) {
+            // The arm/letters text only for an arm/letters change; a moved
+            // comparison switch says it is a setting (r27, audit 2026-11-23).
+            return message
         }
         return studyPreconditionFailure
     }
@@ -5289,11 +5386,25 @@ public final class TracingViewModel {
     /// confirmed". The copy is unchanged — `NextParticipantControlTests`
     /// asserts it — only its presentation moved here.
     func announceNewChildReady() {
-        messages.show(toast: NextParticipantCopy.readyMessage)
+        messages.show(toast: readyMessageForNextChild)
         // The toast is a visual-only confirmation; a VoiceOver proctor who
         // double-tapped the rail would otherwise get no feedback at all
         // (U10, 2026-10-21). Announced, not focused: nothing moves.
-        accessibilityAnnouncer.announce(NextParticipantCopy.readyMessage)
+        accessibilityAnnouncer.announce(readyMessageForNextChild)
+    }
+
+    /// Whether the app must be restarted before a child can write: a restored
+    /// identity, an assignment override or a comparison switch is waiting for
+    /// a relaunch (study sessions only, as `sessionBlockReason`). The
+    /// research screen's "Neustart nötig" line and the readiness copy read it.
+    var relaunchPending: Bool {
+        studyMode && (participantIdentityChanged || assignmentOverrideChanged || comparisonSettingChanged)
+    }
+
+    /// "…sofort startklar" is false while a relaunch is pending, so the
+    /// confirmation says so instead (r27, audit 2026-11-23).
+    var readyMessageForNextChild: String {
+        NextParticipantCopy.readyMessageFor(restartPending: relaunchPending)
     }
 
     /// Where VoiceOver announcements go. Replaced in tests; the default posts
@@ -5446,6 +5557,7 @@ public final class TracingViewModel {
         awaitingNextParticipant = false
         sessionEndScreenPresented = false
         sessionEndScreenShownToThisChild = false
+        cancelFinalTest()
         // DURABLE BEFORE THE IDENTITY SWITCH (B-21, audit 2026-11-01). Each
         // `reset` below has its empty state on disk when it returns, and
         // both callers write the new identity only after this function — so
@@ -6033,7 +6145,8 @@ extension TracingViewModel {
         return PhaseRowContext(finalizedBy: finalizedBy,
                                probeAttempt: currentProbe != nil ? currentProbeAttempt : nil,
                                delivery: delivery,
-                               freeWriteAttempt: phase == .freeWrite ? freeWriteAttempt : nil)
+                               freeWriteAttempt: phase == .freeWrite ? freeWriteAttempt : nil,
+                               finalTest: phase == .freeWrite ? finalTestFacts : nil)
     }
 
     /// Bring the per-phase split up to the phase on screen (R-020). The
@@ -6056,7 +6169,7 @@ extension TracingViewModel {
 
     /// The identifier of the voice that speaks to the child in this
     /// session (R-021); nil when nothing speaks. In a study voiceover
-    /// session it names the RECORDED SET ("rec:kiki:<12 hex of the five
+    /// session it names the RECORDED SET ("rec:kiki:<12 hex of the seven
     /// files' sha256>", r9), not a device voice.
     var sessionVoiceId: String? {
         if studyVoiceover != nil { return recordedSetId }
@@ -6191,5 +6304,319 @@ enum RecognizerLoadPolicy {
     /// successful ones.
     nonisolated static func shouldAttemptLoad(attempts: Int, modelLoaded: Bool) -> Bool {
         !modelLoaded && attempts < maxAttempts
+    }
+}
+
+// MARK: - The final test (protocol r27)
+
+extension TracingViewModel {
+
+    /// True while the closing part of the session runs, or once the set is
+    /// finished and the device waits for the next child: no chevron, no
+    /// random letter, no parked-letter start.
+    var studyNavigationHeld: Bool {
+        awaitingNextParticipant || finalTestStage != .inactive
+    }
+
+    /// True while the pause, the intro or a test letter is up.
+    var finalTestActive: Bool { finalTestStage != .inactive }
+
+    /// The check button is up: writing from memory, a stroke is down.
+    var showsFinalTestCheck: Bool {
+        FinalTestRules.showsCheckButton(stage: finalTestStage, hasInk: finalTestHasInk)
+    }
+
+    /// The test's own timing as the current row records it, or nil outside
+    /// the final test.
+    var finalTestFacts: FinalTestFacts? {
+        guard currentProbe == .finalTest else { return nil }
+        return FinalTestFacts(glimpseSecondsPlanned: glimpseSecondsSetting,
+                              glimpseSecondsShown: glimpseShownSeconds,
+                              pauseSecondsPlanned: pauseSecondsSetting,
+                              glimpseHiddenToFirstTouchSeconds: glimpseToFirstTouch,
+                              glimpseRestarts: finalTestGlimpseRestarts)
+    }
+
+    // MARK: Stage 1 — the pause
+
+    /// Called by the final-phase pipeline once the LAST training letter is
+    /// recorded (`PhaseTransitionCoordinator.recordSessionCompletion`): the
+    /// silent bubble screen, then the test. A state transition only; it loads
+    /// nothing and plays nothing.
+    ///
+    /// The set is marked complete DURABLY here, not at the end of the test:
+    /// a relaunch during the pause or the test then reopens a FINISHED set
+    /// (R-033) instead of a second training pass under the same id. The cost
+    /// is that a test cut short by a relaunch is not resumed; its missing
+    /// rows are visible in the export.
+    func beginFinalTestPause() {
+        guard studyMode, finalTestStage == .inactive else { return }
+        finalTestLetters = FinalTestRules.letters(trainingOrder: visibleLetterNames)
+        finalTestIndex = 0
+        resetFinalTestLetterState()
+        setCompletion.markSetComplete(for: ParticipantStore.participantId)
+        finalTestStage = .pause
+        runFinalTestPause(seconds: pauseSecondsSetting)
+    }
+
+    /// Run (or, under an interruption, hold) the pause for `seconds`. The
+    /// start is read from `mediaClock`, so an interruption can tell how much
+    /// of it is left (`holdFinalTestForInterruption`).
+    private func runFinalTestPause(seconds: TimeInterval) {
+        finalTestPauseRemaining = seconds
+        finalTestPauseStartedAt = nil
+        finalTestGeneration &+= 1
+        finalTestTask?.cancel(); finalTestTask = nil
+        // A pause that begins under a cover (the last letter ended as the
+        // scene went inactive) starts counting when the cover lifts.
+        guard activeInterruptions.isEmpty else { return }
+        finalTestPauseStartedAt = mediaClock()
+        let generation = finalTestGeneration
+        let sleep = finalTestSleep
+        finalTestTask = Task { @MainActor [weak self] in
+            await sleep(seconds)
+            guard !Task.isCancelled, let self, self.finalTestGeneration == generation else { return }
+            self.endFinalTestPause()
+        }
+    }
+
+    /// The pause is over: the intro prompt, then the first glimpse once the
+    /// recording has ended (or the fallback has run out).
+    func endFinalTestPause() {
+        guard finalTestStage == .pause else { return }
+        finalTestPauseStartedAt = nil
+        finalTestPauseRemaining = 0
+        finalTestStage = .intro
+        startFinalTestIntro()
+    }
+
+    /// Play the intro from its start and arm the fallback that starts the
+    /// first glimpse. Under an interruption nothing plays: the intro is held
+    /// and replays in full when the cover lifts.
+    private func startFinalTestIntro() {
+        finalTestGeneration &+= 1
+        finalTestIntroTask?.cancel(); finalTestIntroTask = nil
+        guard activeInterruptions.isEmpty else {
+            finalTestIntroHeld = true
+            return
+        }
+        finalTestIntroHeld = false
+        let generation = finalTestGeneration
+        prompts.play(.finalIntro, fallbackText: ChildSpeechLibrary.finalIntro)
+        let sleep = finalTestSleep
+        finalTestIntroTask = Task { @MainActor [weak self] in
+            await sleep(FinalTestRules.introFallbackSeconds)
+            guard !Task.isCancelled, let self, self.finalTestGeneration == generation,
+                  self.finalTestStage == .intro else { return }
+            self.startFinalTestLetter()
+        }
+    }
+
+    /// The speech seam's report that the intro recording ended: the first
+    /// glimpse starts a breath later. A cut recording starts nothing (the
+    /// fallback covers it). Called from `cueUtteranceEnded`.
+    func finalTestIntroEnded(cancelled: Bool) {
+        // Under an interruption the intro is cut and held; a report that
+        // still arrives starts nothing (the held intro replays on resume).
+        guard finalTestStage == .intro, !cancelled, activeInterruptions.isEmpty else { return }
+        let generation = finalTestGeneration
+        let sleep = finalTestSleep
+        finalTestIntroTask?.cancel()
+        finalTestIntroTask = Task { @MainActor [weak self] in
+            await sleep(FinalTestRules.introEndToGlimpseSeconds)
+            guard !Task.isCancelled, let self, self.finalTestGeneration == generation,
+                  self.finalTestStage == .intro else { return }
+            self.startFinalTestLetter()
+        }
+    }
+
+    // MARK: Stage 2 — one test letter
+
+    /// Load the current test letter as a `finalTest` probe (the cold-probe
+    /// path: it lands in free writing, silent in every arm, no feedback, no
+    /// retry), show its plain glyph for `glimpseSeconds`, then hide it.
+    func startFinalTestLetter() {
+        guard finalTestLetters.indices.contains(finalTestIndex) else { finishFinalTest(); return }
+        let letter = finalTestLetters[finalTestIndex]
+        finalTestIntroTask?.cancel(); finalTestIntroTask = nil
+        resetFinalTestLetterState()
+        // The stage the load runs under: not yet accepting touches.
+        finalTestStage = .intro
+        if let refusal = startColdProbe(letter: letter, kind: .finalTest) {
+            // A test letter that cannot open is a fault, not a quiet skip.
+            pilotAudioLogger.fault("Final test letter \(letter, privacy: .public) refused: \(refusal, privacy: .public)")
+            toast(refusal)
+            finalTestStage = .inactive
+            return
+        }
+        finalTestStage = .glimpse
+        // A letter that opens under a cover shows its glimpse when it lifts.
+        guard activeInterruptions.isEmpty else {
+            finalTestGlimpseHeld = true
+            finalTestGlimpseCut = false
+            return
+        }
+        beginFinalTestGlimpse()
+    }
+
+    /// The glyph is on screen: stamp it, speak "Merk ihn dir gut.", and hide
+    /// it after the setting. Also the RESTART of a cut glimpse, which shows
+    /// the glyph for the full setting again.
+    private func beginFinalTestGlimpse() {
+        finalTestGlimpseHeld = false
+        finalTestGlimpseCut = false
+        glimpseShownAt = mediaClock()
+        prompts.play(.finalGlimpse, fallbackText: ChildSpeechLibrary.finalGlimpse)
+        finalTestGeneration &+= 1
+        let generation = finalTestGeneration
+        let seconds = glimpseSecondsSetting
+        let sleep = finalTestSleep
+        finalTestTask?.cancel()
+        finalTestTask = Task { @MainActor [weak self] in
+            await sleep(seconds)
+            guard !Task.isCancelled, let self, self.finalTestGeneration == generation,
+                  self.finalTestStage == .glimpse else { return }
+            self.hideFinalTestGlimpse()
+        }
+    }
+
+    /// The glyph goes; the canvas is empty and the child writes from memory.
+    func hideFinalTestGlimpse() {
+        guard finalTestStage == .glimpse else { return }
+        let now = mediaClock()
+        glimpseShownSeconds = glimpseShownAt.map { now - $0 }
+        glimpseHiddenAt = now
+        finalTestStage = .writing
+        prompts.play(ChildSpeechLibrary.phaseEntryPromptKey(.freeWrite), fallbackText: ChildSpeechLibrary.phaseEntry(.freeWrite))
+    }
+
+    /// The first accepted touch of a test letter: the latency from the glyph
+    /// hiding to it (`glimpseHiddenToFirstTouchSeconds`).
+    func noteFinalTestTouchBegan() {
+        guard currentProbe == .finalTest, glimpseToFirstTouch == nil, let hidden = glimpseHiddenAt else { return }
+        glimpseToFirstTouch = max(0, mediaClock() - hidden)
+    }
+
+    /// A stroke has been lifted and was a production: the check button shows.
+    func noteFinalTestStrokeEnded() {
+        guard currentProbe == .finalTest, finalTestStage == .writing, !finalTestHasInk else { return }
+        finalTestHasInk = true
+    }
+
+    /// The check button: the child says "done". Scores and records the
+    /// letter exactly as the quiet window would have (no retry for a probe),
+    /// after which the view's completion hook calls `advanceFinalTest()`.
+    func finishFinalTestLetterTapped() {
+        guard currentProbe == .finalTest, showsFinalTestCheck, !didCompleteCurrentLetter else { return }
+        advanceLearningPhase()
+    }
+
+    /// The test letter is recorded: on to the next, or the end.
+    func advanceFinalTest() {
+        guard finalTestStage == .writing || finalTestStage == .glimpse else { return }
+        if let next = FinalTestRules.nextIndex(after: finalTestIndex, count: finalTestLetters.count) {
+            finalTestIndex = next
+            startFinalTestLetter()
+        } else {
+            finishFinalTest()
+        }
+    }
+
+    // MARK: Stage 3 — the end
+
+    /// "Super gemacht!" (moved here from the end of training), the set is
+    /// finished, the session end screen shows.
+    func finishFinalTest() {
+        finalTestTask?.cancel(); finalTestTask = nil
+        finalTestIntroTask?.cancel(); finalTestIntroTask = nil
+        clearFinalTestInterruptionHold()
+        finalTestStage = .inactive
+        prompts.play(.celebration, fallbackText: ChildSpeechLibrary.celebration)
+        finishSetAwaitingNextParticipant()
+        presentSessionEndScreenIfComplete(completingLetter: currentLetterName)
+    }
+
+    /// Drops everything the final test holds. A new child, a restore.
+    func cancelFinalTest() {
+        finalTestTask?.cancel(); finalTestTask = nil
+        finalTestIntroTask?.cancel(); finalTestIntroTask = nil
+        finalTestGeneration &+= 1
+        clearFinalTestInterruptionHold()
+        finalTestStage = .inactive
+        finalTestLetters = []
+        finalTestIndex = 0
+        resetFinalTestLetterState()
+    }
+
+    private func resetFinalTestLetterState() {
+        finalTestHasInk = false
+        finalTestGlimpseHeld = false
+        finalTestGlimpseCut = false
+        finalTestGlimpseRestarts = 0
+        glimpseShownAt = nil
+        glimpseHiddenAt = nil
+        glimpseShownSeconds = nil
+        glimpseToFirstTouch = nil
+    }
+
+    // MARK: Interruptions (r27, lane B2)
+
+    /// The session is suspended (`beginInterruption`, first cover only): the
+    /// stage's timer stops, and nothing advances until the cover lifts. The
+    /// rules (DECISIONS r27, "Interruptions"): the PAUSE keeps what is left of
+    /// it; the INTRO is cut and replays from the start of its prompt, as an
+    /// interrupted observe restarts from its cue (R-006); a showing GLIMPSE is
+    /// cut and restarts in FULL, so the child gets the planned exposure.
+    /// Writing needs nothing here: it runs the free-writing interruption path.
+    func holdFinalTestForInterruption() {
+        switch finalTestStage {
+        case .pause:
+            if let started = finalTestPauseStartedAt {
+                finalTestPauseRemaining = max(0, finalTestPauseRemaining - (mediaClock() - started))
+                finalTestPauseStartedAt = nil
+            }
+            finalTestGeneration &+= 1
+            finalTestTask?.cancel(); finalTestTask = nil
+        case .intro:
+            finalTestGeneration &+= 1
+            finalTestIntroTask?.cancel(); finalTestIntroTask = nil
+            finalTestIntroHeld = true
+        case .glimpse:
+            guard glimpseShownAt != nil, !finalTestGlimpseHeld else { return }
+            finalTestGeneration &+= 1
+            finalTestTask?.cancel(); finalTestTask = nil
+            finalTestGlimpseHeld = true
+            finalTestGlimpseCut = true
+        case .inactive, .writing:
+            break
+        }
+    }
+
+    /// The last cover lifted: continue the stage held above. A session that
+    /// may not run (`sessionBlockReason`) stays frozen.
+    func resumeFinalTestAfterInterruption() {
+        guard sessionBlockReason == nil else { return }
+        switch finalTestStage {
+        case .pause:
+            guard finalTestTask == nil else { return }
+            runFinalTestPause(seconds: finalTestPauseRemaining)
+        case .intro:
+            guard finalTestIntroHeld else { return }
+            startFinalTestIntro()
+        case .glimpse:
+            guard finalTestGlimpseHeld else { return }
+            if finalTestGlimpseCut { finalTestGlimpseRestarts += 1 }
+            beginFinalTestGlimpse()
+        case .inactive, .writing:
+            break
+        }
+    }
+
+    private func clearFinalTestInterruptionHold() {
+        finalTestPauseStartedAt = nil
+        finalTestPauseRemaining = 0
+        finalTestIntroHeld = false
+        finalTestGlimpseHeld = false
+        finalTestGlimpseCut = false
     }
 }

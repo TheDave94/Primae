@@ -88,6 +88,8 @@ enum NextParticipantCopy {
     /// presentation). The rail path shows only `readyMessage`, as a toast.
     static let readyTitle = "Neues Kind bereit"
     static let readyOKButton = "OK"
+    /// Said only when no relaunch is pending; otherwise
+    /// `readyMessageRestartPending` (`ProctorScreenPresentation.swift`).
     static let readyMessage = "Studienarm-Zuordnung ist neu abgeleitet und die App ist sofort startklar."
 
     /// Accessibility identifiers for the Schule world's toast. The toast is
@@ -99,7 +101,8 @@ enum NextParticipantCopy {
     static let otherToastIdentifier = "transientToast"
 
     static func toastIdentifier(for message: String) -> String {
-        message == readyMessage ? readyToastIdentifier : otherToastIdentifier
+        message == readyMessage || message == readyMessageRestartPending
+            ? readyToastIdentifier : otherToastIdentifier
     }
 
     /// Shown INSTEAD of the ready confirmation when the outgoing child could not
@@ -247,7 +250,7 @@ struct NextParticipantControl<Label: View>: View {
         .alert(NextParticipantCopy.readyTitle, isPresented: $showReady) {
             Button(NextParticipantCopy.readyOKButton, role: .cancel) {}
         } message: {
-            Text(NextParticipantCopy.readyMessage)
+            Text(vm.readyMessageForNextChild)
         }
         .alert(NextParticipantCopy.sealFailedTitle, isPresented: Binding(
             get: { sealFailure != nil },

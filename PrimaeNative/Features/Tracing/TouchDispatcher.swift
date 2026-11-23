@@ -169,6 +169,9 @@ final class TouchDispatcher {
         // were latched from the buffer as it was, and a later stroke used
         // to land in the raw trace but not in the row (review 2026-09-05).
         guard !(vm.didCompleteCurrentLetter && vm.phaseController.currentPhase == .freeWrite) else { return }
+        // The final test (r27) takes no touch while its glyph is on screen
+        // (the child looks, not traces) nor during the pause and the intro.
+        guard FinalTestRules.acceptsTouch(vm.finalTestStage) else { return }
 
         // Re-touch cancels a pending freeWrite auto-advance.
         freeWriteAutoAdvanceTask?.cancel()
@@ -180,6 +183,7 @@ final class TouchDispatcher {
         vm.cancelPreTaskDemonstration()
 
         noteStrokeGap(at: t)
+        vm.noteFinalTestTouchBegan()
         letterEndLatched               = false
         isSingleTouchInteractionActive = true
         sessionIsPencil                = vm.lastTouchDownWasPencil
@@ -514,6 +518,9 @@ final class TouchDispatcher {
            // the canvas (a creeping palm, r7), is not a production.
            StrokeProcessScorer.isProduction(points: vm.freeWritePoints, canvasSize: vm.canvasSize) {
             scheduleFreeWriteAutoAdvance()
+            // The final test ends on the check button, not the window: the
+            // lift only makes the button appear (r27).
+            vm.noteFinalTestStrokeEnded()
         }
     }
 
@@ -549,6 +556,10 @@ final class TouchDispatcher {
               !isSingleTouchInteractionActive,
               StrokeProcessScorer.isProduction(points: vm.freeWritePoints, canvasSize: vm.canvasSize)
         else { return }
+        // The final test (r27) has no quiet window, so a stroke the
+        // interruption cut would leave a letter with ink and no way to end it:
+        // the check button is what the window's re-arm stands for there.
+        vm.noteFinalTestStrokeEnded()
         scheduleFreeWriteAutoAdvance()
     }
 
@@ -930,6 +941,10 @@ final class TouchDispatcher {
     /// `freeWriteQuietSeconds` of no re-touch advances the phase,
     /// runs the recognizer, and writes stars via `commitCompletion`.
     private func scheduleFreeWriteAutoAdvance() {
+        // The final test (r27) never ends on the quiet window: writing from
+        // memory invites longer pauses between strokes, and a window would cut
+        // a letter off mid-recall. Its end is the check button.
+        guard FinalTestRules.endsOnQuietWindow(probe: vm?.currentProbe) else { return }
         cancelledStrokeAwaitsWindow = false
         freeWriteAutoAdvanceTask?.cancel()
         let seconds = freeWriteQuietSeconds

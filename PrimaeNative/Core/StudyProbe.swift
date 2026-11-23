@@ -32,12 +32,23 @@ enum StudyProbe: String, Codable, CaseIterable, Sendable {
     /// cold, on a participant whose identity was restored from the
     /// pseudonymous identifier (`ParticipantStore.restoreParticipant`).
     case delayed
+    /// The r27 FINAL TEST: each of the child's trained letters once more at
+    /// the end of the session, in training order, after a silent pause — a
+    /// plain glyph shown briefly, hidden, written from memory, silent in
+    /// every arm. The only probe a study build runs (`FinalTest.swift`);
+    /// `pretest`, `posttest` and `delayed` stay so earlier rows decode.
+    case finalTest
 
     /// Which of the study letters this kind may open. Since r12 every
     /// kind accepts any study letter; `untrained` is kept in the
     /// signature (no kind reads it now) so the callers stay unchanged.
+    ///
+    /// The final test is the exception: it tests what was TRAINED, so it
+    /// refuses the child's untrained letters (r27).
     func permits(letter: String, untrained: Set<String>, studyLetters: Set<String>) -> Bool {
-        studyLetters.contains(letter)
+        guard studyLetters.contains(letter) else { return false }
+        if self == .finalTest { return !untrained.contains(letter) }
+        return true
     }
 
     /// Proctor-facing German label.
@@ -46,6 +57,7 @@ enum StudyProbe: String, Codable, CaseIterable, Sendable {
         case .pretest:  return "Vortest"
         case .posttest: return "Post-Test"
         case .delayed:  return "Nachtest (verzögert)"
+        case .finalTest: return "Abschlusstest"
         }
     }
 }

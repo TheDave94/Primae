@@ -134,10 +134,13 @@ private func subset(_ raw: String) -> TrainedLetterSubset {
 
     // MARK: - A11 (STATE-6): repeat count and the end of the set
 
-    /// Round-1 `repeatCountCelebratesTheSetBeforeTheLastPass`. Mutation
-    /// check: drop `vm.isFinalPassOfLetter` from the end-of-set branch —
-    /// RED (a celebration after pass 1).
-    @Test("letterRepeatCount 2 celebrates the set once, after the last pass of the last letter")
+    /// Round-1 `repeatCountCelebratesTheSetBeforeTheLastPass`, re-aimed at
+    /// r27: the end of TRAINING (the pause starts) fires only after the last
+    /// pass of the last letter, and "Super gemacht!" no longer plays there at
+    /// all (it moved to the end of the final test). Mutation check: drop
+    /// `vm.isFinalPassOfLetter` from the end-of-training branch — RED (the
+    /// pause starts after pass 1).
+    @Test("letterRepeatCount 2 starts the final-test pause once, after the last pass of the last letter")
     func repeatCountCelebratesOnceAfterLastPass() async {
         let rig = LifecycleRig(fallback: 0.01) { d in
             d.trainedSubset = subset("FIL")
@@ -147,12 +150,14 @@ private func subset(_ raw: String) -> TrainedLetterSubset {
         rig.vm.loadLetter(name: "F")
         await runOnePass(rig)
         #expect(rig.vm.currentLetterName == "F")
-        #expect(rig.prompts.count(.celebration) == 0,
-                "end-of-set celebration after pass 1 of 2 (awaitingNextParticipant=\(rig.vm.awaitingNextParticipant))")
+        #expect(rig.vm.finalTestStage == .inactive,
+                "the pause started after pass 1 of 2 (awaitingNextParticipant=\(rig.vm.awaitingNextParticipant))")
         #expect(!rig.vm.awaitingNextParticipant, "the set was held after pass 1 of 2")
         await runOnePass(rig)
-        #expect(rig.prompts.count(.celebration) == 1, "celebrations: \(rig.prompts.count(.celebration))")
-        #expect(rig.vm.awaitingNextParticipant, "the set did not end after the last pass")
+        #expect(rig.vm.finalTestStage == .pause, "training did not end after the last pass: \(rig.vm.finalTestStage)")
+        #expect(rig.prompts.count(.celebration) == 0,
+                "r27: \"Super gemacht!\" moved to the end of the final test; celebrations: \(rig.prompts.count(.celebration))")
+        #expect(!rig.vm.awaitingNextParticipant, "the set is handed back after the final test, not before")
     }
 
     private func runOnePass(_ rig: LifecycleRig) async {

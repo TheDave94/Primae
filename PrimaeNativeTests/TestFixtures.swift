@@ -491,6 +491,9 @@ extension TracingDependencies {
             dysfluencyRoughness:  StudyComparisonSettings.dysfluencyRoughnessDefault,
             dysfluencyRoughnessDepth: StudyComparisonSettings.dysfluencyRoughnessDepthDefault,
             dysfluencyRoughnessRateHz: StudyComparisonSettings.dysfluencyRoughnessRateHzDefault,
+            // r27: the final test's two timings, pinned like every switch above.
+            pauseSeconds:         StudyComparisonSettings.pauseSecondsDefault,
+            glimpseSeconds:       StudyComparisonSettings.glimpseSecondsDefault,
             letterRecognizer:     StubLetterRecognizer(),
             speech:               NullSpeechSynthesizer(),
             // Batch D: a fixed environment, no sentinel file and a fixed

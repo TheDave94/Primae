@@ -137,7 +137,8 @@ enum GoldenExportFixture {
             context: PhaseRowContext(
                 finalizedBy: .child, delivery: delivery, freeWriteAttempt: 1,
                 attemptCheck: FreeWriteAttemptCheck.Result(
-                    passed: true, shapeScore: 0.875, lengthRatio: 1.25, extraReversals: 0))))
+                    passed: true, shapeScore: 0.875, lengthRatio: 1.25, extraReversals: 0),
+                spatialFitShearDegrees: 3.875)))
 
         // free-writing pass 2: attempt 1 REJECTED (r25), attempt 2 accepted.
         records.append(PhaseSessionRecord(
@@ -161,7 +162,8 @@ enum GoldenExportFixture {
             context: PhaseRowContext(
                 finalizedBy: .child, delivery: delivery, freeWriteAttempt: 2,
                 attemptCheck: FreeWriteAttemptCheck.Result(
-                    passed: true, shapeScore: 0.9375, lengthRatio: 1.5, extraReversals: 1))))
+                    passed: true, shapeScore: 0.9375, lengthRatio: 1.5, extraReversals: 1),
+                spatialFitShearDegrees: -7.5)))
 
         // free-writing pass 3: first attempt accepted.
         records.append(PhaseSessionRecord(
@@ -225,9 +227,13 @@ enum GoldenExportFixture {
                     letter: "F", phase: "freeWrite", completed: true, score: 0.8125,
                     schedulerPriority: 0.4, condition: .guidedOnly, audioCondition: .spatial,
                     recordedAt: at(200), inputDevice: "finger", trainedSubset: "FIL",
-                    studyMode: true, protocolRevision: 26,
+                    spatialDeviation: 0.5, strokeCount: 2,
+                    strokeOrder: "-,0",       // an unmatched stroke: leading "-" AND a comma
+                    reversedStrokeCount: 0, studyMode: true, protocolRevision: 26,
+                    spatialDeviationRaw: 0.625,
                     rowId: UUID(uuidString: "00000000-0000-0000-0000-0000000A0101")!,
-                    context: PhaseRowContext(finalizedBy: .child, freeWriteAttempt: 1)),
+                    context: PhaseRowContext(finalizedBy: .child, freeWriteAttempt: 1,
+                                             spatialFitShearDegrees: 15)),
             ])
         return ParticipantExportSource(snapshot: snapshot, participantId: p2,
                                        progress: [:], rawTraces: [], enrolledAt: nil)

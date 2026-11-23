@@ -131,11 +131,9 @@ struct ParentDashboardView: View {
     /// Last 5 non-nil values for a single Schreibmotorik dimension
     /// across completed freeWrite records, for the trend sparkline.
     private func dimensionTrend(_ keyPath: KeyPath<PhaseSessionRecord, Double?>) -> [Double] {
-        snapshot.phaseSessionRecords
-            .filter { $0.phase == LearningPhase.freeWrite.rawName && $0.completed }
-            .compactMap { $0[keyPath: keyPath] }
-            .suffix(5)
-            .map { $0 }
+        // Probe and final-test rows are skipped (the mean above skips them):
+        // `PhaseRowPresentation.trendValues`.
+        PhaseRowPresentation.trendValues(snapshot.phaseSessionRecords, keyPath)
     }
 
     @ViewBuilder

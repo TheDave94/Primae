@@ -64,7 +64,12 @@ struct SchuleWorldView: View {
             queuedModalOverlay
 
             VStack {
-                topRow
+                // From the pause on the child sees the task only: no letter
+                // name, no phase dots, no chevrons (r27) - the letter pill would
+                // name the letter that is to be written from memory.
+                if !FinalTestRules.hidesChrome(vm.finalTestStage) {
+                    topRow
+                }
                 // Feedback cards are reward-class UI — off in study
                 // sessions so all arms end trials identically (audit C2).
                 if let guided = vm.lastGuidedScore,
@@ -84,9 +89,28 @@ struct SchuleWorldView: View {
                         .transition(reduceMotion ? .opacity : .opacity)
                 }
                 Spacer()
-                bottomBar
+                if !FinalTestRules.hidesChrome(vm.finalTestStage) {
+                    bottomBar
+                }
             }
             .padding(.vertical, 16)
+
+            // The final test's check button (r27): an icon, no text, once the
+            // child has put a stroke down; it ends the letter (the 2 s quiet
+            // window does not).
+            if vm.showsFinalTestCheck {
+                finalTestCheckButton
+                    .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
+                    .zIndex(35)
+            }
+
+            // The silent bubble pause (r27). Below the toast so "Neues Kind
+            // bereit" is never covered; the rail is outside this view.
+            if FinalTestRules.showsPause(vm.finalTestStage) {
+                FinalTestPauseView()
+                    .transition(.opacity)
+                    .zIndex(40)
+            }
 
             // The study's end-of-session screen (2026-11-04). Below the
             // toast so "Neues Kind bereit" is never covered; the rail is
@@ -149,6 +173,8 @@ struct SchuleWorldView: View {
             #endif
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: vm.toastMessage)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: vm.finalTestStage)
+        .animation(reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.7), value: vm.showsFinalTestCheck)
         .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.78),
                    value: vm.overlayQueue.currentOverlay)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: showLetterPicker)
@@ -577,6 +603,29 @@ struct SchuleWorldView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    /// The check button: a large checkmark, bottom-right of the canvas.
+    private var finalTestCheckButton: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Button {
+                    vm.finishFinalTestLetterTapped()
+                } label: {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 96))
+                        .foregroundStyle(Color.success, Color.paper)
+                        .shadow(color: Color.ink.opacity(0.18), radius: 10, y: 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Fertig")
+                .accessibilityIdentifier("finalTestCheck")
+                .padding(.trailing, 44)
+                .padding(.bottom, 110)
+            }
+        }
     }
 
     // MARK: - Bottom bar (phase dots + letter nav)

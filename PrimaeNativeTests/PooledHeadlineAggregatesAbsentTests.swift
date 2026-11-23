@@ -41,6 +41,9 @@ import Foundation
             row("freeWrite", 0.2, 0.9, 30, revision: 25),
             row("freeWrite", 0.6, 0.5, 40),
             row("freeWrite", 0.7, 0.1, 50, probe: "posttest"),
+            // A third TRAINING row: the probe row above no longer pairs into the
+            // per-arm scheduler proxy (r27), which needs two pairs.
+            row("freeWrite", 0.65, 0.3, 60),
         ])
     }
 
@@ -103,7 +106,7 @@ import Foundation
             #expect(metrics[key] == nil, "thesisMetrics.\(key) is back: \(String(describing: metrics[key]))")
         }
         let rows = try #require(obj["phaseSessionRecords"] as? [[String: Any]])
-        #expect(rows.count == 5, "row-level records must all stay: \(rows.count)")
+        #expect(rows.count == 6, "row-level records must all stay: \(rows.count)")
 
         // The combined (all-participants) JSON goes through the same type.
         let source = ParticipantExportSource(snapshot: fixture(), participantId: pid,
