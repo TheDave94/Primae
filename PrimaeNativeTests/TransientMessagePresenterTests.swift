@@ -29,7 +29,8 @@ import Testing
     // MEASURED 2026-11-17, full suite on the physical iPad: this test passed
     // after 644.9 s. Every hop needs a main-actor turn, and in the full suite
     // it queues behind the whole suite's main-actor work, so a 1-minute limit
-    // fired and restarted the runner. The limit only catches a real deadlock.
+    // fired and restarted the runner (CI, 2026-11-16: eight jobs). The limit
+    // only catches a real deadlock.
     @Test(.timeLimit(.minutes(30)))
     func showToast_replacing_doesNotClobberFirstDuringReplacementSleep() async {
         // The guards inside the presenter keep the first toast's delayed clear
@@ -40,21 +41,18 @@ import Testing
         //
         // The sleeper is explicitly `@MainActor`, so a toast task's sleep
         // never hops to the cooperative pool and back (R-106: in the full
-        // suite that hop was the suspect for a hang). The waits for the gate
-        // are bounded and name the stall instead of spinning forever.
+        // suite that hop was the suspect for a hang). The test waits for the
+        // gate's own PARK event, resumed by the sleeper that parks: no
+        // poll, no deadline, so a busy main actor delays it but cannot fail
+        // it. A poll costs a main-actor turn per tick and a deadline measures
+        // the scheduler, which is what failed here.
         let gate = PresenterSleepGate()
         let p = TransientMessagePresenter(sleep: { @MainActor _ in await gate.sleep() })
         p.show(toast: "First")
         let first = p.toastTask
-        guard await pollMainActor(deadline: 10, until: { gate.parked >= 1 }) else {
-            Issue.record("first sleeper never parked (gate.parked = \(gate.parked))")
-            return
-        }
+        await gate.parked(atLeast: 1)
         p.show(toast: "Second")
-        guard await pollMainActor(deadline: 10, until: { gate.parked >= 2 }) else {
-            Issue.record("second sleeper never parked (gate.parked = \(gate.parked))")
-            return
-        }
+        await gate.parked(atLeast: 2)
 
         gate.releaseOldest()          // First's timer elapses; Second's has not
         await first?.value
@@ -101,9 +99,22 @@ import Testing
 @MainActor
 private final class PresenterSleepGate {
     private var waiting: [CheckedContinuation<Void, Never>] = []
-    var parked: Int { waiting.count }
+    /// Tests waiting for a number of sleepers to park, resumed by the park.
+    private var parkWatchers: [(count: Int, done: CheckedContinuation<Void, Never>)] = []
+    private var parkedTotal = 0
     func sleep() async {
-        await withCheckedContinuation { waiting.append($0) }
+        await withCheckedContinuation {
+            waiting.append($0)
+            parkedTotal += 1
+            let due = parkWatchers.filter { $0.count <= parkedTotal }
+            parkWatchers.removeAll { $0.count <= parkedTotal }
+            due.forEach { $0.done.resume() }
+        }
+    }
+    /// Returns once `n` sleepers have parked in total (released ones count).
+    func parked(atLeast n: Int) async {
+        guard parkedTotal < n else { return }
+        await withCheckedContinuation { parkWatchers.append((n, $0)) }
     }
     func releaseOldest() {
         guard !waiting.isEmpty else { return }

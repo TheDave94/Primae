@@ -25,8 +25,31 @@ final class RepinnableVoiceDouble: SpeechSynthesizing {
     func setUtteranceEndHandler(_ handler: (@MainActor (String, Bool) -> Void)?) {}
 }
 
-private let installedVoices = AVSpeechSynthesisVoice.speechVoices()
-private let hasGermanVoice = installedVoices.contains { $0.language.hasPrefix("de") }
+/// The installed voices, read OFF the cooperative pool and off the main actor.
+///
+/// MEASURED on CI, 2026-11-17/18 (14 failed jobs): this list used to be a
+/// file-scope `let` behind `.enabled(if: hasGermanVoice)`. Swift Testing
+/// evaluates `.enabled(if:)` while it PLANS the run, before any test starts,
+/// so `speechVoices()` ran in the plan — and on a fresh hosted simulator it
+/// took 41-95 s on green runs and 212-370 s on red ones (from the host's
+/// `[AXCommon] … unsafeForcedSync` line, which `speechVoices()` logs when it
+/// starts, to its `[VoiceDBClient] Error fetching voices` lines, which it
+/// logs when it ends; the first test starts within a second of the latter).
+/// XCTest does not start executing until the plan exists, and xcodebuild's
+/// startup timer kills a runner that "has not made forward progress for
+/// 300.00 seconds" (Session log, job 134992467252), reporting
+/// "The test runner timed out while preparing to run tests." against
+/// whichever XCTest case was current — `LoopXDiagnosisTests`, innocent.
+/// Read inside the one test that needs it, the slow lookup costs that test
+/// and nothing else. A plain dispatch queue, because the lookup blocks its
+/// thread (`unsafeForcedSync`): on the pool it would starve other tests.
+private func installedVoices() async -> [AVSpeechSynthesisVoice] {
+    await withCheckedContinuation { done in
+        DispatchQueue.global(qos: .userInitiated).async {
+            done.resume(returning: AVSpeechSynthesisVoice.speechVoices())
+        }
+    }
+}
 
 @Suite @MainActor struct VoiceRepinTests {
 
@@ -66,14 +89,17 @@ private let hasGermanVoice = installedVoices.contains { $0.language.hasPrefix("d
         #expect(vm.speechVoiceFault == "Stimme fehlt")
     }
 
-    @Test("R-021: the real synthesiser clears a stale pin and re-pins the first-pin rule's voice",
-          .enabled(if: hasGermanVoice))
-    func realSynthesiserRepins() {
+    @Test("R-021: the real synthesiser clears a stale pin and re-pins the first-pin rule's voice")
+    func realSynthesiserRepins() async throws {
+        let voices = await installedVoices()
+        guard voices.contains(where: { $0.language.hasPrefix("de") }) else {
+            try Test.cancel("no German voice is installed on this device")
+        }
         let pin = InMemorySpeechVoicePin("de.uninstalled")
-        let synth = AVSpeechSpeechSynthesizer(voices: { installedVoices }, voicePin: pin)
+        let synth = AVSpeechSpeechSynthesizer(voices: { voices }, voicePin: pin)
         #expect(synth.voiceFault != nil)
         synth.repinVoice()
-        let expected = GermanVoiceChooser.resolve(installedVoices.map(VoiceCandidate.init), pinned: nil)
+        let expected = GermanVoiceChooser.resolve(voices.map(VoiceCandidate.init), pinned: nil)
         guard case .voice(let voice, _) = expected else { Issue.record("no German voice"); return }
         #expect(synth.voiceFault == nil, "fault survived the re-pin")
         #expect(synth.resolvedVoice?.identifier == voice.identifier)

@@ -22,8 +22,20 @@ private final class DeliveryRecordingAudio: AudioControlling {
     var initializationError: String? { nil }
     private(set) var autoplayLoads = 0
     private(set) var plays = 0
+    private var playWatchers: [CheckedContinuation<Void, Never>] = []
     func loadAudioFile(named: String, autoplay: Bool) { if autoplay { autoplayLoads += 1 } }
-    func play() { plays += 1 }
+    func play() {
+        plays += 1
+        let due = playWatchers
+        playWatchers.removeAll()
+        due.forEach { $0.resume() }
+    }
+    /// Returns when the engine has been asked to play at least once: resumed
+    /// BY the play, so neither a clock nor a count of turns decides it.
+    func firstPlay() async {
+        guard plays == 0 else { return }
+        await withCheckedContinuation { playWatchers.append($0) }
+    }
     func stop() {}
     func restart() {}
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {}
@@ -118,7 +130,16 @@ struct DemonstrationDeliveryTests {
     }
 
     /// Positive control: once the sound HAS started, the condition is spent.
-    @Test("a delivered observe sound spends the condition")
+    ///
+    /// The start comes from the production cue-fallback timer (0.05 s here),
+    /// a wall-clock sleep, and the wait used to be at most 20 000 main-actor
+    /// yields: on an idle actor those can all run before 50 ms have passed,
+    /// and on a saturated one (CI, 2026-11-17: 229-424 s into the run) the
+    /// order is the scheduler's. The wait is now the recorder's own `play()`
+    /// event. A play that never comes would hang it, so the time limit is
+    /// that hang's report, not a speed budget: it is minutes, and firing late
+    /// on a busy runner cannot fail a test that already finished.
+    @Test("a delivered observe sound spends the condition", .timeLimit(.minutes(30)))
     func deliveredSoundSpendsTheCondition() async {
         let audio = DeliveryRecordingAudio()
         let vm = makeVM(audio: audio, fallback: 0.05)
@@ -129,7 +150,7 @@ struct DemonstrationDeliveryTests {
         // "the sound never came": name it here rather than blame the timing.
         #expect(vm.sessionBlockReason == nil,
                 "precondition: the session is not blocked")
-        await waitForEvent { audio.plays >= 1 }
+        await audio.firstPlay()
         #expect(audio.plays >= 1,
                 "precondition: the observe sound started — \(state(vm, audio))")
 
