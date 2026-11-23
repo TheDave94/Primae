@@ -387,6 +387,13 @@ not be read as current.
 > before it, full stop — never prepend `cd` even to the current directory,
 > never time it, never wrap it.
 >
+> **Extended 2026-11-23 — a trailing output redirect breaks the match too.**
+> `xcodebuild test … > file` ran sandboxed and failed the same way the
+> prefixed shapes above do, although `xcodebuild` is the leading word. So
+> nothing may come after the excluded command either: no `> file`, no
+> `2>&1 | tail`, no pipe. Let the output stream to the tool, or have the
+> tool write it (`-resultBundlePath`), and read the file in a separate call.
+>
 > **CORRECTION, same night — the cd-prefix trap explained SOME of that
 > night's `KEY_UNUSABLE` failures, not all of them, and the remaining ones
 > are a separate, permanent finding: a Claude Code seat cannot sign commits
