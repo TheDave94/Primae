@@ -43,7 +43,11 @@ the phase indicator advancing), **a second enrolment preserving the
 first participant** (the archive-and-replace flow, checked via the
 participant count), and **the export containing both** (triggering a
 real export and confirming the share sheet appears with the right
-count behind it). These are exactly the things that have broken
+count behind it). **Since protocol r27 the probe buttons are gone from
+the study build**, so the suite's probe step (it waits for "Vortest
+starten: A") cannot pass against a current build until the test is
+rewritten for the final test; treat the probe coverage as lapsed. These
+are exactly the things that have broken
 silently on this project before — and since CI does not run them, they
 are checked only when a human runs the suite.
 
@@ -70,14 +74,14 @@ suite deliberately does not and cannot cover these, not an oversight:
   `testSpatialArmRequestsAudioDuringObserve` — each driving its arm via
   the audio override. What no XCUITest can do, on any destination, is
   LISTEN: the probes prove the arm requested the right asset, not that
-  sound left the speaker. Section 6's per-arm listening pass is still
+  sound left the speaker. Section 4's per-arm listening pass is still
   David's. And a device UI-test run REPLACES the pilot artefact with a
   Debug-Study build (same bundle ID — `nm` cannot tell them apart), so
   reinstall Release-Study before any participant session.
 
 Where a step below is now also covered by the automated suite, it says
 so inline — that does not mean skip it on a real device dry-run, since
-CI runs the suite on a simulator only (Layer 3 scopes to
+CI does not run this suite at all (Layer 3 scopes to
 PrimaeNativeTests; `PrimaeUITests` never runs there) and no automated
 run anywhere proves the PHYSICAL experience; it means a failure there
 is no longer a surprise waiting for the next manual pass to catch. The
@@ -160,11 +164,11 @@ does and does not establish.
 5. An alert reads **"Neues Kind bereit"** (arm re-derived, app ready).
    No relaunch is asked for or needed by enrolment itself. Enrolment
    loads the first trained letter **parked**, exactly as a fresh launch
-   does: nothing plays and nothing animates until you start it, so the
-   Vortests in Section 3 stay cold for every letter, the first trained
-   letter included. (Fixed 2026-10-22, audit R-007: enrolment used to
+   does: nothing plays and nothing animates until you start it.
+   (Fixed 2026-10-22, audit R-007: enrolment used to
    start that letter's observe at once, playing its demonstration and
-   arm sound before its own Vortest.)
+   arm sound before its own Vortest. The Vortests themselves are gone
+   since r27, see Section 3.)
 
 ---
 
@@ -175,15 +179,15 @@ Raumklang / Ohne Ton, picked from the fresh ID). Don't leave it to
 chance — force it explicitly so you know which run is which.
 
 1. Still without relaunching, switch to the **Einstellungen** tab.
-2. Scroll to the **"Forschung"** section. You should now see three
-   pickers: "Studienarm überschreiben," **"Audio-Arm überschreiben,"**
-   and "Trainierte Buchstaben überschreiben" — they only appear once a
-   participant is enrolled, which you just did.
-3. **Leave "Studienarm überschreiben" on "Automatisch."** This is a
-   *different* axis (a pedagogical-flow leftover from an earlier study
-   design) — it has no effect under study mode regardless of what it's
-   set to, so touching it does nothing either way. Only "Audio-Arm
-   überschreiben" matters for this test.
+2. Scroll to the **"Forschung"** section. You should now see two
+   pickers: **"Audio-Arm überschreiben"** and "Trainierte Buchstaben
+   überschreiben" — they only appear once a participant is enrolled,
+   which you just did, and they lock (greyed out, with a note) once the
+   child has written their first letter.
+3. There is no "Studienarm überschreiben" picker on this build (removed
+   from the study build in r27: the pedagogical arm is pinned to "Drei
+   Phasen", so the picker did nothing except force a relaunch). Only
+   "Audio-Arm überschreiben" matters for this test.
 4. Set **"Audio-Arm überschreiben"** to the arm for this run: **Phonem**
    (run 1), **Raumklang** (run 2), or **Ohne Ton** (run 3).
 5. Leave "Trainierte Buchstaben überschreiben" on "Automatisch" unless
@@ -197,62 +201,37 @@ chance — force it explicitly so you know which run is which.
 7. **Verify before doing anything else.** Long-press the gear again →
    Forschungs-Daten → look at the top card, **"Aktiver Teilnehmer."**
    It shows a short participant ID, then a line like **"Phonem ·
-   [Automatisch]"** and **"Trainiert: A / F / L"** (whichever three).
+   Drei Phasen"** and **"Trainiert: A · F · L"** (whichever three).
    Confirm the first word matches the arm you set in step 4. If it
    doesn't, repeat steps 2–6 — don't proceed on the wrong arm.
 
 ---
 
-## 3 · Pretest (all five letters, before any training)
+## 3 · (removed in protocol r27) — the pretest
 
-Still in **Forschungs-Daten**, scroll to **"Vortest (alle fünf
-Buchstaben, vor dem Training)."** There are five buttons, one per
-study letter (A, F, I, L, M — regardless of which three this
-participant trains).
-
-For **each of the five letters**, one at a time:
-1. Tap **"Vortest starten: `<letter>`."** The parent area closes
-   immediately and drops you straight onto the canvas.
-2. The canvas shows a blank glyph — no ghost line, no demonstration.
-   While you write, **no arm plays any sound** — every cold probe is
-   sound-off in every arm since protocol r12 (2026-10-21; under r2-r11
-   Phonem and Raumklang sounded here). If you hear the letter's sound or
-   the carrier under the pen during a probe, that is a defect. No spoken instruction
-   here: a probe phase has no phase-entry cue, so **you** tell the child
-   which letter to write, by its letter name ("Schreib ein A"), in the
-   same words for every child and every arm, and never by its sound.
-   Write the letter once from memory.
-3. After you lift and pause briefly, the trial scores and the canvas
-   goes idle (no celebration, no badge — a cold probe gets no
-   reward-class feedback).
-4. Long-press the gear again, back to Forschungs-Daten, tap the next
-   letter's pretest button. Repeat until all five are done.
-
-This is 5 round trips through the gear long-press — expected, not a
-bug.
+- **This step no longer exists.** Under r1-r26 the proctor ran a cold
+  pretest on all five study letters from five "Vortest starten" buttons
+  in Forschungs-Daten. r27 took the probe buttons (pretest, post-test,
+  delayed) out of the study build; Forschungs-Daten now shows a
+  read-only **"Abschlusstest"** card instead (pause and glimpse settings
+  in force, "Es gibt keine Knöpfe dafür: der Abschlusstest läuft von
+  selbst."). Go straight from Section 2 to Section 4.
+- **If you see a "Vortest starten" button, this is not an r27 build** —
+  check the protocol line on the "Aktiver Teilnehmer" card
+  ("Protokoll-Revision r27").
+- The section is kept, rather than deleted, so a proctor working from an
+  older printout can find out what happened to the step they expected.
 
 ---
 
 ## 4 · Training — the three trained letters
 
-Close the parent area (or it should already be closed from the last
-pretest). You're on the canvas — what you see depends on how you got
-here:
-
-- **Right after a fresh launch or an enrolment** (before any pretest
-  was run), the app shows the **first trained letter, "parked"**: nothing is
-  playing, nothing is animating yet. You'll see the brand-blue pill at
-  the bottom with only 👁️ 👆 (no text — the app never shows unreadable
-  text to a child). **Tap it once** to start the letter for real.
-- **Right after the five pretests (the normal case, Section 3 just
-  finished)**, the canvas is still showing the **last pretest
-  letter**, in its finished free-writing state — nothing is parked.
-  Press the **right-arrow (chevron) nav button** in the bottom bar
-  once to reach the first trained letter. That arrow calls
-  `nextLetter()`, which cycles the trained pool; since the pretest
-  letter you're leaving may not be one of the three trained letters,
-  it isn't found in that pool and the arrow lands on the first trained
-  letter rather than "the next one after it."
+Close the parent area. You're on the canvas: after a fresh launch or
+an enrolment the app shows the **first trained letter, "parked"**:
+nothing is playing, nothing is animating yet. You'll see the brand-blue
+pill at the bottom with only 👁️ 👆 (no text — the app never shows
+unreadable text to a child). **Tap it once** to start the letter for
+real. (There is no pretest to come back from any more; see Section 3.)
 
 For **each of the three trained letters** (the ones named on the
 "Aktiver Teilnehmer" card), in order:
@@ -279,10 +258,14 @@ For **each of the three trained letters** (the ones named on the
     the loop), **sounding for the whole pass** and
     stopping when the phase moves on. The sound follows the dot as it
     follows the pen: rate from the dot's speed (a still dot plays on at
-    the slowest rate, 0.8), pan from its horizontal position.
+    the slowest rate, 0.8), pan from its horizontal position, and, since
+    r26, **pitch from its height (y)**, ±600 cents around the
+    recording's own pitch (higher on the canvas is higher; under r17-r25
+    the phoneme was not pitched).
   - **Raumklang:** the same prompt and the same start, with the
     synthetic carrier tone following the dot: rate from its speed, pan
-    from x, **pitch from its height (y)**. It is no longer a steady
+    from x, **pitch from its height (y)**, one octave, 311-622 Hz (r26;
+    two octaves, 220-880 Hz, under r17-r25). It is no longer a steady
     held tone: r5 (#42) reversed the 2026-09-17 "Glissando weg" steady
     carrier for observe.
   - **Ohne Ton:** the recorded prompt **only** — the same words as the
@@ -295,7 +278,7 @@ For **each of the three trained letters** (the ones named on the
 - **Check, every run: the prompt must FINISH before the animation and
   the arm's sound start** (the start is tied to the end of the
   recording, not to a fixed delay or to the iPad's speech-rate setting,
-  which no longer applies to the five study phrases). **If the voice and
+  which no longer applies to the recorded study phrases, seven since r27). **If the voice and
   the sound overlap, that is a defect — flag it.**
 - The screen does not react to touch during this phase — that's
   correct, not a glitch.
@@ -319,9 +302,9 @@ For **each of the three trained letters** (the ones named on the
 - **This is where the arm's sound actually plays while you write:**
   - **Phonem / Raumklang:** sound is active only while the pen is on
     the path (near the expected checkpoint); since r3 there is no speed
-    threshold. It speeds up / slows down and (Raumklang only) changes
-    pitch with your vertical position and pans with your horizontal
-    position. The sound starts at once when a stroke starts. If you
+    threshold. It speeds up / slows down, changes pitch with your
+    vertical position (both sound arms since r26, ±600 cents; Raumklang
+    only under r17-r25) and pans with your horizontal position. The sound starts at once when a stroke starts. If you
     pause for 0.3 s it stops (up to 0.6 s for a slow writer), and after a
     lift it is held (a pen put back down inside that hold keeps the
     sound, r7), fading out over 0.4 s once it ends. From r17 the hold
@@ -365,8 +348,13 @@ For **each of the three trained letters** (the ones named on the
   arm's sound there, that is a defect, flag it. (This bullet used to
   read "silent in all three arms": the freeWrite sound-off gate was
   lifted 2026-10-02.)
-- **After you lift: nothing, under study mode** — except after the
-  LAST trained letter of the set; see "End of the set" below. In the casual app a
+- **A non-attempt is refused (r25).** If what you wrote is clearly not
+  an attempt at the letter (a scribble, a single line, a shape nowhere
+  near it, a clearly wrong letter), the canvas clears after the quiet
+  window and the app says "Probier's nochmal" — at most 2 times per
+  letter; the third attempt is accepted whatever it is. Same in every
+  arm. A wobbly but real letter passes.
+- **After you lift: no feedback, under study mode.** In the casual app a
   dark KP overlay would compare your trace to the reference, followed
   by a star-count celebration screen ("Geschafft!" + stars) — but
   under study mode BOTH are gated off (`celebrateFreeWrite` and
@@ -374,69 +362,87 @@ For **each of the three trained letters** (the ones named on the
   on `!vm.studyMode`), and the views themselves
   (`CompletionCelebrationOverlay`, the freeWrite KP overlay) are
   compiled out of the study binary entirely. After the ~2 s quiet
-  window following your last touch, the canvas simply goes idle — no
-  overlay, no stars, no chime, in any arm. What you will **not** see
+  window following your last touch the letter is recorded — no
+  overlay, no stars, no chime, in any arm — and the app moves on by
+  itself (next paragraph). What you will **not** see
   in any arm, casual or study: the coloured recognition badge or the
   guided-score feedback card — both are reward-class feedback
   suppressed under study mode regardless of what else changes.
 - **There is no "Weiter" button under study mode** — it belongs to the
-  celebration screen, which doesn't exist here. To move to the next
-  trained letter, press the **right-arrow (chevron) nav button** in
-  the bottom bar (`nextLetter()`); the left-arrow (`previousLetter()`)
-  goes back. Then repeat 4a–4d. The demonstration in 4a plays again on
+  celebration screen, which doesn't exist here. The next trained letter
+  loads **by itself** once a letter's free-writing is recorded
+  (`advanceAfterCompletedStudyLetter`, called from `SchuleWorldView`
+  when `isPhaseSessionComplete` turns true); after the third letter the
+  pause follows instead (Section 5). The **right-arrow (chevron) nav
+  button** (`nextLetter()`) and the left-arrow (`previousLetter()`)
+  still move between trained letters by hand. Then 4a–4d repeat. The demonstration in 4a plays again on
   every letter entry — that's intended (every trace is preceded by the
   same exposure), not a repeat-content bug.
 
 After the third trained letter's FreeWrite, training is done. That
-FreeWrite was **practice**, not the post-test (protocol r12,
+FreeWrite was **practice**, not the test (protocol r12,
 2026-10-21; under r1-r11 it was taken as the trained letters'
-post-test). **All five letters, the three trained ones included, get
-their own cold post-test in Section 5.**
+post-test). **The three trained letters are tested from memory in the
+final test, which follows by itself (Section 5).**
 
-**End of the set — what you hear and see (protocol revision 9; since r7 only
-a TRAINING pass ends the set, never a cold probe).** When
-the LAST trained letter's FreeWrite is recorded in training
-(`PhaseTransitionCoordinator`, `} else if vm.currentProbe == nil, vm.isLastLetterOfSet {`):
-- **All three arms play the recorded "Super gemacht!"** — content is identical
-  in every arm (`vm.prompts.play(.celebration, …)`; `.celebration` is in
-  `StudyVoiceoverPromptPlayer.studySpokenKeys`).
-- **No chime in any arm** (protocol r13, 2026-10-21; under r4-r12 Phonem
-  and Raumklang played a short one). `StudyVoiceoverPromptPlayer` drops
-  every sound effect, the stroke tick included.
-- **From r17 a visual end screen appears, identical in every arm** (no
-  sound of its own, no score, no star count): about 1.2 s after the last
-  letter's free-writing, the child's three letters pop in with green
-  checks under a star and falling confetti (`SessionEndScreenView`,
-  accessibility identifier `sessionEndScreen`; with Reduce Motion on, no
-  motion and no confetti). It shows once per child, only when every
-  letter of the set has a completed free-writing row, never after a cold
-  probe, and not after a partial session (a skipped letter). The
-  celebration overlay itself is still drawn as nothing (`SchuleWorldView`
-  renders `case .celebration` as `EmptyView()` under `STUDY_BUILD`). The
-  rail double-tap ("Nächstes Kind") works from the end screen.
-- **The chevron stops advancing** — the set is over
-  (`nextLetter()`: `guard !awaitingNextParticipant else { return }`).
-  That is the hand-over signal: enrol the next child with the rail
-  double-tap ("Nächstes Kind"). If the chevron still moves to another
-  letter after the last one, that is a defect.
+**End of training (protocol r27).** When the LAST trained letter's
+FreeWrite is recorded in training (`PhaseTransitionCoordinator`,
+`} else if vm.currentProbe == nil, vm.isLastLetterOfSet, vm.isFinalPassOfLetter {`,
+which calls `vm.beginFinalTestPause()`):
+- **Nothing is said and nothing chimes, in any arm.** "Super gemacht!"
+  no longer plays here (r27: it moved to the end of the final test);
+  no chime in any arm since r13.
+- **The pause starts at once** (Section 5). The set is marked complete
+  at this point, so a relaunch during the pause or the final test does
+  not reopen training (a test cut short is not resumed).
 
 ---
 
-## 5 · Post-test (all five letters)
+## 5 · Pause and final test (protocol r27; runs by itself)
 
-Long-press the gear → Forschungs-Daten → **"Post-Test (alle fünf
-Buchstaben, nach dem Training)."** Five buttons, one per study letter,
-trained and untrained alike (protocol r12, 2026-10-21; under r1-r11
-only the two untrained letters were offered).
+There is nothing for you to start: no probe buttons, no chevron. The
+two settings live in Einstellungen → **"Abschlusstest"**: **Pause**
+30-60 s in 5 s steps (default **45 s**) and **Zeigedauer des
+Buchstabens** 1-3 s in 0.5 s steps (default **3 s**); both lock once the
+child has a row, and a non-default value is stamped on the rows.
 
-For each of the five:
-1. Tap **"Post-Test starten: `<letter>`."** Drops straight to canvas.
-2. Same as pretest: blank canvas, no ghost, no demonstration, single
-   cold FreeWrite attempt, sound-off in every arm (as in Section 3). Repeating a probe, or starting a
-   post-test before the child's set is complete, asks you to confirm
-   (warned, never blocked; r8).
-3. Long-press the gear, back to Forschungs-Daten, do the next
-   letter.
+1. **The pause.** A silent full-screen field of bubbles; touching a
+   bubble pops it. No sound, no text, no letters, no score, in every arm.
+   The letter pill, phase dots and chevrons are hidden from here to the
+   end.
+2. **The intro.** The recorded **"Jetzt schreibst du sie alle noch
+   einmal."** plays once (`final_intro`); the first letter follows half
+   a second after it ends.
+3. **Each trained letter, in the same order as training:**
+   - **Glimpse:** the plain glyph alone (no animation, start dots,
+     arrows, numbers, guide line or sound) for the Zeigedauer, while the
+     recorded **"Merk ihn dir gut."** plays (`final_glimpse`). The
+     canvas takes no touch.
+   - **Write:** the glyph hides, **"Und jetzt ganz allein."** plays and
+     the child writes from memory on an empty canvas. **No sound in any
+     arm** — if you hear the arm's sound here, that is a defect. No
+     feedback, no stars, no retry, no attempt check.
+   - **The check button** (a large checkmark icon, bottom right) appears
+     after the first stroke; the letter ends only when the child taps
+     it. The 2 s quiet window does **not** end a test letter. The next
+     test letter follows by itself.
+4. **The end.** After the last test letter, **"Super gemacht!"** plays
+   (all three arms), then the end screen: the child's three letters pop
+   in with green checks under a star with falling confetti
+   (`SessionEndScreenView`, accessibility identifier
+   `sessionEndScreen`; with Reduce Motion on, no motion and no
+   confetti). It shows only when every trained letter has both a
+   completed training free-writing and a completed final-test row. **The
+   chevron stops advancing** (`nextLetter()`:
+   `guard !awaitingNextParticipant else { return }`) — that is the
+   hand-over signal: enrol the next child with the rail double-tap
+   ("Nächstes Kind"), which also works from the end screen.
+
+**Interruptions** (Control Center, a banner, the app switcher, the
+parent area, unplugged headphones) freeze the pause, the intro and the
+glimpse: the pause resumes with its remaining time, the intro from the
+start of its prompt, a cut glimpse in full (counted in
+`glimpseRestarts`).
 
 That's the end of the session for this run.
 
@@ -465,18 +471,20 @@ should be able to see:
   combined file, in that child's block),
 - a header line naming `enrolledAt`,
 - one row per **phase** completed, not per letter — each row carries
-  its own `phase` (observe/direct/guided/freeWrite) and, for the cold
-  probes, a `probe` column (pretest/posttest). Each cold probe (a
-  pretest or post-test letter) opens straight into freeWrite, so it
-  writes exactly **1 row**: **5 pretest rows** (one per letter) and
-  **5 post-test rows** (one per letter, r12; 2 under r1-r11). Each of the **3 trained
-  letters** writes **up to 3 rows** — one per phase it completed
-  (observe, guided, freeWrite; `direct` no longer runs, see 4b) — all
-  written together at that letter's freeWrite
-  completion. That caps a clean run at **5 + (3 × 3) + 5 = 19 rows**,
-  fewer if a trained letter's session ended before every phase scored
-  (e.g. you had to abandon a letter mid-phase). Nothing should be
-  entirely missing for a letter you actually wrote.
+  its own `phase` (observe/direct/guided/freeWrite) and, for the final
+  test, a `probe` column reading `finalTest` (empty on training rows;
+  `pretest`/`posttest`/`delayed` appear only on rows from before r27).
+  Each of the **3 trained letters** writes **up to 3 training rows** —
+  one per phase it completed (observe, guided, freeWrite; `direct` no
+  longer runs, see 4b) — all written together at that letter's freeWrite
+  completion. Each final-test letter opens straight into freeWrite, so
+  it writes exactly **1 row** (`probe` = `finalTest`, with the
+  `glimpseSecondsPlanned` … `glimpseRestarts` columns filled). That makes
+  a clean run **(3 × 3) + 3 = 12 rows**, plus one extra freeWrite row
+  (`finalizedBy` `attemptRejected`) for every non-attempt refused in
+  training (4d, r25); fewer if a letter was abandoned mid-phase or the
+  test was cut short. Nothing should be entirely missing for a letter
+  you actually wrote.
 
 If the export is empty or missing rows, that's a defect — stop and
 flag it rather than starting the next run.
@@ -503,9 +511,10 @@ What it **does not touch**: device-level settings — appearance,
 speech rate, and so on. You don't need to redo anything there between
 runs.
 
-You do **not** need "Teilnehmer wiederherstellen" for this — that's
-for the delayed retention re-test weeks later, on a participant ID
-recovered from an earlier export. Don't use it for switching arms
+You do **not** need "Teilnehmer wiederherstellen" for this — that
+restores a participant ID recovered from an earlier export (it was
+built for the delayed retention re-test, whose probe buttons r27
+removed from the study build). Don't use it for switching arms
 today.
 
 ---
@@ -521,7 +530,7 @@ working as intended:
 | Full-screen stop, "Studie kann nicht starten" | "Kein Teilnehmer eingeschrieben..." | You skipped Section 1 (never enrolled, or forgot after a fresh install) | You DID enrol and this still shows |
 | Same screen | "Zuweisung geändert — die App muss neu gestartet werden..." | You changed an override (Section 2) and haven't relaunched yet | It still shows AFTER a full relaunch |
 | Same screen | "Teilnehmer gewechselt — die App muss neu gestartet werden..." | You just did "Teilnehmer wiederherstellen" (the delayed-retest restore) and haven't relaunched yet; "Neuer Teilnehmer" no longer needs a relaunch | It shows after "Neuer Teilnehmer", or still shows after relaunch |
-| Same screen | "Aufgenommene Anweisungen fehlen: …" / "…sind nicht die geprüften…" | Should never happen — the five recorded study phrases are bundled and pinned by `Resources/Prompts/MANIFEST.json` (r9) | Shows at all, on any run |
+| Same screen | "Aufgenommene Anweisungen fehlen: …" / "…sind nicht die geprüften…" | Should never happen — the seven recorded study phrases (five under r9-r26) are bundled and pinned by `Resources/Prompts/MANIFEST.json` | Shows at all, on any run |
 | Same screen | "Spatial-Arm ohne Trägerton..." | Should never happen — the carrier file is bundled | Shows at all, on any run |
 | Same screen | "Phonem-Arm ohne Phonem-Aufnahmen für: ..." | Should never happen — all five recordings are bundled (H5 closed 2026-09-14) | Shows at all, on any run |
 | "Buchstaben nicht geladen — Bitte die App neu starten." | — | Should never happen on a correctly built artefact | Shows at all |

@@ -16,8 +16,10 @@
 // r27 (2026-11-23) EXTENSION, by hand from that r26 output, because the
 // generator (the exporter plus fixture compiled into a macOS tool) could not
 // run in the lane that made the change (a sandboxed swiftc cannot load the
-// Observation macro plugin the stores need): the two appended columns
-// (`spatialFitShearDegrees`, `armSoundDelivered`) on every phase row; the
+// Observation macro plugin the stores need): the appended columns
+// (`spatialFitShearDegrees`, `armSoundDelivered`, then the five final-test
+// columns `glimpseSecondsPlanned` … `glimpseRestarts`, empty here) on every
+// phase row; the
 // fixture's P1 shear values (3.875, -7.5) and P2's measured row with an
 // unmatched-stroke order (`"-,0"`, shear 15); and the probe row leaving the
 // per-arm means (`averageFreeWriteScore_*` is the mean of the three TRAINING

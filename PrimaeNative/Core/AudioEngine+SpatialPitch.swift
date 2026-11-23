@@ -8,6 +8,11 @@
 // AVAudioUnitTimePitch node, wired since the debug audio panel); this
 // extension only forwards to it. No session, node-graph, or lifecycle
 // code is touched.
+//
+// Since protocol r17 this is NOT the arm sound's pitch path: the arm sound
+// is `LiveSonificationAudio` (`SoundEnvelope`'s production voice), whose
+// `setSpatialPitch` drives the TDPSOLA kernel (clamp ±1200), and from r26
+// the default coupling pitches the phoneme arm too, over ±600 cents.
 
 extension AudioEngine {
     /// `PilotAudioCondition.spatial` per-tick pitch drive. Cents are

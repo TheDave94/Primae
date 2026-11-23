@@ -4,11 +4,12 @@ import Foundation
 protocol AudioControlling: AnyObject {
     func loadAudioFile(named fileName: String, autoplay: Bool)
     func setAdaptivePlayback(speed: Float, horizontalBias: Float)
-    /// Spatial-arm pitch drive (pen Y → carrier pitch, in cents relative
-    /// to the carrier's authored frequency). Called on the per-tick
-    /// coupling path ONLY for `PilotAudioCondition.spatial`; the phoneme
-    /// and silent arms never invoke it, so their pitch stays at the
-    /// engine default (0 cents). Default implementation is a no-op —
+    /// Height → pitch drive (pen Y → pitch, in cents relative to the
+    /// sound's recorded pitch). Called on the per-tick coupling path for
+    /// every arm `PitchCoupling.scope` covers: from protocol r26 the
+    /// default `.both` means the spatial AND phoneme arms (r17-r25 spatial
+    /// only); the silent arm never invokes it. The phoneme demonstration
+    /// resets it to 0. Default implementation is a no-op —
     /// only pitch-capable engines opt in (see AudioEngine+SpatialPitch).
     func setSpatialPitch(cents: Float)
     /// R18 slice 4 (distance dimension): the live voice's output level in dB

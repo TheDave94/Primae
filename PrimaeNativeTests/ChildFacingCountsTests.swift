@@ -7,10 +7,11 @@
 //   1. `LetterStars.stars(for:)` / `maxStars` — Core/LetterStars.swift
 //   2. `PhaseDotIndicator.dot(for:)`           — Features/Tracing/PhaseDotIndicator.swift
 //   3. the star TOTALS and the key space they read
-//      — SchuleWorldView:361, WorldSwitcherRail:123, FortschritteWorldView:308
+//      — SchuleWorldView:444, WorldSwitcherRail:224, FortschritteWorldView:308
 //
 // WHY THESE. Each decides what a 5-year-old is shown: how many stars a letter
-// earned, where the session is in the four-phase flow, and how many stars
+// earned, where the session is in the three-phase flow (four before D5,
+// 2026-09-18), and how many stars
 // exist in total. `LetterStars` is the declared single source of truth for
 // star counts ("one star earned" stays consistent); a wrong number here is a
 // wrong stimulus, not a cosmetic bug.

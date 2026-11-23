@@ -99,6 +99,11 @@ enum StudyComparisonSettings {
     /// export of an all-five run asserted the child was untrained on two
     /// letters it had practised — a fabricated contrast, and the post-test
     /// offered those same two letters as the "untrained" probe.
+    ///
+    /// r27: held OFF in a study build whatever is stored
+    /// (`TracingViewModel` reads it as `!StudyBuild.isActive && …`), and
+    /// the post-test it refers to left the study build with the probe
+    /// buttons.
     static let allFiveLettersKey = prefix + "allFiveLetters"
     static let allFiveLettersDefault: Bool = false
     static var allFiveLetters: Bool {
@@ -260,19 +265,13 @@ enum StudyComparisonSettings {
     /// as a researcher affordance — a way to hear the old behaviour on the
     /// device — not as an open protocol question.
     ///
-    /// **THE THESIS HAS NOT MOVED YET, and that is now the outstanding
-    /// work.** Roughly 28 locations still describe the sweep as present,
-    /// including `02-background.typ:107`; CLAUDE.md's "DON'T FIX THE
-    /// SPATIAL GLISSANDO" block instructed the opposite of this ruling and
-    /// is corrected; and **the thesis repo's currency check will block the
-    /// reword.** MEASURED in `/Users/musicbox/repos/master-thesis`:
-    /// `docs/design-facts.json` requires the literal string
-    /// `"axis demonstration"` for `content/04-implementation.typ` and for
-    /// the background chapter, and `scripts/check_design_currency.py`
-    /// enforces it. Removing the phrase from the prose therefore fails that
-    /// check until the fact is updated too — **update both together**, or
-    /// the check will look broken for a reason that is actually correct.
-    /// The same files live in the THESIS repo, not this one.
+    /// **(History, 2026-09-18:** the thesis then still described the sweep
+    /// and its currency check required the literal `"axis demonstration"`.
+    /// Both have since moved: `docs/design-facts.json` in the thesis repo
+    /// no longer requires that string, and `04-implementation.typ` describes
+    /// the observe sound tracking the guide dot (protocol r5). The steady
+    /// window this switch selects is itself only a fallback since r5 — see
+    /// `PreTaskDemonstration`'s header.)
     ///
     /// OFF is the default anyway, because the default of every switch here
     /// is the behaviour the device had before the switch existed: that is

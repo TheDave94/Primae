@@ -14,7 +14,7 @@
 
 The app teaches the Latin alphabet to 5–6 year-olds, using a three-phase pedagogical arc (observe, guided, freeWrite) with adaptive scaffolding withdrawal, real-time audio + haptic feedback, on-device CoreML letter recognition, and a four-dimension *Schreibmotorik* motor-skill assessment (Marquardt & Söhl, 2016). Built as the practical artefact for a master's thesis comparing adaptive vs. non-adaptive handwriting instruction.
 
-The child sees **only verbal evaluations and stars** — every numeric metric (Klarheit, Form, Tempo, Druck, Rhythmus, recognition confidence) lives behind a parental-gate research dashboard. Children at this age can't read fluently, so the app speaks every prompt aloud in German via `AVSpeechSynthesizer`.
+The child sees **only verbal evaluations and stars** — every numeric metric (Klarheit, Form, Tempo, Druck, Rhythmus, recognition confidence) lives behind a parental-gate research dashboard. Children at this age can't read fluently, so the app speaks every prompt aloud in German (in a study session the seven fixed phrases are recorded takes, `PromptPlayer`, from protocol r9; other speech via `AVSpeechSynthesizer`).
 
 The visual identity — paper not glass, blue ghost / green child ink / amber guide dot, sticker-pill buttons, dark-mode-aware throughout — is documented in the bundled [`design-system/`](design-system/) (tokens, type ramp, components).
 
@@ -36,7 +36,7 @@ The visual identity — paper not glass, blue ghost / green child ink / amber gu
 ### For the parent / researcher
 - **Parent dashboard** — per-letter accuracy, phase completion rates, streak, 30-day practice trend, paper-transfer scores
 - **Research dashboard** (parent-gated) — Schreibmotorik dimensions, KI predictions vs. expected, condition-arm distribution, scheduler-effectiveness Pearson r, last-20 raw phase records, per-letter aggregates
-- **Data export** — CSV / TSV / JSON via the iOS share sheet, 13 columns per phase session including all four motor dimensions, the recognition prediction (predicted letter + confidence + isCorrect), and the active thesis condition
+- **Data export** — CSV / TSV / JSON via the iOS share sheet, 79 columns per phase row at protocol r27, including all four motor dimensions, the recognition prediction (predicted letter + confidence + isCorrect), and the active thesis condition
 - **Built-in A/B testing** — three thesis conditions (`threePhase`, `guidedOnly`, `control`) with stable UUID-derived assignment, opt-in via Settings
 
 ### Privacy
@@ -50,7 +50,7 @@ The visual identity — paper not glass, blue ghost / green child ink / amber gu
 
 | Phase | German | What the child does | How it's scored |
 |------|------|------------------|----------------|
-| **Observe** | *Anschauen* | Watches an animated guide dot trace each stroke | Pass / fail (auto-advance after 2 cycles) |
+| **Observe** | *Anschauen* | Watches an animated guide dot trace each stroke | Pass / fail (auto-advance after 1 pass, `observePasses`; was 2) |
 | **Guided** | *Nachspuren* | Traces over the letter with checkpoint rails | Checkpoint progress 0–1 |
 | **FreeWrite** | *Selbst schreiben* | Writes from memory on a blank glyph | Schreibmotorik 4-dimension assessment |
 
@@ -127,7 +127,7 @@ PrimaeNative/          Swift Package (library)
 Primae/             Xcode host app (imports PrimaeNative)
 PrimaeNativeTests/     Swift Testing + XCTest suite
 docs/                      Architecture, thesis foundation, code invariants
-scripts/                   Stroke, audio, app-icon, colorset generators + git hooks
+scripts/                   Stroke, audio, app-icon, colorset generators, gates, build/land tooling
 ```
 
 ## Documentation

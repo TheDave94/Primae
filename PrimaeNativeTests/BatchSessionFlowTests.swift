@@ -18,7 +18,9 @@
 //      park; that was REVERSED on 2026-10-22 (R-007): the five cold
 //      Vortests run between enrolment and training, so an un-parked first
 //      letter played its demonstration before its own pretest. Enrolment
-//      now leaves the letter parked, like a launch.
+//      now leaves the letter parked, like a launch. (r27: the probe
+//      buttons left the study build, so no Vortest follows enrolment
+//      there; the letter still stays parked.)
 //   2. The previous drawing's ink stayed on screen for ~5 s into the
 //      UNASSISTED trial. It is a comfort feature for observe -> guided,
 //      where the outline is still up; on freeWrite it is an aid the child

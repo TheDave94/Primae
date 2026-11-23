@@ -30,7 +30,8 @@
 //       3.0 s after it starts), and the observe sound no longer plays
 //       steady — it TRACKS the dot through the pen's own mapping
 //       (`ArmCoupling`): rate from the dot's speed, pan from x, pitch from
-//       y in the spatial arm only; a still dot plays at the slowest rate; a
+//       y in the spatial arm only (r26: in both sound arms by default,
+//       `PitchCoupling.scope`); a still dot plays at the slowest rate; a
 //       stroke-to-stroke jump is not velocity (D9's steady carrier reversed).
 //   ENVELOPE (r5): fade-out 0.4 s, stall 0.3 s, a lift holds the sound
 //       0.8 s and a re-touch inside the hold keeps it (`SoundEnvelope`).
@@ -93,7 +94,10 @@
 //       · observeSoundTracksTheDot: `guard false,` at the top of
 //         `handleGuideFrame` (no tracking); `.still` velocity 0 → 100 (no
 //         slowest-rate hold); ArmCoupling `arm == .spatial` → `!= .silent`
-//         (phoneme gets pitch — the phoneme case goes RED).
+//         (phoneme gets pitch — the phoneme case goes RED). That flip's
+//         target is gone: since R18DIM the arm decision is
+//         `PitchCoupling.scope.applies(to:)`, which the test itself reads,
+//         and at the r26 default the phoneme arm IS pitched; not re-derived.
 //       · observeDotJumpIsNotVelocity: AnimationGuideController emits
 //         `.move(from: prev, to: step, 1/60 s)` instead of `.jump`.
 //       · cueEndStartsThePresentation: `cueUtteranceEnded` matches no text.

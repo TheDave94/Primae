@@ -6,6 +6,9 @@
 // topology (player -> AVAudioUnitTimePitch -> mainMixer) at the gain the
 // engine itself computes (`AudioEngine.loudnessGain`), and compares the
 // rendered RMS with the spatial carrier's. No hardware, no AVAudioSession.
+// (From r17 the arm sound is the live grain voice, `LiveSonificationAudio`,
+// not this player path; it plays each file at the same `loudnessGain`,
+// LiveSonificationAudio.swift:155. This render does not exercise that path.)
 
 import Testing
 import Foundation

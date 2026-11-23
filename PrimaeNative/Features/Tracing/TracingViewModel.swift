@@ -1117,7 +1117,8 @@ public final class TracingViewModel {
     /// global key every other fixture in the run also reads (2026-10-16).
     private let observePasses: Int
     /// Whether this session practises all five study letters instead of
-    /// the counterbalanced three. Off by default; on makes every letter
+    /// the counterbalanced three. Off by default, and held off in the study
+    /// build from protocol r27 (see `init`); on makes every letter
     /// trained, which removes the within-child trained/untrained
     /// contrast the post-test rests on — the supervisor's "jedes Kind
     /// alle 5 Buchstaben? Aber jeder Buchstabe nur einmal?", offered as a
@@ -1414,7 +1415,8 @@ public final class TracingViewModel {
         self.enableBackwardChaining = deps.enableBackwardChaining
         self.letterRecognizer       = deps.letterRecognizer
         // Same studyMode silencing rationale as `haptics` above — and the
-        // silent arm hears no speech or prompt in ANY mode (C3-2).
+        // silent arm hears no speech or prompt in ANY mode (C3-2; in a
+        // study session with spoken feedback on, superseded by P3 below).
         //
         // The study-mode half is now switchable, on the supervisor's
         // "Voiceover??" (2026-09-17): `StudyComparisonSettings
@@ -2314,8 +2316,8 @@ public final class TracingViewModel {
                             horizontalBias: Float(max(-1.0, min(1.0, sample.point.x * 2.0 - 1.0))))
                         // R19 (review N4): the pitch leg follows the pitch switch exactly as the pen
                         // and the observe dot do (`pitchCoupling`: scope and span). Nur Raumklang at
-                        // 2400 cents (the default) is `SpatialSonification.pitchCents(forNormalizedY:)`
-                        // value for value; Aus writes no pitch at all.
+                        // 2400 cents (the r17-r25 default; r26: Beide at 1200) is
+                        // `SpatialSonification.pitchCents(forNormalizedY:)` value for value; Aus writes no pitch at all.
                         if let cents = self.pitchCoupling.cents(forNormalizedY: sample.point.y,
                                                                 arm: self.audioCondition) {
                             self.audio.setSpatialPitch(cents: cents)
@@ -2439,9 +2441,10 @@ public final class TracingViewModel {
     /// conditions block a probe, which is a bigger behavior change than
     /// this pass is for. (Written 2026-09-15, when a probe was a
     /// sound-off production that needed no audio checks of its own.
-    /// Since P2, 2026-10-04, a probe's writing couples to the arm's sound
-    /// like every other writing pass, so the arm's recording IS
-    /// load-bearing here: the one audio check that matters for a probe —
+    /// From P2, 2026-10-04, until r12 a probe's writing coupled to the arm's
+    /// sound like every other writing pass (r12 made every probe sound-off;
+    /// the check below stays, see r12 in DECISIONS.md, and r27 exempts the
+    /// final test from it): the one audio check that mattered for a probe —
     /// this letter's file for the current arm — is now made below
     /// (`probeArmAudioMissingReason`), without taking the rest of the
     /// umbrella.) Without the bundle-scan check, `kind.permits`
@@ -3428,11 +3431,13 @@ public final class TracingViewModel {
     /// still (slowest rate), through `ArmCoupling` — the same mapping the
     /// pen uses — and `handleGuideFrame` then tracks the dot frame by frame.
     /// Starting from the dot also replaces whatever rate and pan the
-    /// PREVIOUS letter's tracing left the engine in — and, in the spatial
-    /// arm only, pitch. The phoneme arm never sets pitch, so its pitch is
-    /// neutral only because every arm change and every new participant
-    /// resets it (`settleEngineForArm`, protocol r7); before r7 a phoneme
-    /// child after a spatial child played shifted (audit D2).
+    /// PREVIOUS letter's tracing left the engine in — and, in the arms the
+    /// pitch scope drives (from r26 by default both sound arms; r17-r25 the
+    /// spatial arm only), pitch. Under a scope that leaves the phoneme arm
+    /// out it never sets pitch, so its pitch is neutral only because every
+    /// arm change and every new participant resets it (`settleEngineForArm`,
+    /// protocol r7); before r7 a phoneme child after a spatial child played
+    /// shifted (audit D2).
     @discardableResult
     private func startObservePhaseAudio(startingAt firstPoint: CGPoint?) -> Bool {
         // A blocked session starts no arm sound (r14; C-1: the observe
@@ -3488,7 +3493,8 @@ public final class TracingViewModel {
     /// The observe sound tracks the animated dot exactly as it tracks the
     /// child's pen (2026-10-05), through the ONE shared mapping
     /// (`ArmCoupling`): rate from the dot's velocity in pt/s, pan from x,
-    /// pitch from y in the spatial arm only. A still dot (the 1.0 s start
+    /// pitch from y in the arms the pitch scope drives (from r26 by default
+    /// both sound arms; r17-r25 the spatial arm only). A still dot (the 1.0 s start
     /// hold, a stroke's dwell, the pause after the pass) plays on at the
     /// slowest rate (velocity 0 → 0.8 under M3, R17D) — no pause. A stroke-to-stroke jump
     /// is a pen lift, not motion: it never enters the velocity.
@@ -4539,19 +4545,21 @@ public final class TracingViewModel {
     /// a letter nobody touched — all before the pretest.
     private(set) var launchParked = false
 
-    /// The child's trained set is finished: the last letter's session is
-    /// recorded, the closing celebration has played, and the device waits
+    /// The child's session is finished: the last letter's session is
+    /// recorded, the closing celebration has started, and the device waits
     /// for "Nächstes Kind" (2026-10-02).
     ///
-    /// Set only when the letter just finished is the LAST of the visible
-    /// trained set, so a mid-set letter never trips it. Reset by
+    /// From protocol r27 set only at the end of the FINAL TEST
+    /// (`finishFinalTest`), after the training set, the pause and the test,
+    /// so neither a mid-set letter nor the last training letter trips it. Reset by
     /// `resetForNewParticipant`, which is the single place a new child's
     /// session begins — including the in-place path, since that is what
     /// the batch flow uses between children.
     private(set) var awaitingNextParticipant = false
 
-    /// Called by the final-phase pipeline once the LAST letter of the
-    /// child's set is recorded. Separate from the setter because the
+    /// Called by `finishFinalTest` once the LAST final-test letter is
+    /// recorded (r27; it used to be the final-phase pipeline at the last
+    /// training letter). Separate from the setter because the
     /// coordinator is a different type and this is a state TRANSITION,
     /// not a field it should reach for.
     func finishSetAwaitingNextParticipant() {
@@ -4596,7 +4604,8 @@ public final class TracingViewModel {
     /// same pool `nextLetter()` walks, so "last" cannot disagree with
     /// "next".
     /// Whether finishing this letter finishes the child's SET — the
-    /// condition for the one end-of-set celebration.
+    /// condition (with a training pass, r27) for starting the pause and the
+    /// final test; the one celebration follows the test.
     ///
     /// REQUIRES MORE THAN ONE LETTER IN THE POOL (2026-10-02,
     /// MEASURED). A one-letter pool made every trial "the last one", so
@@ -5710,7 +5719,9 @@ public final class TracingViewModel {
         // longer cold. Parked, nothing plays until the proctor starts a
         // Vortest (its own load) or taps the observe pill / chevron after
         // the pretests. The tap saved was never free: it cost the first
-        // trained letter its baseline.
+        // trained letter its baseline. (r27: the Vortest buttons left the
+        // study build; parking stays, so nothing plays until the proctor
+        // taps the observe pill or the chevron.)
         participantIdentityChanged = false
         // The outgoing child's override was cleared by
         // `startNewParticipant` and the arms above re-derived without it,

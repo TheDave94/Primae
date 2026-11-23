@@ -5,7 +5,9 @@
 // (A F I L M) a participant TRAINS. The post-test (H6) covers all 5
 // regardless — the untrained 2 are the within-child baseline, so the
 // subset filters only the practice pool (`visibleLetterNames` under
-// `studyMode`), never the post-test.
+// `studyMode`), never the post-test. (r27: the post-test button left the
+// study build; the subset now also selects the letters of the end-of-
+// session final test, which tests the TRAINED letters only.)
 //
 // Mirrors the `ThesisCondition` / `PilotAudioCondition` machinery:
 // deterministic UUID-byte assignment (its own decorrelated byte),

@@ -47,9 +47,11 @@ Both sets ship into the same app audio pipeline and must therefore meet the
 
 > **Note 2026-10-14 (protocol revision 9) — ElevenLabs and the study's
 > spoken prompts.** The rejection of ElevenLabs above is for the PHONEMES
-> and stands. ElevenLabs IS the source of the five SPOKEN study prompts,
-> which are not part of either sound set: "Schau genau hin.", "Jetzt
-> du.", "Und jetzt ganz allein.", "Probier's nochmal.", "Super gemacht!",
+> and stands. ElevenLabs IS the source of the SPOKEN study prompts (five
+> under r9-r26, seven from r27), which are not part of either sound set:
+> "Schau genau hin.", "Jetzt du.", "Und jetzt ganz allein.", "Probier's
+> nochmal.", "Super gemacht!", and from r27 "Jetzt schreibst du sie alle
+> noch einmal." and "Merk ihn dir gut.",
 > voice "Kiki", model `eleven_multilingual_v2` (stability 0.55, similarity
 > 0.80, style 0.10), bundled as mono 44.1 kHz mp3 in
 > `PrimaeNative/Resources/Prompts/`. Their bytes are pinned by
@@ -154,10 +156,16 @@ Every asset, phoneme or abstract, must satisfy all of these:
     0.5×–2.0×). The unvoiced F phoneme is not time-stretched at all (U1);
   - **pan** — `player.pan`, canvas-x mapped to ±1 **plus** a pencil-azimuth
     term (`cos(azimuth)·0.2`), clamped ±1;
-  - **pitch** — `pitchCents` → `timePitch.pitch`. Wired but **not yet driven
-    inside `setAdaptivePlayback`** (default 0); D7 (RESOLVED 2026-05-30) puts
-    pitch *in* the pilot, and **what movement parameter drives it is D7-sub
-    (open)**. Design every asset to survive a pitch shift regardless.
+  - **pitch** — `pitchCents` → `timePitch.pitch`, still not driven inside
+    `setAdaptivePlayback` (default 0). The pitch the child hears comes from
+    pen (and observe-dot) **height**: `ArmCoupling` →
+    `PitchCoupling.cents(forNormalizedY:arm:)` → `setSpatialPitch(cents:)`,
+    applied by TDPSOLA from r17. From protocol r26 the default scope is
+    **both sound arms** (`StudyComparisonSettings.pitchScopeDefault = .both`;
+    r5–r25 the spatial arm only) over **±600 cents**
+    (`pitchRangeCentsDefault = 1200`; r17–r25 ±1200), so a phoneme is
+    pitch-shifted by default; the unvoiced F's noise grains are resampled by
+    the pitch ratio (r26). Design every asset to survive a pitch shift.
 
   The asset must still sound clean and intelligible across the full
   rate range and under pitch shift — no aliasing, no muddy artefacts at the

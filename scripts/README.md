@@ -129,14 +129,14 @@ git — pick the favourite voice's files and copy them into
 > script. See `docs/SOUND_PRODUCTION_SPEC.md`.
 
 ### `generate_prompts.py`
-ElevenLabs generator for the 13 static prompt MP3s the child hears
-during normal practice (phase entries, praise tiers, paper-transfer
-cues, retrieval question). Runs across the same 10 voices as
-`generate_letter_audio.py` so a voice can be picked alongside the
-letter audio. The shipped MP3s live at
-`PrimaeNative/Resources/Prompts/<key>.mp3`; filenames match
-`PromptPlayer.PromptKey.rawValue`. Until generated, `PromptPlayer`
-falls back to `AVSpeechSynthesizer`.
+ElevenLabs generator for the seven recorded phrases a study child
+hears (protocol r9 five; r27 adds `final_intro` and `final_glimpse`).
+Runs across the same 10 voices as `generate_letter_audio.py`; the
+shipped set is voice Kiki. The shipped MP3s live at
+`PrimaeNative/Resources/Prompts/<key>.mp3` and are pinned by
+`Prompts/MANIFEST.json` (`check_study_prompts.py`); filenames match
+`PromptPlayer.PromptKey.rawValue`. A study build never falls back to
+`AVSpeechSynthesizer` for a missing take.
 
 ```bash
 read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
@@ -230,12 +230,14 @@ Use `scripts/typecheck_package.sh` for a fast local type-check.
    the visual sweep workflow (`docs/APP_DOCUMENTATION.md` §13.7) for
    any geometric tunable that has multiple plausible values.
 2. `python3 scripts/generate_letter_audio.py --letter X` — auditions
-   all bundled voices for the phoneme. Pick one, copy its files into
+   all bundled voices for the letter-name/word audio (study phonemes are
+   recorded, not synthesised; see above). Pick one, copy its files into
    `PrimaeNative/Resources/Letters/X/`.
 3. `./scripts/verify_bake.sh` — would confirm 3-trial determinism + that no
    already-shipped letter's `strokes.json` regressed (the b firewall); it
    currently exits 2 "not applicable" for the static corpus (`verify_bake.sh:72,79`).
-4. The DEBUG-only `StrokeCalibrationOverlay` is for on-device
+4. The DEBUG-only `StrokeCalibrationOverlay` (also `#if !STUDY_BUILD`,
+   so absent from every current build) is for on-device
    inspection only — it persists tweaked checkpoints to Application
    Support so you can see them inside that session, but there is no
    round-trip back to the source `LETTERS` dict. Calibration findings

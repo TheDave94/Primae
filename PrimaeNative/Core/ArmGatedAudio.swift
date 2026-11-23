@@ -26,10 +26,10 @@
 // engine, also drops the loaded file) and rate 1.0 / pan 0 / pitch 0 — the
 // values `AudioEngine.init` sets. Those calls go to the real engine BEFORE
 // the gate closes, so a sound arm stepping into silence cannot leave a file
-// loaded or a loop running behind the no-op. And pitch is driven only by the
-// spatial arm, so without the reset a phoneme child enrolled after a spatial
-// child heard every phoneme shifted by that child's last pen height (audit
-// D2); rate and pan are reset with it so no coupling state outlives the arm
+// loaded or a loop running behind the no-op. And pitch was driven only by the
+// spatial arm (until r26; from r26 the phoneme arm too, by default), so
+// without the reset a phoneme child enrolled after a spatial child heard
+// every phoneme shifted by that child's last pen height (audit D2); rate and pan are reset with it so no coupling state outlives the arm
 // or the child it belonged to.
 //
 // While the gate is closed the real engine is untouched, so it is still

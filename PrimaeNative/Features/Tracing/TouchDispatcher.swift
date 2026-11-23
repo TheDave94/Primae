@@ -780,19 +780,22 @@ final class TouchDispatcher {
         let azimuthBias = vm.pencilPressure != nil ? cos(vm.pencilAzimuth) * 0.2 : 0
         // Rate from velocity; pan follows absolute x across the whole
         // canvas (not the active cell), so a right-hand cell sounds from
-        // the right; spatial arm only: y drives the carrier pitch
-        // (220–880 Hz linear-in-cents, top = high). ONE mapping, shared
+        // the right; y drives the pitch in the arms `vm.pitchCoupling`
+        // names (from r26 by default both sound arms, +-600 cents: the
+        // carrier 311–622 Hz, linear-in-cents, top = high; r17-r25 the
+        // spatial arm only, 220–880 Hz). ONE mapping, shared
         // with the observe animation's dot (`ArmCoupling`, 2026-10-05).
         //
         // Pan is suppressed by the comparison switch (2026-09-17) — the
         // supervisor's "auch ohne Panning". Zeroing the bias leaves the
-        // rate coupling AND the spatial arm's pitch drive untouched, so
+        // rate coupling AND the pitch drive untouched, so
         // each arm stays itself and only the pan axis goes. Applied at the
         // CALL SITE rather than inside `AudioEngine`, whose
         // `setAdaptivePlayback` is the shared three-parameter seam the arms
-        // are matched through — and which is on the DO-NOT list. The
-        // phoneme arm never gets a pitch drive: the arms are matched on
-        // rate + pan and differ in pitch-drive + sound identity (§2.6).
+        // are matched through — and which is on the DO-NOT list. Until
+        // r26 the phoneme arm got no pitch drive (arms matched on rate +
+        // pan, differing in pitch-drive + sound identity, §2.6); from r26
+        // the default pitch scope drives both sound arms (`PitchCoupling`).
         // R18 slices 4+5: stroke tone, only when a switch is on (else nil: nothing computed, nothing written).
         var strokeTone: StrokeTone?
         if vm.distanceToneEnabled || vm.directionMuteEnabled {

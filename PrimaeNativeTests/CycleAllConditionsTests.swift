@@ -1,8 +1,8 @@
 // CycleAllConditionsTests.swift
 // PrimaeNativeTests
 //
-// `StudyComparisonSettings.cycleAllConditions` — the eighth and last of
-// the researcher switches, and the only one that changes the DESIGN
+// `StudyComparisonSettings.cycleAllConditions` — the eighth (and, when
+// this was written, the last) of the researcher switches, and the only one that changes the DESIGN
 // rather than a presentation detail: ON steps the session through all
 // three audio arms, one per letter, instead of running the single arm
 // assigned from the participant identifier.

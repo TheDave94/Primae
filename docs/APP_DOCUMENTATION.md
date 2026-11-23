@@ -12,8 +12,9 @@ app's UI is German; this document is in English to match the thesis._
 ### 1.1 Purpose
 
 The app teaches a German-speaking child how to write the Latin alphabet
-on an iPad. It implements a four-step pedagogical flow per letter
-(observe → direct → guided → freeWrite) and accompanies the child's
+on an iPad. It implements a three-step pedagogical flow per letter
+(observe → guided → freeWrite; a fourth step, `direct`, was cut
+2026-09-18, D5) and accompanies the child's
 practice with real-time audio, haptic feedback, on-device CoreML letter
 recognition, and per-session writing-quality assessment along four
 Schreibmotorik motor dimensions (form, tempo, pressure, rhythm).
@@ -54,7 +55,7 @@ reach those screens accidentally.
 
 The UI is **German throughout**, including all child-facing strings,
 parent dashboard labels, settings, accessibility labels, and spoken
-utterances (TTS, and from protocol r9 five recorded study phrases). The only English strings in the entire codebase are inside
+utterances (TTS, and from protocol r9 recorded study phrases: five through r26, seven from r27, `Resources/Prompts/MANIFEST.json`). The only English strings in the entire codebase are inside
 `#if DEBUG` blocks of the calibration tooling (and even those were
 translated in the latest pass — see `StrokeCalibrationOverlay.swift`).
 
@@ -125,7 +126,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 | `DifficultyAdaptation.swift` | `MovingAverageAdaptationPolicy` with hysteresis + `FixedAdaptationPolicy` for control arm. |
 | `ProgressStore.swift` | Per-letter progress JSON store. Carries phaseScores, speedTrend (cap 50, D-4), recognitionAccuracy + recognitionSamples (cap 10), paperTransferScore, lastVariantUsed, freeformCompletionCount. Schema-versioned (W-17). |
 | `ParentDashboardStore.swift` | Session + phase-record JSON store. `PhaseSessionRecord` carries Schreibmotorik dimensions, session-aligned recognition (D-2), `recordedAt` timestamp (D-3), `inputDevice` (D-6). `SessionDurationRecord` also carries `recordedAt` (D-9). accuracySamples cap 200. Schema-versioned (W-17). |
-| `ParentDashboardExporter.swift` | CSV / TSV / JSON exporter. 15-column per-phase rows; per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`); `letterByArm` block (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
+| `ParentDashboardExporter.swift` | CSV / TSV / JSON exporter. 79-column per-phase rows at r27 (§6.4); per-letter aggregates with `speedTrend` + `freeformCompletionCount`; per-arm aggregates (`averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>`, `averageFreeWriteScore_audio_<arm>`); `letterByArm` / `letterByAudioArm` blocks (D-5). Filters legacy rows when `enrolledAt` is set (D-7/D-8). |
 | `StreakStore.swift` | Daily-streak JSON store + `RewardEvent` enum. `earnedRewards: Set<RewardEvent>` exposed on the protocol so the Fortschritte gallery can render achievement badges. Schema-versioned (W-17). |
 | `LocalNotificationScheduler.swift` | Daily reminder with quiet hours + streak-aware copy. Compiled out of the study build (`#if !STUDY_BUILD`, R-065, #49). |
 | `OnboardingCoordinator.swift` | 7-step state machine. U4 adds an `OnboardingVariant` enum (`.full` 7-step, `.short` 3-step) so the cohort can A/B compare onboarding length. The variant the child actually completed is locked into `OnboardingState.variantUsedRaw` on first complete (re-runs don't overwrite) so post-hoc analysis can correlate engagement metrics with the original variant. |
@@ -139,6 +140,8 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 | `PrimaeLetterRenderer.swift` | OTF-based glyph render → UIImage. SchriftArt-aware. |
 | `LetterAnimationGuide.swift` | Per-stroke animation timing model. |
 | `CalibrationStore.swift` | Per-letter user-calibrated stroke persistence. |
+| `FinalTest.swift` | Protocol r27: the session's closing pause + final test as plain values (`FinalTestStage`: inactive / pause / intro / glimpse / writing; `FinalTestRules`). §3.5. |
+| `PitchCoupling.swift` | Pen height → pitch: `PitchScope` (off / spatialOnly / both) and the span in cents. The study's defaults come from `StudyComparisonSettings` (r26: `.both`, 1200 cents). §7.2. |
 
 #### `Features/Tracing/`
 | File | Role |
@@ -205,7 +208,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 * `Letters/<X>/strokes_variant.json` — alternate stroke order (uppercase F, H, lowercase r).
 * `Letters/<X>/strokes_schulschrift.json` — Schreibschrift script strokes for the demo letters.
 * `Letters/<X>/<X><n>.mp3` — recorded letter-name + phoneme audio variants.
-* `Fonts/Primae-*.otf` (12 weights) + `PlaywriteAT-Regular.ttf` + `PlaywriteAT-OFL.txt` (license).
+* `Fonts/Primae-*.otf` + `Fonts/PrimaeText-*.otf` (20 OTF: five weights × upright/cursive × two families) + `PlaywriteAT-Regular.ttf` + `PlaywriteAT-OFL.txt` (license).
 * `GermanLetterRecognizer.mlpackage/` — CoreML model + manifest. It lives in `PrimaeNative/MLResources/`, beside `Resources/`, not inside it (corrected 2026-11-10; this line said `ML/`).
 * `letter_set.json` — `active_letters: ["A","F","I","K","L","M","O"]`. Referenced by no Swift, script, workflow or test (grep at `60e8b805`); the study letter set is `TrainedLetterSubset.studyLetters` (A F I L M), not this file (audit F2-09).
 
@@ -219,6 +222,7 @@ Notable: `WritingAssessmentTests`, `LetterSchedulerTests`,
 `TestFixtures.swift`.
 
 #### `.github/workflows/`
+* `bake-gates.yml` — the stroke-bake drift-from-reference gates (G1/G3/G4/G6) as PR merge-blockers when `strokes.json` or gate code changes.
 * `ios-build.yml` — GitHub Actions on the hosted `xcode-27` runner image (the label is the toolchain pin, `bin/toolchain.pin`). Runs `xcodebuild test` on the iPad simulator matrix (iPad Pro 13-inch (M5) and iPad (A16)).
 * `ipad-device-test.yml` — removed 2026-07-13 (`c6731761`); it was a self-hosted MacBook physical-device test job. See §10.4.
 
@@ -356,12 +360,19 @@ ProgressStore.recordRecognitionSample
 - An animated guide dot tracing each stroke in canonical order.
 - Numbered start dots indicating where each stroke begins.
 - "Schau genau hin." is played on phase entry: from protocol r9 a recorded take (voice Kiki, `Resources/Prompts/phase_observe.mp3`), not synthesised speech. [Before r9, and in the text of r2-r8, the system voice spoke it.]
-- The child taps anywhere on the overlay to advance — or the phase
-  auto-advances after the animation's single pass so a child who
-  can't read isn't stuck. The pass plays at 0.4x, so one pass is about
+- The phase auto-advances after the animation's single pass. In the
+  casual app the child can also tap anywhere on the overlay to advance;
+  in a study session a tap does not advance it (it only starts a parked
+  launch letter, `startParkedLetter`), so model exposure does not vary
+  with a child's impatience. The pass plays at 0.4x, so one pass is about
   25% LONGER than the two it replaced (~6-14 s for the five study
   letters, not ~5-11 s). The pass count is a researcher comparison
   switch (`observePasses`, default 1).
+- In the two sound arms the arm's sound plays for the whole pass and
+  TRACKS the animated dot through the same `ArmCoupling` mapping the pen
+  uses (protocol r5): rate from the dot's velocity, pan from x, pitch
+  from y — in both sound arms from r26 (r5-r25: the spatial arm only;
+  §7.2). The silent arm hears nothing.
 
 **What the code does**
 - `LearningPhaseController.currentPhase = .observe` (initial state).
@@ -370,8 +381,8 @@ ProgressStore.recordRecognitionSample
 - `TracingViewModel.startGuideAnimation()` calls
   `AnimationGuideController.start(strokes:)`. The controller publishes
   `guidePoint` which `TracingCanvasView` renders as an orange dot.
-- Auto-advance is implemented in
-  `TracingViewModel.startGuideAnimation` (line 1058):
+- Auto-advance is armed by `TracingViewModel.armObserveAutoAdvance()`,
+  called from `startGuideAnimation()`:
 
   ```swift
   animation.onCycleComplete = { [weak self] in
@@ -392,8 +403,9 @@ ProgressStore.recordRecognitionSample
 **Trigger to next phase**
 - `completeObservePhase()` → `advanceLearningPhase()` → phase becomes
   `.guided` (since the 2026-09-18 `direct` cut, DECISIONS.md D5 — see
-  the banner in §3.2). The verbal prompt for `.guided` ("Jetzt fährst
-  du die Linien nach.") is spoken on phase entry.
+  the banner in §3.2). The verbal prompt for `.guided` is played on
+  phase entry: in a study session the recorded "Jetzt du."
+  (`Resources/Prompts/phase_guided.mp3`, from r9).
 
 ### 3.2 Phase: Direct (Richtung lernen) — CUT 2026-09-18 (D5); no session runs it
 
@@ -418,10 +430,11 @@ ProgressStore.recordRecognitionSample
 **What the code does**
 - `LearningPhase.direct.rawValue == 1` — placed between `observe` (0)
   and `guided` (2).
-- `DirectPhaseDotsOverlay` (in `TracingCanvasView.swift`) renders only
-  the **next-expected** dot so visually overlapping starts (A's two
-  diagonals share the apex) don't stack.
-- `TracingViewModel.tapDirectDot(index:)` (line 1240):
+- `DirectPhaseDotsOverlay` rendered only the **next-expected** dot so
+  visually overlapping starts (A's two diagonals share the apex) don't
+  stack. (That view type no longer exists in the source; only comments
+  name it.)
+- `TracingViewModel.tapDirectDot(index:)`:
 
   ```swift
   if index == directNextExpectedDotIndex {
@@ -452,11 +465,12 @@ ProgressStore.recordRecognitionSample
 **What the child sees and does**
 - The letter glyph plus a faint blue ghost line over each stroke.
 - Real-time green ink follows the finger / pencil.
-- A "Jetzt fährst du die Linien nach." prompt is spoken on phase
-  entry.
-- Audio plays in real time when the touch is on-path, with playback
-  speed mapping to writing velocity (slow tracing → slow audio,
-  fast → fast).
+- A phase-entry prompt is played: in a study session the recorded
+  "Jetzt du." (`phase_guided.mp3`, from r9).
+- In the two sound arms the arm's sound plays in real time when the touch
+  is on-path: rate from writing velocity (map M3, r17: 0.8 slow → 1.25
+  fast; F's phoneme unstretched), pan from x, pitch from the pen's
+  height in both sound arms from r26 (§7.2).
 - Haptic ticks on every checkpoint hit.
 
 **What the code does**
@@ -464,9 +478,11 @@ ProgressStore.recordRecognitionSample
   enforces stroke order. Each stroke must be traced left-to-right (or
   the canonical direction encoded in `strokes.json`); jumping to the
   next stroke before completing the current one yields no progress.
-- `TracingViewModel.updateTouch` (line 818) feeds normalized touch
-  points into `strokeTracker.update(normalizedPoint:)`.
-- Audio is gated by `feedbackIntensity > 0.3` (line 937) and
+- `TracingViewModel.updateTouch` forwards to `TouchDispatcher.updateTouch`,
+  which feeds normalized touch points into
+  `strokeTracker.update(normalizedPoint:)`.
+- Audio is NOT gated by `feedbackIntensity` (removed 2026-09-06, §7.3);
+  it is gated by proximity (`isNearStroke`) and
   `smoothedVelocity >= playbackActivationVelocityThreshold`. That floor's
   default is 0 pt/s since 2026-10-04 (it was 22 pt/s — see "The velocity
   floor's default is 0 pt/s" below), so a child tracing slowly in this
@@ -502,14 +518,21 @@ ProgressStore.recordRecognitionSample
   separate gate (§7.3/§7.4): in a STUDY session the sound arms couple
   in the session's freeWrite exactly as in guided (the sound-off gate
   was lifted 2026-10-02), the silent arm stays silent, and from
-  protocol r12 (David, 2026-10-21) every COLD PROBE (pretest,
-  post-test, delayed) is sound-off in every arm; in the casual app the
-  phoneme keeps sounding as the glyph's auditory anchor.
-- On lift-off, the child lifts the pen and the phase ends.
+  protocol r12 (David, 2026-10-21) every COLD PROBE is sound-off in
+  every arm — from r27 that is the final test (§3.5); the proctor's
+  pretest / post-test / delayed probe buttons left the study build in
+  r27. In the casual app the phoneme keeps sounding as the glyph's
+  auditory anchor.
+- The production ends when the pen stays up for the 2.0 s quiet window
+  (`TouchDispatcher.freeWriteQuietSeconds`) after the last lift. From
+  r25 a study TRAINING production the attempt check
+  (`FreeWriteAttemptCheck`) rejects as a non-attempt is not accepted:
+  the canvas clears and "Probier's nochmal" plays, at most 2 times per
+  letter and pass, the third attempt accepted whatever it is.
 
 **What the code does**
-- `feedbackIntensity == 0.0` so `updateTouch` skips haptics and audio
-  (lines 891, 918, 937).
+- `feedbackIntensity == 0.0` so `TouchDispatcher` skips the haptics
+  (audio is not gated by it, §4.2).
 - Every touch is appended to four parallel buffers in
   `FreeWritePhaseRecorder`: `points`, `timestamps`, `forces`, `path`
   (the canvas-normalised KP path).
@@ -535,9 +558,47 @@ ProgressStore.recordRecognitionSample
   history when the result lands.
 
 **Trigger to session completion**
-- `phaseController.advance(...)` returns false — last phase. The
-  celebration overlay shows; "Weiter" loads the next recommended
-  letter via the LetterScheduler.
+- `phaseController.advance(...)` returns false — last phase. In the
+  casual app the celebration overlay shows; "Weiter" loads the next
+  recommended letter via the LetterScheduler. In a study session the
+  next trained letter follows; after the third, the session continues
+  with the pause and the final test (§3.5).
+
+### 3.5 Study session close: silent pause and final test (protocol r27)
+
+From r27 one study session is: training (the three trained letters in
+the study's order, observe → guided → freeWrite, each with its arm's
+sound), a silent pause, then a final test from memory
+(`Core/FinalTest.swift`, `FinalTestStage`; docs/DECISIONS.md r27).
+
+- **Pause.** After the third training letter a silent full-screen bubble
+  field (`FinalTestPauseView`; a touched bubble pops; no sound, text,
+  letters or score) for `pauseSeconds`: 30-60 s, 5 s steps, default 45 s
+  (`StudyComparisonSettings.pauseSecondsDefault`). "Super gemacht!" no
+  longer plays at the end of the last training letter.
+- **Intro.** The recorded "Jetzt schreibst du sie alle noch einmal."
+  (`final_intro`) once.
+- **Per trained letter, in the training order:** the plain glyph alone
+  (no animation, start dots, arrows, guide line or sound) for
+  `glimpseSeconds`: 1-3 s, 0.5 s steps, default 3 s
+  (`glimpseSecondsDefault`), while "Merk ihn dir gut." (`final_glimpse`)
+  plays and the canvas takes no touch; then the glyph hides, "Und jetzt
+  ganz allein." plays and the child writes on an empty canvas.
+- **No sound in any arm**, no feedback, no stars, no retry, no attempt
+  check. The letter ends when the child taps the check button (it appears
+  after the first stroke); the 2 s quiet window does NOT end it.
+- After the last test letter "Super gemacht!" plays, then the
+  end-of-session screen and the hold for the next child.
+- Each test letter writes one freeWrite row with `probe = finalTest`
+  and the final-test columns (§6.4). Both durations are researcher
+  settings in the parent area's "Abschlusstest" section, stamped in
+  `comparisonConfiguration` when not at their defaults.
+- Interruptions (scene inactive/background, parent area, headphones)
+  freeze the pause, intro and glimpse; the pause resumes with its
+  remaining time, the intro from the start of its prompt, a cut glimpse
+  in full. Training is marked complete durably at its end, so a relaunch
+  during the pause or test does not reopen training; a test cut short is
+  not resumed.
 
 ---
 
@@ -566,9 +627,10 @@ demonstration and independent application.
 * `Core/LearningPhase.swift` — four `case`s in raw-value order
   `observe / direct / guided / freeWrite`. Each carries a German
   display name, an icon, a stable `rawName` for serialisation.
-* `Core/LearningPhaseController.swift` — pure value-type FSM. Field
-  comments name the GRR mapping: observe = "I do", direct =
-  "Start", guided = "We do", freeWrite = "You do."
+* `Core/LearningPhaseController.swift` — pure value-type FSM;
+  `activePhases` drops `.direct` under `.threePhase`. The GRR mapping is
+  named in `LearningPhase.swift`'s header: observe = "I do", guided =
+  "We do", freeWrite = "You do."
 
 **How the implementation differs.** The classic GRR has three phases;
 this app runs three as well — observe → guided → freeWrite (a fourth,
@@ -590,7 +652,7 @@ learning: A behavioral emphasis* (4th ed.). Human Kinetics.
 
 **Implementation.**
 * `Features/Tracing/TracingViewModel.swift` — `feedbackIntensity`
-  computed property (line 204):
+  computed property:
 
   ```swift
   var feedbackIntensity: CGFloat {
@@ -616,8 +678,9 @@ learning: A behavioral emphasis* (4th ed.). Human Kinetics.
   sound-off gate was lifted 2026-10-02; see §7.4).
 
 **How the implementation differs.** The paper describes a continuous
-fade; this implementation uses four discrete phase-pinned haptic
-intensity levels so the gating thresholds are auditable and can be
+fade; this implementation uses discrete phase-pinned haptic intensity
+levels (three in a session since the `direct` cut; the gate is `> 0`, so
+in effect haptics are on in observe/guided and off in freeWrite) so the gating thresholds are auditable and can be
 tested. Audio no longer shares that fade (see above) — it fades with
 proximity/velocity (§7.3) instead.
 
@@ -632,8 +695,11 @@ process feedback is directly actionable.
 sensory feedback in handwriting. *Frontiers in Psychology*, 6, 169.
 
 **Implementation.**
-* `Features/Tracing/TracingCanvasView.swift` — `freeWriteKPOverlay()`
-  function (line 224). After freeWrite completes, the overlay
+* `Features/Tracing/TracingCanvasView.swift` — `freeWriteKPOverlay()`.
+  Casual app only: the overlay and its enqueue are compiled out of the
+  study build (`#if !STUDY_BUILD`; enqueue `!studyMode`-gated in
+  `PhaseTransitionCoordinator`), so a study child never sees it. After
+  freeWrite completes, the overlay
   superimposes:
   - the reference strokes in **blue** (line width 8, opacity 0.4)
   - the child's path in **green** (line width 4)
@@ -641,7 +707,7 @@ sensory feedback in handwriting. *Frontiers in Psychology*, 6, 169.
   diverged from the reference.
 
 * The overlay is now driven by the OverlayQueueManager: rendered when
-  `vm.overlayQueue.currentOverlay == .kpOverlay` (line 346 of
+  `vm.overlayQueue.currentOverlay == .kpOverlay` (in
   TracingCanvasView). Auto-dismisses after 3 s (the queue's default
   duration for `.kpOverlay`) or on tap (`vm.overlayQueue.dismiss()`).
 
@@ -662,14 +728,17 @@ programs.
 elaboration of motor programs for the automation of letter production.
 *Acta Psychologica*, 182, 200–211.
 
+> **Cut 2026-09-18 (D5):** the `direct` phase no longer runs in any
+> session (§3.2); this section describes code that is kept but dead.
+
 **Implementation.**
 * `Core/LearningPhase.swift` — explicit `.direct` case between
   `.observe` and `.guided`.
 * `Core/LearningPhaseController.swift` — `useCheckpointGating: false`
   and `showCheckpoints: false` for direct (the dot overlay handles its
   own rendering).
-* `Features/Tracing/TracingCanvasView.swift` — `DirectPhaseDotsOverlay`
-  inner View. Renders the next-expected stroke's start dot only.
+* `DirectPhaseDotsOverlay` (no longer in the source; only comments name
+  it) rendered the next-expected stroke's start dot only.
 * `Features/Tracing/TracingViewModel.swift` — `tapDirectDot(index:)`
   drives the correct/wrong tap logic + 1.2-second arrow window before
   phase advance.
@@ -716,7 +785,7 @@ in spelling. *Developmental Neuropsychology*, 29(1), 61–92.
   }
   ```
 
-* `TracingViewModel.visibleLetterNames` (line 1321) sorts the loaded
+* `TracingViewModel.visibleLetterNames` sorts the loaded
   letters by the active ordering's rank map.
 * `SettingsView.swift` exposes the picker.
 
@@ -740,11 +809,11 @@ Schreiben lernen leicht gemacht — Eine Praxishilfe der STEP–
 Schreibmotorik-Initiative*. Cornelsen.
 
 **Implementation.**
-* `Core/FreeWriteScorer.swift` — `WritingAssessment` struct (line 19):
+* `Core/FreeWriteScorer.swift` — `WritingAssessment` struct:
 
   ```swift
   struct WritingAssessment: Codable, Equatable {
-      let formAccuracy: CGFloat       // discrete Fréchet
+      let formAccuracy: CGFloat       // from spatialDeviation (stroke correspondence)
       let tempoConsistency: CGFloat   // 1 − CV² of within-stroke speed (r16)
       let pressureControl: CGFloat    // 1 − variance of pencil force
       let rhythmScore: CGFloat        // active-time / total-time
@@ -757,11 +826,14 @@ Schreibmotorik-Initiative*. Cornelsen.
   ```
 
   Weights sum to **1.0 exactly** (verified by
-  `WritingAssessmentTests.testWeightedAccuracySumsToOne`).
+  `WritingAssessmentTests.overall_one` and `overall_weights`).
 
 * Each dimension's algorithm:
-  - `formAccuracy` (line 204): discrete Fréchet distance vs reference
-    polyline, normalised by `reference.checkpointRadius * 3.0`.
+  - `formAccuracy` (`FreeWriteScorer.formAccuracy(measures:reference:)`):
+    `clamp₀₁(1 − spatialDeviation / (3 × checkpointRadius))`, read off the
+    same stroke-correspondence `StrokeProcessMeasures.spatialDeviation`
+    as the exported primary outcome (since 2026-09-04; before that, a
+    whole-letter discrete Fréchet vs the concatenated reference polyline).
   - `tempoConsistency` (`FreeWriteScorer.tempoConsistency`): from
     protocol r16 (audit B-8 / B-9), `1 − CV²` of the WITHIN-STROKE speed
     over 0.1 s windows (path length / elapsed time), clamped to 0–1;
@@ -769,17 +841,17 @@ Schreibmotorik-Initiative*. Cornelsen.
     at any length. Through r15 it was the CV² of inter-sample timestamp
     intervals with gaps ≥ 0.5 s dropped; those rows are not comparable
     (see the column table, Appendix B).
-  - `pressureControl` (line 244): 1 − normalised variance over non-zero
+  - `pressureControl`: 1 − normalised variance over non-zero
     pencil forces; finger touches (force 0) score 1.0 (no pressure
     data to fault).
-  - `rhythmScore` (line 261): ratio of active drawing time to total
+  - `rhythmScore`: ratio of active drawing time to total
     session time.
 
 * `Core/ParentDashboardStore.swift` — `PhaseSessionRecord` carries all
   four dimensions as optionals (nil for non-freeWrite phases).
 * `ResearchDashboardView.swift` displays the rolling averages with the
   weight (× 0.40, × 0.25, × 0.15, × 0.20) shown.
-* CSV / TSV export (line 64): four dimensions as separate columns.
+* CSV / TSV export: four dimensions as separate columns.
 
 **How the implementation differs.** Paper describes the dimensions
 qualitatively; the formulas above are the app's choice of operational
@@ -821,11 +893,10 @@ in der Grundschule*. Beschluss der Kultusministerkonferenz (revised).
   if trend.count > 50 { trend.removeFirst(trend.count - 50) }
   ```
 
-* `Core/LetterScheduler.swift` — `automatizationBonus(trend:)` (line
-  136) reads the speed trend and returns a priority adjustment:
+* `Core/LetterScheduler.swift` — `automatizationBonus(trend:)` reads the speed trend and returns a priority adjustment:
   improving speed → negative bonus (deprioritise letters being
   automatised), stagnant or declining → small positive boost.
-* `TracingViewModel.writingSpeedTrend` (line 1466) aggregates across all
+* `TracingViewModel.writingSpeedTrend` aggregates across all
   letters: `improving` / `stable` / `declining` based on relative gain
   thresholds (±10 %).
 * `FortschritteWorldView` shows this as a verbal trend pill ("aufwärts /
@@ -880,11 +951,10 @@ Schreibmotorik*. Frankfurt am Main: Grundschulverband.
 * `Core/Models.swift` — `LetterAsset.variants: [String]?` lists
   alternate stroke-order IDs (e.g. `["variant"]`).
 * `Features/Library/LetterRepository.swift` — bundle scan looks for
-  `Letters/<X>/strokes_variant.json` and registers it as a variant
-  (line 295).
-* `Features/Library/LetterRepository.swift:529` —
+  `Letters/<X>/strokes_variant.json` and registers it as a variant.
+* `Features/Library/LetterRepository.swift` —
   `loadVariantStrokes(for:variantID:)` loads the variant on demand.
-* `TracingViewModel.toggleVariant()` (line 567) swaps the active
+* `TracingViewModel.toggleVariant()` swaps the active
   stroke set between standard and variant; the canvas re-maps
   checkpoints accordingly.
 * Variants currently shipped: uppercase **F**, uppercase **H**,
@@ -980,7 +1050,8 @@ Press. (Original work compiled posthumously from 1930s manuscripts.)
     `.strict` (× 0.65)
 
 * The radius multiplier is applied to `StrokeTracker.radiusMultiplier`
-  whenever a letter session completes (`commitCompletion`, line 1451).
+  whenever a letter session completes
+  (`PhaseTransitionCoordinator.commitCompletion`).
 * `FixedAdaptationPolicy(currentTier: .standard)` is used for the
   `.control` thesis condition so adaptation is disabled and a clean
   comparison is possible.
@@ -1009,7 +1080,7 @@ distance on the space of curves.
   Geometry & Applications*, 5(1n02), 75–91.
 
 **Implementation.**
-* `Core/FreeWriteScorer.swift:283` — discrete Fréchet via O(nm)
+* `Core/FreeWriteScorer.swift` — `discreteFrechetDistance`, discrete Fréchet via O(nm)
   dynamic programming on a flat array (cache-line efficient,
   iterative bottom-up to avoid stack overflow):
 
@@ -1039,9 +1110,12 @@ distance on the space of curves.
   }
   ```
 
-* `formAccuracy(tracedPoints:reference:)` resamples both polylines to
-  the same point count, runs Fréchet, and normalises by
-  `reference.checkpointRadius * 3.0`.
+* Since 2026-09-04 the Fréchet distance is computed WITHIN each matched
+  drawn/reference stroke pair (direction-minimised) inside
+  `StrokeProcessMeasures.spatialDeviation`, the primary outcome;
+  `formAccuracy(measures:reference:)` rescales that value by
+  `reference.checkpointRadius * 3.0`. The whole-letter
+  `formAccuracy(tracedPoints:reference:)` described in §4.12.1 is gone.
 * `formAccuracyShape(tracedPoints:reference:)` is an
   order-independent variant for freeform mode: it densifies each
   reference stroke independently (no phantom edge across pen-lifts),
@@ -1141,10 +1215,10 @@ sequential gate, and strokes advance in definition order.
 It is kept as a secondary column for continuity with earlier pilot
 rounds, but it **saturates**: any trace that passes within tolerance of
 every checkpoint reports `1.0` no matter how badly it wanders between
-them. `MeasurementLayerTests.coverageSaturatesWhereFrechetDiscriminates`
+them. `MeasurementLayerTests.coverageSaturatesWhereSpatialDeviationDiscriminates`
 pins exactly that case — two traces, identical coverage, clearly
-different Fréchet distances. Report Fréchet as the accuracy outcome and
-coverage as a descriptive companion.
+different deviations. Report `spatialDeviation` as the accuracy outcome
+and coverage as a descriptive companion.
 
 #### 4.12.3 Per-letter analysis is mandatory — M is a structural outlier
 
@@ -1242,7 +1316,7 @@ adaptive and non-adaptive conditions.
 
   ```swift
   enum ThesisCondition: String, Codable, CaseIterable {
-      case threePhase      // full four-phase flow (legacy name preserved for Codable)
+      case threePhase      // observe → guided → freeWrite (Codable rawValue kept)
       case guidedOnly      // guided phase only
       case control         // guided phase, FixedAdaptationPolicy
 
@@ -1264,8 +1338,8 @@ adaptive and non-adaptive conditions.
   When false (default), `ThesisCondition.defaultForInstall` returns
   `.threePhase` so casual users never get a degraded condition.
 * `LearningPhaseController.activePhases` returns
-  `LearningPhase.allCases` for `.threePhase` and `[.guided]` for
-  `.guidedOnly` / `.control`.
+  `LearningPhase.allCases` minus `.direct` for `.threePhase` (since
+  2026-09-18, D5) and `[.guided]` for `.guidedOnly` / `.control`.
 * `TracingDependencies.live` injects `FixedAdaptationPolicy(.standard)`
   for `.control` and `MovingAverageAdaptationPolicy()` for the others.
 * Every dashboard write tags the active condition:
@@ -1279,7 +1353,7 @@ adaptive and non-adaptive conditions.
 ### 5.1 Primae font family
 
 **What it is.** A custom-designed display font family bundled with the
-app. The repo ships **22 OTF files** under `Resources/Fonts/`:
+app. The repo ships **20 OTF files** under `Resources/Fonts/`:
 Primae-Regular, -Light, -Semilight, -Semibold, -Bold + cursive
 versions of each + a PrimaeText subfamily.
 
@@ -1335,7 +1409,7 @@ the bundled font is not the official one.
   `UserDefaults.standard.string(forKey: "de.flamingistan.primae.selectedSchriftArt")`
   on init. Migration logic maps a legacy `"schulschrift1995"` value to
   `.schreibschrift`.
-* `TracingViewModel.schriftArt` setter (line 30) clears the script
+* `TracingViewModel.schriftArt` setter clears the script
   stroke cache, the per-script font cache, re-renders the current
   letter image, and reloads stroke checkpoints in the new script's
   geometry.
@@ -1376,6 +1450,8 @@ struct LetterProgress: Codable, Equatable {
     var recognitionAccuracy: [Double]?               // legacy: last 10 confidences
     var recognitionSamples: [RecognitionSample]?     // last 10 full readings (predictedLetter + confidence + isCorrect)
     var freeformCompletionCount: Int?
+    var retrievalAttempts: [Bool]?                   // last 10 retrieval-prompt outcomes (P1)
+    var formAccuracyHistory: [Double]?               // last 10 freeWrite formAccuracy readings
 }
 ```
 
@@ -1403,7 +1479,8 @@ streaks.
   (D-2); `recordedAt` is the wall-clock timestamp (D-3); `inputDevice`
   ("finger" / "pencil") disambiguates `pressureControl == 1.0` between
   finger sessions (no force data) and low-variance pencil sessions
-  (D-6).
+  (D-6). This list is the original core only; every field the record
+  carries now is the per-phase column list in §6.4 / Appendix B.
 
 Custom decoders default `condition` to `.threePhase` for pre-migration
 records; D-8 then filters those rows from the export when an
@@ -1456,7 +1533,9 @@ osVersion,deviceModel,observeLossesDuringSound,observeLossesWithoutSound,
 observeSoundSeconds,observeSoundDeliveredSeconds,soundEngine,liftHoldSeconds,
 stallSeconds,strokeGaps,strokeGapMedianSeconds,freeWriteAttempt,
 attemptCheckPassed,attemptCheckScore,attemptCheckLengthRatio,
-attemptCheckExtraReversals,spatialFitShearDegrees,armSoundDelivered
+attemptCheckExtraReversals,spatialFitShearDegrees,armSoundDelivered,
+glimpseSecondsPlanned,glimpseSecondsShown,pauseSecondsPlanned,
+glimpseHiddenToFirstTouchSeconds,glimpseRestarts
 ```
 
 (r17 appends `soundEngine`: the sound engine that rendered the row, `TDPSOLA` — a constant since the researcher
@@ -1474,7 +1553,7 @@ the row's ink: `attemptCheckPassed`, `attemptCheckScore` (min of coverage and pr
 `attemptCheckLengthRatio` (aligned ink length / the letter's) and `attemptCheckExtraReversals`. Free-writing rows only;
 on cold-probe and proctor-closed rows the check is passive. A training attempt the check rejected is its own row,
 `completed` false and `finalizedBy` `attemptRejected`, with its own raw trace; `phaseCompletionRate_freeWrite` does not
-count it. Empty on every other row and on rows written before r25.)
+count it (`phaseCompletionRate_*` itself was removed from the export by audit R-031). Empty on every other row and on rows written before r25.)
 
 (r27 appends two columns after the attempt columns (`ParentDashboardExporter.r27Columns`):
 `spatialFitShearDegrees`, the horizontal shear in DEGREES (3 dp, within -15..+15, found to 0.1 degree) that the
@@ -1482,7 +1561,8 @@ bounding-box fit applied to the drawn strokes before `spatialDeviation` was meas
 deviation (§"`spatialDeviation` across revisions" below; free-writing rows with a measured deviation only, empty on every
 other row and before r27); and `armSoundDelivered`, `true` / `false` / empty: whether the phase this row records delivered
 its arm's sound. `audioCondition` stays the ASSIGNED arm and is not changed by it. `false` in the silent arm, and on a
-cold-probe row recorded sound-off (protocol r1, and r12 onward: every probe is sound-off in every arm); `true` on a probe
+cold-probe row recorded sound-off (protocol r1, and r12 onward: every probe is sound-off in every arm; from r27 this
+includes every final-test row, `probe = finalTest`); `true` on a probe
 row recorded under r2-r11, which had the arm's sound in a sound arm (docs/DECISIONS.md r12, "Data"); empty on a probe row
 with no `protocolRevision` (r1-r3 cannot say); `true` on every other row of a sound arm. It is derived at export from the
 row's own `audioCondition`, `probe` and `protocolRevision` (`ParentDashboardExporter.armSoundDelivered`), after the
@@ -1491,13 +1571,22 @@ the three inputs, not the column. A comma-bearing field, `strokeOrder` (`0,1`), 
 German-locale spreadsheet does not read it as a decimal; a spreadsheet that infers types regardless of quotes (Excel does)
 can still do so, and a leading `-` or `=` is not neutralised, because the file never did that and a negative angle is data.)
 
+(r27 appends five final-test columns last (`ParentDashboardExporter.finalTestColumns`), filled on final-test rows
+(`probe = finalTest`, one free-writing row per trained letter, §3.5) only and empty on every other row and before r27:
+`glimpseSecondsPlanned` (the `glimpseSeconds` setting), `glimpseSecondsShown` (measured, glyph on screen to glyph
+hidden), `pauseSecondsPlanned` (the `pauseSeconds` setting), `glimpseHiddenToFirstTouchSeconds` and `glimpseRestarts`
+(how often an interruption cut the glimpse and it restarted in full). A final-test row's writing time stays the
+first-to-last-sample `phaseDurationSeconds`.)
+
 (As of protocol r14, checked 2026-11-01 against `StudyProtocol.revision` = 14:
 62 columns, identical to the header array in `ParentDashboardExporter.swift`.
 r12-r14 added no columns — r12 only stopped deriving the `probe = "posttest"`
 tag for the final training free-writing, r13 and r14 change what the child
 hears and when a session runs, not what is exported. The last column change
 was r11's four observe-sound columns until r17, which appended five (`soundEngine`
-and the four envelope columns above), 67 in all. The authoritative order is the header
+and the four envelope columns above), 67 in all; r25 appended five attempt-check columns (72) and r27 seven
+(`spatialFitShearDegrees`, `armSoundDelivered` and the five final-test columns), **79 at r27** (counted against the
+header array 2026-11-23). The authoritative order is the header
 array in `ParentDashboardExporter.swift` — `phaseRowAppendedColumns` is the
 tail after `spatialDeviationRaw`.)
 
@@ -1511,7 +1600,7 @@ page.
 | Column | Purpose |
 |--------|---------|
 | `letter` | Per-letter slicing (alphabet effect, frequency analysis). |
-| `phase` | Which phase (observe / direct / guided / freeWrite) the session belonged to; needed for any GRR efficacy claim. |
+| `phase` | Which phase (observe / guided / freeWrite; `direct` only on rows written before its 2026-09-18 cut) the session belonged to; needed for any GRR efficacy claim. |
 | `completed` | Selection criterion for "successful sessions". |
 | `score` | **NOT one instrument across phase rows** (found 2026-09-04, DECISIONS.md D12): `observe`/`direct` are always exactly `1.0` (completion markers, not measurements); `guided` is checkpoint-proximity coverage, which on a completed row is always `1.0` (a guided phase completes only when every checkpoint is reached; B-16, confirmed on the iPad 2026-11-02), so it varies only on abandoned rows; `freeWrite` is `WritingAssessment.overallScore`, a weighted 4-dimension composite. Comparing `score` across phase types compares different quantities under one name — analyse per phase, never pooled. `PhaseSessionRecord.score`'s own doc comment carries the full breakdown. |
 | `schedulerPriority` | Spaced-repetition scheduler's prediction at the time the letter was recommended; used as the IV in the scheduler-effectiveness Pearson r (per-arm proxy below — cross-arm proxy is invalid because `.control` uses `-completionCount` priorities, not Ebbinghaus). |
@@ -1521,7 +1610,7 @@ page.
 | `recognition_confidence` | CoreML softmax confidence after `ConfidenceCalibrator` adjustments. Same population rule. |
 | `recognition_confidence_raw` | Pre-calibration softmax probability, so the calibrator's effect can be quantified. Same population rule. |
 | `recognition_correct` | Whether the prediction matched the expected letter. Same population rule. |
-| `formAccuracy` | Schreibmotorik Form dimension (weight 0.40) — the *clamped, rescaled* transform of `frechetDistance`. Child-facing / weighted-score input, **not** the analysis outcome (§4.12.1). |
+| `formAccuracy` | Schreibmotorik Form dimension (weight 0.40) — the *clamped, rescaled* transform of `spatialDeviation` (of the whole-letter Fréchet distance before 2026-09-04, §4.12.1). Child-facing / weighted-score input, **not** the analysis outcome. |
 | `tempoConsistency` | Schreibmotorik Tempo dimension (CV², weight 0.25). |
 | `pressureControl` | Schreibmotorik Druck dimension (force variance, weight 0.15). |
 | `rhythmScore` | Schreibmotorik Rhythmus dimension (active-time ratio, weight 0.20). |
@@ -1529,11 +1618,11 @@ page.
 | `audioCondition` | Pilot audio arm (phoneme / spatial / silent) in effect for the row — the pilot's primary between-subjects IV. |
 | `trainedSubset` | The participant's trained 3-of-5 study letters (e.g. `"AFI"`), so trained vs untrained can be partitioned per row without a join. |
 | `phaseDurationSeconds` | **Time outcome.** freeWrite measured-phase span, first sample → last sample, end-inclusive (§6.4.1). freeWrite rows only. |
-| `frechetDistance` | **RETIRED: this column is always empty and exports as `frechetDistance_RETIRED_alwaysEmpty`** (`ParentDashboardExporter.retiredFrechetColumnName`). The live primary accuracy outcome exports as `spatialDeviation` (`StrokeProcessMeasures.swift`, header). Sections 4.12 and 4.12.1 and Appendix B still describe the Fréchet distance as the primary outcome as it was defined before the 2026-09-04 stroke-correspondence redefinition; they are out of date and this row states only what the exported column is. |
+| `frechetDistance` | **RETIRED: this column is always empty and exports as `frechetDistance_RETIRED_alwaysEmpty`** (`ParentDashboardExporter.retiredFrechetColumnName`). The live primary accuracy outcome exports as `spatialDeviation` (`StrokeProcessMeasures.swift`, header). §4.12.1 records the Fréchet distance as it was defined before the 2026-09-04 stroke-correspondence redefinition. |
 | `checkpointCoverage` | **Secondary accuracy outcome.** Fraction of reference checkpoints reached during the freeWrite pass (0–1). Saturates at ceiling — see §4.12.2. freeWrite rows only. |
 
 > **Analyse per letter.** The five study letters differ structurally
-> (M alone is one stroke of 200 checkpoints). Pooling `frechetDistance`,
+> (M alone is one stroke of 200 checkpoints). Pooling `spatialDeviation`,
 > `checkpointCoverage`, or `phaseDurationSeconds` across letters is
 > invalid — see §4.12.3.
 
@@ -1566,19 +1655,21 @@ carries them alongside the derived rows, linked by
 This is the load-bearing property of the whole measurement layer: **any
 measure not yet thought of can be computed offline from the archive,
 without re-running a single participant.** Every scalar in the per-phase
-section — including `frechetDistance` and `phaseDurationSeconds` — is
+section — including `spatialDeviation` and `phaseDurationSeconds` — is
 reproducible from the trace it links to, so a scoring bug found after
 data collection is a re-analysis, not a lost cohort.
 
 Capture order is trace-first, then the linking record, so a crash can
 leave an orphan trace but never a record pointing at a missing trace.
 The store caps at 500 traces and the new-participant reset wipes it
-between children; the pilot's ~40 children × 3 trained letters sits far
+between children; a child's session (from r27: 3 training free-writings,
+up to 2 rejected attempts each, and 3 final-test productions) sits far
 inside that bound.
 
 Additional sections in the export:
 * Per-letter aggregates (`letter,sessionCount,trend,
-  recognitionSamples,recognitionAvg,speedTrend,freeformCompletionCount`)
+  recognitionSamples,recognitionAvg,speedTrend,freeformCompletionCount,
+  retrievalAccuracy`)
   — `speedTrend` is a semicolon-joined trajectory; `freeformCompletionCount`
   surfaces blank-canvas usage that was previously collected but never exported.
   **`averageAccuracy` REMOVED 2026-09-16 (supervisor ruling).** It mixed
@@ -1604,14 +1695,16 @@ Additional sections in the export:
   attributes to an arm, a timepoint, a participant and a protocol
   revision without a join (`rowId`, `participantId`, `trainedSubset`,
   `comparisonConfiguration`, `protocolRevision`: R-123, protocol r8).
-* Phase-completion rates (one row per phase).
-* Aggregate `averageFreeWriteScore`, plus per-arm `averageFreeWriteScore_<arm>`
-  rows (D-7).
-* `schedulerEffectivenessProxy` (overall Pearson r) plus per-arm
-  `schedulerEffectivenessProxy_<arm>` rows (D-10).
+* Per-arm `averageFreeWriteScore_<arm>` rows (D-7) and per-arm
+  `schedulerEffectivenessProxy_<arm>` rows (D-10); per-audio-arm
+  `averageFreeWriteScore_audio_<arm>`. The pooled `phaseCompletionRate_*`,
+  `averageFreeWriteScore` and `schedulerEffectivenessProxy` rows were
+  removed (audit R-031). From r27 these means read training free-writing
+  only (probe and final-test rows excluded).
 * `letterByArm,letter,arm,sampleCount,averageScore` — derived from
   `phaseSessionRecords`, gives a clean per-arm letter-level aggregate
-  that the flat `letterStats` (which mixes arms) can't (D-5).
+  that the flat `letterStats` (which mixes arms) can't (D-5); its
+  audio-axis twin `letterByAudioArm` follows.
 * The four average-Schreibmotorik-dimension rows when ≥ 1 freeWrite
   sample exists.
 
@@ -1680,7 +1773,7 @@ were lost from the one file an analyst re-derives from.
 
 ### 7.1 AudioEngine architecture (DOCUMENT, do NOT modify)
 
-`Core/AudioEngine.swift` (382 lines). Implements `AudioControlling`.
+`Core/AudioEngine.swift` (734 lines at r27). Implements `AudioControlling`.
 
 * Built on `AVAudioEngine` + `AVAudioUnitTimePitch` for time-stretching
   playback (so audio speed tracks writing speed without pitch shift).
@@ -1718,24 +1811,45 @@ the measurement tap and the lifecycle engine pause. Its only r17 change is graph
   measured on the iPad), so the pan needs no smoothing of its own.
 * Preferred I/O buffer: 5 ms (`SoundEnvelope.preferredIOBufferSeconds`).
 * One engine, TDPSOLA (ruled 2026-11-03 after an in-app A/B; the second engine, its switch and its tests are
-  removed). Every phase row stamps it in the export column `soundEngine`.
+  removed). Every phase row stamps it in the export column `soundEngine`. On the PHONEMES that A/B (and the
+  35-trial blind bench before it) could compare only TIME-stretch (rate): under r17 the phoneme's pitch was held
+  at 0 cents (L1); pitch shifting was in the material on the spatial carrier only. David reports (2026-11-23)
+  that he A/B-tested time-shift, never pitch-shift. The phoneme arm's pitch shift that r26 made the default
+  (§7.2) was chosen by listening to TDPSOLA renders (DECISIONS r26), not validated by an engine A/B; David
+  reports the pitched phoneme sounds bad, the spatial arm's pitch fine (noted only, no behaviour change).
 
 ### 7.2 Audio triggering
 
 * On letter load: `audio.loadAudioFile(named: firstAudio,
   autoplay: false)` queues the recorded letter pronunciation.
-* On phase advance into observe: animation runs but audio stays idle
-  (would loop silently behind onboarding otherwise).
+* On phase advance into observe: after the spoken cue, in the two sound
+  arms the arm's sound plays for the whole pass and tracks the animated
+  dot through the same mapping as the pen (r5; §3.1). The silent arm stays
+  idle.
 * On `beginTouch`: `audio.loadAudioFile(named: ..., autoplay: false)`
   re-loads since `stop()` clears `currentFile`.
 * On `updateTouch`: every frame computes
   `audio.setAdaptivePlayback(speed:, horizontalBias:)` where
   `speed = mapVelocityToSpeed(smoothedVelocity)` (map M3 from r17: 0.8 at
   ≤ 50 pt/s, 1.0 at 150 pt/s, 1.25 at ≥ 400 pt/s, linear between; r5–r16
-  mapped 0.5–2.0) and `hBias = canvasNormalized.x * 2 - 1`
-  for stereo panning.
-* On `endTouch`: `audio.stop()` and the playback state machine forces
-  idle.
+  mapped 0.5–2.0; F's phoneme plays unstretched, rate 1, at every speed)
+  and `hBias = canvasNormalized.x * 2 - 1` for stereo panning
+  (`ArmCoupling.parameters`).
+* Pitch from the pen's height (`ArmCoupling` → `PitchCoupling` →
+  `audio.setSpatialPitch(cents:)`): top of the canvas = +span/2, bottom =
+  −span/2, relative to the sound's own pitch. Study defaults
+  (`StudyComparisonSettings.pitchScopeDefault` / `pitchRangeCentsDefault`)
+  from protocol r26: scope `.both` (BOTH sound arms, so the phoneme IS
+  pitch-shifted, through TD-PSOLA) and span 1200 cents (±600; the spatial
+  carrier spans 311-622 Hz). r17-r25: `.spatialOnly` and 2400 cents (±1200,
+  220-880 Hz), the phoneme unshifted. F's unvoiced noise grains are
+  resampled by the pitch ratio from r26. The phoneme arm's pre-task
+  demonstration resets the pitch to 0 (r26). Both are researcher switches
+  ("Höhe steuert Tonhöhe", "Tonumfang der Höhe"), stamped in
+  `comparisonConfiguration` when not at their defaults.
+* On `endTouch`: the sound is held for the lift hold (r5: 0.8 s; from r17
+  adaptive per child, 0.5-2.5 s, see `liftHoldSeconds`) so a re-touch
+  inside it continues the sound; otherwise it fades out over 0.4 s.
 
 ### 7.3 Proximity-based playback (guided phase)```swift
 let shouldPlayForStroke = strokeTracker.isNearStroke
@@ -1749,11 +1863,13 @@ the sound (the letter sound is the glyph's phonemic anchor, not guidance
 feedback; an earlier `> 0.3` gate was removed and this section lagged
 until 2026-09-06). Movement-contingency (ruling AE-2b, 2026-09-06): an
 active request is immediate; an idle request is debounced by
-`idleDebounceSeconds` (0.12 s) and a repeated idle request keeps the
+`idleDebounceSeconds` (the stall time below) and a repeated idle request keeps the
 running timer rather than restarting it; and every active sample arms
 a stall timeout of the same length, so a pen that STOPS — which sends
-no further samples — falls silent after 0.12 s and resumes at the next
-movement, at the pitch and pan of wherever it now is. Both sound arms
+no further samples — falls silent after the stall time and resumes at
+the next movement. (The 0.12 s of 2026-09-06 became 0.3 s in r5; from
+r17 the stall scales with the child's tempo, 0.3-0.6 s,
+`StrokeTempo.stallSeconds`, exported as `stallSeconds`.) It resumes at the pitch and pan of wherever it now is. Both sound arms
 follow this identically; the silent arm never reaches it.
 
 **The velocity floor's default is 0 pt/s (2026-10-04).** It was 22 pt/s,
@@ -1770,9 +1886,10 @@ a stopped pen go quiet.
 
 There is no `feedbackIntensity` audio gate (removed 2026-09-06, ruling
 AE-2b — §4.2, §7.3). Per phase:
-* `.observe`: the demonstration only (§3.1); no live touch, so no
-  proximity coupling to gate.
-* `.direct`: letter-name audio on first correct dot tap.
+* `.observe`: no live touch, so no proximity coupling to gate; in the
+  sound arms the arm's sound tracks the animated dot (§3.1, §7.2).
+* `.direct`: letter-name audio on first correct dot tap (cut 2026-09-18;
+  no session runs it).
 * `.guided`: real-time proximity audio, §7.3's `isNearStroke` +
   velocity gate.
 * `.freeWrite`: the coupling runs in the session's own free-writing.
@@ -1783,10 +1900,14 @@ AE-2b — §4.2, §7.3). Per phase:
   silent") a COLD PROBE — pretest, post-test, delayed, all landing in
   `.freeWrite` — is sound-off in every arm: `updateAdaptivePlayback`
   returns idle before the coupling when `vm.currentProbe != nil`, so every
-  arm is tested under the same sound-off condition. The same revision
-  ("Cold probe for all", David 2026-10-21) opens the POST-TEST to all five
-  study letters (`StudyProbe.posttest.permits`): trained letters get a
-  cold, sound-off post-test like the untrained ones, and a trained
+  arm is tested under the same sound-off condition. From r27 the
+  proctor's probe buttons (pretest, post-test, delayed) are gone from the
+  study build and the probe a session reaches is the final test
+  (`StudyProbe.finalTest`, §3.5), sound-off in every arm by the same
+  predicate. Under r12-r26, r12 ("Cold probe for all", David
+  2026-10-21) had also opened the POST-TEST to all five study letters
+  (`StudyProbe.posttest.permits`): trained letters got a cold, sound-off
+  post-test like the untrained ones, and a trained
   letter's final training free-writing is practice, not its post-test.
   From r12 the export no longer derives a `probe = "posttest"` tag for
   that final training free-writing; rows recorded under r1-r11 keep it
@@ -1800,7 +1921,8 @@ AE-2b — §4.2, §7.3). Per phase:
 ### 8.1 Triggers
 
 `HapticEngine.fire(_ event: HapticEvent)` is called from
-`TracingViewModel.updateTouch` and `tapDirectDot`. Five events:
+`TouchDispatcher` (the touch path) and from `TracingViewModel`
+(`tapDirectDot` and a few completion sites). Five events:
 
 | Event | Trigger |
 |-------|---------|
@@ -1812,16 +1934,16 @@ AE-2b — §4.2, §7.3). Per phase:
 
 ### 8.2 Phase-dependent intensity scaling
 
-Every haptic call is gated on `feedbackIntensity > 0` (line 891, 918,
-966 of `TracingViewModel`). Result:
-* `.observe` / `.direct`: full haptics (1.0).
+The touch-path haptic calls in `TouchDispatcher` are gated on
+`feedbackIntensity > 0`. Result:
+* `.observe` / `.direct`: full haptics (1.0) (`direct` no longer runs).
 * `.guided`: full haptics (0.6 > 0; gate uses `> 0` not `> 0.6`, so
   haptics fire as long as feedback isn't fully off).
 * `.freeWrite`: zero haptics (0.0).
 
 ### 8.3 CoreHaptics patterns
 
-`Core/HapticEngine.swift:118` — `CoreHapticsEngine.hapticPattern(for:)`:
+`Core/HapticEngine.swift` — `CoreHapticsEngine.hapticPattern(for:)`:
 
 | Event | Pattern (intensity / sharpness / time) |
 |-------|----------------------------------------|
@@ -1845,21 +1967,25 @@ tests.
 MainAppView (root, requires onboarding complete)
   ├── WorldSwitcherRail (64 pt left rail; @AppStorage active world)
   │     ├── World 1: Schule                    (book.fill icon)
-  │     ├── World 2: Werkstatt                 (pencil.tip)
-  │     ├── World 3: Fortschritte / Sterne     (star.fill)
+  │     ├── World 2: Werkstatt                 (pencil.tip)   [casual only]
+  │     ├── World 3: Fortschritte / Sterne     (star.fill)    [casual only]
   │     └── Gear (2 s long-press → Parent area)
   └── World content
-        ├── SchuleWorldView (guided 4-phase tracing)
-        ├── WerkstattWorldView (freeform writing)
-        └── FortschritteWorldView (star/streak/letter gallery)
+        ├── SchuleWorldView (guided 3-phase tracing; in a study session
+        │                    also the r27 pause + final test, §3.5)
+        ├── WerkstattWorldView (freeform writing)      [not in the study build]
+        └── FortschritteWorldView (star/streak/letter gallery) [not in the study build]
 
 Parent gate (fullScreenCover, 2 s long-press on gear):
 ParentAreaView (NavigationSplitView)
-  ├── Übersicht           → ParentDashboardView
+  ├── Übersicht           → ParentDashboardView   [not in the study build]
   ├── Forschungs-Daten    → ResearchDashboardView
   ├── Einstellungen       → SettingsView
   └── Datenexport         → ExportCenterView (CSV / TSV / JSON share)
 ```
+
+Study build: a double-tap on the rail is the proctor's "Nächstes Kind"
+(`NextParticipantControl`), without entering the parent area.
 
 ### 9.2 TracingCanvasView
 
@@ -1899,7 +2025,12 @@ paperTransfer → celebration.
 
 ### 9.4 Settings
 
-`Features/Dashboard/SettingsView.swift`:
+`Features/Dashboard/SettingsView.swift`. In the study build (every
+build since 2026-09-14) only **Forschung** (enrolment), **Vergleichsmodus
+(Studienleitung)** (the researcher comparison switches, e.g. "Höhe
+steuert Tonhöhe" / "Tonumfang der Höhe") and, from r27,
+**Abschlusstest** (pause 30-60 s, default 45; glimpse 1-3 s, default 3)
+are compiled in; the casual sections below are `#if !STUDY_BUILD`.
 * **Schriftart**: Druckschrift / Schreibschrift (only the two
   bundled cases shown).
 * **Buchstabenreihenfolge**: motorSimilarity / wordBuilding /
@@ -2467,11 +2598,11 @@ _Compact one-page architecture map. Drilldown lives in §2 above._
 PrimaeNativeApp
 └── MainAppView                     ← root, hosts WorldSwitcherRail + worlds
     ├── WorldSwitcherRail           ← persistent left rail; gear long-press → Parent Area
-    ├── SchuleWorldView             ← guided 4-phase letter learning (observe → direct → guided → freeWrite)
+    ├── SchuleWorldView             ← guided 3-phase letter learning (observe → guided → freeWrite); study: + r27 pause and final test
     │   └── TracingCanvasView       ← Canvas: glyph + ghost + active path + KP overlay
-    ├── WerkstattWorldView          ← freeform letter / word writing
+    ├── WerkstattWorldView          ← freeform letter / word writing (casual only, not in the study build)
     │   └── FreeformWritingView     ← blank canvas + result popup (verbal only)
-    ├── FortschritteWorldView       ← child-facing star/streak/letter gallery
+    ├── FortschritteWorldView       ← child-facing star/streak/letter gallery (casual only)
     └── ParentAreaView (parental gate)
         ├── ParentDashboardView     ← practice-time, per-letter accuracy, phase rates
         ├── ResearchDashboardView   ← Schreibmotorik dimensions, KI predictions, condition arms
@@ -2512,7 +2643,7 @@ Children can't read fluently yet, so every numeric metric the data model capture
 | `PaperTransferView` phase rotation | `paperTransferShow / Write / Assess` |
 | `appDidEnterBackground` | `speech.stop()` |
 
-> **Study build (protocol r9, 2026-10-14):** only the phase-entry phrases (observe, guided, free-writing), "Probier's nochmal." and the end-of-set "Super gemacht!" are heard, identically in every arm, and they are the five bundled recorded takes (`Resources/Prompts/`, `PromptPlayer`, `StudyVoiceoverPromptPlayer.studySpokenKeys`), not `SpeechSynthesizer` output. `praise(starsEarned:)`, the recognition lines, the paper-transfer phrases and the retrieval question are not reachable in a study session. A missing take is a logged fault and silence, never a system-voice fallback, and a study session refuses to start when one of the five is missing (`RecordedPromptSet.refusal`).
+> **Study build (protocol r9, 2026-10-14; r27):** only the phase-entry phrases (observe "Schau genau hin.", guided "Jetzt du.", free-writing "Und jetzt ganz allein."), "Probier's nochmal." and the end-of-session "Super gemacht!" are heard, plus from r27 the final test's "Jetzt schreibst du sie alle noch einmal." (`final_intro`) and "Merk ihn dir gut." (`final_glimpse`), identically in every arm. They are the bundled recorded takes — five through r26, seven from r27 (`Resources/Prompts/MANIFEST.json`, `PromptPlayer`, `StudyVoiceoverPromptPlayer.studySpokenKeys`) — not `SpeechSynthesizer` output. From r27 "Super gemacht!" plays after the last final-test letter, no longer after the last training letter. `praise(starsEarned:)`, the recognition lines, the paper-transfer phrases and the retrieval question are not reachable in a study session. A missing take is a logged fault and silence, never a system-voice fallback, and a study session refuses to start when one of the set is missing (`RecordedPromptSet.refusal`).
 
 ## Letters with full support
 
@@ -2558,7 +2689,7 @@ Then a blank line, followed by five data sections. (In the combined export these
 
 - **Timestamps** (`recordedAt` in every section, `# enrolledAt=`, the enrolment block's `enrolledAt`, and every JSON date) are ISO 8601 UTC **with fractional seconds**, e.g. `2026-10-26T07:33:20.250Z` (millisecond resolution). Before protocol r16 they had whole-second resolution, so rows recorded within one second tied. A reader must accept both forms: files exported before r16 carry `…20Z`. Python: `datetime.fromisoformat(s.replace("Z", "+00:00"))` accepts both on 3.11+.
 - **Not-a-number** is written `NaN` (as in the store file), never C's `nan`. Applies to every fixed-point numeric field (`score`, `schedulerPriority`, the recognition and dimension columns, `spatialDeviation*`, durations). Parse with `float(s)`, which accepts `NaN`.
-- **Undefined aggregates** are an empty CSV cell and JSON `null`, never `0`: `averageFreeWriteScore` is empty / `null` when the child has no scored freeWrite row, and `schedulerEffectivenessProxy` when fewer than two usable pairs exist or a variance is zero. A defined mean of exactly 0 is still `0.0000`. (Before r16 the JSON wrote `0` for both and the CSV wrote `0.0000` for `averageFreeWriteScore`.)
+- **Undefined aggregates** are never written as `0`: a per-arm `averageFreeWriteScore_<arm>` row is omitted when the arm has no scored freeWrite row, and a `schedulerEffectivenessProxy_<arm>` row when fewer than two usable pairs exist or a variance is zero; the JSON's `thesisMetrics` dimension means are omitted when undefined. A defined mean of exactly 0 is still `0.0000`. (Before r16 the JSON wrote `0` and the CSV `0.0000` for the then-present pooled `averageFreeWriteScore`; the pooled rows were removed by audit R-031.)
 - **Trailing newline.** The combined CSV / TSV ends with a single `\n` (after the enrolment block when present), so two exports can be concatenated without gluing the last row to the next file's first line. (Before r16 the last line was unterminated.)
 - **Calendar.** Dates written as `yyyy-MM-dd` (the `date` column, the file-name date) are always Gregorian, in the device's time zone, whatever calendar the device is set to. Before r16 the `date` column followed the device calendar (e.g. `2569-10-26` on a Buddhist-calendar device) while the file name did not.
 
@@ -2592,11 +2723,11 @@ above §"Additional sections in the export" for why.
 | `letter` | string / blank | `SessionDurationRecord.letter` | The practised letter (or word label) — per-letter time-to-complete without a `recordedAt` join. Blank for legacy records. |
 | `audioCondition` | string / blank | `SessionDurationRecord.audioCondition` | Pilot audio arm (`phoneme` / `spatial` / `silent`) in effect for the session. Blank for legacy records. |
 | `studyMode` | bool / blank | `SessionDurationRecord.studyMode` | Whether the session ran in study mode. Blank for legacy records. |
-| `probe` | string / blank | `SessionDurationRecord.probe` | The cold-probe timepoint when the session was a probe (same stamp as the phase row's `probe`). Blank otherwise and for legacy records. |
+| `probe` | string / blank | `SessionDurationRecord.probe` | The cold-probe timepoint when the session was a probe (same stamp as the phase row's `probe`; from r27 `finalTest`, the pretest / post-test / delayed buttons having left the study build). Blank otherwise and for legacy records. |
 | `participantId` | UUID | the participant block's id | Dedupe/merge key with `rowId`; present on every row (protocol r8, R-123). |
 | `rowId` | UUID / blank | `SessionDurationRecord.rowId` | Row identifier. Blank on rows written before r8. |
 | `trainedSubset` | string / blank | `SessionDurationRecord.trainedSubset` | The session's trained letters. Blank before r8. |
-| `comparisonConfiguration` | string / blank | `SessionDurationRecord.comparisonConfiguration` | The comparison stamp (blank = pilot defaults). Blank before r8. Format: `name=value` pairs joined by `;`, one per setting that is NOT at its default, in the declaration order of `StudyComparisonConfiguration` (`Core/StudyComparisonSettings.swift`, `nonDefaultStamp`); the names are that struct's property names (26 since r18, e.g. `observePasses=2;pitchScope=both`). `docs/DECISIONS.md` r18 lists the switches and their defaults. |
+| `comparisonConfiguration` | string / blank | `SessionDurationRecord.comparisonConfiguration` | The comparison stamp (blank = pilot defaults). Blank before r8. Format: `name=value` pairs joined by `;`, one per setting that is NOT at its default, in the declaration order of `StudyComparisonConfiguration` (`Core/StudyComparisonSettings.swift`, `nonDefaultStamp`); the names are that struct's property names (26 since r18, 28 since r27 with `pauseSeconds` / `glimpseSeconds`; e.g. `observePasses=2;pitchScope=spatialOnly` — since r26 `both` is the default and is not stamped). `docs/DECISIONS.md` r18 lists the switches and their defaults. |
 | `protocolRevision` | int / blank | `SessionDurationRecord.protocolRevision` | `StudyProtocol.revision` when the record was written. Blank before r8. |
 
 `condition == threePhase` does not imply four phases ran — the case label predates the `direct` phase.
@@ -2608,7 +2739,7 @@ One row per phase × letter session, chronological order. Selected by enrolment 
 | Column | Source | Purpose |
 |---|---|---|
 | `letter` | `PhaseSessionRecord.letter` | Per-letter slicing. |
-| `phase` | `PhaseSessionRecord.phase` | `observe` / `direct` / `guided` / `freeWrite`. |
+| `phase` | `PhaseSessionRecord.phase` | `observe` / `guided` / `freeWrite` (`direct` only on rows written before its 2026-09-18 cut). |
 | `completed` | `PhaseSessionRecord.completed` | Selection criterion. |
 | `score` | `PhaseSessionRecord.score` | **NOT one instrument across phase rows** — see §6.4's `score` row for the full breakdown (observe/direct constant 1.0, guided coverage, 1.0 on every completed row (B-16), freeWrite composite). Never pool across phase types. |
 | `schedulerPriority` | `PhaseSessionRecord.schedulerPriority` | Scheduler priority at letter selection. |
@@ -2626,9 +2757,9 @@ One row per phase × letter session, chronological order. Selected by enrolment 
 | `audioCondition` | `PhaseSessionRecord.audioCondition` | Pilot audio arm: `phoneme` / `spatial` / `silent`. Appended after `inputDevice` so pre-pilot CSV parsers stay positionally compatible. |
 | `trainedSubset` | `PhaseSessionRecord.trainedSubset` | The participant's trained 3-of-5 study letters (e.g. `AIM`) — partition trained vs untrained rows. Blank for legacy records. |
 | `phaseDurationSeconds` | `PhaseSessionRecord.phaseDurationSeconds` | **Time outcome.** freeWrite rows only: measured-phase time = first sample → last sample, end-inclusive (§6.4.1). Excludes the trailing 2.0 s quiet-window auto-advance (`freeWriteQuietSeconds`) by construction; that constant is identical across arms. Blank otherwise. |
-| `frechetDistance` | `PhaseSessionRecord.frechetDistance` | **Primary accuracy outcome.** Raw discrete-Fréchet distance, normalised 0–1 letter-box units, 6 dp, lower = better, unclamped. freeWrite rows only; blank otherwise and for legacy rows. Full definition in §4.12.1. |
+| `frechetDistance` | `PhaseSessionRecord.frechetDistance` | **RETIRED (2026-09-04):** exports as `frechetDistance_RETIRED_alwaysEmpty`, always empty. Was the raw whole-letter discrete-Fréchet distance (§4.12.1). The primary accuracy outcome is `spatialDeviation` (see "Scoring in r16" and "`spatialDeviation` across revisions" below). |
 | `checkpointCoverage` | `PhaseSessionRecord.checkpointCoverage` | **Secondary accuracy outcome.** Reached ÷ total reference checkpoints for the freeWrite pass (0–1, 4 dp). Saturates at ceiling — §4.12.2. freeWrite rows only; blank otherwise and for legacy rows. |
-| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | Added 2026-10-04 after `comparisonConfiguration`; **no longer the last column**: `spatialDeviationRaw` (r6) and, from r8, the `phaseRowAppendedColumns` follow it (`participantId` … `deviceModel`, 28 from r8; plus 4 observe-sound columns from r11, 32 in all). Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
+| `protocolRevision` | `PhaseSessionRecord.protocolRevision` | Added 2026-10-04 after `comparisonConfiguration`; **no longer the last column**: `spatialDeviationRaw` (r6) and, from r8, the `phaseRowAppendedColumns` follow it (`participantId` … `deviceModel`, 28 from r8; plus 4 observe-sound columns from r11, 32; `soundEngine` and 4 envelope columns from r17, 37; 5 attempt columns from r25, 42; 7 from r27, 49 — 79 columns in all). Which child-facing protocol revision wrote the row — `StudyProtocol.revision`, stamped when the record is created, never at export. The revisions and what changed in each are `StudyProtocol.history`. Blank for rows written before the field existed (revisions 1–3): separate those by `recordedAt` against the merge dates in `StudyProtocol.history` and the device's install log. |
 
 > **This table is incomplete.** It does not yet list the columns between
 > `checkpointCoverage` and `protocolRevision` (`spatialDeviation`,
@@ -2643,16 +2774,26 @@ One row per phase × letter session, chronological order. Selected by enrolment 
 > `appVersion`, `buildConfiguration`, `buildUUID`, `osVersion`,
 > `deviceModel`, then from r11 `observeLossesDuringSound`,
 > `observeLossesWithoutSound`, `observeSoundSeconds`,
-> `observeSoundDeliveredSeconds`). `voiceId` holds, from r9, the recorded prompt set
+> `observeSoundDeliveredSeconds`, from r17 `soundEngine`, `liftHoldSeconds`,
+> `stallSeconds`, `strokeGaps`, `strokeGapMedianSeconds`, from r25
+> `freeWriteAttempt`, `attemptCheckPassed`, `attemptCheckScore`,
+> `attemptCheckLengthRatio`, `attemptCheckExtraReversals`, and from r27
+> `spatialFitShearDegrees`, `armSoundDelivered`, `glimpseSecondsPlanned`,
+> `glimpseSecondsShown`, `pauseSecondsPlanned`,
+> `glimpseHiddenToFirstTouchSeconds`, `glimpseRestarts`; §6.4 describes
+> the r17-r27 columns). `voiceId` holds, from r9, the recorded prompt set
 > (`rec:kiki:<12 hex>`; rows of r8 and earlier carry the device voice
-> identifier or nothing).
+> identifier or nothing; the id changed at r27, when the set grew from
+> five to seven phrases).
 >
 > **`finalizedBy`** is `child` (the session's own flow), `background`
 > (the app went to the background), `navigation` (the proctor moved on;
 > also every `completed: false` row) or, from r16, `export`: the proctor
 > started a research export while a finished free-writing production was
 > still held unscored by the open parent area, and the export screen
-> recorded it first (`TracingViewModel.finalizeHeldTrialForExport`).
+> recorded it first (`TracingViewModel.finalizeHeldTrialForExport`), or,
+> from r25, `attemptRejected`: a training free-writing attempt the
+> attempt check rejected (`completed: false`, its own raw trace).
 >
 > **The r11 observe-sound columns (record-only; `PhaseDelivery`).** They are
 > filled on `observe` rows only. They are empty on every other phase's row
@@ -2678,7 +2819,7 @@ One row per phase × letter session, chronological order. Selected by enrolment 
 > authoritative order is the header array in
 > `ParentDashboardExporter.swift`.
 
-> Blank ≠ 0 in this section. A `0` in `frechetDistance` means a perfect
+> Blank ≠ 0 in this section. A `0` in `spatialDeviation` means a perfect
 > overlay and a `0` in `checkpointCoverage` means no checkpoint was
 > reached; rows that never measured the quantity are empty.
 
@@ -2750,7 +2891,7 @@ boundary without re-deriving from Section 3b.
 
 **Analyse per letter.** A, F, I, L, M are not structurally comparable —
 M alone is a single stroke of 200 checkpoints. Do not pool
-`frechetDistance`, `checkpointCoverage`, or `phaseDurationSeconds`
+`spatialDeviation`, `checkpointCoverage`, or `phaseDurationSeconds`
 across letters (§4.12.3).
 
 ## Section 3b — Raw traces (JSON export only)
@@ -2767,10 +2908,8 @@ re-derivable offline — see §6.4.2.
 
 ## Section 4 — Aggregate metrics (`metric,value`)
 
-- `phaseCompletionRate_<phase>` per LearningPhase.
-- `averageFreeWriteScore` (cross-arm). Empty when no scored freeWrite row exists (r16).
-- `schedulerEffectivenessProxy` (cross-arm Pearson r — interpret with caution; `.control` priorities don't share scale with the other arms). Empty when undefined.
-- Per-arm: `averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>` (D-7 / D-10).
+- The pooled `phaseCompletionRate_<phase>`, `averageFreeWriteScore` and `schedulerEffectivenessProxy` rows were REMOVED (audit R-031): they pooled protocol revisions, probe rows and comparison rows. Analysis recomputes from the per-row section.
+- Per-arm: `averageFreeWriteScore_<arm>`, `schedulerEffectivenessProxy_<arm>` (D-7 / D-10); a row is omitted when undefined.
 - Per-AUDIO-arm: `averageFreeWriteScore_audio_<audioArm>` — the pilot's primary between-subjects IV, stratified alongside (not instead of) the pedagogical axis.
 - Schreibmotorik dimension means: `averageFormAccuracy`, `averageTempoConsistency`, `averagePressureControl`, `averageRhythmScore` (when ≥ 1 freeWrite session has dimensions).
 
@@ -2782,7 +2921,7 @@ Audio-axis twin: `letterByAudioArm,<letter>,<audioArm>,<sampleCount>,<averageSco
 
 ## JSON export
 
-Contains the full `DashboardSnapshot` plus a `thesisMetrics` block. Use it when you need raw `recognitionSamples`; CSV / TSV is the tabular surface. In `thesisMetrics`, `averageFreeWriteScore` and `schedulerEffectivenessProxy` are `null` when undefined (r16; previously `0`). Dates follow the format conventions above (fractional-second ISO 8601 strings).
+Contains the full `DashboardSnapshot` plus a `thesisMetrics` block. Use it when you need raw `recognitionSamples`; CSV / TSV is the tabular surface. `thesisMetrics` holds only the four Schreibmotorik dimension means (`averageFormAccuracy`, `averageTempoConsistency`, `averagePressureControl`, `averageRhythmScore`), each omitted when undefined; its `averageFreeWriteScore`, `schedulerEffectivenessProxy` and phase-completion rates were removed (audit R-031). Dates follow the format conventions above (fractional-second ISO 8601 strings).
 
 The recognizer's `topThree` candidate list is not exported. In the app it is ordered by calibrated confidence (r16), while `recognition_predicted` stays the model's raw top-1; the two can name different letters when the confusable-letter penalty reorders a close pair.
 

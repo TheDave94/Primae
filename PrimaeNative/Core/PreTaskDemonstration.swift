@@ -6,6 +6,13 @@
 // tracing task, structurally matched in duration and form, and neither
 // coupled to the child's own trace.
 //
+// SINCE PROTOCOL r5 (2026-10-05) THIS IS A FALLBACK, not the observe sound
+// a study session plays: in the sound arms the arm's sound plays for the
+// whole observe animation and TRACKS the guide dot (`claimWholeObserveSound`
+// in TracingViewModel; docs/DECISIONS.md "Reversal 2026-10-05"). This 2 s
+// demonstration runs only where that is not claimed (the axis-sweep switch
+// ON, a once-per-condition repeat, a letter landing directly in guided).
+//
 // THE REASON FOR THE SYMMETRY: a demonstration can INSTALL a crossmodal
 // mapping rather than reveal one already there. If only one arm got a
 // pre-task demonstration, that arm's later tracing-task audio wouldn't
@@ -96,8 +103,8 @@ enum PreTaskDemonstration {
     /// the two, so this runs whenever that switch is ON — off by default,
     /// and OFF is what the 6fb7233c commit established. See the `.spatial`
     /// branch of `TracingViewModel.armPreTaskDemonstration`, and the
-    /// switch's own doc comment for why the OFF default is a divergence
-    /// from `04-implementation.typ:17` rather than a neutral choice.
+    /// switch's own doc comment for why OFF is the RULED behaviour
+    /// (2026-09-18), not a divergence.
     static func axisSweep(steps: Int = Self.sweepStepCount,
                           duration: TimeInterval = Self.duration) -> [SweepSample] {
         guard steps > 1, duration > 0 else { return [] }

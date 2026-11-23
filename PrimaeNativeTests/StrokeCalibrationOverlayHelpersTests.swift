@@ -1,6 +1,7 @@
 // COMPILED OUT OF THE STUDY BUILD, matching StrokeCalibrationOverlay.swift
 // itself — the type these tests exercise does not exist under STUDY_BUILD.
-// Coverage still runs under the normal xcode_test job.
+// STUDY_BUILD is unconditional (Package.swift, 2026-09-14), so this file
+// runs in no current configuration, CI's xcode_test job included.
 #if !STUDY_BUILD
 import Testing
 import Foundation

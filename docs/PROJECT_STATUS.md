@@ -7,8 +7,12 @@
 > 2026-09-14); the self-hosted MacBook runner was retired (`c6731761`,
 > 2026-07-13); the Apple Pencil squeeze is not wired (only the deprecated
 > double-tap delegate is; ROADMAP U5, audit R-096); the D8 canvas redraw
-> profile has been measured (ROADMAP D8, 2026-10-21). The body is left
-> unchanged except the r17 audio note in §1.5.
+> profile has been measured (ROADMAP D8, 2026-10-21); pen height drives
+> pitch (the spatial arm from r5, both sound arms by default from r26,
+> ±600 cents), so §1.5's "wired but currently undriven" pitch line is
+> history; the proctor's cold probes, the sound-off post-test included,
+> left the study build in r27 (an automatic final test replaced them).
+> The body is left unchanged except the r17 audio note in §1.5.
 >
 > **Status-line pass 2026-11-18 (against `main` `6495b506`).** Audit R-074
 > is on `main` (`6495b506`, #134: `PenDownForce.normalised`, two new tests) and

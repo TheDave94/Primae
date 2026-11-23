@@ -2,7 +2,8 @@
 // PrimaeNative
 //
 // The study's end-of-session screen (David, 2026-11-04): shown once, full
-// screen, after the child has finished all letters of the set. Icons and
+// screen, after the child has finished all letters of the set and, from
+// protocol r27, the final test that follows them. Icons and
 // animation only - nothing to read - and NO sound (a sound would be a new
 // stimulus that could differ between arms). It carries no score, no star
 // count and no per-letter difference, so it is identical in every arm and

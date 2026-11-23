@@ -16,6 +16,11 @@
 // Until this existed only the untrained-pair post-test route was built
 // (H6), the pretest the thesis describes had no route for a TRAINED
 // letter, and no row said which timepoint it belonged to.
+//
+// r27: the proctor's probe buttons (pretest, post-test, delayed) left the
+// study build; its only probe is now the fourth kind, `finalTest` (below,
+// `FinalTest.swift`), which is not a cold freeWrite opening of the kind
+// described above but a brief glyph glimpse, then writing from memory.
 
 import Foundation
 

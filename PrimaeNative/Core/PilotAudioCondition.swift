@@ -39,12 +39,15 @@ enum PilotAudioCondition: String, Codable, CaseIterable, Sendable {
     case phoneme
 
     /// Spatial 2D sonification: a neutral looped carrier tone whose PITCH
-    /// tracks the pen's vertical canvas position (top = 880 Hz, bottom =
-    /// 220 Hz, linear-in-cents — see `SpatialSonification`) while stereo
-    /// pan tracks the horizontal position, same as the phoneme arm.
+    /// tracks the pen's vertical canvas position (linear-in-cents; from
+    /// protocol r26 the default span is ±600 cents, about 311–622 Hz,
+    /// r1-r25 220–880 Hz — see `SpatialSonification`, `PitchCoupling`) while
+    /// stereo pan tracks the horizontal position, same as the phoneme arm.
     /// Headphone delivery. Supersedes the former `arbitrarySound`
     /// (engagement-matched control) arm — decision superseding D2; the
-    /// arms are matched on pan and differ in pitch-drive + sound identity.
+    /// arms are matched on pan and differ in sound identity (and, before
+    /// r26, in pitch-drive: from r26 the pen's height pitches the phoneme
+    /// too by default, `StudyComparisonSettings.pitchScopeDefault = .both`).
     case spatial
 
     /// No audio at all — the silent control arm.

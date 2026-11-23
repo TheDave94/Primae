@@ -7,7 +7,8 @@
 // drives stereo PAN (pan is the pre-existing shared coupling in
 // TouchDispatcher.updateAdaptivePlayback — this file only owns the
 // pitch axis and the carrier asset reference). Headphone delivery;
-// the ResearchDashboard warns when no headphone route is active.
+// from r14 a session runs only with a headphone route (every arm from
+// r16), and the proctor sees a stop screen without one.
 //
 // Pitch mapping (David's acoustics spec, decided 2026-07-06):
 //   range 220–880 Hz (A3–A5, two octaves), TOP of canvas = 880 Hz,
@@ -16,6 +17,11 @@
 //   carrier is authored at 440 Hz (the geometric mean), so the cents
 //   offset spans exactly ±1200 — half the AVAudioUnitTimePitch ±2400
 //   range, comfortable headroom.
+// That was the r1-r25 study mapping. From R18DIM the span is a proctor
+// setting (`PitchCoupling`; scope off / spatial only / both sound arms),
+// and from protocol r26 the study default is 1200 cents (±600, about
+// 311–622 Hz for the carrier) applied in BOTH sound arms. The engine is
+// the live TDPSOLA kernel from r17 (clamp ±1200), not AVAudioUnitTimePitch.
 
 import CoreGraphics
 import Foundation

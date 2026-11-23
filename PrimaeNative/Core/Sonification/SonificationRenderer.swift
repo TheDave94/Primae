@@ -29,7 +29,7 @@ nonisolated protocol SonificationRenderer: AnyObject {
     init(source: [Float], sampleRate: Double, kind: SourceKind, maxFramesPerRender: Int)
     /// Targets; the renderer smooths internally. Thread-safe, lock-free (written from the touch thread).
     func setRate(_ rate: Float)          // 0.5 ... 2.0, duration scale (2.0 = twice as fast)
-    func setPitchCents(_ cents: Float)   // -1200 ... +1200 (0 in the phoneme arm)
+    func setPitchCents(_ cents: Float)   // -1200 ... +1200 (0 in the phoneme arm at the bake-off; height-coupled in it too from r26)
     func setGate(_ open: Bool)           // sound on/off; must click-free, onset as fast as possible
     /// Render `frames` mono samples (<= maxFramesPerRender) into `out`. Pan is applied by the caller.
     func render(into out: UnsafeMutablePointer<Float>, frames: Int)

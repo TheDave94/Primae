@@ -6,14 +6,18 @@
 //
 //   .voicedPhoneme   TD-PSOLA. Grains are centred on pitch marks; output
 //                    grain spacing = the source period at the chosen mark
-//                    (divided by the pitch factor, 1 in the phoneme arm), so
-//                    the pitch is the source's at ANY rate. Rate only moves
+//                    (divided by the pitch factor; from r26 the phoneme arm
+//                    is height-coupled too by default, pitch scope `.both`,
+//                    so the factor is 1 only at 0 cents), so the pitch is
+//                    independent of rate. Rate only moves
 //                    the source read-head, which picks the nearest mark:
 //                    rate < 1 repeats periods, rate > 1 skips them.
 //   .unvoicedPhoneme WSOLA-lite. Fixed 5 ms hop, 10 ms grains; each new
 //                    grain's source centre is searched within +/- half a hop
 //                    of the read-head for the best normalised match with
 //                    the natural continuation of the previous grain.
+//                    r26: each grain is read at the pitch ratio (as for the
+//                    carrier), so a height shift moves F's noise up/down.
 //                    R17D (U1, RULINGS 2026-11-06): the unvoiced read-head
 //                    is NOT time-stretched; it advances at rate 1 whatever
 //                    the rate, so F plays at natural speed at every pen

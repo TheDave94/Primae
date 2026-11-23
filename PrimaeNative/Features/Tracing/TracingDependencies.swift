@@ -47,13 +47,16 @@ struct TracingDependencies {
     var audioCondition: PilotAudioCondition
     /// Trained 3-of-5 study-letter subset (third assignment axis, UUID
     /// byte 8). Filters the practice pool under `studyMode` only; the
-    /// H6 post-test covers all 5 letters regardless.
+    /// H6 post-test (outside the study build since r27) covers all 5
+    /// letters regardless, the r27 final test the trained 3 only.
     var trainedSubset: TrainedLetterSubset
     /// Seam for the `allFiveLetters` comparison switch
     /// (`StudyComparisonSettings.allFiveLetters`). `nil` — the default,
     /// and what every production caller uses — reads the switch from
     /// `UserDefaults` at view-model construction, which is the behaviour
-    /// an untouched device has always had.
+    /// an untouched device has always had. From protocol r27 the view model
+    /// holds the switch OFF in the study build whatever this seam or the
+    /// key says (`!StudyBuild.isActive && ...` in `TracingViewModel.init`).
     ///
     /// Injected for the same reason `trainedSubset` and `studyMode` are:
     /// the switch changes `visibleLetterNames`, so a test that drove it
@@ -264,8 +267,9 @@ struct TracingDependencies {
     /// fixes the environment and asserts the rows; production reads the
     /// device (`LiveDeliveryEnvironment`).
     var deliveryEnvironment: DeliveryEnvironmentProviding
-    /// Whether a study session in a sound arm refuses to run without
-    /// headphones (r14). Production: on, unless the process was launched
+    /// Whether a study session refuses to run without headphones (r14 in
+    /// the sound arms; every arm, the silent one included, since r16, B6;
+    /// see `HeadphoneRequirement.block`). Production: on, unless the process was launched
     /// with `HeadphoneRequirement.testWaiverArgument`. The test stub turns
     /// it off; the tests of the requirement turn it on.
     var requiresHeadphones: Bool

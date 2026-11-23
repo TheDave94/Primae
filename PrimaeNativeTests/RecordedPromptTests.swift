@@ -1,5 +1,5 @@
 // RecordedPromptTests.swift
-// Protocol r9 (D15; seven from r27): the five phrases a study child hears are RECORDED
+// Protocol r9 (D15): the phrases a study child hears (five from r9, seven from r27) are RECORDED
 // takes (voice Kiki). What these pin:
 //   - a recorded observe cue reports its end through the SAME handler a
 //     spoken one did (R-022), with the same end / cancelled semantics, so

@@ -11,10 +11,14 @@
 //   rate   ← point velocity in pt/s (`TouchDispatcher.mapVelocityToSpeed`),
 //            or a constant 1.0 when `rateCouplingEnabled` is off (r18)
 //   pan    ← canvas x, when `panningEnabled` (plus the Pencil azimuth bias)
-//   pitch  ← canvas y, SPATIAL ARM ONLY (`SpatialSonification.pitchCents`)
+//   pitch  ← canvas y, in the arms `PitchCoupling.scope` drives
+//            (`SpatialSonification.pitchCents`); from protocol r26 the
+//            default scope is BOTH sound arms at 1200 cents (+-600)
 //
-// The phoneme arm never gets a pitch drive, exactly as before: the arms are
-// matched on rate + pan and differ in pitch-drive + sound identity (§2.6).
+// Until r26 (r17-r25 default: Nur Raumklang) the phoneme arm got no pitch
+// drive, and the arms were matched on rate + pan and differed in
+// pitch-drive + sound identity (§2.6). At the r26 defaults they share rate,
+// pan AND pitch and differ in sound identity only.
 
 import CoreGraphics
 
@@ -23,9 +27,9 @@ enum ArmCoupling {
         let speed: Float
         let horizontalBias: Float
         /// The pen/dot height's pitch offset in cents. Non-nil in the arms
-        /// `PitchCoupling.scope` drives: by default (r17) the spatial arm
+        /// `PitchCoupling.scope` drives: r17-r25 by default the spatial arm
         /// only; R18DIM slice 2 adds "both" (the phoneme is pitch-shifted
-        /// through TD-PSOLA) and "off". The name is kept for the shared
+        /// through TD-PSOLA), the default from protocol r26, and "off". The name is kept for the shared
         /// call sites; it no longer implies the spatial arm.
         let spatialPitchCents: Float?
         /// R18 slices 4+5: nil unless a Klang-Dimensionen distance/direction

@@ -6,8 +6,9 @@
 //   s1  the pen's LIFT tail must honour "Tempo folgt dem Stift" at the
 //       TouchDispatcher level (the lane only pinned the pure helper).
 //   s2  the OBSERVE call site must pass `pitch: pitchCoupling`, so the
-//       both-arms scope reaches the phoneme arm's dot — and the default
-//       spatial-only scope leaves the phoneme arm unpitched.
+//       both-arms scope (the default from r26) reaches the phoneme arm's
+//       dot — and the spatial-only scope (the r17-r25 default) leaves the
+//       phoneme arm unpitched.
 //   s7  both roughness paths — the pen (TouchDispatcher) and the observe
 //       dot (TracingViewModel.handleGuideFrame) — must carry the switch.
 //       Switch off writes 0 on every sample, switch on writes the meter's

@@ -10,7 +10,9 @@
 // on refusal (nil on success) so the dashboard can surface it in an
 // alert instead of swallowing it. This file pins that contract at the VM
 // level; it does not touch the SwiftUI alert wiring, which cannot be
-// exercised headlessly.
+// exercised headlessly. (r27: the probe buttons are compiled out of the
+// study build, `ResearchDashboardView` `#if !STUDY_BUILD`; the r27 final
+// test reaches the same `startColdProbe(kind: .finalTest)` refusal.)
 
 import Testing
 import Foundation
