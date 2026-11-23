@@ -205,8 +205,23 @@ nonisolated final class CoreMLLetterRecognizer: LetterRecognizerProtocol, Sendab
     /// so the probe never executes on MainActor.
     func isModelAvailable() async -> Bool {
         await Task.detached(priority: .userInitiated) {
-            Self.loadModelIfNeeded() != nil
+            Self.loadModelBlocking()
         }.value
+    }
+
+    /// The synchronous body of `isModelAvailable()`: take the cache lock,
+    /// load on first use, report whether a model is held. It blocks the
+    /// calling thread for the length of a first load (~0.3 s measured),
+    /// so production calls it only through the detached Task above.
+    ///
+    /// `internal` so `RecognizerModelCacheTests` can drive the real lock
+    /// from DEDICATED threads. Through the async entry every probe needs a
+    /// cooperative-pool thread to start and another to resume, so a
+    /// deadline on it measured how busy the pool was, not whether the
+    /// lock returned (CI run 45232891651: the load took 0.30 s, the
+    /// tests still overran 600 s). The lock and the cache stay private.
+    nonisolated static func loadModelBlocking() -> Bool {
+        loadModelIfNeeded() != nil
     }
 
     func recognize(points: [CGPoint],

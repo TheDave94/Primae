@@ -2,51 +2,53 @@
 //
 // Audit finding 20's precondition. Every existing recognizer test
 // injects a stub classifier (`CoreMLLetterRecognizerTests` says so in
-// its own header), so `loadModelIfNeeded` — the lock, the two shared
-// statics, and the lazy VNCoreMLModel load behind them — was exercised
+// its own header), so `loadModelIfNeeded` — the lock, the shared
+// cache, and the lazy VNCoreMLModel load behind them — was exercised
 // by ZERO tests. Swapping the lock primitive under code nothing runs is
 // not a refactor, it is a guess.
 //
-// `isModelAvailable()` is the only reachable entry to that path: it
-// calls `Self.loadModelIfNeeded()` inside a detached Task. The private
-// statics stay private — this asserts observable behaviour rather than
-// reaching for a test-only seam into a concurrency primitive.
-//
 // WHAT THIS CAN AND CANNOT SEE.
-//   - Deadlock: caught, via the harness time limit. Every call takes the
-//     lock, warm or cold, so contention is real regardless of ordering.
-//   - Torn read of the two statics: caught, as disagreement between
+//   - Deadlock: caught, as a NAMED failure, by a deadline that is
+//     decided on dedicated OS threads (see "WHY OFF THE POOL" below).
+//   - Torn read of the cache: caught, as disagreement between
 //     concurrent probes.
 //   - Double LOAD on a cold cache: NOT caught. The cache is process-wide
-//     and another suite may have warmed it first, and the statics are
-//     private so a test cannot reset them. A double load costs ~50 ms
-//     and a discarded handle; it is not a correctness fault, which is
-//     why it is not worth widening access to chase.
+//     and another suite may have warmed it first, and it is private so a
+//     test cannot reset it. A double load costs ~50 ms and a discarded
+//     handle; it is not a correctness fault.
 //
-// The probes ALSO assert that the answer is `true` (2026-09-04). They
-// used to assert agreement only, and agreement holds just as well when
-// nothing loads — CI run 1633's iPad (A16) leg proved it: the suite
-// timed out at 60 s in the first process, then PASSED in 0.001 s on
-// xcodebuild's automatic retry, an outcome only possible if the retry's
-// probes agreed on "not available". A bundle-claiming suite that passes
-// when the bundle does not resolve asserts nothing; the availability
-// assertion turns that vacuous pass into the failure it is.
+// The probes ALSO assert that the answer is `true` (2026-09-04).
+// Agreement alone holds just as well when nothing loads (CI run 1633's
+// retry passed in 0.001 s agreeing on "not available"), so the
+// availability assertion turns that vacuous pass into the failure it is.
 //
-// TIMING, MEASURED from the same run (job logs, 2026-09-04): the first
-// `isModelAvailable()` in a fresh simulator process took ~32 s on the
-// iPad Pro (M5) leg and > 60 s on the iPad (A16) leg, and because
-// `loadModelIfNeeded` holds a blocking lock while loading, every probe
-// parked on it occupied a cooperative-pool thread — unrelated tests in
-// the same process reported "passed after 59.6 seconds". Hence three
-// probes, not eight, and a limit above the measured floor: the limit
-// still turns a real deadlock into a named failure; it no longer turns
-// a slow simulator into one.
+// WHY OFF THE POOL (2026-11-23). These tests used to probe through the
+// async `isModelAvailable()` under `.timeLimit` (60 s, then 3 min, then
+// 10 min), and every limit was eventually overrun on CI with nothing
+// wrong in the cache. CI run 45232891651 (main 28136d3c), job
+// 137896855428: the model's first load logged "ok after 0.30 s" at
+// 18:27:17, and all three tests still hit "Time limit was exceeded:
+// 600.000 seconds" at 18:37:00. In that same process, ordinary untimed
+// tests reported "passed after 1105 s" (a WAV-format check, a mean of
+// two numbers): with ~1800 Swift Testing tests started in parallel on a
+// small hosted runner, every `await` waits minutes for a pool thread to
+// resume on, and a probe through the async entry needs two pool hops
+// per call. The 10-minute limit had been eroding for a week — load to
+// pass took 282 s (job 133996095567), 449 s (134031528139), 382 s
+// (134825012421), > 583 s (137896855428) — until r27's added tests
+// tipped it over. A time limit on that path measured the scheduler.
 //
-// HISTORICAL NOTE, because this suite's name promised more than its
-// first run delivered: when written, the model did not resolve at all,
-// so the probes agreed on `nil`. That is a weaker statement than
-// agreeing on one shared instance, and the double-load race the suite
-// was written for cannot occur when nothing loads.
+// So the probes now call `CoreMLLetterRecognizer.loadModelBlocking()`
+// (the synchronous body `isModelAvailable()` runs in its detached Task)
+// on dedicated threads, and a watcher thread waits for them with a
+// deadline. A wedged lock still fails by name; a busy pool can delay
+// the test's single resumption but cannot change its verdict. There is
+// deliberately no `.timeLimit`: the deadline it stood in for is now
+// enforced where the scheduler cannot reach it.
+//
+// HISTORICAL NOTE: when first written, the model did not resolve at
+// all, so the probes agreed on `nil` — a weaker statement than agreeing
+// on one shared instance.
 
 import Testing
 import Foundation
@@ -55,49 +57,58 @@ import Foundation
 @Suite struct RecognizerModelCacheTests {
 
     /// Three concurrent probes: enough for a torn read to show as
-    /// disagreement, few enough that parking on the blocking load lock
-    /// cannot exhaust the cooperative pool on a four-core runner.
+    /// disagreement. They run on dedicated threads, so the count no
+    /// longer has to be kept small to spare the cooperative pool.
     private static let probeCount = 3
 
-    /// The time limit is the point of this test, not decoration. A lock
-    /// defect here does not assert — it deadlocks, and a deadlocked
-    /// `xcodebuild test` never returns. The trait converts a wedged run
-    /// into a reported failure with a name attached. Ten minutes
-    /// (2026-09-17): a deadlock never returns, so any finite limit still
-    /// catches it — the limit only has to clear the SLOW case, and the
-    /// slow case is runner variance, not this code.
-    ///
-    /// Three minutes (the previous value, set against a >60 s measured
-    /// floor) stopped clearing it. CI run 35161501073, reproduced on a
-    /// re-run at the same SHA: these three probes reached 268 s and the
-    /// limit fired, while the same suite in isolation on an M5 simulator
-    /// passes in 0.4 s. The whole 900-test run took 276 s in that
-    /// attempt against 77 s in the last green run — the runner was ~3.5x
-    /// slower, and this suite is the run's critical path because it
-    /// parks on `loadModelIfNeeded`'s mutex. Nothing about the model
-    /// cache was wrong in that run: `first load: ok after 0.27 s`, and
-    /// the chevron/corpus fixes were separately verified on device.
-    ///
-    /// A note against the obvious next hypothesis: the cost is NOT the
-    /// per-URL `resolvingSymlinksInPath()` in `allResourceURLs()`.
-    /// Pruning the nested search root instead was implemented and
-    /// measured on 2026-09-17 — 44.966 s against 45.430 s, no
-    /// improvement — and discarded rather than shipped.
-    @Test(.timeLimit(.minutes(10)))
-    func concurrentProbesAgreeAndTerminate() async {
-        // The injected classifier keeps Vision out of the assertion path;
-        // `isModelAvailable()` still drives the real static cache.
-        let recognizer = CoreMLLetterRecognizer(classifier: { _ in [] })
+    /// How long the dedicated probe threads may take before the lock is
+    /// declared wedged. A deadlock never returns, so any finite deadline
+    /// catches it; this one only has to clear a slow first load, and the
+    /// slowest first load in any CI log on record is 0.68 s (job
+    /// 134031528139, 2026-11-17). The threads are preemptively scheduled
+    /// OS threads, not pool threads, so the deadline is not shared with
+    /// the 1800 other tests running in the same process.
+    private static let deadlineSeconds: TimeInterval = 120
 
-        let answers: [Bool] = await withTaskGroup(of: Bool.self) { group in
-            for _ in 0..<Self.probeCount {
-                group.addTask { await recognizer.isModelAvailable() }
+    /// Runs `body` on `threads` dedicated OS threads, released together,
+    /// and decides the verdict OFF the cooperative pool: a watcher thread
+    /// waits on the group with a deadline. Returns every thread's answers,
+    /// or `nil` if any thread had not returned by the deadline — i.e. the
+    /// lock did not come back. The only pool work left is the single
+    /// resumption of the test after the verdict, which can be late but
+    /// cannot change it.
+    private static func runOffPool(threads: Int,
+                                   _ body: @escaping @Sendable () -> [Bool]) async -> [Bool]? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<[Bool]?, Never>) in
+            let lock = NSLock()
+            var results: [Bool] = []
+            let group = DispatchGroup()
+            let release = DispatchSemaphore(value: 0)
+            for _ in 0..<threads {
+                group.enter()
+                Thread {
+                    release.wait()
+                    let answers = body()
+                    lock.lock(); results += answers; lock.unlock()
+                    group.leave()
+                }.start()
             }
-            var collected: [Bool] = []
-            for await answer in group { collected.append(answer) }
-            return collected
+            Thread {
+                for _ in 0..<threads { release.signal() }
+                let returned = group.wait(timeout: .now() + deadlineSeconds) == .success
+                lock.lock(); let collected = results; lock.unlock()
+                continuation.resume(returning: returned ? collected : nil)
+            }.start()
         }
+    }
 
+    @Test func concurrentProbesAgreeAndTerminate() async {
+        guard let answers = await Self.runOffPool(threads: Self.probeCount, {
+            [CoreMLLetterRecognizer.loadModelBlocking()]
+        }) else {
+            Issue.record("the model-cache lock did not return within \(Self.deadlineSeconds) s on \(Self.probeCount) dedicated threads — a deadlock in loadModelIfNeeded")
+            return
+        }
         #expect(answers.count == Self.probeCount,
                 "expected \(Self.probeCount) probes to return, got \(answers.count)")
         #expect(Set(answers).count == 1,
@@ -106,26 +117,34 @@ import Foundation
                 "the bundled model did not resolve (\(answers)) — agreement on 'unavailable' is not a cache test")
     }
 
-    /// Repeated probes must agree with each other and with the concurrent
-    /// run: once `didAttemptLoad` is set the cache short-circuits, and a
-    /// cache that re-decided per call would show up here as drift.
-    @Test(.timeLimit(.minutes(10)))
-    func repeatedProbesAreStable() async {
-        let recognizer = CoreMLLetterRecognizer(classifier: { _ in [] })
-        let first = await recognizer.isModelAvailable()
-        #expect(first, "the bundled model must resolve for stability to mean anything")
-        for probe in 1...4 {
-            let again = await recognizer.isModelAvailable()
-            #expect(again == first,
-                    "probe \(probe) returned \(again) after an initial \(first) — the cache is not stable")
+    /// Repeated probes must agree with each other: once the cache holds a
+    /// model it short-circuits, and a cache that re-decided per call would
+    /// show up here as drift.
+    @Test func repeatedProbesAreStable() async {
+        guard let answers = await Self.runOffPool(threads: 1, {
+            (0..<5).map { _ in CoreMLLetterRecognizer.loadModelBlocking() }
+        }) else {
+            Issue.record("the model-cache lock did not return within \(Self.deadlineSeconds) s — a deadlock in loadModelIfNeeded")
+            return
         }
+        #expect(answers.count == 5)
+        #expect(answers.first == true, "the bundled model must resolve for stability to mean anything")
+        #expect(Set(answers).count == 1,
+                "repeated probes drifted (\(answers)) — the cache is not stable")
     }
 
     /// A second instance shares the STATIC cache, so it must agree with
-    /// the first. This is the property that makes the cache worth having
-    /// and the one a mis-scoped lock would break.
-    @Test(.timeLimit(.minutes(10)))
-    func separateInstancesShareOneCache() async {
+    /// the first through the PUBLIC async entry. This is the property that
+    /// makes the cache worth having and the one a mis-scoped lock would
+    /// break. The off-pool probe first proves the lock returns, so the
+    /// async calls below cannot hang the run even if it ever stopped
+    /// returning; they carry no time limit because their latency is the
+    /// pool's, not the cache's.
+    @Test func separateInstancesShareOneCache() async {
+        guard await Self.runOffPool(threads: 1, { [CoreMLLetterRecognizer.loadModelBlocking()] }) != nil else {
+            Issue.record("the model-cache lock did not return within \(Self.deadlineSeconds) s — a deadlock in loadModelIfNeeded")
+            return
+        }
         let a = CoreMLLetterRecognizer(classifier: { _ in [] })
         let b = CoreMLLetterRecognizer(classifier: { _ in [] })
         let answerA = await a.isModelAvailable()
