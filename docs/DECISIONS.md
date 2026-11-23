@@ -4,7 +4,7 @@
 
 Companion docs: `docs/ROADMAP.md` holds the *work* (pilot freeze items H1–H6, known issues/residuals); `docs/PROJECT_STATUS.md` holds the *capability census*; `docs/SOUND_PRODUCTION_SPEC.md` holds the sound-asset *production procedure*. This file holds *decisions*. (Consolidated from the former `PILOT_READINESS.md`, 2026-06-20.)
 
-**Study design (locked 2026-05-29; third arm redesigned 2026-07-06; sound and voiceover revised 2026-10-04).** Three-arm between-subjects pilot: phoneme sonification / spatial sonification (pen position → pitch + pan on a neutral carrier; supersedes the engagement-matched arbitrary-sound arm, see D2) / silent control. N≈40 kindergarten/Vorschule. Single session 10–20 min. In the sound arms, writing produces the arm's sound in every writing part, including free-writing and the outcome passes (D14), and the sound plays for the whole observe animation; the silent arm writes in silence throughout. All arms hear the same voiceover (D15). Framed as a pilot throughout. *(Header brought current 2026-09-04; it had still named the arbitrary-sound arm. Revised 2026-10-04: it had said "Sound-off post-test".)*
+**Study design (locked 2026-05-29; third arm redesigned 2026-07-06; sound and voiceover revised 2026-10-04).** Three-arm between-subjects pilot: phoneme sonification / spatial sonification (pen position → pitch + pan on a neutral carrier; supersedes the engagement-matched arbitrary-sound arm, see D2) / silent control. N≈40 kindergarten/Vorschule. Single session 10–20 min. In the sound arms, writing produces the arm's sound in every TRAINING writing part, including free-writing (D14), and the sound plays for the whole observe animation; the final test (r27) is sound-off in every arm (the cold probes were sound-off from r12). From r26 the pen's height pitches both sound arms. The silent arm writes in silence throughout. All arms hear the same voiceover (D15). Framed as a pilot throughout. *(Header brought current 2026-09-04; it had still named the arbitrary-sound arm. Revised 2026-10-04: it had said "Sound-off post-test". Revised 2026-11-23: it had said the outcome passes sound, and named pitch for the spatial arm only.)*
 
 **Governance (David, 2026-05-30).**
 - No in-app consent / minor-assent UX required; KUG ethics does not require committee approval for this pilot. → consent UX is NOT a freeze item.
@@ -133,7 +133,9 @@ Implications:
     applied at `:192`). The pairing, the within-pair discrete Fréchet
     distance and the mean over matched pairs are unchanged
     (`correspondence`, `:260`). Rotation is still not normalised: an
-    upside-down letter remains an error.
+    upside-down letter remains an error. **r27 adds a horizontal shear
+    within ±15° to this fit (`spatialFitShearDegrees`); see Protocol
+    revision 27, "Slant is not an error".**
   - **Degenerate input.** An axis whose extent is ≤ 1e-6 on either side
     (a straight vertical or horizontal stroke, or such a reference) is
     left out of the scale and the fit uses the other axis; with no
@@ -510,7 +512,8 @@ Implications:
   - **The shipped mechanism.** ONE mapping is used by the pen and the
     dot: `ArmCoupling` (`ArmCoupling.swift`) — rate from velocity in
     pt/s via `TouchDispatcher.mapVelocityToSpeed`, pan from x when
-    `panningEnabled`, pitch from y in the spatial arm only. The pen
+    `panningEnabled`, pitch from y in the spatial arm only (r5–r25;
+    from r26 in both sound arms). The pen
     calls it from `TouchDispatcher.updateAdaptivePlayback`
     (`TouchDispatcher.swift:400-401`); the dot from
     `TracingViewModel.handleGuideFrame` (`TracingViewModel.swift:2435`),
@@ -526,7 +529,8 @@ Implications:
     letter's vertical contour.** The carrier's pitch follows the dot's
     y as it follows the pen's, so during observe the spatial arm hears
     the shape of the letter it is about to write; the phoneme arm gets
-    rate and pan only, as while writing. Rationale: not recorded beyond
+    rate and pan only, as while writing (r5–r25; from r26 the phoneme
+    arm also carries the contour). Rationale: not recorded beyond
     David's words above; decision stands as ruled.
   - **Presentation start (same revision).** The observe animation and
     the sound start together 1.0 s after the spoken observe instruction
@@ -736,7 +740,9 @@ Implications:
      Mechanism: a pen that stops sends no samples, and only a sample
      could request idle, so every active sample arms a 0.12 s stall
      timeout (`PlaybackController.armStallIdle`); pinned by
-     `bothSoundArms_stopOnPause_resumeOnMove` for both arms.
+     `bothSoundArms_stopOnPause_resumeOnMove` for both arms. (From r17
+     the stall is 0.3–0.6 s, scaled by the adaptive lift hold:
+     `SoundEnvelope.swift:108-109,135-136`.)
   3. *Rate does not move pitch — verified, not changed.* The ruling
      AE-1 premise ("playback-rate pitching contaminates the spatial
      arm's pitch with stroke velocity") does not hold: rate and pitch
@@ -747,7 +753,9 @@ Implications:
      `testTimePitchRate_doesNotMovePitch_varispeedDoes` (hardware suite)
      renders 440 Hz through the unit at rates 0.5/1/2 (→ 440), ±1200
      cents (→ 880/220) and through a varispeed unit at 2.0 (→ 880, the
-     confound the ruling describes).
+     confound the ruling describes). (From r17 the arm sound is TD-PSOLA
+     in `LiveSonificationAudio`, not `AVAudioUnitTimePitch`; rate still
+     does not move pitch there, L1.)
   Implemented: `605f8f0` (1, 3) and the follow-up commit (1 steady
   state, 2) on `feat/order-invariant-primary-outcome`.
 
@@ -757,6 +765,8 @@ Implications:
   `90874e13`, 2026-10-03).** **REVISED 2026-10-05 (protocol revision 6):
   in free-writing and the probes the sound is no longer gated on the
   letter path — read "Revision 2026-10-05" at the end of this entry.**
+  **SUPERSEDED by r12 (cold probes sound-off) and r27 (final test
+  sound-off in every arm; probes removed from the study build).**
   David: *"children would not understand if not all letter-writing
   parts produce the sound."*
 
@@ -833,7 +843,8 @@ Implications:
 - **D15 — The spoken content is IDENTICAL in all three arms (David,
   2026-10-04; implemented in #34, `875104d5`, protocol revision 4).**
   **THE SPEECH MECHANISM DESCRIBED BELOW IS SUPERSEDED 2026-10-14
-  (protocol revision 9): the five study phrases are now RECORDED audio —
+  (protocol revision 9): the five study phrases (seven from r27, which
+  adds `final_intro` and `final_glimpse`) are now RECORDED audio —
   read "Correction 2026-10-14" at the end of this entry before acting on
   "What the speech is" and "Speech pin".**
   ("Instructions only" was a supervisor paraphrase of this rule,
@@ -902,7 +913,8 @@ Implications:
   "Voice" bullets under "What the speech is" and the whole "Speech pin"
   paragraph. The rule that the spoken content is identical in all three
   arms is unchanged.**
-  - **What it is now.** Five bundled mp3 takes in `Resources/Prompts/`,
+  - **What it is now.** Five bundled mp3 takes in `Resources/Prompts/`
+    (seven from r27, which adds `final_intro` and `final_glimpse`),
     voice "Kiki" (ElevenLabs `eleven_multilingual_v2`, stability 0.55,
     similarity 0.80, style 0.10): `phase_observe` "Schau genau hin.",
     `phase_guided` "Jetzt du.", `phase_freewrite` "Und jetzt ganz
@@ -1237,12 +1249,20 @@ Implications:
     (`env3/ENV3.md`, "Onset instrument"; headphone routes unmeasured). It
     also removes the r16 spatial-after-phoneme onset confound (+35 ms). One
     path for both arms (L2): the spatial carrier is the same recording
-    transposed per grain; a phoneme keeps its pitch at every rate (L1).
+    transposed per grain; a phoneme keeps its pitch at every rate (L1:
+    rate never moves pitch; from r26 the pen's height does pitch the
+    phoneme, see r26).
     Selection: a blind listening trial (35 trials) found no difference by
     ear, an in-app A/B against a second engine (BungeeLL) was preferred
     "a bit" for TD-PSOLA, and the bench favoured or tied it on every axis
     but two far inside their gates, at a third of the CPU
-    (`OPT-T.md`, `OPT-B.md`, `BAKEOFF.md`; David 2026-11-03). The second
+    (`OPT-T.md`, `OPT-B.md`, `BAKEOFF.md`; David 2026-11-03). Scope of
+    both comparisons: the phonemes were at pitch 0 throughout (r17 held
+    the phoneme's pitch, L1) and varied only in rate; pitch shifting was
+    exercised on the spatial carrier only (the bench's pitch scenarios
+    and the in-app A/B's spatial step). From r26 the phoneme is pitched
+    by height, and no engine comparison covered that. David (2026-11-23)
+    recalls A/B-testing time-shift only. The second
     engine, its switch and its tests are not shipped. I/O buffer 5 ms
     (was 21.3 ms). `AudioEngine.swift` changed by one method,
     `attachLiveSonificationNode` (graph wiring, L3; `R17-AudioEngine-diff.md`).
@@ -1978,7 +1998,12 @@ Implications:
   the carrier ("Shift F's noise", range ±600), after listening to renders of
   the real kernel (`wt-primae-audit-notes/r26-pitch-2026-11-15/wav`,
   `wav-F-spectral`, SEQ and GLIDE files), and OK'd the implementation the
-  same night.
+  same night. *(Noted 2026-11-23.)* These were renders of the shipped
+  engine only (`r26-pitch-2026-11-15/wav`: ±600, SEQ, GLIDE, r17range);
+  there was no A/B against another engine or method, and the r17 engine
+  choice never exercised pitched phonemes. David (2026-11-23): the pitched
+  phoneme sounds bad to him; the spatial arm's pitch sounds fine. Noted
+  only, no behaviour change.
   - **Defaults.** `StudyComparisonSettings.pitchScopeDefault` `.spatialOnly`
     → `.both`; `pitchRangeCentsDefault` 2400 → 1200 (±600 cents). Both sound
     arms go through the same `ArmCoupling` mapping, so at the same height
@@ -2228,12 +2253,12 @@ Implications:
 
 | # | Decision | Why it matters | Status |
 |---|----------|----------------|--------|
-| D2 | Arbitrary-sound arm design: what IS the engagement-matched, non-phonemic, coupling-matched control loop? | A wrong control confounds the central phoneme contrast — no committee backstop. Must be loopable + speed-couplable; must run the identical coupling path (matching discipline). Liking-match informed by the listening study. | **SUPERSEDED 2026-07-06** — the third arm is spatial sonification (pen Y → pitch over 220–880 Hz on a 440 Hz triangle carrier, X → pan, same rate/pan coupling; `PilotAudioCondition.spatial`, ROADMAP H4, thesis Ch.4). The per-letter abstract-sound design below (resolved 2026-06-20) is retained for the full-scale study's fourth arm (thesis Ch.7), not the pilot. *(Row brought current 2026-09-04.)* |
+| D2 | Arbitrary-sound arm design: what IS the engagement-matched, non-phonemic, coupling-matched control loop? | A wrong control confounds the central phoneme contrast — no committee backstop. Must be loopable + speed-couplable; must run the identical coupling path (matching discipline). Liking-match informed by the listening study. | **SUPERSEDED 2026-07-06** — the third arm is spatial sonification (pen Y → pitch over 220–880 Hz r17–r25, 311–622 Hz from r26, on a 440 Hz triangle carrier, X → pan, same rate/pan coupling; `PilotAudioCondition.spatial`, ROADMAP H4, thesis Ch.4). The per-letter abstract-sound design below (resolved 2026-06-20) is retained for the full-scale study's fourth arm (thesis Ch.7), not the pilot. *(Row brought current 2026-09-04.)* |
 | D3 | Post-test outcome design: what each of the 3 modes measures; scoring; recognition distractor choice; production prompt (NB: a sound prompt in a sound-off test is a contradiction — resolve). Which is the PRIMARY outcome. | Defines what the study measures. | **CLOSED 2026-09-04 against D8** (thesis ledger T1): the pilot's outcome is letter production only — primary = order-invariant spatial deviation by stroke correspondence, secondary = stroke count/order/direction, writing time read jointly; recognition and letter–sound tests are not in the pilot (H6 re-scoped 2026-09-03). |
 | D4 | Which outcomes to RUN in the pilot. Build-all-three decided (H6); *running* all three in a 10–20 min kindergarten session is a methods question (attention budget; multiple-comparison load on N≈40). Settings toggle moves this to pilot-run time; does not dissolve it. | Session feasibility + analysis validity | **RESOLVED 2026-11-01 by the H6 re-scope** — H6 was re-scoped 2026-09-03 to the production measure only (`docs/ROADMAP.md`, H6: the 3-modality battery was NOT built), so only the production outcome exists and there is no run-selection to make. (The earlier "Build all three (decided)" no longer holds.) |
 | D6 | Stop-consonant under continuous looping. The loop+speed-couple principle works naturally for continuants (/m/, /f/, /l/ stretch and loop). Stops (/b/, /k/, /t/) have no steady state to loop/stretch. What does the phoneme arm play for stops? (Also applies to the arbitrary loop.) Intersects the no-schwa spec. | Phoneme-arm fidelity for ~⅓ of letters | **MOOT for the pilot (2026-11-01):** no stop consonant in the study set. `TrainedLetterSubset.studyLetters` = A, F, I, L, M, and their phonemes (`LETTER_PHONEMES` in `scripts/generate_letter_audio.py`; the five `*_phoneme1.wav` files) are vowels or continuants (/a/, /f/, /i/, /l/, /m/). Open for full-alphabet work (post-thesis, F13). Original status: OPEN — sound-domain, likely Groß-Vogt |
 | D7 | Pitch coupling. The `pitchCents` knob is wired but undriven. The thesis prose leaves the acoustic parameter unspecified, so adding pitch is **fidelity-permissible** (neither described nor contradicted) — IF applied identically across phoneme+arbitrary arms (matching discipline). | Intervention enrichment with documented multi-parameter caveat | RESOLVED 2026-05-30 — **pitch IN the pilot.** Rationale: (a) fidelity-permissible per thesis prose; (b) closest same-age precedents — Ecalle 2021 (5yo, trajectory→pitch+brightness, sonification group beat controls) and Groß-Vogt 2024 (first-graders, pen-y→pitch) — both used pitch without reported harm; both FULL-read and already cited in §2.6; (c) no contraindication in the coupling sweep (see *Evidence base for D7* below); (d) already wired (`pitchCents` knob). **CONDITIONS (non-negotiable):** (1) **matching discipline** — identical pitch coupling in BOTH phoneme and arbitrary arms, only the audio file differs (the shared `setAdaptivePlayback` path makes this automatic); (2) **honest framing** — in Ch.5/methodology, pitch is a design choice consistent with precedents, NOT an evidence-backed component; (3) **documented limitation** — the pilot intervention is a three-parameter coupling (rate+pan+pitch), so an effect cannot be attributed to any single parameter; single-parameter isolation is an explicit future-study direction. |
-| D7-sub | Pitch mapping target — `pitchCents` is wired but what movement parameter drives it is undecided (y-position? curvature? something else?). | Defines the pitch axis of the coupling | **DECIDED BY IMPLEMENTATION, not a fresh call — ledger corrected 2026-09-11.** Pen Y, linear-in-cents (`SpatialSonification.pitchCents(forNormalizedY:)`, called from `TouchDispatcher.swift` via `setSpatialPitch`). This entry said "OPEN — decide at build time" after build time had already decided it; nobody had come back to close it. The "matched across arms per D7 condition (1)" clause in the prior wording is stale for a separate reason (the third arm is now spatial sonification, not an arbitrary-sound arm matched on every property — see the supersession notice at the top of this file) and is deliberately not rewritten here, since D7 condition (1)'s wording is thesis-adjacent and this correction is scoped to the sub-question this row is actually about. |
+| D7-sub | Pitch mapping target — `pitchCents` is wired but what movement parameter drives it is undecided (y-position? curvature? something else?). | Defines the pitch axis of the coupling | **DECIDED BY IMPLEMENTATION, not a fresh call — ledger corrected 2026-09-11.** Pen Y, linear-in-cents (`SpatialSonification.pitchCents(forNormalizedY:)`, called from `TouchDispatcher.swift` via `setSpatialPitch`). This entry said "OPEN — decide at build time" after build time had already decided it; nobody had come back to close it. The "matched across arms per D7 condition (1)" clause in the prior wording is stale for a separate reason (the third arm is now spatial sonification, not an arbitrary-sound arm matched on every property — see the supersession notice at the top of this file) and is deliberately not rewritten here, since D7 condition (1)'s wording is thesis-adjacent and this correction is scoped to the sub-question this row is actually about. (r26: the height→pitch mapping is again identical in both sound arms at the default.) |
 
 > Freeze items (H1–H6) that these decisions gate now live in `docs/ROADMAP.md` → *Pilot study — freeze items*.
 
@@ -2358,4 +2383,4 @@ ROADMAP D11 #3 asked for the policy to be written down. As built:
 
 ## Sequencing
 
-No human-gated blockers remain (no ethics/committee dependency). Everything is build-David-controls or design-David-decides. The HIGH freeze items (arms H1–H3, arbitrary-sound H4+D2, P6 H5, post-test H6+D3 — all in `docs/ROADMAP.md` → *Pilot study*) are pilot-blocking. The `direct` cut (D5) is a separate scoped change. The design decisions D2 (arbitrary sound) and D3 (post-test outcomes) gate their respective builds and should be settled well — D2/D6 are the prime Groß-Vogt sanity-checks (sound domain); D3 is the prime Seither-Preisler item. The pitch question (D7) is RESOLVED (pitch IN the pilot, under three conditions); D7-sub (what movement parameter drives pitch) is CLOSED — pen Y, per the row above.
+No human-gated blockers remain (no ethics/committee dependency). Everything is build-David-controls or design-David-decides. The HIGH freeze items (arms H1–H3, arbitrary-sound H4+D2, P6 H5, post-test H6+D3 — all in `docs/ROADMAP.md` → *Pilot study*) are pilot-blocking. The `direct` cut (D5) is a separate scoped change. (D5 executed 2026-09-18; the post-test was removed in r27 in favour of the final test.) The design decisions D2 (arbitrary sound) and D3 (post-test outcomes) gate their respective builds and should be settled well — D2/D6 are the prime Groß-Vogt sanity-checks (sound domain); D3 is the prime Seither-Preisler item. The pitch question (D7) is RESOLVED (pitch IN the pilot, under three conditions); D7-sub (what movement parameter drives pitch) is CLOSED — pen Y, per the row above.

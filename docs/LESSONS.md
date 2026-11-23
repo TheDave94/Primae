@@ -310,7 +310,7 @@ one file produces confusing test discovery behaviour in Xcode.
   drop the regression gate or require a hand-rolled benchmark harness.
 
 The `.swiftLanguageMode(.v5)` carve-out on the test target
-(`Package.swift:32`) exists because `XCTestCase`'s inherited
+(`Package.swift:84`) exists because `XCTestCase`'s inherited
 nonisolated init conflicts with the package's
 `.defaultIsolation(MainActor.self)` under Swift 6 strict checking.
 The carve-out is load-bearing as long as any XCTest file remains.

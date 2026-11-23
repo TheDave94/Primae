@@ -46,6 +46,12 @@ Compare against the runtime's scoring tolerances:
   `0.05` bbox-relative — `12–24 raster-px` per letter.
 - FreeWrite-phase: `6 × checkpointRadius = 0.30` normalized —
   `88–209 raster-px`.
+  *(Note 2026-11-23: this was the May 2026 runtime. The freeWrite
+  phase is now scored off the fitted stroke-correspondence
+  `spatialDeviation` (since 2026-09-04; `formAccuracy` =
+  `1 − spatialDeviation / (3 × checkpointRadius)`); the 6×
+  tolerance survives only in `FreeWriteScorer.formAccuracyShape`,
+  the freeform-writing score. The investigation below is unchanged.)*
 
 **Result.**
 

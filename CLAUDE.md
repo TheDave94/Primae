@@ -64,9 +64,9 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 - **Test target**: Uses `.swiftLanguageMode(.v5)` — do NOT change this
 - **CI**: GitHub Actions on the hosted **`xcode-27`** runner image (simulator matrix: iPad Pro 13-inch (M5) + iPad (A16)). Toolchain pinned by `bin/toolchain.pin` — see "The toolchain pin has landed" below.
 - **Remotes**: `origin` is the Forgejo forge at `https://git.flamingistan.com/David/Primae.git` — that is where you push. The GitHub repo `TheDave94/Primae` is a **push mirror** of the forge, not the origin: branches and workflow files reach it automatically, with nobody pushing to GitHub directly. CI runs there, so `gh run list --repo TheDave94/Primae` is the right way to read results and the wrong way to imagine the data flows.
-- **Learning phases**: observe → direct → guided → freeWrite (managed by PhaseController)
-- **Stroke data**: JSON files in `Resources/Letters/{letter}/strokes.json` with normalized coordinates
-- **Audio**: Proximity-triggered playback driven by TouchDispatcher + StrokeTracker. From protocol r17 the sound is rendered by `LiveSonificationAudio` (TDPSOLA, `Core/Sonification/`), hosted by AudioEngine
+- **Learning phases**: observe → guided → freeWrite (`.direct` stays a Codable case but no session runs it, D5), managed by `LearningPhaseController`; from r27 a session adds a silent pause and a final test from memory
+- **Stroke data**: JSON files in `Resources/Letters/{weight}/{letter}/strokes.json` (Regular/Light; the study build loads Regular) with normalized coordinates
+- **Audio**: Pen-driven playback (proximity-gated in guided; ungated in free-writing since r6; silent in the r27 final test) driven by TouchDispatcher + StrokeTracker. From protocol r17 the sound is rendered by `LiveSonificationAudio` (TDPSOLA, `Core/Sonification/`), hosted by AudioEngine
 
 ## Proctor batch enrolment (one gesture, no relaunch, ONE export)
 
@@ -80,11 +80,11 @@ Note the rail is a **64pt vertical bar on the LEFT**, not a top bar: `mainShell`
 - `MainAppView.swift` — root host with WorldSwitcherRail + worlds
 - `NextParticipantControl.swift` — the proctor's "next child" action: confirm dialog + a "new child ready" confirmation, shared by the Research Dashboard button and the rail's double-tap. The confirmation depends on the entry point (`NextParticipantControl(presentation:)`): on the rail (default `.toast`) it is a NON-blocking toast in the Schule world with accessibility identifier `newChildReadyToast`, no modal; on the Research Dashboard (`.alert`) it is a modal "Neues Kind bereit" alert (`readyTitle`/`readyMessage`/OK). Exactly one of the two fires. **Never unmount it to hide it** — the rail hides it by opacity/hit-testing, because unmounting also destroys the alert it presents.
 - `SchuleWorldView.swift` — World 1: guided three-phase tracing
-- `WerkstattWorldView.swift` — World 2: freeform writing
-- `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery
+- `WerkstattWorldView.swift` — World 2: freeform writing (compiled out: STUDY_BUILD is unconditional)
+- `FortschritteWorldView.swift` — World 3: child-facing star/streak/letter gallery (compiled out: STUDY_BUILD is unconditional)
 - `StrokeTracker.swift` — checkpoint proximity detection
 - `AudioEngine.swift` — ⚠️ STABLE AND FRAGILE — do NOT modify. From r17 it hosts `LiveSonificationAudio` (session, route, interruptions, measurement tap); its only r17 change is the `attachLiveSonificationNode` graph wiring (David's L3 ruling, 2026-11-02)
-- `SpeechSynthesizer.swift` — German system-voice TTS for child-facing verbal feedback outside the study's five fixed phrases (from protocol r9 those are RECORDED mp3s in `Resources/Prompts/`, played by `PromptPlayer.swift`, set checked by `RecordedPromptSet.swift` and `scripts/check_study_prompts.py`)
+- `SpeechSynthesizer.swift` — German system-voice TTS for child-facing verbal feedback outside the study's seven fixed phrases (five r9–r26; r27 adds final_intro, final_glimpse) (from protocol r9 those are RECORDED mp3s in `Resources/Prompts/`, played by `PromptPlayer.swift`, set checked by `RecordedPromptSet.swift` and `scripts/check_study_prompts.py`)
 - `LetterRepository.swift` — loads letters from bundle
 - `PrimaeLetterRenderer.swift` — renders letter glyphs using Primae font
 - `ProgressStore.swift` — persists learning progress
@@ -311,7 +311,7 @@ arm configuration) is reached by two code hits (re-measured 2026-11-16):
 `NewParticipantResetTests` reads `SettingsView.defaultsKey`, and
 `ComparisonControlDomainsTests` pins the Vergleichsmodus panel's option
 lists, ranges, steps and "(Vorgabe)" labels against the store through the
-extracted `ComparisonControlDomains`. Its 34 `@State` properties themselves
+extracted `ComparisonControlDomains`. Its 35 `@State` properties themselves
 are still untested.
 `StoreFileQuarantine` (data-loss prevention), `CalibrationSessionLogger`
 (corpus capture) and `LetterStars` / `PhaseDotIndicator` **are now
@@ -544,7 +544,7 @@ not be read as current.
 >
 > **First thing a fresh seat will hit on a build: the provenance gate.** With
 > ANY uncommitted change present, the `Primae` scheme's Pre-action
-> (`scripts/check_project_invariants.py`, `gate_provenance()`, `:427-470`)
+> (`scripts/check_project_invariants.py`, `gate_provenance()`, `:472-517`)
 > fails the build outright and prints the offending `git status --porcelain`
 > lines. That is by design — it is the one place `--autofix` is allowed to
 > fail — so **resolve the tree, never bypass the gate.** Untracked files count;
@@ -853,7 +853,7 @@ not be read as current.
 > **SUPERSEDED 2026-10-05 (protocol revision 5) — the steady carrier is
 > REVERSED too.** In a study session the observe sound now TRACKS the
 > animated dot in both sound arms, through the same `ArmCoupling` mapping
-> the pen uses (pitch from y in the spatial arm only). The scripted
+> the pen uses (pitch from y in both sound arms from r26; spatial only r5–r25). The scripted
 > full-range sweep stays out. `docs/DECISIONS.md`, "Reversal 2026-10-05",
 > is the governing text; the paragraph above is the 2026-09-18 record.
 >
@@ -1554,6 +1554,6 @@ Numeric gates filter; visual judgment decides. Don't write prose arguments about
 This applies to: joint construction parameters, arm strategy choice, anchor placement values, curve-fit primitive selection, and any other geometric question where multiple constructions are plausible.
 
 Primitives are registered in `scripts/generate_strokes_auto.py`:
-- `ARM_STRATEGIES`: `chord`, `bfs_raw`, `lsq_line`, `smoothed_medial_axis`
-- `JOINT_STRATEGIES`: `sharp`, `family_a_fillet`, `quadratic_bezier_at_V`, `cubic_bezier_clamped`
-- `DEFAULT_ARM_STRATEGY` / `DEFAULT_JOINT_STRATEGY` control the line-kind default; sweep via per-spec `"arms"` / `"joints"` overrides, not by mutating the defaults.
+- `ARM_STRATEGIES`: `chord`, `bfs_raw`, `lsq_line`, `smoothed_medial_axis`, `straight_line`, `analytical_line_stem`
+- `JOINT_STRATEGIES`: `sharp`, `family_a_fillet`, `quadratic_bezier_at_V`, `cubic_bezier_clamped`, `sharp_meeting`, `sharp_meeting_at_intersection`, `fillet_at_intersection`
+- `DEFAULT_ARM_STRATEGY` / `DEFAULT_JOINT_STRATEGY` (`smoothed_medial_axis` / `cubic_bezier_clamped`) control the line-kind default; sweep via per-spec `"arms"` / `"joints"` overrides, not by mutating the defaults.

@@ -20,6 +20,8 @@ The visual identity — paper not glass, blue ghost / green child ink / amber gu
 
 ## Features
 
+> **Study build.** `STUDY_BUILD` is unconditional, so the build this repo ships carries the Schule world only. The list below describes the paused casual build.
+
 ### For the child
 - **Three-phase pipeline per letter** — *observe* → *guided* → *freeWrite*
 - **Three child-facing worlds** — Schule (guided tracing), Werkstatt (freeform writing), Fortschritte (stars + streak)

@@ -105,7 +105,8 @@ strongly with the reference's asymmetry profile (Threshold 1,
 below).
 
 **Enforced by**
-- *Reference comparison.* Pending Phase 2b Track B / G1 — Pearson
+- *Reference comparison.* Enforced via G1 in `bake-gates.yml`
+  (Threshold 1, ≥ 0.2005) — Pearson
   correlation of asymmetry profile vs reference, computed in
   `scripts/audit_invariants.py`. Threshold details in §2.
 - *Construction (today).* `smoothed_medial_axis` arm + Dijkstra-
@@ -133,9 +134,11 @@ maintainer-approved reference at the same letter and stroke. The
 reference is the file at HEAD.
 
 **Enforced by**
-- *Reference comparison.* Pending Phase 2b Track B / G2 — Pearson
-  correlation of turn-angle profile vs reference. Threshold
-  details in §2.
+- *Reference comparison.* G2 — Pearson correlation of turn-angle
+  profile vs reference — was investigated 2026-05-23 and is not
+  viable as a gate on the current corpus
+  (`research_data/phase2b_gates/g2_calibration_run.md`); visual
+  review only.
 - *Visual review (today).* §4 below — the sweep workflow. Direct
   human comparison against the live letter is the ground truth
   that the automated gate approximates.

@@ -18,13 +18,16 @@ that updates `BAKE_INVARIANTS.md` with the derived threshold.
   design proposal: metric shape, reference lookup, threshold
   calibration procedure, edge-case list, implementation outline,
   verification plan.
-- `g1_calibration_run.md` *(arrives with the calibration commit)*
+- `g1_calibration_run.md`
   — fresh-bake-vs-shipped self-Pearson floor across the 37
   bake-controlled letters, mandatory sanity-check on round-1 vs
   round-2 calibrator session pairs (A, W, m), derived production
   threshold, corpus state SHA.
 
-G2-G5 design + calibration docs land here as each gate ships.
+G2-G6 docs now here: `g2_design.md`, `g2_calibration_run.md`,
+`g3_design.md`, `g3_calibration_run.md`, `g3_curved_not_viable.md`,
+`g4_design.md`, `g4_calibration_run.md`, `g5_design.md`,
+`g5_verification.md`, `g6_design.md`, `g6_calibration_run.md`.
 
 `phase2c_design.md` scopes the gate-coverage gaps that Track B
 identified but did not close (G6 mid-stroke attachment, G3-curved,
