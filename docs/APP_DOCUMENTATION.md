@@ -119,7 +119,7 @@ SwiftUI port of the Primae design tokens (see [`design-system/`](../design-syste
 | `OverlayQueueManager.swift` | Serialised FIFO of `CanvasOverlay` cases. Modal overlays carry nil duration (wait for explicit dismiss). `enqueueBeforeCelebration` interrupts an already-active celebration or paperTransfer to slot a late-arriving recognition badge ahead of it (C-4 + W-25). |
 | `AudioControlling.swift` | Protocol seam for the audio engine. |
 | `PlaybackStateMachine.swift` | Pure FSM idle ↔ active. |
-| `AudioEngine.swift` | ⚠️ **STABLE & FRAGILE** — do NOT modify. AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. From r17 the host of the live sonification voice (§7.1a); the child hears `Core/Sonification/`, not its player. |
+| `AudioEngine.swift` | ⚠️ **STABLE & FRAGILE** — change only under the careful-change procedure in `CLAUDE.md` ("DO NOT"). AVAudioEngine + AVAudioUnitTimePitch for time-stretching playback. Lifecycle observers via `nonisolated(unsafe)` static dict. From r17 the host of the live sonification voice (§7.1a); the child hears `Core/Sonification/`, not its player. |
 | `SpeechSynthesizer.swift` | German `AVSpeechSynthesizer` wrapper. `ChildSpeechLibrary` centralises every TTS phrase. |
 | `StrokeTracker.swift` | Checkpoint proximity tracker. Owns `progress[]` + `radiusMultiplier`. |
 | `HapticEngine.swift` | Protocol + `CoreHapticsEngine` + `UIKitHapticEngine` fallback + `NullHapticEngine` for tests. |
@@ -1771,7 +1771,7 @@ were lost from the one file an analyst re-derives from.
 
 ## 7. Audio system
 
-### 7.1 AudioEngine architecture (DOCUMENT, do NOT modify)
+### 7.1 AudioEngine architecture (stable and fragile)
 
 `Core/AudioEngine.swift` (734 lines at r27). Implements `AudioControlling`.
 
