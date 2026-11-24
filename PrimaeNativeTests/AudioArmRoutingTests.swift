@@ -10,6 +10,7 @@
 import Testing
 import Foundation
 import CoreGraphics
+import UIKit
 @testable import PrimaeNative
 
 @MainActor
@@ -451,6 +452,41 @@ fileprivate final class RecordingAudio: AudioControlling {
         let vm = makeVM(arm: .phoneme, phonemeToggle: true, studyMode: false, audio: audio)
         let loadsBefore = audio.loadedFiles.count
         vm.replayAudio()
+        #expect(audio.loadedFiles.count == loadsBefore + 1)
+    }
+
+    // U5: the Pencil squeeze / double-tap entry, end to end through the VM.
+    @Test("study mode: Pencil squeeze and double-tap load nothing")
+    func study_pencilGesturesAreInert() {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .phoneme, phonemeToggle: true, studyMode: true, audio: audio)
+        let loadsBefore = audio.loadedFiles.count
+        for phase in [UIPencilInteraction.Phase.began, .changed, .ended] {
+            vm.handlePencilGesture(.squeeze(phase), preferredAction: .switchEraser)
+        }
+        vm.handlePencilGesture(.tap, preferredAction: .switchEraser)
+        #expect(audio.loadedFiles.count == loadsBefore)
+    }
+
+    @Test("non-study: one squeeze replays once")
+    func nonStudy_oneSqueezeReplaysOnce() {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .phoneme, phonemeToggle: true, studyMode: false, audio: audio)
+        let loadsBefore = audio.loadedFiles.count
+        for phase in [UIPencilInteraction.Phase.began, .changed, .changed, .ended] {
+            vm.handlePencilGesture(.squeeze(phase), preferredAction: .switchEraser)
+        }
+        #expect(audio.loadedFiles.count == loadsBefore + 1)
+    }
+
+    @Test("non-study: a squeeze and a finger replay in rapid succession replay once")
+    func nonStudy_squeezeThenFingerReplayDoesNotDoubleFire() {
+        let audio = RecordingAudio()
+        let vm = makeVM(arm: .phoneme, phonemeToggle: true, studyMode: false, audio: audio)
+        let loadsBefore = audio.loadedFiles.count
+        vm.handlePencilGesture(.squeeze(.ended), preferredAction: .switchEraser)
+        vm.replayAudio()   // the finger path (VoiceOver action / retrieval prompt)
+        vm.handlePencilGesture(.tap, preferredAction: .switchEraser)
         #expect(audio.loadedFiles.count == loadsBefore + 1)
     }
 

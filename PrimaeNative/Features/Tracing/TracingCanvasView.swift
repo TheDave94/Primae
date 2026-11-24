@@ -458,7 +458,11 @@ struct TracingCanvasView: View {
                     },
                     onEnded:  { vm.endTouch(fromPencil: true) },
                     onCancelled: { vm.cancelTouch(fromPencil: true) },
-                    onPencilSqueeze: { vm.replayAudio() }
+                    onPencilGesture: { gesture in
+                        vm.handlePencilGesture(
+                            gesture,
+                            preferredAction: PencilReplayGate.preferredAction(for: gesture))
+                    }
                 )
                 // Suspend tracing during calibration so a drag doesn't
                 // fire proximity audio on the underlying tracker.
@@ -1273,13 +1277,13 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
     let onEnded:  () -> Void
     /// `touchesCancelled` — the system took the pencil touch (R-024).
     let onCancelled: () -> Void
-    /// Apple Pencil 2 squeeze handler — replays letter audio.
-    /// nil on devices without `UIPencilInteraction`.
-    let onPencilSqueeze: (() -> Void)?
+    /// Apple Pencil double-tap AND squeeze (U5) — both routed here, then
+    /// through `PencilReplayGate`, which replays the letter audio.
+    let onPencilGesture: ((PencilReplayGate.Gesture) -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(onBegan: onBegan, onMoved: onMoved, onEnded: onEnded,
-                    onCancelled: onCancelled, onPencilSqueeze: onPencilSqueeze)
+                    onCancelled: onCancelled, onPencilGesture: onPencilGesture)
     }
 
     func makeUIView(context: Context) -> TouchTrackingView {
@@ -1300,26 +1304,34 @@ private struct PencilAwareCanvasOverlay: UIViewRepresentable {
         let onMoved: (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void
         let onEnded: () -> Void
         let onCancelled: () -> Void
-        let onPencilSqueeze: (() -> Void)?
+        let onPencilGesture: ((PencilReplayGate.Gesture) -> Void)?
         init(onBegan: @escaping (CGPoint, CFTimeInterval, CGFloat) -> Void,
              onMoved: @escaping (CGPoint, CFTimeInterval, CGFloat, CGFloat, CGSize) -> Void,
              onEnded: @escaping () -> Void,
              onCancelled: @escaping () -> Void,
-             onPencilSqueeze: (() -> Void)?) {
+             onPencilGesture: ((PencilReplayGate.Gesture) -> Void)?) {
             self.onBegan = onBegan
             self.onMoved = onMoved
             self.onEnded = onEnded
             self.onCancelled = onCancelled
-            self.onPencilSqueeze = onPencilSqueeze
+            self.onPencilGesture = onPencilGesture
         }
 
-        // Pencil 2 double-tap maps to the same "replay audio" intent
-        // as the squeeze so either gesture produces the same outcome.
+        // Double-tap and squeeze (U5) both go through the ONE closure, so
+        // the gesture -> replay decision (`PencilReplayGate`: preferred
+        // action, squeeze phase, study mode) cannot diverge between them.
         // `pencilInteraction(_:didReceiveTap:)` replaces the deprecated
         // `pencilInteractionDidTap(_:)` (iOS 17.5+; the deploy target is 27).
         func pencilInteraction(_ interaction: UIPencilInteraction,
                                didReceiveTap tap: UIPencilInteraction.Tap) {
-            onPencilSqueeze?()
+            onPencilGesture?(.tap)
+        }
+
+        // Apple Pencil Pro squeeze. Delivered once per phase; the gate
+        // acts on `.ended` only, so one squeeze fires once.
+        func pencilInteraction(_ interaction: UIPencilInteraction,
+                               didReceiveSqueeze squeeze: UIPencilInteraction.Squeeze) {
+            onPencilGesture?(.squeeze(squeeze.phase))
         }
     }
 

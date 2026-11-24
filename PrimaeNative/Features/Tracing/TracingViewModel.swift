@@ -1930,7 +1930,21 @@ public final class TracingViewModel {
         audio.loadAudioFile(named: files[audioIndex], autoplay: false)
     }
 
-    func replayAudio() {
+    /// U5: shared by every replay entry so a squeeze plus a finger tap (or a
+    /// squeeze plus a double-tap) in rapid succession replays once.
+    @ObservationIgnored var replayDebounce = ReplayDebounce()
+
+    /// U5: the Apple Pencil double-tap AND squeeze both land here, through
+    /// one decision (`PencilReplayGate`), so the two cannot diverge.
+    func handlePencilGesture(_ gesture: PencilReplayGate.Gesture,
+                             preferredAction: UIPencilPreferredAction) {
+        guard PencilReplayGate.shouldReplay(gesture,
+                                            preferredAction: preferredAction,
+                                            studyMode: studyMode) else { return }
+        replayAudio()
+    }
+
+    func replayAudio(now: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         // Study sessions: no on-demand replay. The arm's sound reaches
         // the child ONLY through the trace coupling (thesis Ch.4) and
         // the observe demonstration — the whole-observe sound (P4), or
@@ -1946,6 +1960,8 @@ public final class TracingViewModel {
         // sound-off gate it also cited was lifted 2026-10-02 (#27) and
         // is no longer a reason.
         guard !studyMode else { return }
+        // U5: one replay per burst across all entries (see ReplayDebounce).
+        guard replayDebounce.admit(now: now) else { return }
         // Reloads and autoplays the active cell's letter audio.
         // Silence is acceptable for letters without audio assets.
         let activeLetter = gridCellLetter(at: gridActiveCellIndex)

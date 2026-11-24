@@ -2381,6 +2381,28 @@ Four questions carried since the 2026-05-25 migration of `docs/RENDERING.md`. Ea
   - *Why not fade inside guided.* It would add a scaffold schedule with weaker evidence than the memory phases the session already has, change the guided stimulus for every arm, and make the guided phase's own completion depend on how much glyph was left when the child traced.
   - No code change, no protocol change.
 
+## U5 — Apple Pencil squeeze plays nothing in a study session (ruled 2026-11-24 by the supervisor seat; no protocol bump)
+
+The Pencil squeeze is now wired (`pencilInteraction(_:didReceiveSqueeze:)`
+in `TracingCanvasView.swift`) next to the double-tap, and both go through one
+decision, `PencilReplayGate` (`PencilReplayGate.swift`): a squeeze acts only
+on `.ended`, each gesture respects its own system preference (`.ignore` and
+`.runSystemShortcut` do nothing), and every replay entry shares one 0.5 s
+debounce (`ReplayDebounce`), so a squeeze and a finger tap in quick
+succession replay once.
+
+**In a study build the squeeze, like the double-tap, plays nothing.**
+`TracingViewModel.replayAudio()` stays a no-op under `studyMode`, and the gate
+refuses first. An on-demand replay would give a child extra, child-controlled
+audio exposure that differs across children and arms (the silent arm has no
+file to replay), which the design does not describe. This is the same
+reasoning as the 2026-09-04 `replayAudio` gate; nothing a child hears in a
+study session changes, so there is no protocol revision.
+
+What remains is a hands-on check on the iPad with a squeeze-capable Pencil
+(Apple Pencil Pro): the system delivers the squeeze, a non-study build
+replays once per squeeze, and a study build stays silent (ROADMAP U5).
+
 ## Related separate workstreams (not the Primae freeze)
 
 **Listening study — a SEPARATE app David will build.** Not a Primae mode. Tests non-phoneme sounds; out of scope for the Primae freeze.
@@ -2403,7 +2425,7 @@ Four questions carried since the 2026-05-25 migration of `docs/RENDERING.md`. Ea
 - Consent/assent UX (governance).
 - Listening study (separate app, above).
 - Post-thesis features (F1–F10, gated on thesis ship per ROADMAP).
-- U5 Pencil-2 squeeze device validation (P3), U10 VoiceOver walkthrough (P3) — pre-existing P3, not pilot-blocking.
+- U5 Pencil squeeze device validation (P3; squeeze wired and study no-op by design since 2026-11-24, see "U5" above), U10 VoiceOver walkthrough (P3) — pre-existing P3, not pilot-blocking.
 
 ---
 
