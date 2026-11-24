@@ -38,6 +38,14 @@ final class RealTracingUITests: XCTestCase {
         runTrainingSession(arm: "spatial")
     }
 
+    /// The silent arm traces through the same touch path (ROADMAP D9
+    /// question 2 moved the device of every move into the overlays), so a
+    /// real trace must complete there too.
+    @MainActor
+    func testSilentArmTracesAllFiveStudyLetters() {
+        runTrainingSession(arm: "silent")
+    }
+
     /// NEGATIVE CONTROL. The straight two-point drag every UI test used to
     /// draw (StudyDryRunUITests' old `drawFreeWriteStroke`) must NOT
     /// complete the guided phase. Then the real trace, on the same letter,

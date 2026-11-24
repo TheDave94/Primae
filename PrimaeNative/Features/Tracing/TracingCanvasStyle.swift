@@ -44,6 +44,54 @@ nonisolated enum TracingCanvasStyle {
     /// the glyph. On the paper the casing is invisible (same colour).
     static let inkCasingPerSide: CGFloat = 3
 
+    // MARK: Ink widths (ROADMAP D9 question 1, decided 2026-11-24)
+
+    /// Ink widths are ABSOLUTE, in points, not scaled to the canvas or the
+    /// letter (`docs/BAKE_INVARIANTS.md` §5.3: a pen leaves a mark of
+    /// the same width whatever size the child writes; the study runs on one
+    /// iPad model, where 1 pt = 0.19 mm). The device switch is HARD and per
+    /// stroke: a stroke has one device for its whole life, fixed at
+    /// touch-down (`TouchDispatcher`, D9 question 2), so a crossfade would
+    /// have nothing to blend. Values unchanged from r27; see
+    /// `docs/DECISIONS.md`, "Renderer architecture (ROADMAP D9)".
+    ///
+    /// Finger: 14 pt (2.7 mm), no pressure.
+    static let fingerInkWidth: CGFloat = 14
+    /// Pencil: 8 pt + 14 pt x normalised force, 8-22 pt (1.5-4.2 mm).
+    static let pencilInkBaseWidth: CGFloat = 8
+    static let pencilInkPressureGain: CGFloat = 14
+    /// Ink kept on a finished cell of a multi-cell layout.
+    static let retainedInkWidth: CGFloat = 12
+    /// The just-finished trace held on screen after a phase transition.
+    static let lingeringInkWidth: CGFloat = 14
+
+    /// Every ink width the canvas strokes, as ONE value it is handed
+    /// (`TracingViewModel.CanvasDrawPlan.ink`) and replays without a
+    /// literal of its own (CLAUDE.md, Test Infrastructure 3).
+    struct InkWidths: Equatable {
+        /// The stroke under the pen now: finger width, or the Pencil's
+        /// pressure width.
+        let live: CGFloat
+        /// Free-writing strokes already lifted (single-cell study layout).
+        /// Finger width whatever device drew them: what stays on screen is
+        /// the record the scorer reads, not the pressure trace.
+        let completedFreeWrite: CGFloat
+        let retained: CGFloat
+        let lingering: CGFloat
+    }
+
+    /// Finger width without a pressure; the Pencil's pressure width with one.
+    static func inkWidth(forPressure pressure: CGFloat?) -> CGFloat {
+        pressure.map { pencilInkBaseWidth + $0 * pencilInkPressureGain } ?? fingerInkWidth
+    }
+
+    static func inkWidths(livePressure: CGFloat?) -> InkWidths {
+        InkWidths(live: inkWidth(forPressure: livePressure),
+                  completedFreeWrite: inkWidth(forPressure: nil),
+                  retained: retainedInkWidth,
+                  lingering: lingeringInkWidth)
+    }
+
     // MARK: Stroke start dots (audit finding 6)
 
     enum StartDotState: Equatable {

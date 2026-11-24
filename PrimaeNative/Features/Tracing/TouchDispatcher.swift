@@ -243,13 +243,21 @@ final class TouchDispatcher {
         }
     }
 
-    func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
+    func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize, fromPencil: Bool? = nil) {
         guard let vm else { return }
-        // The Pencil overlay stamps `pencilPressure` before every move; the
-        // finger overlay never does. A move from the device that does not
-        // own this session is dropped (and a stray pencil stamp cleared) so
-        // a resting hand and the pen cannot interleave into one stroke.
-        let eventIsPencil = vm.pencilPressure != nil
+        // A stroke's device is fixed at touch-down (`sessionIsPencil`) for
+        // its whole life (ROADMAP D9 question 2, protocol r28). A move from
+        // the device that does not own this session is dropped (and a stray
+        // pencil stamp cleared) so a resting hand and the pen cannot
+        // interleave into one stroke.
+        //
+        // The device is the one the overlay names (`fromPencil`). Before r28
+        // it was inferred from the Pencil's pressure stamp alone, which the
+        // Pencil's own moves leave set until its lift: a finger moving while
+        // the Pencil was down read as the Pencil and joined the Pencil's
+        // stroke (ink, tracker and free-writing record). Nil keeps the
+        // inference for callers that do not say.
+        let eventIsPencil = fromPencil ?? (vm.pencilPressure != nil)
         if eventIsPencil != sessionIsPencil {
             if !sessionIsPencil { vm.pencilPressure = nil; vm.pencilAzimuth = 0 }
             return

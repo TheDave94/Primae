@@ -660,17 +660,33 @@ uniform sampling must resample first.
 
 ### 5.4 Scoring is separate from rendering
 
-What "correct trace" means depends on input device.
+What "correct trace" means does NOT depend on input device
+(ROADMAP D9 Q3, 2026-11-24; `docs/DECISIONS.md`, "Renderer
+architecture (ROADMAP D9)", Q3).
 
-- **Finger.** Lenient. Glyph-containment scoring: the finger mark
-  stays within the display band. Drift within the band is fine —
-  finger touches are exploratory.
-- **Pencil.** Precise. Centerline-distance scoring: pencil-tip
-  distance to the polyline centerline, with tolerance ~50% of
-  the display band's half-width. Outside that tolerance counts
-  as off-track.
+- **One tolerance for finger and Pencil.** `StrokeTracker`'s hit
+  radius is `checkpointRadius` (0.1 x glyph height in every
+  Regular letter) x `radiusMultiplier` (1.0 in a study session),
+  with no device input; the sound gate scales the same radius by
+  `soundGateRadiusFactor`. The free-writing primary outcome (D8,
+  spatial deviation by stroke correspondence) is a distance from
+  the trace and does not use the radius at all.
+- **Why no split.** The device is the child's choice, not
+  randomised or balanced across arms, so a device-dependent
+  radius would make guided difficulty and sound delivery depend
+  on the device within each arm. The earlier recipe here (Pencil
+  tolerance ~50% of the display band's half-width) gives 1.5 pt
+  (0.3 mm) against the 6 pt ghost line, far below what a
+  five-year-old holds a pen to, and no child data exists to
+  derive a better one.
+- **What is device-dependent.** The ink width (§5.3; finger 14 pt,
+  Pencil 8 + 14 x pressure), and the free-writing score's
+  pressure-control dimension (`FreeWriteScorer`: force variance
+  for Pencil, 1.0 for finger). `inputDevice` is exported on every
+  row, so device can be a covariate after the pilot; any split is
+  derived from those rows as a new protocol revision.
 
-The polyline supports both scoring modes without modification.
+The polyline is the same reference for every device.
 
 ### 5.5 Calibrator vs gameplay
 

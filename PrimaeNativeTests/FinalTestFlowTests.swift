@@ -388,10 +388,10 @@ final class FinalTestRig {
         #expect(S.configuration(in: box.defaults).glimpseSeconds == S.glimpseSecondsDefault)
     }
 
-    @Test("the protocol is at revision 27, and the newest history entry says what r27 changed")
+    @Test("the protocol is at revision 27 or later, and the r27 history entry says what r27 changed")
     func revision27() throws {
-        #expect(StudyProtocol.revision == 27)
-        let last = try #require(StudyProtocol.history.last)
+        #expect(StudyProtocol.revision >= 27)
+        let last = try #require(StudyProtocol.history.first { $0.revision == 27 })
         #expect(last.revision == 27)
         #expect(last.childFacingChange.localizedCaseInsensitiveContains("final test")
                 || last.childFacingChange.localizedCaseInsensitiveContains("Abschlusstest"),

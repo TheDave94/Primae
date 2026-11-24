@@ -7,9 +7,10 @@ import CoreText
 /// renderer's actual formula — the pressure tests used to assert
 /// arithmetic written in the test file (audit 2026-09-04).
 enum InkStyle {
-    /// 14 pt for a finger (no pressure); 8 pt + 14 pt·pressure for a Pencil.
+    /// 14 pt for a finger (no pressure); 8 pt + 14 pt·pressure for a Pencil
+    /// (`TracingCanvasStyle`, "Ink widths").
     static func width(forPressure pressure: CGFloat?) -> CGFloat {
-        pressure.map { 8 + $0 * 14 } ?? 14
+        TracingCanvasStyle.inkWidth(forPressure: pressure)
     }
 }
 
@@ -205,7 +206,7 @@ struct TracingCanvasView: View {
                 if retainedInk.count > 1 {
                     var path = Path()
                     path.addLines(retainedInk)
-                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.9), width: 12))
+                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.9), width: plan.ink.retained))
                 }
 
                 // Active ink — only drawn on the active cell pass so
@@ -214,8 +215,7 @@ struct TracingCanvasView: View {
                 if isActiveCell, vm.activePath.count > 1 {
                     var path = Path()
                     path.addLines(vm.activePath)
-                    let inkWidth = InkStyle.width(forPressure: vm.pencilPressure)
-                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke, width: inkWidth))
+                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke, width: plan.ink.live))
                 }
 
                 // Lingering ink — snapshot of the just-completed trace
@@ -244,13 +244,13 @@ struct TracingCanvasView: View {
                         inked.addLines(Array(pts[startIdx..<endIdx]))
                     }
                     inkLayers.append(InkLayer(path: inked, color: .canvasInkStroke,
-                                              width: InkStyle.width(forPressure: nil)))
+                                              width: plan.ink.completedFreeWrite))
                 }
 
                 if isActiveCell, vm.lingeringInk.count > 1 {
                     var path = Path()
                     path.addLines(vm.lingeringInk)
-                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.85), width: 14))
+                    inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.85), width: plan.ink.lingering))
                 }
                 // The final test's pause, intro and end draw no ink
                 // (`FinalTestRules.showsInk`): the buffers still hold the
@@ -432,7 +432,7 @@ struct TracingCanvasView: View {
                         vm.fingerDidTouchDown()
                         vm.beginTouch(at: pt, t: t)
                     },
-                    onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size) },
+                    onSingleTouchMoved:  { pt, t, size in vm.updateTouch(at: pt, t: t, canvasSize: size, fromPencil: false) },
                     onSingleTouchEnded:  { vm.endTouch(fromPencil: false) },
                     // A system cancel is not a lift (R-024).
                     onSingleTouchCancelled: { vm.cancelTouch(fromPencil: false) },
@@ -454,7 +454,7 @@ struct TracingCanvasView: View {
                     onMoved:  { pt, t, pressure, azimuth, size in
                         vm.pencilPressure = pressure
                         vm.pencilAzimuth  = azimuth
-                        vm.updateTouch(at: pt, t: t, canvasSize: size)
+                        vm.updateTouch(at: pt, t: t, canvasSize: size, fromPencil: true)
                     },
                     onEnded:  { vm.endTouch(fromPencil: true) },
                     onCancelled: { vm.cancelTouch(fromPencil: true) },

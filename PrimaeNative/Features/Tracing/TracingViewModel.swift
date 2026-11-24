@@ -440,6 +440,9 @@ public final class TracingViewModel {
         /// replays, not literals it holds: a `.canvasGhost.opacity(0.35)`
         /// typed back into the view would not be this value.
         var ghost: TracingCanvasStyle.GhostStroke
+        /// Every ink width the canvas strokes (ROADMAP D9 question 1):
+        /// absolute points, the live stroke at its device's width.
+        var ink: TracingCanvasStyle.InkWidths = TracingCanvasStyle.inkWidths(livePressure: nil)
     }
 
     var canvasDrawPlan: CanvasDrawPlan {
@@ -458,7 +461,8 @@ public final class TracingViewModel {
             showsStartDots: showCheckpoints && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
             showsEndpointRing: showEndpointRing && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
             showsInk: FinalTestRules.showsInk(finalTestStage),
-            ghost: TracingCanvasStyle.ghostStroke
+            ghost: TracingCanvasStyle.ghostStroke,
+            ink: TracingCanvasStyle.inkWidths(livePressure: pencilPressure)
         )
     }
 
@@ -2804,11 +2808,13 @@ public final class TracingViewModel {
         ParticipantStore.markCurrentParticipantActive()
     }
 
-    func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize) {
+    /// `fromPencil`: the device that sent this move (the overlays pass it;
+    /// nil infers it from the Pencil's pressure stamp, as before r28).
+    func updateTouch(at p: CGPoint, t: CFTimeInterval, canvasSize: CGSize, fromPencil: Bool? = nil) {
         #if DEBUG || POPCAP
         PopCapture.armed?.event("touch.moved", "x=\(Int(p.x)) y=\(Int(p.y))")
         #endif
-        touchDispatcher.updateTouch(at: p, t: t, canvasSize: canvasSize)
+        touchDispatcher.updateTouch(at: p, t: t, canvasSize: canvasSize, fromPencil: fromPencil)
     }
 
     /// Test-only dispatcher state inspection.
