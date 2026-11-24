@@ -1503,14 +1503,16 @@ reproducible artefact, and the thesis will be asked which one built it.
 
 This repo has exactly one credential surface: the `ELEVENLABS_API_KEY` used by `scripts/generate_letter_audio.py` and `scripts/generate_prompts.py`. **No `.env.local`** — the key is entered manually each session, not persisted. The rationale is workflow-shaped: audio generation is a deliberate, paid, low-frequency act ("I am consciously about to spend money") and removing the manual gate would dull that signal.
 
-**Preferred entry pattern** (avoids bash-history leak):
+**Preferred entry pattern** (avoids a shell-history leak). zsh, the macOS default shell:
 
-```bash
-read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
+```zsh
+read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: " && export ELEVENLABS_API_KEY
 python3 scripts/generate_letter_audio.py …
 ```
 
-`read -s` suppresses terminal echo; the value enters the shell as an env var without ever landing in `~/.bash_history`. Do **not** use the older `export ELEVENLABS_API_KEY=…<value>…` pattern — that writes the literal value into history, where it persists until rotation.
+In bash the same line is `read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY`. Do not use that form in zsh: there `-p` reads from a coprocess and fails with `read: -p: no coprocess` (David's run, 2026-11-23).
+
+`read -s` suppresses terminal echo; the value enters the shell as an env var without ever landing in the shell history (`~/.zsh_history` / `~/.bash_history`). Do **not** use the older `export ELEVENLABS_API_KEY=…<value>…` pattern — that writes the literal value into history, where it persists until rotation.
 
 **Rotation.** The ElevenLabs key is manual, not on disk: rotate it in the ElevenLabs dashboard. (The runbook that used to cover it, `/opt/autocoder/ROTATION_RUNBOOK.md`, lived on claudebox and is not on this Mac.) If a session inadvertently used the `export FOO=…` antipattern, rotate the key.
 

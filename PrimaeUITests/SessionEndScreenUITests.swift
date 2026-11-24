@@ -4,12 +4,18 @@
 // 2026-11-04 (David's rulings: the A's left stroke goes UP, and a separate
 // visual end screen follows the third letter).
 //
-//  - testEndScreenAppearsOnlyAfterThirdLetter: a child's three-letter
-//    training session, every letter drawn along its real strokes
-//    (`LetterTracer`). The end screen (`sessionEndScreen`) must be absent
-//    after letters 1 and 2, present after letter 3, and gone once the
-//    proctor enrols the next child with the rail double-tap. Screenshots of
-//    the start, the middle and the resting state are attached.
+//  - testEndScreenAppearsOnlyAfterFinalTest: a child's whole r27 session,
+//    every letter drawn along its real strokes (`LetterTracer`, via
+//    `StudySessionFlow`): three training letters, the bubble pause, the
+//    final test. The end screen (`sessionEndScreen`) must be absent after
+//    every training letter, during the pause and during the final test
+//    (protocol r27: it follows the test, no longer the third training
+//    letter), present after the last test letter's check, and gone once
+//    the proctor enrols the next child with the rail double-tap.
+//    Screenshots of the start, the middle and the resting state are
+//    attached. It does not assert what else is on screen while the end
+//    screen fades in (the practice chrome coming back is a known r27
+//    defect, fixed and pinned on another branch).
 //  - testCaptureLetterAObserveAndGuided: reaches the A through the chevrons
 //    and attaches a burst of observe-animation frames and the guided start
 //    dot, for the visual review of the new stroke direction.
@@ -31,37 +37,25 @@ final class SessionEndScreenUITests: XCTestCase {
     private let subset = "AFI"
 
     @MainActor
-    func testEndScreenAppearsOnlyAfterThirdLetter() {
+    func testEndScreenAppearsOnlyAfterFinalTest() {
         let app = launchAndEnrol(arm: "silent")
         let endScreen = app.descendants(matching: .any)["sessionEndScreen"]
-        var traced: [String] = []
 
-        for round in 1...3 {
-            var last: TracingHookSnapshot?
-            guard let guided = LetterTracer.waitForSnapshot(app, timeout: 60, last: &last, where: {
-                $0.phase == "guided" && !$0.strokes.isEmpty && !$0.blocked && !traced.contains($0.letter)
-            }) else {
-                return XCTFail("letter \(round) never reached guided after \(traced): \(last?.summary ?? "no hook")")
-            }
-            let letter = guided.letter
-            Thread.sleep(forTimeInterval: 1.0)
-            LetterTracer.traceLetter(guided, in: app)
-            guard let fw = LetterTracer.waitForSnapshot(app, timeout: 8, last: &last, where: {
-                $0.letter == letter && $0.phase == "freeWrite" && $0.checkpointsHit == 0
-            }) else {
-                return XCTFail("\(letter): guided did not advance to freeWrite: \(last?.summary ?? "no hook")")
-            }
-            Thread.sleep(forTimeInterval: 1.0)
-            LetterTracer.traceLetter(fw, in: app)
-            _ = LetterTracer.waitForCompletion(app, letter: letter, probe: nil)
-            traced.append(letter)
-            if round < 3 {
-                XCTAssertFalse(endScreen.exists, "the end screen must not appear after letter \(round) of 3 (\(letter))")
-            }
-        }
+        guard let trained = StudySessionFlow.trainThreeLetters(app, afterLetter: { round, letter in
+            XCTAssertFalse(endScreen.exists, "the end screen must not appear after training letter \(round) of 3 (\(letter))")
+        }) else { return }
+        XCTAssertEqual(trained, ["I", "F", "A"], "the trained set AFI is walked in the study order")
+        // r27: after the third training letter comes the pause, not the end.
+        XCTAssertTrue(app.descendants(matching: .any)["finalTestPause"].waitForExistence(timeout: 15),
+                      "the bubble pause must follow the third training letter")
+        XCTAssertFalse(endScreen.exists, "the end screen must not appear after the third TRAINING letter (r27)")
+        guard StudySessionFlow.waitThroughPause(app) else { return }
+        guard let tested = StudySessionFlow.writeFinalTest(app, expected: trained, whileWriting: { letter in
+            XCTAssertFalse(endScreen.exists, "the end screen must not appear during the final test (\(letter))")
+        }) else { return }
+        XCTAssertEqual(tested.count, 3)
 
-        XCTAssertEqual(traced.count, 3)
-        XCTAssertTrue(endScreen.waitForExistence(timeout: 15), "the end screen must appear after the third letter")
+        XCTAssertTrue(endScreen.waitForExistence(timeout: 15), "the end screen must appear after the last final-test letter")
         // A filmstrip: back-to-back screenshots (~0.2 s apart) cover the whole
         // main animation; the last one is the resting state.
         XCTContext.runActivity(named: "Reduce Motion enabled on this device: \(UIAccessibility.isReduceMotionEnabled)") { _ in }
@@ -139,7 +133,7 @@ final class SessionEndScreenUITests: XCTestCase {
             LetterTracer.launchArgument,
             "-de.flamingistan.primae.audioConditionOverride", arm,
             "-de.flamingistan.primae.trainedSubsetOverride", subset,
-        ]
+        ] + StudySessionFlow.shortTimingArguments
         app.launch()
         let rail = app.descendants(matching: .any)["Navigationsleiste"]
         XCTAssertTrue(rail.waitForExistence(timeout: 15), "the rail must be present")

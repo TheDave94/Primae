@@ -23,6 +23,12 @@ struct TracingCanvasView: View {
             // The draw DECISIONS, resolved in plain Swift by the view model.
             // This closure only replays them — see `CanvasDrawPlan`.
             let plan = vm.canvasDrawPlan
+            #if DEBUG
+            // Test-only: what this frame strokes as ink (inert unless armed).
+            TracingInkDrawProbe.shared.beginFrame(
+                letter: vm.currentLetterName, stage: "\(vm.finalTestStage)",
+                glyph: vm.showsReferenceGlyph)
+            #endif
             // Reserve the bottom band for the calibrator UI so the
             // glyph doesn't render under the translucent UI cards.
             // Reduces the geometry used for cell layout AND the
@@ -246,7 +252,10 @@ struct TracingCanvasView: View {
                     path.addLines(vm.lingeringInk)
                     inkLayers.append(InkLayer(path: path, color: .canvasInkStroke.opacity(0.85), width: 14))
                 }
-                Self.drawInk(inkLayers, in: &context)
+                // The final test's pause, intro and end draw no ink
+                // (`FinalTestRules.showsInk`): the buffers still hold the
+                // last letter's strokes there, and they must not show.
+                if plan.showsInk { Self.drawInk(inkLayers, in: &context) }
 
                 // Animation guide dot — active cell only; suppressed
                 // during calibration so it doesn't scan over edits.
@@ -516,6 +525,9 @@ struct TracingCanvasView: View {
     /// Every casing is drawn before any ink, so a casing never covers ink,
     /// whatever the order of `layers` (audit 2026-11-15 A-1).
     static func drawInk(_ layers: [InkLayer], in context: inout GraphicsContext) {
+        #if DEBUG
+        TracingInkDrawProbe.shared.record(layers.map(\.path))
+        #endif
         for op in inkDrawOps(layers) {
             context.stroke(op.path, with: .color(op.color),
                            style: StrokeStyle(lineWidth: op.width, lineCap: .round, lineJoin: .round))

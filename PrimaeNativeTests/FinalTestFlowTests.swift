@@ -670,7 +670,7 @@ final class FinalTestRig {
         }
 
         #expect(testedInOrder == pool, "tested \(testedInOrder), trained \(pool)")
-        #expect(rig.vm.finalTestStage == .inactive)
+        #expect(rig.vm.finalTestStage == .ended, "the end screen came up over a stage that hands the canvas back to training")
         #expect(rig.prompts.count(.celebration) == 1, "'Super gemacht!' plays once, after the last test letter")
         #expect(rig.vm.awaitingNextParticipant, "the device waits for the next child")
         #expect(rig.vm.sessionEndScreenPresented, "the end screen fires after the final test")

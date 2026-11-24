@@ -15,8 +15,8 @@ import UIKit
     ]
 
     @Test("every PostScript name the helpers produce resolves with UIFont(name:)")
-    func everyProducedNameResolves() {
-        PrimaeFonts.registerAll()
+    func everyProducedNameResolves() async {
+        await PrimaeFonts.registerAll()
         var seen = Set<String>()
         for weight in Self.weights {
             for italic in [false, true] {
@@ -32,8 +32,8 @@ import UIKit
     }
 
     @Test("a name no face carries does not resolve (the probe can fail)")
-    func unknownNameDoesNotResolve() {
-        PrimaeFonts.registerAll()
+    func unknownNameDoesNotResolve() async {
+        await PrimaeFonts.registerAll()
         #expect(UIFont(name: "Primae-Regular", size: 17) == nil)
     }
 }

@@ -71,6 +71,80 @@ import CoreGraphics
                 "freeWrite is 'Selbst schreiben' — the most literal instance of the child writing itself, so it carries the finger. The no-scaffolding rule bars signals contingent on the HIDDEN REFERENCE, and a turn cue carries no information about the letter")
     }
 
+    /// No cue at ANY stage of the r27 final test — writing included. David
+    /// ruled 2026-11-23 that the 👆 pill shown while the child writes the
+    /// test from memory was NOT intended. The session is walked for real
+    /// (`FinalTestRig`), stage by stage, so the stage each assertion reads
+    /// is the one the app is in, not one a test set by hand.
+    @Test("the final test shows no turn cue at any stage: pause, intro, glimpse, writing (before and after ink)")
+    func finalTestShowsNoCue() async {
+        let rig = FinalTestRig()
+        defer { rig.close() }
+        var visited: [FinalTestStage] = []
+        func expectNoCue(_ note: String) {
+            visited.append(rig.vm.finalTestStage)
+            #expect(rig.vm.phaseCue == nil,
+                    "\(rig.vm.finalTestStage) (\(note)) shows the \(String(describing: rig.vm.phaseCue)) cue")
+        }
+
+        // Control: before the test, this same rig shows a cue, so a nil below
+        // is the final test's doing, not a rig that never shows one.
+        #expect(rig.vm.finalTestStage == .inactive)
+        #expect(rig.vm.phaseCue != nil, "control: the rig shows no cue even in training")
+
+        await rig.finishTrainingOfEveryLetter()
+        await rig.clock.waitForRequests(1)
+        #expect(rig.vm.finalTestStage == .pause, "precondition")
+        expectNoCue("pause")
+
+        rig.clock.release(0)
+        await rig.waitUntil { rig.vm.finalTestStage == .intro }
+        #expect(rig.vm.finalTestStage == .intro, "precondition")
+        expectNoCue("intro")
+
+        await rig.clock.waitForRequests(2)
+        rig.clock.release(1)
+        await rig.waitUntil { rig.vm.finalTestStage == .glimpse }
+        #expect(rig.vm.finalTestStage == .glimpse, "precondition")
+        expectNoCue("glimpse")
+
+        await rig.clock.waitForRequests(3)
+        rig.clock.release(2)
+        await rig.waitUntil { rig.vm.finalTestStage == .writing }
+        #expect(rig.vm.finalTestStage == .writing, "precondition")
+        expectNoCue("writing, no ink yet")
+        rig.writeOneStroke()
+        #expect(rig.vm.showsFinalTestCheck, "precondition: the stroke landed")
+        expectNoCue("writing, after the first stroke")
+
+        // On through every remaining test letter to the end screen (`.ended`).
+        let count = rig.vm.visibleLetterNames.count
+        for n in 0..<count {
+            if n > 0 {
+                await rig.clock.waitForRequests(3 + n)
+                rig.clock.release(2 + n)
+                await rig.waitUntil { rig.vm.finalTestStage == .writing }
+                rig.writeOneStroke(t0: 1000 + Double(n) * 10)
+            }
+            rig.vm.finishFinalTestLetterTapped()
+            await rig.waitUntil { rig.vm.isPhaseSessionComplete }
+            rig.vm.advanceAfterCompletedStudyLetter()
+        }
+        #expect(rig.vm.finalTestStage == .ended, "precondition")
+        expectNoCue("ended, the session end screen")
+
+        // Every non-inactive stage was walked. `FinalTestStage` is not
+        // CaseIterable; this exhaustive switch makes a NEW stage a compile
+        // error here until it is added to the walk and to `walked`.
+        func compileGuard(_ stage: FinalTestStage) {
+            switch stage { case .inactive, .pause, .intro, .glimpse, .writing, .ended: break }
+        }
+        let walked: [FinalTestStage] = [.pause, .intro, .glimpse, .writing, .ended]
+        for stage in walked {
+            #expect(visited.contains(stage), "\(stage) was never reached, so its cue was never read")
+        }
+    }
+
     // NO "both cues" TEST EXISTS, deliberately. The defect was the pill
     // rendering eye AND finger at once; `phaseCue` is a single optional
     // value, so "both" is unrepresentable by construction. A test asserting

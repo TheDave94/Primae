@@ -421,7 +421,9 @@ child has a row, and a non-default value is stamped on the rows.
    - **Write:** the glyph hides, **"Und jetzt ganz allein."** plays and
      the child writes from memory on an empty canvas. **No sound in any
      arm** — if you hear the arm's sound here, that is a defect. No
-     feedback, no stars, no retry, no attempt check.
+     feedback, no stars, no retry, no attempt check, and **no blue 👆
+     pill** at the bottom (no turn cue at any final-test stage; David
+     2026-11-23).
    - **The check button** (a large checkmark icon, bottom right) appears
      after the first stroke; the letter ends only when the child taps
      it. The 2 s quiet window does **not** end a test letter. The next

@@ -30,6 +30,12 @@ enum FinalTestStage: Equatable, Sendable {
     case glimpse
     /// The glyph is hidden; the child writes from memory until the check.
     case writing
+    /// The last test letter is recorded and the session end screen is on its
+    /// way up (it fades in over `SessionEndScreenView.lead`). Nothing of the
+    /// practice screen comes back underneath it: no chrome, no scaffolding,
+    /// no ink, no touch. Left only for a new child or a letter load
+    /// (a cold probe), both of which return to `.inactive`.
+    case ended
 }
 
 /// What the final test shows, accepts and ends on, per stage. Plain values.
@@ -49,8 +55,8 @@ enum FinalTestRules {
     /// (the child is to look, not to trace) nor during the pause or the intro.
     static func acceptsTouch(_ stage: FinalTestStage) -> Bool {
         switch stage {
-        case .inactive, .writing:        return true
-        case .pause, .intro, .glimpse:   return false
+        case .inactive, .writing:                return true
+        case .pause, .intro, .glimpse, .ended:   return false
         }
     }
 
@@ -82,9 +88,23 @@ enum FinalTestRules {
     }
 
     /// Whether the stage hides the rest of the chrome (letter pill, phase
-    /// dots, chevrons): from the pause on the child sees the task only.
+    /// dots, chevrons): from the pause on the child sees the task only, and
+    /// through the end (`.ended`) until the end screen covers the canvas.
+    /// The hidden chrome is out of the view tree, so it takes no tap either.
     static func hidesChrome(_ stage: FinalTestStage) -> Bool {
         stage != .inactive
+    }
+
+    /// Whether the canvas draws the child's ink. Not during the pause or the
+    /// intro (the last TRAINING letter's ink is still in the buffers until
+    /// the first test letter loads, and must not show while the test is
+    /// introduced), and not once the test has ended (the end screen fades in
+    /// over an empty task canvas, not over the last test letter).
+    static func showsInk(_ stage: FinalTestStage) -> Bool {
+        switch stage {
+        case .inactive, .glimpse, .writing:   return true
+        case .pause, .intro, .ended:          return false
+        }
     }
 
     /// Whether the whole-screen bubble pause is up.

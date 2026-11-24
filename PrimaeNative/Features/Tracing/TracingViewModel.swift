@@ -392,14 +392,17 @@ public final class TracingViewModel {
     /// supposed to write itself", so excluding it contradicted the rule it
     /// was meant to serve.
     ///
-    /// `nil` means no cue, and after this the only case is calibration —
-    /// suppressed for the same reason the canvas suppresses the guide dot,
-    /// since it would scan over the researcher's own edits.
+    /// `nil` means no cue: during calibration — suppressed for the same
+    /// reason the canvas suppresses the guide dot, since it would scan over
+    /// the researcher's own edits — and at every stage of the r27 final
+    /// test (pause, intro, glimpse AND writing; David 2026-11-23).
     var phaseCue: PhaseCue? {
         guard !isCalibrating else { return nil }
-        // The final test shows the plain glyph and then an empty canvas; the
-        // turn cue only once the child may write (r27).
-        if finalTestStage != .inactive { return finalTestStage == .writing ? .act : nil }
+        // No cue at ANY final-test stage, writing included (David
+        // 2026-11-23: the 👆 pill while writing was not intended). The test
+        // shows the task only - the pause, the plain glyph, then an empty
+        // canvas - so nothing is drawn over it (r27).
+        if finalTestStage != .inactive { return nil }
         switch learningPhase {
         case .observe:              return .watch
         case .direct, .guided, .freeWrite: return .act
@@ -429,6 +432,10 @@ public final class TracingViewModel {
         var showsGhost: Bool
         var showsStartDots: Bool
         var showsEndpointRing: Bool
+        /// Whether the child's ink (live, retained, lingering, free-write) is
+        /// drawn. False only in the final test's pause, intro and end
+        /// (`FinalTestRules.showsInk`).
+        var showsInk: Bool = true
         /// The ghost line's colour, opacity and width. A VALUE the closure
         /// replays, not literals it holds: a `.canvasGhost.opacity(0.35)`
         /// typed back into the view would not be this value.
@@ -450,6 +457,7 @@ public final class TracingViewModel {
                 && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
             showsStartDots: showCheckpoints && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
             showsEndpointRing: showEndpointRing && !isCalibrating && FinalTestRules.showsScaffolding(finalTestStage),
+            showsInk: FinalTestRules.showsInk(finalTestStage),
             ghost: TracingCanvasStyle.ghostStroke
         )
     }
@@ -918,7 +926,15 @@ public final class TracingViewModel {
 
     /// Where the child is in the closing part of the session. `.inactive`
     /// until the last training letter is recorded.
-    private(set) var finalTestStage: FinalTestStage = .inactive
+    private(set) var finalTestStage: FinalTestStage = .inactive {
+        didSet {
+            #if DEBUG
+            // Test-only (inert unless armed): when the MODEL changed stage,
+            // to set against the frames the canvas drew.
+            TracingInkDrawProbe.shared.noteModelStage(letter: currentLetterName, stage: "\(finalTestStage)")
+            #endif
+        }
+    }
     /// The test letters, frozen when the pause begins: the trained letters in
     /// training order (`FinalTestRules.letters`).
     private(set) var finalTestLetters: [String] = []
@@ -4648,6 +4664,9 @@ public final class TracingViewModel {
         // Any letter load (a post-test probe, a proctor jump) ends the
         // end-of-session screen; it is not shown again for this child.
         sessionEndScreenPresented = false
+        // ... and the final test's `.ended` hold with it: a probe opened
+        // after the end is an ordinary letter again (chrome, ink, touch).
+        if finalTestStage == .ended { finalTestStage = .inactive }
         // Set in the observe branch below, acted on after the file reload
         // further down (P4 — see `claimWholeObserveSound` and
         // `armObservePresentationAfterCue`).
@@ -6541,7 +6560,12 @@ extension TracingViewModel {
         finalTestTask?.cancel(); finalTestTask = nil
         finalTestIntroTask?.cancel(); finalTestIntroTask = nil
         clearFinalTestInterruptionHold()
-        finalTestStage = .inactive
+        // `.ended`, not `.inactive`: the end screen fades in over the canvas
+        // (`SessionEndScreenView.lead`), and `.inactive` would hand the
+        // canvas back to training under it: the chrome (and its chevrons)
+        // and the last test letter's ink came back for about 2 s (David's
+        // recording, 2026-11-23). A new child or a letter load leaves it.
+        finalTestStage = .ended
         prompts.play(.celebration, fallbackText: ChildSpeechLibrary.celebration)
         finishSetAwaitingNextParticipant()
         presentSessionEndScreenIfComplete(completingLetter: currentLetterName)
@@ -6598,7 +6622,7 @@ extension TracingViewModel {
             finalTestTask?.cancel(); finalTestTask = nil
             finalTestGlimpseHeld = true
             finalTestGlimpseCut = true
-        case .inactive, .writing:
+        case .inactive, .writing, .ended:
             break
         }
     }
@@ -6618,7 +6642,7 @@ extension TracingViewModel {
             guard finalTestGlimpseHeld else { return }
             if finalTestGlimpseCut { finalTestGlimpseRestarts += 1 }
             beginFinalTestGlimpse()
-        case .inactive, .writing:
+        case .inactive, .writing, .ended:
             break
         }
     }

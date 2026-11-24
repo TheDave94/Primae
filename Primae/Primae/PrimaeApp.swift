@@ -28,11 +28,13 @@ struct PrimaeApp: App {
     /// Stored under `primaeAppearance`: "system" / "light" / "dark".
     @AppStorage(PrimaeAppearance.storageKey) private var appearance: String = "system"
 
+    /// Flips once `PrimaeFonts.registerAll()` has returned. The root view is
+    /// not mounted before that: `CTFontManagerRegisterFontURLs` is
+    /// asynchronous, and a `Font.custom` resolved before it reports done
+    /// silently falls back to the system font (audit R-099).
+    @State private var fontsReady = false
+
     init() {
-        // Register SPM-bundled fonts with CoreText. `UIAppFonts` only
-        // covers main-bundle fonts; the SPM resource bundle needs
-        // `CTFontManagerRegisterFontsForURLs`. Idempotent.
-        PrimaeFonts.registerAll()
         // Delete research-export temp files a previous session left in
         // tmp/ (R-062). Only here, never in a VM init: the test host runs
         // TestApp, and a sweep there would race tests that write exports.
@@ -51,14 +53,30 @@ struct PrimaeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            PrimaeNative.MainAppView()
-                .environment(vm)
-                // Study sessions render the stimulus in light appearance
-                // regardless of the parent-area "Erscheinungsbild" pick:
-                // dark mode changes the letter's and the ink's colours,
-                // and the study configuration is supposed to pin every
-                // setting that could vary between children (2026-09-04).
-                .preferredColorScheme(vm.studyMode ? .light : PrimaeAppearance.resolve(appearance))
+            Group {
+                if fontsReady {
+                    PrimaeNative.MainAppView()
+                        .environment(vm)
+                } else {
+                    // Held for the few milliseconds registration takes;
+                    // nothing that names a Primae face is built yet.
+                    Color.clear
+                }
+            }
+            // Register SPM-bundled fonts with CoreText. `UIAppFonts` only
+            // covers main-bundle fonts; the SPM resource bundle needs
+            // `CTFontManagerRegisterFontURLs`. Idempotent; the first view
+            // is mounted only after this returns.
+            .task {
+                await PrimaeFonts.registerAll()
+                fontsReady = true
+            }
+            // Study sessions render the stimulus in light appearance
+            // regardless of the parent-area "Erscheinungsbild" pick:
+            // dark mode changes the letter's and the ink's colours,
+            // and the study configuration is supposed to pin every
+            // setting that could vary between children (2026-09-04).
+            .preferredColorScheme(vm.studyMode ? .light : PrimaeAppearance.resolve(appearance))
         }
         .onChange(of: scenePhase) { _, newPhase in
             // `.inactive` suspends the session (Control Center, a banner,

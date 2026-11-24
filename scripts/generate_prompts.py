@@ -47,7 +47,8 @@ Re-runs skip files that already exist.
 
 Prereq (enter the key without echo, so it never lands in shell history;
 see CLAUDE.md "Credentials"):
-    read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
+    read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: " && export ELEVENLABS_API_KEY   # zsh
+    read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY   # bash
     pip install requests
 """
 from __future__ import annotations

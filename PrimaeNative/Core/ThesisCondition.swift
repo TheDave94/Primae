@@ -150,9 +150,17 @@ enum ParticipantStore {
     /// When `false`, `TracingDependencies.live` pins the condition to
     /// `.threePhase`.
     static var isEnrolled: Bool {
-        get { UserDefaults.standard.bool(forKey: enrolledKey) }
+        get {
+            #if DEBUG
+            // UI-test instrument only (`StartGateAuditHook`): shows the
+            // blocked-start gate on an enrolled device WITHOUT wiping its
+            // participant. Compiled out of Release-Study.
+            if StartGateAuditHook.isArmed { return false }
+            #endif
+            return UserDefaults.standard.bool(forKey: enrolledKey)
+        }
         set {
-            let wasEnrolled = isEnrolled
+            let wasEnrolled = UserDefaults.standard.bool(forKey: enrolledKey)
             UserDefaults.standard.set(newValue, forKey: enrolledKey)
             // Stamp the enrolment timestamp the first time enrolment
             // flips on. Don't overwrite on toggle-off-then-on or

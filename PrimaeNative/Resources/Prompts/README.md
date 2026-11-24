@@ -34,6 +34,7 @@ Also here: the effect sounds `tap.wav`, `tap_wrong.wav`, `tick_stroke.wav`.
 Generate candidate takes (not part of the build; needs an ElevenLabs key):
 
 ```bash
-read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
+read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: " && export ELEVENLABS_API_KEY   # zsh
+# bash: read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
 python3 scripts/generate_prompts.py --voice Kiki
 ```

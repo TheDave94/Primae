@@ -221,28 +221,81 @@ nonisolated struct SonificationRegressionTests {
 
     // MARK: F loudness (R17 hardening)
 
-    @Test("F (unvoiced) off rate 1: level within 0.5 dB of the source, grain-rate wobble <= 1 dB")
-    func unvoicedLevelHolds() throws {
+    /// Peak-to-trough power ripple (dB) of `region`, folded on `period` output samples into `bins` phase bins.
+    static func foldedWobble(_ y: [Float], _ region: Range<Int>, period: Int, bins: Int = 20) -> Double {
+        var acc = [Double](repeating: 0, count: bins), cnt = [Double](repeating: 0, count: bins)
+        for i in region {
+            let b = ((i - region.lowerBound) % period) * bins / period
+            acc[b] += Double(y[i]) * Double(y[i]); cnt[b] += 1
+        }
+        let p = zip(acc, cnt).map { $0 / $1 }
+        return 10 * log10(p.max()! / p.min()!)
+    }
+
+    /// F wobble: the PHYSICAL bound. An unvoiced source carries no grain-rate periodicity, so a renderer that
+    /// continues it without a seam adds none: <= 1 dB folded on the grain hop (BENCH-P `PitchGates.fWobbleDB`).
+    static let unvoicedWobblePhysicalDB = 1.0
+    /// F wobble of the SHIPPED engine at +-600 c, measured on the physical iPad (Debug-Study, 2026-11-24): 3.19 dB at
+    /// -600 c, 3.16 dB at +600 c (rates 0.5 and 2 identical: the unvoiced read-head ignores the rate, U1).
+    static let unvoicedWobbleShippedDB = 3.19
+    /// Non-regression margin: above the meter's own floor at this fold (white noise reads 0.18-0.20 dB on the iPad)
+    /// so device/simulator float drift cannot trip it, and well under the 1 dB a listener would notice as a new
+    /// regression. The render is deterministic; the margin is for the platform, not for run-to-run noise.
+    static let unvoicedWobbleMarginDB = 0.3
+
+    /// The grain period (output samples, within +-30 of `around`) at which `region` ripples most, and that ripple.
+    static func wobblePeak(_ y: [Float], _ region: Range<Int>, around: Int) -> (period: Int, dB: Double) {
+        (around - 30...around + 30).map { ($0, foldedWobble(y, region, period: $0)) }.max { $0.1 < $1.1 }!
+    }
+
+    /// F (unvoiced) level and grain-rate wobble, at the engine's real grain hop.
+    ///
+    /// The physical bound on the wobble is 1 dB (`unvoicedWobblePhysicalDB`). At 0 c the shipped engine meets it
+    /// (0.48 dB on the iPad) and is held to it. Across the r26 phoneme pitch span (+-600 c) the shipped engine measures
+    /// 3.19 dB on the iPad (`unvoicedWobbleShippedDB`), so there this test is a NON-REGRESSION ceiling (3.19 + 0.3 dB),
+    /// not a quality gate: the physical bound for those cells lives in the pitch bake-off gate (BENCH-P, F wobble),
+    /// where the shipped engine is recorded as failing and the candidates compete. The fix is tracked by that bake-off;
+    /// when a renderer that meets 1 dB ships, this ceiling drops to the physical bound.
+    ///
+    /// The level bound (0.5 dB re source) is held at 0 c only, as before: at +-600 c the shipped engine plays F about
+    /// 1.9 dB under the source (iPad), which is the bake-off's F level gate, not this test's.
+    @Test("F (unvoiced): level within 0.5 dB and wobble <= 1 dB at 0 c; wobble does not regress past the shipped engine at +-600 c")
+    func unvoicedLevelDoesNotRegress() throws {
         let src = try StudySources.load("F_phoneme1")
         let srcRMS = SonificationMetrics.rms(src.samples[Int(0.2 * Self.sr)..<Int(1.8 * Self.sr)])
-        for rate: Float in [0.5, 2] {
-            let y = SonificationDriver.steady(SonificationRendererUnderTest.make(src), seconds: 2.5, rate: rate)
-            let region = y[Int(0.3 * Self.sr)..<Int(2.4 * Self.sr)]
-            let level = SonificationMetrics.dB(SonificationMetrics.rms(region), srcRMS)
-            let bound = 0.5
-            #expect(abs(level) <= bound, "F rate \(rate): level \(level) dB re source (bound \(bound))")
-            // Power folded on the 5 ms WSOLA hop (220 frames), 20 bins.
-            let period = 220, bins = 20
-            var acc = [Double](repeating: 0, count: bins), cnt = [Double](repeating: 0, count: bins)
-            var i = region.startIndex
-            while i < region.endIndex {
-                let b = ((i - region.startIndex) % period) * bins / period
-                acc[b] += Double(y[i]) * Double(y[i]); cnt[b] += 1
-                i += 1
+        let ceiling = Self.unvoicedWobbleShippedDB + Self.unvoicedWobbleMarginDB
+        // r26: the phoneme arm pitches F over +-600 cents (PitchCoupling / PilotAudioCondition), and the unvoiced grain is
+        // read at the pitch ratio, so the span's ends are where the WSOLA continuation is poorest.
+        for cents: Float in [-600, 0, 600] {
+            for rate: Float in [0.5, 2] {
+                let r = SonificationRendererUnderTest.make(src)
+                // The grain rate is the ENGINE's unvoiced hop, read off the analysis the production factory
+                // (`LiveSonificationAudio.makeRenderer`) built: round(5 ms * 44.1 kHz) = 221 output samples, not 220.
+                // Folding one sample off smears the ripple across every phase bin over the ~420 grains in the window
+                // and reads it near zero (iPad, +600 c: 0.40 dB at 220 vs 3.16 dB at 221).
+                let period = r.analysis.unvoicedHop
+                let y = SonificationDriver.steady(r, seconds: 2.5, rate: rate, cents: cents)
+                let region = Int(0.3 * Self.sr)..<Int(2.4 * Self.sr)
+                let wobble = Self.foldedWobble(y, region, period: period)
+                if cents == 0 {
+                    let level = SonificationMetrics.dB(SonificationMetrics.rms(y[region]), srcRMS)
+                    let bound = 0.5
+                    #expect(abs(level) <= bound, "F rate \(rate): level \(level) dB re source (bound \(bound))")
+                    #expect(wobble <= Self.unvoicedWobblePhysicalDB,
+                            "F rate \(rate): grain-rate wobble \(wobble) dB (hop \(period), physical bound \(Self.unvoicedWobblePhysicalDB))")
+                } else {
+                    #expect(wobble <= ceiling,
+                            "F rate \(rate) cents \(cents): grain-rate wobble \(wobble) dB (hop \(period)) regressed past the shipped engine's \(Self.unvoicedWobbleShippedDB) dB + \(Self.unvoicedWobbleMarginDB) dB")
+                }
+                // Instrument check: where the output carries a grain-rate ripple above the physical bound, it must
+                // peak at the period this test folds on. A fold on the wrong period reads the ripple as ~0.4 dB and
+                // would pass any ceiling; this is what makes the hop's derivation load-bearing.
+                let peak = Self.wobblePeak(y, region, around: period)
+                if peak.dB > Self.unvoicedWobblePhysicalDB {
+                    #expect(peak.period == period,
+                            "F rate \(rate) cents \(cents): output ripples at \(peak.period) samples (\(peak.dB) dB), test folds on \(period)")
+                }
             }
-            let p = zip(acc, cnt).map { $0 / $1 }
-            let wobble = 10 * log10(p.max()! / p.min()!)
-            #expect(wobble <= 1.0, "F rate \(rate): grain-rate wobble \(wobble) dB")
         }
     }
 

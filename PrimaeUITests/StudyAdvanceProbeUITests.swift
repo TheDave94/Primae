@@ -177,13 +177,17 @@ final class StudyAdvanceProbeUITests: XCTestCase {
         attach(app, name: "B-01-parent-area")
 
         enrolNewParticipant(app)
-        XCTAssertTrue(waitFor(label: "Vortest starten: A", in: app, timeout: 12),
+        // r27: the probe buttons left the study build; the dashboard's
+        // read-only "Abschlusstest" section stands in their place.
+        XCTAssertTrue(waitFor(label: "Abschlusstest", in: app, timeout: 12),
                       "the research dashboard should be usable after the first enrolment")
+        XCTAssertFalse(element(labelPrefix: "Vortest starten", in: app).exists,
+                       "r27: no probe button may be left in the study build")
         attach(app, name: "B-02-first-participant-dashboard")
 
         // Second enrolment, still no relaunch.
         enrolNewParticipant(app)
-        XCTAssertTrue(waitFor(label: "Vortest starten: A", in: app, timeout: 12),
+        XCTAssertTrue(waitFor(label: "Abschlusstest", in: app, timeout: 12),
                       "the research dashboard should be usable for the SECOND participant without relaunching")
         attach(app, name: "B-03-second-participant-dashboard")
     }
@@ -722,99 +726,86 @@ final class MeasuredAudioUITests: XCTestCase {
     /// ENVIRONMENT, and the test reads it back and asserts on it. The
     /// transfer is the only part that is not a real measurement.
     ///
-    /// RE-SCOPED 2026-10-05 (supervisor ruling, brief 4): this test now
-    /// pins only that a cold PRETEST probe is reached, is not refused, and
-    /// is MEASURED — its `AUDIO-SIGNAL` lines reach the test, tagged with
-    /// the phase a cold probe lands in (`freeWrite`; the probe KIND is not
-    /// in the line). It makes NO claim about sound or silence.
+    /// RE-SCOPED 2026-10-05 (supervisor ruling, brief 4): this test pins
+    /// only that a cold free-writing pass is reached, is not refused, and is
+    /// MEASURED — its `AUDIO-SIGNAL` lines reach the test, tagged with the
+    /// phase it runs in (`freeWrite`; the probe KIND is not in the line). It
+    /// makes NO claim about sound or silence.
     ///
-    /// Why no sound claim. It used to assert silence (`peak == 0`, measured
-    /// on the device before protocol revision 4: `AUDIO-SIGNAL freeWrite
-    /// nonSilent=0 total=20 peak=0.0`). Since r4 (P2, 2026-10-04) a probe's
-    /// writing couples to the arm's sound like every other writing pass, so
-    /// that claim is false in the phoneme arm launched here. Nor can the
-    /// r4 claim (`nonSilent > 0`) be made from this test as it stood: its
-    /// drag ran across the middle of the screen, never near the letter
-    /// path that `StrokeTracker.isNearStroke` gates the sound on. Since
-    /// 2026-10-21 the letter is traced along its real strokes
-    /// (`LetterTracer`), so the gate is now reachable here; a sound
-    /// assertion is deliberately NOT added in the same change (scope:
-    /// lane H changed how the test draws, not what it claims).
+    /// PORTED TO PROTOCOL r27 (2026-11-23). This was the cold PRETEST,
+    /// started from the research dashboard's "Vortest starten: A" button;
+    /// r27 removed every probe button from the study build, so that path no
+    /// longer exists. The one cold writing pass r27 has is the final test
+    /// (Abschlusstest): reached by the child's whole session (three
+    /// training letters, the bubble pause), it opens each trained letter as
+    /// a `finalTest` probe in free writing. The windows are sampled while
+    /// each test letter is being written, after it was drawn along its real
+    /// strokes (`LetterTracer`). A sample counts if it is a different line
+    /// from the one on screen when sampling began, OR if it was read at
+    /// least 2.5 s after sampling began: the ticker closes a window every
+    /// 2 s, so by then the line on screen is a window that closed after the
+    /// letter was written. String novelty alone is not enough (measured on
+    /// the iPad, 2026-11-23): the line carries no window counter, so two
+    /// silent windows print byte-identical lines (`nonSilent=0 total=N
+    /// peak=0.0`), and the first test letter's windows were all rejected
+    /// as "not new" although the ticker was running.
     ///
-    /// SINCE PROTOCOL r12 (David 2026-10-21, "probes silent") a cold probe
-    /// is SILENT in every arm, so the pre-r4 reading (`peak == 0`) is the
-    /// expected one again; it is still NOT asserted here (scope: lane J
-    /// changed the gate, not what this device test claims). The r12 probe
-    /// silence is pinned at unit level by
-    /// `ProtocolMatrixTests.coldProbesAreSilentInTheSoundArms` (pretest /
-    /// post-test / delayed, both sound arms).
-    ///
-    /// WHAT THIS DOES NOT COVER, stated plainly: any sound claim, and the
-    /// freeWrite pass of a normal SESSION (the proctor's original
-    /// complaint). Reaching the latter needs a full observe -> direct ->
-    /// guided walk, which depends on per-phase entry gestures and would
-    /// break whenever one changes.
-    func testColdPretestProbeIsMeasuredAndTagged() {
+    /// Why still no sound claim: r27 makes the final test silent in every
+    /// arm, and that is pinned at unit level by `FinalTestSilenceTests`
+    /// (`PrimaeNativeTests/FinalTestFlowTests.swift`); this test's scope stays
+    /// "reached and measured" (scope: the r27 currency lane changed the
+    /// path, not the claim).
+    func testFinalTestIsMeasuredAndTagged() {
         let app = XCUIApplication.primaeUnderTest()
         app.launchArguments += ["-audioSignalProbe", LetterTracer.launchArgument]
         app.launchArguments += [
             "-de.flamingistan.primae.audioConditionOverride", "phoneme",
-        ]
+            "-de.flamingistan.primae.trainedSubsetOverride", "AFI",
+        ] + StudySessionFlow.shortTimingArguments
         app.launch()
 
-        let rail = app.descendants(matching: .any)["Navigationsleiste"]
-        XCTAssertTrue(rail.waitForExistence(timeout: 15))
-        rail.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).doubleTap()
-        let next = app.descendants(matching: .any)["Nächstes Kind"]
-        XCTAssertTrue(next.waitForExistence(timeout: 8))
-        next.tap()
-        let confirm = app.buttons["Neues Kind starten"]
-        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
-        confirm.tap()
+        XCTAssertTrue(app.enrolNextChildViaRail(), "the child must be enrolled through the rail")
         XCTAssertTrue(app.descendants(matching: .any)["newChildReadyToast"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Studie kann nicht starten"].waitForNonExistence(timeout: 15))
-
-        // The pretest control lives in the parent area, reached by the
-        // gear long-press (2.0s minimum in `WorldSwitcherRail` + margin).
-        let gear = element(labelPrefix: "Eltern-Bereich", in: app)
-        XCTAssertTrue(gear.waitForExistence(timeout: 10))
-        gear.press(forDuration: 2.3)
-        let pretest = element(labelPrefix: "Vortest starten: A", in: app)
-        XCTAssertTrue(pretest.waitForExistence(timeout: 8),
-                      "the pretest control must be reachable in the parent area")
-        pretest.tap()
-
-        let refusal = app.alerts["Test kann nicht starten"]
-        if refusal.waitForExistence(timeout: 3) {
-            XCTFail("the pretest was refused: "
-                    + (refusal.staticTexts.element(boundBy: 1).label))
+        var last: TracingHookSnapshot?
+        if let s = LetterTracer.waitForSnapshot(app, timeout: 10, last: &last, where: { _ in true }), s.parked {
+            let observe = app.descendants(matching: .any)["Beobachtungsphase"]
+            if observe.waitForExistence(timeout: 5) { observe.tap() }
         }
 
-        // Draw, then SAMPLE: the readout carries only the latest value.
-        // The letter is TRACED along its own strokes (LetterTracer,
-        // 2026-10-21) — it used to be a straight swipe across the middle
-        // of the screen, which never came near the letter path — and the
-        // production must be recognised as A. The cold probe stays on its
-        // finished freeWrite (no advance), so the windows sampled after
-        // the trace still carry the freeWrite tag.
-        var readings: [AudioSignalReading] = []
-        LetterTracer.traceColdProbeAndAssertRecognised(app, letter: "A", probe: "pretest")
-        let deadline = Date().addingTimeInterval(8)
-        while Date() < deadline {
-            if let line = readoutLabel(app), line.hasPrefix("AUDIO-SIGNAL "),
-               let reading = AudioSignalReading(line: line),
-               !readings.contains(reading) {
-                readings.append(reading)
+        guard let trained = StudySessionFlow.trainThreeLetters(app) else { return }
+        guard StudySessionFlow.waitThroughPause(app) else { return }
+
+        var perLetter: [String: [AudioSignalReading]] = [:]
+        var beforeLines: [String: String] = [:]
+        let tested = StudySessionFlow.writeFinalTest(app, expected: trained, whileWriting: { letter in
+            // Draw, then SAMPLE: the readout carries only the latest value.
+            let before = self.readoutLabel(app)
+            let start = Date()
+            var readings: [AudioSignalReading] = []
+            let deadline = start.addingTimeInterval(4.5)
+            while Date() < deadline {
+                let windowClosedSinceStart = Date().timeIntervalSince(start) >= 2.5
+                if let line = self.readoutLabel(app), line != before || windowClosedSinceStart,
+                   line.hasPrefix("AUDIO-SIGNAL "),
+                   let reading = AudioSignalReading(line: line),
+                   !readings.contains(reading) {
+                    readings.append(reading)
+                }
+                usleep(250_000)
             }
-            usleep(250_000)
-        }
+            perLetter[letter] = readings
+            beforeLines[letter] = before ?? "nil"
+        })
+        XCTAssertEqual(tested, trained, "the final test must run every trained letter")
 
-        // The probe tag: a cold probe lands in freeWrite, and its windows
-        // must arrive here labelled so. No assertion on peak / nonSilent.
-        let freeWrite = readings.filter { $0.label == "freeWrite" }
-        XCTAssertFalse(freeWrite.isEmpty,
-                       "the cold pretest probe must be MEASURED and tagged "
-                       + "freeWrite: \(readings.map(\.line))")
+        // The tag: a final-test letter is written in freeWrite, and its
+        // windows must arrive here labelled so. No assertion on peak / nonSilent.
+        for letter in trained {
+            let readings = perLetter[letter] ?? []
+            XCTAssertFalse(readings.filter { $0.label == "freeWrite" }.isEmpty,
+                           "final-test letter \(letter) must be MEASURED and tagged freeWrite: \(readings.map(\.line)) (on screen when sampling began: \(beforeLines[letter] ?? "-"))")
+        }
     }
 
     /// First element whose label starts with `prefix`.

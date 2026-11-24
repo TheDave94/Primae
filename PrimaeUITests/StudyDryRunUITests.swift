@@ -2,9 +2,13 @@
 // PrimaeUITests
 //
 // Automates the parts of docs/STUDY_DEVICE_DRYRUN.md that a UI test
-// actually CAN drive: enrolment, the Vortest/Post-Test/Nachtest flow, a
-// session completing, a second enrolment preserving the first
-// participant, and the export containing both. These are the things
+// actually CAN drive: enrolment, a training letter completing, a second
+// enrolment preserving the first participant, and the export containing
+// both. (Until protocol r27 the middle step was a cold Vortest started
+// from the research dashboard; r27 removed the probe buttons from the
+// study build, so the child's first training letter, drawn along its real
+// strokes, is what makes the first participant count. The method keeps its
+// name because CLAUDE.md cites it as a device-run receipt.) These are the things
 // that have broken silently on this project (the letter-set load, the
 // cold-probe silent refusal, the participant-archive path) — worth a
 // test that can fail, not a procedure a human re-reads and might not
@@ -60,69 +64,64 @@ final class StudyDryRunUITests: XCTestCase {
         XCTContext.runActivity(named: "1 — enrolment") { _ in
             enrolNewParticipant(app)
             // Lands back on the research dashboard (ParentAreaView's
-            // STUDY_BUILD default selection is .research) after the
-            // relaunch alert's OK — confirm we're still inside the
-            // parent area, on a screen that can see the probe buttons.
+            // STUDY_BUILD default selection is .research). r27: its
+            // read-only "Abschlusstest" section replaced the probe buttons,
+            // and no probe button may be left in the study build.
             XCTAssertTrue(
-                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
-                "expected the research dashboard's pretest buttons to be visible after enrolment"
+                waitFor(label: "Abschlusstest", in: app, timeout: 10),
+                "expected the research dashboard's Abschlusstest section to be visible after enrolment"
             )
+            XCTAssertFalse(element(labelPrefix: "Vortest starten", in: app).exists,
+                           "r27: the probe buttons must not be in the study build")
         }
 
-        XCTContext.runActivity(named: "2 — the Vortest/Post-Test/Nachtest flow") { _ in
-            let pretestA = element(labelPrefix: "Vortest starten: A", in: app)
-            XCTAssertTrue(pretestA.waitForExistence(timeout: 5), "Vortest button for letter A must exist")
-            pretestA.tap()
-            // A successful cold probe calls onLeaveParentArea() (f08d997,
-            // this session) — the parent area's own root dismisses and
-            // the canvas becomes visible. A refusal instead shows the
-            // "Test kann nicht starten" alert (a5af108) — fail loudly if
-            // that's what happened, rather than silently timing out.
-            let refusalAlert = app.alerts["Test kann nicht starten"]
-            if refusalAlert.waitForExistence(timeout: 3) {
-                let message = refusalAlert.staticTexts.element(boundBy: 1).label
-                XCTFail("pretest for letter A was refused: \(message)")
+        XCTContext.runActivity(named: "2 — back to the child") { _ in
+            let back = element(label: "Zurück zur App", in: app)
+            XCTAssertTrue(back.waitForExistence(timeout: 5), "the parent area must offer 'Zurück zur App'")
+            back.tap()
+            XCTAssertTrue(
+                waitFor(labelDisappear: "Datenexport", in: app, timeout: 10),
+                "the parent area should have closed onto the canvas"
+            )
+            // Enrolment leaves the first letter parked on its observe screen
+            // (R-007); the proctor starts it with a tap.
+            var last: TracingHookSnapshot?
+            if let s = LetterTracer.waitForSnapshot(app, timeout: 10, last: &last, where: { _ in true }), s.parked {
+                let observe = element(label: "Beobachtungsphase", in: app)
+                if observe.waitForExistence(timeout: 5) { observe.tap() }
             }
-            XCTAssertTrue(
-                waitFor(labelDisappear: "Vortest starten: A", in: app, timeout: 10),
-                "the parent area should have closed onto the canvas after a successful pretest"
-            )
         }
 
-        XCTContext.runActivity(named: "3 — a session completing") { _ in
-            // The pretest lands cold in freeWrite (resume(at: .freeWrite),
-            // TracingViewModel.swift). Completion needs only >=2 points
-            // then a lift-then-2s-quiet window (TouchDispatcher.swift:
-            // endTouch/scheduleFreeWriteAutoAdvance) — study mode never
-            // retries on a low-confidence pass (PhaseTransitionCoordinator
-            // .completePostFreeWriteRecognition), so any real drag
-            // completes the session regardless of drawn shape — which is
-            // why this used to be a straight swipe, and why that proved
-            // nothing about drawing. The letter is now TRACED along its
-            // own strokes (LetterTracer, 2026-10-21) and the production
-            // must be recognised: every checkpoint passed, and the scored
-            // freeWrite in the passing range.
-            LetterTracer.traceColdProbeAndAssertRecognised(app, letter: "A", probe: "pretest")
-            // PhaseDotIndicator's accessibilityValue is unconditional
-            // (not studyMode-gated) and reports "N von M abgeschlossen",
-            // where M is the session's phase count. A cold probe only ever
-            // completes the one phase it landed in, so the expected value
-            // is exactly 1.
-            //
-            // DENOMINATOR UPDATED 2026-09-21: this pinned "von 4", which
-            // the 2026-09-18 cut made wrong — a session runs THREE phases
-            // now (D5), so the indicator reads "1 von 3". Nothing caught
-            // it because PrimaeUITests never runs in CI. Caught by running
-            // the suite on the physical iPad.
+        XCTContext.runActivity(named: "3 — a training letter completing") { _ in
+            // The first trained letter, observe -> guided -> free writing,
+            // each pass drawn along the letter's own strokes (LetterTracer),
+            // and the free-writing production scored in the passing range.
+            var last: TracingHookSnapshot?
+            guard let guided = LetterTracer.waitForSnapshot(app, timeout: 60, last: &last, where: {
+                $0.phase == "guided" && !$0.strokes.isEmpty && !$0.blocked
+            }) else {
+                return XCTFail("the first letter never reached guided: \(last?.summary ?? "no hook")")
+            }
+            let letter = guided.letter
+            Thread.sleep(forTimeInterval: 1.0)
+            LetterTracer.traceLetter(guided, in: app)
+            guard let fw = LetterTracer.waitForSnapshot(app, timeout: 8, last: &last, where: {
+                $0.letter == letter && $0.phase == "freeWrite" && $0.checkpointsHit == 0
+            }) else {
+                return XCTFail("\(letter): guided did not advance to freeWrite: \(last?.summary ?? "no hook")")
+            }
+            // PhaseDotIndicator's accessibilityValue reports "N von M
+            // abgeschlossen", M the session's phase count. A study session
+            // runs THREE phases (D5; this pinned "von 4" until 2026-09-21,
+            // caught only by running the suite on the iPad), and in free
+            // writing observe and guided are behind the child.
             let phaseIndicator = element(labelPrefix: "Lernphase", in: app)
-            let deadline = Date().addingTimeInterval(8)   // > 2.0s quiet window + scoring
-            var value = phaseIndicator.value as? String ?? ""
-            while Date() < deadline, value != "1 von 3 abgeschlossen" {
-                Thread.sleep(forTimeInterval: 0.5)
-                value = phaseIndicator.value as? String ?? ""
-            }
-            XCTAssertEqual(value, "1 von 3 abgeschlossen",
-                            "the pretest freeWrite pass should have completed and advanced the phase indicator")
+            XCTAssertTrue(phaseIndicator.waitForExistence(timeout: 5), "the phase indicator must be on screen")
+            XCTAssertEqual(phaseIndicator.value as? String, "2 von 3 abgeschlossen",
+                           "free writing follows the two completed phases of a three-phase session")
+            Thread.sleep(forTimeInterval: 1.0)
+            LetterTracer.traceLetter(fw, in: app)
+            _ = LetterTracer.waitForCompletion(app, letter: letter, probe: nil)
         }
 
         openParentArea(app)
@@ -135,7 +134,7 @@ final class StudyDryRunUITests: XCTestCase {
             // half-reapplied state where the outgoing participant's
             // data survived but the incoming one can't proceed.
             XCTAssertTrue(
-                waitFor(label: "Vortest starten: A", in: app, timeout: 10),
+                waitFor(label: "Abschlusstest", in: app, timeout: 10),
                 "expected the research dashboard to be usable for the newly-enrolled second participant too"
             )
         }
@@ -163,14 +162,14 @@ final class StudyDryRunUITests: XCTestCase {
             // Exactly ONE more than before (2026-10-22; this asserted ">= 2",
             // which R-059 (#47) made wrong). Only a participant who did
             // something is counted (`participantDidAnything`): the first
-            // child did the pretest and is sealed, the second did nothing
+            // child completed a training letter and is sealed, the second did nothing
             // and is in the enrolment block only. Whoever was current before
             // the test is in `baseline` already if they did anything, and
             // still counted once after being sealed.
             let count = exportParticipantCount(app)
             XCTAssertEqual(
                 count, baseline + 1,
-                "expected the pretest participant and only them to be added (baseline \(baseline)); a zero-activity enrolment must not be counted"
+                "expected the first participant and only them to be added (baseline \(baseline)); a zero-activity enrolment must not be counted"
             )
 
             let csvButton = element(label: "CSV exportieren", in: app)

@@ -917,7 +917,9 @@ jobs:
             DEBUG_ONLY="debugShouldResumePlayback
                         debugInterruptionResumeGateRequired
                         thesisConditionRawName
-                        debugAppIsForeground"
+                        debugAppIsForeground
+                        TracingInkDrawProbe
+                        TracingSessionTimeline"
             for sym in $DEBUG_ONLY; do
               hit=$(sym_in_bundle "$STUDY" "$sym")
               if [ "$CFG" = Debug-Study ]; then

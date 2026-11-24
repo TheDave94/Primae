@@ -12,11 +12,17 @@
 //
 // REACHABLE IN THE STUDY BUILD (everything else is `#if !STUDY_BUILD` and not
 // in the binary, so it cannot be audited here): the blocked-start gate, the
-// Schule world in observe / direct / guided / freeWrite, the rail (with the
+// Schule world in observe / guided / freeWrite, the rail (with the
 // double-tap "Nächstes Kind" reveal), the parent area (Forschungs-Daten,
 // Einstellungen, Datenexport), the "Neuer Teilnehmer" confirm + ready alert.
 // NOT reachable: Onboarding, Werkstatt, Fortschritte, the Parent Dashboard
 // ("Übersicht"), the celebration overlay and its "Weiter" button.
+// NOT AUDITED HERE, though reachable: the r27 bubble pause, the final test
+// (glimpse, writing, check button) and the session end screen. They follow
+// a whole three-letter training session; until protocol r27 a cold-probe
+// free-writing screen ("19") was reached directly from the research
+// dashboard's "Vortest starten" button, which r27 removed from the study
+// build, so that screen is gone from this suite rather than replaced.
 //
 // THE KNOWN-FINDINGS LIST. An audit issue that is left unfixed because the fix
 // changes pixels (contrast, size, layout, clipping) is a VISUAL change and
@@ -43,6 +49,8 @@ class AccessibilityAuditUITests: XCTestCase {
         let typeRaw: UInt           // XCUIAccessibilityAuditType.rawValue
         let elementContains: String // substring of the element's label ("" = any)
         let reason: String
+        /// Match only an issue that names NO element (the audit's `<none>`).
+        var onlyWithoutElement = false
     }
     var knownVisualFindings: [KnownFinding] { Self.triaged }
 
@@ -50,7 +58,7 @@ class AccessibilityAuditUITests: XCTestCase {
     static let contrast: UInt = 1, elementDetection: UInt = 2, hitRegion: UInt = 4
     static let dynamicType: UInt = 65536, textClipped: UInt = 131072
 
-    private static let childScreens = ["01", "02", "03", "05", "06", "19"]
+    private static let childScreens = ["01", "02", "03", "05", "06"]
     private static let dialogScreens = ["02b", "17", "18"]
 
     /// TRIAGE, 2026-10-21 (device run, iPad 00008103…, iOS 27.2). Every entry is
@@ -83,6 +91,26 @@ class AccessibilityAuditUITests: XCTestCase {
                     reason: "VISUAL (proctor-facing parent area): contrast, fixed fonts and nav-title clipping need a design change, listed in the receipt."))
             }
         }
+        // UNATTRIBUTED, scrolled proctor screens 12 (Forschungs-Daten) and 14
+        // (Einstellungen): two "Potentially inaccessible text" issues with NO
+        // element. Measured on the iPad, 2026-11-24, and NOT the blurred rows
+        // under the navigation bar they were first attributed to: a hard
+        // scroll edge on the Form / ScrollView (run 11:45) left the ghost text
+        // and the issues; an opaque navigation bar (run 12:04) removed the
+        // ghost text from the screenshot and the issues STILL fired, 2 per
+        // screen. Neither attempt is kept. Evidence, in
+        // t3 userdata attachments/primae-a11y-audit/:
+        // 14-settings-hardedge-on-form-still-flagged-run1145.png,
+        // 12-research-hardedge-on-scrollview-still-flagged-run1145.png,
+        // 14-settings-opaque-navbar-no-ghost-still-flagged-run1204.png,
+        // 12-research-opaque-navbar-no-ghost-still-flagged-run1204.png.
+        // Narrow on purpose: these two screens, elementDetection, and only an
+        // issue that names no element; a labelled element still fails.
+        for screen in ["12", "14"] {
+            list.append(KnownFinding(screen: screen, typeRaw: elementDetection, elementContains: "",
+                reason: "UNATTRIBUTED (proctor screen): the audit names no element and the on-screen cause is not found; hard edge and opaque bar both measured ineffective.",
+                onlyWithoutElement: true))
+        }
         return list
     }()
 
@@ -104,14 +132,15 @@ class AccessibilityAuditUITests: XCTestCase {
     /// A cold device has no participant: the screen a proctor sees first.
     @MainActor
     func testBlockedStartGate() throws {
-        let app = launch()
+        // The gate only exists while NO participant is enrolled, and the study
+        // iPad always has one. `-auditStartGateUnenrolled` (DEBUG only,
+        // `StartGateAuditHook`) makes the app READ "not enrolled" for this
+        // launch without wiping anything, so the gate is audited on every
+        // device instead of being skipped.
+        let app = launch(extraArguments: ["-auditStartGateUnenrolled"])
         let gate = app.staticTexts["Studie kann nicht starten"]
-        // The gate only exists while NO participant is enrolled. A device that
-        // has run a session (the pilot iPad) is enrolled and cannot be reset
-        // without wiping it, so this is skipped, not passed: the gate screen
-        // is then UNAUDITED (receipt §1).
-        try XCTSkipUnless(gate.waitForExistence(timeout: 20),
-                          "a participant is already enrolled; the start gate is not on screen")
+        XCTAssertTrue(gate.waitForExistence(timeout: 20),
+                      "the un-enrolled launch must show the blocked-start gate")
         try audit(app, screen: "01-gate")
     }
 
@@ -156,16 +185,16 @@ class AccessibilityAuditUITests: XCTestCase {
         try audit(app, screen: "06-schule-freewrite-natural")
     }
 
-    /// Parent area, dashboards, export, the new-child confirm, and the
-    /// cold-probe freeWrite screen.
+    /// Parent area, dashboards, export and the new-child confirm.
     @MainActor
     func testParentArea() throws {
         let app = launch()
         try enrolViaRail(app, auditDialogs: false)
         openParentArea(app)
 
-        // Research dashboard is the STUDY_BUILD default selection.
-        XCTAssertTrue(element(labelPrefix: "Vortest starten: A", in: app).waitForExistence(timeout: 10))
+        // Research dashboard is the STUDY_BUILD default selection; r27's
+        // read-only "Abschlusstest" section stands where the probe buttons were.
+        XCTAssertTrue(element(label: "Abschlusstest", in: app).waitForExistence(timeout: 10))
         try audit(app, screen: "10-parent-research-top")
         scrollAndAudit(app, screen: "11-parent-research-scrolled", swipes: 2)
         scrollAndAudit(app, screen: "12-parent-research-scrolled2", swipes: 2)
@@ -213,24 +242,16 @@ class AccessibilityAuditUITests: XCTestCase {
         XCTAssertTrue(readyOK.waitForExistence(timeout: 5))
         try audit(app, screen: "18-parent-new-child-ready-alert")
         readyOK.tap()
-
-        // Cold pretest probe: closes the parent area onto freeWrite.
-        let pretest = element(labelPrefix: "Vortest starten: A", in: app)
-        if !pretest.waitForExistence(timeout: 10) {
-            _ = scrollTo(labelPrefix: "Vortest starten: A", in: app)
-        }
-        XCTAssertTrue(pretest.exists)
-        pretest.tap()
-        XCTAssertTrue(waitForPhase(app, "Selbst schreiben", timeout: 15),
-                      "the cold probe should land in freeWrite")
-        try audit(app, screen: "19-schule-freewrite-probe")
+        // r27: no probe button is left to start a cold free-writing pass.
+        XCTAssertFalse(element(labelPrefix: "Vortest starten", in: app).exists,
+                       "r27: the probe buttons must not be in the study build")
     }
 
     // MARK: - Launch & navigation
 
-    private func launch() -> XCUIApplication {
+    private func launch(extraArguments: [String] = []) -> XCUIApplication {
         let app = XCUIApplication.primaeUnderTest()
-        app.launchArguments += [LetterTracer.launchArgument]
+        app.launchArguments += [LetterTracer.launchArgument] + extraArguments
         if let category = contentSizeCategory {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", category]
         }
@@ -341,6 +362,7 @@ class AccessibilityAuditUITests: XCTestCase {
             if self.knownVisualFindings.contains(where: {
                 screen.hasPrefix($0.screen)
                     && issue.auditType.rawValue == $0.typeRaw
+                    && (!$0.onlyWithoutElement || issue.element == nil)
                     && ($0.elementContains.isEmpty
                         || (issue.element?.label ?? "").contains($0.elementContains))
             }) { return true }

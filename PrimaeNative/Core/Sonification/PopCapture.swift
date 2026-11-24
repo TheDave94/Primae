@@ -136,6 +136,11 @@ nonisolated final class PopCapture: @unchecked Sendable {
     private var tapChannels = 0
     private var scratch: UnsafeMutablePointer<Float>?
     private var tapInstalledOn: AVAudioNode?
+    /// The loudest mixer-tap sample since the last `takeMixerPeak()` (Float
+    /// bits). Written by the tap thread, read and reset by the DEBUG session
+    /// timeline (`TracingSessionTimeline`), which attributes it to the stage
+    /// on screen. A measurement aid only: nothing in the app reads it.
+    private let mixerPeakBits = Atomic<UInt32>(0)
 
     private init() {
         let tag = Self.argument("-popCaptureTag") ?? "run"
@@ -217,10 +222,31 @@ nonisolated final class PopCapture: @unchecked Sendable {
         }
     }
 
+    /// Whether the main-mixer tap is on (false: `takeMixerPeak` measures nothing).
+    var mixerTapInstalled: Bool { tapInstalledOn != nil }
+
+    /// The loudest mixer sample since the previous call, and reset.
+    func takeMixerPeak() -> Float {
+        Float(bitPattern: mixerPeakBits.exchange(0, ordering: .relaxed))
+    }
+
+    private func notePeak(_ samples: UnsafePointer<Float>, _ n: Int) {
+        var p: Float = 0
+        var i = 0
+        while i < n { let v = abs(samples[i]); if v > p { p = v }; i += 1 }
+        var cur = mixerPeakBits.load(ordering: .relaxed)
+        while Float(bitPattern: cur) < p {
+            let (done, seen) = mixerPeakBits.compareExchange(expected: cur, desired: p.bitPattern, ordering: .relaxed)
+            if done { break }
+            cur = seen
+        }
+    }
+
     fileprivate func tapBuffer(_ blocks: UnsafeMutableAudioBufferListPointer, frames: Int) {
         let ch = tapChannels
         if blocks.count == 1, let d = blocks[0].mData {
             mixRing.write(d.assumingMemoryBound(to: Float.self), frames * ch)
+            notePeak(d.assumingMemoryBound(to: Float.self), frames * ch)
         } else if blocks.count == ch, let s = scratch, frames * ch <= 8192 * ch {
             var c = 0
             while c < ch {
@@ -231,6 +257,7 @@ nonisolated final class PopCapture: @unchecked Sendable {
                 c += 1
             }
             mixRing.write(s, frames * ch)
+            notePeak(s, frames * ch)
         }
     }
 

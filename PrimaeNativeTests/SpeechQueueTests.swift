@@ -203,11 +203,24 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
                 "reports: \(reports.all)")
     }
 
+    // The two R-022 tests below are about end REPORTS, not the watchdog,
+    // so their watchdog sleeps until the test ends instead of for a
+    // budget. They used to keep it out with a 60 s budget on a real
+    // timer, and in the full suite on the iPad that timer lost
+    // (2026-11-24, 1936 tests, even with Swift Testing's width capped at
+    // 16): the settles below stretched past 60 s while "Jetzt du." sat
+    // handed over and unstarted, the watchdog released it, and the test
+    // failed with [(cue, cancelled), (next, cancelled)]. A test of the
+    // reports must not race a production timer against the scheduler;
+    // the watchdog's own behaviour is pinned by `unreportedLineIsReleased`
+    // and `watchdogYieldsToAReportAlreadyMade`.
     @Test("a cut utterance that reports cancelled AND finished is reported once, as cancelled (R-022)")
     func doubleReportIsReportedOnce() async {
         let system = DeviceLikeSynthesizer()
         system.doubleReportOnCancel = true
-        let synth = AVSpeechSpeechSynthesizer(synthesizer: system, lineBudget: { _ in 60.0 })
+        let watchdog = ManualSleeper()
+        defer { watchdog.wakeAll() }
+        let synth = AVSpeechSpeechSynthesizer(synthesizer: system, watchdogSleep: { _ in await watchdog.sleep() })
         let reports = EndReports(); reports.attach(to: synth)
         synth.speak(cue)
         await handedOver(system)
@@ -223,7 +236,9 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
     func lateReportOfTheCutLineDoesNotEndTheNext() async {
         let system = DeviceLikeSynthesizer()
         system.doubleReportOnCancel = true
-        let synth = AVSpeechSpeechSynthesizer(synthesizer: system, lineBudget: { _ in 60.0 })
+        let watchdog = ManualSleeper()
+        defer { watchdog.wakeAll() }
+        let synth = AVSpeechSpeechSynthesizer(synthesizer: system, watchdogSleep: { _ in await watchdog.sleep() })
         let reports = EndReports(); reports.attach(to: synth)
         synth.speak(cue)
         await handedOver(system)

@@ -49,6 +49,7 @@ class ScriptHygieneTests(unittest.TestCase):
         for name in ("generate_letter_audio.py", "generate_prompts.py"):
             text = (SCRIPTS / name).read_text(encoding="utf-8")
             self.assertIn('read -s -p "ELEVENLABS_API_KEY: "', text, name)
+            self.assertIn('read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: "', text, name)
 
     def test_no_pre_rebrand_buchstabennative_path(self):
         offenders = [str(p.relative_to(REPO_ROOT)) for p in _script_files()

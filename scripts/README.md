@@ -112,7 +112,8 @@ phoneme (Anlaut) set is RECORDED by a human voice, not synthesised
 `docs/SOUND_PRODUCTION_SPEC.md`.
 
 ```bash
-read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY   # no bash-history leak
+read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: " && export ELEVENLABS_API_KEY   # zsh; no shell-history leak
+# bash: read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
 pip install requests
 python3 scripts/generate_letter_audio.py --letter M   # audition mode (one letter, all voices)
 python3 scripts/generate_letter_audio.py             # full inventory
@@ -139,7 +140,8 @@ shipped set is voice Kiki. The shipped MP3s live at
 `AVSpeechSynthesizer` for a missing take.
 
 ```bash
-read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
+read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: " && export ELEVENLABS_API_KEY   # zsh
+# bash: read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
 python3 scripts/generate_prompts.py                              # full inventory
 python3 scripts/generate_prompts.py --prompt phase_freewrite     # audition one
 ```

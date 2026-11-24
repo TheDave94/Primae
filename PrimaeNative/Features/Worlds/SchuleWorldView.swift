@@ -21,7 +21,11 @@ struct SchuleWorldView: View {
             ContentUnavailableView(
                 "Studie kann nicht starten",
                 systemImage: "exclamationmark.octagon.fill",
-                description: Text(failure)
+                // Primary, not the view's default secondary grey: the U10
+                // audit measured that grey as "Contrast nearly passed" on
+                // this text (iPad, 2026-11-24, screen 01-gate), and it is
+                // the one line the proctor must read to unblock the study.
+                description: Text(failure).foregroundStyle(.primary)
             )
         } else if vm.visibleLetterNames.isEmpty {
             ContentUnavailableView(
@@ -137,7 +141,12 @@ struct SchuleWorldView: View {
                         .padding(.top, 80)
                     Spacer()
                 }
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale))
+                // Opacity only, no scale: mid-transition the scale shrank the
+                // capsule under its text, and the U10 audit caught the toast in
+                // that state as "Text clipped" (iPad, 2026-11-24, screen 05;
+                // waiting the toast out cleared it, so the cause was the
+                // transition, not the toast's layout).
+                .transition(.opacity)
                 .zIndex(50)   // above the end-of-session screen (zIndex 40)
             }
 
@@ -591,6 +600,10 @@ struct SchuleWorldView: View {
     /// the letter at all. "Selbst schreiben" is the most literal instance
     /// of the child writing itself, so excluding it contradicted the rule
     /// it was meant to serve.
+    ///
+    /// The r27 final test is EXCLUDED, writing stage included: `phaseCue`
+    /// is `nil` at every final-test stage (David 2026-11-23), so this pill
+    /// never shows over the test.
     private var writingCueOverlay: some View {
         VStack {
             Spacer()

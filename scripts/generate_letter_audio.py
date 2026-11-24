@@ -40,7 +40,8 @@ Budget (Starter tier = 30 000 characters/month):
 
 Prereq (enter the key without echo, so it never lands in shell history;
 see CLAUDE.md "Credentials"):
-    read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY
+    read -s "ELEVENLABS_API_KEY?ELEVENLABS_API_KEY: " && export ELEVENLABS_API_KEY   # zsh
+    read -s -p "ELEVENLABS_API_KEY: " ELEVENLABS_API_KEY && export ELEVENLABS_API_KEY   # bash
     pip install requests
 
 Run:

@@ -179,6 +179,9 @@ final class PromptPlayer: PromptPlaying {
         #if DEBUG || POPCAP
         PopCapture.armed?.event("prompt.play", "key=\(key.rawValue)")
         #endif
+        #if DEBUG
+        TracingSessionTimeline.shared.notePrompt("play", key: key.rawValue, text: fallbackText)
+        #endif
         if key == .retryCue, active != nil {
             queuedRetry = (key, fallbackText)
             return
@@ -188,6 +191,9 @@ final class PromptPlayer: PromptPlaying {
         speech.stop()
         guard let url = locate(key) else {
             log.fault("Recorded prompt missing for '\(key.rawValue, privacy: .public)'")
+            #if DEBUG
+            TracingSessionTimeline.shared.notePrompt("missing", key: key.rawValue, text: fallbackText)
+            #endif
             fallBackToSpeech(fallbackText)
             return
         }
@@ -238,6 +244,9 @@ final class PromptPlayer: PromptPlaying {
         active = nil
         cue.sound.onFinish = nil
         cue.sound.stop()
+        #if DEBUG
+        TracingSessionTimeline.shared.notePrompt("cut", key: nil, text: cue.text)
+        #endif
         speech.reportRecordedUtteranceEnd(text: cue.text, cancelled: true)
     }
 
@@ -255,6 +264,9 @@ final class PromptPlayer: PromptPlaying {
         watchdog?.cancel(); watchdog = nil
         active = nil
         cue.sound.onFinish = nil
+        #if DEBUG
+        TracingSessionTimeline.shared.notePrompt(cancelled ? "cut" : "end", key: nil, text: cue.text)
+        #endif
         speech.reportRecordedUtteranceEnd(text: cue.text, cancelled: cancelled)
         if let next = queuedRetry {
             queuedRetry = nil
