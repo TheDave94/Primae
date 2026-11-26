@@ -131,7 +131,10 @@ record that the engine crashes the simulator's audio converter.
    ```
 
    `Primae-DeviceTests` has no `<SkippedTests>` block and, on device,
-   `#if targetEnvironment(simulator)` is false.
+   `#if targetEnvironment(simulator)` is false. (Since 2026-11-24 the same
+   scheme also runs the R20 device instruments and
+   `LoopXDiagnosisTests/testAppScenarios`, which the `Primae` scheme now
+   lists in its SkippedTests; they have no environment gate.)
 3. Expect the r21 shape: 37 tests, 0 failures. **Read the count** — a
    function-level `-only-testing:` filter that matches nothing still prints
    success (`CLAUDE.md`, "Test Infrastructure" item 5).

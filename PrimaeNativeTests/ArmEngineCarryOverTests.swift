@@ -2,15 +2,15 @@
 // PrimaeNativeTests
 //
 // Engine state must not carry over from one ARM to the next — across the
-// in-place enrolment of the next child (`resetForNewParticipant`, PR #22),
-// across the comparison cycle (`cycleAllConditions`), and across any arm
-// step (`applyArm`). Two defects, found by a read-only audit 2026-10-13:
+// in-place enrolment of the next child (`resetForNewParticipant`, PR #22)
+// and across any arm step (`applyArm`). (A within-subject comparison cycle
+// also stepped the arm until it was removed, 2026-11-25.) Two defects, found by a read-only audit 2026-10-13:
 //
 //   D1  The view model's engine was chosen ONCE, at construction:
 //       `effectiveAudio = armIsSilent ? SilentAudio() : deps.audio`, held by
 //       the VM and by the playback controller for the VM's whole life. An
 //       app LAUNCHED in the silent arm (the current child silent, a silent
-//       researcher override, or a cycle starting silent) kept the no-op
+//       researcher override) kept the no-op
 //       engine after the arm changed — so every later phoneme/spatial child
 //       on that iPad heard NOTHING, while their rows recorded the sound arm
 //       and the observe sound / demonstration was marked delivered.
@@ -45,14 +45,12 @@ import CoreGraphics
     /// A study VM, three-phase, spoken feedback ON (the study default) pinned
     /// through the seam, the arm under test assigned at LAUNCH.
     private func makeVM(launchArm: PilotAudioCondition,
-                        audio: EngineModelAudio,
-                        cycle: Bool = false) -> TracingViewModel {
+                        audio: EngineModelAudio) -> TracingViewModel {
         var deps = TracingDependencies.stub
         deps.studyMode = true
         deps.thesisCondition = .threePhase
         deps.audioCondition = launchArm
         deps.spokenFeedbackInStudy = true
-        deps.cycleAllConditions = cycle
         deps.observeCueFallbackSeconds = 0.05
         deps.observeCueEndToPresentationSeconds = 0.05
         deps.audio = audio
@@ -69,7 +67,7 @@ import CoreGraphics
     /// The stub's A (one horizontal stroke at y = 0.5, radius 0.5) under
     /// the subset's three names, each with a phoneme take — so a guided
     /// stroke anywhere across the middle of the canvas is on the letter
-    /// for every one of them, and the cycle has letters to step across.
+    /// for every one of them.
     private func installStudyPool(_ vm: TracingViewModel) {
         guard let a = vm.letters.first(where: { $0.name == "A" }) else {
             Issue.record("precondition: the stub fixture's A is loaded"); return
@@ -193,8 +191,7 @@ import CoreGraphics
         }
     }
 
-    /// Every directed arm step through the seam both enrolment and the cycle
-    /// use. The silent arm must reach nothing; a sound arm must load its file
+    /// Every directed arm step through the seam enrolment uses. The silent arm must reach nothing; a sound arm must load its file
     /// and play it.
     @Test("D1: every arm step — silent stays silent, a sound arm sounds",
           arguments: [(PilotAudioCondition.silent, PilotAudioCondition.phoneme), (.silent, .spatial),
@@ -242,23 +239,6 @@ import CoreGraphics
         let expected = armFile(vm)
         #expect(audiblePlays(audio, since: mark).contains { $0.file == expected },
                 "\(from) → \(to) inside the hold: the next stroke did not play \(expected ?? "nil"). Plays: \(audio.plays.dropFirst(mark))")
-    }
-
-    @Test("D1: a comparison cycle that STARTS silent sounds on the next letter (silent → phoneme)")
-    func cycleStartingSilentSoundsOnTheNextLetter() {
-        let audio = EngineModelAudio()
-        let vm = makeVM(launchArm: .silent, audio: audio, cycle: true)
-        installStudyPool(vm)
-        enterGuided(vm, letter: "A")           // adopts the launch arm
-        #expect(vm.audioCondition == .silent, "precondition: the cycle's first letter adopts the launch arm")
-        write(vm)
-        #expect(!audio.anyActivity, "precondition: the silent letter reached the engine: \(audio.events)")
-        enterGuided(vm, letter: "F")           // the cycle steps
-        #expect(vm.audioCondition == .phoneme, "precondition: the cycle stepped silent → phoneme")
-        let playsMark = audio.plays.count
-        write(vm, t0: 2000)
-        #expect(audiblePlays(audio, since: playsMark).contains { $0.file == armFile(vm, "F") },
-                "cycle silent → phoneme: the phoneme letter was silent. Events: \(audio.events)")
     }
 
     // MARK: - D2: pitch does not carry from the spatial arm
@@ -383,24 +363,5 @@ import CoreGraphics
         #expect(audio.events.count == eventsMark && audio.setAdaptiveCalls.count == adaptiveMark
                 && audio.spatialPitches.count == pitchMark && audio.loadedFile == nil,
                 "\(from) → silent: a direct call reached the engine — \(audio.events.dropFirst(eventsMark))")
-    }
-
-    @Test("D2: a comparison cycle spatial → silent → phoneme plays the phoneme at neutral pitch")
-    func cycleSpatialToPhonemeIsUnshifted() {
-        let audio = EngineModelAudio()
-        let vm = makeVM(launchArm: .spatial, audio: audio, cycle: true)
-        installStudyPool(vm)
-        enterGuided(vm, letter: "A")           // spatial
-        write(vm, y: 100)
-        #expect(audio.pitchCents == 600, "precondition: +600 cents left behind (\(audio.pitchCents))")
-        enterGuided(vm, letter: "F")           // silent
-        enterGuided(vm, letter: "I")           // phoneme
-        #expect(vm.audioCondition == .phoneme, "precondition: the cycle reached phoneme")
-        let mark = audio.plays.count
-        write(vm, t0: 2000)
-        let plays = audiblePlays(audio, since: mark)
-        #expect(!plays.isEmpty, "precondition: the phoneme letter sounded")
-        #expect(plays.allSatisfy { $0.pitchCents == 0 },
-                "cycle spatial → silent → phoneme: played shifted by \(plays.map(\.pitchCents)) cents")
     }
 }

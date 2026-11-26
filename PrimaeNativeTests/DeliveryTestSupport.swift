@@ -61,9 +61,10 @@ final class ScriptedAvailabilityRecognizer: LetterRecognizerProtocol, @unchecked
     init(answers: [Bool]) { self.answers = answers }
     var probeCount: Int { lock.lock(); defer { lock.unlock() }; return probes }
     func isModelAvailable() async -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        probes += 1
-        return answers.isEmpty ? false : answers.removeFirst()
+        lock.withLock {
+            probes += 1
+            return answers.isEmpty ? false : answers.removeFirst()
+        }
     }
     func recognize(points: [CGPoint], strokeStartIndices: [Int], canvasSize: CGSize,
                    expectedLetter: String?, historicalFormScores: [CGFloat]) async -> RecognitionResult? { nil }
@@ -77,7 +78,7 @@ final class SlowAvailabilityRecognizer: LetterRecognizerProtocol, @unchecked Sen
     init(delay: Duration) { self.delay = delay }
     var probeCount: Int { lock.lock(); defer { lock.unlock() }; return probes }
     func isModelAvailable() async -> Bool {
-        lock.lock(); probes += 1; lock.unlock()
+        lock.withLock { probes += 1 }
         try? await Task.sleep(for: delay)
         return true
     }

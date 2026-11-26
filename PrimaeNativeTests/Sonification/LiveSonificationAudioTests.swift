@@ -21,12 +21,28 @@ final class FakeLiveOutput: LiveSonificationOutput {
     var canStart = true
     var startCalls = 0
     var pan: Float = 0
-    func startIfNeeded() {
-        guard !isRunning else { return }
+    /// SDK27: when true, a start is HELD (as `EngineStartGate` holds it for
+    /// the asynchronous activation) until `completeStart()`.
+    var deferStart = false
+    private var waiting: [@MainActor () -> Void] = []
+    func startIfNeeded(then: (@MainActor () -> Void)?) {
+        if isRunning { then?(); return }
         startCalls += 1
-        if canStart { isRunning = true }
+        guard canStart else { return }
+        if deferStart { if let then { waiting.append(then) }; return }
+        isRunning = true
+        then?()
+    }
+    /// The held start completes: the engine runs, then the continuations, in order.
+    func completeStart() {
+        isRunning = true
+        let w = waiting; waiting = []
+        for f in w { f() }
     }
     func setPan(_ pan: Float) { self.pan = pan }
+    /// SDK27: the session work the voice hands over (route-change IO buffer); held, not run.
+    var sessionWorkCalls = 0
+    func performSessionWork(_ work: @escaping @Sendable () -> Void) { sessionWorkCalls += 1 }
 }
 
 @MainActor
@@ -134,14 +150,13 @@ final class HostSpy: AudioControlling {
         r.voice.loadAudioFile(named: "a", autoplay: false)
         r.voice.play()
         _ = r.sound()
-        r.voice.handleInterruption(typeRawValue: AVAudioSession.InterruptionType.began.rawValue, optionsRawValue: nil)
+        r.voice.handleInterruption(.began)
         #expect(!r.voice.isPlaying)
         #expect(r.voice.loadedKey == "a", "an interruption must not discard the file")
         #expect(r.voice.shouldResumePlayback)
         #expect(r.sound() == 0, "sound during an interruption")
         #expect(!r.host.calls.contains("cancelPending"), "the host's engine pause must stand during an interruption")
-        r.voice.handleInterruption(typeRawValue: AVAudioSession.InterruptionType.ended.rawValue,
-                                   optionsRawValue: AVAudioSession.InterruptionOptions.shouldResume.rawValue)
+        r.voice.handleInterruption(.ended(shouldResume: true))
         #expect(r.voice.isPlaying)
         #expect(r.sound() > 0.01, "no sound after the interruption ended with shouldResume")
     }
@@ -151,8 +166,8 @@ final class HostSpy: AudioControlling {
         let r = Rig()
         r.voice.loadAudioFile(named: "a", autoplay: true)
         _ = r.sound()
-        r.voice.handleInterruption(typeRawValue: AVAudioSession.InterruptionType.began.rawValue, optionsRawValue: nil)
-        r.voice.handleInterruption(typeRawValue: AVAudioSession.InterruptionType.ended.rawValue, optionsRawValue: 0)
+        r.voice.handleInterruption(.began)
+        r.voice.handleInterruption(.ended(shouldResume: false))
         #expect(!r.voice.isPlaying)
         #expect(r.sound() == 0)
         r.voice.play()
@@ -166,9 +181,8 @@ final class HostSpy: AudioControlling {
         _ = r.sound()
         r.voice.stop()
         #expect(r.voice.isFadingOut)
-        r.voice.handleInterruption(typeRawValue: AVAudioSession.InterruptionType.began.rawValue, optionsRawValue: nil)
-        r.voice.handleInterruption(typeRawValue: AVAudioSession.InterruptionType.ended.rawValue,
-                                   optionsRawValue: AVAudioSession.InterruptionOptions.shouldResume.rawValue)
+        r.voice.handleInterruption(.began)
+        r.voice.handleInterruption(.ended(shouldResume: true))
         #expect(!r.voice.isPlaying, "the faded stop came back after the interruption")
         #expect(r.sound(0.6) == 0)
     }
@@ -195,6 +209,14 @@ final class HostSpy: AudioControlling {
         r.voice.handleRouteChange(reasonRawValue: Reason.newDeviceAvailable.rawValue)
         #expect(r.sound() > 0.01)
         #expect(r.kernel.starts == starts, "a route change restarted a sounding voice")
+    }
+
+    @Test("route: every route change hands the IO buffer to the output's session work (off the main thread), never inline")
+    func routeChangeHandsIOBufferToSessionWork() {
+        let r = Rig()
+        r.voice.handleRouteChange(reasonRawValue: Reason.routeConfigurationChange.rawValue)
+        r.voice.handleRouteChange(reasonRawValue: nil)
+        #expect(r.output.sessionWorkCalls == 2)
     }
 
     @Test("route: a new device while idle starts nothing")
@@ -231,6 +253,47 @@ final class HostSpy: AudioControlling {
         #expect(!r.voice.shouldResumePlayback)
         #expect(!r.voice.isPlaying)
         #expect(r.sound() == 0)
+    }
+
+    @Test("SDK27: a play while the engine is still starting sounds once it runs; an earlier load does not cancel it")
+    func playWhileStartingSoundsOnceRunning() {
+        let r = Rig()
+        r.output.isRunning = false
+        r.output.deferStart = true
+        r.voice.loadAudioFile(named: "a", autoplay: false)
+        r.voice.play()
+        #expect(!r.voice.isPlaying, "nothing can sound before the engine runs")
+        #expect(!r.kernel.gateRequested)
+        r.output.completeStart()
+        #expect(r.voice.isPlaying, "the play that arrived during the start was dropped")
+        #expect(r.kernel.gateRequested)
+        #expect(r.sound() > 0.01)
+    }
+
+    @Test("SDK27: a stop while the engine is still starting wins over the play before it")
+    func stopWhileStartingWins() {
+        let r = Rig()
+        r.output.isRunning = false
+        r.output.deferStart = true
+        r.voice.loadAudioFile(named: "a", autoplay: true)
+        r.voice.stop()
+        r.output.completeStart()
+        #expect(!r.voice.isPlaying, "a stopped voice sounded once the engine came up")
+        #expect(r.sound() == 0)
+    }
+
+    @Test("SDK27: a foreground return while the engine is still starting re-opens once it runs")
+    func lifecycleResumeWhileStarting() {
+        let r = Rig()
+        r.voice.loadAudioFile(named: "a", autoplay: true)
+        r.voice.suspendForLifecycle()
+        r.output.isRunning = false
+        r.output.deferStart = true
+        r.voice.resumeAfterLifecycle()
+        #expect(!r.voice.isPlaying)
+        r.output.completeStart()
+        #expect(r.voice.isPlaying)
+        #expect(r.sound() > 0.01)
     }
 
     @Test("an engine that cannot start opens nothing")

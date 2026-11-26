@@ -119,6 +119,47 @@ import Foundation
                 "the FIRST failure's message should stick, not be replaced by a second store's failure")
     }
 
+    /// The seam (2026-11-24): the view model hears the centre it is GIVEN.
+    /// Before it, every view model subscribed to the process-wide `.shared`,
+    /// so a test store whose temp directory was removed under its write
+    /// hard-stopped every later view model in the run (serial device run:
+    /// TouchLiftAudioTests and StudyNavigationFixTests red). Mutation check:
+    /// subscribe to `.shared` again in `TracingViewModel.init` — RED here.
+    @Test("a failure reported to the injected centre hard-stops the view model, through the subscription")
+    func injectedCenterReachesTheViewModel() async {
+        let center = PersistenceFailureCenter()
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        deps.persistenceFailureCenter = center
+        let vm = TracingViewModel(deps)
+        #expect(vm.sessionBlockReason == nil, "precondition: nothing blocks a fresh study session")
+        center.reportFailure(store: "TestStore", error: NSError(domain: "t", code: 1))
+        // `reportFailure` notifies on the main actor in a Task: bounded turns.
+        for _ in 0..<200 where vm.persistenceFailureMessage == nil { await Task.yield() }
+        #expect(vm.persistenceFailureMessage != nil, "the view model did not hear its own failure centre")
+        #expect(vm.sessionBlockReason == vm.persistenceFailureMessage)
+    }
+
+    @Test("a failure already on the injected centre blocks a view model built after it (the replay)")
+    func earlierFailureOnTheInjectedCenterIsReplayed() async {
+        let center = PersistenceFailureCenter()
+        center.reportFailure(store: "TestStore", error: NSError(domain: "t", code: 1))
+        var deps = TracingDependencies.stub
+        deps.studyMode = true
+        deps.persistenceFailureCenter = center
+        let vm = TracingViewModel(deps)
+        for _ in 0..<200 where vm.persistenceFailureMessage == nil { await Task.yield() }
+        #expect(vm.sessionBlockReason != nil, "a failure reported before the view model existed was not replayed to it")
+    }
+
+    @Test("the test fixture's view model does not listen to the process-wide centre")
+    func fixtureDoesNotUseTheSharedCenter() {
+        #expect(TracingDependencies.stub.persistenceFailureCenter !== PersistenceFailureCenter.shared,
+                "a fixture on `.shared` is hard-stopped by any other test's failed write")
+        #expect(TracingDependencies.stub.persistenceFailureCenter !== TracingDependencies.stub.persistenceFailureCenter,
+                "each fixture needs its own centre")
+    }
+
     @Test("a non-study install is not hard-blocked by this mechanism")
     func nonStudyInstallUnaffected() {
         var deps = TracingDependencies.stub

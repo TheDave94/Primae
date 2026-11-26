@@ -16,8 +16,8 @@
 //
 // WHY THE ASSERTIONS ARE SHAPED THIS WAY. A switch that writes a
 // `UserDefaults` key and is then never read again is the exact failure
-// this project has already shipped once (`cycleAllConditions` sat
-// `.disabled(true)` for a day). So nothing here asserts that a key was
+// this project has already shipped once (the since-removed
+// `cycleAllConditions` sat `.disabled(true)` for a day). So nothing here asserts that a key was
 // written. Every test drives a PRODUCTION CONSUMER and asserts what the
 // child would hear:
 //
@@ -35,8 +35,8 @@
 // FILE. Swift Testing runs suites in PARALLEL and this suite has been broken
 // once already by a test that flipped a global key another suite then read
 // (`LetterWeightFallbackTests` → `StrokeGeometryGoldenTests`). Both switches
-// are therefore injected through `TracingDependencies` — the seam
-// `cycleAllConditions` uses — and `TracingDependencies.stub` pins them
+// are therefore injected through `TracingDependencies` — like
+// `oncePerCondition` — and `TracingDependencies.stub` pins them
 // explicitly, so the default arguments (which DO read the keys) are never
 // evaluated by any test fixture. `resetToDefaults()` coverage for these two
 // keys lives in `StudyComparisonSwitchesTests.resetRestoresDefaults`, beside

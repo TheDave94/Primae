@@ -25,6 +25,32 @@ import Foundation
         #expect(vm.toastMessage == "Audio nicht verfügbar")
     }
 
+    /// SDK27: the launch start is asynchronous, so its failure lands after
+    /// `init` returns. The toast must still show once the start-up settles.
+    @Test func aStartFailureReportedAfterInitIsToasted() async {
+        let audio = EngineModelAudio()
+        audio.startupErrorOnSettle = "Ton konnte nicht gestartet werden"
+        var deps = TracingDependencies.stub
+        deps.audioCondition = .phoneme
+        deps.audio = audio
+        let vm = TracingViewModel(deps)
+        await vm.startupAudioErrorTask?.value
+        #expect(vm.toastMessage == "Ton konnte nicht gestartet werden")
+    }
+
+    @Test func aLateFailureInTheSilentArmIsNotToasted() async {
+        let audio = EngineModelAudio()
+        audio.startupErrorOnSettle = "Ton konnte nicht gestartet werden"
+        var deps = TracingDependencies.stub
+        deps.audioCondition = .silent
+        deps.audio = audio
+        let vm = TracingViewModel(deps)
+        await vm.startupAudioErrorTask?.value
+        #expect(vm.toastMessage == nil, "a silent launch has nothing to report")
+        vm.applyArm(.phoneme)
+        #expect(vm.toastMessage == "Ton konnte nicht gestartet werden")
+    }
+
     @Test func aHealthyEngineSurfacesNothing() {
         let vm = makeVM(launchArm: .silent, engineError: nil)
         vm.applyArm(.phoneme)

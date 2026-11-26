@@ -1,5 +1,5 @@
 // R20CaptureDeviceTests.swift
-// PrimaeNativeTests: lane R20 (2026-11-08) DEVICE INSTRUMENT, SKIPS ON THE SIMULATOR
+// PrimaeNativeTests: lane R20 (2026-11-08) DEVICE INSTRUMENT (Primae-DeviceTests; fails on a simulator)
 //
 // Listening captures of the r18 dimensions from the real engine on the iPad: the real view model and touch path, the real
 // `LiveSonificationAudio.production` voice, the real AVAudioEngine graph, recorded at the MAIN MIXER (stereo, what the hardware
@@ -18,31 +18,45 @@ import CoreGraphics
 import QuartzCore
 @testable import PrimaeNative
 
-/// The minutes-long device instruments (onset runs, listening captures: they write into the app container's tmp) run only when asked:
-/// `TEST_RUNNER_R20_INSTRUMENTS=1 xcodebuild test ...` (xcodebuild hands it to the test host as `R20_INSTRUMENTS`).
-nonisolated var r20InstrumentsEnabled: Bool { ProcessInfo.processInfo.environment["R20_INSTRUMENTS"] == "1" }
-
-private nonisolated let r20CapIsSim: Bool = {
+/// The minutes-long R20 device instruments (onset runs, listening captures, stage measurements) run in the
+/// `Primae-DeviceTests` scheme on the iPad, every time, with no gate; the `Primae` scheme (CI, the regular suite) lists
+/// them in its SkippedTests. Where AVAudioEngine or the iPad's clock is the instrument, a simulator run is a misuse:
+/// it FAILS with this error rather than skipping, so a run that measured nothing cannot read as a pass.
+nonisolated struct R20NeedsTheIPad: Error, CustomStringConvertible {
+    var description: String { "device instrument: run it on the iPad through the Primae-DeviceTests scheme" }
+}
+nonisolated func r20RequireDevice() throws {
     #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
+    throw R20NeedsTheIPad()
     #endif
-}()
+}
 
 nonisolated final class R20StereoRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var l: [Float] = [], r: [Float] = []
     private(set) var sr: Double = 48000
     init() { l.reserveCapacity(48000 * 12); r.reserveCapacity(48000 * 12) }
-    func append(_ buffer: AVAudioPCMBuffer) {
-        let n = Int(buffer.frameLength)
-        guard let d = buffer.floatChannelData else { return }
-        let c1 = buffer.format.channelCount > 1 ? d[1] : d[0]
+    /// Frames the tap actually delivered (left channel; the right is appended in step).
+    var frameCount: Int { lock.withLock { l.count } }
+    /// Largest absolute sample over both channels: 0 means the engine handed the mixer silence or nothing.
+    var peak: Float {
+        lock.withLock {
+            max(l.reduce(Float(0)) { max($0, abs($1)) }, r.reduce(Float(0)) { max($0, abs($1)) })
+        }
+    }
+    /// SDK27: fed by `installAudioTap` (iOS 27), whose buffer is read-only.
+    func append(_ buffer: AVReadOnlyAudioPCMBuffer) {
+        let n = buffer.frameLength
+        func channel(_ i: Int) -> [Float]? {
+            guard case .float(let d) = buffer.channelData(i) else { return nil }
+            return (0..<min(n, d.count)).map { d[$0] }
+        }
+        guard let left = channel(0) else { return }
+        let right = buffer.format.channelCount > 1 ? (channel(1) ?? left) : left
         lock.withLock {
             sr = buffer.format.sampleRate
-            l.append(contentsOf: UnsafeBufferPointer(start: d[0], count: n))
-            r.append(contentsOf: UnsafeBufferPointer(start: c1, count: n))
+            l.append(contentsOf: left)
+            r.append(contentsOf: right)
         }
     }
     func writeFloatWAV(to url: URL) throws {
@@ -150,8 +164,10 @@ nonisolated struct R20PenScript {
         let rec = R20StereoRecorder()
         av.stop()
         let mixer = av.mainMixerNode
-        mixer.installTap(onBus: 0, bufferSize: 512, format: mixer.outputFormat(forBus: 0)) { [rec] b, _ in rec.append(b) }
+        try mixer.installAudioTap(onBus: 0, bufferSize: 512, format: mixer.outputFormat(forBus: 0)) { [rec] b, _ in rec.append(b) }
         output.startIfNeeded()
+        await host.startGate.settle()   // SDK27: the start follows an asynchronous activation
+        XCTAssertTrue(av.isRunning, "\(kind.rawValue) \(arm): the host engine is not running after the start gate settled")
         defer { mixer.removeTap(onBus: 0); av.stop() }
 
         var deps = TracingDependencies.stubReading(comparisonDefaults: box.defaults).with(audio: voice)
@@ -205,19 +221,21 @@ nonisolated struct R20PenScript {
         }
         vm.endTouch()
         await Self.sleep(1.4)
+        XCTAssertGreaterThanOrEqual(rec.frameCount, Int(rec.sr * script.seconds),
+                                    "\(kind.rawValue) \(arm): the mixer tap delivered fewer frames than the script lasted")
+        XCTAssertGreaterThan(rec.peak, 0.001, "\(kind.rawValue) \(arm): the capture is silent")
         try FileManager.default.createDirectory(at: Self.directory, withIntermediateDirectories: true)
         let name = "\(Self.variant)_\(arm)_\(kind.rawValue)\(tag.map { "_" + $0 } ?? "")"
         try rec.writeFloatWAV(to: Self.directory.appendingPathComponent(name + ".wav"))
         let info = "stroke length \(Int(length)) pt, gate radius \(Int(gatePt)) pt, script \(script.seconds) s\n" + script.notes.joined(separator: "\n") + "\n"
         try info.write(to: Self.directory.appendingPathComponent(name + ".txt"), atomically: true, encoding: .utf8)
-        print("R20 CAPTURE \(name) frames=\(Int(rec.sr * (script.seconds + 3))) length=\(Int(length)) gate=\(Int(gatePt))")
+        print("R20 CAPTURE \(name) frames=\(rec.frameCount) peak=\(rec.peak) length=\(Int(length)) gate=\(Int(gatePt))")
     }
 }
 
 final class R20CaptureDeviceTests: XCTestCase {
     override func setUpWithError() throws {
-        if r20CapIsSim { throw XCTSkip("device instrument: AVAudioEngine does not run on the simulator") }
-        if !r20InstrumentsEnabled { throw XCTSkip("listening captures: run with TEST_RUNNER_R20_INSTRUMENTS=1") }
+        try r20RequireDevice()
     }
     @MainActor func testCap_0_control() async throws { for a in [PilotAudioCondition.phoneme, .spatial] { try await R20CaptureRig.capture(.control, arm: a) } }
     @MainActor func testCap_1_distance() async throws { for a in [PilotAudioCondition.phoneme, .spatial] { try await R20CaptureRig.capture(.distance, arm: a) } }
@@ -228,7 +246,7 @@ final class R20CaptureDeviceTests: XCTestCase {
 }
 
 /// Offline kernel renders in the iPad's call sizes (235/236 frames), written as mono float WAVs next to the captures: the step changes
-/// of the stages heard in isolation, r19-compatible API only so the same file runs in the r19 baseline build. SKIPS ON THE SIMULATOR
+/// of the stages heard in isolation, r19-compatible API only so the same file runs in the r19 baseline build. Fails on a simulator
 /// only in the sense that the pull/cleanup is a device act; the render itself is the same code on any machine.
 nonisolated enum R20Offline {
     /// `events`: (seconds, action) applied before the first call that starts at or after that time.
@@ -272,9 +290,6 @@ nonisolated enum R20Offline {
 
 final class R20OfflineListeningDeviceTests: XCTestCase {
     static let sources = ["spatial_carrier", "I_phoneme1"]
-    override func setUpWithError() throws {
-        if !r20InstrumentsEnabled { throw XCTSkip("listening captures: run with TEST_RUNNER_R20_INSTRUMENTS=1") }
-    }
     private func name(_ kind: String, _ src: String) -> String { "\(R20CaptureRig.variant)_off_\(kind)_\(src)" }
 
     /// A mute on at 0.6 s and off at 1.4 s (the direction mute's gain path), 2.4 s.

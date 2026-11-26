@@ -2353,6 +2353,149 @@ ROADMAP D11 #3 asked for the policy to be written down. As built:
 - ROADMAP D11 #3's wording ("all three call sites", "gated behind a
   successful export") predates #22 and is superseded by the above.
 
+## SDK27 — off the iOS 27 deprecated audio-session and engine APIs (decided 2026-11-24, lane SDK27; no protocol change)
+
+David, 2026-11-24: the iOS 27 deprecation work is to be done now, and "nothing is off limits … if you
+touch a core component, test it extra thoroughly", which brought `AudioEngine.swift`'s own deprecations
+into scope. Source of truth for every replacement: the iPhoneOS27.2 SDK headers and the AVFAudio
+`.swiftinterface`, not memory.
+
+**1. Interruptions come from the iOS 27 pair, through one mapping.** `AVAudioSession.interruptionNotification`
+and its `InterruptionType` / `InterruptionOptions` payload are deprecated "in favour of
+AVAudioSessionDidBecomeInactiveNotification and AVAudioSessionResumptionRecommendationNotification"
+(`AVAudioSessionTypes.h`). `AudioSessionInterruption` (`Core/AudioSessionInterruption.swift`) reads that pair
+for BOTH `AudioEngine` and `LiveSonificationAudio`, and their r16 state machines are unchanged — only where
+an event comes from changed. The mapping:
+
+| notification | context | event |
+|---|---|---|
+| didBecomeInactive | `source == .system` | `.began` |
+| didBecomeInactive | `source == .app` | none |
+| didBecomeInactive | no context | `.began` |
+| resumptionRecommendation | `.shouldResume` | `.ended(shouldResume: true)` |
+| resumptionRecommendation | `.shouldNotResume` | `.ended(shouldResume: false)` |
+| resumptionRecommendation | no context | `.ended(shouldResume: false)` |
+
+Why: r16 B1/C2 require "stop on an interruption, resume only when the system recommends it". The old
+notification never fired for the app's OWN `setActive(false)`, and `didBecomeInactive` does
+(`DeactivationSource.app`), so `.app` must map to nothing or a proctor-side deactivation would read as an
+interruption; the app ships no such call (`AudioEngine.swift`: "Intentionally does NOT call
+setActive(false)"), but tests do. A deactivation without a context fails SAFE (silence): the system took the
+session. A resumption without a context means "do not resume", as the old `.ended` without an options key did.
+The first resumption recommendation after an un-ended interruption keeps R5's rule: an explicit `play()`
+outranks a stale flag.
+
+Evidence (physical iPad, iPadOS 27, Debug-Study): (a) a REAL system-posted didBecomeInactive, from our own
+`setActive(false)` in `SessionDeactivationDeviceTests`, carries a `DeactivationContext` with
+`source == .app` (raw 1) and no `interruptionContext`, and the mapping returns none; (b) `AudioEngineTests`
+37/37 and `AudioEngineRenderPinTests` 4/4 (B1/C2 incl. the C2 control that DOES resume) pass on forged
+notifications built from GENUINE context objects (`ForgedSessionNotifications`: the contexts' `init` is
+NS_UNAVAILABLE, so they are allocated through the runtime after checking the backing ivar exists); (c) every
+mapping row and both owners' wiring were mutation-checked RED on the iPad.
+NOT observed: a real interruption by ANOTHER audio client (Siri, a call). `SessionInterruptionUITests` raises
+one through `XCUIDevice.siriService` with `-popCapture` logging both notifications, but the device's
+"Enable UI Automation" passcode sheet stopped the run; it needs a human at the iPad once.
+
+**2. The observers register synchronously.** `AudioSessionInterruption.observe(on:_:)` creates the two
+notification sequences in the caller (registration happens when a sequence is created) and returns ONE task
+that ends both loops, so `AudioEngine`'s observer store and `nonisolated deinit` keep their shape. Measured
+reason: a first version that created the sequences inside a task missed `AudioEngineTests`' first post
+(9 RED), one task hop later than the old single observer. `LiveSonificationAudio` gained a
+`notificationCenter:` seam (default `.default`) so its end-to-end test posts on a private center and cannot
+reach another suite's voice under Swift Testing's parallelism.
+
+**3. `connect` / `play()` → `connectNode` / `playAudio()`.** The iOS 27 forms throw where the deprecated ones
+raised an Objective-C exception. `AudioEngine.init` surfaces a failed graph connect as its existing init toast
+("Audio nicht verfügbar") and logs it; `attachLiveSonificationNode` and both `play` sites log, and a failed
+`playAudio()` leaves `isPlaying` false instead of claiming playback. Success paths are unchanged.
+
+**4. Measurement taps.** The shipped taps (`AudioSignalProbe`, `PopCapture`) were already on
+`installAudioTap` (iOS 27); the three device instruments in the test target
+(`LiveSonificationOnsetDeviceTests`, `R20OnsetDeviceTests`, `R20CaptureDeviceTests`) moved too, reading the
+read-only buffer's channel spans. Before/after on the iPad (speaker route, N = 8 per cell): the R17 onset
+spatial arm 10.0 / 15.8 ms (mixer / speaker median) both times, phoneme 22.5 → 25.0 / 28.3 → 30.8 ms; the
+14 R20 scenario cells move by at most one 2.5 ms analysis step, in both directions (e.g. distance phoneme
+27.5 → 25.0, direction phoneme 25.0 → 22.5, off phoneme 22.5 → 25.0); LOOPX-PAN and POP2 IOBUF identical.
+Read as run-to-run quantisation, not a shift.
+
+**5. Fonts (R-099, already moved).** `CTFontManagerRegisterFontURLs` behind the async gate shipped in
+`47182bbe`; this lane device-verified it: `FontNameResolutionTests`, `FontRegistrationGateTests` and the new
+`FontSpecimenRenderTests` (renders Primae / PrimaeText / Primae-Cursive / PlaywriteAT against the system font
+and requires distinct glyphs; PNGs in the app container under `Documents/sdk27-fonts/`) pass on the iPad and
+go RED when the CoreText registration is removed. The planned tracing-screen screenshot needs the same
+UI-automation passcode as item 1 and was not taken.
+
+**6. Left as is, deliberately.** `UIRequiresFullScreen` (Info.plist; deprecated in iOS 26, "will be ignored in
+a future release"): dropping it opts the study app into iPad windowing (Split View / Stage Manager resizing)
+during a child's session, a visible change for no study benefit; it stays until the OS actually ignores it.
+`UIWindow(frame:)` in three test files moved to `init(windowScene:)` (`TestWindow`).
+
+**7. Session activation: launch goes async, the two restarts stay synchronous (seat ruling, option 1).** The
+runtime issue "can lead to UI unresponsiveness if called on the main thread … consider the asynchronous
+activate/deactivate API" comes from Primae's own synchronous `setActive(true)` calls (a UI run that never
+launches Primae reports none). `AudioEngine.init` now activates with iOS 27's `activate(options:)` and makes
+the first `engine.start()` after it completes, in the same order as before. Both `startIfNeeded` sites
+(`AudioEngine`, `LiveSonificationAudio`'s output) keep the blocking call. Their callers read `isRunning`
+immediately after `startIfNeeded()` returns (the 2026-09-15 fix: `loadAudioFile`, `attemptResumePlayback`,
+the voice's play and resume), so the start has to have happened by then. An async activation would leave
+those checks reading a start that has not happened yet. The warning those two sites raise is accepted: they
+run only when the engine is not running (first sound after a lifecycle suspend or an interruption), not on
+every touch, and `play()`'s per-touch reactivation was already moved off the main thread.
+
+**8. Superseded 2026-11-25 (same lane): one start gate, no main-thread session call, no accepted warning.**
+Item 7's two synchronous `startIfNeeded` sites are gone. Measured on the iPad first: a cold launch's first
+sound reached a synchronous site before `init`'s activation had returned, so the engine started on an
+activation still in flight, and each engine built into an active, differently configured session raised one
+SessionCore "Hang Risk" from `setCategory` on the main thread.
+- *Start gate.* `EngineStartGate` (`Core/EngineStartGate.swift`) is the only place the shared engine starts:
+  prepare (the session configuration, off the main thread through `EngineStartGate.offMain`; `setCategory` has
+  no asynchronous form and is skipped when the session is already configured that way) → `activate(options:)`
+  → `engine.start()` → queued continuations. `AudioEngine.init`, `AudioEngine.startIfNeeded` and the live
+  voice's `SourceNodeOutput` all go through it; requests during an activation join it and the engine starts
+  once. The 2026-09-15 contract (a caller that asked for a start does not abandon its play) is now a
+  continuation, `startIfNeeded(then:)`, instead of reading `isRunning` straight after a blocking start. When
+  the engine already runs, the continuation runs at once, so the per-touch path is unchanged.
+- *Late startup error.* A failed launch start is now known only after the activation, so
+  `AudioControlling.settleStartup()` (default no-op; `AudioEngine` awaits the gate, the wrappers forward) lets
+  `TracingViewModel` raise the same toasts after it: "Audio nicht verfügbar" for a failed configuration, "Ton
+  konnte nicht gestartet werden" for a failed first start. Without it the move would have lost main's toast.
+- *Loop callback.* `scheduleLooping` uses `.dataRendered`, not `.dataPlayedBack`. iPad probes, one per
+  callback type: `.dataPlayedBack` made the next `player.stop()` (and a schedule onto a stopped engine) wait on
+  a lower-QoS thread (the "User-interactive … waiting on a lower QoS thread" test warning); `.dataRendered` and
+  `.dataConsumed` did not. `.dataRendered` fires earlier than `.dataPlayedBack` only by the output latency, so
+  the loop restarts at the same point within a few milliseconds. This is the only timing change in this item.
+- *IO buffer off the main thread.* `setPreferredIOBufferDuration` (the r17 IO buffer,
+  `SoundEnvelope.applyPreferredIOBuffer`) also has no asynchronous form, and on the main thread with the
+  session active it was a runtime "Hang Risk" (TESTWARN's device runs) at two sites. At launch it was applied
+  ONCE, on main, before the engine existed; it now runs in the gate's off-main prepare
+  (`AudioEngine(sessionPreparation:)` from `SoundEnvelope.makeHostEngine`), so it is applied before EVERY
+  activation: at launch and at every reactivation after an interruption or a lifecycle suspend. That is
+  harmless: it is the same request on the same route, and repeating it changes nothing. On a route change it
+  runs through `EngineStartGate.performSessionWork`, off the main thread, after any session work and
+  activation already in flight; an activation begun later waits for it. Measured at launch and on a route
+  change: the effective buffer is 5.333 ms. A reactivation was not measured (that device test does none).
+- *Evidence* (physical iPad 00008103-000E60311AE8801E, iOS 27.3, Debug-Study, squashed as the lane's single
+  code commit): `/tmp/dd-sdk27-s5-results/final-targeted3.xcresult`, eleven suites (`AudioEngineTests`,
+  `AudioEngineRenderPinTests`, `LiveSonificationOnsetDeviceTests`, `SessionDeactivationDeviceTests`,
+  `EngineStartGateTests`, `LiveSonificationAudioTests`, `SilentLaunchEngineErrorTests`,
+  `PopOnsetRegressionTests`, `R20CaptureDeviceTests`, `R20OnsetDeviceTests` with `R20_INSTRUMENTS=1`,
+  `IOBufferOffMainDeviceTests`): 113 tests, 0 failed, 0 skipped, `warningCount` 0, every issue summary empty
+  (no test warning, no runtime issue, no Hang Risk); IO buffer calls `launch:main=false`, `route:main=false`.
+  The one later change, a 2 s bound (with an explicit failure) on a blocking spin in
+  `EngineStartGateTests`, is covered by `green-gate-x3.xcresult`: that suite with `-test-iterations 3`, 10
+  tests × 3 repetitions, 0 failed, 0 skipped, `warningCount` 0. RED, with the IO buffer on main at both sites
+  (`red.xcresult`): 2 of 22 tests failed, each for its own reason. Mutation checks on the iPad, all reverted:
+  off-main prepare run on main, late toast removed and start before activation turned 5 of 11 tests RED; a
+  synchronous start in `startIfNeeded` / `SourceNodeOutput` and a no-op `ArmGatedAudio.settleStartup` turned
+  4 of 43 RED; `performSessionWork` run inline on main (`mut2.xcresult`) turned 4 of 11 RED (the device
+  test's route-change call on main, `sessionWorkRunsOffMain`, `laterActivationWaitsForSessionWork` with its
+  named timeout issue, `sessionWorkFollowsPendingActivation`), each for its own reason.
+  Not yet measured: a by-ear check in each arm (phoneme, spatial, silent), which is the INTEG walk-through's.
+
+**Study session: unchanged in every normal path except item 8's loop restart, which `.dataRendered` moves
+earlier by the output latency (a few milliseconds).** No change to what a session does or shows; interruption
+handling keeps the r16 rules. No protocol revision bump.
+
 ---
 
 ## Renderer architecture (ROADMAP D9; decided 2026-11-24, lane D9, under David's 2026-11-24 rulings "the renderer questions should be done now" and "nothing is off limits")
@@ -2402,6 +2545,47 @@ study session changes, so there is no protocol revision.
 What remains is a hands-on check on the iPad with a squeeze-capable Pencil
 (Apple Pencil Pro): the system delivers the squeeze, a non-study build
 replays once per squeeze, and a study build stays silent (ROADMAP U5).
+
+## Rotation and UIRequiresFullScreen (2026-11-24/25, lanes IOS27WIN and INTEG13; ruling A, no protocol revision)
+
+iOS 27 UI-test runs on the study iPad logged that `UIRequiresFullScreen` is deprecated and that support for all orientations and resizing will be required. The Study configurations set `INFOPLIST_KEY_UIRequiresFullScreen = YES` with iPad orientations landscape-only (2026-09-15). Lane IOS27WIN removed the key, declared every orientation and replaced the plist lock with a scene request + orientation lock (`StudySceneGeometry`), recorded at the time as protocol r29. **David ruled A on 2026-11-25: the study build stays landscape-only and full screen, as on main.** The key and the landscape-only orientations are back, `StudySceneGeometry` is gone, and r29 never shipped.
+
+- *Sources (Apple, read 2026-11-24).* TN3192 "Migrating your app from the deprecated UIRequiresFullScreen key" (revised 2026-10-09): deprecated from iPadOS 26; **from iOS 27 and iPadOS 27 the key no longer opts an app out of resizing** when built with the iOS 27 SDK (the scene is resized discretely instead), unless `UIRequiresFullScreenIgnoredStartingWithVersion` names 27 or earlier; an app should support all orientations; `UISceneSizeRestrictions.minimumSize` is a best-effort preference that does not prevent rotation; `prefersInterfaceOrientationLocked` (iOS 26+) asks to lock the scene's CURRENT orientation and is honoured only while the scene is centred, the size of the screen and not occluded, without guarantee. `UIViewController.supportedInterfaceOrientations`: an app that supports multitasking must support all orientations, and the method is not called for it. The `UIRequiresFullScreen` and `UIRequiresFullScreenIgnoredStartingWithVersion` Info.plist references; `UIWindowScene.requestGeometryUpdate(_:errorHandler:)`; SwiftUI `windowResizability(_:)`.
+- *Measurement 1, without the key (iPad13,8, iPadOS 27.2, Debug-Study of the IOS27WIN branch, 2026-11-24).* With the key removed and the iPad orientations still landscape-only, and the app requesting `.landscape` at scene connect, turning the iPad to portrait (`devicectl device orientation set portrait`) **turns the app to portrait**: the landscape-only declaration is not honoured. Xcode 27.2 warns at build ("All interface orientations must be supported unless the app requires full screen"), and UIKit logs at launch "Update the Info.plist: Support for all orientations will soon be required."
+- *Measurement 2, with the key (supervisor, 2026-11-25 ~19:05Z, iPad 00008103-000E60311AE8801E, iPadOS 27.3 build 24C5049f, the installed Release-Study build of main `8bb28162`, built with the Xcode 27 SDK: key present, iPad orientations landscape-only).* With the app running in landscape, `xcrun devicectl device orientation set portrait` **left the app in landscape**. A relaunch while the iPad was held in portrait **also came up landscape**. The same instrument did turn the IOS27WIN build to portrait once the key was removed (measurement 1). So TN3192's "from iOS 27 the key no longer opts out of resizing" does not hold on iPadOS 27.3 for this app: the key still keeps it full screen and landscape.
+- *For the record, the replaced lock (iPad13,8, iPadOS 27.3, Debug-Study, IOS27WIN's `SceneResizeUITests`, 2026-11-24).* Full screen, landscape: turning the iPad to portrait leaves the session landscape (the lock holds). iPad held in PORTRAIT at launch: the session comes up portrait, because the landscape request is not honoured (also not when re-sent once the scene was active; that attempt was removed again). Turning the iPad to landscape then turns the session, the lock engages, and turning it back to portrait leaves it landscape. So on 27.3 landscape is reached by holding the iPad in landscape once; a portrait session (a portrait launch, or a windowed scene) works throughout, tested end to end. The key does better on both counts (measurement 2): a portrait-held launch comes up landscape, with no turn needed.
+- *Decision (ruling A).* (1) `INFOPLIST_KEY_UIRequiresFullScreen = YES` and iPad orientations LandscapeLeft + LandscapeRight only, in both Study configurations, as on main. (2) `StudySceneGeometry` is removed: the scene landscape request, the `prefersInterfaceOrientationLocked` getter added with `class_addMethod`, its attacher in the root view, and the DEBUG unlock / launch-lock seams. (3) `scripts/check_project_invariants.py` and the CI identity scan in `.github/workflows/ios-build.yml` require the key and the landscape-only set again (main's checks, restored). (4) The Xcode 27 build warning "All interface orientations must be supported unless the app requires full screen" / the key's deprecation warning stays, unsilenced: removing the key is what silences it, and that is the change ruled out.
+- *Kept as defence in depth: the resize-safety code.* If a later iPadOS stops honouring the key, the session must still be correct when the canvas changes size mid-letter. In a full-screen landscape session none of it changes anything: a resize never happens, and `glyphFit`'s width cap does not bind (the golden tests `StrokeGeometryGoldenTests` and `ScorerExactGoldenTests` pass unchanged on the iPad: `Test run with 12 tests in 2 suites passed`, INTEG13b, 2026-11-26). What it does if a resize does happen:
+  The canvas maps the letter's normalised strokes to its current size, so the letter itself was always re-laid-out correctly; three things around it were not. (a) `StrokeTracker.load` ran on every canvas resize and reset ALL stroke progress: a rotation mid-trace sent the child back to stroke 1. Now a size-only change swaps in the re-mapped checkpoints and keeps the progress (`StrokeTracker.replaceGeometry`, `TracingViewModel.isGeometryOnlyChange`). (b) The ink (`activePath`, the lingering ink, the free-writing recorder's points) is stored in canvas points and stayed where it was while the letter moved and changed size under it, and the free-writing score then compared old-frame points against the new canvas. Now the ink is carried by the similarity that takes the letter's old glyph rect to its new one (`CanvasResizeRemap`), and the recorder's normalised path is rebuilt in the new frame. (c) The letter was scaled by the canvas height only, so in a canvas narrower than about 0.70 x its height (a split-screen window; the widest Druckschrift glyph, W, is 0.701 em, measured with CoreText) a wide letter ran off the edge. Now `PrimaeLetterRenderer.glyphFit` also caps the scale by the width and centres the letter vertically; where the height binds (landscape, square and full-screen portrait, 0.72 to 0.76 on the iPads) the arithmetic is exactly the old one, so their geometry is bit for bit unchanged. The end screen's fixed-size composition shrinks as a whole when the window is smaller than it (`SessionEndLayout`).
+- *Not changed.* Stroke geometry (strokes.json), the tolerances, the scorer, every sound, the export schema; nothing child-facing in a landscape full-screen session, so no protocol revision (the revision stays r28).
+- *Tested.* `SceneResizeSafetyTests` (unit, on the iPad; IOS27WIN mutation-checked each test RED with a non-zero count). `SceneResizeUITests` is now two regression guards on the iPad: turned to portrait mid-session, the session stays landscape; launched while held portrait, it comes up landscape. The portrait-session and rotation-mid-letter walk-throughs were deleted with their premise.
+- *Named risk.* Apple has deprecated the key (TN3192) and says it will be ignored; measurement 2 shows iPadOS 27.3 still honours it. Re-measure on every iPadOS update of the study iPad (the two `SceneResizeUITests` guards are the instrument). If either goes red, the session will turn with the iPad, the resize-safety code above is what keeps it correct, and the rotation question comes back to David.
+- *Proctor note.* None needed: the session is landscape whatever way the iPad is held.
+
+## One arm per child, by construction: `cycleAllConditions` removed (ruled 2026-11-25 by David; no protocol bump)
+
+The researcher switch `StudyComparisonSettings.cycleAllConditions` ("Alle
+Konditionen durchlaufen" in the Vergleichsmodus panel) is gone from the
+study build: its key, default, configuration field and comparison-stamp
+entry, the `TracingDependencies` seam, the view model's per-letter arm step
+(`cycleAudioConditionIfConfigured`, `cycleArmLetter`), the parent-area
+toggle, and `PilotAudioCondition.nextInCycle`. **Reason:** the study is
+between-subjects. Each child runs one audio arm (silence, letter-unrelated
+sound, or phoneme), and a switch that stepped one child through all three
+arms, one per letter, made a within-subject session possible on a study
+device. With the switch removed, "one arm per child" holds by construction
+instead of depending on a default.
+
+**Nothing a child hears changes, and the export is unchanged.** The default
+was OFF, so every default session already ran the one assigned arm, and the
+OFF branch was a guard that returned at once. The comparison stamp listed
+`cycleAllConditions=true` only when it differed from the default, so no
+default-configuration row ever carried it, and no default row changes now.
+The arm still changes in place on one path only: in-place enrolment of the
+next child (`reapplyParticipantIdentity` → `applyArm`), which carries the
+silent arm's authority (C3-2) as before. `OneArmPerSessionTests` pins that a
+letter load never moves the arm, in every arm, and replaces
+`CycleAllConditionsTests`.
 
 ## Related separate workstreams (not the Primae freeze)
 

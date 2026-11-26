@@ -308,13 +308,59 @@ final class PhaseTransitionCoordinator {
     /// Nil without ink, without a loaded reference, or on a multi-cell
     /// grid (never a study session: `reapplyGridPreset` keeps those
     /// single-cell).
+    ///
+    /// Evaluated ONCE per production (T1R, 2026-11-24): a completion asks
+    /// twice, `shouldRejectAttempt` and then `captureFreeWriteMeasurements`,
+    /// over the same ink, and each evaluation ran on the main actor
+    /// (measured on the iPad, Debug-Study: 250-275 ms each, the 553 ms hang
+    /// at the bubble pause's start). The result is reused while the inputs
+    /// are exactly the same; any change to the ink, the stroke starts, the
+    /// reference or the canvas evaluates again.
     func evaluateAttemptCheck() -> FreeWriteAttemptCheck.Result? {
         guard let vm, vm.grid.cells.count <= 1, !vm.freeWriteRecorder.points.isEmpty,
               let reference = vm.strokeTracker.definition else { return nil }
-        return FreeWriteAttemptCheck.evaluate(points: vm.freeWriteRecorder.points,
-                                              strokeStartIndices: vm.freeWriteRecorder.strokeStartIndices,
-                                              reference: reference,
-                                              frame: CGRect(origin: .zero, size: vm.canvasSize))
+        let key = AttemptCheckInputs(points: vm.freeWriteRecorder.points,
+                                     strokeStartIndices: vm.freeWriteRecorder.strokeStartIndices,
+                                     reference: reference,
+                                     canvasSize: vm.canvasSize)
+        if let cached = attemptCheckCache, cached.inputs == key { return cached.result }
+        let result = attemptCheckEvaluator(key.points, key.strokeStartIndices, key.reference,
+                                           CGRect(origin: .zero, size: key.canvasSize))
+        attemptCheckCache = (key, result)
+        return result
+    }
+
+    /// Start the stroke analysis of the current free-writing production off
+    /// the main actor (`StrokeAnalysisMemo`), with exactly the inputs the
+    /// assessment (`scoreFreeWrite`, single cell: the canvas frame) and the
+    /// attempt check (`evaluateAttemptCheck`) will pass to `analyze`. Called
+    /// at every free-writing lift; a later lift supersedes it.
+    func prefetchFreeWriteAnalysis() {
+        guard let vm, vm.grid.cells.count <= 1, !vm.freeWriteRecorder.points.isEmpty,
+              let reference = vm.strokeTracker.definition else { return }
+        freeWriteAnalysisPrefetch = StrokeAnalysisMemo.shared.prefetch(
+            points: vm.freeWriteRecorder.points,
+            strokeStartIndices: vm.freeWriteRecorder.strokeStartIndices,
+            reference: reference,
+            frame: CGRect(origin: .zero, size: vm.canvasSize))
+    }
+
+    /// The latest prefetch, so a test can wait for it.
+    private(set) var freeWriteAnalysisPrefetch: Task<StrokeAnalysisMemo.Key, Never>?
+
+    /// The exact inputs of one attempt check: the cache key.
+    struct AttemptCheckInputs: Equatable {
+        let points: [CGPoint]
+        let strokeStartIndices: [Int]
+        let reference: LetterStrokes
+        let canvasSize: CGSize
+    }
+
+    private var attemptCheckCache: (inputs: AttemptCheckInputs, result: FreeWriteAttemptCheck.Result)?
+
+    /// The check itself; a seam so a test can count evaluations.
+    var attemptCheckEvaluator: ([CGPoint], [Int], LetterStrokes, CGRect) -> FreeWriteAttemptCheck.Result = {
+        FreeWriteAttemptCheck.evaluate(points: $0, strokeStartIndices: $1, reference: $2, frame: $3)
     }
 
     private func captureFreeWriteMeasurements(didFreeWrite: Bool) -> FreeWriteMeasurements {

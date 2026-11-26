@@ -114,6 +114,11 @@ public final class TracingViewModel {
         didSet {
             guard oldValue != canvasSize,
                   !letters.isEmpty, letterIndex < letters.count else { return }
+            // A resize or rotation mid-letter (defence in depth: only if an
+            // iPadOS ignores UIRequiresFullScreen; docs/DECISIONS.md):
+            // carry the child's ink onto the letter's new place, so it
+            // stays on the letter and the freeWrite score sees one frame.
+            remapInkForCanvasResize(from: oldValue, to: canvasSize)
             // Re-layout BEFORE checkpoint reload — reload reads each
             // cell's frame to map strokes into cell-local space.
             grid.layout(in: canvasSize, schriftArt: schriftArt)
@@ -154,6 +159,32 @@ public final class TracingViewModel {
                 }
             }
         }
+    }
+
+    /// The ink remap for a canvas resize, decided by `CanvasResizeRemap`
+    /// from the loaded letter's glyph rect in the old and the new canvas.
+    /// Single-cell layouts only (every study session): a word layout's
+    /// cells move independently and are not a study surface.
+    func inkRemapForCanvasResize(from old: CGSize, to new: CGSize) -> CanvasResizeRemap? {
+        guard grid.cells.count <= 1, letters.indices.contains(letterIndex) else { return nil }
+        let name = letters[letterIndex].name
+        let features = PrimaeLetterRenderer.openTypeFeatures(
+            for: name, schriftArt: schriftArt, variant: showingVariant)
+        return CanvasResizeRemap.between(
+            oldCanvas: old,
+            oldGlyphRect: PrimaeLetterRenderer.normalizedGlyphRect(
+                for: name, canvasSize: old, schriftArt: schriftArt, openTypeFeatures: features),
+            newCanvas: new,
+            newGlyphRect: PrimaeLetterRenderer.normalizedGlyphRect(
+                for: name, canvasSize: new, schriftArt: schriftArt, openTypeFeatures: features))
+    }
+
+    private func remapInkForCanvasResize(from old: CGSize, to new: CGSize) {
+        guard let remap = inkRemapForCanvasResize(from: old, to: new), remap != .identity else { return }
+        activePath = remap.apply(activePath)
+        lingeringInk = remap.apply(lingeringInk)
+        freeWriteRecorder.remap(remap, canvasSize: new)
+        touchDispatcher.remapInFlight(remap, canvasSize: new)
     }
 
     /// Read-only view of the grid's cells for the canvas renderer.
@@ -985,6 +1016,8 @@ public final class TracingViewModel {
     /// still writing to `setAdaptivePlayback`/`setSpatialPitch` once the
     /// child's own trace starts driving them.
     private var preTaskDemoTask: Task<Void, Never>?
+    /// SDK27: waits for the engine's asynchronous start-up, then toasts its error.
+    @ObservationIgnored private(set) var startupAudioErrorTask: Task<Void, Never>?
     /// In-flight delayed start of a study observe PRESENTATION — the guide
     /// animation and, in a sound arm, the whole-observe sound (P4), which
     /// start together once the observe instruction has been spoken
@@ -1194,23 +1227,11 @@ public final class TracingViewModel {
     /// Captured from `TracingDependencies.presentationSpacingSeconds`
     /// (which reads `StudyComparisonSettings` by default) at init.
     private let presentationSpacing: TimeInterval
-    /// Whether this session steps through all three audio arms, one per
-    /// letter, instead of running the single arm assigned from the
-    /// identifier — the supervisor's "alle Konditionen oder nur eine
-    /// Kondition", offered as a comparison rather than adopted as the
-    /// design.
-    ///
-    /// Same capture-at-init rule as the switches above, reached by a
-    /// different route: it arrives through `TracingDependencies`, so a
-    /// test can drive it without writing a `UserDefaults` key that every
-    /// other suite in the parallel run would see. See the property's doc
-    /// in `TracingDependencies`.
-    private let cyclesAudioConditions: Bool
     /// Whether the pre-task demonstration is delivered once per audio
     /// CONDITION per session instead of on every letter load — the
     /// supervisor's "Einmal pro Kondition", OFF by default. Captured at
     /// INIT through `TracingDependencies`, same rule as
-    /// `cyclesAudioConditions` beside it. See
+    /// `presentationSpacing` beside it. See
     /// `StudyComparisonSettings.oncePerCondition` for the semantics and
     /// for the protocol consequence of switching it ON.
     private let demonstrationsOncePerCondition: Bool
@@ -1234,19 +1255,6 @@ public final class TracingViewModel {
     /// iPad starts from an empty set rather than inheriting the outgoing
     /// child's used-up conditions.
     private var demonstratedAudioConditions: Set<PilotAudioCondition> = []
-    /// The letter whose trial the CURRENT audio arm belongs to. The arm is
-    /// a property of a letter's trial, so the cycle steps only when the
-    /// loaded letter actually CHANGES — a re-load of the same letter
-    /// (`startParkedLetter`, `repeatCurrentLetterIfConfigured`, a probe
-    /// re-entry, a proctor dismissal) must not consume an arm the child
-    /// has not finished using.
-    ///
-    /// `nil` until the launch letter is loaded: the first letter keeps the
-    /// arm assigned from the identifier, so a cycle-ON session's first
-    /// letter is the same letter-under-arm the same participant would have
-    /// run with the switch OFF. Reset by `reapplyParticipantIdentity` so an
-    /// incoming child starts from their own assignment.
-    private var cycleArmLetter: String?
     /// Whether the spatial arm's pre-task demonstration runs the OLD scripted
     /// axis sweep or holds the carrier steady for the same window. STEADY IS
     /// THE RULED BEHAVIOUR (2026-09-18, "Glissando weg") and the default; the
@@ -1267,8 +1275,8 @@ public final class TracingViewModel {
     /// must stay an empty column so existing pilot analysis is untouched.
     ///
     /// BUILT ONCE, IN `init`, from the values this session actually
-    /// RESOLVED — nine from the non-optional `TracingDependencies`
-    /// seams (`cycleAllConditions`, `oncePerCondition`, `observePasses`,
+    /// RESOLVED — eight from the non-optional `TracingDependencies`
+    /// seams (`oncePerCondition`, `observePasses`,
     /// `soundGateRadiusFactor`, `soundGateVelocityFloor`,
     /// `presentationSpacingSeconds`, `guidedDotsVisible`, `panningEnabled`,
     /// `spatialAxisDemonstration`), and three from this type's own captured
@@ -1403,7 +1411,6 @@ public final class TracingViewModel {
         self.pauseSecondsSetting    = deps.pauseSeconds
         self.glimpseSecondsSetting  = deps.glimpseSeconds
         self.finalTestSleep         = deps.finalTestSleep
-        self.cyclesAudioConditions  = deps.cycleAllConditions
         self.demonstrationsOncePerCondition = deps.oncePerCondition
         // Through the seam, not `StudyComparisonSettings.observePasses`: same
         // once-per-VM capture, but a parallel test can drive it without writing
@@ -1589,7 +1596,6 @@ public final class TracingViewModel {
             spokenFeedbackInStudy: spokenFeedbackInStudy,
             allFiveLetters: allFiveLetters,
             letterRepeatCount: letterRepeatCount,
-            cycleAllConditions: deps.cycleAllConditions,
             presentationSpacingSeconds: presentationSpacing,
             panningEnabled: panningEnabled,
             guidedDotsVisible: dotsVisible,
@@ -1636,7 +1642,7 @@ public final class TracingViewModel {
         // safe to capture weakly. Subscribes to the FIRST disk-write
         // failure any study data store reports — see
         // PersistenceFailureCenter and `handlePersistenceFailure`.
-        PersistenceFailureCenter.shared.subscribe { [weak self] description in
+        deps.persistenceFailureCenter.subscribe { [weak self] description in
             self?.handlePersistenceFailure(description)
         }
         // Study devices always parse the bundle. `loadLettersFast()`
@@ -1667,9 +1673,19 @@ public final class TracingViewModel {
         // Seed the mirror so the rail badge + gallery pick up
         // pre-existing progress on first render.
         allProgress = progressStore.allProgress
-        // Surface startup audio failures as a brief toast.
+        // Surface startup audio failures as a brief toast. SDK27
+        // (2026-11-24): the engine's configuration and first start are
+        // asynchronous now, so their failure lands after `init` returns;
+        // wait for the start-up, then read the error (a graph failure is
+        // still known at once and shown at once).
         if let audioError = effectiveAudio.initializationError {
             messages.show(toast: audioError)
+        } else {
+            startupAudioErrorTask = Task { [weak self] in
+                await effectiveAudio.settleStartup()
+                guard let self, let audioError = self.audio.initializationError else { return }
+                self.messages.show(toast: audioError)
+            }
         }
         loadFirstTrainedLetter()
         syncEnrolmentRecordToAppliedAssignment()
@@ -2024,45 +2040,15 @@ public final class TracingViewModel {
         }
     }
 
-    // MARK: - Within-subject arm cycle (comparison runs only)
-
-    /// Step the audio arm at a letter boundary when the session is a
-    /// cycle-all-conditions comparison run. Called from `load(letter:)`
-    /// only, and only after that method has recorded the OUTGOING letter's
-    /// unload row — both facts are load-bearing, see the call site.
-    ///
-    /// The step is keyed on the letter actually changing, not on `load`
-    /// being called: a re-load of the same letter is not a new trial, and
-    /// the arm a child is mid-way through must survive it. The cycle wraps
-    /// (silent → phoneme), which is what makes an all-five-letter session
-    /// work and what makes a proctor's back-and-forth navigation
-    /// well-defined.
-    private func cycleAudioConditionIfConfigured(toLetterNamed name: String) {
-        guard cyclesAudioConditions else { return }
-        guard let armLetter = cycleArmLetter else {
-            // Launch letter: ADOPTS the arm assigned from the identifier
-            // (or the researcher override) instead of consuming a step.
-            // So a cycle-ON session's first letter is the same
-            // letter-under-arm the same child would have run with the
-            // switch OFF, and the identifier's own modulo assignment
-            // distributes the cycle's starting point across children
-            // rather than starting everyone at `.phoneme`.
-            cycleArmLetter = name
-            return
-        }
-        guard armLetter != name else { return }
-        cycleArmLetter = name
-        applyArm(audioCondition.nextInCycle)
-    }
-
     /// Make `next` the session's arm, with the authority the arm carries.
     ///
     /// Internal, not private, as a TEST SEAM — the same call this codebase
     /// makes for `panningEnabled` and `LetterRepository.init(weight:)`.
-    /// The C3-2 property applied here is reachable on TWO paths: the
-    /// comparison cycle's letter boundary, and `reapplyParticipantIdentity`
-    /// on new-child enrolment. Only the first is testable without this
-    /// seam — enrolment's arm is UUID-derived, so a test driving it would
+    /// The C3-2 property applied here is reachable on ONE production path:
+    /// `reapplyParticipantIdentity` on new-child enrolment (the
+    /// within-subject letter cycle that was the second path was removed
+    /// 2026-11-25). It needs this seam to be testable: enrolment's arm is
+    /// UUID-derived, so a test driving it would
     /// exercise the silent branch roughly one draw in three and quietly
     /// pass the rest of the time. A property that holds two times in three
     /// is not pinned.
@@ -2082,8 +2068,8 @@ public final class TracingViewModel {
     /// arm CHANGES, and for every new participant (`reapplyParticipantIdentity`,
     /// the same arm included). At launch this is done by construction —
     /// the gate starts closed for a silent arm and the speech/prompt pair
-    /// is the null one (`init`) — but construction happens once, and both
-    /// the comparison cycle and in-place enrolment reach other arms later.
+    /// is the null one (`init`) — but construction happens once, and
+    /// in-place enrolment reaches other arms later.
     ///
     /// What "silent" rests on for an arm reached mid-session, path by
     /// path: the outgoing engine is stopped, neutralised and then gated off
@@ -4703,17 +4689,9 @@ public final class TracingViewModel {
         phaseTransitions.recordUnloadOfCurrentLetter(
             touchStillActive: touchDispatcher.isSingleTouchInteractionActive)
         phaseTransitions.abandonmentRecordedPhase = nil   // a new letter starts
-        // The arm steps HERE — after that unload row, and before anything
-        // below reads the arm (the pre-task demonstration, the audio file
-        // list, the phase rows). Both halves are deliberate (2026-09-17):
-        // the unload record stamps `audioCondition` onto the OUTGOING
-        // letter's final row, so stepping first would relabel a letter's
-        // last row with the NEXT letter's arm — the one corruption this
-        // feature could inflict on the export. Nothing below can fire
-        // mid-trace: `load(letter:)` is the only caller, it is synchronous
-        // and main-actor isolated, so the arm cannot change between a
-        // child's touch-down and touch-up.
-        cycleAudioConditionIfConfigured(toLetterNamed: letter.name)
+        // A letter load never changes the arm: one arm per child holds by
+        // construction (the within-subject cycle switch was removed,
+        // 2026-11-25, docs/DECISIONS.md).
         verifyEngineFollowsArm(at: "letter load")
         lastScheduledLetterPriority = 0   // only loadRecommendedLetter sets it, after this load
         // A fading snapshot of the OUTGOING letter's ink must not follow
@@ -5009,6 +4987,13 @@ public final class TracingViewModel {
         let effectiveSize = size ?? canvasSize
         let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt, showingVariant: showingVariant)
         if key == lastCheckpointKey, strokeTracker.definition != nil { return }
+        // Same letter, script and variant, only the canvas size moved: a
+        // scene resize or rotation (defence in depth: only if an iPadOS
+        // ignores UIRequiresFullScreen; docs/DECISIONS.md). The checkpoints are
+        // re-mapped for the new geometry but the child's progress is kept
+        // (`StrokeTracker.replaceGeometry`); before 2026-11-24 a resize
+        // re-loaded the tracker and sent the child back to stroke 1.
+        let geometryOnly = Self.isGeometryOnlyChange(from: lastCheckpointKey, to: key)
         let source: LetterStrokes
         if showingVariant, let vs = variantStrokeCache {
             source = vs
@@ -5060,13 +5045,25 @@ public final class TracingViewModel {
                 // Radius by glyph HEIGHT only, in cell-height units (r16,
                 // audit B-2); TouchDispatcher passes the cell aspect so the
                 // hit test measures in the same unit on both axes.
-                cell.tracker.load(StrokeTracker.cellDefinition(from: cellSource,
-                                                               glyphRect: gr))
+                let mapped = StrokeTracker.cellDefinition(from: cellSource, glyphRect: gr)
+                if geometryOnly { cell.tracker.replaceGeometry(mapped) } else { cell.tracker.load(mapped) }
             } else {
-                cell.tracker.load(cellSource)
+                if geometryOnly { cell.tracker.replaceGeometry(cellSource) } else { cell.tracker.load(cellSource) }
             }
         }
         lastCheckpointKey = key
+    }
+
+    /// Whether a checkpoint rebuild is a pure geometry change of the
+    /// letter already loaded: same letter, script and variant, different
+    /// canvas size. Extracted so the decision is testable on its own.
+    static func isGeometryOnlyChange(from old: CheckpointBuildKey?,
+                                                 to new: CheckpointBuildKey) -> Bool {
+        guard let old else { return false }
+        return old.letter == new.letter
+            && old.schriftArt == new.schriftArt
+            && old.showingVariant == new.showingVariant
+            && old.size != new.size
     }
 
     /// The effective stroke definition for every loaded letter — the
@@ -5723,10 +5720,7 @@ public final class TracingViewModel {
         // Through `applyArm`, not a bare assignment: the incoming child's
         // arm carries its own authority with it (C3-2), so a switch from a
         // sound arm into the silent one also silences speech here — the
-        // same hole this closes that the comparison cycle would otherwise
-        // open from the other direction. `cycleArmLetter` is cleared so the
-        // incoming child's FIRST letter adopts their assigned arm rather
-        // than consuming a step of the outgoing child's cycle.
+        // the C3-2 hole a bare assignment would open.
         //
         // The SAME arm too (protocol r7): `applyArm` returns at once for an
         // unchanged arm, but the incoming child must not inherit the
@@ -5739,7 +5733,6 @@ public final class TracingViewModel {
         } else {
             applyArm(incomingArm)
         }
-        cycleArmLetter  = nil
         // The incoming child's session has demonstrated nothing yet
         // (2026-09-17). Without this, an iPad with `oncePerCondition` ON
         // would carry the OUTGOING child's used-up conditions into the
@@ -5815,7 +5808,7 @@ public final class TracingViewModel {
     /// (letter changes invalidate via name; rotations via size; font swaps via
     /// schriftArt). Calibration changes invalidate manually since the source
     /// data is not in this key.
-    private struct CheckpointBuildKey: Equatable {
+    struct CheckpointBuildKey: Equatable {
         let letter: String
         let size: CGSize
         let schriftArt: SchriftArt

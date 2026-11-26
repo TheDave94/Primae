@@ -56,7 +56,7 @@ struct LetterAsset: Identifiable, Equatable {
     }
 }
 
-struct LetterStrokes: Codable, Equatable {
+nonisolated struct LetterStrokes: Codable, Equatable, Sendable {
     let letter: String
     let checkpointRadius: CGFloat
     let strokes: [StrokeDefinition]
@@ -92,12 +92,12 @@ struct LetterStrokes: Codable, Equatable {
     }
 }
 
-struct StrokeDefinition: Codable, Equatable {
+nonisolated struct StrokeDefinition: Codable, Equatable, Sendable {
     let id: Int
     let checkpoints: [Checkpoint]
 }
 
-struct Checkpoint: Codable, Equatable {
+nonisolated struct Checkpoint: Codable, Equatable, Sendable {
     let x: CGFloat
     let y: CGFloat
 }

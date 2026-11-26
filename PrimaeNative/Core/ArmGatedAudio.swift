@@ -9,8 +9,9 @@
 // playback controller a `SilentAudio` when the LAUNCH arm was silent, and the
 // real engine otherwise — once, for the life of the view model. But the arm
 // changes in place since 2026-09-14: the next child is enrolled without a
-// relaunch (`resetForNewParticipant`), and a comparison run steps the arm per
-// letter (`cycleAllConditions`). An app launched in the silent arm therefore
+// relaunch (`resetForNewParticipant`). (A comparison run could also step the
+// arm per letter until that switch was removed, 2026-11-25.) An app launched
+// in the silent arm therefore
 // kept the no-op engine for every later child — a phoneme or spatial child
 // heard NOTHING while their rows recorded a sound arm and their observe sound
 // was marked delivered (audit D1).
@@ -72,6 +73,8 @@ final class ArmGatedAudio: AudioControlling {
     // MARK: - AudioControlling — forwarded to the live target
 
     var initializationError: String? { live.initializationError }
+    /// The REAL engine's start-up, whatever the arm (R-078: a later sound arm reads its error).
+    func settleStartup() async { await engine.settleStartup() }
     func loadAudioFile(named fileName: String, autoplay: Bool) { live.loadAudioFile(named: fileName, autoplay: autoplay) }
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) { live.setAdaptivePlayback(speed: speed, horizontalBias: horizontalBias) }
     func setSpatialPitch(cents: Float) { live.setSpatialPitch(cents: cents) }

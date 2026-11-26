@@ -44,11 +44,19 @@
       shouldUseLaunchSchemeArgsEnv = "YES">
       <!-- D1 (audit AUDIO-6): the device run path for the unit suite,
            INCLUDING AudioEngineTests, which the `Primae` scheme skips
-           (a failing one hangs the host). Study configurations, so it
-           links (R-104). Device only: the engine suite skips on a simulator. -->
+           (a failing one hangs the host), and the device instruments the
+           `Primae` scheme skips because they take minutes (the R20 onset,
+           capture and stage classes, LoopXDiagnosisTests/testAppScenarios):
+           here they run every time, with no gate. Study configurations, so it
+           links (R-104). Device only: the engine suite skips and the R20
+           device instruments fail on a simulator. Not parallelized: the
+           SpeechQueueDeviceProbeTests (skipped in `Primae`) time the
+           system's reports on the main actor, which the parallel suite
+           starves for minutes (INTEG 2026-11-25). -->
       <Testables>
          <TestableReference
-            skipped = "NO">
+            skipped = "NO"
+            parallelizable = "NO">
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "DC81ED0CB6E1B1C304209F6A"

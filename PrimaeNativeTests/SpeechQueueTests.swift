@@ -22,6 +22,7 @@
 // device-only probes at the bottom check the real synthesiser.
 
 import Testing
+import XCTest
 import AVFoundation
 @testable import PrimaeNative
 
@@ -93,20 +94,10 @@ final class EndReports {
     }
 }
 
-/// The device-only probes run on the physical iPad and nowhere else.
-nonisolated let speechQueueOnDevice: Bool = {
-    #if targetEnvironment(simulator)
-    false
-    #else
-    true
-    #endif
-}()
-
 /// Ticks every 10 ms on the main actor and keeps the longest gap
 /// between ticks: how late the main actor answered while it ran.
 @MainActor
 final class MainActorHeartbeat {
-    static let starvedMs = 500
     private var maxGapMs = 0
     private var task: Task<Void, Never>?
     init() {
@@ -356,23 +347,32 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
         await settle { reports.all.count >= 2 }
         #expect(reports.all.count == 1, "reports: \(reports.all)")
     }
+}
 
-    // MARK: - On the device, with the real synthesiser
-    //
-    // The stop lands when the system's "started" report reaches the main
-    // actor, and the end reports are timed there. In the full suite ~1,270
-    // tests share the main actor and it answers minutes late (measured:
-    // a cue's report at 165 s), so a time bound measures the suite, not
-    // the stop. The probes therefore time a heartbeat on the main actor
-    // and apply the time bound only when it never stalled for longer than
-    // `starvedMs`; otherwise they say so. The structural checks always
-    // apply.
+// MARK: - On the device, with the real synthesiser
+//
+// The stop lands when the system's "started" report reaches the main
+// actor, and the end reports are timed there. In the full parallel
+// suite ~2,000 tests share the main actor and it answers minutes late
+// (measured: a heartbeat gap of 193-208 s, INTEG 2026-11-25), so a time
+// bound there measures the suite, not the stop. These probes are
+// therefore an XCTest class, skipped by class in the `Primae` scheme
+// (measured with -enumerate-tests: a scheme SkippedTests entry did not
+// disable a Swift Testing test, by function or by suite), and run in
+// `Primae-DeviceTests`, whose testable is not parallelized, so nothing
+// else competes for the main actor and the time bound always applies.
+// Device only: they fail on a simulator (`r20RequireDevice`).
+// The heartbeat's longest gap is printed so a starved run is visible.
+@MainActor final class SpeechQueueDeviceProbeTests: XCTestCase {
+
+    private let cue = "Schau genau hin."
+    private let next = "Jetzt du."
 
     /// Reviewer probe P6, as a regression test: two cues queued and
     /// stopped in the same turn used to finish at 2420 / 3741 ms.
-    @Test("device: speak, speak, stop at once — nothing is heard, both report cancelled",
-          .enabled(if: speechQueueOnDevice))
-    func deviceStopInTheSameTurn() async {
+    /// Speak, speak, stop at once — nothing is heard, both report cancelled.
+    func testDeviceStopInTheSameTurn() async throws {
+        try r20RequireDevice()
         let synth = AVSpeechSpeechSynthesizer()
         let clock = ContinuousClock()
         let t0 = clock.now
@@ -388,21 +388,17 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
         try? await Task.sleep(for: .milliseconds(3000))       // anything still playing would report by now
         let gap = beat.stop()
         print("SPEECHQUEUE-DEVICE same-turn stop: \(reports) main-actor max gap \(gap) ms")
-        #expect(reports.count == 2 && reports.allSatisfy(\.cancelled), "reports: \(reports)")
-        if gap <= MainActorHeartbeat.starvedMs {
-            #expect((reports.map(\.ms).max() ?? .max) < 1500,
-                    "a stopped cue was spoken to its end (a full cue takes ~2.4 s): \(reports)")
-        } else {
-            print("SPEECHQUEUE-DEVICE same-turn stop: time bound NOT applied, main actor stalled \(gap) ms")
-        }
+        XCTAssert(reports.count == 2 && reports.allSatisfy(\.cancelled), "reports: \(reports)")
+        XCTAssert((reports.map(\.ms).max() ?? .max) < 1500,
+                  "a stopped cue was spoken to its end (a full cue takes ~2.4 s): \(reports)")
     }
 
     /// Since the hand-over moved one turn later (delta item 4), the two
     /// probes around this one stop lines the system never received. This
     /// one stops a line the system HAS: spoken for ~150 ms, then stopped.
-    @Test("device: a stop after the system has started the line cuts it at once",
-          .enabled(if: speechQueueOnDevice))
-    func deviceStopAfterTheStart() async {
+    /// A stop after the system has started the line cuts it at once.
+    func testDeviceStopAfterTheStart() async throws {
+        try r20RequireDevice()
         let synth = AVSpeechSpeechSynthesizer()
         let clock = ContinuousClock()
         let t0 = clock.now
@@ -418,17 +414,13 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
         try? await Task.sleep(for: .milliseconds(3000))
         let gap = beat.stop()
         print("SPEECHQUEUE-DEVICE stop-after-start: \(reports) main-actor max gap \(gap) ms")
-        #expect(reports.count == 1 && reports.first?.cancelled == true, "reports: \(reports)")
-        if gap <= MainActorHeartbeat.starvedMs {
-            #expect((reports.first?.ms ?? .max) < 1500, "the stopped cue was spoken to its end: \(reports)")
-        } else {
-            print("SPEECHQUEUE-DEVICE stop-after-start: time bound NOT applied, main actor stalled \(gap) ms")
-        }
+        XCTAssert(reports.count == 1 && reports.first?.cancelled == true, "reports: \(reports)")
+        XCTAssert((reports.first?.ms ?? .max) < 1500, "the stopped cue was spoken to its end: \(reports)")
     }
 
-    @Test("device: the prompt pattern — stop then speak — speaks only the new line, once",
-          .enabled(if: speechQueueOnDevice))
-    func deviceStopThenSpeak() async {
+    /// The prompt pattern — stop then speak — speaks only the new line, once.
+    func testDeviceStopThenSpeak() async throws {
+        try r20RequireDevice()
         let synth = AVSpeechSpeechSynthesizer()
         let clock = ContinuousClock()
         let t0 = clock.now
@@ -444,21 +436,17 @@ private func settle(_ condition: () -> Bool = { false }, polls: Int = 50) async 
         try? await Task.sleep(for: .milliseconds(1500))
         let gap = beat.stop()
         print("SPEECHQUEUE-DEVICE stop-then-speak: \(reports) main-actor max gap \(gap) ms")
-        #expect(reports.map(\.text) == [cue, next], "reports: \(reports)")
-        #expect(reports.map(\.cancelled) == [true, false], "reports: \(reports)")
-        if gap <= MainActorHeartbeat.starvedMs {
-            #expect((reports.first?.ms ?? .max) < 1500, "the stopped cue was spoken to its end: \(reports)")
-        } else {
-            print("SPEECHQUEUE-DEVICE stop-then-speak: time bound NOT applied, main actor stalled \(gap) ms")
-        }
+        XCTAssert(reports.map(\.text) == [cue, next], "reports: \(reports)")
+        XCTAssert(reports.map(\.cancelled) == [true, false], "reports: \(reports)")
+        XCTAssert((reports.first?.ms ?? .max) < 1500, "the stopped cue was spoken to its end: \(reports)")
         // "Jetzt du." takes ~1.9 s. A report for it within 500 ms of the
         // cue's is the cut cue's own late "finished" ending it (measured
         // on the device with the identity check removed: both at 239 ms).
         // Holds under a starved main actor too: the new line is handed
         // over only after the cue's report has run there.
         if reports.count == 2 {
-            #expect(reports[1].ms - reports[0].ms > 500,
-                    "the new line was reported ended before it could have been spoken: \(reports)")
+            XCTAssert(reports[1].ms - reports[0].ms > 500,
+                      "the new line was reported ended before it could have been spoken: \(reports)")
         }
     }
 }

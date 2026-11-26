@@ -296,8 +296,14 @@ nonisolated final class PopCapture: @unchecked Sendable {
         nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: nil, queue: nil) { [self] n in
             event("session.route", "reason=\(n.userInfo?[AVAudioSessionRouteChangeReasonKey] ?? "?") route=\(route())")
         }
-        nc.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [self] n in
-            event("session.interruption", "type=\(n.userInfo?[AVAudioSessionInterruptionTypeKey] ?? "?")")
+        // SDK27: the iOS 27 pair replaces the deprecated interruption notification.
+        nc.addObserver(forName: AVAudioSession.didBecomeInactiveNotification, object: nil, queue: nil) { [self] n in
+            let c = n.userInfo?[AVAudioSession.deactivationContextKey] as? AVAudioSession.DeactivationContext
+            event("session.inactive", "source=\(c.map { "\($0.source.rawValue)" } ?? "?") reason=\(c?.interruptionContext.map { "\($0.reason.rawValue)" } ?? "-")")
+        }
+        nc.addObserver(forName: AVAudioSession.resumptionRecommendationNotification, object: nil, queue: nil) { [self] n in
+            let c = n.userInfo?[AVAudioSession.resumptionContextKey] as? AVAudioSession.ResumptionContext
+            event("session.resumption", "recommendation=\(c.map { "\($0.recommendation.rawValue)" } ?? "?")")
         }
         nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil) { [self] _ in
             event("session.mediaReset")

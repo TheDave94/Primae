@@ -144,6 +144,11 @@ struct PitchScopeTests {
     }
 
     // MARK: Seam C
+    //
+    // The renders below are pure kernel work (seconds each at -Onone), so the
+    // tests are `nonisolated`: they run on the cooperative pool and do not
+    // hold the main actor, which every view-model suite in the run queues on.
+    // The coupling values they need are read on the main actor first.
 
     nonisolated static let sr = LiveSonificationKernel.sampleRate
 
@@ -167,10 +172,13 @@ struct PitchScopeTests {
     }
 
     @Test("kernel: a phoneme driven by the 'both' mapping at the top of the canvas plays shifted up by the mapped cents")
-    func phonemeShiftsThroughTDPSOLA() throws {
-        let c = PitchCoupling(scope: .both, spanCents: 1200)
-        let up = try #require(c.cents(forNormalizedY: 0, arm: .phoneme))
-        let down = try #require(c.cents(forNormalizedY: 1, arm: .phoneme))
+    nonisolated func phonemeShiftsThroughTDPSOLA() async throws {
+        let (upOrNil, downOrNil) = await MainActor.run {
+            let c = PitchCoupling(scope: .both, spanCents: 1200)
+            return (c.cents(forNormalizedY: 0, arm: .phoneme), c.cents(forNormalizedY: 1, arm: .phoneme))
+        }
+        let up = try #require(upOrNil)
+        let down = try #require(downOrNil)
         #expect(up == 600 && down == -600)
         let f0 = try renderF0("A_phoneme1", cents: 0)
         let fUp = try renderF0("A_phoneme1", cents: up)
@@ -181,19 +189,25 @@ struct PitchScopeTests {
     }
 
     @Test("kernel: the r17 reference (spatialOnly) leaves the phoneme unshifted: no pitch command at any height, and what it would send plays at the unshifted f0")
-    func defaultLeavesPhonemeAlone() throws {
-        let dflt = PitchCoupling()
+    nonisolated func defaultLeavesPhonemeAlone() async throws {
+        let heights = Array(stride(from: CGFloat(-0.2), through: 1.2, by: 0.1))
+        let (sent, edges, upOrNil) = await MainActor.run {
+            let dflt = PitchCoupling()
+            return (heights.map { dflt.cents(forNormalizedY: $0, arm: .phoneme) },
+                    [CGFloat(0), 1].map { dflt.cents(forNormalizedY: $0, arm: .phoneme) },
+                    PitchCoupling(scope: .both, spanCents: 1200).cents(forNormalizedY: 0, arm: .phoneme))
+        }
         let f0 = try renderF0("A_phoneme1", cents: 0)
-        for y in stride(from: CGFloat(-0.2), through: 1.2, by: 0.1) {
-            #expect(dflt.cents(forNormalizedY: y, arm: .phoneme) == nil, "the default pitched the phoneme at y=\(y)")
+        for (y, cents) in zip(heights, sent) {
+            #expect(cents == nil, "the default pitched the phoneme at y=\(y)")
         }
         // Whatever the coupling sends at the canvas edges is what the kernel plays: render exactly that.
-        for y in [CGFloat(0), 1] {
-            let f = try renderF0("A_phoneme1", cents: dflt.cents(forNormalizedY: y, arm: .phoneme) ?? 0)
+        for (y, cents) in zip([CGFloat(0), 1], edges) {
+            let f = try renderF0("A_phoneme1", cents: cents ?? 0)
             #expect(abs(SonificationMetrics.cents(f, f0)) < 5, "y=\(y): f0 \(f) vs unshifted \(f0)")
         }
         // Control: the same measurement does see a shift when the scope asks for one.
-        let up = try #require(PitchCoupling(scope: .both, spanCents: 1200).cents(forNormalizedY: 0, arm: .phoneme))
+        let up = try #require(upOrNil)
         let fUp = try renderF0("A_phoneme1", cents: up)
         #expect(abs(SonificationMetrics.cents(fUp, f0)) > 300, "control: a 'both' shift of \(up) cents measured \(SonificationMetrics.cents(fUp, f0))")
     }
@@ -208,13 +222,16 @@ struct PitchScopeTests {
     }
 
     @Test("r26 kernel: F (unvoiced) follows the default's +-600 cents: the noise is brighter at the top and darker at the bottom, at a similar level")
-    func unvoicedPhonemeShiftsWithHeight() throws {
+    nonisolated func unvoicedPhonemeShiftsWithHeight() async throws {
         let src = try StudySources.load("F_phoneme1")
         #expect(!SonificationRendererUnderTest.make(src).analysis.isVoiced, "precondition: F takes the unvoiced path")
-        let c = PitchCoupling(scope: StudyComparisonSettings.pitchScopeDefault,
-                              spanCents: StudyComparisonSettings.pitchRangeCentsDefault)
-        let up = try #require(c.cents(forNormalizedY: 0, arm: .phoneme))
-        let down = try #require(c.cents(forNormalizedY: 1, arm: .phoneme))
+        let (upOrNil, downOrNil) = await MainActor.run {
+            let c = PitchCoupling(scope: StudyComparisonSettings.pitchScopeDefault,
+                                  spanCents: StudyComparisonSettings.pitchRangeCentsDefault)
+            return (c.cents(forNormalizedY: 0, arm: .phoneme), c.cents(forNormalizedY: 1, arm: .phoneme))
+        }
+        let up = try #require(upOrNil)
+        let down = try #require(downOrNil)
         let a = Int(0.3 * Self.sr)
         let y0 = try renderF(cents: 0), yUp = try renderF(cents: up), yDown = try renderF(cents: down)
         // A plain sign-change rate: `SonificationMetrics.zeroCrossingFrequency` is a hysteresis
@@ -239,7 +256,7 @@ struct PitchScopeTests {
     }
 
     @Test("r26 kernel: F at 0 cents is unchanged by the fix (the unvoiced grains are resampled by exactly 1)")
-    func unvoicedPhonemeAtZeroCentsIsUnchanged() throws {
+    nonisolated func unvoicedPhonemeAtZeroCentsIsUnchanged() throws {
         // At 0 cents pf == exp2(0) == 1 exactly, so inc is the pre-r26 1 and the render is bit for bit
         // the same; TDPSOLAIdentityTests pins F against the frozen r17 copy at 0 cents. Here: two
         // renders at cents 0 agree and differ from a shifted render (the comparison is not vacuous).

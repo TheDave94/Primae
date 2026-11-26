@@ -65,7 +65,6 @@ struct AxisDemonstrationSwitchTests {
          StudyComparisonSettings.spokenFeedbackKey,
          StudyComparisonSettings.allFiveLettersKey,
          StudyComparisonSettings.letterRepeatCountKey,
-         StudyComparisonSettings.cycleAllConditionsKey,
          StudyComparisonSettings.presentationSpacingKey,
          StudyComparisonSettings.guidedDotsVisibleKey,
          StudyComparisonSettings.panningEnabledKey,

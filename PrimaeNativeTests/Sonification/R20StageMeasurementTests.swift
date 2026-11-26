@@ -14,21 +14,10 @@ import Foundation
 import CoreGraphics
 @testable import PrimaeNative
 
-private nonisolated let r20IsSim: Bool = {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-}()
-
 final class R20StageMeasurementTests: XCTestCase {
 
-    /// Measurements print numbers and pin nothing (the pins are `AudioStageSmoothingTests`): they run only when asked, so CI's
-    /// -Onone simulator run does not spend minutes on prints. `TEST_RUNNER_R20_INSTRUMENTS=1` (see `r20InstrumentsEnabled`).
-    override func setUpWithError() throws {
-        if !r20InstrumentsEnabled { throw XCTSkip("measurements: run with TEST_RUNNER_R20_INSTRUMENTS=1") }
-    }
+    /// Measurements print numbers and pin nothing (the pins are `AudioStageSmoothingTests`). They run in the
+    /// Primae-DeviceTests scheme on the iPad; the `Primae` scheme skips them so CI's -Onone run does not spend minutes on prints.
 
     static let patterns: [R20.Pattern] = [.ipad, .fixed(128), .fixed(256), .fixed(512), .fixed(1024)]
 
@@ -73,7 +62,7 @@ final class R20StageMeasurementTests: XCTestCase {
     }
 
     func testA1_RenderCostPerBuffer() throws {
-        if r20IsSim { throw XCTSkip("device instrument: the simulator's clock and CPU say nothing about the iPad") }
+        try r20RequireDevice()   // the simulator's clock and CPU say nothing about the iPad
         let sources = try ["spatial_carrier", "A_phoneme1", "I_phoneme1"].map { try StudySources.load($0) }
         var acc: [String: [Double]] = [:]
         let reps = 20

@@ -725,11 +725,12 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
     // MARK: - Item 5: letter-tagged durations + export columns
 
     @Test("SessionDurationRecord carries the letter and exports it")
-    func durationRows_carryLetter() {
+    func durationRows_carryLetter() async {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("study-config-tests-\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let store = JSONParentDashboardStore(fileURL: dir.appendingPathComponent("dash.json"))
+        let store = JSONParentDashboardStore(fileURL: dir.appendingPathComponent("dash.json"),
+                                             failureCenter: PersistenceFailureCenter())
         store.recordSession(letter: "M", accuracy: 0.8, durationSeconds: 42.5,
                             wallClockSeconds: 50, date: Date(), condition: .threePhase,
                             inputDevice: "finger")
@@ -738,6 +739,11 @@ fileprivate final class RecordingDashboardStore: ParentDashboardStoring {
         let csv = String(data: ParentDashboardExporter.csvData(from: store.snapshot), encoding: .utf8)!
         #expect(csv.contains("date,recordedAt,durationSeconds,wallClockSeconds,condition,inputDevice,letter"),
                 "durations header must gain the trailing letter column")
+        // The store writes off the main actor; removing the directory under
+        // a pending write logged "ParentDashboardStore disk write failed …
+        // NSCocoaErrorDomain 4" (a persistence error in a passing test, T1R
+        // 2026-11-25). Wait for the write, then clean up.
+        await store.flush()
         try? FileManager.default.removeItem(at: dir)
     }
 
@@ -1064,7 +1070,8 @@ extension StudyCleanConfigTests {
         let dir = FileManager.default.temporaryDirectory
             .appendingPathComponent("end-screen-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let store = JSONParentDashboardStore(fileURL: dir.appendingPathComponent("dash.json"))
+        let store = JSONParentDashboardStore(fileURL: dir.appendingPathComponent("dash.json"),
+                                             failureCenter: PersistenceFailureCenter())
         return TracingViewModel(multiLetterDeps().with(dashboardStore: store))
     }
 

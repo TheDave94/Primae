@@ -55,12 +55,13 @@ nonisolated final class OnsetRecorder: @unchecked Sendable {
     private var segs: [Seg] = []
     private(set) var sr: Double = 48000
     init() { x.reserveCapacity(48000 * 120) }
-    func append(_ buffer: AVAudioPCMBuffer, _ when: AVAudioTime) {
+    /// SDK27: fed by `installAudioTap` (iOS 27), whose buffer is read-only.
+    func append(_ buffer: AVReadOnlyAudioPCMBuffer, _ when: AVAudioTime) {
         let cb = CACurrentMediaTime()
-        let n = Int(buffer.frameLength)
+        let n = buffer.frameLength
         let host = when.isHostTimeValid ? AVAudioTime.seconds(forHostTime: when.hostTime) : -1
         var l = [Float](repeating: 0, count: n)
-        if let d = buffer.floatChannelData?[0] { for i in 0..<n { l[i] = d[i] } }
+        if case .float(let d) = buffer.channelData(0) { for i in 0..<min(n, d.count) { l[i] = d[i] } }
         lock.withLock {
             sr = buffer.format.sampleRate
             segs.append(Seg(host: host, cb: cb, start: x.count, frames: n))
@@ -124,8 +125,9 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
         let rec = OnsetRecorder()
         av.stop()
         let mixer = av.mainMixerNode
-        mixer.installTap(onBus: 0, bufferSize: 512, format: mixer.outputFormat(forBus: 0)) { [rec] b, w in rec.append(b, w) }
+        try mixer.installAudioTap(onBus: 0, bufferSize: 512, format: mixer.outputFormat(forBus: 0)) { [rec] b, w in rec.append(b, w) }
         output.startIfNeeded()
+        await host.startGate.settle()   // SDK27: the start follows an asynchronous activation
         defer { mixer.removeTap(onBus: 0); av.stop() }
 
         var deps = TracingDependencies.stubReading(comparisonDefaults: box.defaults).with(audio: voice)
@@ -188,32 +190,63 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
     }
 
     @MainActor func testTouchToOnsetPerArm() async throws {
+        let failures = try await OnsetPerArmRun.live(measure: { try await self.measure(arm: $0) })
+            .run(engine: LiveSonificationKernel.engineStamp)
+        XCTAssertTrue(failures.isEmpty, "touch -> speaker onset above the 70 ms bound: \(failures)")
+    }
+}
+
+/// The per-arm run and its route guard, with the session's facts and the
+/// measurement injected (T1.1 residual, 2026-11-24). `testTouchToOnsetPerArm`
+/// runs it against `AVAudioSession.sharedInstance()` and the real engine;
+/// `OnsetPerArmRunTests` runs it against a stubbed route and a stubbed
+/// measurement, so the skip decision AND its enforcement (the two `throw`s)
+/// are exercised in the normal suite, not only by the device instrument
+/// with headphones attached.
+@MainActor struct OnsetPerArmRun {
+    /// Output port types of the current route (`AVAudioSession.Port` raw values).
+    var outputPorts: () -> [String]
+    var outputLatency: () -> Double
+    /// "io=… sr=…" for the log line.
+    var sessionFormat: () -> String
+    var measure: (PilotAudioCondition) async throws -> [Double]
+    var settle: () async -> Void
+
+    static func live(measure: @escaping (PilotAudioCondition) async throws -> [Double]) -> OnsetPerArmRun {
         let ses = AVAudioSession.sharedInstance()
+        return OnsetPerArmRun(
+            outputPorts: { ses.currentRoute.outputs.map { $0.portType.rawValue } },
+            outputLatency: { ses.outputLatency },
+            sessionFormat: { String(format: "io=%.2f ms sr=%.0f", ses.ioBufferDuration * 1000, ses.sampleRate) },
+            measure: measure,
+            settle: { try? await Task.sleep(nanoseconds: 500_000_000) })
+    }
+
+    /// The L4 bound failures, one per arm whose median touch -> speaker onset
+    /// exceeds 70 ms. Throws `XCTSkip` when the route is not the built-in speaker.
+    func run(engine: String) async throws -> [String] {
         // Before measuring anything: a run on headphones is a skip, not a pass or a false failure.
-        if let why = OnsetOutputRoute.skipReason(outputPortTypes: ses.currentRoute.outputs.map { $0.portType.rawValue }) {
+        if let why = OnsetOutputRoute.skipReason(outputPortTypes: outputPorts()) {
             throw XCTSkip(why)
         }
         var failures: [String] = []
-        let choice = LiveSonificationKernel.engineStamp
-        do {
-            for arm in [PilotAudioCondition.phoneme, .spatial] {
-                let o = try await measure(arm: arm).sorted()
-                let out = ses.outputLatency
-                let routePorts = ses.currentRoute.outputs.map { $0.portType.rawValue }
-                let route = routePorts.joined(separator: ",")
-                // The session is active now: re-check, in case the first look found no route yet.
-                if let why = OnsetOutputRoute.skipReason(outputPortTypes: routePorts) { throw XCTSkip(why) }
-                guard !o.isEmpty else { failures.append("\(choice) \(arm): no onset"); continue }
-                let med = o[o.count / 2]
-                print(String(format: "R17 ONSET engine=%@ arm=%@ N=%d mixer med=%.1f min=%.1f max=%.1f ms | outputLatency=%.1f ms io=%.2f ms sr=%.0f route=%@ | speaker med=%.1f max=%.1f ms",
-                             choice, "\(arm)", o.count, med * 1000, o.first! * 1000, o.last! * 1000,
-                             out * 1000, ses.ioBufferDuration * 1000, ses.sampleRate, route,
-                             (med + out) * 1000, (o.last! + out) * 1000))
-                if med + out > 0.070 { failures.append(String(format: "%@ %@: %.1f ms", choice, "\(arm)", (med + out) * 1000)) }
-                await sleep(0.5)
-            }
+        for arm in [PilotAudioCondition.phoneme, .spatial] {
+            let o = try await measure(arm).sorted()
+            let out = outputLatency()
+            let routePorts = outputPorts()
+            let route = routePorts.joined(separator: ",")
+            // The session is active now: re-check, in case the first look found no route yet.
+            if let why = OnsetOutputRoute.skipReason(outputPortTypes: routePorts) { throw XCTSkip(why) }
+            guard !o.isEmpty else { failures.append("\(engine) \(arm): no onset"); continue }
+            let med = o[o.count / 2]
+            print(String(format: "R17 ONSET engine=%@ arm=%@ N=%d mixer med=%.1f min=%.1f max=%.1f ms | outputLatency=%.1f ms %@ route=%@ | speaker med=%.1f max=%.1f ms",
+                         engine, "\(arm)", o.count, med * 1000, o.first! * 1000, o.last! * 1000,
+                         out * 1000, sessionFormat(), route,
+                         (med + out) * 1000, (o.last! + out) * 1000))
+            if med + out > 0.070 { failures.append(String(format: "%@ %@: %.1f ms", engine, "\(arm)", (med + out) * 1000)) }
+            await settle()
         }
-        XCTAssertTrue(failures.isEmpty, "touch -> speaker onset above the 70 ms bound: \(failures)")
+        return failures
     }
 }
 
@@ -231,5 +264,62 @@ final class OnsetOutputRouteTests: XCTestCase {
         }
         XCTAssertNotNil(OnsetOutputRoute.skipReason(outputPortTypes: [speaker, AVAudioSession.Port.bluetoothA2DP.rawValue]),
                         "the speaker plus another output is not the speaker alone")
+    }
+}
+
+/// The run's route guard ENFORCED, not just decided: a non-speaker route must
+/// end the run in `XCTSkip` before the measurement it guards. Stubbed route and
+/// measurement, so it runs on the simulator and in CI.
+final class OnsetPerArmRunTests: XCTestCase {
+    private let speaker = AVAudioSession.Port.builtInSpeaker.rawValue
+
+    @MainActor private func run(ports: @escaping (Int) -> [String], latency: Double = 0.010,
+                                onsets: [Double] = [0.020, 0.030, 0.040]) async -> (skipped: Bool, measured: [PilotAudioCondition], failures: [String]?) {
+        var calls = 0
+        var measured: [PilotAudioCondition] = []
+        let r = OnsetPerArmRun(
+            outputPorts: { defer { calls += 1 }; return ports(calls) },
+            outputLatency: { latency },
+            sessionFormat: { "stub" },
+            measure: { measured.append($0); return onsets },
+            settle: {})
+        do {
+            let failures = try await r.run(engine: "stub")
+            return (false, measured, failures)
+        } catch is XCTSkip {
+            return (true, measured, nil)
+        } catch {
+            XCTFail("unexpected error \(error)")
+            return (false, measured, nil)
+        }
+    }
+
+    @MainActor func testNonSpeakerRouteSkipsBeforeMeasuring() async {
+        for port in [AVAudioSession.Port.bluetoothA2DP, .headphones] {
+            let r = await run(ports: { _ in [port.rawValue] })
+            XCTAssertTrue(r.skipped, "\(port.rawValue): the run must skip")
+            XCTAssertEqual(r.measured, [], "\(port.rawValue): nothing is measured on a non-speaker route")
+        }
+    }
+
+    @MainActor func testRouteReportedOnlyAfterActivationSkipsAfterTheFirstMeasurement() async {
+        for port in [AVAudioSession.Port.bluetoothA2DP, .headphones] {
+            // First look: no route reported yet (session inactive); once the engine ran, the route is the headset.
+            let r = await run(ports: { $0 == 0 ? [] : [port.rawValue] })
+            XCTAssertTrue(r.skipped, "\(port.rawValue): the re-check once the session is active must skip")
+            XCTAssertEqual(r.measured, [.phoneme], "\(port.rawValue): the run stops at the first arm's re-check")
+        }
+    }
+
+    @MainActor func testSpeakerRouteMeasuresBothArmsAndAppliesTheBound() async {
+        let pass = await run(ports: { _ in [self.speaker] }, latency: 0.010)
+        XCTAssertFalse(pass.skipped)
+        XCTAssertEqual(pass.measured, [.phoneme, .spatial])
+        XCTAssertEqual(pass.failures, [], "30 ms median + 10 ms output latency is inside 70 ms")
+        let fail = await run(ports: { _ in [self.speaker] }, latency: 0.050)
+        XCTAssertFalse(fail.skipped)
+        XCTAssertEqual(fail.failures?.count, 2, "30 ms median + 50 ms output latency is above 70 ms, both arms")
+        let none = await run(ports: { _ in [self.speaker] }, onsets: [])
+        XCTAssertEqual(none.failures?.count, 2, "an arm with no onset is a failure, not a pass")
     }
 }

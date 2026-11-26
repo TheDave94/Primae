@@ -133,7 +133,7 @@ struct EnrolmentMembershipExportTests {
     }
 
     @Test("B3: the store stamps each new phase and duration row with the injected enrolment, and the stamp persists")
-    func storeStampsRows() throws {
+    func storeStampsRows() async throws {
         let dir = scratch("stamp"); defer { try? FileManager.default.removeItem(at: dir) }
         let x = UUID()
         let url = dir.appendingPathComponent("d.json")
@@ -153,6 +153,12 @@ struct EnrolmentMembershipExportTests {
         plain.recordPhaseSession(letter: "F", phase: "guided", completed: true, score: 0.5, schedulerPriority: 0,
                                  condition: .threePhase, assessment: nil, recognition: nil)
         #expect(plain.snapshot.phaseSessionRecords.first?.enrolmentId == nil)
+        // Both stores write off the main actor; removing the directory under
+        // a pending write logged "ParentDashboardStore disk write failed …
+        // NSCocoaErrorDomain 4" for d.json and p.json (a persistence error in
+        // a passing test, INTEG13b 2026-11-26). Wait for the writes first.
+        await store.flush()
+        await plain.flush()
     }
 
     @Test("B3: rows written before r16 (no enrolmentId key) still decode, with no stamp")

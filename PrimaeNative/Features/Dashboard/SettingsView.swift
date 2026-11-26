@@ -16,7 +16,6 @@ struct SettingsView: View {
     @State private var comparisonObservePasses: Int = StudyComparisonSettings.observePasses
     @State private var comparisonSpokenFeedback: Bool = StudyComparisonSettings.spokenFeedbackInStudy
     @State private var comparisonLetterRepeatCount: Int = StudyComparisonSettings.letterRepeatCount
-    @State private var comparisonCycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditions
     @State private var comparisonPresentationSpacing: Double = StudyComparisonSettings.presentationSpacingSeconds
     @State private var finalTestPauseSeconds: Double = StudyComparisonSettings.pauseSeconds
     @State private var finalTestGlimpseSeconds: Double = StudyComparisonSettings.glimpseSeconds
@@ -375,15 +374,6 @@ struct SettingsView: View {
                     }
                     .accessibilityHint("Wie oft der komplette Ablauf eines Buchstabens läuft, bevor die Studienleitung weiterschaltet. Nach jeder Wiederholung wird derselbe Buchstabe erneut vorgemacht und nachgefahren; jede Wiederholung wird als eigener Datensatz geschrieben. 1 ist die Vorgabe.")
 
-                    Toggle("Alle Konditionen durchlaufen", isOn: Binding(
-                        get: { comparisonCycleAllConditions },
-                        set: {
-                            comparisonCycleAllConditions = $0
-                            StudyComparisonSettings.cycleAllConditions = $0
-                            vm.markComparisonSettingChanged()
-                        }))
-                    .accessibilityHint("Aus ist die Vorgabe: jedes Kind läuft in dem einen Arm, der ihm zugewiesen wurde. Ein lässt die Sitzung alle drei Audio-Bedingungen durchlaufen, eine je Buchstabe, in der Reihenfolge Phonem, Raumklang, Ohne Ton und wieder von vorn. Den ersten Buchstaben behält das Kind in dem Arm, der ihm zugewiesen wurde. Die Bedingung wechselt nur zwischen zwei Buchstaben, nie mitten in einem — der laufende Versuch bleibt unangetastet, und ein erneutes Laden desselben Buchstabens verbraucht keine Bedingung. Für den stillen Arm gilt dabei dieselbe Absicherung wie bei der Zuweisung: es entsteht kein Tonsignal. Ein Vergleichslauf, keine Pilotbedingung.")
-
                     Toggle("Startpunkte anzeigen (Anschauen/Nachspuren)", isOn: Binding(
                         get: { comparisonGuidedDotsVisible },
                         set: {
@@ -647,7 +637,6 @@ struct SettingsView: View {
                         comparisonObservePasses = StudyComparisonSettings.observePasses
                         comparisonSpokenFeedback = StudyComparisonSettings.spokenFeedbackInStudy
                         comparisonLetterRepeatCount = StudyComparisonSettings.letterRepeatCount
-                        comparisonCycleAllConditions = StudyComparisonSettings.cycleAllConditions
                         comparisonGuidedDotsVisible = StudyComparisonSettings.guidedDotsVisible
                         comparisonPanning = StudyComparisonSettings.panningEnabled
                         comparisonRateCoupling = StudyComparisonSettings.rateCoupling

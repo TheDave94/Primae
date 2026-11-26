@@ -30,7 +30,7 @@ final class LoopXMixerPanTests: XCTestCase {
             return noErr
         }
         engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: mono)
+        try engine.connectNode(node, to: engine.mainMixerNode, format: mono)
         try engine.start()
         let buf = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: stereo, frameCapacity: frames))
         var left: [Float] = [], right: [Float] = []

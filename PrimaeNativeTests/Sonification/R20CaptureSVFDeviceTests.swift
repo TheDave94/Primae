@@ -1,5 +1,5 @@
 // R20CaptureSVFDeviceTests.swift
-// PrimaeNativeTests: lane R20 (2026-11-08) DEVICE INSTRUMENT, SKIPS ON THE SIMULATOR
+// PrimaeNativeTests: lane R20 (2026-11-08) DEVICE INSTRUMENT (Primae-DeviceTests; fails on a simulator)
 //
 // R20's listening renders that need the R20 kernel API (the r19 baseline build of the captures does not have it). The 2-pole
 // against one-pole renders of the r20 page (section 6) are gone with the one-pole: David chose the 2-pole in r21.
@@ -10,10 +10,7 @@ import Foundation
 
 final class R20CaptureSVFDeviceTests: XCTestCase {
     override func setUpWithError() throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("device instrument: AVAudioEngine does not run on the simulator")
-        #endif
-        if !r20InstrumentsEnabled { throw XCTSkip("listening captures: run with TEST_RUNNER_R20_INSTRUMENTS=1") }
+        try r20RequireDevice()
     }
 
     private func name(_ kind: String, _ src: String) -> String { "\(R20CaptureRig.variant)_off_\(kind)_\(src)" }

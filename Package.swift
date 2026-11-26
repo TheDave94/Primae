@@ -76,6 +76,10 @@ let package = Package(
             name: "PrimaeNativeTests",
             dependencies: ["PrimaeNative"],
             path: "PrimaeNativeTests",
+            // Test-bundle resources for the Xcode project's test target (its
+            // synchronized group copies them); the package build has no use
+            // for them and would otherwise warn they are unhandled.
+            exclude: ["SourceFixtures"],
             swiftSettings: [
                 // XCTest subclasses with @MainActor members hit a Swift 6 limitation:
                 // inherited nonisolated initialisers (init(invocation:) etc.) conflict

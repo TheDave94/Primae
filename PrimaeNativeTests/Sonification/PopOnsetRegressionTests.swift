@@ -182,18 +182,23 @@ nonisolated struct PopOnsetRegressionTests {
 
     /// Device only (the simulator's session has no hardware buffer to move): asking for 0 returns the system default,
     /// which is what a Bluetooth route gets. Logs the figures (POP2.md quotes them).
-    @MainActor @Test func askingForZeroGivesBackTheSystemDefaultBuffer() throws {
+    @MainActor @Test func askingForZeroGivesBackTheSystemDefaultBuffer() async throws {
         #if targetEnvironment(simulator)
         return
         #else
+        // SDK27: no synchronous session call on the main thread while the
+        // session is active (a runtime "Hang Risk"): deactivate and activate
+        // asynchronously, and set the category and the buffer only while the
+        // session is inactive.
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playback)
+        _ = try await session.deactivate(options: [])
+        try AudioEngine.configureSessionIfNeeded(session)
         try session.setPreferredIOBufferDuration(SoundEnvelope.preferredIOBufferSeconds)
-        try session.setActive(true)
+        _ = try await session.activate(options: [])
         let small = session.ioBufferDuration
+        _ = try await session.deactivate(options: [])
         try session.setPreferredIOBufferDuration(0)
-        try session.setActive(false)
-        try session.setActive(true)
+        _ = try await session.activate(options: [])
         let reset = session.ioBufferDuration
         print("POP2 IOBUF route=\(session.currentRoute.outputs.map { $0.portType.rawValue }) requested 5 ms -> effective \(small * 1000) ms; after asking for 0 -> \(reset * 1000) ms")
         #expect(small < 0.008)

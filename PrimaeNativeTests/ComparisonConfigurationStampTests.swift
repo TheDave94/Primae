@@ -94,7 +94,7 @@ private final class StampCapturingStore: ParentDashboardStoring {
     /// defaults, so a session built from it names none of them however
     /// the rest of the parallel run is behaving. (`stub` pins the other
     /// eight too; these four are the ones this suite asserts on.)
-    private let pinnedAtDefault = ["cycleAllConditions", "oncePerCondition",
+    private let pinnedAtDefault = ["oncePerCondition",
                                    "soundGateRadiusFactor", "soundGateVelocityFloor", "soundGatingEnabled"]
 
     private func studyVM(dashboardStore: ParentDashboardStoring? = nil,
@@ -231,7 +231,6 @@ private final class StampCapturingStore: ParentDashboardStoring {
             expecting: "spokenFeedbackInStudy")
         stampAfterOneChange({ $0.allFiveLetters = true }, expecting: "allFiveLetters")
         stampAfterOneChange({ $0.letterRepeatCount = 3 }, expecting: "letterRepeatCount")
-        stampAfterOneChange({ $0.cycleAllConditions = true }, expecting: "cycleAllConditions")
         stampAfterOneChange({ $0.presentationSpacingSeconds = 2.5 }, expecting: "presentationSpacingSeconds")
         stampAfterOneChange({ $0.panningEnabled = false }, expecting: "panningEnabled")
         stampAfterOneChange({ $0.guidedDotsVisible = false }, expecting: "guidedDotsVisible")
@@ -286,7 +285,6 @@ private final class StampCapturingStore: ParentDashboardStoring {
             spokenFeedbackInStudy: !StudyComparisonConfiguration.defaults.spokenFeedbackInStudy,
             allFiveLetters: true,
             letterRepeatCount: 3,
-            cycleAllConditions: true,
             presentationSpacingSeconds: 2.5,
             panningEnabled: false,
             guidedDotsVisible: false,
@@ -315,8 +313,8 @@ private final class StampCapturingStore: ParentDashboardStoring {
             glimpseSeconds: 1.5)        // r27: 3.0 is the default
 
         let storedFields = Mirror(reflecting: all).children.compactMap(\.label)
-        #expect(storedFields.count == 28,
-                "the configuration struct now has \(storedFields.count) stored switches, not 28 — the field count in StudyComparisonSettings, and every count derived from it, has moved")
+        #expect(storedFields.count == 27,
+                "the configuration struct now has \(storedFields.count) stored switches, not 27 — the field count in StudyComparisonSettings, and every count derived from it, has moved")
 
         let entries = (all.nonDefaultStamp ?? "").split(separator: ";").map(String.init)
         #expect(entries.count == storedFields.count,

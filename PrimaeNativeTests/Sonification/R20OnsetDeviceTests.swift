@@ -7,7 +7,7 @@
 // docs/DECISIONS.md r20): the real view model, the real
 // `LiveSonificationAudio.production` voice and AVAudioEngine graph, a stroke along the letter's first stroke at 150 pt/s
 // sampled at 120 Hz, the clock at the touch-down, the onset the first 5 ms window >= -20 dB re the stroke's steady RMS at the main
-// mixer (a tap), plus the same for -6 dB. SKIPS ON THE SIMULATOR. Asserts only the L4 bound (70 ms at the speaker).
+// mixer (a tap), plus the same for -6 dB. Runs in Primae-DeviceTests; fails on a simulator. Asserts only the L4 bound (70 ms at the speaker).
 //
 // Scenarios (what is active at the first move):
 //   off        every switch off (the r19 control)
@@ -25,14 +25,6 @@ import CoreGraphics
 import QuartzCore
 @testable import PrimaeNative
 
-private nonisolated let r20OnsetIsSim: Bool = {
-    #if targetEnvironment(simulator)
-    return true
-    #else
-    return false
-    #endif
-}()
-
 final class R20OnsetDeviceTests: XCTestCase {
 
     let canvas = CGSize(width: 600, height: 600)
@@ -46,8 +38,7 @@ final class R20OnsetDeviceTests: XCTestCase {
     }
 
     override func setUpWithError() throws {
-        if r20OnsetIsSim { throw XCTSkip("device instrument: AVAudioEngine does not run on the simulator") }
-        if !r20InstrumentsEnabled { throw XCTSkip("minutes-long instrument: run with TEST_RUNNER_R20_INSTRUMENTS=1") }
+        try r20RequireDevice()
     }
 
     @MainActor private func sleep(_ s: Double) async { try? await Task.sleep(nanoseconds: UInt64(max(0, s) * 1e9)) }
@@ -97,8 +88,9 @@ final class R20OnsetDeviceTests: XCTestCase {
         let rec = OnsetRecorder()
         av.stop()
         let mixer = av.mainMixerNode
-        mixer.installTap(onBus: 0, bufferSize: 512, format: mixer.outputFormat(forBus: 0)) { [rec] b, w in rec.append(b, w) }
+        try mixer.installAudioTap(onBus: 0, bufferSize: 512, format: mixer.outputFormat(forBus: 0)) { [rec] b, w in rec.append(b, w) }
         output.startIfNeeded()
+        await host.startGate.settle()   // SDK27: the start follows an asynchronous activation
         defer { mixer.removeTap(onBus: 0); av.stop() }
 
         var deps = TracingDependencies.stubReading(comparisonDefaults: box.defaults).with(audio: voice)

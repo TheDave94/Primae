@@ -47,7 +47,7 @@
 import CoreGraphics
 import Foundation
 
-enum FreeWriteAttemptCheck {
+nonisolated enum FreeWriteAttemptCheck {
 
     /// What the check found. `shapeScore` is the best min(coverage,
     /// precision) over the alignments whose ink length was in range
@@ -190,7 +190,45 @@ enum FreeWriteAttemptCheck {
         return count
     }
 
+    /// Share of `points` with a `target` point within `tolerance`. The
+    /// targets are bucketed in a grid of `tolerance`-sized cells, so each
+    /// point compares only against the 3x3 cells around it: a target within
+    /// `tolerance` can lie in no other cell. The comparison itself is the
+    /// brute-force one (`shareBruteForce`), so the result is identical; the
+    /// scan was O(points x targets) and ran 28 times per evaluation on the
+    /// main actor (T1R, 2026-11-24).
     static func share(_ points: [CGPoint], within tolerance: CGFloat, of target: [CGPoint]) -> CGFloat {
+        guard !points.isEmpty, !target.isEmpty else { return 0 }
+        guard tolerance > 0, tolerance.isFinite,
+              (points + target).allSatisfy({ $0.x.isFinite && $0.y.isFinite }) else {
+            return shareBruteForce(points, within: tolerance, of: target)
+        }
+        let t2 = tolerance * tolerance
+        struct Cell: Hashable { let x: Int; let y: Int }
+        func cell(_ p: CGPoint) -> Cell {
+            Cell(x: Int((p.x / tolerance).rounded(.down)), y: Int((p.y / tolerance).rounded(.down)))
+        }
+        var grid: [Cell: [CGPoint]] = [:]
+        for q in target { grid[cell(q), default: []].append(q) }
+        var hits = 0
+        for p in points {
+            let c = cell(p)
+            search: for dx in -1...1 {
+                for dy in -1...1 {
+                    guard let bucket = grid[Cell(x: c.x + dx, y: c.y + dy)] else { continue }
+                    if bucket.contains(where: { ($0.x - p.x) * ($0.x - p.x) + ($0.y - p.y) * ($0.y - p.y) <= t2 }) {
+                        hits += 1
+                        break search
+                    }
+                }
+            }
+        }
+        return CGFloat(hits) / CGFloat(points.count)
+    }
+
+    /// The reference implementation `share` must equal: every point against
+    /// every target.
+    static func shareBruteForce(_ points: [CGPoint], within tolerance: CGFloat, of target: [CGPoint]) -> CGFloat {
         guard !points.isEmpty, !target.isEmpty else { return 0 }
         let t2 = tolerance * tolerance
         var hits = 0

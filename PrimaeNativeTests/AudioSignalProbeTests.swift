@@ -175,7 +175,7 @@ struct AudioSignalProbeTests {
         }
     }
 
-    static let layoutCases: [LayoutCase] = [true, false].flatMap { interleaved in
+    nonisolated static let layoutCases: [LayoutCase] = [true, false].flatMap { interleaved in
         [false, true].flatMap { int16 in
             [(true, false), (false, true), (true, true)].map {
                 LayoutCase(interleaved: interleaved, int16: int16, left: $0.0, right: $0.1)
@@ -414,17 +414,23 @@ struct AudioSignalProbeTests {
     /// This is a source-level check rather than a behavioural one because the
     /// behaviour in question is a trap that only a device can observe.
     ///
-    /// SKIPPED, visibly, when the source file is not readable: `#filePath` is
-    /// the Mac checkout's path baked in at compile time, and a test bundle
-    /// running on the physical iPad cannot open it. The skip shows in the
-    /// results with its reason (it is not a known issue and not a silent pass);
-    /// the check still runs, and can fail, wherever the checkout is readable
-    /// (the simulator and the Mac).
-    @Test("the tap is never installed with an inline closure literal",
-          .enabled(if: Self.probeSourceIsReadable,
-                   "AudioSignalProbe.swift is not readable here (#filePath is a Mac path; on the physical iPad the checkout does not exist)"))
+    /// The source travels WITH the test bundle, so the check runs and can
+    /// fail on the physical iPad too. It used to read the file through
+    /// `#filePath` — the Mac checkout's path baked in at compile time — and
+    /// skipped wherever that path does not exist, which is every device run.
+    /// `SourceFixtures/AudioSignalProbe.swift.txt` is a SYMLINK to
+    /// `PrimaeNative/Core/AudioSignalProbe.swift`: the build copies the
+    /// file it points at into the test bundle, so the bundled text is the
+    /// source as built, never a hand-kept copy that could drift. The test
+    /// also pins that the bundled text is that file (its header line), so a
+    /// symlink broken or re-pointed fails here rather than checking nothing.
+    @Test("the tap is never installed with an inline closure literal")
     func tapIsNotInstalledWithAnInlineClosure() throws {
-        let source = try String(contentsOf: probeSourceURL(), encoding: .utf8)
+        let source = try Self.bundledProbeSource()
+        #expect(source.hasPrefix("// AudioSignalProbe.swift\n"),
+                "the bundled fixture is not AudioSignalProbe.swift: \(source.prefix(80))")
+        #expect(source.contains("final class AudioSignalProbe"),
+                "the bundled fixture does not contain the probe it guards")
 
         // Strip comments so the prohibition does not fire on the very
         // comments explaining why it exists.
@@ -441,20 +447,21 @@ struct AudioSignalProbeTests {
         #expect(code.contains("tapProvider: handler"))
     }
 
-    private static var probeSourceIsReadable: Bool {
-        FileManager.default.isReadableFile(atPath: probeSourceURL().path)
+    /// `AudioSignalProbe.swift` as copied into this test bundle (see above).
+    private static func bundledProbeSource() throws -> String {
+        let bundle = Bundle(for: ProbeBundleToken.self)
+        let name = "AudioSignalProbe.swift"
+        let url = bundle.url(forResource: name, withExtension: "txt")
+            ?? bundle.url(forResource: name, withExtension: "txt", subdirectory: "SourceFixtures")
+        guard let url else {
+            throw ProbeSourceMissing(bundlePath: bundle.bundlePath)
+        }
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
-    private func probeSourceURL() -> URL { Self.probeSourceURL() }
-
-    private static func probeSourceURL() -> URL {
-        // `#filePath` is this test file's absolute path AT COMPILE TIME, so
-        // walking up from it reaches the repo root with no dependence on
-        // bundle layout, build directory shape, or working directory.
-        URL(fileURLWithPath: #filePath)          // .../PrimaeNativeTests/AudioSignalProbeTests.swift
-            .deletingLastPathComponent()          // .../PrimaeNativeTests
-            .deletingLastPathComponent()          // repo root
-            .appendingPathComponent("PrimaeNative/Core/AudioSignalProbe.swift")
+    struct ProbeSourceMissing: Error, CustomStringConvertible {
+        let bundlePath: String
+        var description: String { "AudioSignalProbe.swift.txt is not in the test bundle at \(bundlePath)" }
     }
 
     /// Remove `//` line comments. Deliberately simple: this file contains no

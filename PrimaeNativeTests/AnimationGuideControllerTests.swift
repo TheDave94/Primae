@@ -85,7 +85,7 @@ import Testing
     }
 
     /// Thread-safe monotonic clock for the fake device in R-088.
-    private final class FakeClock: @unchecked Sendable {
+    nonisolated private final class FakeClock: @unchecked Sendable {
         private let lock = NSLock()
         private var value: TimeInterval = 0
         func advance(_ seconds: TimeInterval) {
@@ -223,7 +223,7 @@ import Testing
     /// One tick per turn, except one turn that owes `stallTo` cycle
     /// seconds — the shape of a loaded simulator's turn, which is the
     /// only way `emitFrame` ever receives a time off the 1/60 grid.
-    private final class StallClock: @unchecked Sendable {
+    nonisolated private final class StallClock: @unchecked Sendable {
         private let lock = NSLock()
         private var value: TimeInterval = 0
         private var cycleOrigin: TimeInterval?
@@ -365,7 +365,7 @@ import Testing
     /// so the number of sleeps in flight is the number of live loops.
     /// (The test used to contain no assertion at all — audit 2026-09-04.)
     @Test func start_replacesInFlightAnimation() async {
-        final class Gate: @unchecked Sendable {
+        nonisolated final class Gate: @unchecked Sendable {
             let lock = NSLock(); var inFlight = 0; var peak = 0
             func enter() { lock.lock(); inFlight += 1; peak = max(peak, inFlight); lock.unlock() }
             func leave() { lock.lock(); inFlight -= 1; lock.unlock() }

@@ -13,8 +13,9 @@
 // not condition-specific (the ghost-letter animation is identical in all
 // three arms; the per-touch coupling is the arm's manipulation, not a
 // demonstration of it), and the two per-condition decisions the review
-// also raised already have switches of their own (`cycleAllConditions`,
-// `letterRepeatCount`). So "einmal pro Kondition" has exactly one
+// also raised already have a switch of their own (`letterRepeatCount`;
+// the within-subject `cycleAllConditions` was removed 2026-11-25, so the
+// arm is fixed for a child's session by construction). So "einmal pro Kondition" has exactly one
 // referent in the code. ON delivers the demonstration at the first
 // letter loaded in each condition and on no later letter in it; OFF —
 // the default, and every build before this switch — is unchanged.
@@ -27,13 +28,14 @@
 //
 // THE ONE TEST THAT MATTERS MOST is
 // `onReArmsForANewConditionButNotForTheSameOne`. "Once per condition" is
-// NOT "once per session": with `cycleAllConditions` ON, each arm must
-// still get its own demonstration. An implementation that fired only at
+// NOT "once per session": the ledger is keyed on the arm, and the arm
+// can still change in place through `applyArm` (new-child enrolment), so
+// each arm must still get its own demonstration. An implementation that fired only at
 // the session's first letter would satisfy every other test in this file
 // and would be wrong.
 //
 // HOW THE SWITCH IS DRIVEN. Through `TracingDependencies.oncePerCondition`
-// — the seam `cycleAllConditions` uses — so no test that exercises
+// — a dependency seam, not the global key — so no test that exercises
 // BEHAVIOUR writes a key a parallel suite can observe. Swift Testing runs
 // suites in PARALLEL and this project has already been broken once by
 // exactly that (a font-weight key set by `LetterWeightFallbackTests`
@@ -53,7 +55,7 @@
 // alternative, and a production line no test can fail on is worse.
 //
 // WHAT THESE TESTS CANNOT SEE. Whether sound leaves the speaker — the
-// same caveat `SilentArmAuthorityTests` and `CycleAllConditionsTests`
+// same caveat `SilentArmAuthorityTests` and `OneArmPerSessionTests`
 // carry. "Did the demonstration arm" is measured as an engine load that
 // only a demonstration can make (`loadAudioFile(autoplay: true)`), which
 // is the strongest in-process evidence available.
@@ -162,8 +164,8 @@ struct OncePerConditionTests {
     /// switch's name carries and the one a plausible wrong implementation
     /// (`if demonstratedAnything { return }`) would lose.
     ///
-    /// The walk is phoneme → spatial → silent → phoneme → spatial, i.e.
-    /// exactly the order `cycleAllConditions` steps through. Silent is
+    /// The walk is phoneme → spatial → silent → phoneme → spatial, driven
+    /// through the `applyArm` seam. Silent is
     /// checked for the property it has always had rather than for this
     /// switch: it adds no audio by construction, so there is nothing for
     /// the ledger to suppress.

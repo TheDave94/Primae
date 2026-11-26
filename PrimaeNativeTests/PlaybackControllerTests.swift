@@ -202,7 +202,7 @@ final class Box<T> {
     /// restart the timer, or continuous off-path movement never goes
     /// idle (audit 2026-09-06). An active request still cancels it.
     @Test func repeatedIdleRequest_keepsThePendingTimer() async {
-        final class Gate: @unchecked Sendable {
+        nonisolated final class Gate: @unchecked Sendable {
             let lock = NSLock(); var sleeps = 0
             func hit() { lock.lock(); sleeps += 1; lock.unlock() }
             var count: Int { lock.lock(); defer { lock.unlock() }; return sleeps }

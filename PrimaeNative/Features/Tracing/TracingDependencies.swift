@@ -100,7 +100,7 @@ struct TracingDependencies {
     /// Off by default.
     var studyMode: Bool
     /// Whether a study session speaks. Device config, captured once at
-    /// construction like `cycleAllConditions`.
+    /// construction like `oncePerCondition`.
     ///
     /// A SEAM, added 2026-10-02 so tests can pin it instead of writing
     /// `UserDefaults`. `StudyComparisonSettings.spokenFeedbackInStudy` is
@@ -131,26 +131,12 @@ struct TracingDependencies {
     /// stub pins true) so the study precondition below is deterministic
     /// in tests; production reads `ParticipantStore.isEnrolled`.
     var participantEnrolled: Bool
-    /// Whether the session steps through all three audio arms, one per
-    /// letter, instead of running the single arm assigned from the
-    /// identifier — `StudyComparisonSettings.cycleAllConditions`, the
-    /// supervisor's "alle Konditionen oder nur eine Kondition".
-    ///
-    /// Carried HERE rather than read from the global inside the view
-    /// model, unlike the other comparison switches. Reason: a test must
-    /// be able to exercise the cycle without writing a key that every
-    /// other suite in the (parallel) run can observe — the trap
-    /// `LetterWeightFallbackTests` cost the suite once already. The value
-    /// is still read once, at dependency construction, so the "captured
-    /// at init, a proctor cannot change it mid-session" property the
-    /// other switches have is unchanged.
-    var cycleAllConditions: Bool
     /// Reach of the sound gate as a multiple of the adapted checkpoint
     /// radius — `StudyComparisonSettings.soundGateRadiusFactor`, the
     /// supervisor's "Trigger boundaries" (2026-09-17). Applied to every
     /// cell's tracker through `SequenceGridController`.
     ///
-    /// Carried HERE for the same reason as `cycleAllConditions` above, and
+    /// Carried HERE for the same reason as `oncePerCondition` below, and
     /// one of the two seams exists for a reason the other does not have: the
     /// DEFAULT ARGUMENT of this and the next property is an expression that
     /// READS a `UserDefaults` key, and default arguments are evaluated at
@@ -180,9 +166,9 @@ struct TracingDependencies {
     /// "Einmal pro Kondition".
     ///
     /// Carried HERE rather than read from the global inside the view
-    /// model, for the same reason `cycleAllConditions` above is: a test
-    /// must be able to drive the behaviour without writing a key that
-    /// every other suite in the (parallel) run can observe. The value is
+    /// model: a test must be able to drive the behaviour without writing
+    /// a key that every other suite in the (parallel) run can observe —
+    /// the trap `LetterWeightFallbackTests` cost the suite once. The value is
     /// still read once, at dependency construction, so the "captured at
     /// init, a proctor cannot change it mid-session" property the other
     /// switches have is unchanged.
@@ -262,6 +248,16 @@ struct TracingDependencies {
     /// (batch C, R-051). A seam so a test can see the assertion taken and
     /// released; production is `UIApplication.shared`, read only when used.
     var backgroundTasks: BackgroundTaskGranting = UIApplicationBackgroundTasks()
+    /// Where the view model hears a study data store's failed disk write
+    /// (`handlePersistenceFailure`, the hard session stop). Production is
+    /// `.shared`, the centre every store reports to by default. A seam because
+    /// `.shared` is one per PROCESS and `subscribe` replays every earlier
+    /// failure: in the test process, one test's store whose temp directory
+    /// was removed under its background write hard-stopped every view model
+    /// built after it (measured 2026-11-24, serial run: TouchLiftAudioTests
+    /// and StudyNavigationFixTests red behind StudyCleanConfigTests). The
+    /// test fixture gives each view model its own centre.
+    var persistenceFailureCenter: PersistenceFailureCenter = .shared
     /// Reads the device and audio state a phase starts under and an
     /// enrolment happens in (fix batch D, R-020 / R-018). A seam so a test
     /// fixes the environment and asserts the rows; production reads the
@@ -388,14 +384,12 @@ struct TracingDependencies {
         observeCueEndToPresentationSeconds: TimeInterval = 1.0,
         observeCueFallbackSeconds: TimeInterval = 3.0,
         participantEnrolled: Bool = ParticipantStore.isEnrolled,
-        // Device config, like studyMode — read once here, never live.
-        cycleAllConditions: Bool? = nil,
         // Both halves of the sound gate's ANDed trigger boundary. Device
-        // config like `cycleAllConditions`, read once here and never live.
+        // config like studyMode, read once here and never live.
         soundGateRadiusFactor: Double? = nil,
         soundGateVelocityFloor: Double? = nil,
         presentationSpacingSeconds: TimeInterval? = nil,
-        // Same capture-at-construction rule as `cycleAllConditions` above.
+        // Same capture-at-construction rule as the sound gate above.
         oncePerCondition: Bool? = nil,
         soundGatingEnabled: Bool? = nil,
         // Same capture-at-construction rule; `stub` pins it to the default so
@@ -480,7 +474,6 @@ struct TracingDependencies {
         func resolved() -> StudyComparisonConfiguration {
             StudyComparisonSettings.configuration(in: comparisonDefaults)
         }
-        self.cycleAllConditions = cycleAllConditions ?? resolved().cycleAllConditions
         self.soundGateRadiusFactor = soundGateRadiusFactor ?? resolved().soundGateRadiusFactor
         self.soundGateVelocityFloor = soundGateVelocityFloor ?? resolved().soundGateVelocityFloor
         self.presentationSpacingSeconds = presentationSpacingSeconds ?? resolved().presentationSpacingSeconds

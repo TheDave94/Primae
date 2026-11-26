@@ -94,6 +94,18 @@ enum LetterTracer {
     /// The launch argument that arms the app-side hook.
     static let launchArgument = "-tracingGeometryHook"
 
+    /// A synthesized stroke is evidence about the APP only if the scene did
+    /// not re-lay-out while it was drawn: the touch points were mapped
+    /// through the geometry read before the stroke.
+    static func assertGeometryStable(_ before: TracingHookSnapshot?, _ after: TracingHookSnapshot?,
+                                     stroke: String, file: StaticString, line: UInt) {
+        guard let b = before?.canvasFrame, let a = after?.canvasFrame, b != a else { return }
+        XCTFail("the scene re-laid-out during the synthesized trace of \(stroke) "
+                + "(canvas \(b) -> \(a)): the study build is landscape-only and full screen, "
+                + "so nothing should resize it. The trace is void, not scored.",
+                file: file, line: line)
+    }
+
     /// Finger speed along the path, points per second. About 4 cm/s on a
     /// 13-inch iPad (≈ 52 pt per cm): a slow, deliberate trace of the kind
     /// a 5–6-year-old makes on a guided letter, well below a swipe.
@@ -133,12 +145,16 @@ enum LetterTracer {
     static func traceLetter(_ snapshot: TracingHookSnapshot,
                             in app: XCUIApplication,
                             file: StaticString = #filePath, line: UInt = #line) {
-        let toScreen = screenTransform(app)
         for (index, stroke) in snapshot.strokes.enumerated() {
             let points = stroke.map { CGPoint(x: $0[0], y: $0[1]) }
             guard points.count >= 2 else { continue }
+            let toScreen = screenTransform(app)
             let samples = densified(points).map { (point: $0.point.applying(toScreen), offset: $0.offset) }
-            synthesize(path: samples, name: "trace \(snapshot.letter) stroke \(index + 1)", file: file, line: line)
+            let name = "trace \(snapshot.letter) stroke \(index + 1)"
+            synthesize(path: samples, name: name, file: file, line: line)
+            // Against the geometry the stroke points were READ in: a turn
+            // during this stroke or since the snapshot voids the trace.
+            assertGeometryStable(snapshot, Self.snapshot(app), stroke: name, file: file, line: line)
             Thread.sleep(forTimeInterval: 0.4)
         }
     }

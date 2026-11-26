@@ -183,6 +183,27 @@
                <Test
                   Identifier = "AudioEngineTests/testSuspendThenResume_doesNotCrash()">
                </Test>
+               <Test
+                  Identifier = "LoopXDiagnosisTests/testAppScenarios()">
+               </Test>
+               <Test
+                  Identifier = "R20CaptureDeviceTests">
+               </Test>
+               <Test
+                  Identifier = "R20CaptureSVFDeviceTests">
+               </Test>
+               <Test
+                  Identifier = "R20OfflineListeningDeviceTests">
+               </Test>
+               <Test
+                  Identifier = "R20OnsetDeviceTests">
+               </Test>
+               <Test
+                  Identifier = "R20StageMeasurementTests">
+               </Test>
+               <Test
+                  Identifier = "SpeechQueueDeviceProbeTests">
+               </Test>
             </SkippedTests>
          </TestableReference>
          <TestableReference

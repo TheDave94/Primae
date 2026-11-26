@@ -20,7 +20,7 @@ import Foundation
 // MARK: - Assessment result
 
 /// Four-dimension writing assessment per Schreibmotorik Institut (Marquardt & Söhl, 2016).
-struct WritingAssessment: Codable, Equatable {
+nonisolated struct WritingAssessment: Codable, Equatable, Sendable {
     /// Shape accuracy (0–1) from the stroke-correspondence spatial
     /// deviation (direction-minimised discrete Fréchet per matched pair,
     /// 2026-09-04); the Hausdorff form it replaced is retired.
@@ -41,7 +41,7 @@ struct WritingAssessment: Codable, Equatable {
 
 // MARK: - Scorer
 
-struct FreeWriteScorer {
+nonisolated struct FreeWriteScorer {
 
     // MARK: - Public API
 

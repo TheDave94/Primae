@@ -880,7 +880,7 @@ enum WritingPass: String, CaseIterable, CustomTestStringConvertible {
     }
 
     /// A thread-safe log for the injected sleeper (it runs off the main actor).
-    private final class SleepLog: @unchecked Sendable {
+    nonisolated private final class SleepLog: @unchecked Sendable {
         private let lock = NSLock()
         private var _calls: [Duration] = []
         private var _holdsReturned = 0

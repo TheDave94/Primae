@@ -9,8 +9,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     // MARK: - Observer store (Mutex-protected for nonisolated deinit access)
 
     private typealias ObserverTasks = (interruption: Task<Void, Never>, routeChange: Task<Void, Never>)
-    // nonisolated(unsafe) is load-bearing: nonisolated deinit needs actor-isolation escape. Xcode warning is a false positive — Mutex<> being Sendable is unrelated.
-    private nonisolated(unsafe) static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
+    // `nonisolated` is load-bearing: the nonisolated deinit needs the store outside the main actor
+    // (the default isolation). SDK27 (2026-11-24): plain `nonisolated`, not `nonisolated(unsafe)` —
+    // `Mutex` is Sendable, so the compiler proves the access safe and the `(unsafe)` escape was
+    // unnecessary (its warning was right, not a false positive). The deinit pattern is unchanged.
+    private nonisolated static let observerStore = Mutex<[ObjectIdentifier: ObserverTasks]>([:])
 
     // MARK: - Private state
 
@@ -18,6 +21,14 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     private let player     = AVAudioPlayerNode()
     private let timePitch  = AVAudioUnitTimePitch()
     private var currentFile: AVAudioFile?
+    /// SDK27: the one start path for `engine` (see `EngineStartGate`). The
+    /// live voice's source node renders into this engine, so it starts the
+    /// engine through this same gate.
+    private(set) lazy var startGate = EngineStartGate.production(for: engine, sessionPreparation: sessionPreparation)
+    /// Session settings applied in the gate's off-main prepare, before the
+    /// configuration and every activation (`SoundEnvelope.makeHostEngine`: the
+    /// r17 IO buffer). nil: none.
+    private let sessionPreparation: (@Sendable () -> Void)?
 
     private var shouldResumePlayback          = false
     private var appIsForeground               = true
@@ -45,6 +56,10 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// at startup so a parent notices something is wrong instead of seeing
     /// the child poke a silent device. Stays nil after a healthy init.
     private(set) var initializationError: String? = nil
+
+    /// SDK27: the launch start-up (configuration, activation, first start)
+    /// has finished and `initializationError` is final.
+    func settleStartup() async { await startGate.settle() }
 
     // MARK: - Tunable parameters (live-adjustable from the debug audio panel)
 
@@ -90,17 +105,28 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     var debugInterruptionShouldResume:     Bool { interruptionShouldResume }
     var debugIsEngineRunning:              Bool { engine.isRunning }
     var debugShouldResumePlayback:         Bool { shouldResumePlayback }
+    var debugIsFadingOut:                  Bool { isFadingOut }
+    var debugHasCurrentFile:               Bool { currentFile != nil }
     var debugAppIsForeground:              Bool { appIsForeground }
     var debugInterruptionResumeGateRequired: Bool { interruptionResumeGateRequired }
     #endif
 
     // MARK: - Init / deinit
 
-    public init() {
+    public init(sessionPreparation: (@Sendable () -> Void)? = nil) {
+        self.sessionPreparation = sessionPreparation
         engine.attach(player)
         engine.attach(timePitch)
-        engine.connect(player,    to: timePitch,              format: engine.mainMixerNode.outputFormat(forBus: 0))
-        engine.connect(timePitch, to: engine.mainMixerNode,   format: engine.mainMixerNode.outputFormat(forBus: 0))
+        // SDK27: `connectNode` (iOS 27) throws where the deprecated `connect`
+        // raised an Objective-C exception. A failure is logged and surfaced as
+        // the init toast instead of ending the process.
+        do {
+            try engine.connectNode(player,    to: timePitch,            format: engine.mainMixerNode.outputFormat(forBus: 0))
+            try engine.connectNode(timePitch, to: engine.mainMixerNode, format: engine.mainMixerNode.outputFormat(forBus: 0))
+        } catch {
+            initializationError = "Audio nicht verfügbar"
+            log.error("Audio graph connect failed: \(error.localizedDescription)")
+        }
         player.prepare(withFrameCount: 1024)
         timePitch.rate = 1.0; timePitch.pitch = 0.0
 
@@ -120,59 +146,51 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             signalProbe.arm(on: engine)
         }
 
-        do {
-            try AVAudioSession.sharedInstance().setCategory(
-                .playback, mode: .default, options: [.interruptSpokenAudioAndMixWithOthers]
-            )
-            // Also deliberately left synchronous, same reasoning as
-            // startIfNeeded()'s: engine.start() right below needs the
-            // session genuinely active first, this is a one-time call at
-            // app launch (not the hot path play() is), and `init` is
-            // exactly the kind of control flow LESSONS.md says never to
-            // restructure. Logging added (2026-09-15) — a failed
-            // activation here previously fell straight through to
-            // `engine.start()` unlogged; `engine.start()` can still
-            // report success even when the session itself never
-            // genuinely activated, which reads as "audio running" while
-            // producing silence. Same shape as the logged failure branch
-            // right below; this does not change control flow, only
-            // whether the failure is visible.
-            do {
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {
-                log.error("Failed to activate audio session at init: \(error.localizedDescription)")
-            }
-            if !engine.isRunning {
-                do { try engine.start() } catch {
-                    player.stop()
-                    isPlaying             = false
-                    shouldResumePlayback  = false
-                    initializationError   = "Ton konnte nicht gestartet werden"
-                    log.error("Initial engine start failed: \(error.localizedDescription)")
-                }
-            }
-        } catch {
-            isPlaying            = false
-            shouldResumePlayback = false
-            initializationError  = "Audio nicht verfügbar"
-            log.error("AVAudioSession config failed: \(error.localizedDescription)")
+        // SDK27 (2026-11-24, seat ruling 1): EVERY start of this engine —
+        // this launch start, `startIfNeeded`, and the live voice's
+        // `SourceNodeOutput` — goes through `startGate`, which configures the
+        // session OFF the main thread and orders the start after iOS 27's
+        // asynchronous `activate(options:)` has completed. No session call
+        // blocks the main thread, and no synchronous start can overtake the
+        // launch activation (measured on the iPad before the gate:
+        // `engine.firstStart alreadyRunning=true` in both sound arms). A
+        // failed activation is still logged (2026-09-15). A failed
+        // configuration or FIRST start still surfaces the init toast; it now
+        // lands after `init` returns, and the VM awaits `settleStartup()`
+        // before reading it.
+        startGate.onPrepareFailure = { [weak self] error in
+            guard let self else { return }
+            self.isPlaying            = false
+            self.shouldResumePlayback = false
+            self.initializationError  = "Audio nicht verfügbar"
+            self.log.error("AVAudioSession config failed: \(error.localizedDescription)")
         }
+        startGate.onStartFailure = { [weak self] _ in
+            guard let self else { return }
+            self.player.stop()
+            self.isPlaying             = false
+            self.shouldResumePlayback  = false
+            if self.startGate.startCount == 0 {
+                self.initializationError = "Ton konnte nicht gestartet werden"
+            }
+        }
+        startGate.whenRunning()
 
         let key = ObjectIdentifier(self)
 
         // Tasks inherit @MainActor isolation from init context.
         // [weak self] is still correct — these tasks are long-lived observers.
-        let interruptionTask = Task { [weak self] in
-            for await notification in NotificationCenter.default.notifications(
-                named: AVAudioSession.interruptionNotification, object: nil
-            ) {
-                guard notification.name == AVAudioSession.interruptionNotification else { continue }
-                guard let self else { break }
-                let typeValue    = (notification.userInfo?[AVAudioSessionInterruptionTypeKey]    as? NSNumber)?.uintValue
-                let optionsValue = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue ?? 0
-                if let typeValue,
-                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) {
-                    if type == .began {
+        //
+        // SDK27 (2026-11-24): the events come from iOS 27's didBecomeInactive /
+        // resumptionRecommendation pair through `AudioSessionInterruption` (the
+        // deprecated interruption notification and its InterruptionType /
+        // InterruptionOptions payload are no longer read). One observer per
+        // name, both ended with this one task (`AudioSessionInterruption.observe`),
+        // so the observer store and `deinit` keep their shape; registered here,
+        // synchronously. The branches below are unchanged.
+        let interruptionTask = AudioSessionInterruption.observe(on: .default) { [weak self] event in
+                    guard let self else { return false }
+                    if event == .began {
                         // READ THE RESUME INTENT BEFORE THIS BRANCH CHANGES
                         // ANY STATE, and pass it in explicitly.
                         //
@@ -197,12 +215,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
                         // silently by reordering statements above it.
                         // A sound already fading out has been stopped by its caller: no resume intent (C2, AUDIO-2).
                         self.handleInterruptionBegan(resumeIntent: self.isPlaying && !self.isFadingOut)
-                    } else if type == .ended, self.shouldResumePlayback, self.currentFile != nil {
+                    } else if self.shouldResumePlayback, self.currentFile != nil {
                         if self.canResumePlayback() { self.attemptResumePlayback() }
                     }
-                }
-                self.handleInterruptionValues(type: typeValue, options: optionsValue)
-            }
+                    self.handleInterruptionValues(event)
+                    return true
         }
 
         let routeChangeTask = Task { [weak self] in
@@ -221,6 +238,27 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     }
 
     nonisolated deinit { AudioEngine.removeObservers(for: self) }
+
+    /// The session configuration every engine needs: `.playback`, `.default`,
+    /// `.interruptSpokenAudioAndMixWithOthers`.
+    ///
+    /// SDK27 (2026-11-24): set only when the session is not already
+    /// configured this way. `setCategory` has no asynchronous form, and on the
+    /// main thread WHILE the session is active it is a runtime "Hang Risk"
+    /// (measured on the iPad: one per engine constructed into an active
+    /// session). At a cold launch the session is inactive and unconfigured,
+    /// so this still sets it there; an engine built into an identically
+    /// configured session has nothing to change. The options compare EQUAL:
+    /// `.interruptSpokenAudioAndMixWithOthers` is itself 0x11, i.e. it
+    /// carries the `.mixWithOthers` bit (a first version subtracted
+    /// `.mixWithOthers` and so never matched; measured on the iPad, the
+    /// warning stayed at one per engine).
+    nonisolated static func configureSessionIfNeeded(_ session: AVAudioSession = .sharedInstance()) throws {
+        let configured = session.category == .playback && session.mode == .default
+            && session.categoryOptions == .interruptSpokenAudioAndMixWithOthers
+        guard !configured else { return }
+        try session.setCategory(.playback, mode: .default, options: [.interruptSpokenAudioAndMixWithOthers])
+    }
 
     /// Test-only: hand the measured output level for the window just ended
     /// to the log, where an XCUI test on a real device can read it. A
@@ -285,7 +323,9 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
     /// called once, at construction (`SoundEnvelope.makeAudioEngine`).
     func attachLiveSonificationNode(_ node: AVAudioNode, format: AVAudioFormat) {
         engine.attach(node)
-        engine.connect(node, to: engine.mainMixerNode, format: format)
+        do { try engine.connectNode(node, to: engine.mainMixerNode, format: format) } catch {
+            log.error("Live sonification node connect failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - AudioControlling
@@ -296,6 +336,11 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             return
         }
         do {
+            // A stop() fade still ramping would otherwise run on to finishStop() and wipe
+            // THIS load: nil currentFile, stop the player, clear isPlaying (R-072).
+            fadeOutTask?.cancel()
+            fadeOutTask = nil
+            isFadingOut = false
             player.stop()
             currentFile = try AVAudioFile(forReading: url)
             loudnessGain = Self.loudnessGain(forFileAt: url)
@@ -322,8 +367,12 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
             // itself still returns early (silently) when the session
             // genuinely can't start, so this doesn't force a play attempt
             // that couldn't have succeeded anyway.
-            if !engine.isRunning { startIfNeeded() }
-            guard engine.isRunning else { return }
+            //
+            // SDK27 (2026-11-24): the start is asynchronous now (`startGate`).
+            // The intent is recorded at once and the play attempt waits for
+            // the start inside `attemptResumePlayback`, so the load is still
+            // not abandoned; a cold engine just plays once it runs.
+            startIfNeeded()
             shouldResumePlayback = autoplay
             if autoplay { attemptResumePlayback() } else { isPlaying = false }
         } catch {
@@ -382,21 +431,22 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         // outside a lifecycle suspend (see `stop()`'s doc comment), so
         // this call is a redundant reactivation on every tap, not a real
         // state transition. Safe to fire off-main without waiting: if the
-        // engine genuinely isn't running, `startIfNeeded()` right below
-        // still does its OWN synchronous setActive before `engine.start()`
-        // — that ordering guarantee is preserved exactly where it's
-        // actually load-bearing, this call just stops being the thing
-        // that blocks every ordinary tap for it.
+        // engine genuinely isn't running, `attemptResumePlayback()` right
+        // below starts it through `startGate`, which orders the start after
+        // its OWN completed activation (SDK27) — that ordering guarantee is
+        // preserved exactly where it's actually load-bearing, this call
+        // just stops being the thing that blocks every ordinary tap for it.
         let sessionLogger = log
+        // SDK27: iOS 27's asynchronous `activate(options:)`, awaited for real
+        // (the old `try await setActive(true)` awaited a synchronous call).
         Task.detached(priority: .userInitiated) {
             do {
-                try await AVAudioSession.sharedInstance().setActive(true)
+                _ = try await AVAudioSession.sharedInstance().activate(options: [])
             } catch {
                 sessionLogger.error("Failed to activate audio session (async): \(error.localizedDescription)")
             }
         }
-        if !engine.isRunning { startIfNeeded() }
-        attemptResumePlayback()
+        attemptResumePlayback()   // starts the engine first when it is not running (SDK27: through startGate)
         // Ramp to full volume only when asked. Reuses the SAME task slot
         // as the fade-out so a stop() arriving mid-fade-in cancels the
         // ramp instead of the two fighting over `player.volume` — the
@@ -512,14 +562,20 @@ public final class AudioEngine: AudioControlling, CustomStringConvertible {
         appIsForeground = true
         // Before the guard: with no file loaded the suspend's pending engine pause must die too (C3, AUDIO-6).
         cancelPendingLifecycleWork()
-        guard currentFile != nil else { shouldResumePlayback = false; return }
-        startIfNeeded()
-        if let file = currentFile, !player.isPlaying {
-            player.scheduleFile(file, at: nil, completionHandler: nil)
-        }
-        if engine.isRunning && currentFile != nil && canResumePlayback() && appIsForeground {
-            player.play()
-            isPlaying = true
+        guard let resumedFile = currentFile else { shouldResumePlayback = false; return }
+        // SDK27: the engine starts asynchronously (`startGate`); the resume
+        // runs once it is running, for the file loaded NOW (a stop or another
+        // load in between ends this resume, as it would have before).
+        startIfNeeded { [weak self] in
+            guard let self, let file = self.currentFile, file === resumedFile else { return }
+            if !self.player.isPlaying {
+                self.player.scheduleFile(file, at: nil, completionHandler: nil)
+            }
+            if self.canResumePlayback() && self.appIsForeground {
+                do { try self.player.playAudio(); self.isPlaying = true } catch {   // SDK27: throws where play() raised
+                    self.log.error("Player failed to resume: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
@@ -542,44 +598,25 @@ private extension AudioEngine {
         tasks?.routeChange.cancel()
     }
 
-    func startIfNeeded() {
-        guard !engine.isRunning else { return }
-        // The tap is armed in `init` (see the note there) — arming it here meant
-        // it never happened on any path that started the engine first.
-        let session  = AVAudioSession.sharedInstance()
-        let category = session.category
-        let canStart = category == .playback || category == .playAndRecord || category == .multiRoute
-        guard canStart else { return }
-        // Deliberately LEFT synchronous, unlike play()'s setActive above —
-        // this is the one call site where the ordering genuinely matters:
-        // this is the path that runs when the engine ISN'T already
-        // running (post-interruption recovery, first-ever start), so
-        // `engine.start()` right below actually needs the session
-        // confirmed active first, not just redundantly reactivated.
-        // Deferring this into a Task would also break the loadAudioFile /
-        // attemptResumePlayback fix (2026-09-15): both now check
-        // `engine.isRunning` immediately after calling this function and
-        // bail out if it's still false — a synchronous `engine.start()`
-        // here is what makes that check meaningful. Called far less often
-        // than play() (only when the engine genuinely isn't running), so
-        // its contribution to the hang-risk warning is the smaller one.
-        // Logging added (2026-09-15) — same reasoning as init's: a failed
-        // activation here fell straight through to `engine.start()`
-        // unlogged, and `engine.start()` not throwing does not mean the
-        // session actually activated. Control flow is unchanged.
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            log.error("Failed to activate audio session in startIfNeeded: \(error.localizedDescription)")
-        }
-        do {
-            try engine.start()
-        } catch {
-            player.stop()
-            isPlaying            = false
-            shouldResumePlayback = false
-            log.error("Engine failed to start: \(error.localizedDescription)")
-        }
+    /// Starts the engine if it is not running and runs `then` once it runs
+    /// (immediately when it already does). The tap is armed in `init` (see
+    /// the note there) — arming it here meant it never happened on any path
+    /// that started the engine first.
+    ///
+    /// SDK27 (2026-11-24, seat ruling 1): this was a synchronous
+    /// `setActive(true)` then `engine.start()` on the main thread, kept so
+    /// because its callers read `engine.isRunning` right after it (the
+    /// 2026-09-15 don't-abandon-the-play fix). On iOS 27 that blocking
+    /// activation is a runtime "UI unresponsiveness" issue, and at a cold
+    /// launch it overtook `init`'s asynchronous activation. The start now
+    /// goes through `startGate` (activation completed first, always), and
+    /// the 2026-09-15 contract is kept as the continuation: a caller passes
+    /// what must happen once the engine runs instead of reading `isRunning`.
+    /// A failed configuration or start: `then` is dropped, as
+    /// the synchronous version returned without playing. A failed start
+    /// resets the player state (`startGate.onStartFailure`, set in `init`).
+    func startIfNeeded(then: (@MainActor () -> Void)? = nil) {
+        startGate.whenRunning(then)
     }
 
     func canResumePlayback() -> Bool {
@@ -593,8 +630,12 @@ private extension AudioEngine {
         // actually calls player.play() (interruption-ended, route-change,
         // resumeAfterLifecycle, and play() itself all funnel through it),
         // so the old shape here was the most consequential copy of the bug.
-        if !engine.isRunning { startIfNeeded() }
-        guard engine.isRunning else { return }
+        // SDK27: the start is asynchronous (`startGate`); the attempt is
+        // re-run once the engine runs, reading the state as it is THEN.
+        guard engine.isRunning else {
+            startIfNeeded { [weak self] in self?.attemptResumePlayback() }
+            return
+        }
         guard currentFile != nil else { return }
         prepareCurrentTrack()
         guard canResumePlayback() else {
@@ -603,7 +644,12 @@ private extension AudioEngine {
             pendingSafeEnginePause()
             return
         }
-        if !player.isPlaying { player.play() }
+        if !player.isPlaying {
+            do { try player.playAudio() } catch {   // SDK27: throws where play() raised
+                log.error("Player failed to resume: \(error.localizedDescription)")
+                return
+            }
+        }
         isPlaying = true
     }
 
@@ -614,8 +660,17 @@ private extension AudioEngine {
         isPlaying = false
     }
 
+    /// SDK27 (2026-11-24): `.dataRendered`, not `.dataPlayedBack`. Measured
+    /// on the iPad (one probe per callback type): a `.dataPlayedBack` file
+    /// made the next `player.stop()`, and a schedule onto a stopped engine,
+    /// block the main thread on a Default-QoS thread ("[Internal] Thread
+    /// running at User-interactive quality-of-service class waiting on a
+    /// lower QoS thread"); `.dataRendered` and `.dataConsumed` did not.
+    /// `.dataRendered` fires when the file has been rendered, earlier than
+    /// `.dataPlayedBack` only by the output latency, so the loop restarts at
+    /// the same point within a few milliseconds.
     private func scheduleLooping(file: AVAudioFile) {
-        player.scheduleFile(file, at: nil, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+        player.scheduleFile(file, at: nil, completionCallbackType: .dataRendered) { [weak self] _ in
             DispatchQueue.main.async { [weak self] in
                 guard let self, self.shouldResumePlayback, let f = self.currentFile else { return }
                 f.framePosition = 0
@@ -684,12 +739,11 @@ private extension AudioEngine {
         shouldResumePlayback = savedResumeIntent
     }
 
-    func handleInterruptionValues(type typeValue: UInt?, options optionsValue: UInt?) {
-        guard let typeValue else { return }
+    func handleInterruptionValues(_ event: AudioSessionInterruption) {
         // handleInterruptionValues is always called from the @MainActor observer Task.
         // The Thread.isMainThread guard is removed — we are always on MainActor here.
-        switch AVAudioSession.InterruptionType(rawValue: typeValue) {
-        case .began?:
+        switch event {
+        case .began:
             interrupted                    = true
             interruptionResumeGateRequired = true
             interruptionShouldResume       = false
@@ -697,20 +751,10 @@ private extension AudioEngine {
             isPlaying = false
             pendingSafeEnginePause()
 
-        case .ended?:
+        case .ended(let shouldResume):
             interrupted = false
-            if let optionsValue {
-                interruptionShouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                    .contains(.shouldResume)
-            } else {
-                interruptionShouldResume = false
-            }
+            interruptionShouldResume = shouldResume
             if interruptionShouldResume { attemptResumePlayback() }
-
-        case nil:
-            return
-        @unknown default:
-            break
         }
     }
 

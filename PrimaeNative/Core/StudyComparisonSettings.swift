@@ -121,20 +121,6 @@ enum StudyComparisonSettings {
         set { UserDefaults.standard.set(max(1, newValue), forKey: letterRepeatCountKey) }
     }
 
-    /// Whether the session cycles through all three audio conditions
-    /// instead of running the one assigned from the identifier. The
-    /// supervisor's "alle Konditionen oder nur eine Kondition".
-    ///
-    /// OFF is the between-subjects design of 06-evaluation.typ:7 — one
-    /// arm per child. ON makes the design within-subject for comparison
-    /// runs only; it is not a pilot configuration.
-    static let cycleAllConditionsKey = prefix + "cycleAllConditions"
-    static let cycleAllConditionsDefault: Bool = false
-    static var cycleAllConditions: Bool {
-        get { configuration(in: .standard).cycleAllConditions }
-        set { UserDefaults.standard.set(newValue, forKey: cycleAllConditionsKey) }
-    }
-
     /// Seconds to pause between one letter's flow and the next letter's
     /// observe entry. The supervisor's "Abstand zwischen Darstellung?".
     /// Default 0 — no pause, as today.
@@ -427,7 +413,8 @@ enum StudyComparisonSettings {
     /// the parent area), because a comparison run that wants to ask
     /// "does requiring movement change anything?" still needs it. Removing
     /// the floor from the code instead would have orphaned the switch —
-    /// the exact defect CLAUDE.md records for `cycleAllConditions`.
+    /// the defect `cycleAllConditions` once had (a stored switch that did
+    /// nothing; that switch was removed 2026-11-25, `docs/DECISIONS.md`).
     static let soundGateVelocityFloorKey = prefix + "soundGateVelocityFloor"
     /// The default above, named for the same reason as its sibling.
     static let soundGateVelocityFloorDefault: Double = 0.0
@@ -466,9 +453,9 @@ enum StudyComparisonSettings {
     /// the session (the pilot's between-subjects design) that means the
     /// child hears it exactly once, before the first letter, and every
     /// later letter runs its observe phase with no demonstration at all.
-    /// With `cycleAllConditions` ON each arm's demonstration lands on its
-    /// own first letter, so a five-letter cycle delivers three
-    /// demonstrations and the fourth and fifth letters get none.
+    /// The arm is fixed for the session by construction since the
+    /// within-subject cycle was removed (2026-11-25, `docs/DECISIONS.md`),
+    /// so "per condition" now means "per session" for one child.
     ///
     /// THE CONSEQUENCE, STATED PLAINLY BECAUSE IT IS A PROTOCOL ONE.
     /// `04-implementation.typ:17` and `06-evaluation.typ:62` both rest on
@@ -571,7 +558,7 @@ enum StudyComparisonSettings {
     static func resetToDefaults(in defaults: UserDefaults = .standard) -> Bool {
         let before = configuration(in: defaults)
         for key in [observePassesKey, spokenFeedbackKey, allFiveLettersKey,
-                    letterRepeatCountKey, cycleAllConditionsKey,
+                    letterRepeatCountKey,
                     presentationSpacingKey, guidedDotsVisibleKey,
                     panningEnabledKey, spatialAxisDemonstrationKey,
                     soundGateRadiusFactorKey, soundGateVelocityFloorKey,
@@ -602,7 +589,6 @@ enum StudyComparisonSettings {
             spokenFeedbackInStudy: boolValue(spokenFeedbackKey, default: spokenFeedbackInStudyDefault, in: defaults),
             allFiveLetters: boolValue(allFiveLettersKey, default: allFiveLettersDefault, in: defaults),
             letterRepeatCount: max(1, intValue(letterRepeatCountKey, default: letterRepeatCountDefault, in: defaults)),
-            cycleAllConditions: boolValue(cycleAllConditionsKey, default: cycleAllConditionsDefault, in: defaults),
             presentationSpacingSeconds: max(0, doubleValue(presentationSpacingKey,
                                                            default: presentationSpacingSecondsDefault, in: defaults)),
             panningEnabled: boolValue(panningEnabledKey, default: panningEnabledDefault, in: defaults),
@@ -709,7 +695,6 @@ struct StudyComparisonConfiguration: Equatable {
     var spokenFeedbackInStudy: Bool = StudyComparisonSettings.spokenFeedbackInStudyDefault
     var allFiveLetters: Bool = StudyComparisonSettings.allFiveLettersDefault
     var letterRepeatCount: Int = StudyComparisonSettings.letterRepeatCountDefault
-    var cycleAllConditions: Bool = StudyComparisonSettings.cycleAllConditionsDefault
     var presentationSpacingSeconds: Double = StudyComparisonSettings.presentationSpacingSecondsDefault
     var panningEnabled: Bool = StudyComparisonSettings.panningEnabledDefault
     var guidedDotsVisible: Bool = StudyComparisonSettings.guidedDotsVisibleDefault
@@ -768,9 +753,6 @@ struct StudyComparisonConfiguration: Equatable {
         }
         if letterRepeatCount != Self.defaults.letterRepeatCount {
             entries.append("letterRepeatCount=\(letterRepeatCount)")
-        }
-        if cycleAllConditions != Self.defaults.cycleAllConditions {
-            entries.append("cycleAllConditions=\(cycleAllConditions)")
         }
         if presentationSpacingSeconds != Self.defaults.presentationSpacingSeconds {
             entries.append("presentationSpacingSeconds=\(presentationSpacingSeconds)")

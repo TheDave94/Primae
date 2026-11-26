@@ -184,7 +184,7 @@ extension NewParticipantResetTests {
             var vm = Handover.launch(s)
             let x = vm.resetForNewParticipant()
             // The documented dry-run: enrol, override (before any row), relaunch.
-            let override = PilotAudioCondition.assign(participantId: x).nextInCycle
+            let override = PilotAudioCondition.assign(participantId: x).someOtherArm
             ParticipantStore.audioConditionOverride = override
             vm = Handover.launch(s)
             #expect(vm.audioCondition == override, "precondition: the override applied")
@@ -268,7 +268,7 @@ extension NewParticipantResetTests {
             #expect(vm.assignmentOverrideAllowed, "no row yet: an override may still apply")
             Handover.row(s, vm, letter: "F", phase: "observe")
             #expect(!vm.assignmentOverrideAllowed, "the child has a row: no override may apply")
-            ParticipantStore.audioConditionOverride = trainedArm.nextInCycle
+            ParticipantStore.audioConditionOverride = trainedArm.someOtherArm
             vm.markAssignmentOverrideChanged()
             vm = Handover.launch(s)   // the relaunch the block asks for
             Handover.row(s, vm, letter: "F", phase: "guided")
@@ -313,7 +313,7 @@ extension NewParticipantResetTests {
             let s = Handover.Stores(); defer { try? FileManager.default.removeItem(at: s.dir) }
             var vm = Handover.launch(s)
             let x = vm.resetForNewParticipant()
-            let override = vm.audioCondition.nextInCycle
+            let override = vm.audioCondition.someOtherArm
             ParticipantStore.audioConditionOverride = override
             vm = Handover.launch(s)
             #expect(vm.audioCondition == override)
@@ -423,5 +423,16 @@ extension NewParticipantResetTests {
                     "the confirm text does not name the pending override: \(text)")
             #expect(text.hasSuffix(NextParticipantCopy.confirmMessage))
         }
+    }
+}
+
+private extension PilotAudioCondition {
+    /// Any arm other than this one, for an override that must DIFFER from
+    /// the assigned arm. Test-only: production's `nextInCycle` went with
+    /// the within-subject cycle switch (2026-11-25).
+    var someOtherArm: PilotAudioCondition {
+        let arms = Self.allCases
+        let idx = arms.firstIndex(of: self) ?? 0
+        return arms[(idx + 1) % arms.count]
     }
 }

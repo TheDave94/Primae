@@ -39,14 +39,14 @@ struct ArmLevelMatchingTests {
         engine.attach(player)
         engine.attach(timePitch)
         let mixFormat = engine.mainMixerNode.outputFormat(forBus: 0)
-        engine.connect(player, to: timePitch, format: mixFormat)
-        engine.connect(timePitch, to: engine.mainMixerNode, format: mixFormat)
+        try engine.connectNode(player, to: timePitch, format: mixFormat)
+        try engine.connectNode(timePitch, to: engine.mainMixerNode, format: mixFormat)
         timePitch.rate = 1.0; timePitch.pitch = 0.0
         let f = try AVAudioFile(forReading: url)
         player.volume = volume
         try engine.start()
         player.scheduleFile(f, at: nil)
-        player.play()
+        try player.playAudio()
         let out = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
                                    frameCapacity: engine.manualRenderingMaximumFrameCount)!
         var rendered = 0

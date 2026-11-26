@@ -24,7 +24,8 @@
 // `fadeOutSeconds` and then discards the loaded sound (a `play()` without a
 // load is a no-op, as before); an interruption keeps the loaded sound and the
 // resume intent (C2: none when a stop was already fading); `.ended` with
-// `.shouldResume` resumes; a lost output (headphones unplugged) stops; a
+// `.shouldResume` resumes (from SDK27: a resumption recommendation of
+// `.shouldResume`, `AudioSessionInterruption`); a lost output (headphones unplugged) stops; a
 // background closes the gate and a return re-opens it when it was playing.
 // The session-level rules (r16 B1: unplug = interruption; no arm sound while
 // a session is blocked or suspended) live in the view model and reach this
@@ -57,11 +58,22 @@ import OSLog
 @MainActor
 protocol LiveSonificationOutput: AnyObject {
     var isRunning: Bool { get }
-    /// Start the engine if it is not running (session check, synchronous
-    /// activation, `start()`), as `AudioEngine.startIfNeeded` does.
-    func startIfNeeded()
+    /// Start the engine if it is not running and run `then` once it runs
+    /// (now, when it already does), as `AudioEngine.startIfNeeded(then:)`
+    /// does: SDK27, the start follows a completed ASYNCHRONOUS session
+    /// activation (`EngineStartGate`), so a caller passes what must happen
+    /// once the engine runs instead of reading `isRunning` right after.
+    func startIfNeeded(then: (@MainActor () -> Void)?)
+    /// Run a session call that has no asynchronous form OFF the main thread,
+    /// ordered with the engine's activations (`EngineStartGate.performSessionWork`).
+    func performSessionWork(_ work: @escaping @Sendable () -> Void)
     /// Constant-power pan of the mono node in the main mixer (the r16 player's pan).
     func setPan(_ pan: Float)
+}
+
+extension LiveSonificationOutput {
+    /// Start without a continuation (a warm start ahead of a later play).
+    func startIfNeeded() { startIfNeeded(then: nil) }
 }
 
 @MainActor
@@ -109,7 +121,14 @@ final class LiveSonificationAudio: AudioControlling {
     private var fadeTask: Task<Void, Never>?
 
     private var interruptionTask: Task<Void, Never>?
+    /// Where the session notifications are observed (`.default`; a test passes
+    /// its own so a forged post reaches no other voice in a parallel suite).
+    private let notificationCenter: NotificationCenter
     private var routeChangeTask: Task<Void, Never>?
+    /// The route's IO buffer (POP2), applied on every route change through
+    /// `output.performSessionWork` (off the main thread). A seam for the test
+    /// that pins where it runs.
+    private let ioBufferWork: @Sendable () -> Void
 
     // MARK: Init
 
@@ -118,7 +137,11 @@ final class LiveSonificationAudio: AudioControlling {
          kernel: LiveSonificationKernel,
          fadeOutSeconds: TimeInterval,
          observeSession: Bool,
+         notificationCenter: NotificationCenter = .default,
+         ioBufferWork: @escaping @Sendable () -> Void = { SoundEnvelope.applyPreferredIOBuffer() },
          resolve: @escaping (String) -> SonificationSource?) {
+        self.notificationCenter = notificationCenter
+        self.ioBufferWork = ioBufferWork
         self.host = host
         self.output = output
         self.kernel = kernel
@@ -134,15 +157,17 @@ final class LiveSonificationAudio: AudioControlling {
 
     /// The production voice: the r16 engine as host, a source node attached to
     /// its graph, sources from the bundle, renderers prewarmed off-main.
-    static func production(host: AudioEngine, fadeOutSeconds: TimeInterval) -> LiveSonificationAudio {
+    static func production(host: AudioEngine, fadeOutSeconds: TimeInterval,
+                           ioBufferWork: @escaping @Sendable () -> Void = { SoundEnvelope.applyPreferredIOBuffer() }) -> LiveSonificationAudio {
         let kernel = LiveSonificationKernel()
-        let node = SourceNodeOutput(kernel: kernel)
+        let node = SourceNodeOutput(kernel: kernel, startGate: host.startGate)
         host.attachLiveSonificationNode(node.node, format: node.format)
         #if DEBUG || POPCAP
         PopCapture.armed?.installTap(on: node.node.engine?.mainMixerNode ?? node.node)   // POPCAP
         #endif
         let voice = LiveSonificationAudio(host: host, output: node, kernel: kernel,
                                           fadeOutSeconds: fadeOutSeconds, observeSession: true,
+                                          ioBufferWork: ioBufferWork,
                                           resolve: Self.bundleSource(named:))
         voice.prewarmStudySources()
         return voice
@@ -268,6 +293,7 @@ final class LiveSonificationAudio: AudioControlling {
     // MARK: AudioControlling
 
     var initializationError: String? { host?.initializationError }
+    func settleStartup() async { await host?.settleStartup() }
 
     func loadAudioFile(named fileName: String, autoplay: Bool) {
         guard let src = source(named: fileName) else {
@@ -287,8 +313,12 @@ final class LiveSonificationAudio: AudioControlling {
         }
         loadedKey = src.key
         loadedSlot = slot
+        // SDK27: the start is asynchronous (`EngineStartGate`). The intent is
+        // recorded now and an autoplay waits for the start inside
+        // `attemptResumePlayback`; recording it in a deferred continuation
+        // instead would let a load's late `shouldResumePlayback = false`
+        // overwrite a `play()` that arrived after it.
         output.startIfNeeded()
-        guard output.isRunning else { return }
         shouldResumePlayback = autoplay
         if autoplay { attemptResumePlayback() } else if !kernel.gateRequested { isPlaying = false }
     }
@@ -349,8 +379,7 @@ final class LiveSonificationAudio: AudioControlling {
         interruptionShouldResume       = true
         // An explicit play outranks a stale interruption flag (R5, as AudioEngine).
         interrupted                    = false
-        output.startIfNeeded()
-        attemptResumePlayback(fadeInSeconds: fadeInSeconds)
+        attemptResumePlayback(fadeInSeconds: fadeInSeconds)   // starts the engine first when it is not running
     }
 
     /// ENV3 letter-end stop: a raised-cosine fade of `seconds` (zero slope at both ends), then the ordinary stop bookkeeping.
@@ -418,10 +447,11 @@ final class LiveSonificationAudio: AudioControlling {
         appIsForeground = true
         host?.resumeAfterLifecycle()
         guard loadedKey != nil else { shouldResumePlayback = false; return }
-        output.startIfNeeded()
-        if output.isRunning && canResumePlayback(), let slot = loadedSlot {
-            kernel.open(slot: slot, fadeInFrames: 0)
-            isPlaying = true
+        // SDK27: re-opened once the engine runs, with the state as it is then.
+        output.startIfNeeded { [weak self] in
+            guard let self, self.canResumePlayback(), let slot = self.loadedSlot else { return }
+            self.kernel.open(slot: slot, fadeInFrames: 0)
+            self.isPlaying = true
         }
     }
 
@@ -448,8 +478,13 @@ final class LiveSonificationAudio: AudioControlling {
     }
 
     private func attemptResumePlayback(fadeInSeconds: TimeInterval = 0) {
-        output.startIfNeeded()
-        guard output.isRunning, loadedKey != nil, let slot = loadedSlot else { return }
+        // SDK27: a stopped engine starts asynchronously (`EngineStartGate`);
+        // the attempt re-runs once it runs, reading the state as it is then.
+        guard output.isRunning else {
+            output.startIfNeeded { [weak self] in self?.attemptResumePlayback(fadeInSeconds: fadeInSeconds) }
+            return
+        }
+        guard loadedKey != nil, let slot = loadedSlot else { return }
         guard canResumePlayback() else {
             kernel.close(fadeOutFrames: 0)
             isPlaying = false
@@ -467,16 +502,17 @@ final class LiveSonificationAudio: AudioControlling {
     // MARK: Session notifications
 
     private func startObservingSession() {
-        interruptionTask = Task { [weak self] in
-            for await n in NotificationCenter.default.notifications(named: AVAudioSession.interruptionNotification) {
-                guard let self else { break }
-                let type = (n.userInfo?[AVAudioSessionInterruptionTypeKey] as? NSNumber)?.uintValue
-                let options = (n.userInfo?[AVAudioSessionInterruptionOptionKey] as? NSNumber)?.uintValue
-                self.handleInterruption(typeRawValue: type, optionsRawValue: options)
-            }
+        // SDK27: the iOS 27 pair (didBecomeInactive + resumptionRecommendation)
+        // replaces the deprecated interruption notification; one observer per
+        // name, both under this task so `deinit`'s cancel ends them together.
+        let center = notificationCenter
+        interruptionTask = AudioSessionInterruption.observe(on: center) { [weak self] event in
+            guard let self else { return false }
+            self.handleInterruption(event)
+            return true
         }
         routeChangeTask = Task { [weak self] in
-            for await n in NotificationCenter.default.notifications(named: AVAudioSession.routeChangeNotification) {
+            for await n in center.notifications(named: AVAudioSession.routeChangeNotification) {
                 guard let self else { break }
                 let reason = (n.userInfo?[AVAudioSessionRouteChangeReasonKey] as? NSNumber)?.uintValue
                 self.handleRouteChange(reasonRawValue: reason)
@@ -486,9 +522,8 @@ final class LiveSonificationAudio: AudioControlling {
 
     /// `AudioEngine`'s interruption observer + `handleInterruptionBegan` +
     /// `handleInterruptionValues`, in that order.
-    func handleInterruption(typeRawValue: UInt?, optionsRawValue: UInt?) {
-        guard let typeRawValue, let type = AVAudioSession.InterruptionType(rawValue: typeRawValue) else { return }
-        switch type {
+    func handleInterruption(_ event: AudioSessionInterruption) {
+        switch event {
         case .began:
             // Resume intent read BEFORE any state changes; none when a stop was already fading (C2).
             let intent = isPlaying && !isFadingOut
@@ -502,14 +537,16 @@ final class LiveSonificationAudio: AudioControlling {
             interruptionResumeGateRequired = true
             interruptionShouldResume       = false
             isPlaying = false
-        case .ended:
+            #if DEBUG || POPCAP
+            PopCapture.armed?.event("voice.interruption", "began intent=\(intent) loaded=\(key != nil)")
+            #endif
+        case .ended(let shouldResume):
             interrupted = false
-            interruptionShouldResume = optionsRawValue.map {
-                AVAudioSession.InterruptionOptions(rawValue: $0).contains(.shouldResume)
-            } ?? false
+            interruptionShouldResume = shouldResume
             if interruptionShouldResume && loadedKey != nil { attemptResumePlayback() }
-        @unknown default:
-            break
+            #if DEBUG || POPCAP
+            PopCapture.armed?.event("voice.interruption", "ended shouldResume=\(shouldResume) playing=\(isPlaying)")
+            #endif
         }
     }
 
@@ -517,7 +554,9 @@ final class LiveSonificationAudio: AudioControlling {
     /// sounding is not restarted from its attack.
     func handleRouteChange(reasonRawValue: UInt?) {
         // POP2: the preferred IO buffer follows the route (5 ms on speaker/wired, the system default on Bluetooth).
-        SoundEnvelope.applyPreferredIOBuffer()
+        // SDK27: off the main thread (the session is active here; on main it is a "Hang Risk"), ordered after a
+        // pending activation and ahead of a later one by the host's start gate.
+        output.performSessionWork(ioBufferWork)
         guard let reasonRawValue,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRawValue) else { return }
         switch reason {
@@ -558,10 +597,11 @@ final class SourceNodeOutput: LiveSonificationOutput {
     let node: AVAudioSourceNode
     let format: AVAudioFormat
 
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
-                             category: "LiveSonification")
+    /// The host engine's start gate: the one start path for the shared engine.
+    private let startGate: EngineStartGate
 
-    init(kernel: LiveSonificationKernel) {
+    init(kernel: LiveSonificationKernel, startGate: EngineStartGate) {
+        self.startGate = startGate
         format = AVAudioFormat(standardFormatWithSampleRate: LiveSonificationKernel.sampleRate, channels: 1)!
         node = Self.makeNode(kernel: kernel, format: format)
     }
@@ -592,18 +632,16 @@ final class SourceNodeOutput: LiveSonificationOutput {
 
     var isRunning: Bool { node.engine?.isRunning ?? false }
 
-    func startIfNeeded() {
-        guard let engine = node.engine, !engine.isRunning else { return }
-        let session = AVAudioSession.sharedInstance()
-        let category = session.category
-        guard category == .playback || category == .playAndRecord || category == .multiRoute else { return }
-        do { try session.setActive(true) } catch {
-            log.error("Failed to activate audio session for the live voice: \(error.localizedDescription, privacy: .public)")
-        }
-        do { try engine.start() } catch {
-            log.error("Engine failed to start for the live voice: \(error.localizedDescription, privacy: .public)")
-        }
+    /// SDK27 (2026-11-24, seat ruling 1): through the host's `EngineStartGate`
+    /// (asynchronous activation, then the start), not a synchronous
+    /// `setActive(true)` + `engine.start()` here: that blocked the main thread
+    /// and, at a cold launch, overtook the host's launch activation.
+    func startIfNeeded(then: (@MainActor () -> Void)?) {
+        guard node.engine != nil else { return }
+        startGate.whenRunning(then)
     }
+
+    func performSessionWork(_ work: @escaping @Sendable () -> Void) { startGate.performSessionWork(work) }
 
     func setPan(_ pan: Float) { node.pan = pan }
 }

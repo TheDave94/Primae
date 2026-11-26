@@ -107,7 +107,7 @@ import Foundation
 /// One session's stroke-level measures against a reference: the
 /// order-invariant PRIMARY spatial-deviation outcome, plus the process
 /// secondaries recovered from the same stroke correspondence.
-struct StrokeProcessMeasures: Equatable {
+nonisolated struct StrokeProcessMeasures: Equatable, Sendable {
     /// PRIMARY, order-invariant accuracy outcome — since protocol r6
     /// (2026-10-05) measured AFTER the bounding-box fit
     /// (`StrokeProcessScorer.fitToReference`), so the paragraph's "same
@@ -181,7 +181,7 @@ struct StrokeProcessMeasures: Equatable {
     }
 }
 
-enum StrokeProcessScorer {
+nonisolated enum StrokeProcessScorer {
     /// Splits `points` into per-stroke segments, finds the minimum-cost
     /// stroke correspondence against the reference's own strokes (both
     /// traversal directions considered per candidate pair), and reports
@@ -194,7 +194,30 @@ enum StrokeProcessScorer {
     /// (default 15); 0 switches the shear off and reproduces the pre-r27
     /// primary bit for bit — a seam for tests and for re-deriving old rows.
     /// `nil` when there's nothing comparable.
+    ///
+    /// Answered from `StrokeAnalysisMemo` when the SAME inputs were analysed
+    /// before (by the off-main prefetch at a free-writing lift, or by an
+    /// earlier caller): the memo is keyed by the exact inputs and holds the
+    /// exact output, so a hit returns what `computeAnalysis` would (T1R,
+    /// 2026-11-25: the assignment search cost ~230 ms of main-actor time per
+    /// call in Debug, twice per completion).
     static func analyze(
+        points: [CGPoint],
+        strokeStartIndices: [Int],
+        reference: LetterStrokes,
+        shearLimitDegrees: CGFloat = StrokeProcessScorer.shearLimitDegrees
+    ) -> StrokeProcessMeasures? {
+        let key = StrokeAnalysisMemo.Key(points: points, strokeStartIndices: strokeStartIndices,
+                                         reference: reference, shearLimitDegrees: shearLimitDegrees)
+        if let hit = StrokeAnalysisMemo.shared.lookup(key) { return hit.measures }
+        let measures = computeAnalysis(points: points, strokeStartIndices: strokeStartIndices,
+                                       reference: reference, shearLimitDegrees: shearLimitDegrees)
+        StrokeAnalysisMemo.shared.store(key, measures)
+        return measures
+    }
+
+    /// The analysis itself, never memoised: the reference `analyze` must equal.
+    static func computeAnalysis(
         points: [CGPoint],
         strokeStartIndices: [Int],
         reference: LetterStrokes,

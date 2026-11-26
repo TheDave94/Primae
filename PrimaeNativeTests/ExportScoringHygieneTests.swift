@@ -161,9 +161,14 @@ struct TopThreeOrderTests {
 @MainActor
 struct StrokeAnalysisTests {
 
+    /// The bundle, parsed once for the suite: every test used to re-parse
+    /// every bundled letter (~1.6 s on the iPad at -Onone, on the main actor)
+    /// to read five of them.
+    private static let bundled = LetterRepository(resources: BundleLetterResourceProvider(),
+                                                  cache: NullLetterCache()).loadBundledLettersOnly()
+
     static func references() throws -> [LetterStrokes] {
-        let repo = LetterRepository(resources: BundleLetterResourceProvider(), cache: NullLetterCache())
-        let letters = try repo.loadBundledLettersOnly().get()
+        let letters = try bundled.get()
         return try TrainedLetterSubset.studyLetters.map { name in
             try #require(letters.first { $0.name == name }, "study letter \(name) not in the bundle").strokes
         }

@@ -134,12 +134,12 @@ final class AudioEngineRenderPinTests: XCTestCase {
 
     func dB(_ x: Double, _ ref: Double) -> Double { x <= 0 ? -200 : 20 * log10(x / ref) }
 
+    /// SDK27: the iOS 27 pair, with genuine context objects
+    /// (`ForgedSessionNotifications`): began = a system deactivation,
+    /// ended = a shouldResume recommendation.
     @MainActor func postInterruption(began: Bool) {
-        var info: [AnyHashable: Any] = [AVAudioSessionInterruptionTypeKey:
-            NSNumber(value: (began ? AVAudioSession.InterruptionType.began : .ended).rawValue)]
-        if !began { info[AVAudioSessionInterruptionOptionKey] = NSNumber(value: AVAudioSession.InterruptionOptions.shouldResume.rawValue) }
-        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification,
-                                        object: AVAudioSession.sharedInstance(), userInfo: info)
+        let posted = ForgedSessionNotifications.post(ForgedSessionNotifications.interruption(began: began, shouldResume: true))
+        XCTAssertTrue(posted, "could not build the iOS 27 session context for the forged notification")
     }
 
     /// Polls `cond` every 20 ms; false if it never held within `timeout`.

@@ -135,6 +135,18 @@ final class FreeWritePhaseRecorder {
         ))
     }
 
+    /// Carry the buffered points across a canvas resize
+    /// (`CanvasResizeRemap`), and rebuild the normalised `path` against the
+    /// new canvas so both buffers describe one frame. Timestamps, forces
+    /// and stroke breaks are untouched: only where the points lie moves.
+    func remap(_ remap: CanvasResizeRemap, canvasSize: CGSize) {
+        guard remap != .identity, !points.isEmpty else { return }
+        points = remap.apply(points)
+        path = points.map {
+            CGPoint(x: $0.x / max(canvasSize.width, 1), y: $0.y / max(canvasSize.height, 1))
+        }
+    }
+
     /// Update the live checkpoints-per-second counter. Called from the
     /// VM with the integer count of completed checkpoints; the recorder
     /// owns the elapsed-time arithmetic.

@@ -174,7 +174,7 @@ import CoreGraphics
     private func bluePixels(_ view: PhaseDotIndicator) -> Int {
         let size = CGSize(width: 320, height: 60)
         let hc = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        let window = TestWindow.make(CGRect(origin: .zero, size: size))
         window.rootViewController = hc
         window.makeKeyAndVisible()
         hc.view.frame = window.bounds
@@ -212,7 +212,7 @@ import CoreGraphics
     private func contentColumns(_ view: PhaseDotIndicator) -> Int {
         let size = CGSize(width: 320, height: 60)
         let hc = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        let window = TestWindow.make(CGRect(origin: .zero, size: size))
         window.rootViewController = hc
         window.makeKeyAndVisible()
         hc.view.frame = window.bounds

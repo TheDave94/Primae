@@ -99,19 +99,19 @@ import Foundation
     ///
     /// What is observable is the shape of the declaration, and that is what
     /// this pins: the cache must be the `Mutex`, and every use of it must go
-    /// through `withLock`. Same reasoning, same instrument and the same
-    /// visible skip as
+    /// through `withLock`. Same reasoning and the same instrument (the source
+    /// bundled as a test fixture, so it runs on the iPad too) as
     /// `AudioSignalProbeTests.tapIsNotInstalledWithAnInlineClosure`.
     ///
     /// It fails on the declaration this exists to prevent: reverting to an
     /// unlocked `nonisolated(unsafe) … var` turns it RED (mutation-checked
     /// 2026-10-18).
-    @Test("the resource-URL cache is never an unlocked static",
-          .enabled(if: Self.repositorySourceIsReadable,
-                   "LetterRepository.swift is not readable here (#filePath is a Mac path; on the physical iPad the checkout does not exist)"))
+    @Test("the resource-URL cache is never an unlocked static")
     func cacheIsNotAnUnlockedStatic() throws {
-        let code = Self.stripComments(
-            try String(contentsOf: Self.repositorySourceURL, encoding: .utf8))
+        let source = try Self.bundledRepositorySource()
+        #expect(source.contains("final class LetterRepository"),
+                "the bundled fixture is not LetterRepository.swift: \(source.prefix(80))")
+        let code = Self.stripComments(source)
         let cacheLines = code
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)
@@ -136,18 +136,27 @@ import Foundation
                 "resourceURLCache is read or written outside the lock: \(unlocked)")
     }
 
-    nonisolated private static var repositorySourceIsReadable: Bool {
-        FileManager.default.isReadableFile(atPath: repositorySourceURL.path)
+    /// `LetterRepository.swift` as copied into this test bundle, so the
+    /// check runs (and can fail) on the physical iPad, where the Mac
+    /// checkout behind `#filePath` does not exist and the test used to skip.
+    /// `SourceFixtures/LetterRepository.swift.txt` is a SYMLINK to
+    /// `PrimaeNative/Features/Library/LetterRepository.swift`: the bundled
+    /// text is the source as built, never a hand-kept copy. Same mechanism as
+    /// `AudioSignalProbeTests.bundledProbeSource()`.
+    private static func bundledRepositorySource() throws -> String {
+        let bundle = Bundle(for: RepositoryFixtureBundleToken.self)
+        let name = "LetterRepository.swift"
+        let url = bundle.url(forResource: name, withExtension: "txt")
+            ?? bundle.url(forResource: name, withExtension: "txt", subdirectory: "SourceFixtures")
+        guard let url else {
+            throw RepositorySourceMissing(bundlePath: bundle.bundlePath)
+        }
+        return try String(contentsOf: url, encoding: .utf8)
     }
 
-    /// `#filePath` is this test file's absolute path AT COMPILE TIME, so
-    /// walking up from it reaches the repo root with no dependence on bundle
-    /// layout, build directory shape, or working directory.
-    nonisolated private static var repositorySourceURL: URL {
-        URL(fileURLWithPath: #filePath)      // …/PrimaeNativeTests/BundleResolutionTests.swift
-            .deletingLastPathComponent()      // …/PrimaeNativeTests
-            .deletingLastPathComponent()      // repo root
-            .appendingPathComponent("PrimaeNative/Features/Library/LetterRepository.swift")
+    struct RepositorySourceMissing: Error, CustomStringConvertible {
+        let bundlePath: String
+        var description: String { "LetterRepository.swift.txt is not in the test bundle at \(bundlePath)" }
     }
 
     /// Remove `//` line comments, so the prohibition does not fire on the
@@ -164,3 +173,5 @@ import Foundation
             .joined(separator: "\n")
     }
 }
+
+private final class RepositoryFixtureBundleToken {}

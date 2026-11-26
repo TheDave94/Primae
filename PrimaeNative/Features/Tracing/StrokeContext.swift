@@ -21,7 +21,7 @@ import Foundation
 /// `ArmCoupling.Parameters` = neither switch is on = r17 (nothing is written).
 struct StrokeTone: Equatable, Sendable {
     /// The low-pass value that means "no filter" (the kernel skips the stage).
-    static let bypassHz: Float = LiveSonificationKernel.toneBypassHz
+    nonisolated static let bypassHz: Float = LiveSonificationKernel.toneBypassHz
     /// Distance dimension: at the gate edge (1 gate radius) and beyond.
     static let farLevelDB: Float = -12
     static let farCutoffHz: Float = 800

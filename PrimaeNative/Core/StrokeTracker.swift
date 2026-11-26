@@ -83,6 +83,34 @@ final class StrokeTracker {
         isNearStroke = false
     }
 
+    /// Swap in the SAME letter's checkpoints mapped for a new canvas
+    /// geometry, keeping the child's progress (which checkpoint is next,
+    /// which strokes are complete) and the adapted radius. Progress is
+    /// index-based, so it carries over exactly when the stroke and
+    /// checkpoint counts match; otherwise this is a different definition
+    /// and falls back to `load`, which starts over. Returns whether the
+    /// progress was kept.
+    ///
+    /// Why (defence in depth, docs/DECISIONS.md "Rotation and
+    /// UIRequiresFullScreen"): the study build is landscape-only and full
+    /// screen, but Apple has deprecated that key (TN3192), and an iPadOS that
+    /// ignores it can resize or rotate the scene mid-letter. `load` used to run on
+    /// every canvas resize and reset all progress, so a rotation mid-trace
+    /// sent the child back to stroke 1.
+    @discardableResult
+    func replaceGeometry(_ strokes: LetterStrokes) -> Bool {
+        guard let current = definition,
+              current.strokes.count == strokes.strokes.count,
+              zip(current.strokes, strokes.strokes).allSatisfy({ $0.checkpoints.count == $1.checkpoints.count }),
+              progress.count == strokes.strokes.count else {
+            load(strokes)
+            return false
+        }
+        definition = strokes
+        isNearStroke = false
+        return true
+    }
+
     func reset() {
         definition = nil
         progress = []

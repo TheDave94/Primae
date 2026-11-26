@@ -85,6 +85,14 @@ protocol AudioControlling: AnyObject {
     /// is provided so conformers must spell out their state explicitly.
     var initializationError: String? { get }
 
+    /// SDK27 (2026-11-24): returns once the start-up begun at construction
+    /// (session configuration, asynchronous activation, first engine start)
+    /// has finished, so `initializationError` is final. Before SDK27 the
+    /// launch start was synchronous and the error was set when `init`
+    /// returned; now a failed configuration or first start lands later, and
+    /// the VM awaits this before it reads the error for the start-up toast.
+    func settleStartup() async
+
     /// TEST-ONLY: the engine's own state, for the accessibility readout —
     /// session category, whether the engine is running, playback state and
     /// whether a file is loaded. Exists because a silent session had NO
@@ -94,6 +102,9 @@ protocol AudioControlling: AnyObject {
 }
 
 extension AudioControlling {
+    /// No start-up to wait for (test doubles, `SilentAudio`).
+    func settleStartup() async {}
+
     /// No-op default so non-pitch conformers (test doubles, previews)
     /// satisfy the requirement without change. Declared as a protocol
     /// REQUIREMENT above (not extension-only) so conformers that do

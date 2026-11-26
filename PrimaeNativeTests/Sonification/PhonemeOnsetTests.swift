@@ -196,7 +196,7 @@ nonisolated struct PhonemeOnsetTests {
             voice.loadAudioFile(named: "x", autoplay: false)
             if fade > 0 { voice.play(fadeInSeconds: fade) } else { voice.play() }
             var y = [Float](repeating: 0, count: Int(0.15 * Self.sr))
-            y.withUnsafeMutableBufferPointer { voice.kernel.render(into: $0.baseAddress!, frames: $0.count) }
+            y.withUnsafeMutableBufferPointer { _ = voice.kernel.render(into: $0.baseAddress!, frames: $0.count) }
             return y
         }
         let withOnset = tone("p", onset: RecordedOnset(attackEndFrame: 2000, preBlendPeriods: 2))

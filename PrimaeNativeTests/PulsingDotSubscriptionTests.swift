@@ -64,7 +64,7 @@ private struct FlagDot: View {
 
     private func host<V: View>(_ view: V) -> UIWindow {
         let hc = UIHostingController(rootView: view)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+        let window = TestWindow.make(CGRect(x: 0, y: 0, width: 300, height: 300))
         window.rootViewController = hc
         window.makeKeyAndVisible()
         hc.view.frame = window.bounds

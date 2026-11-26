@@ -18,7 +18,7 @@ enum SoundEnvelope {
     /// Linear fade-out applied by the engine's `stop()`. Was 0.12 s
     /// (`AudioEngine.fadeOutSeconds` default). Set at the engine's
     /// construction site — `AudioEngine.swift` is not edited.
-    static let fadeOutSeconds: TimeInterval = 0.4
+    nonisolated static let fadeOutSeconds: TimeInterval = 0.4
     /// A pen that stops moving (still touching) keeps sounding this long
     /// before the stall idle fires. Was 0.12 s
     /// (`PlaybackController.idleDebounceSeconds` default).
@@ -38,12 +38,13 @@ enum SoundEnvelope {
     /// The default 1024 frames (21.3 ms) was one of the two terms of the
     /// r16 onset; 5 ms is honoured on the study iPad as 256 frames (5.33 ms,
     /// measured). Session-wide: prompts and TTS share it.
-    static let preferredIOBufferSeconds: TimeInterval = 0.005
+    nonisolated static let preferredIOBufferSeconds: TimeInterval = 0.005
 
     /// The production arm sound (protocol r17): the r16 `AudioEngine` as the
     /// session/mixer host, with the live grain voice (`LiveSonificationAudio`)
-    /// attached to its graph. The IO buffer is set BEFORE the engine exists,
-    /// so its first start already runs at 5 ms. `AudioEngine.swift` changes by
+    /// attached to its graph. The IO buffer is set in the start gate's off-main
+    /// prepare, before the first activation, so the first start already runs at
+    /// 5 ms (SDK27: before, it was set on the main thread before the engine existed). `AudioEngine.swift` changes by
     /// graph wiring only (`attachLiveSonificationNode`).
     static func makeAudioEngine() -> AudioControlling {
         let voice: AudioControlling = LiveSonificationAudio.production(host: makeHostEngine(), fadeOutSeconds: fadeOutSeconds)
@@ -57,9 +58,9 @@ enum SoundEnvelope {
     /// The r16 engine alone, with the envelope's fade and the r17 IO buffer:
     /// the host of the live voice, and what the r16 device pins
     /// (`AudioEngineRenderPinTests`) still drive directly.
-    static func makeHostEngine() -> AudioEngine {
-        applyPreferredIOBuffer()
-        let engine = AudioEngine()
+    /// `applyIOBuffer` is a seam for the device test that pins it off the main thread.
+    static func makeHostEngine(applyIOBuffer: @escaping @Sendable () -> Void = { applyPreferredIOBuffer() }) -> AudioEngine {
+        let engine = AudioEngine(sessionPreparation: applyIOBuffer)
         engine.fadeOutSeconds = fadeOutSeconds
         return engine
     }
@@ -67,15 +68,16 @@ enum SoundEnvelope {
     /// The buffer to ask for on a route (lane POP2, 2026-11-04): 5 ms on the built-in speaker and wired routes; nil
     /// (the system default, `setPreferredIOBufferDuration(0)`) when ANY output is Bluetooth (A2DP, HFP or LE): the
     /// radio path adds ~150-250 ms of its own, so a 5 ms buffer buys no onset there and costs a callback every 5 ms.
-    static func ioBufferRequest(outputs: [AVAudioSession.Port]) -> TimeInterval? {
+    nonisolated static func ioBufferRequest(outputs: [AVAudioSession.Port]) -> TimeInterval? {
         let bluetooth: Set<AVAudioSession.Port> = [.bluetoothA2DP, .bluetoothHFP, .bluetoothLE]
         return outputs.contains(where: bluetooth.contains) ? nil : preferredIOBufferSeconds
     }
 
     /// Applies the route's request and returns (route description, requested seconds or nil, effective seconds).
-    /// Called before the engine exists and again on every route change (`LiveSonificationAudio.handleRouteChange`).
+    /// Called OFF the main thread (SDK27): in the start gate's prepare before every activation (`makeHostEngine`), and on
+    /// every route change through `EngineStartGate.performSessionWork` (`LiveSonificationAudio.handleRouteChange`).
     @discardableResult
-    static func applyPreferredIOBuffer(_ session: AVAudioSession = .sharedInstance()) -> (route: String, requested: TimeInterval?, effective: TimeInterval) {
+    nonisolated static func applyPreferredIOBuffer(_ session: AVAudioSession = .sharedInstance()) -> (route: String, requested: TimeInterval?, effective: TimeInterval) {
         let outputs = session.currentRoute.outputs
         let want = ioBufferRequest(outputs: outputs.map(\.portType))
         do { try session.setPreferredIOBufferDuration(want ?? 0) } catch {

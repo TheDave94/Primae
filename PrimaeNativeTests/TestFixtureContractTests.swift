@@ -110,8 +110,6 @@ import Foundation
                 "precondition: the store handed to the fixture must hold non-default values, or this test proves nothing")
 
         let deps = TracingDependencies.stubReading(comparisonDefaults: box.defaults)
-        #expect(deps.cycleAllConditions == StudyComparisonSettings.cycleAllConditionsDefault,
-                "the fixture inherited cycleAllConditions from the store")
         #expect(deps.oncePerCondition == StudyComparisonSettings.oncePerConditionDefault,
                 "the fixture inherited oncePerCondition from the store")
         #expect(deps.presentationSpacingSeconds == StudyComparisonSettings.presentationSpacingSecondsDefault,

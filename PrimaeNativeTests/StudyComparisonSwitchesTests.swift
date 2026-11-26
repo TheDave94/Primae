@@ -319,7 +319,7 @@ import UIKit
                 "panningEnabled's default argument did not read the store — the pan axis ignores the switch")
         let stamp = vm.comparisonConfigurationStamp ?? ""
         let stamped = Set(stamp.split(separator: ";").map { String($0.split(separator: "=")[0]) })
-        #expect(stamped == ["observePasses", "cycleAllConditions", "presentationSpacingSeconds",
+        #expect(stamped == ["observePasses", "presentationSpacingSeconds",
                             "panningEnabled", "guidedDotsVisible", "spatialAxisDemonstration",
                             "soundGateRadiusFactor", "soundGateVelocityFloor", "oncePerCondition", "rateCoupling",
                             "pitchScope", "pitchRangeCents", "soundGatingEnabled",
@@ -391,7 +391,6 @@ import UIKit
         #expect(c.spokenFeedbackInStudy == StudyComparisonSettings.spokenFeedbackInStudyDefault)
         #expect(c.allFiveLetters == false)
         #expect(c.letterRepeatCount == 1)
-        #expect(c.cycleAllConditions == false)
         #expect(c.presentationSpacingSeconds == 0)
         #expect(c.panningEnabled)
         #expect(c.rateCoupling)

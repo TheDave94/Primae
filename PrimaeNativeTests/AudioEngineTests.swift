@@ -19,24 +19,13 @@ final class AudioEngineTests: XCTestCase {
 
     private var engine: AudioEngine?
 
-    // MARK: - Class-level session setup
-    // Activate once per suite to avoid interrupting the shared session on every test setUp.
-
-    override class func setUp() {
-        super.setUp()
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            // XCTSkip is not available at class level; individual tests will skip via instance setUp.
-            print("AudioEngineTests: AVAudioSession.setActive failed at class setUp: \(error)")
-        }
-    }
-
-    override class func tearDown() {
-        try? AVAudioSession.sharedInstance().setActive(false)
-        super.tearDown()
-    }
+    // MARK: - Session setup
+    // SDK27 (2026-11-24): no class-level `setCategory` / `setActive(true)` /
+    // `setActive(false)` any more. Each was a synchronous session call on the
+    // main thread (a runtime "Hang Risk" on iOS 27), and both are now the
+    // engine's own job: `AudioEngine.init` configures the category, and every
+    // start activates through `startGate`'s asynchronous `activate(options:)`
+    // (awaited in `setUp` below).
 
     // MARK: - Instance setup
 
@@ -57,7 +46,10 @@ final class AudioEngineTests: XCTestCase {
         // setUp is async throws so @MainActor isolation is preserved for this @MainActor class.
         engine = AudioEngine()
         // Ensure AVAudioEngine is in a known running state before any test that checks isRunning.
-        // resumeAfterLifecycle() calls startIfNeeded() which starts the engine if not yet running.
+        // SDK27: init starts it through `startGate` after an ASYNCHRONOUS session activation, so
+        // wait for that start here; every test then begins with the engine running, as the
+        // synchronous start used to leave it.
+        await engine?.startGate.settle()
         engine?.resumeAfterLifecycle()
 
         // HARDENING (2026-09-21; corrected 2026-10-04 against the device logs).
@@ -142,6 +134,26 @@ final class AudioEngineTests: XCTestCase {
         await awaitObserverDelivery()
         XCTAssertFalse(engine.isPlaying)
         XCTAssertFalse(engine.debugShouldResumePlayback)
+    }
+
+    /// R-072: a load that arrives while a `stop()` fade-out is still ramping
+    /// must survive the fade's completion. The fade task used to run on to
+    /// `finishStop()`, which nils `currentFile`, stops the player and clears
+    /// `isPlaying` — silently wiping the newer `loadAudioFile(autoplay: true)`.
+    @MainActor func testLoadDuringStopFade_isNotWipedByFadeCompletion() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
+        let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
+        startRealPlayback(engine)
+        engine.stop()
+        XCTAssertTrue(engine.debugIsFadingOut, "precondition: stop() started a fade-out")
+        engine.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertTrue(engine.isPlaying, "precondition: the new load started playback")
+        XCTAssertFalse(engine.debugIsFadingOut, "a new load ends the stale fade-out")
+        // Well past the 0.12 s ramp: a surviving fade task would have run finishStop() by now.
+        try await Task.sleep(for: .seconds(Double(engine.fadeOutSeconds) + 0.4))
+        XCTAssertTrue(engine.isPlaying, "the stale fade's finishStop() wiped the new load")
+        XCTAssertTrue(engine.debugShouldResumePlayback)
+        XCTAssertTrue(engine.debugHasCurrentFile, "the stale fade's finishStop() nilled the new file")
     }
 
     /// `play()` opens with `guard currentFile != nil else { return }`: with no
@@ -283,16 +295,9 @@ final class AudioEngineTests: XCTestCase {
     @MainActor func testInterruptionEnded_missingOptionKey_defaultsToNoResume() async throws {
         continueAfterFailure = true   // see the HARDENING note in setUp
         let engine = try XCTUnwrap(self.engine, "AudioEngine must be initialized")
-        // Post .ended with no option key — edge case from older OS versions
-        let userInfo: [AnyHashable: Any] = [
-            AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue
-            // Deliberately omitting AVAudioSessionInterruptionOptionKey
-        ]
-        NotificationCenter.default.post(
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
-            userInfo: userInfo
-        )
+        // SDK27: a resumption recommendation with NO context object — the
+        // iOS 27 counterpart of the old `.ended` without an options key.
+        XCTAssertTrue(ForgedSessionNotifications.post(ForgedSessionNotifications.resumption(nil)))
         // The observer is a `for await` sequence: a run-loop pump cannot
         // deliver it (see `postInterruption`), so await it.
         await awaitObserverDelivery()
@@ -470,6 +475,50 @@ final class AudioEngineTests: XCTestCase {
         await fulfillment(of: [exp], timeout: 1.5)
     }
 
+    // MARK: - SDK27: every engine start follows the asynchronous activation (seat ruling 1)
+    //
+    // Measured on the iPad before `EngineStartGate`: at a cold launch the
+    // first sound reached a SYNCHRONOUS `setActive(true)` + `engine.start()`
+    // before init's asynchronous activation had returned (capture
+    // `engine.firstStart alreadyRunning=true`, both sound arms), and that
+    // main-thread activation was Xcode's "UI unresponsiveness" issue. These
+    // two drive a fresh engine (cold) and a fresh live voice on the real
+    // graph: the start must NOT have happened synchronously, and the play
+    // must still happen once the gate has activated and started — one
+    // activation, one start, however many requests joined it.
+
+    @MainActor func testColdEngine_loadAutoplay_startsOnlyAfterActivation_thenPlays() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
+        let cold = AudioEngine()
+        cold.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertFalse(cold.debugIsEngineRunning,
+                       "the engine started synchronously, ahead of the asynchronous activation (the SDK27 race)")
+        XCTAssertFalse(cold.isPlaying, "nothing can be playing before the engine runs")
+        XCTAssertTrue(cold.startGate.isStarting, "the load must have joined the activation in flight")
+        await cold.startGate.settle()
+        XCTAssertTrue(cold.debugIsEngineRunning, "the gate must start the engine after the activation")
+        XCTAssertTrue(cold.isPlaying, "the autoplay load must play once the engine runs (the 2026-09-15 contract)")
+        XCTAssertEqual(cold.startGate.activationCount, 1, "init's start and the load's must share ONE activation")
+        XCTAssertEqual(cold.startGate.startCount, 1)
+        cold.stop()
+    }
+
+    @MainActor func testColdLiveVoice_loadAutoplay_startsOnlyAfterActivation_thenSounds() async throws {
+        continueAfterFailure = true   // see the HARDENING note in setUp
+        let host = AudioEngine()
+        let voice = LiveSonificationAudio.production(host: host, fadeOutSeconds: SoundEnvelope.fadeOutSeconds)
+        voice.loadAudioFile(named: SpatialSonification.carrierToneFile, autoplay: true)
+        XCTAssertFalse(host.debugIsEngineRunning,
+                       "the live voice started the shared engine synchronously, ahead of the activation (the SDK27 race)")
+        XCTAssertFalse(voice.isPlaying, "the voice cannot sound before the engine runs")
+        await host.startGate.settle()
+        XCTAssertTrue(host.debugIsEngineRunning)
+        XCTAssertTrue(voice.isPlaying, "the autoplay load must sound once the engine runs")
+        XCTAssertEqual(host.startGate.activationCount, 1, "the host's launch start and the voice's must share ONE activation")
+        XCTAssertEqual(host.startGate.startCount, 1)
+        voice.stop()
+    }
+
     // MARK: - Resuming after the engine paused (2026-09-15 regression)
     //
     // `attemptResumePlayback()` (and `loadAudioFile()`, same shape, same
@@ -513,6 +562,8 @@ final class AudioEngineTests: XCTestCase {
         XCTAssertFalse(engine.debugIsEngineRunning, "precondition: the engine must actually be paused")
 
         await postInterruption(type: .ended, shouldResume: true)
+        // SDK27: the restart follows an asynchronous activation (`startGate`).
+        await engine.startGate.settle()
 
         XCTAssertTrue(engine.debugIsEngineRunning,
                       "ending the interruption must restart the paused engine")
@@ -655,8 +706,8 @@ final class AudioEngineTests: XCTestCase {
             let player = AVAudioPlayerNode()
             let format = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)!
             engine.attach(player); engine.attach(node)
-            engine.connect(player, to: node, format: format)
-            engine.connect(node, to: engine.mainMixerNode, format: format)
+            try engine.connectNode(player, to: node, format: format)
+            try engine.connectNode(node, to: engine.mainMixerNode, format: format)
             configure(node)
             try engine.enableManualRenderingMode(.offline, format: format, maximumFrameCount: 4096)
             // 2 s of 440 Hz triangle, looped like the carrier.
@@ -670,7 +721,7 @@ final class AudioEngineTests: XCTestCase {
             }
             try engine.start()
             player.scheduleBuffer(src, at: nil, options: .loops)
-            player.play()
+            try player.playAudio()
             let out = AVAudioPCMBuffer(pcmFormat: engine.manualRenderingFormat,
                                        frameCapacity: engine.manualRenderingMaximumFrameCount)!
             var samples: [Float] = []
@@ -740,20 +791,17 @@ final class AudioEngineTests: XCTestCase {
     /// without awaiting it.
     ///
     /// object: nil matches AudioEngine's observer registration (object: nil = any sender).
-    @MainActor private func postInterruption(type: AVAudioSession.InterruptionType,
+    ///
+    /// SDK27 (2026-11-24): posts iOS 27's pair with genuine context objects
+    /// (`ForgedSessionNotifications`) — `.began` is a system deactivation,
+    /// `.ended` a resumption recommendation — since `AudioEngine` no longer
+    /// reads the deprecated interruption notification.
+    enum InterruptionPhase { case began, ended }
+    @MainActor private func postInterruption(type: InterruptionPhase,
                                   shouldResume: Bool = false) async {
-        var userInfo: [AnyHashable: Any] = [
-            AVAudioSessionInterruptionTypeKey: type.rawValue
-        ]
-        if type == .ended {
-            let options: AVAudioSession.InterruptionOptions = shouldResume ? [.shouldResume] : []
-            userInfo[AVAudioSessionInterruptionOptionKey] = options.rawValue
-        }
-        NotificationCenter.default.post(
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
-            userInfo: userInfo
-        )
+        let posted = ForgedSessionNotifications.post(
+            ForgedSessionNotifications.interruption(began: type == .began, shouldResume: shouldResume))
+        XCTAssertTrue(posted, "could not build the iOS 27 session context for the forged notification")
         await awaitObserverDelivery()
     }
 

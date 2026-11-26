@@ -47,7 +47,6 @@ final class ThrowawayDefaults {
         defaults.set(configuration.spokenFeedbackInStudy, forKey: S.spokenFeedbackKey)
         defaults.set(configuration.allFiveLetters, forKey: S.allFiveLettersKey)
         defaults.set(configuration.letterRepeatCount, forKey: S.letterRepeatCountKey)
-        defaults.set(configuration.cycleAllConditions, forKey: S.cycleAllConditionsKey)
         defaults.set(configuration.presentationSpacingSeconds, forKey: S.presentationSpacingKey)
         defaults.set(configuration.panningEnabled, forKey: S.panningEnabledKey)
         defaults.set(configuration.guidedDotsVisible, forKey: S.guidedDotsVisibleKey)
@@ -83,7 +82,6 @@ extension StudyComparisonConfiguration {
             spokenFeedbackInStudy: !StudyComparisonSettings.spokenFeedbackInStudyDefault,
             allFiveLetters: true,
             letterRepeatCount: 3,
-            cycleAllConditions: true,
             presentationSpacingSeconds: 5,
             panningEnabled: false,
             guidedDotsVisible: false,
@@ -231,7 +229,6 @@ extension TracingDependencies {
 
         let deps = TracingDependencies.omittingComparisonSwitches(reading: box.defaults)
 
-        #expect(deps.cycleAllConditions == written.cycleAllConditions)
         #expect(deps.oncePerCondition == written.oncePerCondition)
         #expect(deps.soundGatingEnabled == written.soundGatingEnabled)
         #expect(deps.observePasses == written.observePasses)
@@ -261,7 +258,6 @@ extension TracingDependencies {
     /// optional seams stay at their defaults — the helper pins them).
     private func nineSwitches(of deps: TracingDependencies) -> StudyComparisonConfiguration {
         var c = StudyComparisonConfiguration.defaults
-        c.cycleAllConditions = deps.cycleAllConditions
         c.oncePerCondition = deps.oncePerCondition
         c.soundGatingEnabled = deps.soundGatingEnabled
         c.observePasses = deps.observePasses
@@ -300,7 +296,6 @@ extension TracingDependencies {
     func eachSwitchMovesAlone() {
         let away = StudyComparisonConfiguration.everySwitchNonDefault
         let moves: [(String, (inout StudyComparisonConfiguration) -> Void)] = [
-            ("cycleAllConditions",        { $0.cycleAllConditions = away.cycleAllConditions }),
             ("oncePerCondition",          { $0.oncePerCondition = away.oncePerCondition }),
             ("soundGatingEnabled",        { $0.soundGatingEnabled = away.soundGatingEnabled }),
             ("observePasses",             { $0.observePasses = away.observePasses }),
@@ -346,7 +341,6 @@ extension TracingDependencies {
         let box = ThrowawayDefaults()
         let deps = TracingDependencies.omittingComparisonSwitches(reading: box.defaults)
 
-        #expect(deps.cycleAllConditions == StudyComparisonSettings.cycleAllConditionsDefault)
         #expect(deps.oncePerCondition == StudyComparisonSettings.oncePerConditionDefault)
         #expect(deps.soundGatingEnabled == StudyComparisonSettings.soundGatingEnabledDefault)
         #expect(deps.observePasses == StudyComparisonSettings.observePassesDefault)

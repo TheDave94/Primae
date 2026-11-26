@@ -44,7 +44,9 @@ struct TrainedLetterSubset: RawRepresentable, Codable, Equatable, Hashable, Send
     /// this list: `TracingViewModel.studyBaseLetters` and
     /// `LetterPickerBar.demoLetters` both read it from here, and
     /// `allSubsets` below derives the ten assignment buckets from it.
-    static let studyLetters = ["A", "F", "I", "L", "M"]
+    /// `nonisolated`: an immutable `[String]` is Sendable, and the test
+    /// target reads it from a nonisolated context (`StudySources`).
+    nonisolated static let studyLetters = ["A", "F", "I", "L", "M"]
 
     /// All 10 subsets in deterministic lexicographic order — index i of
     /// this array is what the UUID-modulo assignment selects, so the

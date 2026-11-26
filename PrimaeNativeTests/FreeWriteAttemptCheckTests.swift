@@ -364,6 +364,120 @@ fileprivate typealias Drawing = [[CGPoint]]
         }
     }
 
+    // MARK: - 2b. One evaluation per production (T1R, 2026-11-24)
+    //
+    // The 553 ms main-thread hang at the bubble pause's start (measured on the
+    // iPad, Debug-Study): a completion evaluated the check twice over the same
+    // ink, `shouldRejectAttempt` then `captureFreeWriteMeasurements`, 250-275 ms
+    // each. And `share` scanned every point against every target.
+
+    /// Wraps the real check and counts its evaluations.
+    private func countEvaluations(_ vm: TracingViewModel) -> () -> Int {
+        var calls = 0
+        vm.phaseTransitions.attemptCheckEvaluator = { points, starts, reference, frame in
+            calls += 1
+            return FreeWriteAttemptCheck.evaluate(points: points, strokeStartIndices: starts,
+                                                  reference: reference, frame: frame)
+        }
+        return { calls }
+    }
+
+    @Test("an accepted production is checked once, and its row still carries the check")
+    func acceptedProductionEvaluatesOnce() throws {
+        try withStudyVM { vm, store, _ in
+            let calls = countEvaluations(vm)
+            draw(letter(try #require(vm.strokeTracker.definition)), into: vm)
+            vm.phaseTransitions.completePostFreeWriteRecognition(score: 0.9, result: nil)
+            let row = try #require(freeWriteRows(store).only)
+            #expect(row.completed && row.attemptCheckPassed == true && row.attemptCheckScore != nil)
+            #expect(calls() == 1, "the check ran \(calls()) times over one production")
+        }
+    }
+
+    @Test("a rejected production is checked once, and its row still carries the check")
+    func rejectedProductionEvaluatesOnce() throws {
+        try withStudyVM { vm, store, _ in
+            let calls = countEvaluations(vm)
+            draw(try scribbleFor(vm), into: vm)
+            vm.phaseTransitions.completePostFreeWriteRecognition(score: 0.1, result: nil)
+            let row = try #require(freeWriteRows(store).only)
+            #expect(!row.completed && row.attemptCheckPassed == false && row.attemptCheckScore != nil)
+            #expect(calls() == 1, "the check ran \(calls()) times over one production")
+        }
+    }
+
+    @Test("new ink is checked again: the retry after a rejection is not answered from the cache")
+    func newInkEvaluatesAgain() throws {
+        try withStudyVM { vm, store, _ in
+            let calls = countEvaluations(vm)
+            draw(try scribbleFor(vm), into: vm)
+            vm.phaseTransitions.completePostFreeWriteRecognition(score: 0.1, result: nil)
+            #expect(calls() == 1)
+            draw(letter(try #require(vm.strokeTracker.definition)), into: vm)
+            vm.phaseTransitions.completePostFreeWriteRecognition(score: 0.9, result: nil)
+            #expect(calls() == 2, "the second production was answered with the first one's check")
+            let rows = freeWriteRows(store)
+            #expect(rows.map(\.attemptCheckPassed) == [false, true])
+        }
+    }
+
+    // The grid `share` against the brute-force one, bit for bit.
+
+    private func expectShareIdentical(_ points: [CGPoint], _ target: [CGPoint], _ tolerance: CGFloat,
+                                      _ label: @autoclosure () -> String) {
+        let grid = FreeWriteAttemptCheck.share(points, within: tolerance, of: target)
+        let brute = FreeWriteAttemptCheck.shareBruteForce(points, within: tolerance, of: target)
+        #expect(grid.bitPattern == brute.bitPattern, "\(label()): grid \(grid) vs brute force \(brute)")
+    }
+
+    @Test("share equals the brute-force scan on every bundled letter, drawn exactly, wobbled and against other letters")
+    func shareMatchesBruteForceOnTheCorpus() {
+        let repo = LetterRepository(resources: BundleLetterResourceProvider(), cache: NullLetterCache())
+        let letters = repo.loadLetters().filter { !$0.strokes.strokes.isEmpty }
+        #expect(letters.count > 50, "the corpus did not load: \(letters.count) letters")
+        // The study tolerance (1.5 checkpoint radii on the 874 pt high canvas) and a finer one.
+        let tolerances: [CGFloat] = [1.5 * 0.047763 * 874, 12.5]
+        var compared = 0
+        for (i, a) in letters.enumerated() {
+            let ink = letter(a.strokes)
+            let wobbly = wobble(ink, amplitude: 0.06).flatMap { $0 }
+            let other = letter(letters[(i + 7) % letters.count].strokes).flatMap { $0 }
+            let exact = ink.flatMap { $0 }
+            for t in tolerances {
+                expectShareIdentical(exact, wobbly, t, "\(a.id) exact/wobbly t=\(t)")
+                expectShareIdentical(wobbly, exact, t, "\(a.id) wobbly/exact t=\(t)")
+                expectShareIdentical(exact, other, t, "\(a.id) vs other t=\(t)")
+                compared += 3
+            }
+        }
+        #expect(compared == letters.count * tolerances.count * 3)
+    }
+
+    @Test("share equals the brute-force scan on the edges: empty, one point, cell boundaries, the tolerance circle, non-finite")
+    func shareMatchesBruteForceOnTheEdges() {
+        let t: CGFloat = 1.5
+        let p = CGPoint(x: 3, y: 3)
+        expectShareIdentical([], [p], t, "no points")
+        expectShareIdentical([p], [], t, "no targets")
+        expectShareIdentical([p], [p], t, "one point on itself")
+        expectShareIdentical([p], [CGPoint(x: 100, y: 100)], t, "one point, far target")
+        // Every point and target on a cell corner or edge (multiples of t),
+        // negative too, at distances below, at and just above t.
+        var lattice: [CGPoint] = []
+        for i in -4...4 { for j in -4...4 { lattice.append(CGPoint(x: CGFloat(i) * t, y: CGFloat(j) * t)) } }
+        let shifted = lattice.map { CGPoint(x: $0.x + t, y: $0.y) }                     // exactly t away
+        let beyond = lattice.map { CGPoint(x: $0.x + t.nextUp, y: $0.y) }                // just over t
+        let diagonal = lattice.map { CGPoint(x: $0.x + t * 0.7071, y: $0.y + t * 0.7071) } // on the circle, two cells over
+        let inside = lattice.map { CGPoint(x: $0.x - t * 0.999, y: $0.y + t * 0.01) }
+        for (name, target) in [("shifted", shifted), ("beyond", beyond), ("diagonal", diagonal), ("inside", inside)] {
+            expectShareIdentical(lattice, target, t, "lattice vs \(name)")
+            expectShareIdentical(target, lattice, t, "\(name) vs lattice")
+        }
+        expectShareIdentical([CGPoint(x: CGFloat.nan, y: 0), p], [p], t, "a NaN point")
+        expectShareIdentical([p], [CGPoint(x: CGFloat.infinity, y: 3), p], t, "an infinite target")
+        expectShareIdentical([p], [p], 0, "zero tolerance")
+    }
+
     // MARK: - 3. The export
 
     @Test("the attempt columns are appended (before r27's) and carry the row's values")

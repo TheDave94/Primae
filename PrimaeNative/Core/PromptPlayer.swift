@@ -301,8 +301,8 @@ final class PromptPlayer: PromptPlaying {
     /// skip silently.
     private func playEffect(name: String, systemFallback: SystemSoundID?) {
         if let p = effectPlayers[name] {
-            p.currentTime = 0
-            p.play()
+            let box = RecordedPlayback.Player(p)
+            RecordedPlayback.perform { box.player.currentTime = 0; box.player.play() }
             return
         }
         if missingEffects.contains(name) {
@@ -311,7 +311,8 @@ final class PromptPlayer: PromptPlaying {
         }
         if let p = loadEffectPlayer(name: name) {
             effectPlayers[name] = p
-            p.play()
+            let box = RecordedPlayback.Player(p)
+            RecordedPlayback.perform { box.player.play() }
         } else {
             missingEffects.insert(name)
             if let id = systemFallback { AudioServicesPlaySystemSound(id) }
@@ -331,7 +332,8 @@ final class PromptPlayer: PromptPlaying {
             log.info("\(name, privacy: .public).wav not bundled — falling back to system sound.")
             return nil
         }
-        p.prepareToPlay()
+        let box = RecordedPlayback.Player(p)
+        RecordedPlayback.perform { box.player.prepareToPlay() }
         return p
     }
 
@@ -378,12 +380,16 @@ final class AVRecordedSound: NSObject, RecordedSounding, AVAudioPlayerDelegate {
         player = try AVAudioPlayer(contentsOf: url)
         super.init()
         player.delegate = self
-        player.prepareToPlay()
+        // `prepareToPlay()` acquires the audio hardware: off main, ahead of
+        // the `play()` that follows it on the same queue (`duration` needs
+        // no preparation).
+        let box = RecordedPlayback.Player(player)
+        RecordedPlayback.perform { box.player.prepareToPlay() }
     }
 
     var duration: TimeInterval { player.duration }
-    func play() { player.play() }
-    func stop() { player.stop() }
+    func play() { let box = RecordedPlayback.Player(player); RecordedPlayback.perform { box.player.play() } }
+    func stop() { let box = RecordedPlayback.Player(player); RecordedPlayback.perform { box.player.stop() } }
 
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in self?.onFinish?(flag) }
@@ -391,5 +397,36 @@ final class AVRecordedSound: NSObject, RecordedSounding, AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor [weak self] in self?.onFinish?(false) }
+    }
+}
+
+// MARK: - Playback off the main thread
+
+/// Where every `AVAudioPlayer` `prepareToPlay()` / `play()` / `stop()` runs
+/// (INTEG 2026-11-25).
+///
+/// MEASURED on the iPad (iOS 27.3, Debug-Study, OSLogStore of the app's own
+/// process): `prepareToPlay()` on the main thread ("acquires the audio
+/// hardware") touches the shared session SYNCHRONOUSLY, even with the
+/// session already active through `EngineStartGate`'s asynchronous
+/// activation, and logs a runtime "AVAudioSession Hang Risk" — five in a
+/// silent session, one per prompt, none at the engine's configure /
+/// activate / start. Moving only `play()`/`stop()` off main left all five;
+/// moving `prepareToPlay()` as well left none. ONE serial queue keeps the order of the calls
+/// exactly as the main actor issued them, so a `stop()` can never overtake
+/// the `play()` before it. The delegate callbacks already hop to the main
+/// actor; nothing else about what plays, or when, changes.
+nonisolated enum RecordedPlayback {
+    static let queue = DispatchQueue(label: "de.flamingistan.primae.recordedPlayback", qos: .userInitiated)
+
+    static func perform(_ work: @escaping @Sendable () -> Void) {
+        queue.async(execute: work)
+    }
+
+    /// `AVAudioPlayer` is not `Sendable`; every use of it after this hand-off
+    /// is on `queue`, serially, and the main actor only reads `duration`.
+    struct Player: @unchecked Sendable {
+        let player: AVAudioPlayer
+        init(_ player: AVAudioPlayer) { self.player = player }
     }
 }

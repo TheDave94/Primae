@@ -55,6 +55,19 @@ final class TouchDispatcher {
     /// and the "should playback be active" gate.
     private(set) var smoothedVelocity: CGFloat = 0
 
+    /// Carry the in-flight stroke's reference points across a canvas
+    /// resize (`CanvasResizeRemap`), so the next sample's displacement and
+    /// jitter test compare points in ONE frame. Velocity is not rescaled:
+    /// it is smoothed and settles within a few samples.
+    func remapInFlight(_ remap: CanvasResizeRemap, canvasSize: CGSize) {
+        guard remap != .identity else { return }
+        lastPoint = lastPoint.map(remap.apply)
+        lastKeptPoint = lastKeptPoint.map(remap.apply)
+        if let tail = unkeptTail {
+            unkeptTail = (remap.apply(tail.point), tail.timestamp, tail.force, canvasSize)
+        }
+    }
+
     // MARK: - Tunable knobs
 
     /// EWMA smoothing factor; calibrated for iPad-finger writing.
@@ -525,6 +538,9 @@ final class TouchDispatcher {
            // A one-sample contact (a palm), or one spanning under 2% of
            // the canvas (a creeping palm, r7), is not a production.
            StrokeProcessScorer.isProduction(points: vm.freeWritePoints, canvasSize: vm.canvasSize) {
+            // Analyse the production off the main actor while the window
+            // runs; the scoring at its end reads the result (T1R).
+            vm.phaseTransitions.prefetchFreeWriteAnalysis()
             scheduleFreeWriteAutoAdvance()
             // The final test ends on the check button, not the window: the
             // lift only makes the button appear (r27).

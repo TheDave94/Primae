@@ -66,6 +66,7 @@ final class PopCaptureAudio: AudioControlling {
     func stopAudioSignalTicker() { inner.stopAudioSignalTicker() }
     var latestAudioSignalSummary: String? { inner.latestAudioSignalSummary }
     var initializationError: String? { inner.initializationError }
+    func settleStartup() async { await inner.settleStartup() }
     var debugAudioStateSummary: String { inner.debugAudioStateSummary }
 }
 #endif

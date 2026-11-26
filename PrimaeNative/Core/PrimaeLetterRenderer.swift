@@ -238,14 +238,15 @@ public enum PrimaeLetterRenderer {
         // sits on the baseline with the inked ascent above and
         // descent below.
         let pad: CGFloat = 0.10
-        let availH = size.height * (1 - 2 * pad)
         let ascent = CTFontGetAscent(font)
         let descent = CTFontGetDescent(font)
-        let emHeight = ascent + descent
-        let scale = emHeight > 0 ? availH / emHeight : availH / bbox.height
         // Baseline sits at the bottom of the inked ascent area:
-        // 10 % top pad + ascent, all measured in canvas pixels.
-        let baselineY = size.height * pad + ascent * scale
+        // 10 % top pad + ascent, all measured in canvas pixels (centred
+        // vertically when a narrow canvas caps the scale; see `glyphFit`).
+        let fit = glyphFit(canvasSize: size, pad: pad, ascent: ascent, descent: descent,
+                           inkSize: bbox.size)
+        let scale = fit.scale
+        let baselineY = fit.baselineY
         // CoreText positions glyphs with the baseline at y = 0 (BL
         // origin) and the bbox extending up by `bbox.maxY` and down
         // by `bbox.minY` (negative for descenders). Flip Y to UIKit
@@ -303,12 +304,12 @@ public enum PrimaeLetterRenderer {
               var glyph = getGlyph(for: letter, in: font) else { return nil }
         let bbox = CTFontGetBoundingRectsForGlyphs(font, .default, &glyph, nil, 1)
         guard bbox.width > 0, bbox.height > 0 else { return nil }
-        let availH = canvasSize.height * (1 - 2 * pad)
         let ascent = CTFontGetAscent(font)
         let descent = CTFontGetDescent(font)
-        let emHeight = ascent + descent
-        let scale = emHeight > 0 ? availH / emHeight : availH / bbox.height
-        let baselineY = canvasSize.height * pad + ascent * scale
+        let fit = glyphFit(canvasSize: canvasSize, pad: pad, ascent: ascent, descent: descent,
+                           inkSize: bbox.size)
+        let scale = fit.scale
+        let baselineY = fit.baselineY
         let scaledW = bbox.width * scale
         let leftX = canvasSize.width / 2 - scaledW / 2
         let topY = baselineY - (bbox.minY + bbox.height) * scale
@@ -322,6 +323,42 @@ public enum PrimaeLetterRenderer {
         if rectCache.count >= cacheLimit { rectCache.removeAll(keepingCapacity: true) }
         rectCache[key] = rect
         return rect
+    }
+
+    /// The glyph's scale and baseline in a canvas: the em height fills the
+    /// canvas height minus `pad` above and below (unchanged since the
+    /// renderer was written), CAPPED so the glyph's ink also fits the width
+    /// minus the same pad, and then centred vertically in the freed space.
+    ///
+    /// The cap binds only when width / height < ink width / em height, i.e. below about 0.70 for the widest Druckschrift glyph (W,
+    /// 0.701 em, measured with CoreText 2026-11-24). Landscape, square
+    /// and full-screen portrait canvases are all wider than that, so their
+    /// geometry is bit-identical; the cap exists for the narrow scenes
+    /// an iPadOS that ignores the deprecated UIRequiresFullScreen could
+    /// produce (defence in depth; docs/DECISIONS.md, "Rotation and
+    /// UIRequiresFullScreen"), where
+    /// the glyph used to run off the canvas edge.
+    static func glyphFit(canvasSize: CGSize, pad: CGFloat,
+                         ascent: CGFloat, descent: CGFloat,
+                         inkSize: CGSize) -> (scale: CGFloat, baselineY: CGFloat) {
+        let availH = canvasSize.height * (1 - 2 * pad)
+        let emHeight = ascent + descent
+        let byHeight = emHeight > 0 ? availH / emHeight : availH / max(inkSize.height, 1)
+        let availW = canvasSize.width * (1 - 2 * pad)
+        var scale = byHeight
+        if inkSize.width > 0, availW > 0 {
+            scale = min(byHeight, availW / inkSize.width)
+        }
+        // When the width caps the scale, the freed vertical space is split
+        // above and below so the glyph stays centred. When the height
+        // binds, nothing is added: the arithmetic is exactly the old one,
+        // so uncapped geometry is bit-identical.
+        guard scale < byHeight else {
+            return (scale, canvasSize.height * pad + ascent * scale)
+        }
+        let usedH = (emHeight > 0 ? emHeight : inkSize.height) * scale
+        let slack = max(0, availH - usedH) / 2
+        return (scale, canvasSize.height * pad + slack + ascent * scale)
     }
 
     // MARK: - Private

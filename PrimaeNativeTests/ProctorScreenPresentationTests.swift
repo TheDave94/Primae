@@ -140,7 +140,8 @@ import Foundation
                      ResearchStatus.settingsEnrolmentLine(enrolled: false),
                      RelaunchBlockCopy.comparison]
         let stale = ["Vier-Phasen", "Richtung-lernen", "Richtung lernen", "Vortest", "Post-Test", "Nachtest",
-                     "Ungeübt", "3 der 5", "fünf Buchstaben drei Vorführungen", "festgelegt", "Arm bzw."]
+                     "Ungeübt", "3 der 5", "fünf Buchstaben drei Vorführungen", "festgelegt", "Arm bzw.",
+                     "Alle Konditionen durchlaufen", "Konditionen durchlaufen"]
         for text in texts {
             for word in stale {
                 #expect(!text.contains(word), "'\(word)' survives in: \(text.prefix(80))…")

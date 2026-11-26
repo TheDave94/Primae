@@ -579,7 +579,7 @@ final class FinalTestSessionUITests: XCTestCase {
 
 /// The fields of the `tracing-geometry-hook` JSON this suite reads
 /// (`TracingGeometryTestHookView.snapshot`, `TracingSessionTimeline.json`).
-struct SessionState {
+nonisolated struct SessionState {
     let raw: String
     let letter: String
     let phase: String
@@ -625,7 +625,7 @@ struct SessionState {
         stageChanges = (d["stageChanges"] as? [[String: Any]] ?? []).map(StageChange.init)
     }
 
-    struct Frame {
+    nonisolated struct Frame {
         let t: Double, letter: String, stage: String, glyph: Bool, ink: Int
         init(_ d: [String: Any]) {
             t = d["t"] as? Double ?? -1; letter = d["letter"] as? String ?? ""
@@ -635,7 +635,7 @@ struct SessionState {
         var line: String { "t=\(t) \(letter) stage=\(stage) glyph=\(glyph) ink=\(ink)" }
     }
 
-    struct StageChange {
+    nonisolated struct StageChange {
         let t: Double, letter: String, stage: String
         init(_ d: [String: Any]) {
             t = d["t"] as? Double ?? -1; letter = d["letter"] as? String ?? ""
@@ -643,7 +643,7 @@ struct SessionState {
         }
     }
 
-    struct TimelineEntry {
+    nonisolated struct TimelineEntry {
         let t: Double, letter: String, phase: String, probe: String, stage: String
         let chrome: Bool, ink: Int, glyph: Bool, pause: Bool, end: Bool, check: Bool
         init(_ d: [String: Any]) {
@@ -660,7 +660,7 @@ struct SessionState {
         }
     }
 
-    struct AudioSeg {
+    nonisolated struct AudioSeg {
         let letter: String, phase: String, probe: String, stage: String
         let start: Double, end: Double, samples: Int, loud: Int, peak: Double, settledLoud: Int, settledPeak: Double
         init(_ d: [String: Any]) {
@@ -678,7 +678,7 @@ struct SessionState {
         }
     }
 
-    struct PromptEvent {
+    nonisolated struct PromptEvent {
         let t: Double, kind: String, key: String, stage: String
         init(_ d: [String: Any]) {
             t = d["t"] as? Double ?? -1; kind = d["kind"] as? String ?? ""; key = d["key"] as? String ?? ""

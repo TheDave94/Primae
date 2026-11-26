@@ -67,6 +67,37 @@ nonisolated enum SessionEndConfetti {
     }
 }
 
+/// The end screen's composition size and how far it must shrink to fit a
+/// scene (defence in depth, docs/DECISIONS.md "Rotation and
+/// UIRequiresFullScreen": an iPadOS that ignores the deprecated key could
+/// give the scene less than a full landscape screen). A value, so the decision is
+/// testable without rendering.
+nonisolated enum SessionEndLayout {
+    static let cardSide: CGFloat = 168
+    static let cardSpacing: CGFloat = 36
+    static let starHeight: CGFloat = 250
+    static let stackSpacing: CGFloat = 56
+    /// Kept free around the composition on every side.
+    static let margin: CGFloat = 32
+
+    static func naturalSize(letterCount: Int) -> CGSize {
+        let n = CGFloat(max(letterCount, 1))
+        // The rays image (250 pt) is the widest piece when there is one card.
+        let cards = n * cardSide + (n - 1) * cardSpacing
+        return CGSize(width: max(cards, starHeight), height: starHeight + stackSpacing + cardSide)
+    }
+
+    /// 1 when the composition fits with its margin; otherwise the largest
+    /// uniform scale that fits. Never above 1, never zero.
+    static func fitScale(letterCount: Int, available: CGSize) -> CGFloat {
+        let natural = naturalSize(letterCount: letterCount)
+        let w = available.width - 2 * margin
+        let h = available.height - 2 * margin
+        guard w > 0, h > 0 else { return 0.1 }
+        return max(0.1, min(1, w / natural.width, h / natural.height))
+    }
+}
+
 struct SessionEndScreenView: View {
     /// The child's letters, in the study order. Shown identically for all.
     let letters: [String]
@@ -98,13 +129,21 @@ struct SessionEndScreenView: View {
                 confetti(since: started)
             }
 
-            VStack(spacing: 56) {
-                bigStar
-                HStack(spacing: 36) {
-                    ForEach(Array(letters.enumerated()), id: \.offset) { index, letter in
-                        letterCard(letter, shown: index < revealedLetters)
+            GeometryReader { geo in
+                VStack(spacing: 56) {
+                    bigStar
+                    HStack(spacing: 36) {
+                        ForEach(Array(letters.enumerated()), id: \.offset) { index, letter in
+                            letterCard(letter, shown: index < revealedLetters)
+                        }
                     }
                 }
+                // Fixed point sizes, scaled down as a whole when the scene
+                // is smaller than the composition (iOS 27 resizing):
+                // nothing is cropped, nothing is rearranged.
+                .scaleEffect(SessionEndLayout.fitScale(letterCount: letters.count,
+                                                       available: geo.size))
+                .frame(width: geo.size.width, height: geo.size.height)
             }
             .opacity(reduceMotion ? restOpacity : 1)
         }

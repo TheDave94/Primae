@@ -154,8 +154,12 @@ struct ExportScaleMeasurementTests {
             exportBytes[format] = data.count
 
             // Correctness of the export: every one of the 40 ids is in it.
-            let text = try #require(String(data: data, encoding: .utf8))
-            let missing = children.map(\.participantId.uuidString).filter { !text.contains($0) }
+            #expect(String(data: data, encoding: .utf8) != nil, "\(format): the export is not valid UTF-8")
+            // Byte search, not `String.contains`: forty Unicode-aware scans
+            // of the 173 MB JSON export took ~100 s of this test at -Onone,
+            // all of it on the main actor. A UUID string is ASCII, so a
+            // byte match is the same predicate.
+            let missing = children.map(\.participantId.uuidString).filter { !Self.bytes(data, contain: $0) }
             #expect(missing.isEmpty, "\(format): \(missing.count) participant id(s) missing from the export")
             #expect(url.lastPathComponent.contains("_all\(PerChild.children)."),
                     "\(format): file name should count \(PerChild.children) children, got \(url.lastPathComponent)")
@@ -183,6 +187,16 @@ struct ExportScaleMeasurementTests {
             "jsonBytes=\(exportBytes[.json] ?? -1)",
         ].joined(separator: " ")
         print(line)
+    }
+
+    /// Whether `haystack` holds the UTF-8 bytes of `needle` (`memmem`).
+    static func bytes(_ haystack: Data, contain needle: String) -> Bool {
+        let n = Array(needle.utf8)
+        return haystack.withUnsafeBytes { hay in
+            n.withUnsafeBytes { nd in
+                memmem(hay.baseAddress, hay.count, nd.baseAddress, nd.count) != nil
+            }
+        }
     }
 
     // MARK: - Fixture

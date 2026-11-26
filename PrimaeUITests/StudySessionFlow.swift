@@ -41,10 +41,19 @@ enum StudySessionFlow {
     @MainActor
     static func trainThreeLetters(_ app: XCUIApplication,
                                   afterLetter: (Int, String) -> Void = { _, _ in },
+                                  atPhase: ((Int, String, String) -> Void)? = nil,
                                   file: StaticString = #filePath, line: UInt = #line) -> [String]? {
         var traced: [String] = []
         var last: TracingHookSnapshot?
         for round in 1...3 {
+            // Optional look at the observe phase (the demonstration), when
+            // the caller asks for one: wait for it, then hand over.
+            if let atPhase, let observe = LetterTracer.waitForSnapshot(app, timeout: 30, last: &last, where: {
+                $0.phase == "observe" && $0.probe.isEmpty && !traced.contains($0.letter)
+            }) {
+                Thread.sleep(forTimeInterval: 1.0)
+                atPhase(round, observe.letter, "observe")
+            }
             guard let guided = LetterTracer.waitForSnapshot(app, timeout: 60, last: &last, where: {
                 $0.phase == "guided" && $0.probe.isEmpty && !$0.strokes.isEmpty && !$0.blocked
                     && !traced.contains($0.letter)
@@ -55,6 +64,7 @@ enum StudySessionFlow {
             }
             let letter = guided.letter
             Thread.sleep(forTimeInterval: 1.0)
+            atPhase?(round, letter, "guided")
             LetterTracer.traceLetter(guided, in: app)
             guard let fw = LetterTracer.waitForSnapshot(app, timeout: 8, last: &last, where: {
                 $0.letter == letter && $0.phase == "freeWrite" && $0.checkpointsHit == 0
@@ -64,6 +74,7 @@ enum StudySessionFlow {
                 return nil
             }
             Thread.sleep(forTimeInterval: 1.0)
+            atPhase?(round, letter, "freeWrite")
             LetterTracer.traceLetter(fw, in: app)
             guard LetterTracer.waitForCompletion(app, letter: letter, probe: nil, file: file, line: line) != nil else {
                 return nil
@@ -99,6 +110,7 @@ enum StudySessionFlow {
     @MainActor
     static func writeFinalTest(_ app: XCUIApplication, expected: [String],
                                whileWriting: (String) -> Void = { _ in },
+                               atGlimpse: ((String) -> Void)? = nil,
                                file: StaticString = #filePath, line: UInt = #line) -> [String]? {
         var tested: [String] = []
         var last: TracingHookSnapshot?
@@ -116,6 +128,7 @@ enum StudySessionFlow {
             XCTAssertEqual(letter, expected[k - 1], "the final test must follow the training order \(expected)",
                            file: file, line: line)
             XCTAssertFalse(check.exists, "\(letter): no check button before the child writes", file: file, line: line)
+            atGlimpse?(letter)
             // The glimpse (glyph shown, no touch) hides after `glimpseSeconds`.
             Thread.sleep(forTimeInterval: glimpseSeconds + 1.5)
             var attempts = 0

@@ -172,22 +172,33 @@ nonisolated enum LoopXDetector {
         let level = sorted.isEmpty ? 0 : sorted[Int(Double(sorted.count - 1) * 0.95)]
         var out: [Event] = []
         var k = (hi + hop) / hop
-        while k * hop + w <= d.count, k < r2.count {
-            let a = k * hop
-            if r2[k] > level * 0.01 {                     // -20 dB
-                var ex = 0.0
-                for j in 0..<w { ex += d[a + j] * d[a + j] }
-                var best = 0.0, quiet = true
-                for lag in lo...hi {
-                    var xy = 0.0, yy = 0.0
-                    for j in 0..<w { let b = d[a + j - lag]; xy += d[a + j] * b; yy += b * b }
-                    if yy > ex * 0.1 { quiet = false; if xy > 0 { best = max(best, xy * xy / (ex * yy)) } }
+        // The window sums walk raw pointers in `while` loops: the same products summed in the same order as the
+        // indexed `for j in 0..<w` loops they replace, so every score is bit-identical (MEASURED on 7903 events), but
+        // at -Onone (Debug-Study) a Range iterator and an Array subscript are calls per sample, and this measure was
+        // ~95% of the LOOPX scenario diagnostic's time: 21.1 s -> 1.3 s per 4 s channel on the Mac (TESTWARN, 2026-11-25).
+        d.withUnsafeBufferPointer { buf in
+            let p = buf.baseAddress!
+            while k * hop + w <= buf.count, k < r2.count {
+                let a = k * hop
+                if r2[k] > level * 0.01 {                     // -20 dB
+                    var ex = 0.0
+                    var q = p + a, j = 0
+                    while j < w { let v = q.pointee; ex += v * v; q += 1; j += 1 }
+                    var best = 0.0, quiet = true
+                    var lag = lo
+                    while lag <= hi {
+                        var xy = 0.0, yy = 0.0
+                        var x = p + a, l = p + (a - lag), i = 0
+                        while i < w { let b = l.pointee; xy += x.pointee * b; yy += b * b; x += 1; l += 1; i += 1 }
+                        if yy > ex * 0.1 { quiet = false; if xy > 0 { best = max(best, xy * xy / (ex * yy)) } }
+                        lag += 1
+                    }
+                    if !quiet && 1 - best >= threshold {
+                        out.append(Event(time: Double(a) / sr, kind: "res", score: 1 - best))
+                    }
                 }
-                if !quiet && 1 - best >= threshold {
-                    out.append(Event(time: Double(a) / sr, kind: "res", score: 1 - best))
-                }
+                k += 1
             }
-            k += 1
         }
         return out
     }

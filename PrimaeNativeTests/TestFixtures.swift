@@ -48,6 +48,13 @@ final class EngineModelAudio: AudioControlling {
     }
     /// Settable so a test can model an engine whose start-up failed.
     var initializationError: String? = nil
+    /// SDK27: an error the asynchronous start-up reports only once it
+    /// settles (a failed configuration or first start).
+    var startupErrorOnSettle: String? = nil
+    func settleStartup() async {
+        await Task.yield()
+        if let e = startupErrorOnSettle { initializationError = e }
+    }
     private(set) var events: [Event] = []
     private(set) var setAdaptiveCalls: [(speed: Float, bias: Float)] = []
     private(set) var spatialPitches: [Float] = []
@@ -425,15 +432,6 @@ extension TracingDependencies {
             spokenFeedbackInStudy: StudyComparisonSettings.spokenFeedbackInStudyDefault,
             comparisonDefaults:   comparisonDefaults,
             participantEnrolled:  true,   // the precondition reads THIS, not the device
-            // Pin the arm-cycle comparison switch OFF, for the same reason
-            // as studyMode above and one sharper: `StudyComparisonSwitches
-            // Tests.resetRestoresDefaults` WRITES `cycleAllConditions = true`
-            // (no `defer`) before clearing it, and suites run in PARALLEL —
-            // so a fixture that read the global would hand whichever VM was
-            // constructed inside that window a cycling session. Tests that
-            // mean to exercise the cycle say so at the call site
-            // (`deps.cycleAllConditions = true`).
-            cycleAllConditions:   false,
             // Pin both trigger-boundary switches for the same reason, and
             // a sharper one: their DEFAULT ARGUMENTS read a UserDefaults
             // key, so an unpinned fixture would evaluate those reads at
@@ -449,7 +447,7 @@ extension TracingDependencies {
             // `StudyComparisonSwitchesTests` writes the global to 4–5 s.
             presentationSpacingSeconds: StudyComparisonSettings.presentationSpacingSecondsDefault,
             // Pin the once-per-condition demonstration switch, same reason
-            // as `cycleAllConditions` above: a suite that writes the
+            // as the trigger-boundary switches above: a suite that writes the
             // global key would otherwise hand whichever VM was
             // constructed inside that window a session with a suppressed
             // demonstration. Tests that mean to exercise it say so at the
@@ -514,6 +512,10 @@ extension TracingDependencies {
         // init parameter, so it is pinned here rather than in the call above —
         // same reason as the six in the call: left nil it reads the global.
         deps.letterRepeatCount = StudyComparisonSettings.letterRepeatCountDefault
+        // Its own failure centre, never the process-wide `.shared`: any test
+        // store that reports a failed write to `.shared` would otherwise
+        // hard-stop this view model too (`subscribe` replays earlier failures).
+        deps.persistenceFailureCenter = PersistenceFailureCenter()
         #if STUDY_BUILD
         return deps
         #else
@@ -575,8 +577,5 @@ extension TracingDependencies {
     }
     func with(oncePerCondition: Bool) -> TracingDependencies {
         var copy = self; copy.oncePerCondition = oncePerCondition; return copy
-    }
-    func with(cycleAllConditions: Bool) -> TracingDependencies {
-        var copy = self; copy.cycleAllConditions = cycleAllConditions; return copy
     }
 }
