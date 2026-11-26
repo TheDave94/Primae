@@ -55,6 +55,22 @@ final class FakeStartOps {
     /// Lets the gate's task reach its `await` (or finish after a release).
     private func yieldMain(_ n: Int = 5) async { for _ in 0..<n { await Task.yield() } }
 
+    /// CPU time (user + system, µs) the thread behind `port` has used, or
+    /// nil if it cannot be read.
+    nonisolated private static func cpuMicros(_ port: thread_act_t) -> Int64? {
+        var info = thread_basic_info_data_t()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<thread_basic_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                thread_info(port, thread_flavor_t(THREAD_BASIC_INFO), $0, &count)
+            }
+        }
+        guard kr == KERN_SUCCESS else { return nil }
+        let t = info.user_time, u = info.system_time
+        return Int64(t.seconds + u.seconds) * 1_000_000 + Int64(t.microseconds + u.microseconds)
+    }
+
     @Test("the start waits for the activation to COMPLETE, then the request runs")
     func startFollowsCompletedActivation() async {
         let ops = FakeStartOps()
@@ -208,6 +224,13 @@ final class FakeStartOps {
         let order = Mutex<[String]>([])
         let ranOnMain = Mutex<Bool>(false)
         let timedOut = Mutex<Bool>(false)
+        let mainBlocked = Mutex<Bool>(false)
+        // The suite is @MainActor, so this is the main thread's port. The
+        // session work reads main's CPU time through it (see below).
+        let mainPort = mach_thread_self()
+        defer { mach_port_deallocate(mach_task_self_, mainPort) }
+        #expect(Self.cpuMicros(mainPort) != nil,
+                "main's CPU time cannot be read, so the blocked-main check below would be inert")
         gate.performSessionWork {
             // Work that runs ON the main thread (the mutation that inlines
             // performSessionWork) must not spin: the release below is set on
@@ -221,9 +244,27 @@ final class FakeStartOps {
             // minutes while the parallel Swift Testing suites queued on it
             // (XCTest had already finished), so `release` arrived late with
             // nothing wrong.
+            //
+            // A starved main actor is BUSY: it runs the queued suites, so its
+            // CPU time keeps rising. A main thread that BLOCKS waiting for
+            // this work (a synchronous wait on it inside the gate) uses no CPU
+            // at all. So the spin gives up early only when main's CPU time
+            // has not moved for 5 s; a busy main keeps it waiting up to the
+            // backstop, an idle main delivers `release` within microseconds.
             let deadline = Date().addingTimeInterval(600)
+            var lastCPU = Self.cpuMicros(mainPort)
+            var lastMove = Date()
             while !release.withLock({ $0 }) {
                 if Date() >= deadline { timedOut.withLock { $0 = true }; return }
+                if let cpu = Self.cpuMicros(mainPort), let last = lastCPU {
+                    if cpu - last >= 1_000 {
+                        lastCPU = cpu; lastMove = Date()
+                    } else if Date().timeIntervalSince(lastMove) >= 5 {
+                        mainBlocked.withLock { $0 = true }; return
+                    }
+                } else {
+                    lastCPU = Self.cpuMicros(mainPort); lastMove = Date()
+                }
                 usleep(1_000)
             }
             order.withLock { $0.append("iobuffer") }
@@ -234,6 +275,9 @@ final class FakeStartOps {
         release.withLock { $0 = true }
         if ranOnMain.withLock({ $0 }) {
             Issue.record("session work ran on the main thread")
+        }
+        if mainBlocked.withLock({ $0 }) {
+            Issue.record("the main thread sat blocked (no CPU for 5 s) while the session work ran")
         }
         if timedOut.withLock({ $0 }) {
             Issue.record("session work never observed the release (600 s backstop)")
