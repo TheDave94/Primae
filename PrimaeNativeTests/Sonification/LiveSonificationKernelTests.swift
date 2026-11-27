@@ -14,7 +14,7 @@ import Foundation
 @Suite("r17 live kernel")
 nonisolated struct LiveSonificationKernelTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     struct Rig {
         let kernel: LiveSonificationKernel
@@ -30,7 +30,7 @@ nonisolated struct LiveSonificationKernelTests {
 
         /// Renders `seconds` in 256-frame I/O buffers.
         func render(_ seconds: Double) -> [Float] {
-            let total = Int(seconds * LiveSonificationKernel.sampleRate)
+            let total = Int(seconds * LiveSonificationKernel.referenceSampleRate)
             var y = [Float](repeating: 0, count: total)
             var pos = 0
             y.withUnsafeMutableBufferPointer { b in
@@ -105,7 +105,7 @@ nonisolated struct LiveSonificationKernelTests {
         #expect(rig.kernel.starts == 2)
         // The restart starts on the twin renderer at the next buffer; once the
         // crossover (crossfadeFrames) is over, the output is the first opening again.
-        let x = Int(LiveSonificationKernel.crossfadeFrames), seg = 4096
+        let x = Int((LiveSonificationKernel.crossfadeSeconds * Self.sr).rounded()), seg = 4096
         let err = zip(first[x..<(x + seg)], second[x..<(x + seg)]).map { abs($0 - $1) }.max() ?? 1
         #expect(err < 1e-4, "\(name): the restart did not replay the attack (max diff \(err))")
         // The crossover itself keeps the level: no window below a quarter of the level the opening itself has there

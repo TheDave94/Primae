@@ -149,7 +149,7 @@ struct PressureLoudnessTests {
         let unity = try rendered(1)
         let low = try rendered(ArmCoupling.PressureLoudness.gain(forForce: 0.1, enabled: true))
         let high = try rendered(ArmCoupling.PressureLoudness.gain(forForce: 0.9, enabled: true))
-        let tail = Int(0.3 * LiveSonificationKernel.sampleRate)...
+        let tail = Int(0.3 * LiveSonificationKernel.referenceSampleRate)...
         let rU = SonificationMetrics.rms(unity[tail]), rL = SonificationMetrics.rms(low[tail]), rH = SonificationMetrics.rms(high[tail])
         #expect(rL < rH && rH <= rU * 1.0001)
         let want = ArmCoupling.PressureLoudness.gain(forForce: 0.1, enabled: true)

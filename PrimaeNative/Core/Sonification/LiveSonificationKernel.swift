@@ -5,7 +5,8 @@
 // 2026-11-03). `LiveSonificationAudio` (main actor) decides WHAT should
 // sound; this kernel makes it sound, inside the `AVAudioSourceNode` render
 // block, by driving the TDPSOLA renderers (RULINGS 2026-11-03: engine A is
-// final; engine B and the A/B switch are gone).
+// final; engine B and the A/B switch are gone; from protocol r31 the class is
+// TDPSOLA2, the pitch bake-off winner for the phonemes, `.r27` for the carrier).
 //
 // WHY A KERNEL AND NOT `play()`/`stop()` ON A PLAYER. The r16 path started an
 // `AVAudioPlayerNode` through `AVAudioUnitTimePitch` on every stroke: ~100 ms
@@ -36,7 +37,7 @@
 //
 // Real-time contract: `render` allocates nothing, takes no lock and touches no
 // Swift array, existential or retained reference. Renderers sit in fixed
-// tables of `Unmanaged<TDPSOLA>` (two per slot) and are called through
+// tables of `Unmanaged<TDPSOLA2>` (two per slot) and are called through
 // `_withUnsafeGuaranteedRef`. Main-thread commands are `Synchronization.Atomic`
 // cells; the play token and the gate are published with release ordering after
 // the slot and fade values, and read with acquire ordering, so a slot the
@@ -48,12 +49,22 @@ import Synchronization
 
 nonisolated final class LiveSonificationKernel: @unchecked Sendable {
 
-    /// The renderers' (and the source node's) sample rate. The assets are
-    /// 44.1 kHz mono (measured: all five phonemes and the carrier); the main
-    /// mixer converts to the hardware rate (48 kHz on the study iPad).
-    static let sampleRate: Double = 44_100
-    /// What every r17 phase row's `soundEngine` column carries.
-    static let engineStamp = "TDPSOLA"
+    /// The rate of the study's recorded arm assets (44.1 kHz mono, measured: all five phonemes and the carrier) and
+    /// the rate the offline tests render at. NOT the production rate: from r31 the kernel, its renderers and the
+    /// source node run at the session's output rate (`sampleRate`, read from the output hardware), so nothing after
+    /// the renderer converts (PITCHWIN: the mixer's 44.1 -> 48 kHz conversion rolled off F above 19.5 kHz, -0.68 dB).
+    static let referenceSampleRate: Double = 44_100
+    /// The rate this kernel renders at: the source node's format and every renderer registered with it.
+    let sampleRate: Double
+    /// What a phase row's `soundEngine` column carries: the renderer of the row's arm. r17-r28: "TDPSOLA" in every
+    /// arm. From r31 the phoneme arm plays TDPSOLA2 (`LiveSonificationAudio.rendererOptions(for:)`, the options fixed
+    /// per protocol revision); the spatial carrier plays TDPSOLA2 with every option off, the TDPSOLA output bit for
+    /// bit, so its rows (and the silent arm's, which render nothing) keep "TDPSOLA".
+    static func engineStamp(for arm: PilotAudioCondition) -> String {
+        arm == .phoneme ? phonemeEngineStamp : carrierEngineStamp
+    }
+    static let phonemeEngineStamp = "TDPSOLA2"
+    static let carrierEngineStamp = "TDPSOLA"
     /// The renderers are created for this many frames per call; the kernel
     /// splits any larger I/O request into chunks of it.
     static let chunkFrames = 512
@@ -104,8 +115,6 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     static let duckSeconds = Ramps.production.duckSeconds
     static let onsetSeconds = Ramps.production.onsetSeconds
 
-    static let crossfadeFrames = Float((crossfadeSeconds * sampleRate).rounded())
-    static let duckFrames = Float((duckSeconds * sampleRate).rounded())
 
     let ramps: Ramps
     let smoothing: StageSmoothing
@@ -118,7 +127,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     // MARK: Tables (written on the main thread before publication)
 
     /// Renderer `v` of slot `s` is at `renderers[2 * s + v]`.
-    private let renderers: UnsafeMutablePointer<Unmanaged<TDPSOLA>?>
+    private let renderers: UnsafeMutablePointer<Unmanaged<TDPSOLA2>?>
     private let gains: UnsafeMutablePointer<Float>
     private var registered: UInt32 = 0
 
@@ -163,7 +172,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         var shapePos: Float = 0     // 0...shapeLen
         var raisedFall = false      // the falling shape is a raised cosine (ENV3 letter-end fade)
         var shapeDir: Int8 = 0      // +1 rising (incoming), -1 falling (outgoing), 0 none
-        var shapeLen: Float = LiveSonificationKernel.crossfadeFrames
+        var shapeLen: Float = 0     // set to the kernel's crossover length at construction
         var raised = false          // rising shape is the raised cosine of an onset from silence (not the crossover sine)
     }
     private let voices: UnsafeMutablePointer<Voice>
@@ -182,8 +191,8 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     /// R20: this call's per-sample pressure gain when it is still moving (`pressureMoving`), else `pressureGainNow` is constant.
     private let pressureCurve: UnsafeMutablePointer<Float>
     private var pressureMoving = false
-    /// `RoughnessTuning.smoothingCoefficient`, read once at construction: a lazy static would take its `swift_once` on the render thread.
-    private let roughSmoothing: Float = RoughnessTuning.smoothingCoefficient
+    /// `RoughnessTuning.smoothingCoefficient(sampleRate:)`, computed once at construction: a lazy static would take its `swift_once` on the render thread.
+    private let roughSmoothing: Float
     private var pitchPrevTarget: Float = 0
     private var glideFrom: Float = 0
     private var glidePos = 0
@@ -209,22 +218,26 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     private let cap = PopCapture.armed   // POPCAP: render-thread event ring; nil unless -popCapture
     #endif
 
-    init(ramps: Ramps = .production, smoothing: StageSmoothing = .production) {
+    init(sampleRate: Double = LiveSonificationKernel.referenceSampleRate,
+         ramps: Ramps = .production, smoothing: StageSmoothing = .production) {
+        self.sampleRate = sampleRate
+        roughSmoothing = RoughnessTuning.smoothingCoefficient(sampleRate: sampleRate)
         self.ramps = ramps
         self.smoothing = smoothing
-        toneGainCoef = Float(1 - exp(-1 / (smoothing.toneGainSeconds * Self.sampleRate)))
-        pressureCoef = Float(1 - exp(-1 / (smoothing.pressureSeconds * Self.sampleRate)))
+        toneGainCoef = Float(1 - exp(-1 / (smoothing.toneGainSeconds * sampleRate)))
+        pressureCoef = Float(1 - exp(-1 / (smoothing.pressureSeconds * sampleRate)))
         pressureCurve = .allocate(capacity: Self.chunkFrames)
         pressureCurve.initialize(repeating: 1, count: Self.chunkFrames)
-        crossFrames = Float((ramps.crossfadeSeconds * Self.sampleRate).rounded())
-        duckLen = Float((ramps.duckSeconds * Self.sampleRate).rounded())
-        onsetFrames = Float((ramps.onsetSeconds * Self.sampleRate).rounded())
-        glideFrames = Int((ramps.pitchGlideSeconds * Self.sampleRate).rounded())
+        crossFrames = Float((ramps.crossfadeSeconds * sampleRate).rounded())
+        duckLen = Float((ramps.duckSeconds * sampleRate).rounded())
+        onsetFrames = Float((ramps.onsetSeconds * sampleRate).rounded())
+        glideFrames = Int((ramps.pitchGlideSeconds * sampleRate).rounded())
         jumpCents = ramps.pitchJumpCents
         let n = Int(Self.capacity)
         renderers = .allocate(capacity: 2 * n); renderers.initialize(repeating: nil, count: 2 * n)
         gains = .allocate(capacity: n); gains.initialize(repeating: 1, count: n)
-        voices = .allocate(capacity: 2); voices.initialize(repeating: Voice(), count: 2)
+        var v = Voice(); v.shapeLen = crossFrames
+        voices = .allocate(capacity: 2); voices.initialize(repeating: v, count: 2)
         scratch = .allocate(capacity: Self.chunkFrames); scratch.initialize(repeating: 0, count: Self.chunkFrames)
     }
 
@@ -239,7 +252,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
 
     /// Adds a slot: two renderers of the SAME source (the second is the voice
     /// a restart crosses over to). Nil when the table is full.
-    func register(_ r: TDPSOLA, twin: TDPSOLA, gain: Float) -> UInt32? {
+    func register(_ r: TDPSOLA2, twin: TDPSOLA2, gain: Float) -> UInt32? {
         guard registered < Self.capacity else { return nil }
         let i = registered
         renderers[2 * Int(i)] = Unmanaged.passRetained(r)
@@ -274,6 +287,20 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
         fadeOutFrames.store(max(1, frames), ordering: .relaxed)
         fadeRaised.store(1, ordering: .relaxed)
         wantOpen.store(0, ordering: .releasing)
+    }
+
+    /// r31: the main thread's control targets of `other` (rate, pitch, stroke tone, pressure, roughness), for a
+    /// kernel that replaces it at a new output rate. Main thread; nothing on the render side is copied.
+    func adoptControls(from other: LiveSonificationKernel) {
+        rateBits.store(other.rateBits.load(ordering: .relaxed), ordering: .relaxed)
+        centsBits.store(other.centsBits.load(ordering: .relaxed), ordering: .relaxed)
+        toneGainBits.store(other.toneGainBits.load(ordering: .relaxed), ordering: .relaxed)
+        toneCutoffBits.store(other.toneCutoffBits.load(ordering: .relaxed), ordering: .relaxed)
+        toneMute.store(other.toneMute.load(ordering: .relaxed), ordering: .relaxed)
+        pressureGainBits.store(other.pressureGainBits.load(ordering: .relaxed), ordering: .relaxed)
+        roughBits.store(other.roughBits.load(ordering: .relaxed), ordering: .relaxed)
+        roughDepthTargetBits.store(other.roughDepthTargetBits.load(ordering: .relaxed), ordering: .relaxed)
+        roughRateBits.store(other.roughRateBits.load(ordering: .relaxed), ordering: .relaxed)
     }
 
     func setRate(_ rate: Float) {
@@ -384,7 +411,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
 
     /// `1 - exp(-frames / (seconds * sampleRate))`: the fraction of the way to the target one call of `frames` covers.
     @inline(__always) private func approach(_ frames: Int, seconds: Double) -> Float {
-        Float(1 - exp(-Double(frames) / (seconds * Self.sampleRate)))
+        Float(1 - exp(-Double(frames) / (seconds * sampleRate)))
     }
 
     /// R18 slices 4+5: gain, low-pass and mute over the mixed voices of this chunk. Skipped (bit-exact r17) while the request and
@@ -430,7 +457,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
     /// transparent, so the ramp is inaudible).
     private func applyLowpass(into out: UnsafeMutablePointer<Float>, frames n: Int, gT: Float, c0: Float, c1: Float) {
         let top = Self.toneBypassHz
-        let sr = Float(Self.sampleRate)
+        let sr = Float(sampleRate)
         let wet0 = svfMixApplied, wet1: Float = c1 >= top ? 0 : 1
         if !svfWasActive { svf = TPTLowpass(ic1: 0, ic2: toneLowpassState) }
         svfWasActive = true
@@ -466,7 +493,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
             * Float(bitPattern: roughDepthTargetBits.load(ordering: .relaxed))
         if target == 0 && roughDepth == 0 { return }
         let a = roughSmoothing
-        let step = Float(bitPattern: roughRateBits.load(ordering: .relaxed)) / Float(Self.sampleRate)
+        let step = Float(bitPattern: roughRateBits.load(ordering: .relaxed)) / Float(sampleRate)
         var d = roughDepth, ph = roughPhase, i = 0
         while i < n {
             d += a * (target - d)
@@ -565,6 +592,7 @@ nonisolated final class LiveSonificationKernel: @unchecked Sendable {
             $0.reset(); $0.setRate(r); $0.setPitchCents(c); $0.setGate(true)
         }
         var voice = Voice()
+        voice.shapeLen = crossFrames
         voice.active = true
         voice.slot = slot
         voice.gain = gains[Int(slot)]
@@ -674,7 +702,7 @@ nonisolated enum RoughnessTuning {
     static let maxDepth: Float = 0.8
     /// Time constant of the depth smoothing.
     static let smoothSeconds: Double = 0.03
-    static let smoothingCoefficient: Float = Float(1 - exp(-1 / (smoothSeconds * LiveSonificationKernel.sampleRate)))
+    static func smoothingCoefficient(sampleRate: Double) -> Float { Float(1 - exp(-1 / (smoothSeconds * sampleRate))) }
 }
 
 /// R20: the stage smoothing's time constants (`LiveSonificationKernel.StageSmoothing.production`); chosen from the sweep in R20 A3.

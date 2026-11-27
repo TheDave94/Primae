@@ -17,7 +17,7 @@ import Foundation
 @Suite("r22: a recorded onset stays under full scale at its loudness gain")
 nonisolated struct OnsetCeilingTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
     static let ceiling = TDPSOLAOnsetCeiling.ceiling
 
     // MARK: the pure function
@@ -162,7 +162,7 @@ nonisolated struct OnsetCeilingTests {
         }
     }
 
-    @Test("A at its gain differs from A at gain 1 only inside the one dip around its onset pulse (file samples 2481-2896), by at most 2.5 dB")
+    @Test("A at its gain differs from A at gain 1 only around the one dip at its onset pulse (file samples 2481-2896, plus one grain), by at most 2.5 dB")
     @MainActor func aChangesOnlyInsideTheDip() throws {
         let s = try Self.productionSource("A_phoneme1")
         #expect(s.gain > 1.9 && s.gain < 2.05, "precondition: A's gain \(s.gain) (+5.92 dB measured)")
@@ -170,15 +170,31 @@ nonisolated struct OnsetCeilingTests {
         let r = LiveSonificationAudio.makeRenderer(s)
         let y = SonificationDriver.steady(r, seconds: 4, rate: 1)
         let ref = SonificationDriver.steady(LiveSonificationAudio.makeRenderer(unity), seconds: 4, rate: 1)
-        // Output frame i plays source frame onset + i at rate 1 through the onset (PhonemeOnsetTests (a)).
+        // Output frame i plays source frame onset + i at rate 1 through the onset (PhonemeOnsetTests (a)); from r31 to
+        // within a grain, since the attack's grains sit on the steady-F0 grid around the read-head.
         let o = r.analysis.onset
         let changed = (0..<y.count).filter { y[$0].bitPattern != ref[$0].bitPattern }.map { $0 + o }
         #expect(!changed.isEmpty, "A at its gain is not limited at all")
-        #expect((changed.first ?? 0) >= 2481 && (changed.last ?? .max) <= 2896,
-                "A changed at file samples \(changed.first ?? -1)...\(changed.last ?? -1), outside the measured dip")
+        // r31 (lane PITCHWIN): the attack is overlap-added grains (item 7), so a dipped source sample reaches the output
+        // through every grain that covers it: the change may run past the dip by up to one grain half-width (a source
+        // period). MEASURED (macOS driver): changed 2481...2911 (r28: ...2896).
+        let a = r.analysis
+        let tMax = Int((a.periods[0...a.attackIndex].max() ?? 0).rounded(.up))
+        #expect((changed.first ?? 0) >= 2481 && (changed.last ?? .max) <= 2896 + tMax,
+                "A changed at file samples \(changed.first ?? -1)...\(changed.last ?? -1), outside the measured dip + one grain (\(tMax))")
+        // The depth as a level: 1 ms RMS of y against ref. Under overlap-add a per-sample ratio is not a level (a dipped
+        // grain and an undipped one can partly cancel at a sample): MEASURED per-sample -2.67 dB, 1 ms RMS -2.41 dB,
+        // r28 -2.41 / -2.41.
+        let w = Int(0.001 * Self.sr)
         var deepest = 0.0
-        for f in changed where abs(ref[f - o]) > 1e-4 { deepest = min(deepest, 20 * log10(Double(abs(y[f - o]) / abs(ref[f - o])))) }
-        #expect(deepest >= -2.5, "A's dip is \(deepest) dB deep (measured -2.41)")
+        var i = (changed.first ?? o) - o
+        while i + w <= (changed.last ?? o) - o + 1 {
+            var p = 0.0, q = 0.0
+            for k in i..<(i + w) { p += Double(y[k]) * Double(y[k]); q += Double(ref[k]) * Double(ref[k]) }
+            if q > 1e-10 { deepest = min(deepest, 10 * log10(p / q)) }
+            i += w / 2
+        }
+        #expect(deepest >= -2.5, "A's dip is \(deepest) dB deep (1 ms RMS; measured -2.41)")
         // The twin (the restart's crossover voice) is built with the same gain and plays the same onset.
         let (_, twin) = LiveSonificationAudio.makeRendererPair(s)
         #expect(SonificationDriver.steady(twin, seconds: 0.2, rate: 1) == Array(y.prefix(Int(0.2 * Self.sr))),

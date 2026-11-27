@@ -62,7 +62,7 @@ final class HostSpy: AudioControlling {
 @Suite("r17 live voice: r16 semantics re-derived")
 @MainActor struct LiveSonificationAudioTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
     typealias Reason = AVAudioSession.RouteChangeReason
 
     /// Synthetic 200 Hz voiced tone, 1 s.
@@ -87,7 +87,7 @@ final class HostSpy: AudioControlling {
             let sources = ["a": LiveSonificationAudioTests.tone("a"), "m": LiveSonificationAudioTests.tone("m", hz: 150)]
             voice = LiveSonificationAudio(host: host, output: output, kernel: LiveSonificationKernel(),
                                           fadeOutSeconds: fade, observeSession: false,
-                                          resolve: { sources[$0] })
+                                          resolve: { name, _ in sources[name] })
         }
 
         /// Renders `seconds` and returns the RMS of the last 50 ms (0 = silent).

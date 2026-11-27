@@ -59,6 +59,20 @@ nonisolated struct TDPSOLAAnalysis: Sendable {
 
     var f0: Double { medianPeriod > 0 ? 1 / medianPeriod : 0 } // cycles per sample
 
+    /// r31 (PITCHWIN): this analysis, made on the file at its own rate, moved to a buffer resampled from it by `r`
+    /// (render rate / file rate): every position and length in samples scales by `r`, the mark indices do not. The
+    /// unvoiced hop is the render rate's own (`unvoicedHop`), so an unvoiced source keeps its 5 ms grain.
+    func scaled(by r: Double, unvoicedHop hop: Int) -> TDPSOLAAnalysis {
+        TDPSOLAAnalysis(onset: Int((Double(onset) * r).rounded()), isVoiced: isVoiced, voicedFraction: voicedFraction,
+                        medianPeriod: medianPeriod * r, marks: marks.map { $0 * r }, periods: periods.map { $0 * r },
+                        attackIndex: attackIndex, loopEndIndex: loopEndIndex, loopStart: loopStart * r,
+                        loopEnd: loopEnd * r, unvoicedHop: hop,
+                        recordedOnset: recordedOnset.map {
+                            RecordedOnset(attackEndFrame: Int((Double($0.attackEndFrame) * r).rounded()),
+                                          preBlendPeriods: $0.preBlendPeriods)
+                        })
+    }
+
     /// `unvoicedHopSeconds`: the fixed grain hop of the unvoiced (WSOLA) mode; 5 ms is the bake-off value.
     /// `onset` (R17D): a declared attack end; the analysis is computed as without it, then its loop start is moved to
     /// the first mark (voiced) / sample (unvoiced) at or after `onset.attackEndFrame` (`applying(_:)`).

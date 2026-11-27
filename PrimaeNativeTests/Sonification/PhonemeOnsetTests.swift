@@ -14,7 +14,7 @@ import CryptoKit
 @Suite("R17D: phoneme onsets, F unstretched, demonstration speed")
 nonisolated struct PhonemeOnsetTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
     static let phonemes = ["A_phoneme1", "F_phoneme1", "I_phoneme1", "L_phoneme1", "M_phoneme1"]
     /// sha256 (first 16 hex) of the shipped files the `PhonemeOnsets` hints were built for
     /// (onset/ONSET.md section 4, floop/FLOOP.md section 2: F = F_ONSET1 + L5).
@@ -56,7 +56,7 @@ nonisolated struct PhonemeOnsetTests {
 
     // MARK: (a) the onset plays once, as recorded, at pen-down
 
-    @Test("(a) pen-down from silence plays the recorded onset verbatim, the onset blends into the loop over its declared length, and the loop never re-enters it",
+    @Test("(a) pen-down from silence plays the recorded onset (as recorded up to the first periodic mark, then at the steady F0), the onset blends into the loop over its declared length, and the loop never re-enters it",
           arguments: phonemes)
     func onsetPlaysOnceAtPenDown(name: String) throws {
         let src = try StudySources.load(name)
@@ -66,20 +66,40 @@ nonisolated struct PhonemeOnsetTests {
         let r = SonificationRendererUnderTest.make(src)
         let a = r.analysis
         let pre = try #require(a.recordedOnset).preBlendPeriods
-        // After the kernel's 8 ms start ramp and the gate's 2 ms ramp, up to the start of the hand-over into the loop:
-        // the output IS the file from its first audible sample (gain 1, rate 1; output frame i = source frame
-        // onset + i). The pulse limiter would have rewritten A's and I's starts.
         let o = a.onset
         let from = Int(0.011 * Self.sr)
-        let keepEnd = (a.isVoiced ? Int(a.marks[a.attackIndex - pre]) : Int(a.loopStart)) - 64 - o
-        #expect(keepEnd > from + Int(0.03 * Self.sr), "\(name): onset region too short to test (\(keepEnd))")
-        let err = (from..<keepEnd).map { abs(y[$0] - src.samples[$0 + o]) }.max() ?? 1
-        #expect(err < 1e-5, "\(name): the onset at pen-down is not the recording (max diff \(err))")
+        // The renderer's material: the played samples ARE the file from the onset up to the start of the hand-over
+        // into the loop (the 64-sample taper of `keepRecordedOnset` excluded). The pulse limiter would have rewritten
+        // A's and I's starts.
+        let keepEnd = (a.isVoiced ? Int(a.marks[a.attackIndex - pre]) : Int(a.loopStart)) - 64
+        #expect(keepEnd > o + from + Int(0.03 * Self.sr), "\(name): onset region too short to test (\(keepEnd))")
+        let played = r.playedSamples
+        let kept = (o..<keepEnd).map { abs(played[$0] - src.samples[$0]) }.max() ?? 1
+        #expect(kept < 1e-6, "\(name): the renderer's onset material is not the recording (max diff \(kept))")
+        // What pen-down plays (r31, item 7: the voiced attack is PSOLA'd at the steady F0, ProductionRendererTests):
+        // after the kernel's 8 ms start ramp and the gate's 2 ms ramp, up to the first periodic mark (the flat grain:
+        // I's breath, A's rough glottal start) the output IS the file (gain 1, rate 1: output frame i = source frame
+        // onset + i); F (unvoiced) plays the file up to the hand-over. A voiced letter that starts periodic at once
+        // (L from its 2nd mark, M at its first) has no flat grain longer than the ramps; for it only the material
+        // above and the steady-F0 attack (ProductionRendererTests.attackFollowsPitch) apply.
+        // The flat grain plays the renderer's material verbatim, and that material is the file up to `keepEnd`. On I the
+        // two ends cross: its periodic attack is short (marks 14-25) and the declared 12-period hand-over into the loop
+        // starts at mark 13, inside the breath, so from keepEnd on the flat grain plays the blend, not the file
+        // (MEASURED, lane PITCHWIN macOS driver: I output == played to 0.0 up to mark 14; the file differs from 2359).
+        let flatEnd = (a.isVoiced ? Int(a.marks[r.attackFirstMark]) - 2 : keepEnd) - o
+        if flatEnd > from {
+            let err = (from..<flatEnd).map { abs(y[$0] - played[$0 + o]) }.max() ?? 1
+            #expect(err < 1e-5, "\(name): the onset at pen-down is not the renderer's material up to frame \(flatEnd) (max diff \(err))")
+            let fileEnd = min(flatEnd, keepEnd - o)
+            let errFile = (from..<fileEnd).map { abs(y[$0] - src.samples[$0 + o]) }.max() ?? 1
+            #expect(errFile < 1e-5, "\(name): the onset at pen-down is not the recording up to frame \(fileEnd) (max diff \(errFile))")
+        }
+        #expect(!a.isVoiced || r.attackFirstMark < a.attackIndex, "\(name): the attack is not shifted (first mark \(r.attackFirstMark))")
         if a.isVoiced && pre > 4 {
             // The hand-over spans the declared pre-blend (not the default 2 periods): between its middle and the
-            // default blend's start the output already differs from the file.
-            let lo = Int(a.marks[a.attackIndex - pre / 2]) - o, hi = Int(a.marks[a.attackIndex - TDPSOLALoopSeam.preBlendMarks]) - o
-            let blend = (lo..<hi).map { abs(y[$0] - src.samples[$0 + o]) }.max() ?? 0
+            // default blend's start the renderer's material already differs from the file.
+            let lo = Int(a.marks[a.attackIndex - pre / 2]), hi = Int(a.marks[a.attackIndex - TDPSOLALoopSeam.preBlendMarks])
+            let blend = (lo..<hi).map { abs(played[$0] - src.samples[$0]) }.max() ?? 0
             #expect(blend > 1e-3, "\(name): no blend over the declared \(pre) periods (max diff \(blend))")
         }
         // Once: after the entry into the loop the read-head never goes back into the onset.
@@ -192,7 +212,7 @@ nonisolated struct PhonemeOnsetTests {
         }
         func opening(_ src: SonificationSource, fade: TimeInterval) -> [Float] {
             let voice = LiveSonificationAudio(host: nil, output: FakeLiveOutput(), kernel: LiveSonificationKernel(),
-                                              fadeOutSeconds: 0.05, observeSession: false, resolve: { _ in src })
+                                              fadeOutSeconds: 0.05, observeSession: false, resolve: { _, _ in src })
             voice.loadAudioFile(named: "x", autoplay: false)
             if fade > 0 { voice.play(fadeInSeconds: fade) } else { voice.play() }
             var y = [Float](repeating: 0, count: Int(0.15 * Self.sr))

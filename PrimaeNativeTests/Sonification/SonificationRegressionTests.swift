@@ -19,7 +19,7 @@ import Foundation
 @Suite("r17 sonification regression")
 nonisolated struct SonificationRegressionTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     // MARK: Onset
 
@@ -123,9 +123,43 @@ nonisolated struct SonificationRegressionTests {
         let src = try StudySources.load(name)
         let am = StudySource(name: name + "+AM", samples: RateStepProbe.modulate(src.samples, sampleRate: Self.sr),
                              kind: src.kind)
-        let y = RateStepProbe.render(SonificationRendererUnderTest.make(am), from: 1, to: 2)
+        // The output probe, on the renderer it was calibrated on: TDPSOLA2 with every option off is the r17-r28
+        // TDPSOLA bit for bit (TDPSOLA2IdentityTests), and its output envelope is a pure function of its read-head.
+        let s = am.sonificationSource
+        let r28 = TDPSOLA2(source: s.samples, sampleRate: Self.sr, kind: s.kind, maxFramesPerRender: LiveSonificationKernel.chunkFrames,
+                           tuning: .default, options: .r27, onset: s.onset, outputGain: s.gain)
+        let y = RateStepProbe.render(r28, from: 1, to: 2)
         let m = try #require(RateStepProbe.measure(y, sampleRate: Self.sr), "\(name): unreadable")
         #expect(m.hinge <= 0.0025, "\(name) 1->2: hinge \(m.hinge * 1000) ms (tau 5 ms reads >= 3.2 ms)")
+        // The production renderer (r31): its rate smoother IS the one above, so pin it where it lives, on the read-head.
+        // The output probe cannot: item 4 (harmonic/noise swap) plays every grain at rate 2 as h_i + n_j, h_i a
+        // five-period average and n_j drawn from +-8 marks, so the output AM no longer follows the read-head alone
+        // (M read 3.63 ms at this step phase with item 7, 0.88 without; over 24 step phases the probe spreads
+        // -1.0 ... 6.9 ms on r28 itself, MEASURED, lane PITCHWIN macOS driver). The read-head hinge reads tau to
+        // 0.01 ms: tau 1 / 2 / 5 ms read 0.989 / 1.989 / 4.988 ms on r28 and production alike.
+        let hinge = Self.readHeadHinge(SonificationRendererUnderTest.make(am), to: 2)
+        #expect(hinge >= 0.0015 && hinge <= 0.0025, "\(name) 1->2: read-head hinge \(hinge * 1000) ms (tau 2 ms reads 1.99, tau 5 ms 4.99)")
+    }
+
+    /// Where the line fits of the read-head over [-0.3, -0.05] s and [+0.2, +0.4] s around a 1 -> b step at the
+    /// probe's step time intersect (64-frame blocks; the probe's windows and gate timing).
+    static func readHeadHinge(_ r: TDPSOLA2, to b: Float) -> Double {
+        r.reset(); r.setRate(1); r.setPitchCents(0); r.setGate(false)
+        let open = SonificationDriver.appliedFrame(RateStepProbe.gateOpen, sampleRate: sr)
+        let step = SonificationDriver.appliedFrame(RateStepProbe.stepTime, sampleRate: sr)
+        var buf = [Float](repeating: 0, count: 64)
+        var t = 0
+        var pts: [(t: Double, p: Double)] = []
+        while t < Int(RateStepProbe.duration * sr) {
+            if t == open { r.setGate(true) }
+            if t == step { r.setRate(b) }
+            buf.withUnsafeMutableBufferPointer { r.render(into: $0.baseAddress!, frames: 64) }
+            t += 64
+            pts.append((t: Double(t - step) / sr, p: r.debugReadHead / sr))
+        }
+        guard let l0 = RateStepProbe.lineFit(pts.filter { $0.t >= -0.3 && $0.t <= -0.05 }),
+              let l1 = RateStepProbe.lineFit(pts.filter { $0.t >= 0.2 && $0.t <= 0.4 }) else { return .infinity }
+        return (l0.intercept - l1.intercept) / (l1.slope - l0.slope)
     }
 
     // MARK: Clicks

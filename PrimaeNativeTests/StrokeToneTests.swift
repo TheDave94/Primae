@@ -229,7 +229,7 @@ struct StrokeToneStampTests {
 
 @Suite("R18 stroke tone kernel render (seam C)")
 nonisolated struct StrokeToneKernelTests {
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     /// Renders the carrier with `setup` applied after the sound is up; returns the last 0.3 s.
     private func steady(_ setup: (LiveSonificationKernel) -> Void) throws -> [Float] {

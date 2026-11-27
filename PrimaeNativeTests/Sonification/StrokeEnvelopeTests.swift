@@ -12,7 +12,7 @@ import Foundation
 
 @Suite("ENV3 stroke envelope")
 @MainActor struct StrokeEnvelopeTests {
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     // MARK: 1 tempo
 

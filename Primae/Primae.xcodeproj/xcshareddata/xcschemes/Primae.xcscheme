@@ -204,6 +204,9 @@
                <Test
                   Identifier = "SpeechQueueDeviceProbeTests">
                </Test>
+               <Test
+                  Identifier = "StrokeStartCaptureDeviceTests">
+               </Test>
             </SkippedTests>
          </TestableReference>
          <TestableReference

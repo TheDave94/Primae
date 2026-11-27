@@ -201,8 +201,8 @@ struct PhaseDelivery: nonisolated Encodable, Decodable, Equatable {
     var observeSoundSeconds: Double?
     var observeSoundDeliveredSeconds: Double?
     /// Protocol r17: which live sonification engine rendered the letter's arm
-    /// sound (`LiveSonificationKernel.engineStamp`, "TDPSOLA" since the A/B
-    /// ended, RULINGS 2026-11-03). Nil on rows before r17.
+    /// sound (`LiveSonificationKernel.engineStamp(for:)`, "TDPSOLA" since the A/B
+    /// ended, RULINGS 2026-11-03; from r31 "TDPSOLA2" in the phoneme arm). Nil on rows before r17.
     var soundEngine: String?
     /// Protocol r17 (RULINGS 2026-11-05): the child's own envelope timing at the end of the phase. `liftHoldSeconds` is the
     /// hold that kept the sound across a pen lift (`StrokeTempo`, seeded 0.8 s), `stallSeconds` the stall cutoff in force,

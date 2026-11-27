@@ -150,7 +150,7 @@ struct PitchScopeTests {
     // hold the main actor, which every view-model suite in the run queues on.
     // The coupling values they need are read on the main actor first.
 
-    nonisolated static let sr = LiveSonificationKernel.sampleRate
+    nonisolated static let sr = LiveSonificationKernel.referenceSampleRate
 
     private nonisolated func renderF0(_ name: String, cents: Float) throws -> Double {
         let src = try StudySources.load(name)

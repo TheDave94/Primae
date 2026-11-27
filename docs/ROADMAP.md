@@ -345,6 +345,12 @@ All four questions are decided, with evidence, in `docs/DECISIONS.md`, "Renderer
 
 ---
 
+### D13 — Phoneme pitch-shift quality — SETTLED 2026-11-26 (protocol r31)
+
+The phoneme arm's pitch shifter is TDPSOLA2 (`TDPSOLA2Options.production`), chosen from the iPad measurements because the blind rating could not separate the voiced candidates; evidence, trade-offs and gates in `docs/DECISIONS.md`, "Phoneme pitch shift: TDPSOLA2". The spatial carrier keeps the r28 output bit for bit. Residual: F at +600 c reads −0.68 dB on the device against ≤0.5 dB in the renderer, from the 44.1 → 48 kHz output conversion's roll-off, not from the shifter.
+
+---
+
 ### D10 — Self-hosted CI runner toolchain drift — CLOSED 2026-07-13 (obsolete, not fixed)
 
 The job this item tracked no longer exists. `c673176` (2026-07-13) retired the self-hosted

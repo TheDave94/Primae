@@ -15,7 +15,7 @@ import XCTest
 
 final class SonificationRealtimeTests: XCTestCase {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     func testAllocationCounterSeesAnAllocation() throws {
         guard RenderThreadAllocationCounter.install() else {

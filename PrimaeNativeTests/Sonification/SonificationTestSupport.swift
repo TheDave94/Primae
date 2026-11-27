@@ -18,8 +18,18 @@ import Darwin
 // MARK: - Renderer and sources
 
 nonisolated enum SonificationRendererUnderTest {
-    static func make(_ source: StudySource) -> TDPSOLA {
+    static func make(_ source: StudySource) -> TDPSOLA2 {
         LiveSonificationAudio.makeRenderer(source.sonificationSource)
+    }
+
+    /// The r17-r28 production renderer, built exactly as `LiveSonificationAudio.makeRenderer` built it through
+    /// protocol r28 (TDPSOLA, tuning `.default`, recorded onset, output gain): the reference the r31 renderer is pinned
+    /// against (the carrier: bit for bit; the phonemes: where the options say so).
+    static func makeR28(_ source: StudySource) -> TDPSOLA {
+        let s = source.sonificationSource
+        return TDPSOLA(source: s.samples, sampleRate: LiveSonificationKernel.referenceSampleRate, kind: s.kind,
+                       maxFramesPerRender: LiveSonificationKernel.chunkFrames, tuning: .default, onset: s.onset,
+                       outputGain: s.gain)
     }
 }
 
@@ -29,7 +39,7 @@ nonisolated struct StudySource: Sendable, CustomStringConvertible {
     let samples: [Float]
     let kind: SourceKind
     var description: String { name }
-    var sampleRate: Double { LiveSonificationKernel.sampleRate }
+    var sampleRate: Double { LiveSonificationKernel.referenceSampleRate }
     /// R17D: the shipped file's recorded onset, exactly as `SonificationSource.load` attaches it.
     /// A derived probe source ("A_phoneme1+AM") keeps its file's onset: the derivation keeps the timing.
     var onset: RecordedOnset? {
@@ -61,7 +71,7 @@ nonisolated enum StudySources {
             url = PrimaeBundle.resourceURL(firstOf: PrimaeBundle.layouts(dir: "Letters/\(letter)", name: name, ext: "wav"))
         }
         guard let url else { throw SupportError.missing(name) }
-        let samples = try SonificationSource.decodeMono(url: url, sampleRate: LiveSonificationKernel.sampleRate)
+        let samples = try SonificationSource.decodeMono(url: url, sampleRate: LiveSonificationKernel.referenceSampleRate)
         let s = StudySource(name: name, samples: samples, kind: SonificationSource.kind(forFileAt: url))
         cache[name] = s
         return s
@@ -87,7 +97,7 @@ nonisolated enum SonificationDriver {
     /// Renders `seconds` of output; each event is applied before the first
     /// buffer that starts at or after its time.
     static func render(_ r: any SonificationRenderer, seconds: Double, events: [ControlEvent],
-                       sampleRate: Double = LiveSonificationKernel.sampleRate) -> [Float] {
+                       sampleRate: Double = LiveSonificationKernel.referenceSampleRate) -> [Float] {
         let total = Int(seconds * sampleRate)
         var out = [Float](repeating: 0, count: total)
         let sorted = events.sorted { $0.time < $1.time }
@@ -117,7 +127,7 @@ nonisolated enum SonificationDriver {
     }
 
     /// The frame at which an event at `time` is applied.
-    static func appliedFrame(_ time: Double, sampleRate: Double = LiveSonificationKernel.sampleRate) -> Int {
+    static func appliedFrame(_ time: Double, sampleRate: Double = LiveSonificationKernel.referenceSampleRate) -> Int {
         let f = Int((time * sampleRate).rounded(.up))
         return ((f + buffer - 1) / buffer) * buffer
     }

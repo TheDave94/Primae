@@ -16,7 +16,7 @@ import Foundation
 @Suite("TDQ pulse limiter")
 nonisolated struct TDQPulseTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
     static let rates: [Float] = [0.5, 0.7, 1.4, 2.0]
 
     /// hf events (burst above 3 kHz standing out of the +-25 ms around it) after the 60 ms onset.

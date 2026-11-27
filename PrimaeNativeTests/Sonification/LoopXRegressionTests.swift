@@ -24,7 +24,7 @@ import Foundation
 @Suite("LOOPX transitions")
 nonisolated struct LoopXRegressionTests {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     /// dip/cut/hf events within 15 ms of `t` in the mono sum of the render.
     static func transitionEvents(_ r: LoopXRender, at t: Double) -> [LoopXDetector.Event] {

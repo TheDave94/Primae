@@ -114,7 +114,7 @@ import CoreGraphics
 
     // MARK: Seam C
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     static func render(roughness: Float?, seconds: Double = 1.0, switchAt: Double? = nil, switchOffAt: Double? = nil) throws -> [Float] {
         let src = try StudySources.load("spatial_carrier")
@@ -199,7 +199,7 @@ import CoreGraphics
     func kernelOnIsTheDocumentedModulator() throws {
         let bare = try Self.bareRender()
         let rough = try Self.render(roughness: 1)
-        let a = RoughnessTuning.smoothingCoefficient
+        let a = RoughnessTuning.smoothingCoefficient(sampleRate: Self.sr)
         let target = RoughnessTuning.maxDepth
         let step = Float(RoughnessTuning.frequencyHz) / Float(Self.sr)
         var d: Float = 0, ph: Float = 0

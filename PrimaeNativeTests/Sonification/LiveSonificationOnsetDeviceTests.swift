@@ -191,7 +191,7 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
 
     @MainActor func testTouchToOnsetPerArm() async throws {
         let failures = try await OnsetPerArmRun.live(measure: { try await self.measure(arm: $0) })
-            .run(engine: LiveSonificationKernel.engineStamp)
+            .run(engine: LiveSonificationKernel.engineStamp(for:))
         XCTAssertTrue(failures.isEmpty, "touch -> speaker onset above the 70 ms bound: \(failures)")
     }
 }
@@ -224,7 +224,7 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
 
     /// The L4 bound failures, one per arm whose median touch -> speaker onset
     /// exceeds 70 ms. Throws `XCTSkip` when the route is not the built-in speaker.
-    func run(engine: String) async throws -> [String] {
+    func run(engine stamp: (PilotAudioCondition) -> String) async throws -> [String] {
         // Before measuring anything: a run on headphones is a skip, not a pass or a false failure.
         if let why = OnsetOutputRoute.skipReason(outputPortTypes: outputPorts()) {
             throw XCTSkip(why)
@@ -235,6 +235,7 @@ final class LiveSonificationOnsetDeviceTests: XCTestCase {
             let out = outputLatency()
             let routePorts = outputPorts()
             let route = routePorts.joined(separator: ",")
+            let engine = stamp(arm)
             // The session is active now: re-check, in case the first look found no route yet.
             if let why = OnsetOutputRoute.skipReason(outputPortTypes: routePorts) { throw XCTSkip(why) }
             guard !o.isEmpty else { failures.append("\(engine) \(arm): no onset"); continue }
@@ -284,7 +285,7 @@ final class OnsetPerArmRunTests: XCTestCase {
             measure: { measured.append($0); return onsets },
             settle: {})
         do {
-            let failures = try await r.run(engine: "stub")
+            let failures = try await r.run(engine: { _ in "stub" })
             return (false, measured, failures)
         } catch is XCTSkip {
             return (true, measured, nil)

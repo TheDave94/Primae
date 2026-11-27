@@ -21,7 +21,7 @@ import CoreGraphics
 
 final class LoopXDiagnosisTests: XCTestCase {
 
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     @MainActor
     static func constants() -> LoopXConstants {

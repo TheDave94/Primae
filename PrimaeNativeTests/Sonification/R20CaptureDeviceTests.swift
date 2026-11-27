@@ -258,7 +258,7 @@ nonisolated enum R20Offline {
         let (a, b) = LiveSonificationAudio.makeRendererPair(src.sonificationSource)
         let slot = kernel.register(a, twin: b, gain: 1)!
         kernel.open(slot: slot, fadeInFrames: 0)
-        let sr = LiveSonificationKernel.sampleRate
+        let sr = LiveSonificationKernel.referenceSampleRate
         let total = Int(seconds * sr)
         var y = [Float](), k = 0
         var pending = events.sorted { $0.0 < $1.0 }

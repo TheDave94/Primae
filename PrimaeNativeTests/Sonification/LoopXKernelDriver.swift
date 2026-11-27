@@ -34,7 +34,7 @@ nonisolated enum LoopXKernelDriver {
     static let treeTag = "after"
     /// Mixer pan slew, gain units per sample (iPad, offline manual rendering).
     static let panSlewPerSample: Float = 0.000907
-    static var sr: Double { LiveSonificationKernel.sampleRate }
+    static var sr: Double { LiveSonificationKernel.referenceSampleRate }
 
     /// Constant-power pan law (the mixer's, as modelled).
     static func panGains(_ p: Float) -> (Float, Float) {

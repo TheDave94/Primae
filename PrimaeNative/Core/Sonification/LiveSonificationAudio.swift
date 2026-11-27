@@ -83,11 +83,18 @@ final class LiveSonificationAudio: AudioControlling {
 
     /// The r16 engine: session, mixer, probe tap, lifecycle engine pause.
     private let host: AudioControlling?
-    private let output: LiveSonificationOutput
-    let kernel: LiveSonificationKernel
-    /// Resolves a file name to a decoded source (production: bundle + decode +
+    private var output: LiveSonificationOutput
+    private(set) var kernel: LiveSonificationKernel
+    /// Resolves a file name to a decoded source at a rate (production: bundle + decode at the kernel's rate +
     /// loudness gain; tests: synthetic sources).
-    private let resolve: (String) -> SonificationSource?
+    private let resolve: (String, Double) -> SonificationSource?
+    /// r31 (PITCHWIN): the session's output rate, read OFF the main thread (`performSessionWork`, ordered after an
+    /// activation) after the launch activation and after every route change. Nil: the voice never re-rates.
+    private let outputRate: (@Sendable () -> Double)?
+    /// r31: a kernel and output at a new rate, wired into the graph in place of the current ones.
+    private let rebuildOutput: ((LiveSonificationOutput, Double) -> (LiveSonificationKernel, LiveSonificationOutput)?)?
+    /// How many times the voice re-rated (a test reads it).
+    private(set) var rateRebuilds = 0
 
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative",
                              category: "LiveSonification")
@@ -102,13 +109,15 @@ final class LiveSonificationAudio: AudioControlling {
 
     private var slots: [String: UInt32] = [:]
     /// Pairs built by the launch prewarm and not yet registered.
-    let prewarmed = PrewarmedRenderers()
+    private(set) var prewarmed = PrewarmedRenderers()
     /// Renderer pairs this instance had to build on the main actor (a load that beat the prewarm).
     private(set) var mainActorBuilds = 0
     private var sourceCache: [String: SonificationSource] = [:]
     private var nameToKey: [String: String] = [:]
     /// The loaded sound: the r16 engine's `currentFile`.
     private(set) var loadedKey: String?
+    /// The file name of the loaded sound (a re-rate reloads it).
+    private var loadedName: String?
     private var loadedSlot: UInt32?
 
     private(set) var isPlaying = false
@@ -139,9 +148,13 @@ final class LiveSonificationAudio: AudioControlling {
          observeSession: Bool,
          notificationCenter: NotificationCenter = .default,
          ioBufferWork: @escaping @Sendable () -> Void = { SoundEnvelope.applyPreferredIOBuffer() },
-         resolve: @escaping (String) -> SonificationSource?) {
+         outputRate: (@Sendable () -> Double)? = nil,
+         rebuildOutput: ((LiveSonificationOutput, Double) -> (LiveSonificationKernel, LiveSonificationOutput)?)? = nil,
+         resolve: @escaping (String, Double) -> SonificationSource?) {
         self.notificationCenter = notificationCenter
         self.ioBufferWork = ioBufferWork
+        self.outputRate = outputRate
+        self.rebuildOutput = rebuildOutput
         self.host = host
         self.output = output
         self.kernel = kernel
@@ -159,25 +172,42 @@ final class LiveSonificationAudio: AudioControlling {
     /// its graph, sources from the bundle, renderers prewarmed off-main.
     static func production(host: AudioEngine, fadeOutSeconds: TimeInterval,
                            ioBufferWork: @escaping @Sendable () -> Void = { SoundEnvelope.applyPreferredIOBuffer() }) -> LiveSonificationAudio {
-        let kernel = LiveSonificationKernel()
-        let node = SourceNodeOutput(kernel: kernel, startGate: host.startGate)
+        var kernel = LiveSonificationKernel()
+        var node = SourceNodeOutput(kernel: kernel, startGate: host.startGate)
         host.attachLiveSonificationNode(node.node, format: node.format)
+        // r31 (PITCHWIN): the voice renders at the output hardware's rate, so the mixer and the output unit pass it
+        // through and nothing after the renderer converts. The graph's output format is the hardware's (no session
+        // call on the main thread); the session's own rate is read back after the launch activation and after
+        // every route change (`adoptSessionRate`), and a different rate rebuilds the voice there.
+        if let engine = node.node.engine {
+            let hw = engine.outputNode.outputFormat(forBus: 0).sampleRate
+            if hw > 0 && hw != kernel.sampleRate {
+                (kernel, node) = node.replaced(atRate: hw)
+            }
+        }
         #if DEBUG || POPCAP
         PopCapture.armed?.installTap(on: node.node.engine?.mainMixerNode ?? node.node)   // POPCAP
         #endif
         let voice = LiveSonificationAudio(host: host, output: node, kernel: kernel,
                                           fadeOutSeconds: fadeOutSeconds, observeSession: true,
                                           ioBufferWork: ioBufferWork,
-                                          resolve: Self.bundleSource(named:))
+                                          outputRate: { AVAudioSession.sharedInstance().sampleRate },
+                                          rebuildOutput: { current, rate in
+                                              guard let node = current as? SourceNodeOutput else { return nil }
+                                              let (kernel, next) = node.replaced(atRate: rate)
+                                              return (kernel, next as LiveSonificationOutput)
+                                          },
+                                          resolve: Self.bundleSource(named:sampleRate:))
         voice.prewarmStudySources()
+        voice.adoptSessionRate()
         return voice
     }
 
     nonisolated static func bundleURL(named name: String) -> URL? { PrimaeBundle.audioURL(for: name) }
 
-    static func bundleSource(named name: String) -> SonificationSource? {
+    static func bundleSource(named name: String, sampleRate: Double) -> SonificationSource? {
         guard let url = bundleURL(named: name) else { return nil }
-        return SonificationSource.load(url: url, gain: AudioEngine.loudnessGain(forFileAt: url))
+        return SonificationSource.load(url: url, gain: AudioEngine.loudnessGain(forFileAt: url), sampleRate: sampleRate)
     }
 
     // MARK: Renderer cache
@@ -185,7 +215,7 @@ final class LiveSonificationAudio: AudioControlling {
     /// The kernel slot for `source`; built on first use.
     private func slot(for source: SonificationSource) -> UInt32? {
         if let s = slots[source.key] { return s }
-        let pair: (TDPSOLA, TDPSOLA)
+        let pair: (TDPSOLA2, TDPSOLA2)
         if let ready = prewarmed.take(source.key) {
             pair = ready
         } else {
@@ -203,24 +233,31 @@ final class LiveSonificationAudio: AudioControlling {
         return s
     }
 
-    /// The TDPSOLA renderer for `source` (pure DSP; any thread).
+    /// The renderer options for a source of `kind` (protocol r31). A phoneme plays through the bake-off winner
+    /// "TDPSOLA2-sa" plus the residual level table (`TDPSOLA2Options.production`); the spatial carrier keeps every
+    /// option off (`.r27`), which is the r17-r28 TDPSOLA output bit for bit (`TDPSOLA2IdentityTests`,
+    /// `ProductionRendererTests`): the spatial arm does not change.
+    nonisolated static func rendererOptions(for kind: SourceKind) -> TDPSOLA2Options {
+        kind == .carrier ? .r27 : .production
+    }
+
+    /// The renderer for `source` (pure DSP; any thread).
     /// R17D: a source with a recorded onset (`PhonemeOnsets`) loops from its declared attack end.
     /// r22: the renderer gets the source's loudness gain, the gain the kernel plays it at, so the recorded onset is
     /// kept under full scale at that gain (`TDPSOLAOnsetCeiling`).
-    nonisolated static func makeRenderer(_ source: SonificationSource) -> TDPSOLA {
-        TDPSOLA(source: source.samples, sampleRate: LiveSonificationKernel.sampleRate,
-                kind: source.kind, maxFramesPerRender: LiveSonificationKernel.chunkFrames,
-                tuning: .default, onset: source.onset, outputGain: source.gain)
+    /// r31: TDPSOLA2 (`rendererOptions(for:)`); r17-r28 built TDPSOLA here.
+    nonisolated static func makeRenderer(_ source: SonificationSource) -> TDPSOLA2 {
+        TDPSOLA2(source: source.samples, sampleRate: source.sampleRate,
+                 kind: source.kind, maxFramesPerRender: LiveSonificationKernel.chunkFrames,
+                 tuning: .default, options: rendererOptions(for: source.kind), onset: source.onset,
+                 outputGain: source.gain, file: source.fileSource)
     }
 
     /// Two renderers of `source` for one kernel slot (the second is the voice a
-    /// restart crosses over to); the twin reuses the first one's analysis.
-    nonisolated static func makeRendererPair(_ source: SonificationSource) -> (TDPSOLA, TDPSOLA) {
+    /// restart crosses over to); the twin reuses the first one's analysis, epochs and level table.
+    nonisolated static func makeRendererPair(_ source: SonificationSource) -> (TDPSOLA2, TDPSOLA2) {
         let a = makeRenderer(source)
-        let b = TDPSOLA(source: source.samples, sampleRate: LiveSonificationKernel.sampleRate, kind: source.kind,
-                        maxFramesPerRender: LiveSonificationKernel.chunkFrames, analysis: a.analysis,
-                        outputGain: source.gain)
-        return (a, b)
+        return (a, a.twin(source: source.samples))
     }
 
     private func source(named name: String) -> SonificationSource? {
@@ -228,7 +265,7 @@ final class LiveSonificationAudio: AudioControlling {
         #if DEBUG || POPCAP
         let t0 = PopCapture.nowNs()
         #endif
-        guard let s = resolve(name) else { return nil }
+        guard let s = resolve(name, kernel.sampleRate) else { return nil }
         #if DEBUG || POPCAP
         PopCapture.armed?.event("source.resolve", "file=\(name) ms=\(Double(PopCapture.nowNs() - t0) / 1e6)")
         #endif
@@ -249,10 +286,11 @@ final class LiveSonificationAudio: AudioControlling {
         let gains = urls.map { AudioEngine.loudnessGain(forFileAt: $0) }
         let jobs = Array(zip(urls, gains))
         let store = prewarmed
+        let rate = kernel.sampleRate
         Task.detached(priority: .utility) { [weak self] in
             var built: [BuiltRenderer] = []
             for (url, gain) in jobs {
-                guard let s = SonificationSource.load(url: url, gain: gain) else { continue }
+                guard let s = SonificationSource.load(url: url, gain: gain, sampleRate: rate) else { continue }
                 #if DEBUG || POPCAP
                 let t0 = PopCapture.nowNs()
                 #endif
@@ -272,13 +310,14 @@ final class LiveSonificationAudio: AudioControlling {
     /// there again before registration.
     nonisolated private struct BuiltRenderer: @unchecked Sendable {
         let source: SonificationSource
-        let renderer: TDPSOLA
-        let twin: TDPSOLA
+        let renderer: TDPSOLA2
+        let twin: TDPSOLA2
     }
 
     private func adopt(_ built: [BuiltRenderer]) {
         for b in built {
             let s = b.source
+            guard s.sampleRate == kernel.sampleRate else { continue }   // built before a re-rate: dropped
             if sourceCache[s.key] == nil { sourceCache[s.key] = s }
             guard slots[s.key] == nil, prewarmed.take(s.key) != nil else { continue }
             if let slot = kernel.register(b.renderer, twin: b.twin, gain: s.gain) {
@@ -312,6 +351,7 @@ final class LiveSonificationAudio: AudioControlling {
             isPlaying = false
         }
         loadedKey = src.key
+        loadedName = fileName
         loadedSlot = slot
         // SDK27: the start is asynchronous (`EngineStartGate`). The intent is
         // recorded now and an autoplay waits for the start inside
@@ -386,7 +426,7 @@ final class LiveSonificationAudio: AudioControlling {
     func stop(fadeOutSeconds seconds: TimeInterval) {
         fadeTask?.cancel(); fadeTask = nil
         guard seconds > 0, isPlaying, output.isRunning else { stop(); return }
-        kernel.closeRaisedCosine(frames: Self.frames(seconds))
+        kernel.closeRaisedCosine(frames: frames(seconds))
         isFadingOut = true
         fadeTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(seconds))
@@ -403,7 +443,7 @@ final class LiveSonificationAudio: AudioControlling {
             finishStop()
             return
         }
-        kernel.close(fadeOutFrames: Self.frames(fadeOutSeconds))
+        kernel.close(fadeOutFrames: frames(fadeOutSeconds))
         isFadingOut = true
         let duration = fadeOutSeconds
         fadeTask = Task { [weak self] in
@@ -423,6 +463,7 @@ final class LiveSonificationAudio: AudioControlling {
         // observer schedules its engine pause then, and that must stand.
         if cancelHostLifecycleWork { host?.cancelPendingLifecycleWork() }
         loadedKey = nil
+        loadedName = nil
         loadedSlot = nil
     }
 
@@ -490,13 +531,54 @@ final class LiveSonificationAudio: AudioControlling {
             isPlaying = false
             return
         }
-        kernel.open(slot: slot, fadeInFrames: Self.frames(fadeInSeconds))
+        kernel.open(slot: slot, fadeInFrames: frames(fadeInSeconds))
         isPlaying = true
     }
 
-    static func frames(_ seconds: TimeInterval) -> UInt32 {
+    func frames(_ seconds: TimeInterval) -> UInt32 {
         guard seconds.isFinite, seconds > 0 else { return 0 }
-        return UInt32(min(Double(UInt32.max / 2), (seconds * LiveSonificationKernel.sampleRate).rounded()))
+        return UInt32(min(Double(UInt32.max / 2), (seconds * kernel.sampleRate).rounded()))
+    }
+
+    // MARK: Output rate (r31, PITCHWIN)
+
+    /// Reads the session's output rate off the main thread, ordered after a pending activation, and re-rates the
+    /// voice on the main actor if it differs from the kernel's.
+    func adoptSessionRate() {
+        guard let outputRate else { return }
+        output.performSessionWork { [weak self] in
+            let rate = outputRate()
+            Task { @MainActor [weak self] in self?.adoptOutputRate(rate) }
+        }
+    }
+
+    /// Re-rates the voice when the output runs at `rate` and the kernel does not: a new kernel and source node at
+    /// `rate` (the controls carried over), every source decoded again at `rate` (the offline resample) and every
+    /// renderer rebuilt, the loaded sound reloaded. A sound that was playing is cut, not faded (the route changed
+    /// under it; the r16 engine stopped its player too), and resumes if it was meant to.
+    func adoptOutputRate(_ rate: Double) {
+        guard rate.isFinite, rate > 0, rate != kernel.sampleRate, let rebuildOutput,
+              let rebuilt = rebuildOutput(output, rate) else { return }
+        let from = kernel.sampleRate
+        let name = loadedName
+        let resume = shouldResumePlayback
+        kernel.close(fadeOutFrames: 0)
+        fadeTask?.cancel(); fadeTask = nil
+        isFadingOut = false
+        isPlaying = false
+        let old = kernel
+        (kernel, output) = rebuilt
+        kernel.adoptControls(from: old)
+        slots = [:]; sourceCache = [:]; nameToKey = [:]
+        loadedKey = nil; loadedName = nil; loadedSlot = nil
+        prewarmed = PrewarmedRenderers()
+        rateRebuilds += 1
+        log.notice("Sonification re-rated \(from) -> \(rate) Hz")
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("voice.rerate", "from=\(from) to=\(rate)")
+        #endif
+        prewarmStudySources()
+        if let name { loadAudioFile(named: name, autoplay: resume) }
     }
 
     // MARK: Session notifications
@@ -557,6 +639,8 @@ final class LiveSonificationAudio: AudioControlling {
         // SDK27: off the main thread (the session is active here; on main it is a "Hang Risk"), ordered after a
         // pending activation and ahead of a later one by the host's start gate.
         output.performSessionWork(ioBufferWork)
+        // r31: a new route can run at a new rate; read it back after the session work and re-rate if it moved.
+        adoptSessionRate()
         guard let reasonRawValue,
               let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRawValue) else { return }
         switch reason {
@@ -584,9 +668,9 @@ final class LiveSonificationAudio: AudioControlling {
 /// takes the finished pair from here first.
 nonisolated final class PrewarmedRenderers: @unchecked Sendable {
     private let lock = NSLock()
-    private var table: [String: (TDPSOLA, TDPSOLA)] = [:]
-    func put(_ key: String, _ pair: (TDPSOLA, TDPSOLA)) { lock.lock(); table[key] = pair; lock.unlock() }
-    func take(_ key: String) -> (TDPSOLA, TDPSOLA)? { lock.lock(); defer { lock.unlock() }; return table.removeValue(forKey: key) }
+    private var table: [String: (TDPSOLA2, TDPSOLA2)] = [:]
+    func put(_ key: String, _ pair: (TDPSOLA2, TDPSOLA2)) { lock.lock(); table[key] = pair; lock.unlock() }
+    func take(_ key: String) -> (TDPSOLA2, TDPSOLA2)? { lock.lock(); defer { lock.unlock() }; return table.removeValue(forKey: key) }
     var count: Int { lock.lock(); defer { lock.unlock() }; return table.count }
 }
 
@@ -600,10 +684,30 @@ final class SourceNodeOutput: LiveSonificationOutput {
     /// The host engine's start gate: the one start path for the shared engine.
     private let startGate: EngineStartGate
 
+    /// The node's format is the kernel's rate (r31: the output hardware's), mono.
     init(kernel: LiveSonificationKernel, startGate: EngineStartGate) {
         self.startGate = startGate
-        format = AVAudioFormat(standardFormatWithSampleRate: LiveSonificationKernel.sampleRate, channels: 1)!
+        format = AVAudioFormat(standardFormatWithSampleRate: kernel.sampleRate, channels: 1)!
         node = Self.makeNode(kernel: kernel, format: format)
+    }
+
+    /// r31: a new kernel and node at `rate`, connected to the main mixer in this node's place (same pan); this
+    /// node is disconnected and detached. Main actor, off the render path: AVAudioEngine reconnects a mixer input
+    /// with the engine running or stopped. The old kernel stays retained (the render block's reference, by design).
+    func replaced(atRate rate: Double) -> (LiveSonificationKernel, SourceNodeOutput) {
+        let kernel = LiveSonificationKernel(sampleRate: rate)
+        let next = SourceNodeOutput(kernel: kernel, startGate: startGate)
+        guard let engine = node.engine else { return (kernel, next) }
+        let pan = node.pan
+        engine.disconnectNodeOutput(node)
+        engine.detach(node)
+        engine.attach(next.node)
+        do { try engine.connectNode(next.node, to: engine.mainMixerNode, format: next.format) } catch {
+            Logger(subsystem: Bundle.main.bundleIdentifier ?? "PrimaeNative", category: "LiveSonification")
+                .error("Live sonification node reconnect failed: \(error.localizedDescription, privacy: .public)")
+        }
+        next.node.pan = pan
+        return (kernel, next)
     }
 
     /// Nonisolated so the render block is not main-actor isolated (it runs on

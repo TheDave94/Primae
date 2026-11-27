@@ -81,7 +81,7 @@ import AVFoundation
         let voice = LiveSonificationAudio(host: host, output: output, kernel: LiveSonificationKernel(),
                                           fadeOutSeconds: 0.05, observeSession: true,
                                           notificationCenter: center,
-                                          resolve: { $0 == "a" ? src : nil })
+                                          resolve: { name, _ in name == "a" ? src : nil })
         voice.loadAudioFile(named: "a", autoplay: true)
         #expect(voice.isPlaying)
 

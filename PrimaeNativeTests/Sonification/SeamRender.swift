@@ -13,9 +13,19 @@ nonisolated struct SeamRendered {
     var minHeadAfterEntry = Double.infinity   // the read-head never goes back into the attack once the loop is entered
 }
 
+/// A renderer whose read-head the seam meter can follow: TDPSOLA (the r17-r28 renderer, kept as the reference) and
+/// TDPSOLA2 (the production renderer from r31).
+nonisolated protocol SeamRenderable: SonificationRenderer {
+    var sampleRate: Double { get }
+    var debugReadHead: Double { get }
+    var debugLoopBounds: (start: Double, end: Double) { get }
+}
+extension TDPSOLA: SeamRenderable {}
+extension TDPSOLA2: SeamRenderable {}
+
 nonisolated enum SeamRender {
     /// `seconds` of a steady stroke (gate open, pitch 0) at `rate`, rendered in 64-frame blocks.
-    static func steady(_ r: TDPSOLA, rate: Float, seconds: Double = 12) -> SeamRendered {
+    static func steady(_ r: some SeamRenderable, rate: Float, seconds: Double = 12) -> SeamRendered {
         let sr = r.sampleRate
         r.reset(); r.setRate(rate); r.setPitchCents(0); r.setGate(true)
         var y = [Float](repeating: 0, count: Int(seconds * sr))

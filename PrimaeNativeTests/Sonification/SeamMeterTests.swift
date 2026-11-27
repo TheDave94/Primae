@@ -113,7 +113,7 @@ nonisolated struct LoopSeamRegressionTests {
         #expect(mean <= 1.8, "\(name) r\(rate): wrap pulse \(mean)x over \(ratios.count) wraps")
     }
 
-    @Test("the attack still plays once, from silence, unmodified; the loop never re-enters it", arguments: StudySources.voicedNames)
+    @Test("the attack plays once, from silence, its pre-voicing transient as recorded; the loop never re-enters it", arguments: StudySources.voicedNames)
     func attackStillPlaysOnce(name: String) throws {
         let src = try StudySources.load(name)
         let r = SonificationRendererUnderTest.make(src)
@@ -136,9 +136,13 @@ nonisolated struct LoopSeamRegressionTests {
         // R17D: a recorded onset blends over its own `preBlendPeriods`.
         let preBlend = a.recordedOnset?.preBlendPeriods ?? TDPSOLALoopSeam.preBlendMarks
         let morphStart = Int(a.marks[max(0, a.attackIndex - preBlend)].rounded(.up))
-        let attackFrames = morphStart - a.onset - 2
-        #expect(attackFrames > 16)
-        #expect(Array(out.samples[0..<attackFrames]) == Array(refOut[0..<attackFrames]), "\(name): the attack differs from the TDQ attack")
+        // r31 (TDPSOLA2 item 7): from `attackFirstMark` the voiced attack is PSOLA'd at the steady F0 (so at 0 cents it is
+        // re-spaced, not bit for bit); what stays as recorded is the flat grain, from the onset to that mark's grain.
+        let flatEnd = Int(a.marks[r.attackFirstMark].rounded(.down)) - a.onset - 2
+        let attackFrames = min(morphStart - a.onset - 2, flatEnd)
+        #expect(morphStart - a.onset - 2 > 16)
+        #expect(attackFrames >= 0, "\(name): the flat grain ends before the onset (\(attackFrames))")
+        #expect(Array(out.samples[0..<max(0, attackFrames)]) == Array(refOut[0..<max(0, attackFrames)]), "\(name): the attack's flat grain differs from the TDQ attack")
         #expect(abs(out.samples[0]) < 0.05, "the onset starts from silence (the gate ramps in from 0)")
     }
 }

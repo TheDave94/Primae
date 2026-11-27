@@ -66,7 +66,7 @@ User-level `~/.claude/CLAUDE.md` has the general output discipline (Bash caps, r
 - **Remotes**: `origin` is the Forgejo forge at `https://git.flamingistan.com/David/Primae.git` — that is where you push. The GitHub repo `TheDave94/Primae` is a **push mirror** of the forge, not the origin: branches and workflow files reach it automatically, with nobody pushing to GitHub directly. CI runs there, so `gh run list --repo TheDave94/Primae` is the right way to read results and the wrong way to imagine the data flows.
 - **Learning phases**: observe → guided → freeWrite (`.direct` stays a Codable case but no session runs it, D5), managed by `LearningPhaseController`; from r27 a session adds a silent pause and a final test from memory
 - **Stroke data**: JSON files in `Resources/Letters/{weight}/{letter}/strokes.json` (Regular/Light; the study build loads Regular) with normalized coordinates
-- **Audio**: Pen-driven playback (proximity-gated in guided; ungated in free-writing since r6; silent in the r27 final test) driven by TouchDispatcher + StrokeTracker. From protocol r17 the sound is rendered by `LiveSonificationAudio` (TDPSOLA, `Core/Sonification/`), hosted by AudioEngine
+- **Audio**: Pen-driven playback (proximity-gated in guided; ungated in free-writing since r6; silent in the r27 final test) driven by TouchDispatcher + StrokeTracker. From protocol r17 the sound is rendered by `LiveSonificationAudio` (TDPSOLA; from r31 the phoneme arm renders with TDPSOLA2, `Core/Sonification/`), hosted by AudioEngine
 
 ## Proctor batch enrolment (one gesture, no relaunch, ONE export)
 

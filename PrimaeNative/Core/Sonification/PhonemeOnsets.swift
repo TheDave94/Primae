@@ -31,7 +31,8 @@ import Foundation
 
 /// A recorded onset at the start of a phoneme file.
 nonisolated struct RecordedOnset: Sendable, Equatable {
-    /// End of the onset = start of the loop part, in samples at 44.1 kHz from the file start.
+    /// End of the onset = start of the loop part, in samples at the file's own rate (44.1 kHz) from the file start;
+    /// `PhonemeOnsets.onset(forFileNamed:fileRate:renderRate:)` scales it to the rate the file is decoded at.
     let attackEndFrame: Int
     /// ENV3 pre-blend length into the loop start, in pitch periods (voiced files only).
     let preBlendPeriods: Int
@@ -50,4 +51,13 @@ nonisolated enum PhonemeOnsets {
 
     /// The recorded onset of the file named `fileName` (last path component), nil when it has none.
     static func onset(forFileNamed fileName: String) -> RecordedOnset? { table[fileName] }
+
+    /// The same onset for the file decoded at `renderRate` from its own `fileRate` (r31: the renderers run at the
+    /// output rate): the frame scales with the rates, the pre-blend counts pitch periods and does not.
+    static func onset(forFileNamed fileName: String, fileRate: Double, renderRate: Double) -> RecordedOnset? {
+        guard let o = table[fileName] else { return nil }
+        guard fileRate > 0, renderRate != fileRate else { return o }
+        return RecordedOnset(attackEndFrame: Int((Double(o.attackEndFrame) * renderRate / fileRate).rounded()),
+                             preBlendPeriods: o.preBlendPeriods)
+    }
 }

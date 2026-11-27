@@ -2605,6 +2605,108 @@ silent arm's authority (C3-2) as before. `OneArmPerSessionTests` pins that a
 letter load never moves the arm, in every arm, and replaces
 `CycleAllConditionsTests`.
 
+## Phoneme pitch shift: TDPSOLA2 (protocol r31; bake-off phase 2 evidence 2026-11-25, chosen from measurement 2026-11-26)
+
+From r26 the pen's height pitches both sound arms over ±600 c. David ruled on 2026-11-23 that the phoneme arm stays pitched (arm symmetry is part of the test procedure) and that the *quality* of the shift is what must improve, by the r17 method: research, clean-room candidates behind `SonificationRenderer`, a device bench, a blind MUSHRA test, a winner chosen by the gates plus his ears. Phase 1 (2026-11-23, `primae-pitch-sota/`) rendered ten reference methods offline. This entry records phase 2 and the decision.
+
+- **Candidates** (phase 2, lane PITCH; code on branch `lane/pitch-bakeoff-close`, `0d12c736`):
+  - *C1 TDPSOLA2* — our TD-PSOLA with options from the literature: (1) band-limited resample for the unvoiced F, (2) synthesis window ≤ one source period, (3) pulse-density gain pf^-½ below pf 1, (4) harmonic/noise swap on repeated or skipped periods, (5) pitch marks snapped to glottal closure instants, (6) optional formant co-shift γ, (7) the attack shifted with the note. Own code, from papers only.
+  - *C2 WorldRT* — a live WORLD source-filter vocoder (a port of WORLD, modified-BSD).
+  - *C3 PitchBank* — 13 WORLD banks over ±600 c rendered at letter load, played by C1 live with a residual of at most ±50 c.
+- **Bench** (one run, iPad13,8, iOS 27.3, Release-Study with testability, main `8bb28162` + the candidates; 541.8 s, 0 failures; `docs/pitch-bakeoff/BENCH-2026-11-25.md` on the bake-off branch). Voiced A I L M, held ±300/±600 c at rates 0.5/1/2 (48 cells), mean / worst:
+
+  | measure | r28 (TDPSOLA) | TDPSOLA2-sa | WorldRT | PitchBank |
+  |---|---|---|---|---|
+  | spectral-envelope LSD dB | 2.46 / 5.44 | 2.25 / 4.94 | 2.34 / 4.21 | 2.34 / 4.10 |
+  | stroke attack pitch error, RMS c (A I L M) | 484 | 16.6 | 448 | 8.5 |
+  | F wobble dB (gate rows) | 3.08 | 0.46 | 0.46 | 0.46 |
+  | \|level re 0 c\| dB | 0.97 / 2.63 | 0.73 / 1.51 | 0.04 / 0.14 | 0.04 / 0.15 |
+  | \|ln jitter ratio\|, \|ln shimmer ratio\| | 0.24, 0.26 | 0.19, 0.13 | 0.37, 0.17 | 0.36, 0.22 |
+  | spectral-flux spikes per held cell | 1.31 | 0.42 | 1.81 | 1.38 |
+  | worst onset (gate cycle) ms | 20.7 | 21.0 | 20.7 | 35.9 |
+  | init per letter (median) | 50 ms | 84 ms | 490 ms | 2.2–2.5 s, 11–12 MB |
+
+  γ 0.3 (partial formant co-shift) moved the envelope as designed but doubled its distance (LSD 5.5 / 9.0 dB) and was rejected.
+- **The blind test could not separate the voiced candidates.** David rated the phase-2 MUSHRA pages (`wt-primae-audit-notes/pitch-2026-11-25/blind/`); his report: they were "either all good or all bad". The envelope measure says why: the four voiced columns lie within 0.2 dB of each other in mean LSD. On 2026-11-26 he asked for the choice to come from the measurement data.
+- **Decision (supervisor seat, 2026-11-26, from measurement on David's instruction of 2026-11-26).** The phoneme arm's renderer from protocol r31 is TDPSOLA2 with items 1–5, item 7 at the steady F0 (the bench column "TDPSOLA2-sa"), γ 0, plus item 8 below (`TDPSOLA2Options.production`). It is best or tied-best on every measure the ear could plausibly separate: the attack (the r28 renderer plays the first 0.1–0.4 s of every stroke 300–600 c off the note), F (r28 fails every F gate), roughness (jitter, shimmer) and flux spikes, and it ties on the envelope; it costs what r28 costs in CPU and onset, needs no build at letter load and carries no licence. PitchBank is closer on the attack of A (9 c against 54 c) but costs 2.2–2.5 s and 11–12 MB per letter, an 18 ms later onset on I, and a WORLD licence notice. David did not choose TDPSOLA2-sa by ear; the choice is the measurement's.
+- **Item 8, the level fix (lane PITCHWIN, 2026-11-26).** TDPSOLA2-sa's one weak measure was level: worst −1.51 dB, I at +600 c, 2 of 48 cells over the ±1.5 dB gate. Measured cause (macOS driver, reproducing the iPad numbers to 0.01 dB): item 3's pf^-½ restores the pulses a downshift drops, but item 2 also narrows a downshifted grain to one source period, so neighbouring grains stop meeting (−0.4 to −1.0 dB at −300/−600 c on every voiced letter), and item 5 centres I's grains on its glottal closures, where a narrow upshift window holds less of the period's energy (I +600: −0.86 dB without item 5, −1.51 dB with it). Fix: a residual gain per grain from a table measured once per source at load (`LevelTable`: 25 points over ±1200 c, the loop's level at each pitch against 0 c, linear between points, exactly 1 at 0 cents), multiplied onto item 3's gain. Same mechanism as item 3 (a per-grain gain from the smoothed pitch), so no new kind of artefact; 0 cents is unchanged bit for bit. Measured on the iPad (`SonificationBakeoffBench`, 2026-11-26T18:07Z, iPad13,8, iOS 27.3, optimised build, 145 cells per candidate): production with item 8 (the bench's r29 column) has worst |level re 0 c| 0.31 dB (A at +600 c) and 0 of 48 voiced held cells over ±1.5 dB, F 0.07 dB worst (0 of 12), against TDPSOLA2-sa's 1.51 dB / 2 of 48 (F 0.91 dB). The other measures move by at most 0.03 (production values: envelope LSD 2.25 / 4.95 dB mean / max, F wobble 0.46 / 0.61 dB, f0 error 2.10 / 4.45 c, trajectory attack 5.61 / 8.39 c RMS against 5.64 / 8.39, onset 15.17 / 21.04 ms); median CPU per voiced buffer 4.06 against 4.07 µs.
+- **What the child hears differently (r31, phoneme arm only).** See `StudyProtocol.history` r31 (numbered r29 while drafted; r29 and r30 went to other lanes). The spatial carrier runs the same class with every option off (`.r27`), which is the r28 output bit for bit (`ProductionRendererTests.carrierIsTheR28Renderer`, primary and crossover twin, under the identity drive); the silent arm renders nothing. The export's `soundEngine` reads "TDPSOLA2" on phoneme-arm rows, "TDPSOLA" on the others.
+- **Licence.** Own code, written from published descriptions (Charpentier & Moulines 1989/1990, Stylianou 2001, Bailly 1999, Drugman et al. 2009/2019). No notice needed.
+- **Code disposition.** TDPSOLA2 (`Core/Sonification/TDPSOLA2/`) and its regression suite (`PrimaeNativeTests/Sonification/TDPSOLA2/`) landed; TDPSOLA (`Core/Sonification/TDPSOLA/`) stays as the reference the identity tests pin TDPSOLA2 against and as the carrier's algorithm. The bench harness, WorldRT, PitchBank and the naive anchor stay a patch (`wt-primae-audit-notes/pitch-2026-11-25/PITCH-close.patch`), as the r17 harness did.
+- **Verification (iPad13,8, Debug-Study, lane PITCHWIN 2026-11-26).** Full `PrimaeNativeTests` at `a925f7c8`: 2049 tests in 281 suites, 2 issues — `StudyProtocolTests.swift:41` (r30 not yet merged; clears when FSWARN lands) and the I render hash (stale table since `c534dac2`; re-recorded in `d2973504`, after which `TDPSOLA2RenderHashTests` passes on the iPad, 1 test with 3 cases, A F I). Gates:
+  1. *Real time* — `TDPSOLA2RealtimeTests.testRenderAndSettersAllocateNothing`: zero allocations on the render path and the setters for the default, γ 0.3 and production options under a rate + pitch + gate drive.
+  2. *CPU* — production per 256 frames (5.8 ms of audio): voiced A I L M median 83–98 µs, p99 ≤ 121.5 µs, max ≤ 138.9 µs (r27 options: median 84 µs); F median 450 µs, p99 687 µs (band-limited resample); gate p99 < 1000 µs (`testCPUPerBuffer`).
+  3. *Robustness and soak* — 60 s per source on the renderer production builds, no non-finite or subnormal sample, |y| ≤ 2 (`testSoakIsFiniteAndDenormalFree`); stable under a cutoff jumping 100 Hz ↔ 20 kHz every call.
+  4. *Determinism* — two fresh instances under one drive are bit-identical (6 cases); a reset and a gate re-open reproduce the output (4 cases); item 8's table measured at load equals the cached one; a phoneme's crossover twin renders what its primary renders (5 letters).
+  5. *Device = macOS* — the 2 s render hash (rate 0.8, +450 c) on the iPad equals the lane's macOS driver for A, F and I. I's entry was re-recorded: `c534dac2` (item 5 keeps the declared attack end) moved I's render, and the driver at that commit and after renders what the iPad renders.
+  6. *Mutation* — ten deliberate breaks, each RED on the iPad with a non-zero count (19 tests in 3 suites; 26 tests in 3 suites): item 8 for the voiced letters only (F uncalibrated), the twin built with the default options, the export stamp reading TDPSOLA, item 5's attack-end clamp off, the flat attack grain's increment ×1.001, attack at the steady F0 off, smoothing ×2, the level table's zero point 0.999, the carrier built with production options, voiced mark spacing ×1.006.
+  7. *Ownership* — own code from the papers named under Licence; the spatial carrier is the r28 renderer bit for bit (`carrierIsTheR28Renderer`, primary and twin).
+- **Item 7 starts at the first periodic mark.** The attack is shifted from the first periodic pitch mark of the recording, not from sample 0, so anything before the voice starts (I's breath) plays as recorded and is not pitched; `PhonemeOnsetTests` pins the played material (I's hand-over starts inside the breath).
+- **Stroke start on the iPad (lane PITCHWIN, 2026-11-26).** A stroke started from silence at five held heights (+600, +300, 0, −300, −600 c), captured from the device output, r28 build (2 runs) against r31 build (3 runs); ranges over the heights:
+
+  | letter | time to F0, r28 → r31 (ms) | attack pitch error RMS, r28 → r31 (c) |
+  |---|---|---|
+  | A | 272–600 → 35–37.5 | 85–525 → 1.8–4.4 |
+  | I | 60–92.5 → 37.5–42.5 | 50–366 → 3.1–5.0 |
+  | L | 108–130 → 0–5 | 146–492 → 3.1–3.9 |
+  | M | 128–152 → 0 | 225–495 → 7.3–9.3 |
+  | spatial carrier | 0 → 0 | 0.2–1.2 → unchanged |
+
+  Over all measured cells (letters × heights × measures): 131 better, 195 the same, 10 worse. The 10 worse are trade-offs, not regressions to fix by loosening a test: high-frequency burst at the onset, A 0 c −8.55 → −7.89 dB and I 0 c −3.93 → −2.84 dB (tolerance 0.5); level wobble L −600 c 0.321 → 0.362 dB and M −300 c 0.162 → 0.188 dB (tolerance 0.02); largest single transient A +300 c 3.2 → 4.9 dB, A −600 c 2.7 → 4.8, I +600 c 3.35 → 4.4, I −600 c 2.7 → 3.73, L 0 c 3.9 → 4.7, M +300 c 3.0 → 3.8 dB (tolerance 0.5). They come with item 7 (the attack is now re-synthesised by PSOLA instead of played as recorded); the largest change is +2.1 dB on A's largest transient at −600 c, against an attack pitch error that falls from 85–525 c to under 10 c.
+
+- **Rendering at the output rate (lane PITCHWIN, 2026-11-27).** The iPad's hardware runs at 48 kHz, and the renderer ran at the assets' 44.1 kHz, so the mixer converted its output. That conversion removed F's band above about 19.5 kHz and left a −0.68 dB level residual on F. From r31 the kernel, the renderers and the source node run at the output hardware's rate. The rate is read from the graph at launch and read back from AVAudioSession after the launch activation and after every route change; a different rate rebuilds the voice. The 44.1 kHz assets are resampled once at letter load (AVAudioConverter, mastering algorithm, max quality), and recorded onset frames scale with the rate. Nothing converts after the renderer. A voiced source is analysed at its file rate: pitch marks, item 5's glottal closures and item 7's first periodic mark are found on the recording at 44.1 kHz and scaled to the output rate, and the grains read the resampled buffer. Analysing the resampled 48 kHz buffer instead moved I's attack (bench trajectory 4.35 → 5.68 c, over the 5.0 c gate), so that variant was not kept. Tests keep rendering at `LiveSonificationKernel.referenceSampleRate` (44.1 kHz); `OutputRateTests` pins the rate chain, and `marksAreTheFileRateMarksScaled` pins that the marks at 48 kHz are the 44.1 kHz marks scaled.
+- **Recorded prompts stay outside the engine.** The seven study prompts (44.1 kHz mp3s) play through AVAudioPlayer, outside AudioEngine's graph, so the system converts them and r31 does not reach them; the mixer capture rig cannot record them. `AudioEngine.swift` is untouched.
+- **Measured on the iPad (iPad13,8, iOS 27.3, 2026-11-26/27).**
+  - *Rate:* every renderer runs at 48000 Hz.
+  - *F level:* −16.73 / −16.70 / −16.65 / −16.67 / −16.71 dB at the five held heights, residual 0.08 dB. The 48 kHz bench's worst |level re 0 c| is 0.33 dB (A +600 c at rate 2), with 0 of 48 voiced held cells over ±1.5 dB and F's worst at 0.055 dB.
+  - *Onset and I/O* (44308110 → r31, mixer / speaker): R17 phoneme 22.5 → 25.0 / 28.3 → 30.8 ms, a shift of one 2.5 ms bin, with the speaker maximum 33.3 ms in both builds; R17 spatial 12.5 → 12.5 / 18.3 → 18.3 ms. R20 with the stage off: phoneme 25.0 → 25.0 / 30.8 → 30.8 ms, spatial 12.5 → 12.5 / 18.3 → 18.3 ms. I/O buffer 5.33 ms and output latency 5.8 ms in every run.
+  - *Tests:* the touched suites plus `AudioEngineTests` (`Primae-DeviceTests`, Release-Study with testability) ran 227 tests in 36 suites with no failures, and the render hash is unchanged.
+  - *I's attack:* bench trajectory error A 8.38, I 3.60, L 4.29, M 5.20 c, against 8.39 / 4.35 / 4.43 / 5.28 on 44308110. On the device, I at the five heights reads 3.1 / 4.8 / 4.3 / 4.4 / 5.1 c, against 3.1 / 4.9 / 4.2 / 4.4 / 5.0.
+  - *Bench aggregates* (mean / max, r31 at 48 kHz against 44308110): envelope LSD 2.23 / 5.06 against 2.25 / 4.95 dB; f0 error 2.04 / 4.44 against 2.10 / 4.45 c; jitter 0.19 / 0.54 against 0.20 / 0.52; shimmer 0.13 / 0.35 against 0.13 / 0.32; F wobble 0.49 / 0.71 against 0.46 / 0.61 dB.
+  - *Load:* median init per letter 108.5 ms against 85.7 (max 238.8 against 148.1), from the resample and the file-rate analysis at load, off the render thread.
+- **Mutation (rate chain).** Every break was RED on the iPad with a non-zero test count.
+  - *Batch 1:* 11 tests in 3 suites.
+  - *Batch 2:* `lengthAndTiming`, `reRate` and `sessionRateIsAdopted` went RED. Two mutants survived, and both were dealt with:
+    - The equal-rate identity test was removed. Its mutant is equivalent, because the converter is bit-exact at an equal rate.
+    - The F level bound was tightened to 0.2 dB.
+  - *Batch 3:* `marksAreTheFileRateMarksScaled` went RED on A, I, L and M, and the F level test went RED (F +600 c −0.49 dB). The 48 kHz bench also flags the analysis-off variant (I trajectory 5.68 c, FAIL).
+- **The bench gates are single-seed, so edge cells flip on the seed.** TDPSOLA2 seeds its noise from an FNV hash of the played samples, so resampling the assets changes every seed. Measured with a bench-only knob that XORs a constant into that seed (xor 0, 12345 and 987654321, every held render saved):
+  - *FAIL counts:* 24 / 21 / 22 on 44308110 (44.1 kHz) and 25 / 26 / 25 on r31 (48 kHz).
+  - *Nine cells changed verdict between 44308110 and r31.* Every one is explained:
+    - **Seed realisations.** On 44308110's own seed spread these five already cross their threshold:
+      - A +300 c @0.5 env_lsd: 1.375–1.425
+      - I −300 c @2 jitter ratio: 1.481–1.681
+      - M +600 c @0.5 env_lsd: 2.066–2.188
+      - M +600 c @2 env_lsd: 2.082–2.114, against ≤ 2.094
+      - M −600 c @0.5 env_lsd: 2.250–2.289
+    - **Analysis rate, not the render.** `PitchMetrics.envelopeDB` uses nfft 4096 and an order that scales with the rate, so its numbers depend on the analysis rate. These two cells give the same value at every seed:
+      - I +600 c @1 env_warp: 44308110's render analysed at 48 kHz gives 1.035, and r31's render analysed at 44.1 kHz gives 1.030.
+      - M 0 c @1 env_lsd: 0.608 and 0.580 the same way, against 0.578 on 44308110.
+    - **Both seed and analysis rate.** A +300 c @0.5 jitter ratio 0.583 is one r31 seed plus about −0.03 from the analysis rate. Analysed at 44.1 kHz, r31 gives 0.615 / 0.670 / 0.677 and 44308110 gives 0.639–0.675.
+    - **Quantised by the warp grid.** I +600 c @2 env_warp moves on the render, but the change is below the gate's step. The gate searches the warp on a 0.005 grid. On a 0.00005 grid, analysed at 44.1 kHz:
+      - r31: 1.0329–1.0331
+      - 44308110: 1.0319–1.0325
+
+      The +0.001 shift straddles the grid's rounding point at 1.0325, and both renders lie over the 1.03 bound when the warp is measured continuously.
+  - *Like-for-like.* With all four metrics over the 60 held cells, the renders analysed at the same rate fail the same cells:
+    - At rate 1, the FAIL sets are identical: 5 per run at 44.1 kHz analysis, 7 at 48 kHz.
+    - Over every rate, the only always-failing cell of r31 that no 44308110 run fails is I +600 c @2 env_warp, and only at 44.1 kHz analysis.
+- **Stroke start at 48 kHz (device, seed spread).** The r31 captures (three seeds) were compared with 44308110's spread (four captures, two of them seeded): 319 cells the same, 5 better, 2 worse.
+  - L's largest transient at h1 (4.1–4.5 dB against 3.3–3.9) and L's and F's click steps at h2/h3 lie within the spread.
+  - The two worse cells are F's onset click step at h2 (−20.73 against −22.01 to −21.72 dB) and h4 (−18.16 against −19.44 to −18.80). F's output does not depend on the seed, and the largest sample step at F's onset is 0.0626 at every height, against 0.052–0.060 on 44308110.
+  - The cause is the recorded attack's band above 19.5 kHz, which the old mixer conversion removed; it is the same band whose loss caused F's −0.68 dB residual. A 48 → 44.1 → 48 kHz round trip of the r31 capture brings the step back to 0.0579 (h4 −18.83 dB, inside the spread; h2 −21.16 dB). F's high-frequency onset burst is unchanged (−40.89 against −40.95 dB).
+- **Bench gates still failing on r31** (48 kHz analysis, xor 0, 25 cells). These are for the follow-up bench lane, together with the single-seed note above:
+  - *env_lsd_vs_praat:*
+    - A −600 c @0.5; 0 c @0.5, @1, @2
+    - I +600 c @1, @2; 0 c @0.5, @1, @2
+    - L −600 c @0.5, @2; 0 c @0.5, @1, @2
+    - M +600 c @2; −300 c @0.5, @1; 0 c @0.5, @1, @2
+  - *env_warp:* I +600 c @1, @2
+  - *jitter_ratio:* A +300 c @0.5
+  - *traj_attack:* A, M
+
+  The other r31 seeds also fail one of A 0 c @0.5 jitter, I +600 c @0.5 env_warp, and M ±600 c @0.5 env_lsd.
+
 ## Related separate workstreams (not the Primae freeze)
 
 **Listening study — a SEPARATE app David will build.** Not a Primae mode. Tests non-phoneme sounds; out of scope for the Primae freeze.

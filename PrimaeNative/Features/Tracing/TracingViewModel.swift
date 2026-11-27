@@ -6210,7 +6210,8 @@ extension TracingViewModel {
         delivery.voiceId = sessionVoiceId
         // r17: one engine since the A/B ended (TDPSOLA, RULINGS 2026-11-03);
         // the column stays so every r17 row names the engine that rendered it.
-        delivery.soundEngine = LiveSonificationKernel.engineStamp
+        // r31: the phoneme arm's renderer is TDPSOLA2 (pitch bake-off), so the stamp follows the arm.
+        delivery.soundEngine = LiveSonificationKernel.engineStamp(for: audioCondition)
         delivery.recognizerAvailable = recognizerAvailable
         return PhaseRowContext(finalizedBy: finalizedBy,
                                probeAttempt: currentProbe != nil ? currentProbeAttempt : nil,

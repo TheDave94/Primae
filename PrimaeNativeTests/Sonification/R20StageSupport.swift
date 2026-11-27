@@ -16,7 +16,7 @@ import CoreGraphics
 @testable import PrimaeNative
 
 nonisolated enum R20 {
-    static let sr = LiveSonificationKernel.sampleRate
+    static let sr = LiveSonificationKernel.referenceSampleRate
 
     enum Pattern: CustomStringConvertible {
         case ipad
