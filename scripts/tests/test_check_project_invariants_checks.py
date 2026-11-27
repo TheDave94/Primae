@@ -128,6 +128,19 @@ class ProjectInvariantChecks(CheckerFixture):
                     '";\n\t\t\t\tINFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone')
         self.assertFlags("orientations")
 
+    def test_dropping_a_portrait_orientation_is_caught(self) -> None:
+        # Protocol r30: all four iPad orientations; a landscape-only set warns
+        # at build ("All interface orientations must be supported").
+        self.mutate(PBX, '"UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft',
+                    '"UIInterfaceOrientationLandscapeLeft')
+        self.assertFlags("orientations")
+
+    def test_requires_full_screen_back_is_caught(self) -> None:
+        # Protocol r30: the deprecated key is gone (every build warned).
+        self.mutate(PBX, "\t\t\t\tPRODUCT_NAME",
+                    "\t\t\t\tINFOPLIST_KEY_UIRequiresFullScreen = YES;\n\t\t\t\tPRODUCT_NAME")
+        self.assertFlags("UIRequiresFullScreen")
+
     def test_wrong_study_bundle_id_is_caught(self) -> None:
         self.mutate(PBX, "PRODUCT_BUNDLE_IDENTIFIER = com.flamingistan.primae.study;",
                     "PRODUCT_BUNDLE_IDENTIFIER = com.flamingistan.primae.stud;")

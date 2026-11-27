@@ -59,6 +59,9 @@ struct TracingHookSnapshot: Decodable {
     let phase: String
     let parked: Bool
     let blocked: Bool
+    /// `StudyOrientationGate.Hold` raw value (protocol r30): "none" while the
+    /// session runs, "turnToLandscape" / "fillScreen" under the turn prompt.
+    let orientationHold: String?
     let probe: String
     /// [x, y, width, height] of the tracing canvas, window points.
     let canvas: [Double]
@@ -81,7 +84,7 @@ struct TracingHookSnapshot: Decodable {
 
     /// Compact, human-readable state for a failure message.
     var summary: String {
-        "letter=\(letter) phase=\(phase) probe=\(probe) parked=\(parked) blocked=\(blocked) "
+        "letter=\(letter) phase=\(phase) probe=\(probe) parked=\(parked) blocked=\(blocked) hold=\(orientationHold ?? "-") "
         + "hit=\(checkpointsHit)/\(checkpointsTotal) progress=\(progress) "
         + "trackerComplete=\(trackerComplete) scores=\(scores)"
     }

@@ -981,28 +981,34 @@ jobs:
             else
               echo "ok    study CFBundleDisplayName = $study_name"
             fi
+            # Protocol r30 (David's ruling 2026-11-26, "Real fix + turn prompt"):
+            # every iPad orientation is declared and UIRequiresFullScreen is gone
+            # (deprecated; every build warned). The session is kept landscape at
+            # runtime (StudySceneOrientation.swift: orientation lock + turn prompt).
             study_orientations=$(plist_value "$STUDY" "UISupportedInterfaceOrientations~ipad")
-            if echo "$study_orientations" | grep -q "Portrait"; then
-              echo "FAIL  study UISupportedInterfaceOrientations~ipad allows Portrait:"
+            missing_orientations=""
+            for o in UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown \
+                     UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight; do
+              echo "$study_orientations" | grep -qx "[[:space:]]*$o[[:space:]]*" || missing_orientations="$missing_orientations $o"
+            done
+            if [ -n "$missing_orientations" ]; then
+              echo "FAIL  study UISupportedInterfaceOrientations~ipad lacks:$missing_orientations"
               echo "$study_orientations" | sed 's/^/        /'
-              echo "      A mid-session rotation re-maps checkpoints and changes the"
-              echo "      letter's physical size — the study configuration must be"
-              echo "      landscape-only."
+              echo "      Without UIRequiresFullScreen every orientation must be declared"
+              echo "      (Xcode: \"All interface orientations must be supported\")."
               rc=1
             else
-              echo "ok    study UISupportedInterfaceOrientations~ipad has no Portrait entry:"
+              echo "ok    study UISupportedInterfaceOrientations~ipad declares all four:"
               echo "$study_orientations" | sed 's/^/        /'
             fi
             study_full_screen=$(plist_value "$STUDY" "UIRequiresFullScreen")
-            if [ "$study_full_screen" != "true" ] && [ "$study_full_screen" != "1" ]; then
-              echo "FAIL  study UIRequiresFullScreen is '$study_full_screen', expected true."
-              echo "      Apple now requires an app to either support all four interface"
-              echo "      orientations or set UIRequiresFullScreen — this app deliberately"
-              echo "      does the latter (2026-09-15) since it declares landscape-only"
-              echo "      above; without this key the two conditions contradict each other."
+            if [ -n "$study_full_screen" ]; then
+              echo "FAIL  study UIRequiresFullScreen is present ('$study_full_screen')."
+              echo "      The key is deprecated (TN3192) and every build warns about it;"
+              echo "      the study keeps landscape at runtime instead (protocol r30)."
               rc=1
             else
-              echo "ok    study UIRequiresFullScreen = $study_full_screen"
+              echo "ok    study UIRequiresFullScreen absent"
             fi
             # A26 (audit SURF-2): iPadOS 27 connects a second scene unless the
             # manifest says otherwise (measured). The generated manifest must

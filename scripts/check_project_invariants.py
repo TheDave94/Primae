@@ -4,7 +4,8 @@
 WHY THIS EXISTS. Xcode has repeatedly rewritten Primae/Info.plist and/or
 Primae/Primae.xcodeproj/project.pbxproj on open or save, silently
 discarding decided settings: the study/casual display-name split, the
-landscape-only orientation lock, UIRequiresFullScreen, and once an
+landscape-only orientation lock, UIRequiresFullScreen (both retired by
+protocol r30: every orientation, no key), and once an
 outright iOS 27 deployment-target bump — a study-instrument change nobody
 decided, landed by an editor, not a person.
 
@@ -154,7 +155,12 @@ def upgrade_marker_ok(markers: list) -> bool:
 EXPECTED_DEFAULT_CONFIGURATION = "Release-Study"
 # A27 (audit SURF-3): the study configurations' identity and orientation set.
 EXPECTED_STUDY_BUNDLE_ID = "com.flamingistan.primae.study"
-EXPECTED_IPAD_ORIENTATIONS = ["UIInterfaceOrientationLandscapeLeft",
+# Protocol r30 (David's ruling 2026-11-26, "Real fix + turn prompt"): every
+# iPad orientation, as iOS 27 asks; the session is kept landscape at runtime
+# (StudySceneOrientation.swift) and UIRequiresFullScreen is gone.
+EXPECTED_IPAD_ORIENTATIONS = ["UIInterfaceOrientationPortrait",
+                              "UIInterfaceOrientationPortraitUpsideDown",
+                              "UIInterfaceOrientationLandscapeLeft",
                               "UIInterfaceOrientationLandscapeRight"]
 
 
@@ -302,15 +308,20 @@ def check_pbxproj() -> None:
             f"parser's block pattern may need updating, or a configuration "
             f"was added/removed"))
 
+    # Protocol r30: the deprecated key is gone from EVERY configuration (the
+    # build warns whenever it is present, any value, any target).
+    if "INFOPLIST_KEY_UIRequiresFullScreen" in text:
+        findings.append((PBXPROJ,
+            "UIRequiresFullScreen is set: the key is deprecated and every build "
+            "warns about it; the session is kept landscape at runtime instead "
+            "(protocol r30)"))
+
     for name, body in study_blocks:
         if 'INFOPLIST_KEY_CFBundleDisplayName = "Primae Studie";' not in body:
             findings.append((PBXPROJ,
                 f'{name} (app target) — CFBundleDisplayName is not "Primae '
                 f'Studie" (on-device study/casual distinctness, CLAUDE.md '
                 f'"On-device distinctness")'))
-        if "INFOPLIST_KEY_UIRequiresFullScreen = YES;" not in body:
-            findings.append((PBXPROJ,
-                f"{name} (app target) — UIRequiresFullScreen = YES is missing"))
         if "INFOPLIST_KEY_UIApplicationSceneManifest_Generation = NO;" not in body:
             findings.append((PBXPROJ,
                 f"{name} (app target) — UIApplicationSceneManifest_Generation = NO "
@@ -327,16 +338,12 @@ def check_pbxproj() -> None:
             findings.append((PBXPROJ,
                 f"{name} (app target) — UISupportedInterfaceOrientations_iPad "
                 f"is missing"))
-        elif orientations.group(1).split() != EXPECTED_IPAD_ORIENTATIONS and "Portrait" not in orientations.group(1):
+        elif sorted(orientations.group(1).split()) != sorted(EXPECTED_IPAD_ORIENTATIONS):
             findings.append((PBXPROJ,
                 f'{name} (app target) — iPad orientations are '
-                f'"{orientations.group(1)}", expected exactly {EXPECTED_IPAD_ORIENTATIONS}'))
-        elif "Portrait" in orientations.group(1):
-            findings.append((PBXPROJ,
-                f'{name} (app target) — iPad orientations include Portrait '
-                f'("{orientations.group(1)}"); the study configuration is '
-                f"landscape-only (a mid-session rotation re-maps checkpoints "
-                f"and changes the letter's physical size)"))
+                f'"{orientations.group(1)}", expected all four {EXPECTED_IPAD_ORIENTATIONS} '
+                f"(without UIRequiresFullScreen, Xcode warns \"All interface "
+                f"orientations must be supported\" otherwise; protocol r30)"))
 
 
 def check_scheme_wiring() -> None:

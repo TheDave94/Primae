@@ -68,9 +68,10 @@ nonisolated enum SessionEndConfetti {
 }
 
 /// The end screen's composition size and how far it must shrink to fit a
-/// scene (defence in depth, docs/DECISIONS.md "Rotation and
-/// UIRequiresFullScreen": an iPadOS that ignores the deprecated key could
-/// give the scene less than a full landscape screen). A value, so the decision is
+/// scene (defence in depth, docs/DECISIONS.md "Landscape without
+/// UIRequiresFullScreen": a window could give the scene less than a full
+/// landscape screen; the session is held under the turn prompt then, but
+/// the end screen is drawn either way). A value, so the decision is
 /// testable without rendering.
 nonisolated enum SessionEndLayout {
     static let cardSide: CGFloat = 168

@@ -354,6 +354,7 @@ struct TracingGeometryTestHookView: View {
             "phase": vm.learningPhase.rawName,
             "parked": vm.launchParked,
             "blocked": vm.sessionBlockReason != nil,
+            "orientationHold": vm.orientationHold.rawValue,
             "probe": vm.currentProbe?.rawValue ?? "",
             "canvas": [r1(canvasFrame.minX), r1(canvasFrame.minY),
                        r1(canvasFrame.width), r1(canvasFrame.height)],

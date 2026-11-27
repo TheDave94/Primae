@@ -91,10 +91,10 @@ final class StrokeTracker {
     /// and falls back to `load`, which starts over. Returns whether the
     /// progress was kept.
     ///
-    /// Why (defence in depth, docs/DECISIONS.md "Rotation and
-    /// UIRequiresFullScreen"): the study build is landscape-only and full
-    /// screen, but Apple has deprecated that key (TN3192), and an iPadOS that
-    /// ignores it can resize or rotate the scene mid-letter. `load` used to run on
+    /// Why (defence in depth, docs/DECISIONS.md "Landscape without
+    /// UIRequiresFullScreen"): the study session is held landscape at runtime
+    /// (protocol r30), but the lock is a preference the system may decline,
+    /// and a scene can be resized or rotated mid-letter. `load` used to run on
     /// every canvas resize and reset all progress, so a rotation mid-trace
     /// sent the child back to stroke 1.
     @discardableResult

@@ -2,13 +2,12 @@
 // PrimaeNativeTests
 //
 // Defence in depth for a canvas that changes size mid-letter. The study
-// build stays landscape-only and full screen (UIRequiresFullScreen = YES,
-// David's ruling A, 2026-11-25; docs/DECISIONS.md "Rotation and
-// UIRequiresFullScreen"), measured to keep the session landscape on
-// iPadOS 27.3. Apple has deprecated the key (TN3192), so if a later iPadOS
-// stops honouring it these decisions keep a resized session correct; in a
-// full-screen landscape session they change nothing (the golden tests pin
-// that):
+// session stays landscape and full screen at runtime (protocol r30, David's
+// ruling 2026-11-26; docs/DECISIONS.md "Landscape without
+// UIRequiresFullScreen": orientation lock + turn prompt). The lock is a
+// preference the system may decline, so these decisions keep a resized
+// session correct; in a full-screen landscape session they change nothing
+// (the golden tests pin that):
 //  - CanvasResizeRemap: where pre-resize ink belongs after the resize;
 //  - PrimaeLetterRenderer.glyphFit: the letter fits a narrow canvas, and
 //    is unchanged wherever the old placement already fitted;

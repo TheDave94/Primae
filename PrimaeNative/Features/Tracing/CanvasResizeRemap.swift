@@ -4,10 +4,10 @@
 // Where a canvas-space point drawn before a canvas resize belongs after it.
 //
 // Ink (`activePath`, `lingeringInk`, the freeWrite recorder's points) is
-// stored in canvas POINTS. The study build is landscape-only and full
-// screen, but if an iPadOS ignores the deprecated UIRequiresFullScreen the
+// stored in canvas POINTS. The study session is held landscape at runtime
+// (protocol r30), but the lock is a preference the system may decline, so the
 // scene can be resized or rotated mid-letter (defence in depth;
-// docs/DECISIONS.md, "Rotation and UIRequiresFullScreen"), and the letter is re-laid-out for the
+// docs/DECISIONS.md, "Landscape without UIRequiresFullScreen"), and the letter is re-laid-out for the
 // new canvas. Without a remap the child's ink stays where it was while the
 // letter moves and changes size under it, and the freeWrite score compares
 // old-frame points against the new canvas size.

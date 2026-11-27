@@ -18,6 +18,10 @@ enum SessionInterruption: Hashable {
     /// ruling B1, 2026-11-02, protocol r16): the letter freezes behind the
     /// stop and a re-plug resumes it, an observe from its cue.
     case headphones
+    /// The scene is portrait or does not fill the screen (protocol r30):
+    /// the turn prompt covers the child's screen until the iPad is turned
+    /// to landscape (`TracingViewModel.sceneShapeDidChange`).
+    case orientation
 }
 
 /// Interruptions and resumptions, at their (low) frequency.

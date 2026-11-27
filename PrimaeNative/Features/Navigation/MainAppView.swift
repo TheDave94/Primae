@@ -77,12 +77,26 @@ public struct MainAppView: View {
                 mainShell
             }
             #endif
+            // Protocol r30: the turn prompt covers everything, the rail
+            // included, while the scene is portrait or windowed; the session
+            // is suspended under it (`TracingViewModel.sceneShapeDidChange`).
+            if vm.orientationHold != .none {
+                TurnDevicePromptView(hold: vm.orientationHold)
+                    .transition(.opacity)
+            }
             // Test-only readout, at the ROOT and above everything.
             // MEASURED: layered inside `mainShell` it never reached the
             // accessibility tree; at the root it does. DEBUG-only, so the
             // pilot artefact does not compile it at all.
             audioSignalProbeReadout
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: vm.orientationHold)
+        // Reads the window scene's shape and holds the landscape lock
+        // (protocol r30; StudySceneOrientation.swift). Behind everything, at
+        // the root's size, so every scene resize lays it out.
+        .background(StudySceneOrientationAttacher { isLandscape, fillsScreen in
+            vm.sceneShapeDidChange(isLandscape: isLandscape, fillsScreen: fillsScreen)
+        })
     }
 
     /// The rail + world shell. Extracted so the onboarding branch above can

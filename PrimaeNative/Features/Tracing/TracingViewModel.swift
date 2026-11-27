@@ -114,8 +114,8 @@ public final class TracingViewModel {
         didSet {
             guard oldValue != canvasSize,
                   !letters.isEmpty, letterIndex < letters.count else { return }
-            // A resize or rotation mid-letter (defence in depth: only if an
-            // iPadOS ignores UIRequiresFullScreen; docs/DECISIONS.md):
+            // A resize or rotation mid-letter (defence in depth: the
+            // landscape lock is a preference, protocol r30; docs/DECISIONS.md):
             // carry the child's ink onto the letter's new place, so it
             // stays on the letter and the freeWrite score sees one frame.
             remapInkForCanvasResize(from: oldValue, to: canvasSize)
@@ -3175,6 +3175,31 @@ public final class TracingViewModel {
     func parentAreaDidOpen() { beginInterruption(.parentArea) }
     func parentAreaDidClose() { endInterruption(.parentArea) }
 
+    // MARK: - Orientation hold (protocol r30)
+
+    /// Why the scene's shape holds the session (`StudyOrientationGate`):
+    /// `.none` while the scene is landscape and fills the screen. The root
+    /// view shows the turn prompt while it is not `.none`.
+    private(set) var orientationHold: StudyOrientationGate.Hold = .none
+
+    /// The scene's shape changed (`StudySceneOrientationAttacher`). A
+    /// portrait or windowed scene suspends the session like any other
+    /// interruption (`.orientation`): the stroke under the pen is cancelled,
+    /// sound and voice stop, the active-time clock stops and touches are
+    /// ignored; a landscape scene that fills the screen resumes it.
+    func sceneShapeDidChange(isLandscape: Bool, fillsScreen: Bool) {
+        let hold = StudyOrientationGate.hold(sceneIsLandscape: isLandscape,
+                                             sceneFillsScreen: fillsScreen)
+        guard hold != orientationHold else { return }
+        orientationHold = hold
+        lifecycleLogger.info("Orientation hold \(hold.rawValue, privacy: .public)")
+        if hold == .none {
+            endInterruption(.orientation)
+        } else {
+            beginInterruption(.orientation)
+        }
+    }
+
     // MARK: - Phase-entry prompt (R-029)
 
     /// R-029 (audit 2026-10-13, H2-18): at a phase transition the arm's
@@ -4988,8 +5013,8 @@ public final class TracingViewModel {
         let key = CheckpointBuildKey(letter: letter.name, size: effectiveSize, schriftArt: schriftArt, showingVariant: showingVariant)
         if key == lastCheckpointKey, strokeTracker.definition != nil { return }
         // Same letter, script and variant, only the canvas size moved: a
-        // scene resize or rotation (defence in depth: only if an iPadOS
-        // ignores UIRequiresFullScreen; docs/DECISIONS.md). The checkpoints are
+        // scene resize or rotation (defence in depth: the landscape lock is a
+        // preference, protocol r30; docs/DECISIONS.md). The checkpoints are
         // re-mapped for the new geometry but the child's progress is kept
         // (`StrokeTracker.replaceGeometry`); before 2026-11-24 a resize
         // re-loaded the tracker and sent the child back to stroke 1.

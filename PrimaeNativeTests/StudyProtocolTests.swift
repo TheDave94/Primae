@@ -35,10 +35,22 @@ import Foundation
 
     @Test("every merged revision names its PR and its merge time")
     func mergedRevisionsAreDated() {
-        // Only the newest revision may still be unmerged.
-        for entry in StudyProtocol.history.dropLast() {
+        // Only the newest revision may still be unmerged, apart from a
+        // number that never shipped (r29), which can have neither.
+        for entry in StudyProtocol.history.dropLast() where !entry.neverShipped {
             #expect(entry.mergedAtUTC != nil && entry.pullRequest != nil,
                     "revision \(entry.revision) is not the newest but has no merge date or PR")
+        }
+    }
+
+    @Test("a never-shipped number is not the current revision and has no merge date or PR")
+    func neverShippedNumbersAreNotRecorded() {
+        let skipped = StudyProtocol.history.filter(\.neverShipped)
+        #expect(skipped.map(\.revision) == [29], "only r29 (IOS27WIN, reverted by ruling A) never shipped")
+        for entry in skipped {
+            #expect(entry.revision != StudyProtocol.revision, "the build would record a number that never shipped")
+            #expect(entry.mergedAtUTC == nil && entry.pullRequest == nil,
+                    "revision \(entry.revision) is marked never shipped but has a merge date or PR")
         }
     }
 

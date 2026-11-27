@@ -334,9 +334,9 @@ public enum PrimaeLetterRenderer {
     /// 0.701 em, measured with CoreText 2026-11-24). Landscape, square
     /// and full-screen portrait canvases are all wider than that, so their
     /// geometry is bit-identical; the cap exists for the narrow scenes
-    /// an iPadOS that ignores the deprecated UIRequiresFullScreen could
-    /// produce (defence in depth; docs/DECISIONS.md, "Rotation and
-    /// UIRequiresFullScreen"), where
+    /// a window or a declined orientation lock could produce (defence in
+    /// depth; docs/DECISIONS.md, "Landscape without UIRequiresFullScreen"),
+    /// where
     /// the glyph used to run off the canvas edge.
     static func glyphFit(canvasSize: CGSize, pad: CGFloat,
                          ascent: CGFloat, descent: CGFloat,

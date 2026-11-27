@@ -305,8 +305,11 @@ empty runtime-issue summaries (no Hang Risk); mutation checks 5/11, 4/43 and 4/1
    `Documents/popcap/sdk27siri-*/events.tsv` with `xcrun devicectl device copy from`, and check: a
    `session.inactive source=2` while sounding, the voice stopped, and resumption only after
    `recommendation=1`.
-2. **`UIRequiresFullScreen`** (Info.plist, deprecated in iOS 26) stays on purpose until the OS ignores it
-   (DECISIONS "SDK27" item 6).
+2. **`UIRequiresFullScreen`: removed (protocol r30, David's ruling 2026-11-26, "Real fix + turn prompt").** All
+   four iPad orientations are declared; the session is kept landscape at runtime (orientation lock) and a portrait
+   or windowed scene holds it under the turn prompt. Zero build warnings. Re-run `SceneResizeUITests` on every
+   iPadOS update of the study iPad; keep the iPad on Full Screen Apps (DECISIONS "Landscape without
+   UIRequiresFullScreen").
 3. **By ear, in each arm (phoneme, spatial, silent), on the integration build.** Not possible from a seat;
    owned by INTEG's per-arm walk-through.
 
