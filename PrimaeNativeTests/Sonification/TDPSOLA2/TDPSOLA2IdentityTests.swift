@@ -117,6 +117,20 @@ nonisolated struct TDPSOLA2IdentityTests {
         let d = Self.firstDifference(shipped, SonificationDriver.steady(r, seconds: 3, rate: 1, cents: 0))
         #expect((d == nil) == !moved, "\(name): marks moved \(moved), first difference \(d ?? -1); \(r.epochReport?.reason ?? "-")")
     }
+
+    /// FOLLOWUP-r31 (item 4): A1 (`R20StageMeasurementTests`) gives each of its drivers twins of one renderer per sound
+    /// instead of building a fresh renderer per driver. That measures the same object only if a twin renders what a
+    /// fresh production renderer renders, bit for bit, from a fresh start.
+    @Test("a twin renders what a fresh production renderer renders, bit for bit, under a rate + pitch + gate drive",
+          arguments: ["A_phoneme1", "spatial_carrier"])
+    func twinIsAFreshRenderer(name: String) throws {
+        let s = try StudySources.load(name)
+        let sc = Self.script(sampleRate: C1Make.sr)
+        let fresh = LiveSonificationAudio.makeRenderer(s.sonificationSource)
+        let twin = LiveSonificationAudio.makeRenderer(s.sonificationSource).twin(source: s.samples)
+        let d = Self.firstDifference(Self.drive(fresh, sc), Self.drive(twin, sc))
+        #expect(d == nil, "\(name): first difference at frame \(d ?? -1)")
+    }
 }
 
 @Suite("C1 TDPSOLA2: the device renders what the lane's macOS driver rendered")

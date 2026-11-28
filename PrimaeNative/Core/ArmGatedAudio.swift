@@ -89,6 +89,10 @@ final class ArmGatedAudio: AudioControlling {
     func stop() { live.stop() }
     func stop(fadeOutSeconds: TimeInterval) { live.stop(fadeOutSeconds: fadeOutSeconds) }
     func restart() { live.restart() }
+    func whenRendererReady(forFile fileName: String, _ ready: @escaping @MainActor () -> Void) {
+        live.whenRendererReady(forFile: fileName, ready)
+    }
+    func prioritizeRenderer(forFile fileName: String) { live.prioritizeRenderer(forFile: fileName) }
     func suspendForLifecycle() { live.suspendForLifecycle() }
     func resumeAfterLifecycle() { live.resumeAfterLifecycle() }
     func cancelPendingLifecycleWork() { live.cancelPendingLifecycleWork() }

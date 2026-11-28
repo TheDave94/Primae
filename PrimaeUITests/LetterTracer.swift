@@ -73,6 +73,8 @@ struct TracingHookSnapshot: Decodable {
     let trackerComplete: Bool
     let scores: [String: Double]
     let completed: [CompletedLetter]
+    /// The main mixer's latest buffer peak (linear), present only under `-popCapture` (FOLLOWUP-r31, R-072).
+    let mixerPeak: Double?
 
     var checkpointsHit: Int {
         zip(strokes, progress).reduce(0) { acc, pair in

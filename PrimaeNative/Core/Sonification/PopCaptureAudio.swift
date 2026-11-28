@@ -55,6 +55,11 @@ final class PopCaptureAudio: AudioControlling {
     func stop() { cap.event("audio.stop"); inner.stop() }
     func stop(fadeOutSeconds: TimeInterval) { cap.event("audio.stop", "fade=\(fadeOutSeconds)"); inner.stop(fadeOutSeconds: fadeOutSeconds) }
     func restart() { cap.event("audio.restart"); inner.restart() }
+    func whenRendererReady(forFile fileName: String, _ ready: @escaping @MainActor () -> Void) {
+        cap.event("audio.awaitRenderer", "file=\(fileName)")
+        inner.whenRendererReady(forFile: fileName) { [cap] in cap.event("audio.rendererReady", "file=\(fileName)"); ready() }
+    }
+    func prioritizeRenderer(forFile fileName: String) { inner.prioritizeRenderer(forFile: fileName) }
     func suspendForLifecycle() { cap.event("audio.suspend"); inner.suspendForLifecycle() }
     func resumeAfterLifecycle() { cap.event("audio.resume"); inner.resumeAfterLifecycle() }
     func cancelPendingLifecycleWork() { inner.cancelPendingLifecycleWork() }

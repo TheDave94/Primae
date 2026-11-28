@@ -44,6 +44,14 @@ protocol AudioControlling: AnyObject {
     /// ENV3: stop with a SHORT raised-cosine fade (the letter's last stroke reached its end). Default: the ordinary `stop()`.
     func stop(fadeOutSeconds: TimeInterval)
     func restart()
+    /// RENDERFREEZE2 (2026-11-28): calls `ready` on the main actor once `fileName` can sound at once: at once when
+    /// nothing has to be prepared, else once its renderer is built (the live voice builds it off the main thread).
+    /// The study's observe demonstration starts the dot and the sound together only then, so the sound tracks the
+    /// dot from its first frame. Declared as a requirement (the dispatch trap below); default: `ready()` at once.
+    func whenRendererReady(forFile fileName: String, _ ready: @escaping @MainActor () -> Void)
+    /// RENDERFREEZE2: `fileName` is the next one a load will ask for (the session's next letter): the launch
+    /// prewarm builds its renderer before the others it has not built yet. Default: nothing to prepare.
+    func prioritizeRenderer(forFile fileName: String)
     func suspendForLifecycle()
     func resumeAfterLifecycle()
     func cancelPendingLifecycleWork()
@@ -128,6 +136,10 @@ extension AudioControlling {
 
     /// Default letter-end stop: the ordinary stop (only the live voice implements the short fade).
     func stop(fadeOutSeconds: TimeInterval) { stop() }
+
+    /// Nothing to prepare (test doubles, `SilentAudio`, the r16 engine): ready at once.
+    func whenRendererReady(forFile fileName: String, _ ready: @escaping @MainActor () -> Void) { ready() }
+    func prioritizeRenderer(forFile fileName: String) {}
 
     /// TEST-ONLY: report measured output level for the window just ended,
     /// tagged with `label` (the phase). Default no-op so nothing but the

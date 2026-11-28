@@ -45,11 +45,14 @@ nonisolated enum R20 {
         private(set) var starts: [Int] = []
         private var k = 0
 
-        init(source: StudySource, pattern: Pattern = .ipad, open: Bool = true,
+        /// `prototype`: a renderer of `source` already built; the driver plays twins of it (the same analysis, no
+        /// rebuild: a twin renders what a fresh renderer renders, `TDPSOLA2IdentityTests.twinIsAFreshRenderer`).
+        init(source: StudySource, pattern: Pattern = .ipad, open: Bool = true, prototype: TDPSOLA2? = nil,
              make: () -> LiveSonificationKernel = { LiveSonificationKernel() }) {
             kernel = make()
             self.pattern = pattern
-            let (a, b) = LiveSonificationAudio.makeRendererPair(source.sonificationSource)
+            let (a, b) = prototype.map { ($0.twin(source: source.samples), $0.twin(source: source.samples)) }
+                ?? LiveSonificationAudio.makeRendererPair(source.sonificationSource)
             let slot = kernel.register(a, twin: b, gain: 1)!
             if open { kernel.open(slot: slot, fadeInFrames: 0) }
             self.slot = slot

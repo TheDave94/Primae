@@ -306,7 +306,7 @@ final class HostSpy: AudioControlling {
         #expect(!r.kernel.gateRequested)
     }
 
-    @Test("letter change: loading another letter's file while sounding ducks it; the next play is the new file")
+    @Test("letter change: loading another letter's file while sounding ends it (the stop fade); the next play is the new file")
     func letterChange() {
         let r = Rig()
         r.voice.loadAudioFile(named: "a", autoplay: true)
@@ -317,6 +317,113 @@ final class HostSpy: AudioControlling {
         #expect(r.sound() == 0)
         r.voice.play()
         #expect(r.sound() > 0.01)
+    }
+
+    /// Renders `seconds` of the voice and returns every sample.
+    static func render(_ r: Rig, _ seconds: Double) -> [Float] {
+        let n = Int(seconds * sr)
+        var y = [Float](repeating: 0, count: n)
+        var pos = 0
+        y.withUnsafeMutableBufferPointer { b in
+            while pos < n { let k = min(256, n - pos); r.kernel.render(into: b.baseAddress! + pos, frames: k); pos += k }
+        }
+        return y
+    }
+
+    /// The letter switch as the view model performs it (`load(letter:)`: the new letter's file without autoplay,
+    /// then `playback.request(.idle)`, which reaches `stop()`), while `from` is sounding, with the production stop
+    /// fade (0.4 s). Returns the 0.6 s after the switch.
+    static func switchWhileSounding(from: String, to: String) -> [Float] {
+        let r = Rig(fade: 0.4)
+        r.voice.loadAudioFile(named: from, autoplay: true)
+        _ = render(r, 0.3)
+        r.voice.loadAudioFile(named: to, autoplay: false)
+        r.voice.stop()
+        return render(r, 0.6)
+    }
+
+    static func windowRMS(_ y: [Float], from t0: Double, to t1: Double) -> Double {
+        SonificationMetrics.rms(y[Int(t0 * sr)..<Int(t1 * sr)])
+    }
+
+    @Test("FOLLOWUP-r31: a letter switch while sounding ends the sound with the stop fade in both arms (phoneme: another slot; spatial: the same slot)")
+    func letterSwitchFadesLikeTheSharedSlot() {
+        let phoneme = Self.switchWhileSounding(from: "a", to: "m")   // the phoneme arm: each letter its own file and slot
+        let spatial = Self.switchWhileSounding(from: "a", to: "a")   // the spatial arm: one shared carrier
+        let start = Self.windowRMS(spatial, from: 0, to: 0.02)
+        #expect(start > 0.05, "the reference switch must start from a sounding voice")
+        // The stop fade is linear over 0.4 s: at 0.15-0.2 s the gain is still about 0.5-0.6.
+        let mid = Self.windowRMS(phoneme, from: 0.15, to: 0.2)
+        #expect(mid > 0.3 * start, "the phoneme arm's letter switch cut the sound (rms \(mid) at 0.15-0.2 s, start \(start))")
+        // The same envelope as the shared slot's, window by window.
+        var t = 0.0
+        while t < 0.4 {
+            let p = Self.windowRMS(phoneme, from: t, to: t + 0.05), s = Self.windowRMS(spatial, from: t, to: t + 0.05)
+            #expect(abs(p - s) <= 0.1 * max(s, 1e-3) + 1e-4, "envelope differs at \(t) s: phoneme \(p), spatial \(s)")
+            t += 0.05
+        }
+        #expect(Self.windowRMS(phoneme, from: 0.45, to: 0.6) == 0, "the fade must end in silence")
+    }
+
+    @Test("FOLLOWUP-r31: a play right after a switch crosses over to the new file at once (the open outranks the fade)")
+    func switchThenPlayStartsTheNewFile() {
+        let r = Rig(fade: 0.4)
+        r.voice.loadAudioFile(named: "a", autoplay: true)
+        _ = Self.render(r, 0.3)
+        r.voice.loadAudioFile(named: "m", autoplay: true)
+        #expect(r.voice.isPlaying)
+        #expect(r.kernel.requestedSlot != LiveSonificationKernel.noSlot)
+        let y = Self.render(r, 0.3)
+        // WHICH file sounds: "m" is a 150 Hz tone, "a" 200 Hz (`Rig`). Count rising zero crossings over the last
+        // 0.1 s, after the crossover: about 15 for m, about 20 for a.
+        let tail = Array(y[Int(0.2 * Self.sr)...])
+        #expect(SonificationMetrics.rms(tail[...]) > 0.05, "the new file must sound")
+        let rising = (1..<tail.count).filter { tail[$0 - 1] < 0 && tail[$0] >= 0 }.count
+        #expect((13...17).contains(rising), "the 150 Hz file must sound, not the 200 Hz one: \(rising) rising crossings in 0.1 s")
+    }
+
+    /// R072FIX. Mutation check: move the switch's close back after `source(named:)` / `slot(for:)` in
+    /// `loadAudioFile` — RED (the gate is still open while the new file resolves).
+    @Test("R072FIX: a switch closes the sounding voice BEFORE the new file is resolved and its renderer built")
+    func switchClosesBeforeTheNewFileResolves() {
+        var gateOpenAtResolve: [String: Bool] = [:]
+        var kernelRef: LiveSonificationKernel?
+        let sources = ["a": Self.tone("a"), "m": Self.tone("m", hz: 150)]
+        let kernel = LiveSonificationKernel()
+        kernelRef = kernel
+        let voice = LiveSonificationAudio(host: HostSpy(), output: FakeLiveOutput(), kernel: kernel,
+                                          fadeOutSeconds: 0.4, observeSession: false,
+                                          sourceKey: { $0 },
+                                          resolve: { name, _ in
+                                              gateOpenAtResolve[name] = kernelRef?.gateRequested ?? false
+                                              return sources[name]
+                                          })
+        voice.loadAudioFile(named: "a", autoplay: true)
+        #expect(kernel.gateRequested, "precondition: a sounds")
+        voice.loadAudioFile(named: "m", autoplay: false)
+        #expect(gateOpenAtResolve["m"] == false,
+                "the old sound was still open while the new file resolved (main-thread work before the fade)")
+        #expect(voice.switchFadeRunning, "the switch must end the old sound with the stop fade, not the duck")
+    }
+
+    /// The view model's order at a letter switch during the observe sound (R072FIX): `stop()`, then the next
+    /// letter's load, then possibly the idle `stop()`. Mutation check: delete the `isFadingOut` line at the top of
+    /// `loadAudioFile` — RED for the shared slot (the second stop ducks the fade).
+    @Test("R072FIX: stop, then a load (same or another file), then a stop: the standing fade runs out undisturbed",
+          arguments: ["a", "m"])
+    func stopLoadStopKeepsTheFade(next: String) {
+        let r = Rig(fade: 0.4)
+        r.voice.loadAudioFile(named: "a", autoplay: true)
+        _ = Self.render(r, 0.3)
+        r.voice.stop()
+        r.voice.loadAudioFile(named: next, autoplay: false)
+        r.voice.stop()
+        let y = Self.render(r, 0.6)
+        let start = Self.windowRMS(y, from: 0, to: 0.02)
+        #expect(start > 0.05, "the switch must start from a sounding voice")
+        let mid = Self.windowRMS(y, from: 0.15, to: 0.2)
+        #expect(mid > 0.3 * start, "next \(next): the fade was cut (rms \(mid) at 0.15-0.2 s, start \(start))")
+        #expect(Self.windowRMS(y, from: 0.45, to: 0.6) == 0, "the fade must end in silence")
     }
 
     @Test("a reload of the same file does not stop the sound (the r7 lift-hold case)")
@@ -393,6 +500,55 @@ final class HostSpy: AudioControlling {
         #expect(rig.voice.mainActorBuilds == 0, "the load must take the prewarmed pair")
         #expect(rig.voice.prewarmed.count == 0)
         #expect(rig.sound() > 0.01, "and the taken pair must sound")
+    }
+
+    /// FOLLOWUP-r31: a voice whose resolve takes `decodeSeconds` (a decode and resample on the calling thread)
+    /// and counts its calls.
+    final class SlowResolve: @unchecked Sendable {
+        var calls = 0
+        let decodeSeconds: Double
+        init(decodeSeconds: Double) { self.decodeSeconds = decodeSeconds }
+        func resolve(_ name: String) -> SonificationSource? {
+            calls += 1
+            Thread.sleep(forTimeInterval: decodeSeconds)
+            return LiveSonificationAudioTests.tone(name)
+        }
+    }
+
+    @Test("FOLLOWUP-r31: a load takes the source the prewarm decoded; it does not decode again on the main actor")
+    func loadTakesThePrewarmedSource() {
+        let slow = SlowResolve(decodeSeconds: 0.2)
+        let voice = LiveSonificationAudio(host: HostSpy(), output: FakeLiveOutput(), kernel: LiveSonificationKernel(),
+                                          fadeOutSeconds: 0.05, observeSession: false,
+                                          sourceKey: { $0 },
+                                          resolve: { name, _ in slow.resolve(name) })
+        let a = LiveSonificationAudioTests.tone("a")
+        voice.prewarmed.putSource(a)   // as the launch prewarm publishes both: the source, then its renderer pair
+        voice.prewarmed.put(a.key, LiveSonificationAudio.makeRendererPair(a))
+        let t0 = DispatchTime.now().uptimeNanoseconds
+        voice.loadAudioFile(named: "a", autoplay: false)
+        let ms = Double(DispatchTime.now().uptimeNanoseconds - t0) / 1e6
+        #expect(slow.calls == 0, "the load decoded the file again")
+        #expect(voice.loadedKey == "a")
+        #expect(voice.mainActorBuilds == 0)
+        #expect(ms < 100, "the load held the main actor \(ms) ms (the resolve alone takes 200 ms)")
+        // A source the prewarm did not decode still resolves.
+        voice.loadAudioFile(named: "m", autoplay: false)
+        #expect(slow.calls == 1)
+        #expect(voice.loadedKey == "m")
+    }
+
+    @Test("FOLLOWUP-r31: a source decoded at another rate (before a re-rate) is not taken")
+    func prewarmedSourceAtAnotherRateIsNotTaken() {
+        let slow = SlowResolve(decodeSeconds: 0)
+        let voice = LiveSonificationAudio(host: HostSpy(), output: FakeLiveOutput(),
+                                          kernel: LiveSonificationKernel(sampleRate: 48_000),
+                                          fadeOutSeconds: 0.05, observeSession: false,
+                                          sourceKey: { $0 },
+                                          resolve: { name, _ in slow.resolve(name) })
+        voice.prewarmed.putSource(LiveSonificationAudioTests.tone("a"))   // 44.1 kHz
+        voice.loadAudioFile(named: "a", autoplay: false)
+        #expect(slow.calls == 1)
     }
 
     @Test func withoutAPrewarmedPairTheLoadStillWorksAndCountsTheMainBuild() {

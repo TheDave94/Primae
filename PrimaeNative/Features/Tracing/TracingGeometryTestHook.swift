@@ -364,6 +364,8 @@ struct TracingGeometryTestHookView: View {
             "progress": tracker.progress.map { [$0.nextCheckpoint, $0.complete ? 1 : 0] },
             "trackerComplete": tracker.isComplete,
         ]
+        // FOLLOWUP-r31 (R-072): the main mixer's level now, so a test can act while the arm's sound plays.
+        if let cap = PopCapture.armed, cap.mixerTapInstalled { dict["mixerPeak"] = Double(cap.recentMixerPeak) }
         var scores: [String: Double] = [:]
         for (phase, score) in vm.phaseScores { scores[phase.rawName] = Double(score) }
         dict["scores"] = scores

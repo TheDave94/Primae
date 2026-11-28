@@ -513,7 +513,12 @@ final class AudioEngineTests: XCTestCase {
         XCTAssertFalse(voice.isPlaying, "the voice cannot sound before the engine runs")
         await host.startGate.settle()
         XCTAssertTrue(host.debugIsEngineRunning)
-        XCTAssertTrue(voice.isPlaying, "the autoplay load must sound once the engine runs")
+        // RENDERFREEZE (2026-11-28): the carrier's renderer is built off the main thread (0.63 s on the iPad when
+        // the launch prewarm has not built it), so the autoplay sounds once the engine runs AND the renderer is
+        // registered. Bounded at 60 s (Debug-Study, -Onone).
+        for _ in 0..<1200 where !voice.awaitingRenderers.isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
+        XCTAssertTrue(voice.awaitingRenderers.isEmpty, "the carrier's renderer was never registered")
+        XCTAssertTrue(voice.isPlaying, "the autoplay load must sound once the engine runs and the renderer is ready")
         XCTAssertEqual(host.startGate.activationCount, 1, "the host's launch start and the voice's must share ONE activation")
         XCTAssertEqual(host.startGate.startCount, 1)
         voice.stop()

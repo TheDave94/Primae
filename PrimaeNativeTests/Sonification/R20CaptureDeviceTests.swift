@@ -195,6 +195,16 @@ nonisolated struct R20PenScript {
         var length: CGFloat = 0
         for i in 1..<path.count { length += hypot(path[i].x - path[i-1].x, path[i].y - path[i-1].y) }
         let gatePt = vm.strokeGateRadius() * fr.height
+        // INTEG-R32B (2026-11-28): from r32 (RENDERFREEZE) a load builds a renderer the prewarm has not built OFF the main
+        // thread (I's phoneme: ~5 s under Debug-Study), and the voice sounds only once it is registered. The app's observe
+        // phase waits for it before guided; this capture starts in guided, so it waits here, or the pen runs in silence
+        // (the phoneme captures read peak 0.0 on 0d92ddd8).
+        if let file = vm.activeAudioFiles(for: vm.letters[vm.letterIndex]).first {
+            var ready = false
+            voice.whenRendererReady(forFile: file) { ready = true }
+            for _ in 0..<1200 where !ready { await Self.sleep(0.1) }
+            XCTAssertTrue(ready, "\(kind.rawValue) \(arm): the renderer for \(file) was not ready within 120 s")
+        }
         await Self.sleep(1.5)
 
         func pose(_ t: Double) -> (CGPoint, CGFloat?) {

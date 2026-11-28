@@ -76,11 +76,16 @@ struct AudioSignalProbeTests {
         // that the call RETURNS, and a crash inside the handler takes the
         // whole process down before any expectation could be reported.
         let ran = DispatchSemaphore(value: 0)
-        Thread.detachNewThread {
+        let worker = Thread {
             XCTAssertFalse(Thread.isMainThread)
             handler(Self.readOnlyView(buffer), AVAudioTime())
             ran.signal()
         }
+        // The wait below blocks a user-interactive thread; a default-QoS
+        // worker made that a priority inversion, which the runtime reports
+        // as a warning in the result bundle (INTEG-R32, 2026-11-28).
+        worker.qualityOfService = .userInteractive
+        worker.start()
         #expect(ran.wait(timeout: .now() + 5) == .success)
 
         // Not just "it did not crash": the samples it was handed were

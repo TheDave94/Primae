@@ -141,6 +141,9 @@ nonisolated final class PopCapture: @unchecked Sendable {
     /// timeline (`TracingSessionTimeline`), which attributes it to the stage
     /// on screen. A measurement aid only: nothing in the app reads it.
     private let mixerPeakBits = Atomic<UInt32>(0)
+    /// FOLLOWUP-r31 (R-072): the peak of the LAST mixer-tap buffer (Float bits), not reset by a read, so the UI test
+    /// hook can tell a sounding voice from silence at the moment it looks (`TracingGeometryTestHookView`).
+    private let lastBufferPeakBits = Atomic<UInt32>(0)
 
     private init() {
         let tag = Self.argument("-popCaptureTag") ?? "run"
@@ -230,10 +233,14 @@ nonisolated final class PopCapture: @unchecked Sendable {
         Float(bitPattern: mixerPeakBits.exchange(0, ordering: .relaxed))
     }
 
+    /// The peak of the most recent mixer-tap buffer (about 21 ms at 48 kHz); 0 before the tap runs.
+    var recentMixerPeak: Float { Float(bitPattern: lastBufferPeakBits.load(ordering: .relaxed)) }
+
     private func notePeak(_ samples: UnsafePointer<Float>, _ n: Int) {
         var p: Float = 0
         var i = 0
         while i < n { let v = abs(samples[i]); if v > p { p = v }; i += 1 }
+        lastBufferPeakBits.store(p.bitPattern, ordering: .relaxed)
         var cur = mixerPeakBits.load(ordering: .relaxed)
         while Float(bitPattern: cur) < p {
             let (done, seen) = mixerPeakBits.compareExchange(expected: cur, desired: p.bitPattern, ordering: .relaxed)

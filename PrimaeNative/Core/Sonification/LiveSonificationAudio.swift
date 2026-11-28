@@ -88,6 +88,10 @@ final class LiveSonificationAudio: AudioControlling {
     /// Resolves a file name to a decoded source at a rate (production: bundle + decode at the kernel's rate +
     /// loudness gain; tests: synthetic sources).
     private let resolve: (String, Double) -> SonificationSource?
+    /// FOLLOWUP-r31: a file name's source cache key without decoding it (production: the bundle URL, symlinks
+    /// resolved), so a load can find the source the launch prewarm already decoded off the main thread. Nil: the
+    /// voice always resolves (the tests' synthetic sources).
+    private let sourceKey: (String) -> String?
     /// r31 (PITCHWIN): the session's output rate, read OFF the main thread (`performSessionWork`, ordered after an
     /// activation) after the launch activation and after every route change. Nil: the voice never re-rates.
     private let outputRate: (@Sendable () -> Double)?
@@ -110,8 +114,31 @@ final class LiveSonificationAudio: AudioControlling {
     private var slots: [String: UInt32] = [:]
     /// Pairs built by the launch prewarm and not yet registered.
     private(set) var prewarmed = PrewarmedRenderers()
-    /// Renderer pairs this instance had to build on the main actor (a load that beat the prewarm).
+    /// Renderer pairs this instance had to build on the main actor (a load that beat the prewarm). RENDERFREEZE:
+    /// zero in production, where a load's own build runs off the main thread (`offMainRendererBuild`).
     private(set) var mainActorBuilds = 0
+    /// RENDERFREEZE (2026-11-28): where a load's own renderer build runs (production: `offMainRendererBuild`; the
+    /// unit tests' synthetic tones: `inlineRendererBuild`, the same code path run at once) and what it builds.
+    /// Up to r32 a load that beat the launch prewarm built its pair ON THE MAIN THREAD: 2.2-6.2 s on the iPad
+    /// (Debug-Study), the UI frozen for all of it.
+    typealias RendererBuildRunner = @Sendable (@escaping @Sendable () -> Void) -> Void
+    typealias RendererPairMaker = @Sendable (SonificationSource) -> (TDPSOLA2, TDPSOLA2)
+    private let buildRenderers: RendererBuildRunner
+    private let makePair: RendererPairMaker
+    /// Keys whose pair a load requested and the voice has not registered yet (one build per key).
+    private(set) var awaitingRenderers: Set<String> = []
+    /// Whether `key`'s pair is registered in the kernel (read by the device tests).
+    func hasRegisteredRenderer(forKey key: String) -> Bool { slots[key] != nil }
+    /// The fade-in a play asked for while its renderer was still being built.
+    private var pendingFadeInSeconds: TimeInterval = 0
+    /// RENDERFREEZE2: callers waiting for a key's pair (`whenRendererReady`), with the file name they asked for (a
+    /// re-rate asks again under it).
+    private var readyWaiters: [String: (name: String, ready: [@MainActor () -> Void])] = [:]
+
+    nonisolated static let inlineRendererBuild: RendererBuildRunner = { $0() }
+    nonisolated static let offMainRendererBuild: RendererBuildRunner = { work in
+        Task.detached(priority: .userInitiated) { work() }
+    }
     private var sourceCache: [String: SonificationSource] = [:]
     private var nameToKey: [String: String] = [:]
     /// The loaded sound: the r16 engine's `currentFile`.
@@ -127,6 +154,10 @@ final class LiveSonificationAudio: AudioControlling {
     private(set) var interruptionShouldResume = true
     private(set) var interruptionResumeGateRequired = false
     private(set) var isFadingOut = false
+    /// FOLLOWUP-r31: a letter switch ended the previous sound with the standing stop fade, and the kernel is still
+    /// running it; a `stop()` with nothing playing must not overwrite it with the duck. Cleared by a play and by a
+    /// stop's bookkeeping.
+    private(set) var switchFadeRunning = false
     private var fadeTask: Task<Void, Never>?
 
     private var interruptionTask: Task<Void, Never>?
@@ -150,7 +181,12 @@ final class LiveSonificationAudio: AudioControlling {
          ioBufferWork: @escaping @Sendable () -> Void = { SoundEnvelope.applyPreferredIOBuffer() },
          outputRate: (@Sendable () -> Double)? = nil,
          rebuildOutput: ((LiveSonificationOutput, Double) -> (LiveSonificationKernel, LiveSonificationOutput)?)? = nil,
+         sourceKey: @escaping (String) -> String? = { _ in nil },
+         buildRenderers: @escaping RendererBuildRunner = LiveSonificationAudio.inlineRendererBuild,
+         makePair: @escaping RendererPairMaker = { LiveSonificationAudio.makeRendererPair($0) },
          resolve: @escaping (String, Double) -> SonificationSource?) {
+        self.buildRenderers = buildRenderers
+        self.makePair = makePair
         self.notificationCenter = notificationCenter
         self.ioBufferWork = ioBufferWork
         self.outputRate = outputRate
@@ -160,6 +196,7 @@ final class LiveSonificationAudio: AudioControlling {
         self.kernel = kernel
         self.fadeOutSeconds = fadeOutSeconds
         self.resolve = resolve
+        self.sourceKey = sourceKey
         if observeSession { startObservingSession() }
     }
 
@@ -197,6 +234,8 @@ final class LiveSonificationAudio: AudioControlling {
                                               let (kernel, next) = node.replaced(atRate: rate)
                                               return (kernel, next as LiveSonificationOutput)
                                           },
+                                          sourceKey: Self.bundleSourceKey(named:),
+                                          buildRenderers: Self.offMainRendererBuild,
                                           resolve: Self.bundleSource(named:sampleRate:))
         voice.prewarmStudySources()
         voice.adoptSessionRate()
@@ -205,6 +244,11 @@ final class LiveSonificationAudio: AudioControlling {
 
     nonisolated static func bundleURL(named name: String) -> URL? { PrimaeBundle.audioURL(for: name) }
 
+    /// The cache key `bundleSource` would give `name`'s source, without decoding the file.
+    nonisolated static func bundleSourceKey(named name: String) -> String? {
+        bundleURL(named: name).map(SonificationSource.cacheKey(for:))
+    }
+
     static func bundleSource(named name: String, sampleRate: Double) -> SonificationSource? {
         guard let url = bundleURL(named: name) else { return nil }
         return SonificationSource.load(url: url, gain: AudioEngine.loudnessGain(forFileAt: url), sampleRate: sampleRate)
@@ -212,25 +256,92 @@ final class LiveSonificationAudio: AudioControlling {
 
     // MARK: Renderer cache
 
-    /// The kernel slot for `source`; built on first use.
-    private func slot(for source: SonificationSource) -> UInt32? {
-        if let s = slots[source.key] { return s }
-        let pair: (TDPSOLA2, TDPSOLA2)
-        if let ready = prewarmed.take(source.key) {
-            pair = ready
-        } else {
-            #if DEBUG || POPCAP
-            let t0 = PopCapture.nowNs()
-            #endif
-            pair = Self.makeRendererPair(source)
-            mainActorBuilds += 1
-            #if DEBUG || POPCAP
-            PopCapture.armed?.event("renderer.build", "key=\(source.key) where=main-on-demand ms=\(Double(PopCapture.nowNs() - t0) / 1e6)")
-            #endif
-        }
+    private enum SlotState { case ready(UInt32), building, unplayable }
+
+    /// The kernel slot for `source` if its renderer pair exists (registered, or built by the prewarm or an
+    /// earlier load). RENDERFREEZE: never builds; `.building` means the pair is not there yet and the load
+    /// requests it (`requestRenderer`).
+    private func slotState(for source: SonificationSource) -> SlotState {
+        if let s = slots[source.key] { return .ready(s) }
+        guard let pair = prewarmed.take(source.key) else { return .building }
+        return register(pair, for: source).map(SlotState.ready) ?? .unplayable
+    }
+
+    private func register(_ pair: (TDPSOLA2, TDPSOLA2), for source: SonificationSource) -> UInt32? {
         let s = kernel.register(pair.0, twin: pair.1, gain: source.gain)
         if let s { slots[source.key] = s } else { log.fault("Sonification renderer table full; \(source.key, privacy: .public) not playable") }
         return s
+    }
+
+    /// RENDERFREEZE: builds `source`'s pair through `buildRenderers` (production: off the main thread) and
+    /// publishes it in `prewarmed`, where the prewarm publishes its own; the first pair published for a key is the
+    /// one registered (`PrewarmedRenderers.whenReady`). The prewarm skips a key a load already claimed. A pair
+    /// the prewarm already has under way is built here too (it runs at utility QoS, measured 10-20 s per letter on
+    /// the iPad under Debug-Study), and the one finished first is taken.
+    private func requestRenderer(for source: SonificationSource) {
+        let key = source.key
+        guard !awaitingRenderers.contains(key) else { return }
+        awaitingRenderers.insert(key)
+        let store = prewarmed
+        store.whenReady(key) { [weak self] in
+            Self.onMain { self?.rendererArrived(source, from: store) }
+        }
+        guard store.claimForLoad(key) else { return }   // already published: `whenReady` has fired
+        let make = makePair
+        buildRenderers { [weak self] in
+            let onMain = Thread.isMainThread
+            #if DEBUG || POPCAP
+            let t0 = PopCapture.nowNs()
+            #endif
+            let pair = make(source)
+            #if DEBUG || POPCAP
+            PopCapture.armed?.event("renderer.build", "key=\(key) where=\(onMain ? "main-on-demand" : "on-demand") ms=\(Double(PopCapture.nowNs() - t0) / 1e6)")
+            #endif
+            if onMain { MainActor.assumeIsolated { self?.mainActorBuilds += 1 } }
+            store.put(key, pair)
+        }
+    }
+
+    /// A requested pair is published: registered (unless a re-rate replaced the store), and bound to the load that
+    /// is still waiting for it, which sounds now if it is meant to (the observe sound starts when ready).
+    private func rendererArrived(_ source: SonificationSource, from store: PrewarmedRenderers) {
+        guard store === prewarmed, source.sampleRate == kernel.sampleRate else { return }
+        awaitingRenderers.remove(source.key)
+        let slot: UInt32?
+        if let s = slots[source.key] { slot = s } else if let pair = store.take(source.key) { slot = register(pair, for: source) } else { slot = nil }
+        // RENDERFREEZE2: after the waiting load is bound (and sounds, if it is meant to), the callers waiting for
+        // this renderer run; a full table (no slot) releases them too: the demonstration then runs without a sound.
+        defer { readyWaiters.removeValue(forKey: source.key)?.ready.forEach { $0() } }
+        guard let slot, loadedKey == source.key, loadedSlot == nil else { return }
+        loadedSlot = slot
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("renderer.ready", "key=\(source.key) slot=\(slot) resume=\(shouldResumePlayback)")
+        #endif
+        if canResumePlayback() { attemptResumePlayback(fadeInSeconds: pendingFadeInSeconds) }
+    }
+
+    /// RENDERFREEZE2: `ready` runs once `fileName`'s renderer pair is registered: at once when it already is (or the
+    /// prewarm has published it), else when the build this requests (`requestRenderer`, off the main thread in
+    /// production) is published. An unknown file is ready at once: there is nothing to wait for.
+    func whenRendererReady(forFile fileName: String, _ ready: @escaping @MainActor () -> Void) {
+        guard let src = source(named: fileName), case .building = slotState(for: src) else { ready(); return }
+        readyWaiters[src.key, default: (fileName, [])].ready.append(ready)
+        #if DEBUG || POPCAP
+        PopCapture.armed?.event("renderer.await", "key=\(src.key)")
+        #endif
+        requestRenderer(for: src)
+    }
+
+    /// RENDERFREEZE2: the launch prewarm builds `fileName`'s pair before the others it has not started (the session's
+    /// next letter). Known by name (`sourceKey`), so nothing is decoded here.
+    func prioritizeRenderer(forFile fileName: String) {
+        guard let key = nameToKey[fileName] ?? sourceKey(fileName), slots[key] == nil else { return }
+        prewarmed.prioritize(key)
+    }
+
+    /// Runs `body` on the main actor: at once when already on the main thread (the inline build), else in a hop.
+    nonisolated private static func onMain(_ body: @escaping @MainActor @Sendable () -> Void) {
+        if Thread.isMainThread { MainActor.assumeIsolated { body() } } else { Task { @MainActor in body() } }
     }
 
     /// The renderer options for a source of `kind` (protocol r31). A phoneme plays through the bake-off winner
@@ -262,6 +373,19 @@ final class LiveSonificationAudio: AudioControlling {
 
     private func source(named name: String) -> SonificationSource? {
         if let k = nameToKey[name], let s = sourceCache[k] { return s }
+        // FOLLOWUP-r31: the launch prewarm decoded and resampled the study's sources off the main thread; a load
+        // takes that source instead of decoding the file again here (measured on the iPad before this: 75 ms on
+        // the main thread at the first load of each phoneme letter, inside a letter switch). The same decode, so
+        // the same samples: nothing heard changes.
+        if let k = sourceKey(name),
+           let s = sourceCache[k] ?? prewarmed.source(forKey: k), s.sampleRate == kernel.sampleRate {
+            if sourceCache[k] == nil { sourceCache[k] = s }
+            nameToKey[name] = k
+            #if DEBUG || POPCAP
+            PopCapture.armed?.event("source.resolve", "file=\(name) ms=0 prewarmed=1")
+            #endif
+            return s
+        }
         #if DEBUG || POPCAP
         let t0 = PopCapture.nowNs()
         #endif
@@ -276,8 +400,9 @@ final class LiveSonificationAudio: AudioControlling {
 
     /// Builds the study's arm sounds in the background at
     /// launch, so the first touch on a letter never pays for decoding or
-    /// analysis. A load that arrives first builds its own on the main actor;
-    /// the background result is then dropped.
+    /// analysis. RENDERFREEZE: every source is decoded first (about 75 ms
+    /// each), then the pairs are built; a load that arrives before its pair
+    /// builds its own off the main thread, and the prewarm skips that key.
     func prewarmStudySources() {
         var urls: [URL] = TrainedLetterSubset.studyLetters.compactMap {
             PrimaeBundle.resourceURL(firstOf: PrimaeBundle.layouts(dir: "Letters/\($0)", name: "\($0)_phoneme1", ext: "wav"))
@@ -289,8 +414,17 @@ final class LiveSonificationAudio: AudioControlling {
         let rate = kernel.sampleRate
         Task.detached(priority: .utility) { [weak self] in
             var built: [BuiltRenderer] = []
-            for (url, gain) in jobs {
-                guard let s = SonificationSource.load(url: url, gain: gain, sampleRate: rate) else { continue }
+            let sources = jobs.compactMap { url, gain in
+                SonificationSource.load(url: url, gain: gain, sampleRate: rate).map { s in
+                    store.putSource(s)   // FOLLOWUP-r31: a load finds the decoded source at once (no main-thread decode)
+                    return s
+                }
+            }
+            // RENDERFREEZE2: the session's next letter first (`prioritizeRenderer`), then the study order.
+            var pending = sources
+            while !pending.isEmpty {
+                let s = pending.remove(at: store.nextPrewarmIndex(pending.map(\.key)))
+                guard store.claimForPrewarm(s.key) else { continue }   // RENDERFREEZE: a load is building it
                 #if DEBUG || POPCAP
                 let t0 = PopCapture.nowNs()
                 #endif
@@ -335,24 +469,33 @@ final class LiveSonificationAudio: AudioControlling {
     func settleStartup() async { await host?.settleStartup() }
 
     func loadAudioFile(named fileName: String, autoplay: Bool) {
+        // A load ends a pending stop's bookkeeping: the fade keeps sounding
+        // out in the kernel, but can no longer discard the file just loaded.
+        // R072FIX: nor may a `stop()` with nothing playing duck it afterwards
+        // (the view model stops the observe sound, then loads the next letter).
+        if isFadingOut && !kernel.gateRequested { switchFadeRunning = true }
+        fadeTask?.cancel(); fadeTask = nil
+        isFadingOut = false
+        // R072FIX: a DIFFERENT sound is ended BEFORE the new one is resolved and its renderer built. Both run on the
+        // main thread, and a renderer the launch prewarm has not built yet took 5.5 s there (Debug-Study, iPad,
+        // R-072 capture 2026-11-28), all of it with the old letter still sounding at full level.
+        var ended = false
+        if let key = nameToKey[fileName] ?? sourceKey(fileName), key != loadedKey {
+            endLoadedSoundForSwitch(); ended = true
+        }
         guard let src = source(named: fileName) else {
             log.warning("Missing audio file: \(fileName, privacy: .public)")
             return
         }
-        guard let slot = slot(for: src) else { return }
-        // A load ends a pending stop's bookkeeping: the fade keeps sounding
-        // out in the kernel, but can no longer discard the file just loaded.
-        fadeTask?.cancel(); fadeTask = nil
-        isFadingOut = false
-        if loadedSlot != slot {
-            // A DIFFERENT sound: r16 hard-stopped the player; here the kernel's
-            // duck (a 20 ms quarter-cosine; LOOPX), crossed over if a play follows.
-            kernel.close(fadeOutFrames: 0)
-            isPlaying = false
-        }
+        // A key known only once resolved (no `sourceKey` for this name): ended here, after the resolve.
+        if !ended && src.key != loadedKey { endLoadedSoundForSwitch() }
+        // RENDERFREEZE: a renderer not built yet is built off the main thread (`requestRenderer`, after the intent
+        // below is recorded); the load binds it, and plays if it is meant to, when it is published.
+        let state = slotState(for: src)
+        if case .unplayable = state { return }
         loadedKey = src.key
         loadedName = fileName
-        loadedSlot = slot
+        if case .ready(let slot) = state { loadedSlot = slot } else { loadedSlot = nil }
         // SDK27: the start is asynchronous (`EngineStartGate`). The intent is
         // recorded now and an autoplay waits for the start inside
         // `attemptResumePlayback`; recording it in a deferred continuation
@@ -361,6 +504,24 @@ final class LiveSonificationAudio: AudioControlling {
         output.startIfNeeded()
         shouldResumePlayback = autoplay
         if autoplay { attemptResumePlayback() } else if !kernel.gateRequested { isPlaying = false }
+        if case .building = state { requestRenderer(for: src) }
+    }
+
+    /// The loaded sound gives way to a DIFFERENT one (one slot per key, so a different key is a different slot).
+    /// FOLLOWUP-r31 (protocol r32): a sound that is playing ends with the standing stop fade (`fadeOutSeconds`,
+    /// linear, exactly what `stop()` gives it). Up to r31 the phoneme arm's letter switch took the kernel's 20 ms
+    /// duck here, and the `stop()` that follows a switch then found nothing playing. A play right after the load
+    /// still crosses over in the kernel (the open overrides the close). Nothing playing (or no fade, or no running
+    /// engine): the duck, as before; a fade already running in the kernel ignores it (a closing voice is not
+    /// re-closed).
+    private func endLoadedSoundForSwitch() {
+        if isPlaying && fadeOutSeconds > 0 && output.isRunning {
+            kernel.close(fadeOutFrames: frames(fadeOutSeconds))
+            switchFadeRunning = true
+        } else if !switchFadeRunning {
+            kernel.close(fadeOutFrames: 0)
+        }
+        isPlaying = false
     }
 
     func setAdaptivePlayback(speed: Float, horizontalBias: Float) {
@@ -414,6 +575,7 @@ final class LiveSonificationAudio: AudioControlling {
         let fadeInSeconds = sourceCache[key]?.onset == nil ? fadeInSeconds : 0
         fadeTask?.cancel(); fadeTask = nil
         isFadingOut = false
+        switchFadeRunning = false
         shouldResumePlayback           = true
         interruptionResumeGateRequired = false
         interruptionShouldResume       = true
@@ -439,7 +601,9 @@ final class LiveSonificationAudio: AudioControlling {
         fadeTask?.cancel(); fadeTask = nil
         let needsFade = fadeOutSeconds > 0 && isPlaying && output.isRunning
         guard needsFade else {
-            kernel.close(fadeOutFrames: 0)
+            // A letter switch's fade is already running in the kernel (FOLLOWUP-r31): the gate is closed, so a
+            // duck here would only cut that fade short.
+            if !(switchFadeRunning && !kernel.gateRequested) { kernel.close(fadeOutFrames: 0) }
             finishStop()
             return
         }
@@ -458,6 +622,7 @@ final class LiveSonificationAudio: AudioControlling {
         isPlaying                      = false
         interruptionResumeGateRequired = false
         isFadingOut                    = false
+        switchFadeRunning              = false
         fadeTask = nil
         // As `AudioEngine.finishStop`. Not on an interruption: the host's own
         // observer schedules its engine pause then, and that must stand.
@@ -525,7 +690,10 @@ final class LiveSonificationAudio: AudioControlling {
             output.startIfNeeded { [weak self] in self?.attemptResumePlayback(fadeInSeconds: fadeInSeconds) }
             return
         }
-        guard loadedKey != nil, let slot = loadedSlot else { return }
+        guard loadedKey != nil, let slot = loadedSlot else {
+            pendingFadeInSeconds = fadeInSeconds   // RENDERFREEZE: the renderer is still being built
+            return
+        }
         guard canResumePlayback() else {
             kernel.close(fadeOutFrames: 0)
             isPlaying = false
@@ -562,6 +730,8 @@ final class LiveSonificationAudio: AudioControlling {
         let from = kernel.sampleRate
         let name = loadedName
         let resume = shouldResumePlayback
+        let waiting = readyWaiters
+        readyWaiters = [:]
         kernel.close(fadeOutFrames: 0)
         fadeTask?.cancel(); fadeTask = nil
         isFadingOut = false
@@ -569,7 +739,7 @@ final class LiveSonificationAudio: AudioControlling {
         let old = kernel
         (kernel, output) = rebuilt
         kernel.adoptControls(from: old)
-        slots = [:]; sourceCache = [:]; nameToKey = [:]
+        slots = [:]; sourceCache = [:]; nameToKey = [:]; awaitingRenderers = []
         loadedKey = nil; loadedName = nil; loadedSlot = nil
         prewarmed = PrewarmedRenderers()
         rateRebuilds += 1
@@ -579,6 +749,8 @@ final class LiveSonificationAudio: AudioControlling {
         #endif
         prewarmStudySources()
         if let name { loadAudioFile(named: name, autoplay: resume) }
+        // RENDERFREEZE2: a caller waiting for a renderer of the old rate waits for the new one.
+        for w in waiting.values { for ready in w.ready { whenRendererReady(forFile: w.name, ready) } }
     }
 
     // MARK: Session notifications
@@ -669,9 +841,53 @@ final class LiveSonificationAudio: AudioControlling {
 nonisolated final class PrewarmedRenderers: @unchecked Sendable {
     private let lock = NSLock()
     private var table: [String: (TDPSOLA2, TDPSOLA2)] = [:]
-    func put(_ key: String, _ pair: (TDPSOLA2, TDPSOLA2)) { lock.lock(); table[key] = pair; lock.unlock() }
+    /// RENDERFREEZE: keys a build was started for (the prewarm's or a load's), keys whose pair was published (the
+    /// first one published wins; a later one for the same key is dropped), and the loads waiting for a key.
+    private var claimed: Set<String> = []
+    private var published: Set<String> = []
+    private var waiters: [String: [@Sendable () -> Void]] = [:]
+    func put(_ key: String, _ pair: (TDPSOLA2, TDPSOLA2)) {
+        lock.lock()
+        guard published.insert(key).inserted else { lock.unlock(); return }
+        table[key] = pair
+        let ready = waiters.removeValue(forKey: key) ?? []
+        lock.unlock()
+        ready.forEach { $0() }
+    }
+    /// The prewarm's claim: false when a load (or an earlier prewarm pass) already started this key's build.
+    func claimForPrewarm(_ key: String) -> Bool { lock.lock(); defer { lock.unlock() }; return claimed.insert(key).inserted }
+    /// A load's claim: false only when the pair is already published (a build under way is not waited for).
+    func claimForLoad(_ key: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        claimed.insert(key)
+        return !published.contains(key)
+    }
+    /// Calls `ready` once `key`'s pair is published: at once (on this thread) if it already is, else on the
+    /// publishing thread.
+    func whenReady(_ key: String, _ ready: @escaping @Sendable () -> Void) {
+        lock.lock()
+        if published.contains(key) { lock.unlock(); ready(); return }
+        waiters[key, default: []].append(ready)
+        lock.unlock()
+    }
     func take(_ key: String) -> (TDPSOLA2, TDPSOLA2)? { lock.lock(); defer { lock.unlock() }; return table.removeValue(forKey: key) }
+    /// RENDERFREEZE2: keys the prewarm builds first, most recently asked first (`prioritizeRenderer`).
+    private var priority: [String] = []
+    func prioritize(_ key: String) {
+        lock.lock(); priority.removeAll { $0 == key }; priority.insert(key, at: 0); lock.unlock()
+    }
+    /// The index in `keys` the prewarm builds next: the most recently prioritised key among them, else the first.
+    func nextPrewarmIndex(_ keys: [String]) -> Int {
+        lock.lock(); defer { lock.unlock() }
+        for k in priority { if let i = keys.firstIndex(of: k) { return i } }
+        return 0
+    }
     var count: Int { lock.lock(); defer { lock.unlock() }; return table.count }
+    /// FOLLOWUP-r31: the decoded sources, published as each one is decoded (kept: a source is small and is read
+    /// again only on a re-rate, which replaces this store).
+    private var sources: [String: SonificationSource] = [:]
+    func putSource(_ s: SonificationSource) { lock.lock(); sources[s.key] = s; lock.unlock() }
+    func source(forKey key: String) -> SonificationSource? { lock.lock(); defer { lock.unlock() }; return sources[key] }
 }
 
 // MARK: - Production output: the source node

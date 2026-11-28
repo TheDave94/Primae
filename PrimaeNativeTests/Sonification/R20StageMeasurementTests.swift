@@ -40,8 +40,8 @@ final class R20StageMeasurementTests: XCTestCase {
     }
 
     /// µs per render call over `seconds` of sound (1 s of warm-up discarded), pressure written every call.
-    private func cost(_ src: StudySource, _ c: Cfg, seconds: Double) -> [Double] {
-        let d = R20.Driver(source: src)
+    private func cost(_ src: StudySource, _ c: Cfg, seconds: Double, prototype: TDPSOLA2) -> [Double] {
+        let d = R20.Driver(source: src, prototype: prototype)
         configure(d.kernel, c)
         d.run(1.0)
         var us = [Double]()
@@ -64,13 +64,20 @@ final class R20StageMeasurementTests: XCTestCase {
     func testA1_RenderCostPerBuffer() throws {
         try r20RequireDevice()   // the simulator's clock and CPU say nothing about the iPad
         let sources = try ["spatial_carrier", "A_phoneme1", "I_phoneme1"].map { try StudySources.load($0) }
+        // FOLLOWUP-r31 (item 4): one renderer built per sound, each driver plays twins of it. Before this each of the
+        // 360 drivers built its own (TDPSOLA2's analysis, seconds each for a phoneme): 1259 s of wall time, nearly all
+        // of it building. A twin renders what a fresh renderer renders (`TDPSOLA2IdentityTests.twinIsAFreshRenderer`),
+        // and the timed region (one render call) is unchanged.
+        let prototypes = Dictionary(uniqueKeysWithValues: sources.map {
+            ($0.name, LiveSonificationAudio.makeRenderer($0.sonificationSource))
+        })
         var acc: [String: [Double]] = [:]
         let reps = 20
         for rep in 0..<reps {
             // alternate the order each repetition so neither a warm cache nor thermal drift favours a configuration
             let order = rep % 2 == 0 ? Cfg.allCases : Cfg.allCases.reversed()
             for src in sources {
-                for c in order { acc["\(src.name)/\(c.rawValue)", default: []] += cost(src, c, seconds: 10) }
+                for c in order { acc["\(src.name)/\(c.rawValue)", default: []] += cost(src, c, seconds: 10, prototype: prototypes[src.name]!) }
             }
         }
         let budget = 235.2 / R20.sr * 1e6

@@ -187,6 +187,12 @@
                   Identifier = "LoopXDiagnosisTests/testAppScenarios()">
                </Test>
                <Test
+                  Identifier = "PrewarmLoadDeviceTests">
+               </Test>
+               <Test
+                  Identifier = "UnprewarmedLoadDeviceTests">
+               </Test>
+               <Test
                   Identifier = "R20CaptureDeviceTests">
                </Test>
                <Test

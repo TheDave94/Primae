@@ -3404,13 +3404,24 @@ public final class TracingViewModel {
 
     // MARK: - Animation guide
 
-    func startGuideAnimation() {
+    func startGuideAnimation(rendererReady: Bool = false) {
         // Use rawGlyphStrokes so the dot follows the CURRENT script;
         // `letters[..].strokes` would play a Druckschrift path over a
         // Playwrite glyph in Schreibschrift mode.
         guard !letters.isEmpty, letterIndex < letters.count,
               let rawStrokes = rawGlyphStrokes,
               !rawStrokes.strokes.isEmpty else { return }
+        // RENDERFREEZE2: the dot and the sound start together (see `startPendingObservePresentation`). A load or a
+        // phase change while the renderer is built (`cancelPendingObservePresentation`) drops this start.
+        if !rendererReady, let file = observeSoundFile(arm: audioCondition, letter: letters[letterIndex]) {
+            let token = observePresentationCancelCount
+            audio.whenRendererReady(forFile: file) { [weak self] in
+                guard let self, self.observePresentationCancelCount == token,
+                      self.phaseController.currentPhase == .observe else { return }
+                self.startGuideAnimation(rendererReady: true)
+            }
+            return
+        }
         armObserveAutoAdvance()
         animation.start(strokes: rawStrokes)
         startObservePhaseAudio(startingAt: rawStrokes.strokes.first?.checkpoints.first.map {
@@ -3644,6 +3655,7 @@ public final class TracingViewModel {
     /// never gave it a turn".
     internal var debugObservePresentationState: String {
         let pending = pendingObservePresentation.map { "armed(gen \($0.generation))" } ?? "nil"
+            + (observeRendererWaitGeneration.map { " awaitingRenderer(gen \($0))" } ?? "")
         let task = observePresentationTask.map { $0.isCancelled ? "task(cancelled)" : "task(live)" } ?? "task(nil)"
         let files = letters.indices.contains(letterIndex)
             ? String(activeAudioFiles(for: letters[letterIndex]).count) : "no-letter"
@@ -3705,8 +3717,20 @@ public final class TracingViewModel {
     /// Start the pending presentation for `generation`, once: the first of
     /// the cue-end path and the fallback wins; a stale generation (a newer
     /// load) is ignored.
-    private func startPendingObservePresentation(generation: Int) {
+    private func startPendingObservePresentation(generation: Int, rendererReady: Bool = false) {
         guard let pending = pendingObservePresentation, pending.generation == generation else { return }
+        // RENDERFREEZE2 (2026-11-28): in a sound arm the dot and the sound start together, so the presentation
+        // waits until the sound's renderer is built (off the main thread; the letter stays at rest and the UI live
+        // meanwhile). Before, an un-prewarmed letter's dot ran ~6.7 s (Debug-Study, iPad) with no sound.
+        if !rendererReady, let file = observeSoundFile(arm: pendingObserveSoundArm, letter: pending.letter) {
+            guard observeRendererWaitGeneration != generation else { return }   // the other trigger already waits
+            observeRendererWaitGeneration = generation
+            audio.whenRendererReady(forFile: file) { [weak self] in
+                self?.startPendingObservePresentation(generation: generation, rendererReady: true)
+            }
+            return
+        }
+        observeRendererWaitGeneration = nil
         pendingObservePresentation = nil
         // R-022: the count gates THIS presentation only. Once it starts,
         // no earlier cue can matter, so a lost end report costs at most
@@ -3753,6 +3777,27 @@ public final class TracingViewModel {
             guard !Task.isCancelled else { return }
             self.startPendingObservePresentation(generation: generation)
         }
+    }
+
+    /// RENDERFREEZE2: the presentation generation waiting for its sound's renderer (`startPendingObservePresentation`).
+    private var observeRendererWaitGeneration: Int?
+
+    /// The file the observe sound of `letter` will play in `arm`, when the arm is the current sound arm (else nil:
+    /// the silent arm, an arm changed under the load, or no file, start the animation alone with no wait).
+    private func observeSoundFile(arm: PilotAudioCondition?, letter: LetterAsset) -> String? {
+        guard let arm, arm == audioCondition, arm != .silent, sessionBlockReason == nil else { return nil }
+        return activeAudioFiles(for: letter).first
+    }
+
+    /// RENDERFREEZE2: in a study session the next letter's renderer is the prewarm's next build, so a chevron to it
+    /// finds it built (or nearer done).
+    private func prioritizeNextLetterRenderer(after letter: LetterAsset) {
+        guard studyMode else { return }
+        let visible = visibleLetterNames
+        guard let i = visible.firstIndex(of: letter.name), i + 1 < visible.count,
+              let next = letters.first(where: { $0.name == visible[i + 1] }),
+              let file = activeAudioFiles(for: next).first else { return }
+        audio.prioritizeRenderer(forFile: file)
     }
 
     /// The pending presentation (generation + letter), nil once started.
@@ -4762,6 +4807,16 @@ public final class TracingViewModel {
         // outgoing letter's observe sound into the incoming letter's
         // observe phase, a condition that already spent its claim
         // included.
+        // R072FIX: the outgoing letter's observe sound, if it is playing,
+        // ends HERE with the standing stop fade, before the next letter's
+        // file is loaded. It is started outside the playback machine
+        // (`startObservePhaseAudio`), so the machine's idle request below
+        // never stops it, and the reload no longer does (the r16
+        // AudioEngine's load stopped its player; the live voice keeps a
+        // same-slot sound going). Measured on the iPad (R-072 capture,
+        // 2026-11-28): the spatial carrier sounded at -16.7 dB straight
+        // through four switches and under the next letter's spoken cue.
+        if observeSoundTracksDot { audio.stop() }
         cancelPendingObservePresentation()
         directPulsingDot = false
         directArrowStrokeIndex = nil
@@ -4893,6 +4948,7 @@ public final class TracingViewModel {
         if let firstAudio = activeAudioFiles(for: letter).first {
             audio.loadAudioFile(named: firstAudio, autoplay: false)
             playback.request(.idle, immediate: true)
+            prioritizeNextLetterRenderer(after: letter)
             // Audio plays in response to touches via the playback state machine;
             // no observe-phase auto-play (it would loop silently behind onboarding
             // and start immediately on letter switch without any user action).
