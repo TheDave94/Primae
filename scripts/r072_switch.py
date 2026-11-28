@@ -25,10 +25,59 @@ channel is the one printed):
   fade_ms    time from the switch until a 5 ms RMS falls 40 dB under pre_db
              (or under -80 dBFS); the standing stop fade gives about 400 ms,
              the kernel's duck about 20 ms.
-  step_db    the largest |x[n]-x[n-1]| in the 600 ms after the switch, against
-             the largest in the 200 ms before it, in dB. A click raises it.
-  d2_db      the same for the second difference.
-  CLICK      step_db or d2_db above +1 dB.
+  disc_db    the switch-local DISCONTINUITY: over the window from 20 ms before
+             the switch to 600 ms after it, the largest |d2[n]| (d2 = second
+             difference, x[n]-2x[n-1]+x[n-2]) against the RMS of d2 in the 5 ms
+             either side of n, the 2 samples either side left out, in dB. The
+             RMS is floored at 1e-5 (-100 dBFS), so digital silence does not
+             divide by zero. disc_at_ms is where the largest one sits.
+  CLICK      disc_db above +24.5 dB, on kernel.wav or on any mixer channel.
+  step_db, d2_db   diagnostics only, no longer the criterion: the largest |d1|
+             (|d2|) in the 600 ms after the switch against the largest in the
+             200 ms before it, in dB.
+
+Why disc_db and why +24.5 dB (lane R072CLICK, 2026-11-28). The old CLICK
+(step_db or d2_db above +1 dB) flagged a clean phoneme switch (integ32b, A->M,
+kernel step +1.08 dB) whose rerun passed (+0.26 dB). It compared a 600 ms
+window that starts at full level with a 200 ms one: that switch's largest
+|d1| sat 39 ms into the fade at -15.8 dBFS against -16.9 in the 200 ms before,
+while the 600 ms before reach -15.0, so with equal windows the same switch
+reads -0.8 dB. A longer window of the same sound, not a discontinuity; and the
++1 dB bound had no derivation. disc_db asks a different question: does one sample's d2 stand out
+of the signal's OWN d2 around it? A step or an impulse puts its full amplitude
+into d2 at one or two samples, while the 400 ms stop fade (a slow gain) scales
+d2 and its neighbourhood together, so the fade cancels out and the level the
+switch starts at does not matter.
+
+Clean distribution (every capture with sound under .primae-lock-tools/
+{integ32b-r072, r072fix-20261128/popcap}, 2026-11-28): 26 sounding switches in
+6 captures, kernel plus both mixer channels = 78 values: phoneme +12.5 to
++16.6 dB, spatial carrier +16.5 to +18.3 dB (the old statistic on the same 78:
+-3.9 to +1.36 dB, two above its +1 dB bound). And 1320 half-overlapping 620 ms
+windows of sound away from any switch, in 11 captures: max +18.5 dB. Threshold
+= that maximum + 6 dB (a residual twice the largest clean one) = +24.5 dB.
+
+Detection floor, measured by injecting a one-sample impulse and a step into
+the kernel at the 20 sounding switches of the five post-fix captures (the
+smallest amplitude flagged, 10 dB grid; the old criterion's in brackets; "F"
+and "A" are the phoneme being faded out):
+  silence, 450 ms after the switch   impulse -80 dBFS, step -70 dBFS everywhere
+                                     (old: -10 to -40 / -10 to -30; F 0 / never)
+  fade tail, 385 ms (-43 to -52 dBFS)  I, L, carrier: impulse -50 to -70, step
+                                     -40 to -60 (old -30 to -40 / -20 to -30);
+                                     A -30 to -40 (old -10); F -10 to -20 (old 0)
+  the switch sample, full level      impulse I, L -20, carrier -30 (old -30, -50
+  (-14 to -18 dBFS RMS)              at three of ten), A -6 to -10, F not up to
+                                     0 dBFS (old: not / 0 dBFS); a step I, L,
+                                     carrier -10 to -30, A 0 dBFS, F not (old:
+                                     never)
+Under full-level sound the floor is where the injected sample first exceeds
+the sound's own largest d2 excursions; a click below that is taken to be
+masked by the sound's own transients (argued, not listened to; F is fricative
+noise: before the integ32b F->A switch its own |d2| reaches +3.8 dBFS). A hard cut to zero at the
+switch scores over the threshold at 12 of the 20 (the carrier 7 of 8, I 3 of
+3, L 2 of 3; F and A +12 to +21 dB, not flagged); the old criterion flagged
+none. --expect-fade-ms catches all 20 (fade 5 ms).
 
 Exit status 1 when a sound arm has a switch that was not sounding (the switch
 was not exercised), any switch clicks, or (with --expect-fade-ms) a sounding
@@ -132,6 +181,35 @@ def db(x):
     return 20 * np.log10(max(float(x), 1e-12))
 
 
+CLICK_DB = 24.5        # see the docstring: max clean +18.5 dB, +6 dB margin
+DISC_FLOOR = 1e-5      # -100 dBFS, the d2 RMS floor (digital silence)
+
+
+def discontinuity(x, rate, i, lead_s=0.02, post_s=0.6, half_s=0.005, gap=2):
+    """(disc_db, disc_at_ms): the largest |d2[n]| over [i - lead_s, i + post_s) against the RMS of d2 within
+    half_s either side of n (the gap samples either side of n left out), in dB."""
+    W = max(1, int(half_s * rate))
+    a, b = max(0, i - int(lead_s * rate)), min(len(x), i + int(post_s * rate))
+    if b - a < 3:
+        return -240.0, None
+    lo, hi = max(0, a - W - 2), min(len(x), b + W)
+    seg = np.asarray(x[lo:hi], dtype=np.float64)
+    h = np.zeros(len(seg))
+    h[2:] = np.diff(seg, n=2)
+    c = np.concatenate([[0.0], np.cumsum(h * h)])
+    n = np.arange(a - lo, b - lo)
+
+    def win(p, q):
+        p, q = np.clip(p, 0, len(h)), np.clip(q, 0, len(h))
+        return c[q] - c[p], q - p
+    so, co = win(n - W, n + W + 1)
+    si, ci = win(n - gap, n + gap + 1)
+    env = np.sqrt(np.maximum(so - si, 0.0) / np.maximum(co - ci, 1))
+    score = np.abs(h[n]) / np.maximum(env, DISC_FLOOR)
+    k = int(np.argmax(score))
+    return round(db(score[k]), 2), round(1000.0 * (n[k] + lo - i) / rate, 1)
+
+
 def measure(x, rate, i, pre_s=0.1, ref_s=0.2, post_s=0.6):
     i = int(min(max(i, 0), len(x)))
     pre = x[max(0, i - int(pre_s * rate)):i]
@@ -153,8 +231,10 @@ def measure(x, rate, i, pre_s=0.1, ref_s=0.2, post_s=0.6):
         return float(np.max(np.abs(np.diff(seg, n=order))))
     step_db = db(peak(post, 1)) - db(peak(ref, 1))
     d2_db = db(peak(post, 2)) - db(peak(ref, 2))
+    disc_db, disc_at_ms = discontinuity(x, rate, i, post_s=post_s)
     return {"pre_db": round(pre_db, 2), "fade_ms": None if fade_ms is None else round(fade_ms, 1),
-            "step_db": round(step_db, 2), "d2_db": round(d2_db, 2)}
+            "step_db": round(step_db, 2), "d2_db": round(d2_db, 2),
+            "disc_db": disc_db, "disc_at_ms": disc_at_ms}
 
 
 def main():
@@ -206,7 +286,7 @@ def main():
         s["mixer"] = max(chans, key=lambda c: c["pre_db"])   # the louder channel is the one printed
         k, m = s["kernel"], s["mixer"]
         s["sounding"] = k["pre_db"] > -40.0
-        s["click"] = max([k["step_db"], k["d2_db"]] + [c[q] for c in chans for q in ("step_db", "d2_db")]) > 1.0
+        s["click"] = bool(max([k["disc_db"]] + [c["disc_db"] for c in chans]) > CLICK_DB)
         verdict = "CLICK" if s["click"] else "no click"
         if arm in ("phoneme", "spatial") and not s["sounding"]:
             verdict += ", NOT SOUNDING (not exercised)"
@@ -219,8 +299,10 @@ def main():
                 verdict += f", FADE {f} ms (expected {a.expect_fade_ms:.0f})"
                 bad.append(n)
         print(f"  S{n} {s['from']}->{s['to']}  at={'load' if s['load_ns'] else 'state'}  "
-              f"kernel pre {k['pre_db']} dB fade {k['fade_ms']} ms step {k['step_db']} d2 {k['d2_db']}  |  "
-              f"mixer pre {m['pre_db']} dB fade {m['fade_ms']} ms step {m['step_db']} d2 {m['d2_db']}  -> {verdict}")
+              f"kernel pre {k['pre_db']} dB fade {k['fade_ms']} ms step {k['step_db']} d2 {k['d2_db']} "
+              f"disc {k['disc_db']}  |  "
+              f"mixer pre {m['pre_db']} dB fade {m['fade_ms']} ms step {m['step_db']} d2 {m['d2_db']} "
+              f"disc {max(c['disc_db'] for c in chans)}  -> {verdict}")
     if arm == "silent":
         peak = max([float(np.max(np.abs(kernel))) if len(kernel) else 0]
                    + [float(np.max(np.abs(c))) if len(c) else 0 for c in mixer_ch])
