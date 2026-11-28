@@ -10,6 +10,8 @@ _**Correction (2026-11-18), status lines only:** a status-line pass against `mai
 
 _**Correction (2026-11-23), currency pass against `main` at `584aec27` (protocol r27):** line references, the U5 / r17 LOOPX / r18 rows, the D10 stub and the Fréchet note below are brought current, each with its evidence in place. Still not a full reconciliation._
 
+_**Correction (2026-11-28), against `main` at `45dee907`:** the surviving parts of an unlanded 2026-11-25 currency pass (branch `t3/docs-roadmap-currency`, `e3d52d1d`) are applied, each re-checked against code: the shipped D8 row leaves the engineering table and the open SDK27 residue takes its place, and the next-sprint list matches the tables. That pass's SDK27 entry rewrite is dropped, because #155 moved the deprecations and rewrote the entry. Also recorded: R-014 (§4), the retired F2 orientation-settle instrument (SDK27 item 2), and where the pitch bake-off code survives (D13). Still not a full reconciliation._
+
 ---
 
 ## At a glance — what's next
@@ -27,7 +29,7 @@ _**Correction (2026-11-23), currency pass against `main` at `584aec27` (protocol
 
 | Item | What I need from you | Why it can't be autonomous |
 |---|---|---|
-| ~~**D8** canvas redraw profile~~ **DONE 2026-10-21** | ~~iPad + Instruments time-profile of a high-velocity guided session~~ Measured: zero `TracingCanvasView.body` evaluations per touch event (see D8 below) | Nothing left to do; no optimisation needed |
+| **SDK27** residue: a real interruption by another audio client | Someone at the iPad for one `SessionInterruptionUITests` run (the "Enable UI Automation" passcode sheet stopped it on 2026-11-24) | The interruption path moved to the iOS 27 inactive / resumption pair in #155 and is unit- and device-tested, but no interruption by another audio client (Siri) has been observed on the iPad. See SDK27, §4, item 1. |
 
 Everything in the **post-thesis** section (F1–F13) waits until the thesis ships.
 
@@ -310,6 +312,9 @@ empty runtime-issue summaries (no Hang Risk); mutation checks 5/11, 4/43 and 4/1
    or windowed scene holds it under the turn prompt. Zero build warnings. Re-run `SceneResizeUITests` on every
    iPadOS update of the study iPad; keep the iPad on Full Screen Apps (DECISIONS "Landscape without
    UIRequiresFullScreen").
+   [2026-11-28: the F2 orientation-settle instrument (branch `t3/f2-scene-resize-orientation-settle`,
+   `7d9f0c2c`, not on `main`) is retired: it settled a launch lock that r30 removed, and #157 (`6db1682f`)
+   rewrote `SceneResizeUITests`. DECISIONS, same section, records what it was and what was not carried over.]
 3. **By ear, in each arm (phoneme, spatial, silent), on the integration build.** Not possible from a seat;
    owned by INTEG's per-arm walk-through.
 
@@ -320,6 +325,21 @@ empty runtime-issue summaries (no Hang Risk); mutation checks 5/11, 4/43 and 4/1
    **Done (code):** `OnsetOutputRoute.skipReason` skips before measuring and again once the session is active; `OnsetOutputRouteTests` pins the decision. Device-verified 2026-11-16 (full `PrimaeNativeTests` green on the iPad, Release-Study): breaking the speaker-only check turns `OnsetOutputRouteTests` RED. **Residual CLOSED (2026-11-24, lane T1R):** the skip no longer needs AirPods to be checked. The per-arm run is a seam, `OnsetPerArmRun` (`LiveSonificationOnsetDeviceTests.swift`), with the session's output ports, output latency, format, the measurement and the settle injected; `testTouchToOnsetPerArm` runs it live against `AVAudioSession.sharedInstance()`, and `OnsetPerArmRunTests` (3 tests, normal suite) runs it on a stubbed route: a non-speaker route (A2DP, Headphones) skips before measuring; a route that is reported only after activation skips after the first arm; the speaker measures both arms and applies the 70 ms bound. Mutation-checked on the iPad (Debug-Study): deleting the first `XCTSkip` throw turns `OnsetPerArmRunTests` RED (3 tests, 2 failures, `testNonSpeakerRouteSkipsBeforeMeasuring`); deleting the second turns it RED (3 tests, 4 failures, `testRouteReportedOnlyAfterActivationSkipsAfterTheFirstMeasurement`); restored, the onset suites are GREEN (5 tests, 0 failures; speaker median phoneme 30.8 ms, spatial 15.8 ms). Receipts: `/tmp/dd-t1r/{r1,m1,m2}.xcresult`.
 2. **`PhaseDotIndicator`'s Reduce Motion `onChange` (#114, F3) has no test.** `PhaseDotIndicatorTests` (`ChildFacingCountsTests.swift`) cover `dot(for:)`; the pulse stopping or resuming when Reduce Motion changes while the indicator is shown is view animation state, which nothing in either test target observes. Covering it means extracting the pulse decision into a value (the `CanvasDrawPlan` pattern, CLAUDE.md "Test Infrastructure" 3) and testing that.
    **Done (code), with audit F2:** `PhaseDotPulse.step`/`scale` decide the pulse for `onAppear` and `onChange`; `CanvasDrawPlan.ghost` and `TracingCanvasView.inkDrawOps` hand the canvas its ghost stroke and ink casing as values (`CanvasDrawnStyleTests`, `PhaseDotPulseTests`). Device-verified 2026-11-16: the plan's ghost stroke, the ghost opacity constant, casing width, casing-before-ink order, pulse scale, current-dot guard, the pulse's appear target and its Reduce Motion animation choice were each mutated on the iPad, and each mutation turned at least one of the two suites RED (7 tests ran in every round).
+
+### R-014 — `StrokeMapping.map` scales the checkpoint radius by sqrt(w·h), the tracker by height *(recorded 2026-11-28; fix on a branch, not applied)*
+**Effort:** S · **Priority:** P3
+
+**The divergence.** Two functions map a letter's bbox-relative strokes into a cell, and they scale `checkpointRadius` differently:
+- `StrokeTracker.cellDefinition(from:glyphRect:)` (`PrimaeNative/Core/StrokeTracker.swift:215`) uses `checkpointRadius * gr.height`, the rule since protocol r16 (#90, `4ca16ee2`, audit B-2). This is the definition the scored trackers load: `TracingViewModel.reloadStrokeCheckpoints` (`TracingViewModel.swift:5129`). The guided checkpoints, the sound gate (`StrokeContext.swift:197`) and `formAccuracy` all read it.
+- `StrokeMapping.map(_:into:)` (`PrimaeNative/Features/Tracing/StrokeMapping.swift:31-32`) still uses `checkpointRadius * (gr.width * gr.height).squareRoot()`, the pre-r16 rule the 2026-10 audit flagged as R-014 (a narrow I about 2.5-3x stricter than M).
+
+**Who reads the sqrt radius on `main` (2026-11-28).** `StrokeMapping.map` feeds `mappedStrokes` (`TracingViewModel.swift:244`; the canvas's `gridCellStrokes` and `rawGlyphStrokes`, whose readers use the checkpoint positions, not the radius) and `applyCalibration` (`TracingViewModel.swift:4093`, which loads it into the tracker), whose only callers are in `StrokeCalibrationOverlay`, compiled out of the study build (`#if !STUDY_BUILD`, `StrokeCalibrationOverlay.swift:6`). So no study-build path is known to score with the sqrt radius today. The hazard is latent: one rule in two places, and a future reader of the mapped radius would get the old one. `StudyComparisonSettings.swift:368` still describes the sqrt rule as what the app does; that comment is stale for the scored path.
+
+**The fix exists, unapplied.** Branch `t3/r014-checkpoint-radius-height`, `ab725b62` (2026-11-25, on `8bb28162`): `StrokeMapping.map` delegates to `StrokeTracker.cellDefinition`, so the two cannot disagree, and `StrokeMappingCacheTests` pins the height rule. It is not on `main`.
+
+**Before applying it.** This is the scoring geometry: it touches the mapping every arm's tracker is built from. Apply it only under the careful-change procedure (CLAUDE.md, "Careful-change areas"): read `docs/LESSONS.md` on `StrokeTracker`, a full `PrimaeNativeTests` run on the iPad, `ScorerExactGoldenTests`, `StrokeGeometryGoldenTests` and the `LetterTracer` UI tests in every arm, and a mutation check of the new test. If the re-check finds any study-build reader of the mapped radius (the reading above says there is none), the change moves what a child is scored against, and it is a protocol revision with evidence, not a refactor.
+
+---
 
 ### D8 — Canvas redraw frequency profile
 **Effort:** S (profile only) — could expand to M if a real bottleneck surfaces · **Priority:** P3
@@ -347,7 +367,7 @@ All four questions are decided, with evidence, in `docs/DECISIONS.md`, "Renderer
 
 ### D13 — Phoneme pitch-shift quality — SETTLED 2026-11-26 (protocol r31)
 
-The phoneme arm's pitch shifter is TDPSOLA2 (`TDPSOLA2Options.production`), chosen from the iPad measurements because the blind rating could not separate the voiced candidates; evidence, trade-offs and gates in `docs/DECISIONS.md`, "Phoneme pitch shift: TDPSOLA2". The spatial carrier keeps the r28 output bit for bit. Residual: F at +600 c reads −0.68 dB on the device against ≤0.5 dB in the renderer, from the 44.1 → 48 kHz output conversion's roll-off, not from the shifter.
+The phoneme arm's pitch shifter is TDPSOLA2 (`TDPSOLA2Options.production`), chosen from the iPad measurements because the blind rating could not separate the voiced candidates; evidence, trade-offs and gates in `docs/DECISIONS.md`, "Phoneme pitch shift: TDPSOLA2". The spatial carrier keeps the r28 output bit for bit. Residual: F at +600 c reads −0.68 dB on the device against ≤0.5 dB in the renderer, from the 44.1 → 48 kHz output conversion's roll-off, not from the shifter. [2026-11-28: the bake-off reports are in `docs/pitch-bakeoff/`. The candidates that lost (WorldRT, PitchBank) and the bench harness are not on `main`; they survive on branch `lane/pitch-bakeoff-close` (`0d12c736`) and as `docs/pitch-bakeoff/PITCH-close.patch`.]
 
 ---
 
@@ -577,11 +597,13 @@ Phonemic awareness (Adams 1990) predicts later reading acquisition; pairing hand
 
 The at-a-glance table at the top of this file is the authoritative version. Repeated here as a flow:
 
-1. **U5 + U10 device validation** — single iPad session: 30 minutes for the Pencil 2 squeeze check, 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app. [2026-11-23: the table's r17 LOOPX and r18 rows are not in this list.] [2026-11-24: the U5 squeeze is wired and a study build plays no replay by design (see U5); what remains is the hands-on check with a squeeze-capable Pencil.]
+1. **U5 + U10 device validation** — single iPad session: 30 minutes for the squeeze and double-tap check with a squeeze-capable Pencil (Pencil Pro; the squeeze is wired since `8bb28162`, #154, and a study build plays no replay by design, see U5), 2–3 hours for the VoiceOver walkthrough. Get these out of the way before a thesis reviewer ever opens the app.
+2. **r17 LOOPX listening check and r18 try-out** — on the current build, both sound arms; a try-out runs before a child's first row, because the Vergleichsmodus locks after it (r27).
+3. **SDK27 residue** — one `SessionInterruptionUITests` run with someone at the iPad (see SDK27, §4, item 1).
 
 P6's pilot-blocking piece shipped 2026-09-14 (H5) and is off this list; its full-alphabet remainder moved to F13, §5, post-thesis.
 
-**D8 canvas redraw profile** was measured 2026-10-21 (zero body re-evaluations per touch; nothing to optimise). **F1–F13** are post-thesis full features.
+**D8 canvas redraw profile** was measured 2026-10-21 (zero body re-evaluations per touch; nothing to optimise) and is off the tables. **D9** was settled 2026-11-24 (`ebfbfe0f`, #153). **F1–F13** are post-thesis full features.
 
 ---
 
