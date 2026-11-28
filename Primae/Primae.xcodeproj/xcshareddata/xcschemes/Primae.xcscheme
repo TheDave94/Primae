@@ -208,6 +208,9 @@
                   Identifier = "R20StageMeasurementTests">
                </Test>
                <Test
+                  Identifier = "SonificationBakeoffBench">
+               </Test>
+               <Test
                   Identifier = "SpeechQueueDeviceProbeTests">
                </Test>
                <Test

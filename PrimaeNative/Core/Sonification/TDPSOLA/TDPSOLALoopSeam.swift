@@ -45,9 +45,42 @@ nonisolated enum TDPSOLALoopSeam {
         var rho: [Double] = []  // measured correlation of the blended parts per band (diagnostic)
     }
 
+    /// Lane ENVGAP-A (2026-11-28) candidate knobs for the voiced head blend. `.shipped` (every knob off) is SEAM2 as
+    /// shipped, bit for bit; no shipped option set turns any knob on (`TDPSOLA2Options.seamBlend`).
+    ///
+    /// Why (MEASURED, ENVGAP-A-REPORT.md): blending two pitch-synchronous segments of a vowel whose spectral
+    /// envelope drifts sums them coherently, harmonic by harmonic. Where the head's and the tail's strongest
+    /// harmonics (A: its F1 region) are out of phase, the middle of the blend cancels them: the middle third of A's
+    /// 0.4 s blend reads 5.9 dB low at 500-1000 Hz against the steady segment, while the head and the tail it blends
+    /// read +0.2 and -0.2 dB there. One correlation per broad band (below 1 kHz, 1-3 kHz, above 3 kHz) restores each
+    /// band's average power over the whole blend, not the power where and when it cancels. And SEAM2 shortens the
+    /// loop by the blend's length, so the blended head is a larger share of every loop cycle than of the recording.
+    struct Blend: Sendable, Equatable, Hashable {
+        /// ENVGAP-A item 14: the voiced crossfade length (seconds, rounded to whole periods as SEAM2 rounds it) in
+        /// place of the tuning's `loopCrossfadeSeconds` (0.4 s). nil = the tuning's. A shorter blend shortens the loop
+        /// less and holds less of the blended (two-part) material, which is the part of the loop furthest from the
+        /// recording's steady spectrum (MEASURED on A, ENVGAP-A-REPORT.md). Unvoiced sources keep the tuning's.
+        var crossfadeSeconds: Double? = nil
+        /// ENVGAP-A item 13: waveform-similarity alignment of the tail before it is blended, the alignment step of
+        /// SOLA (Roucos & Wilgus 1985, "High quality time-scale modification for speech", ICASSP) and WSOLA (Verhelst
+        /// & Roelands 1993, "An overlap-add technique based on waveform similarity (WSOLA) for high quality time-scale
+        /// modification of speech", ICASSP): per block of two periods, the tail read position takes the lag (within
+        /// +-`alignLag` x the loop's median period) that maximises the normalised cross-correlation with the head.
+        /// The lag curve is median-smoothed, faded in from 0 at the blend's start (where the tail must stay exactly
+        /// the material after the loop end, so the wrap stays continuous) and slope-limited to `alignSlope` (samples
+        /// per sample: a local tail pitch change of at most 1200 log2(1 + alignSlope) cents). 0 = off.
+        var alignLag: Double = 0
+        var alignSlope: Double = 0.004
+        /// Item 13: the fraction of the blend over which the lag curve fades in from 0.
+        var alignFade: Double = 0.25
+        static let shipped = Blend()
+    }
+
     /// nil when the source has nothing to prepare (disabled, too short a loop).
     static func prepare(_ x: [Float], sampleRate sr: Double, analysis a: TDPSOLAAnalysis,
-                        crossfade: Double, flattenDB: Double, preBlendMarks: Int = Self.preBlendMarks) -> Result? {
+                        crossfade: Double, flattenDB: Double, preBlendMarks: Int = Self.preBlendMarks,
+                        blend: Blend = .shipped) -> Result? {
+        let crossfade = a.isVoiced ? (blend.crossfadeSeconds.map { max(0, $0) } ?? crossfade) : crossfade
         guard crossfade > 0 || flattenDB > 0 else { return nil }
         let n = x.count
         var y = x
@@ -83,6 +116,11 @@ nonisolated enum TDPSOLALoopSeam {
                     let f = (p - lo) / max(1e-9, hi - lo)
                     let t0 = mk(e2 + 1 + j), t1 = mk(e2 + 2 + j)
                     map[u] = t0 + f * (t1 - t0)
+                }
+                if blend.alignLag > 0 {
+                    let loopPeriods = Array(a.periods[ai...ei]).sorted()
+                    Self.align(&map, x: x, head0: head0, period: loopPeriods[loopPeriods.count / 2],
+                               maxLag: blend.alignLag, slope: blend.alignSlope, fade: blend.alignFade)
                 }
                 tailPos = { map[$0] }
                 maxPeriod = a.periods[ai...ei].max() ?? maxPeriod
@@ -198,6 +236,62 @@ nonisolated enum TDPSOLALoopSeam {
             if hi < tailEnd { for i in hi..<tailEnd { y[i] = Float(Double(y[i]) * g(lo + (i - hi))) } }
         }
         return Result(samples: y, loopEnd: loopEnd, loopEndIndex: loopEndIndex, rho: rho)
+    }
+
+    /// ENVGAP-A item 13: moves the tail read positions `map` (one per head sample) by the waveform-similarity lag
+    /// curve described at `Blend.alignLag`. `map[0]` is never moved.
+    static func align(_ map: inout [Double], x: [Float], head0: Int, period: Double, maxLag: Double, slope: Double,
+                      fade fadeFraction: Double) {
+        let n = map.count
+        let hop = max(8, Int(period.rounded())), block = 2 * hop, lagMax = max(1, Int((maxLag * period).rounded()))
+        guard n > 2 * block else { return }
+        // Best lag per block (centre c = b * hop + hop): normalised cross-correlation of head and lagged tail.
+        var centres: [Int] = [], lags: [Double] = []
+        var c0 = 0
+        while c0 + block <= n {
+            var best = 0, bestScore = -Double.infinity
+            for d in -lagMax...lagMax {
+                var xy = 0.0, xx = 0.0, yy = 0.0
+                var v = c0
+                while v < c0 + block {
+                    let h = Double(x[head0 + v]), t = Double(read(x, map[v] + Double(d)))
+                    xy += h * t; xx += h * h; yy += t * t
+                    v += 1
+                }
+                let sc = xx > 0 && yy > 0 ? xy / (xx * yy).squareRoot() : -1
+                if sc > bestScore + 1e-12 { bestScore = sc; best = d }
+            }
+            centres.append(c0 + hop); lags.append(Double(best))
+            c0 += hop
+        }
+        // Median of 5 (a lag that jumps a whole period between blocks is a different period, not a drift).
+        let med = lags.indices.map { i -> Double in
+            let w = Array(lags[max(0, i - 2)...min(lags.count - 1, i + 2)]).sorted()
+            return w[w.count / 2]
+        }
+        // Per-sample curve: linear between block centres, faded in (smoothstep) over the first `fadeFraction` of the blend.
+        var delta = [Double](repeating: 0, count: n)
+        var j = 0
+        let fade = max(1, Int(Double(n) * min(1, max(0, fadeFraction))))
+        for u in 0..<n {
+            while j < centres.count - 1 && u >= centres[j + 1] { j += 1 }
+            let d: Double
+            if u <= centres[0] { d = med[0] } else if j >= centres.count - 1 { d = med[centres.count - 1] } else {
+                let f = Double(u - centres[j]) / Double(centres[j + 1] - centres[j])
+                d = med[j] * (1 - f) + med[j + 1] * f
+            }
+            let r = min(1, Double(u) / Double(fade))
+            delta[u] = d * r * r * (3 - 2 * r)
+        }
+        // Slope limit, anchored at delta[0] = 0: forward then backward.
+        delta[0] = 0
+        for u in 1..<n { delta[u] = min(delta[u - 1] + slope, max(delta[u - 1] - slope, delta[u])) }
+        for u in stride(from: n - 2, through: 1, by: -1) {
+            delta[u] = min(delta[u + 1] + slope, max(delta[u + 1] - slope, delta[u]))
+        }
+        delta[0] = 0
+        for u in 1..<n { delta[u] = min(delta[u - 1] + slope, max(delta[u - 1] - slope, delta[u])) }
+        for u in 0..<n { map[u] += delta[u] }
     }
 
     /// Cubic Hermite read of `x` at a fractional position (zero outside).

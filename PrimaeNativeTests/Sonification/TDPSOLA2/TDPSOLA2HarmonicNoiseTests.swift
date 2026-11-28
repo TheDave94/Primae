@@ -115,4 +115,33 @@ nonisolated struct TDPSOLA2HarmonicNoiseTests {
         let tail = Array(d[start..<(start + Int(1.4 * Self.sr))])
         #expect(tail.elementsEqual(a[0..<tail.count]) { $0.bitPattern == $1.bitPattern }, "\(name): re-open differs")
     }
+
+    @Test("noiseSeedXor default 0 is bit-identical to production; non-zero varies shifted voiced draws only",
+          arguments: ["A_phoneme1", "I_phoneme1"])
+    func noiseSeedXorKnob(name: String) throws {
+        #expect(TDPSOLA2Options.production.noiseSeedXor == 0)
+        let s = try StudySources.load(name)
+        let ss = s.sonificationSource
+        let prod = LiveSonificationAudio.makeRenderer(ss)
+        var zeroOpts = TDPSOLA2Options.production
+        zeroOpts.noiseSeedXor = 0
+        let explicitZero = TDPSOLA2(source: ss.samples, sampleRate: ss.sampleRate, kind: ss.kind,
+                                    maxFramesPerRender: LiveSonificationKernel.chunkFrames, tuning: .default,
+                                    options: zeroOpts, onset: ss.onset, outputGain: ss.gain, file: ss.fileSource)
+        var altOpts = TDPSOLA2Options.production
+        altOpts.noiseSeedXor = 0x1357_9BDF_2468_ACE0
+        let alt = TDPSOLA2(source: ss.samples, sampleRate: ss.sampleRate, kind: ss.kind,
+                           maxFramesPerRender: LiveSonificationKernel.chunkFrames, tuning: .default,
+                           options: altOpts, onset: ss.onset, outputGain: ss.gain, file: ss.fileSource)
+        // Default 0 matches production bit-for-bit on shifted voiced audio.
+        let yProd = SonificationDriver.steady(prod, seconds: 1.5, rate: 0.8, cents: 450)
+        let yZero = SonificationDriver.steady(explicitZero, seconds: 1.5, rate: 0.8, cents: 450)
+        let yAlt = SonificationDriver.steady(alt, seconds: 1.5, rate: 0.8, cents: 450)
+        #expect(yProd.elementsEqual(yZero) { $0.bitPattern == $1.bitPattern }, "\(name): noiseSeedXor 0 differed from production")
+        #expect(!yProd.elementsEqual(yAlt) { $0.bitPattern == $1.bitPattern }, "\(name): non-zero noiseSeedXor had no effect")
+        // Unshifted 0 c / rate 1 continues natural marks (never draws from rng), so even non-zero xor is bit-identical.
+        let zProd = SonificationDriver.steady(prod, seconds: 1.5, rate: 1, cents: 0)
+        let zAlt = SonificationDriver.steady(alt, seconds: 1.5, rate: 1, cents: 0)
+        #expect(zProd.elementsEqual(zAlt) { $0.bitPattern == $1.bitPattern }, "\(name): 0 c / rate 1 must not depend on noiseSeedXor")
+    }
 }

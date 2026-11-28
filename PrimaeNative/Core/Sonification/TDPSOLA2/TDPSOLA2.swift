@@ -95,6 +95,77 @@ nonisolated struct TDPSOLA2Options: Sendable, Hashable {
     /// Item 8 (lane PITCHWIN, 2026-11-26): the residual level table. Measured once per source at init (see
     /// `LevelTable`), so a held phoneme (voiced or F) plays at its 0-cent level at every pitch. Off = items 1-7 only.
     var levelCalibration = false
+    /// Bench-only (lane BENCH-R31): XORed into item 4's FNV-1a noise seed so the pitch bench can measure a seed
+    /// spread across independent realisations. Default 0 leaves production output bit-identical
+    /// (`TDPSOLA2RenderHashTests.hashMatches`, `ProductionRendererTests.phonemePairIsProduction`).
+    var noiseSeedXor: UInt64 = 0
+    /// Item 9 (lane ENVGAP, 2026-11-28; candidate, OFF in every shipped option set): on upshift (pf > 1) a voiced
+    /// grain keeps its halves at ONE source period each side (the two-period analysis window of Charpentier & Moulines
+    /// 1989/1990 TD-PSOLA) instead of narrowing them to the output spacing T / pf, spawned early enough that its left
+    /// half starts on time, and the overlap-add is normalised by the window sum where the windows sum above 1
+    /// (Moulines & Charpentier 1990's normalised synthesis). pf <= 1 is items 1-8 unchanged.
+    var wideUpshiftWindow = false
+    /// Item 10 (lane ENVGAP, 2026-11-28; candidate, 1 = OFF in every shipped option set): on downshift (pf < 1) a voiced
+    /// grain's LEFT half (before its glottal closure, where the previous pulse's tail lies) is kappa x its source period,
+    /// kappa in [0.25, 1]; the right half keeps item 2's cap. Needs item 2. Exactly 1 leaves items 1-8 bit for bit.
+    var downshiftWindowScale: Double = 1
+    /// Diagnosis probe (lane ENVGAP, 2026-11-28; 0 = OFF in every shipped option set): after item 5, move every voiced
+    /// mark by this fraction of the median period (a constant phase shift, item 5's fallback mechanism). 0 = off.
+    var markPhaseShift: Double = 0
+    /// Item 11 (lane ENVGAP, 2026-11-28; candidate, OFF in every shipped option set): after item 5, phase-align the
+    /// marks to the waveform extremum they already track. Per loop mark, the offset to the sample maximum and to the
+    /// sample minimum within +-T/2; of the two medians, the one nearer 0 (the extremum the marks sit on) moves every
+    /// mark by that median, so the marks keep their spacing (jitter unchanged) and sit on the period's excitation peak,
+    /// where a TD-PSOLA window narrower than the period (upshift) should be centred (Moulines & Charpentier 1990;
+    /// Praat's documented pulse anchor is a waveform extremum). Off leaves items 1-8 bit for bit.
+    var extremumPhaseAlign = false
+    /// Item 11's guard (as item 5's `gciPhaseMinOffset`): marks whose median offset to the extremum is below this
+    /// fraction of the median period already sit on it, within the extremum's own spread, and are kept bit for bit.
+    var extremumPhaseMinOffset: Double = 0
+    /// Item 13 (lane ENVGAP-A, 2026-11-28; candidate, 0 = OFF in every shipped option set): SEAM2's voiced head blend
+    /// aligns the tail to the head by waveform similarity before blending (SOLA/WSOLA's alignment step,
+    /// `TDPSOLALoopSeam.Blend.alignLag`), searching +- this fraction of the loop's median period. 0 leaves the prepared
+    /// loop bit for bit.
+    var seamAlignLag: Double = 0
+    /// Item 13's slope limit and fade-in fraction (`TDPSOLALoopSeam.Blend.alignSlope` / `.alignFade`); read only when
+    /// `seamAlignLag > 0`.
+    var seamAlignSlope: Double = 0.004
+    var seamAlignFade: Double = 0.25
+    /// Item 14 (lane ENVGAP-A, 2026-11-28; candidate, 0 = OFF in every shipped option set): a voiced phoneme's SEAM2
+    /// crossfade lasts this many seconds instead of the tuning's 0.4 s (`TDPSOLALoopSeam.Blend.crossfadeSeconds`).
+    /// 0 leaves the prepared loop bit for bit.
+    var seamCrossfadeSeconds: Double = 0
+    /// Item 15 (lane BENCHWIN2, 2026-11-28; candidate, OFF in every shipped option set): a voiced grain that repeats or
+    /// skips a period (item 4's non-natural grain) is spaced by the period of the donor mark item 4 draws for its noise,
+    /// instead of its own mark's period. Without it, a time-stretch (rate < 1) emits every analysis period twice in a
+    /// row, so half of the consecutive period differences are zero and the output's local jitter is about half the
+    /// source's (measured, Praat cc points on r31 L 0 c @0.5: |dT| alternates 1 ... 5 us / 17 ... 44 us; jitter ratio
+    /// 0.56 ... 0.63). Needs item 4. Off leaves items 1-14 bit for bit.
+    var repeatedPeriodDonor = false
+    /// Item 16 (lane MCELL, 2026-11-28; candidate, 1 = OFF in every shipped option set): on a voiced upshift (pf > 1,
+    /// at least `upshiftMinCents`), the two halves that cross between consecutive grains cross-fade over only this
+    /// fraction c of their overlap (a complementary raised cosine centred on the overlap's midpoint, w(u) + w(1 - u) = 1,
+    /// so the windows still sum to 1); each grain plays its own source at full weight for the rest. The window's extent
+    /// (item 2's half-width, the output spacing) is unchanged. Exactly 1 leaves items 1-15 bit for bit.
+    var upshiftCrossfade: Double = 1
+    /// Item 17 (lane MCELL, 2026-11-28; candidate, < 0 = OFF in every shipped option set): on a voiced upshift (as item
+    /// 16), the overlap-add is normalised for the POWER of a cross-fade of partly coherent grains: y x wSum / sqrt(w2 +
+    /// r (wSum^2 - w2)), r = this coherence in [0, 1] (the r17 F loudness correction's form, with a fixed r). 1 leaves
+    /// the amplitude sum; any value < 0 leaves items 1-16 bit for bit.
+    var upshiftPowerCoherence: Double = -1
+    /// Items 16-17: the smallest upshift (cents) they apply to.
+    var upshiftMinCents: Double = 0
+    /// The SEAM2 blend these options ask for (`.shipped` when items 13 and 14 are off).
+    var seamBlend: TDPSOLALoopSeam.Blend {
+        var b = TDPSOLALoopSeam.Blend.shipped
+        if seamCrossfadeSeconds.isFinite && seamCrossfadeSeconds > 0 { b.crossfadeSeconds = seamCrossfadeSeconds }
+        if seamAlignLag.isFinite && seamAlignLag > 0 {
+            b.alignLag = min(1, seamAlignLag)
+            b.alignSlope = seamAlignSlope.isFinite ? min(0.05, max(0, seamAlignSlope)) : 0.004
+            b.alignFade = seamAlignFade.isFinite ? min(1, max(0, seamAlignFade)) : 0.25
+        }
+        return b
+    }
 
     static let `default` = TDPSOLA2Options()
     /// The phoneme arm's renderer from protocol r31: the bake-off's "TDPSOLA2-sa" (items 1-5, the shifted attack at the
@@ -122,6 +193,10 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
     let analysis: TDPSOLAAnalysis
     /// The analysis as computed (before item 5).
     let coarseAnalysis: TDPSOLAAnalysis
+    /// The loop this renderer PLAYS, in frames at `sampleRate`: `analysis.loopStart` to the loop end SEAM2 shortened by
+    /// its crossfade (`prepared(...).loopEnd`), not `analysis.loopEnd`. Read-only (lane BENCHWIN, 2026-11-28): the pitch
+    /// bench sizes its held window in whole loops of this length.
+    var playedLoop: (start: Double, end: Double) { (loopStart, loopEnd) }
     /// The loudness gain the kernel plays this source at (the onset ceiling's input).
     let outputGain: Float
     /// Item 5's outcome (nil when the option is off or the source is not a voiced phoneme).
@@ -158,6 +233,10 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
         var hFrac: Double = 0   // slot position of the mark: radius + mark - round(mark)
         var nFrac: Double = 0
         var anaInv: Double = 0  // 1 / period(mark): the analysis Hann's half-width
+        var xfL: Double = 1     // item 16: the left half's cross-fade fraction (1 = the plain window)
+        var xfR: Double = 1     // item 16: the right half's
+        var pnR: Float = -1     // item 17: the coherence the right half's overlap is normalised for (< 0 = off)
+        var pnL: Float = -1
     }
     private struct State {
         var playing = false
@@ -211,6 +290,16 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
     // Option scalars (the render path never reads the struct).
     private let optResample: Bool
     private let optCap: Bool
+    /// Item 9 (ENVGAP candidate): wide upshift windows + normalised OLA (voiced phoneme only).
+    private let optWide: Bool
+    /// Item 10 (ENVGAP candidate): kappa on downshift (1 = off).
+    private let optDownScale: Double
+    private let optPeriodDonor: Bool
+    /// Items 16-17 (MCELL candidates): the upshift cross-fade fraction (1 = off), the coherence (< 0 = off), the
+    /// smallest upshift ratio they apply to.
+    private let optUpXf: Double
+    private let optUpPn: Float
+    private let optUpMinPf: Double
     private let optDensity: Double
     private let optGamma: Double
     private let optShiftAttack: Bool
@@ -251,7 +340,7 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
             var firstMark: Int? = nil
             if options.shiftedAttack && kind != .carrier {
                 let prep = Self.prepared(file.samples, sampleRate: file.sampleRate, analysis: fr, kind: kind,
-                                         tuning: tuning, outputGain: outputGain)
+                                         tuning: tuning, outputGain: outputGain, seam: options.seamBlend)
                 firstMark = Self.attackFirstMark(fr, samples: prep.played)
             }
             self.init(source: source, sampleRate: sampleRate, kind: kind, maxFramesPerRender: maxFramesPerRender,
@@ -298,7 +387,7 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
         analysis = a
         // Shipped TDPSOLA init from here (SEAM2, TDQ, recorded onset, onset ceiling), on `a`.
         let prep = Self.prepared(source, sampleRate: sampleRate, analysis: a, kind: kind, tuning: tuning,
-                                 outputGain: outputGain)
+                                 outputGain: outputGain, seam: options.seamBlend)
         let played = prep.played
         let effLoopEnd = prep.loopEnd, effLoopEndIndex = prep.loopEndIndex
         count = source.count
@@ -344,6 +433,13 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
         sincTable = TDPSOLA2Sinc.makeTable()
         optResample = options.unvoicedResample
         optCap = options.voicedWindowCap
+        optWide = options.wideUpshiftWindow && isVoicedPhoneme
+        optDownScale = options.downshiftWindowScale.isFinite ? min(1, max(0.25, options.downshiftWindowScale)) : 1
+        optPeriodDonor = options.repeatedPeriodDonor
+        optUpXf = options.upshiftCrossfade.isFinite && isVoicedPhoneme ? min(1, max(0.05, options.upshiftCrossfade)) : 1
+        optUpPn = options.upshiftPowerCoherence.isFinite && isVoicedPhoneme && options.upshiftPowerCoherence >= 0
+            ? Float(min(1, options.upshiftPowerCoherence)) : -1
+        optUpMinPf = exp2(max(0, options.upshiftMinCents.isFinite ? options.upshiftMinCents : 0) / 1200)
         optDensity = options.pulseDensityExponent
         // 0...1: beta <= 2 keeps every band-limited read of a bank slot inside its pad (TDPSOLA2HarmonicNoise.pad).
         optGamma = min(1, max(0, options.formantGamma.isFinite ? options.formantGamma : 0))
@@ -384,9 +480,11 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
             hnRadius = 0
         }
         // Per-source seed: FNV-1a over the played samples' bit patterns (deterministic, never 0).
+        // `options.noiseSeedXor` (default 0) lets the pitch bench draw distinct realisations without altering production.
         var hsh: UInt64 = 0xcbf29ce484222325
         for v in played { hsh = (hsh ^ UInt64(v.bitPattern)) &* 0x100000001b3 }
-        rngSeed = hsh == 0 ? 0x9E3779B97F4A7C15 : hsh
+        let seeded = hsh ^ options.noiseSeedXor
+        rngSeed = seeded == 0 ? 0x9E3779B97F4A7C15 : seeded
         optLevel = options.levelCalibration && kind != .carrier
             && (a.isVoiced ? effLoopEndIndex > a.attackIndex : effLoopEnd > a.loopStart)
         levelTable = .allocate(capacity: LevelTable.count)
@@ -472,6 +570,13 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
                 r.report.medianOffset = p.report.medianOffset
             }
         }
+        if options.markPhaseShift != 0 && options.markPhaseShift.isFinite {
+            r.analysis = phaseShifted(r.analysis, by: options.markPhaseShift * r.analysis.medianPeriod, count: source.count)
+        }
+        if options.extremumPhaseAlign, let d = extremumOffset(source, analysis: r.analysis), d != 0,
+           abs(d) >= options.extremumPhaseMinOffset * r.analysis.medianPeriod {
+            r.analysis = phaseShifted(r.analysis, by: d, count: source.count)
+        }
         Self.log.info("""
             GCI snap \(r.report.applied ? "applied" : "kept old marks", privacy: .public): \
             \(r.report.reason, privacy: .public); jitter \(r.report.jitterBefore) -> \(r.report.jitterAfter); \
@@ -480,16 +585,55 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
         return (r.analysis, r.report)
     }
 
+    /// Item 11: the median offset (samples) from the loop marks to the waveform extremum they track; nil when unmeasured.
+    static func extremumOffset(_ x: [Float], analysis a: TDPSOLAAnalysis) -> Double? {
+        guard a.isVoiced, a.loopEndIndex > a.attackIndex + 4 else { return nil }
+        var toMax: [Double] = [], toMin: [Double] = []
+        for k in a.attackIndex...a.loopEndIndex {
+            let c = a.marks[k], h = 0.5 * a.periods[k]
+            let lo = max(0, Int((c - h).rounded(.up))), hi = min(x.count - 1, Int((c + h).rounded(.down)))
+            guard hi > lo else { continue }
+            var iMax = lo, iMin = lo
+            for i in lo...hi {
+                if x[i] > x[iMax] { iMax = i }
+                if x[i] < x[iMin] { iMin = i }
+            }
+            toMax.append(Double(iMax) - c); toMin.append(Double(iMin) - c)
+        }
+        guard toMax.count >= 4 else { return nil }
+        let mMax = TDPSOLAAnalysis.median(toMax), mMin = TDPSOLAAnalysis.median(toMin)
+        return abs(mMin) <= abs(mMax) ? mMin : mMax
+    }
+
+    /// Item 11 / probe: every mark moved by `d` samples (periods unchanged); the loop starts at the first mark at or after
+    /// a declared onset end, as item 5 keeps it (`TDPSOLA2Epochs.refine`). `a` unchanged when a mark would leave [0, end).
+    static func phaseShifted(_ a: TDPSOLAAnalysis, by d: Double, count: Int) -> TDPSOLAAnalysis {
+        guard a.isVoiced, d.isFinite, d != 0 else { return a }
+        let nm = a.marks.map { $0 + d }
+        let ei = a.loopEndIndex
+        guard let f = nm.first, f >= 0, let l = nm.last, l < Double(count), ei < nm.count else { return a }
+        var ai = a.attackIndex
+        if let h = a.recordedOnset.map({ Double($0.attackEndFrame) }), h > 0 {
+            while ai > 0 && nm[ai - 1] >= h { ai -= 1 }
+            while ai < ei - 2 && nm[ai] < h { ai += 1 }
+        }
+        return TDPSOLAAnalysis(onset: a.onset, isVoiced: true, voicedFraction: a.voicedFraction,
+                               medianPeriod: a.medianPeriod, marks: nm, periods: a.periods, attackIndex: ai,
+                               loopEndIndex: ei, loopStart: nm[ai], loopEnd: nm[ei] + a.periods[ei],
+                               unvoicedHop: a.unvoicedHop, recordedOnset: a.recordedOnset)
+    }
+
     /// The played source (the shipped TDPSOLA init: SEAM2, TDQ, recorded onset, onset ceiling) and its loop end.
     static func prepared(_ source: [Float], sampleRate: Double, analysis a: TDPSOLAAnalysis, kind: SourceKind,
-                         tuning: TDPSOLATuning, outputGain: Float) -> (played: [Float], loopEnd: Double, loopEndIndex: Int) {
+                         tuning: TDPSOLATuning, outputGain: Float,
+                         seam: TDPSOLALoopSeam.Blend = .shipped) -> (played: [Float], loopEnd: Double, loopEndIndex: Int) {
         var played = source
         var effLoopEnd = a.loopEnd, effLoopEndIndex = a.loopEndIndex
         let preBlend = a.recordedOnset?.preBlendPeriods ?? TDPSOLALoopSeam.preBlendMarks
         if kind != .carrier, let prep = TDPSOLALoopSeam.prepare(played, sampleRate: sampleRate, analysis: a,
                                                                  crossfade: tuning.loopCrossfadeSeconds,
                                                                  flattenDB: tuning.loopFlattenDB,
-                                                                 preBlendMarks: preBlend) {
+                                                                 preBlendMarks: preBlend, blend: seam) {
             played = prep.samples; effLoopEnd = prep.loopEnd; effLoopEndIndex = prep.loopEndIndex
         }
         if kind != .carrier {
@@ -627,14 +771,22 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
             }
             let r = rate, c = cents
 
-            while g[n - 1].outCenter <= now {
-                n = spawnNext(count: n, now: now, s: s, rate: r, cents: c, inAttack: attackActive)
+            if optWide {
+                // Item 9: spawn the next grain early enough that its one-source-period left half starts on time.
+                while g[n - 1].outCenter - wideLead(g[n - 1], cents: c) <= now {
+                    n = spawnNext(count: n, now: now, s: s, rate: r, cents: c, inAttack: attackActive)
+                }
+            } else {
+                while g[n - 1].outCenter <= now {
+                    n = spawnNext(count: n, now: now, s: s, rate: r, cents: c, inAttack: attackActive)
+                }
             }
 
             var y: Float = 0
             var wSum: Float = 0
             var w2Sum: Float = 0
             var rMin: Float = 1
+            var pn: Float = -1
             var gi = 0
             while gi < n {
                 let gr = g[gi]
@@ -644,13 +796,17 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
                     if gr.flatLeft {
                         wt = 1
                     } else if -x < gr.leftW {
-                        wt = Self.windowAt(w, -x / gr.leftW)
+                        wt = gr.xfL < 1 ? Self.windowAt(w, Self.crossfadeU(-x / gr.leftW, gr.xfL))
+                                        : Self.windowAt(w, -x / gr.leftW)
+                        if gr.pnL > pn { pn = gr.pnL }
                     }
                     if wt > 0 { y += grainSample(gr, x, wt, x0, hi) }
                     if wt > 0 { wSum += wt; w2Sum += wt * wt; if gr.corr < rMin { rMin = gr.corr } }
                     gi += 1
                 } else if x < gr.rightW {
-                    wt = Self.windowAt(w, x / gr.rightW)
+                    wt = gr.xfR < 1 ? Self.windowAt(w, Self.crossfadeU(x / gr.rightW, gr.xfR))
+                                    : Self.windowAt(w, x / gr.rightW)
+                    if gr.pnR > pn { pn = gr.pnR }
                     y += grainSample(gr, x, wt, x0, hi)
                     if wt > 0 { wSum += wt; w2Sum += wt * wt; if gr.corr < rMin { rMin = gr.corr } }
                     gi += 1
@@ -661,6 +817,15 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
                 } else {
                     gi += 1
                 }
+            }
+
+            // Item 9: normalised overlap-add where the wide upshift windows sum above 1 (never touches wSum <= 1).
+            if optWide && wSum > 1 { y /= wSum }
+
+            // Item 17: the power of a cross-fade of partly coherent voiced grains (upshift only; pn < 0 = off).
+            if pn >= 0 && wSum > 0 {
+                let p = w2Sum + pn * (wSum * wSum - w2Sum)
+                if p > 1e-6 { y *= wSum / p.squareRoot() }
             }
 
             // r17 F loudness correction (see TDPSOLA).
@@ -730,6 +895,15 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
     }
 
     @inline(__always) private static func floorInt(_ v: Double) -> Int { TDPSOLA2Sinc.floorInt(v) }
+
+    /// Item 16: the window coordinate of a half whose cross-fade spans only the fraction c of the overlap around its
+    /// midpoint: 0 (weight 1) before it, 1 (weight 0) after it, the Hann half in between (w(u) + w(1 - u) = 1 holds).
+    @inline(__always) private static func crossfadeU(_ u: Double, _ c: Double) -> Double {
+        let a = 0.5 * (1 - c)
+        if u <= a { return 0 }
+        if u >= a + c { return 1 }
+        return (u - a) / c
+    }
 
     @inline(__always) private static func windowAt(_ window: UnsafeMutablePointer<Float>, _ u: Double) -> Float {
         let p = u * Double(Self.windowSize)
@@ -867,10 +1041,27 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
         if optCap && isVoicedPhoneme && (pf != 1 || beta != 1 || last.spacingPeriod != last.period) {
             halfW = min(spacing, min(last.period / last.inc, period / inc))
         }
-        grains[li].rightW = halfW
-        var gr = Grain(outCenter: tN, leftW: halfW, rightW: halfW,
+        var leftW = halfW
+        if optDownScale != 1 && pf < 1 && optCap && isVoicedPhoneme {
+            // Item 10: the new grain's LEFT half (before its closure: the previous pulse's tail) at kappa x its period.
+            leftW = min(halfW, optDownScale * period / inc)
+            grains[li].rightW = halfW
+        } else if optWide && pf > 1 {
+            // Item 9: each half one source period (output samples) of its own grain; the left half never starts in
+            // the past (the lead in `render` makes that the exception, e.g. a pitch jump within one grain).
+            leftW = max(halfW, min(period / inc, tN - now))
+            grains[li].rightW = max(halfW, last.period / last.inc)
+        } else {
+            grains[li].rightW = halfW
+        }
+        var gr = Grain(outCenter: tN, leftW: leftW, rightW: halfW,
                        srcCenter: center, inc: inc, period: period, flatLeft: false,
                        corr: corr, bandCut: bandCut, mark: mark)
+        // Items 16-17: the overlap between `last` and the new grain on a voiced upshift (never with item 9's halves).
+        if isVoicedPhoneme && !optWide && pf > 1 && pf >= optUpMinPf {
+            if optUpXf < 1 { grains[li].xfR = optUpXf; gr.xfL = optUpXf }
+            if optUpPn >= 0 { grains[li].pnR = optUpPn; gr.pnL = optUpPn }
+        }
         gr.spacingPeriod = mark >= 0 ? spacingP[mark] : period
         // Item 3: pulse-density gain on downshift.
         // With gamma a grain is read at beta and so lasts 1/beta longer: the power lost is pf / beta = pf^(1 - gamma),
@@ -893,12 +1084,22 @@ nonisolated final class TDPSOLA2: SonificationRenderer, @unchecked Sendable {
                 gr.hFrac = hnRadius + (marks[mark] - mi)
                 gr.nFrac = hnRadius + (marks[pick] - nj)
                 gr.anaInv = 1 / periods[mark]
+                // Item 15: the repeated / skipped period's length from the same donor.
+                if optPeriodDonor { gr.spacingPeriod = spacingP[pick] }
             }
             st.pointee.recent1 = st.pointee.recent0
             st.pointee.recent0 = pick
         }
         grains[n] = gr
         return n + 1
+    }
+
+    /// Item 9: how far before `last`'s centre the next grain must spawn so its left half (one source period of
+    /// `last`'s, as the estimate of the next mark's) starts on time; 0 at pf <= 1.
+    @inline(__always) private func wideLead(_ last: Grain, cents: Float) -> Double {
+        let pf = exp2(Double(cents) / 1200)
+        guard pf > 1 else { return 0 }
+        return max(0, last.period / last.inc - last.spacingPeriod / pf)
     }
 
     /// Item 4: a mark within +-8 of `m` (inside the loop), not one of the last two picks; xorshift64*.
